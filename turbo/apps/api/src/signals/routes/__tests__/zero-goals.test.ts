@@ -649,6 +649,32 @@ describe("zero goals", () => {
       [404],
     );
     expect(missing.body.error.code).toBe("NOT_FOUND");
+
+    const chat = createChatFilesBddApi(context);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadEvents(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+    expect(
+      messages.events.filter((event) => {
+        return (
+          event.eventType === "goal.open" || event.eventType === "goal.close"
+        );
+      }),
+    ).toStrictEqual([]);
+    expect(messages.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "goal.changed",
+        content: null,
+        goalEvent: { type: "cleared" },
+      }),
+    );
   });
 
   it("enforces user-control and agent-result capability boundaries", async () => {

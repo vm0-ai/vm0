@@ -623,6 +623,81 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("folds a future close followed by an open into the reopened goal row", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000734";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Future goal markers",
+      chatEvents: [
+        {
+          id: "msg-goal-content-user",
+          threadId,
+          eventType: "input.prompt",
+          role: "user",
+          content: "Track this objective",
+          runId: "run-goal-content",
+          seqId: 1,
+          createdAt: "2026-06-09T09:59:59Z",
+        },
+        {
+          id: "msg-goal-content-assistant",
+          threadId,
+          eventType: "output.thinking",
+          role: "assistant",
+          content: null,
+          thinking: "Working",
+          runId: "run-goal-content",
+          seqId: 2,
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-content-open",
+          threadId,
+          eventType: "goal.open",
+          role: "assistant",
+          content: "Initial objective",
+          runId: undefined,
+          seqId: 3,
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-goal-content-close",
+          threadId,
+          eventType: "goal.close",
+          role: "assistant",
+          content: null,
+          runId: undefined,
+          seqId: 4,
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+        {
+          id: "msg-goal-content-reopen",
+          threadId,
+          eventType: "goal.open",
+          role: "assistant",
+          content: "Reopened objective",
+          runId: undefined,
+          seqId: 5,
+          createdAt: "2026-06-09T10:00:03Z",
+        },
+      ],
+      activeRunIds: ["run-goal-content"],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Track this objective")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Active goal")).toHaveTextContent(
+        "Reopened objective",
+      );
+    });
+    expect(screen.queryByText("Initial objective")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Reopened objective")).toHaveLength(1);
+  });
+
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000723";

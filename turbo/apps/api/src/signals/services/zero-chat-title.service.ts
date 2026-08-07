@@ -1,7 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { SharedMessage } from "@vm0/api-contracts/contracts/shared-threads";
 import {
-  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -20,7 +19,6 @@ import {
   isNotNull,
   isNull,
   not,
-  or,
   type SQL,
 } from "drizzle-orm";
 import { optionalEnv } from "../../lib/env";
@@ -30,7 +28,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
@@ -112,19 +110,6 @@ function completedConversationContextMessageCondition(db: SelectDb) {
             ),
         ),
       ) as SQL,
-    ),
-  ) as SQL;
-}
-
-function contextMessageContentCondition(): SQL {
-  return or(
-    and(
-      chatEventTypeIn(["input.prompt", "input.rejected"]),
-      isNotNull(chatEvents.userMessage),
-    ),
-    and(
-      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      isNotNull(chatEvents.content),
     ),
   ) as SQL;
 }
@@ -279,8 +264,7 @@ async function getLatestTitleContextMessages(
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
-        contextMessageContentCondition(),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),
@@ -457,8 +441,7 @@ async function getLatestFollowupContextMessages(
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
-        contextMessageContentCondition(),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),

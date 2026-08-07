@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
+  resolveChatEventRecommendedFollowups,
   type AttachFile,
   type CodexServiceTier,
   type GenerationTemplateRequest,
@@ -21,7 +22,7 @@ import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -1747,18 +1748,29 @@ async function validateNormalRevocationTarget(params: {
   }
 
   const [target] = await params.db
-    .select({ id: chatEvents.id })
+    .select({
+      id: chatEvents.id,
+      content: chatEvents.content,
+      recommendedFollowups: chatEvents.recommendedFollowups,
+    })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.id, params.revokesEventId),
         eq(chatEvents.chatThreadId, params.threadId),
         chatEventTypeIn(["output.followups"]),
-        isNotNull(chatEvents.recommendedFollowups),
       ),
     )
     .limit(1);
-  if (!target) {
+  if (
+    !target ||
+    resolveChatEventRecommendedFollowups({
+      content: target.content,
+      ...(target.recommendedFollowups === null
+        ? {}
+        : { recommendedFollowups: target.recommendedFollowups }),
+    }).length === 0
+  ) {
     return badRequestMessage("Recommended follow-up is no longer available");
   }
 

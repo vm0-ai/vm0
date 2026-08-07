@@ -508,13 +508,62 @@ const chatEventBaseSchema = z.object({
   createdAt: z.string(),
 });
 
-const chatEventRecommendedFollowupSchema = z.object({
+const chatEventRecommendedFollowupShape = {
   prompt: z.string(),
   kind: z.enum(["talk", "generate"]),
   generationType: z
     .enum(["image", "video", "presentation", "website"])
     .optional(),
-});
+};
+
+const chatEventRecommendedFollowupSchema = z.object(
+  chatEventRecommendedFollowupShape,
+);
+
+export const chatFollowupsContentDocumentSchema = z
+  .object({
+    version: z.literal(1),
+    followups: z.array(z.object(chatEventRecommendedFollowupShape).strict()),
+  })
+  .strict();
+
+export type ChatRecommendedFollowup = z.infer<
+  typeof chatEventRecommendedFollowupSchema
+>;
+export type ChatFollowupsContentDocument = z.infer<
+  typeof chatFollowupsContentDocumentSchema
+>;
+
+export function parseChatFollowupsContent(
+  content: string | null,
+): ChatFollowupsContentDocument | null {
+  if (content === null) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(content);
+    const result = chatFollowupsContentDocumentSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveChatEventRecommendedFollowups(event: {
+  readonly content: string | null;
+  readonly recommendedFollowups?: readonly ChatRecommendedFollowup[];
+}): readonly ChatRecommendedFollowup[] {
+  const document = parseChatFollowupsContent(event.content);
+  if (document !== null) {
+    return document.followups;
+  }
+
+  // Stage 3 rollout compatibility: current writers, persisted rows, and old
+  // web/app clients still use recommendedFollowups. Delete this fallback in
+  // Stage 5 after the Stage 4 client floor and content writer cutover.
+  return event.recommendedFollowups ?? [];
+}
 
 const chatEventRecommendedFollowupsSchema = z.preprocess((value) => {
   if (!Array.isArray(value)) {
@@ -608,8 +657,8 @@ const outputThinkingEventSchema = chatEventBaseSchema
 const outputFollowupsEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("output.followups"),
-    content: z.null(),
-    recommendedFollowups: chatEventRecommendedFollowupsSchema,
+    content: z.string().nullable(),
+    recommendedFollowups: chatEventRecommendedFollowupsSchema.optional(),
   })
   .strict();
 
@@ -686,6 +735,36 @@ const browserCloseEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const goalMarkerMetadataSchema = {
+  runId: z.never().optional(),
+  runGroupId: z.never().optional(),
+  isGoalRun: z.never().optional(),
+  runEventId: z.never().optional(),
+  revokesEventId: z.never().optional(),
+  sequenceNumber: z.never().optional(),
+};
+
+const goalOpenEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("goal.open"),
+    content: z
+      .string()
+      .min(1)
+      .refine((content) => {
+        return content === content.trim();
+      }, "Goal title must be trimmed"),
+    ...goalMarkerMetadataSchema,
+  })
+  .strict();
+
+const goalCloseEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("goal.close"),
+    content: z.null(),
+    ...goalMarkerMetadataSchema,
+  })
+  .strict();
+
 const goalChangedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("goal.changed"),
@@ -726,6 +805,8 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   controlRevokeEventSchema,
   browserOpenEventSchema,
   browserCloseEventSchema,
+  goalOpenEventSchema,
+  goalCloseEventSchema,
   goalChangedEventSchema,
   usageRecordedEventSchema,
 ]);

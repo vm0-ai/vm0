@@ -288,11 +288,18 @@ type OutputThinkingEvent = ChatEventIdentity &
 
 type OutputFollowupsEvent = ChatEventIdentity & {
   readonly eventType: "output.followups";
-  readonly content?: null;
-  readonly recommendedFollowups: NonNullable<
-    ChatEventInsert["recommendedFollowups"]
-  >;
-};
+} & (
+    | {
+        readonly content?: null;
+        readonly recommendedFollowups: NonNullable<
+          ChatEventInsert["recommendedFollowups"]
+        >;
+      }
+    | {
+        readonly content: string;
+        readonly recommendedFollowups?: never;
+      }
+  );
 
 type RunQueuedEvent = ChatEventIdentity & {
   readonly eventType: "run.queued";
@@ -354,6 +361,22 @@ type GoalChangedEvent = ChatEventIdentity & {
   readonly runEventId?: null;
 };
 
+type GoalOpenEvent = Pick<
+  ChatEventIdentity,
+  "id" | "chatThreadId" | "createdAt"
+> & {
+  readonly eventType: "goal.open";
+  readonly content: string;
+};
+
+type GoalCloseEvent = Pick<
+  ChatEventIdentity,
+  "id" | "chatThreadId" | "createdAt"
+> & {
+  readonly eventType: "goal.close";
+  readonly content?: null;
+};
+
 type UsageRecordedEvent = ChatEventIdentity & {
   readonly eventType: "usage.recorded";
   readonly runId: string;
@@ -379,6 +402,8 @@ export type NewChatEvent =
   | ControlInterruptEvent
   | ControlRevokeEvent
   | BrowserLifecycleEvent
+  | GoalOpenEvent
+  | GoalCloseEvent
   | GoalChangedEvent
   | UsageRecordedEvent;
 

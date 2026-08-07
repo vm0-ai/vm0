@@ -706,7 +706,7 @@ function recommendedFollowupEvents(
     return (
       message.eventType === "output.followups" &&
       message.runId === runId &&
-      message.recommendedFollowups.length > 0
+      (message.recommendedFollowups?.length ?? 0) > 0
     );
   });
 }
@@ -1145,6 +1145,7 @@ describe("CHAT-02: completed chat callback", () => {
     if (!recommender) {
       throw new Error("Expected a recommended follow-up message");
     }
+    expect(recommender.content).toBeNull();
     expect(recommender.recommendedFollowups).toStrictEqual([
       { prompt: longFollowupPrompt, kind: "talk" },
       {

@@ -62,7 +62,6 @@ import {
   isNotNull,
   isNull,
   lt,
-  not,
   notExists,
   or,
   type SQL,
@@ -89,7 +88,10 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTextCondition,
+  chatEventTextMatchCondition,
+} from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
@@ -623,16 +625,15 @@ const chatEventBuilders = {
     };
   },
   "output.followups": (row, event) => {
-    const recommendedFollowups = requiredChatEventField(
-      row.recommendedFollowups,
-      row.eventType,
-      "recommendedFollowups",
-    );
+    const recommendedFollowups =
+      row.recommendedFollowups === null
+        ? undefined
+        : normalizeRecommendedFollowups(row.recommendedFollowups);
     return {
       ...event,
       eventType: "output.followups",
-      content: null,
-      recommendedFollowups: normalizeRecommendedFollowups(recommendedFollowups),
+      content: row.content,
+      ...(recommendedFollowups === undefined ? {} : { recommendedFollowups }),
     };
   },
   "run.queued": (row, event) => {
@@ -718,6 +719,26 @@ const chatEventBuilders = {
       ...event,
       eventType: "browser.close",
       content: null,
+    };
+  },
+  "goal.open": (row, event) => {
+    return {
+      id: event.id,
+      threadId: event.threadId,
+      eventType: "goal.open",
+      content: requiredChatEventField(row.content, row.eventType, "content"),
+      seqId: event.seqId,
+      createdAt: event.createdAt,
+    };
+  },
+  "goal.close": (_row, event) => {
+    return {
+      id: event.id,
+      threadId: event.threadId,
+      eventType: "goal.close",
+      content: null,
+      seqId: event.seqId,
+      createdAt: event.createdAt,
     };
   },
   "goal.changed": (row, event) => {
@@ -1177,19 +1198,6 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   };
 }
 
-function chatSearchMessageTextCondition(): SQL {
-  return or(
-    and(
-      chatEventTypeIn(["input.prompt", "input.rejected"]),
-      isNotNull(chatEvents.userMessage),
-    ),
-    and(
-      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      isNotNull(chatEvents.content),
-    ),
-  ) as SQL;
-}
-
 function userMessageSearchText(): SQL {
   return sql`concat_ws(
     ' ',
@@ -1205,16 +1213,10 @@ function userMessageSearchText(): SQL {
 }
 
 function chatSearchKeywordCondition(pattern: string): SQL {
-  return or(
-    and(
-      chatEventTypeIn(["input.prompt", "input.rejected"]),
-      ilike(userMessageSearchText(), pattern),
-    ),
-    and(
-      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      ilike(chatEvents.content, pattern),
-    ),
-  ) as SQL;
+  return chatEventTextMatchCondition({
+    userMessage: ilike(userMessageSearchText(), pattern),
+    content: ilike(chatEvents.content, pattern),
+  });
 }
 
 /**
@@ -1276,7 +1278,7 @@ function chatSearchContextSideQuery(
         args.isBefore
           ? lt(chatEvents.seqId, matchedChatEvent.seqId)
           : gt(chatEvents.seqId, matchedChatEvent.seqId),
-        chatSearchMessageTextCondition(),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         excludeGoalMarkerCondition(),
       ),
@@ -1401,7 +1403,7 @@ export function zeroChatSearch(args: {
     const matchConditions = [
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
-      chatSearchMessageTextCondition(),
+      chatEventTextCondition(),
       visibleChatEventCondition(db),
       excludeGoalMarkerCondition(),
       indexCondition ?? chatSearchKeywordCondition(pattern),

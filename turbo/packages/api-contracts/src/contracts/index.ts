@@ -24,7 +24,10 @@ export {
   type HealthRouteResponse,
 } from "./health";
 export {
+  CHAT_EVENT_CONTENT_TEXT_TYPES,
   CHAT_EVENT_TYPES,
+  CHAT_EVENT_USER_MESSAGE_TEXT_TYPES,
+  CHAT_GOAL_MARKER_EVENT_TYPES,
   chatEventCompatibilityRole,
   chatEventTypeSchema,
   foldActiveChatGoalObjective,
@@ -32,6 +35,9 @@ export {
   foldRunnableChatQueueEvents,
   foldChatRunStates,
   foldLatestChatUsageByRunId,
+  isChatEventContentTextType,
+  isChatEventUserMessageTextType,
+  isChatGoalMarkerEventType,
   isChatInputEventType,
   isChatOutputEventType,
   isPendingChatQueueEvent,

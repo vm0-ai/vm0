@@ -1,11 +1,16 @@
-import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
+import {
+  chatEventCompatibilityRole,
+  isChatEventContentTextType,
+} from "@vm0/api-contracts/contracts/chat-events";
 import { messageDocumentToDisplayText } from "../zero-page/user-message-document-codec.ts";
 import { parseBodyBlocks, type ParsedBodyBlock } from "./parse-body-blocks.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 
 function chatEventBodyContent(event: ChatEvent): string {
   if (chatEventCompatibilityRole(event.eventType) === "assistant") {
-    return event.content ?? "";
+    return isChatEventContentTextType(event.eventType)
+      ? (event.content ?? "")
+      : "";
   }
   if (
     event.eventType === "input.prompt" ||
