@@ -323,12 +323,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
     enabled: false,
   },
-  [FeatureSwitchKey.ComposerUploadPopover]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
-    enabled: false,
-  },
   [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
     maintainer: "bingjie@vm0.ai",
     description:

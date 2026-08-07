@@ -1151,24 +1151,17 @@
       "viewAgentProfile": "Lihat profil agen"
     },
     "attachments": {
-      "addLink": "Tambahkan tautan",
       "attach": "Lampirkan",
       "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} melebihi batas 1 GB",
       "imageUnavailable": "[Gambar tidak tersedia: {{filename}}]",
       "importing": "Mengimpor lampiran",
-      "invalidLink": "Masukkan tautan yang valid",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Memuat {{filename}}",
       "previewFile": "Pratinjau {{filename}}",
-      "supportedTypes": "Gambar, dokumen, audio, video, dan arsip",
       "title": "Lampiran",
       "unavailable": "Lampiran tidak tersedia",
-      "upload": "Unggah",
       "uploadFailed": "Gagal mengunggah {{filename}}",
       "uploadFailedRetry": "Gagal mengunggah {{filename}}. Coba lagi.",
-      "uploadFromComputer": "Unggah dari komputer",
-      "uploadFromLink": "Unggah dari tautan",
       "uploadsFailed": "Beberapa lampiran gagal diunggah. Coba lagi."
     },
     "automations": {

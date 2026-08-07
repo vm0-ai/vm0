@@ -1174,24 +1174,17 @@
       "viewAgentProfile": "Ver perfil del agente"
     },
     "attachments": {
-      "addLink": "Añadir enlace",
       "attach": "Adjuntar",
       "file": "Archivo {{filename}}",
       "fileTooLarge": "{{filename}} supera el límite de 1 GB",
       "imageUnavailable": "[Imagen no disponible: {{filename}}]",
       "importing": "Importando archivos adjuntos",
-      "invalidLink": "Introduce un enlace válido",
-      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Cargando {{filename}}",
       "previewFile": "Vista previa de {{filename}}",
-      "supportedTypes": "Imágenes, documentos, audio, vídeo y archivos",
       "title": "Archivos adjuntos",
       "unavailable": "Adjunto no disponible",
-      "upload": "Subir",
       "uploadFailed": "No se pudo subir {{filename}}",
       "uploadFailedRetry": "No se pudo subir {{filename}}. Inténtalo de nuevo.",
-      "uploadFromComputer": "Subir desde el ordenador",
-      "uploadFromLink": "Subir desde el enlace",
       "uploadsFailed": "Algunos archivos adjuntos no se han subido. Inténtalo de nuevo."
     },
     "automations": {
