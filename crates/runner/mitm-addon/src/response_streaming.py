@@ -91,6 +91,12 @@ def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
     return flow_metadata.cli_agent_type(flow.metadata) == "codex"
 
 
+def _response_has_event_stream_media_type(response: http.Response) -> bool:
+    content_type = response.headers.get("content-type", "")
+    media_type = content_type.partition(";")[0].strip(_HTTP_OWS_CHARS).lower()
+    return media_type == "text/event-stream"
+
+
 def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
     """Return whether terminal model usage may parse a buffered JSON body."""
     response = flow.response
@@ -100,8 +106,7 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
         or not usage.is_model_provider_usage_observable(flow)
     ):
         return False
-    content_type = response.headers.get("content-type", "").lower()
-    if "text/event-stream" in content_type:
+    if _response_has_event_stream_media_type(response):
         return False
     return not _is_confirmed_websocket_upgrade_response(flow)
 
@@ -231,8 +236,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return _ResponseUsageStreamSetup(None, False)
     if is_observable_model_provider:
-        content_type = response.headers.get("content-type", "").lower()
-        if "text/event-stream" in content_type:
+        if _response_has_event_stream_media_type(response):
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
             anthropic_accounting_events: set[str] = set()
             openai_recoverable_usage: dict = {}

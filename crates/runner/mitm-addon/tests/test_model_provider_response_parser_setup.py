@@ -15,6 +15,40 @@ from tests.x_flow_helpers import make_x_response_flow
 class TestResponseHeadersModelJsonParser:
     """Tests for model-provider JSON parser setup in responseheaders()."""
 
+    @pytest.mark.parametrize(
+        "content_type",
+        [
+            'application/json; profile="text/event-stream"',
+            "application/text/event-stream+json",
+        ],
+    )
+    def test_non_sse_media_type_uses_json_parser(self, real_flow, content_type):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": content_type}),
+        )
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+
+        mitm_addon.responseheaders(flow)
+
+        assert response_streaming.uses_model_json_fallback(flow)
+        assert "model_json_usage_finish" in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
+        body = b'{"model":"gpt-5.5","usage":{"input_tokens":12,"output_tokens":7}}'
+        assert response_stream(flow)(body) == body
+
+        response_streaming.finalize_model_json_usage(flow, "")
+
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {
+            "model": "gpt-5.5",
+            "tokens.input": 12,
+            "tokens.output": 7,
+        }
+
     def test_brotli_model_json_skips_incremental_parser(self, real_flow, mitm_ctx):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
@@ -71,7 +105,7 @@ class TestResponseHeadersSseParser:
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.response = tutils.tresp(
             status_code=200,
-            headers=header_map({"content-type": "Text/Event-Stream"}),
+            headers=header_map({"content-type": "Text/Event-Stream; Charset=UTF-8"}),
         )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
         flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
