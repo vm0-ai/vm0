@@ -225,6 +225,31 @@ describe("buildGenerationTemplatePrompt", () => {
     );
   });
 
+  it("omits a silent MiniMax request the generation service would reject", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: item.id,
+        videoOptions: {
+          // MiniMax H3 always returns native audio, so the service answers a
+          // silent request with 400 rather than honouring it.
+          model: "MiniMax-H3",
+          generateAudio: false,
+        },
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("- Model: minimax-h3");
+    expect(result.prompt).not.toContain("Audio:");
+    expect(result.prompt).not.toContain("--no-audio");
+  });
+
   it("omits video parameters the chosen model cannot honour", () => {
     const item = VIDEO_TEMPLATE_ITEMS[0]!;
 

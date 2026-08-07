@@ -6016,7 +6016,43 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(videoPrompt).toContain(
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
+    expect(videoPrompt).not.toContain("Parameters the user set explicitly");
     await cancelChatRun(actor, video.runId);
+
+    const videoWithOptions = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a vertical product video",
+      generationTemplate: {
+        type: "video",
+        selection: {
+          stylePresetId: videoTemplate.id,
+          videoOptions: {
+            model: "fal-ai/veo3.1/fast",
+            aspectRatio: "9:16",
+            // Veo accepts only 4s, 6s, or 8s, so this one is dropped instead
+            // of being pinned into a request the service would reject.
+            duration: "5s",
+            resolution: "1080p",
+          },
+        },
+      },
+    });
+    const videoWithOptionsRun = await api.readRun(
+      actor,
+      videoWithOptions.runId,
+    );
+    const videoWithOptionsPrompt = videoWithOptionsRun.appendSystemPrompt ?? "";
+    expect(videoWithOptionsPrompt).toContain(
+      "Parameters the user set explicitly",
+    );
+    expect(videoWithOptionsPrompt).toContain("- Model: veo3.1-fast");
+    expect(videoWithOptionsPrompt).toContain("- Aspect ratio: 9:16");
+    expect(videoWithOptionsPrompt).toContain("- Resolution: 1080p");
+    expect(videoWithOptionsPrompt).not.toContain("Duration:");
+    expect(videoWithOptionsPrompt).toContain(
+      "`--model veo3.1-fast --aspect-ratio 9:16 --resolution 1080p` verbatim",
+    );
+    await cancelChatRun(actor, videoWithOptions.runId);
 
     const avatarId = 81;
     const avatarVoiceId = "en-US-ChristopherNeural";

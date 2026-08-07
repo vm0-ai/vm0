@@ -293,6 +293,22 @@ interface SelectedVideoParameter {
 }
 
 /**
+ * The generation service rejects a silent MiniMax request outright — that model
+ * always returns native audio — and forces silence for a model that cannot
+ * generate audio at all. Neither choice survives the request, so it is dropped
+ * like any other value the model cannot honour.
+ */
+function honoursGenerateAudio(
+  config: VideoModelConfig,
+  generateAudio: boolean,
+): boolean {
+  if (!config.supportsGenerateAudio) {
+    return false;
+  }
+  return generateAudio || config.provider !== "minimax";
+}
+
+/**
  * Options the composer stores are sparse: only what the user touched is
  * present. Values the chosen model cannot honour are dropped rather than
  * rewritten, which leaves the generation service free to apply its own default
@@ -306,8 +322,16 @@ function selectedVideoParameters(
   }
   // Annotated so the per-model literal tuples widen to the shared value
   // domains; `includes` below is invariant in its argument.
-  const config: VideoModelConfig =
+  //
+  // A retired model id can still reach this point: persisted messages and
+  // drafts are projected from jsonb without being re-parsed against the
+  // contract, so a model dropped from the catalog leaves no config to
+  // validate the rest of the selection against.
+  const config: VideoModelConfig | undefined =
     VIDEO_MODEL_CONFIGS[options.model ?? DEFAULT_VIDEO_MODEL];
+  if (config === undefined) {
+    return [];
+  }
   const parameters: SelectedVideoParameter[] = [];
   if (options.model !== undefined) {
     parameters.push({
@@ -342,7 +366,10 @@ function selectedVideoParameters(
       flag: `--resolution ${options.resolution}`,
     });
   }
-  if (options.generateAudio !== undefined && config.supportsGenerateAudio) {
+  if (
+    options.generateAudio !== undefined &&
+    honoursGenerateAudio(config, options.generateAudio)
+  ) {
     parameters.push({
       label: `Audio: ${options.generateAudio ? "on" : "off"}`,
       // Audio is on by default, so only silence needs a flag.
