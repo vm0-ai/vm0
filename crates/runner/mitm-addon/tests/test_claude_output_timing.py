@@ -173,7 +173,7 @@ def test_reports_content_free_lifecycle_milestones_and_preserves_usage(
     assert secret not in read_jsonl_text_after_flush(proxy_log)
 
 
-def test_text_first_uses_one_observation_time_for_broad_and_text_milestones(
+def test_content_block_first_retains_broad_and_text_milestones(
     tmp_path: Path,
     real_flow,
     mitm_ctx,
@@ -181,21 +181,23 @@ def test_text_first_uses_one_observation_time_for_broad_and_text_milestones(
     sync_usage_executor,
 ) -> None:
     flow = _claude_sse_flow(real_flow, tmp_path)
+    secret = "provider-secret-that-must-not-be-reported"
 
     with mitm_ctx(api_url=usage_webhook_server.api_url):
         mitm_addon.responseheaders(flow)
-        _feed(flow, _message_start(), _content_block_start("text"))
+        _feed(flow, _content_block_start("text", secret=secret))
         mitm_addon.response(flow)
 
     requests = _timing_requests(usage_webhook_server)
-    assert [len(request.json_body()["sandboxOperations"]) for request in requests] == [1, 2]
+    assert [len(request.json_body()["sandboxOperations"]) for request in requests] == [2]
     operations = _operations(requests)
     assert [operation["action_type"] for operation in operations] == [
-        _FIRST_MESSAGE_START,
         _FIRST_THINKING_OR_TEXT_BLOCK_START,
         _FIRST_TEXT_BLOCK_START,
     ]
-    assert operations[1]["ts"] == operations[2]["ts"]
+    assert operations[0]["ts"] == operations[1]["ts"]
+    assert all(request.json_body()["runId"] == "run-abc-123" for request in requests)
+    assert secret.encode() not in b"".join(request.body for request in requests)
 
 
 def test_tool_turns_reconnects_and_reused_sandboxes_preserve_run_boundaries(
@@ -284,6 +286,10 @@ def test_irrelevant_flows_and_events_do_not_report_timings(
         non_sse.response.headers["content-type"] = "application/json"
         mitm_addon.responseheaders(non_sse)
         _feed(non_sse, _message_start(), _content_block_start("text"))
+
+        tool_only = _claude_sse_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(tool_only)
+        _feed(tool_only, _content_block_start("tool_use"))
 
         mismatched = _claude_sse_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(mismatched)

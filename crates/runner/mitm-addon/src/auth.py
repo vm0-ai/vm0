@@ -17,6 +17,7 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_local_responses
 import matching
 from auth_base_forwarder import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
@@ -309,10 +310,10 @@ def _set_matched_firewall_failure_response(
         body["connectors"] = connectors
     if failure_reason:
         body["failureReason"] = failure_reason
-    flow.response = http.Response.make(
+    flow.response = http_local_responses.make_local_json_response(
+        flow,
         status,
-        json.dumps(body).encode(),
-        {"Content-Type": "application/json"},
+        body,
     )
 
 
