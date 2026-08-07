@@ -568,6 +568,28 @@ function passthroughEventAutomationSummaryForRequest(
   } as ZeroWorkflowAutomationSummary;
 }
 
+function createStripeInvoicePaidAutomationSummary(
+  base: WorkflowAutomationCreateBase,
+  body: Extract<
+    ZeroWorkflowAutomationCreateRequest,
+    { readonly eventType: "stripe-invoice-paid" }
+  >,
+): ZeroWorkflowAutomationSummary {
+  return {
+    ...base,
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: {
+      ...body.eventConfig,
+      connectorId: "b0000000-0000-4000-a000-000000000002",
+      stripeAccountId: "acct_mock_stripe_invoice_paid",
+      mode: "live",
+    },
+    schedule: null,
+    scheduleSummary: null,
+  };
+}
+
 function createWorkflowAutomationSummaryForRequest(
   base: WorkflowAutomationCreateBase,
   body: ZeroWorkflowAutomationCreateRequest,
@@ -687,19 +709,7 @@ function createWorkflowAutomationSummaryForRequest(
     };
   }
   if (body.eventType === "stripe-invoice-paid") {
-    return {
-      ...base,
-      kind: "event",
-      eventType: "stripe-invoice-paid",
-      eventConfig: {
-        ...body.eventConfig,
-        connectorId: "b0000000-0000-4000-a000-000000000002",
-        stripeAccountId: "acct_mock_stripe_invoice_paid",
-        mode: "live",
-      },
-      schedule: null,
-      scheduleSummary: null,
-    };
+    return createStripeInvoicePaidAutomationSummary(base, body);
   }
   return passthroughEventAutomationSummaryForRequest(base, body);
 }

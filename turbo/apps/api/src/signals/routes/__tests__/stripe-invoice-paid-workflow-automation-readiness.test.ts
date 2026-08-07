@@ -1,286 +1,543 @@
 import { randomUUID } from "node:crypto";
 
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  testStripeInvoicePaidReadinessContract,
-  type TestStripeInvoicePaidReadinessActionBody,
-  type TestStripeInvoicePaidReadinessActionResponse,
+  testStripeInvoicePaidFixtureContract,
+  type TestStripeInvoicePaidFixtureState,
 } from "@vm0/api-contracts/contracts/test-stripe-invoice-paid-readiness";
-import type {
-  StripeInvoicePaidEventConfig,
-  StripeInvoicePaidEventCreateConfig,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import {
+  createConnectorBddApi,
+  mockStripeCliDashboardAuth,
+  mockStripeConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testStripeInvoicePaidReadinessRoutes } from "../test-stripe-invoice-paid-readiness";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
 const context = testContext();
-const STRIPE_ACCOUNT_ID = "acct_live_owner";
+const connectors = createConnectorBddApi(context);
+const workflows = createWorkflowsBddApi(context);
+const mocks = createZeroRouteMocks(context);
 
-interface ReadinessOwner {
+const STRIPE_ACCOUNT_ID = "acct_live_workflow";
+
+interface StripeAutomationScenario {
+  readonly actor: ApiTestUser;
   readonly orgId: string;
-  readonly userId: string;
+  readonly workflowId: string;
 }
 
-function readinessOwner(): ReadinessOwner {
-  const suffix = randomUUID();
-  return {
-    orgId: `org_stripe_readiness_${suffix}`,
-    userId: `user_stripe_readiness_${suffix}`,
-  };
+interface StripeOAuthOptions {
+  readonly accountId?: string;
+  readonly accessToken?: string;
+  readonly code?: string;
+  readonly livemode?: boolean;
 }
 
-function createConfig(): StripeInvoicePaidEventCreateConfig {
-  return {
-    provider: "stripe",
-    event: "invoice_paid",
-    billingReasons: ["subscription_cycle"],
-  };
+interface ConnectedStripeOAuth {
+  readonly code: string;
+  readonly connector: ConnectorResponse;
+  readonly provider: ReturnType<typeof mockStripeConnectorOAuth>;
 }
 
-async function action(
-  body: TestStripeInvoicePaidReadinessActionBody,
-): Promise<TestStripeInvoicePaidReadinessActionResponse> {
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" } as const;
+}
+
+function authenticate(scenario: StripeAutomationScenario): void {
+  mocks.clerk.session(
+    scenario.actor.userId,
+    scenario.orgId,
+    scenario.actor.orgRole ?? "org:member",
+  );
+}
+
+function automationsClient() {
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
+}
+
+function createStripeAutomationRequest(
+  scenario: StripeAutomationScenario,
+  enabled = false,
+) {
+  authenticate(scenario);
+  return automationsClient().create({
+    headers: authHeaders(),
+    params: { workflowId: scenario.workflowId },
+    body: {
+      kind: "event",
+      eventType: "stripe-invoice-paid",
+      eventConfig: {
+        provider: "stripe",
+        event: "invoice_paid",
+        billingReasons: ["subscription_cycle"],
+      },
+      enabled,
+    },
+  });
+}
+
+function enableStripeAutomationRequest(
+  scenario: StripeAutomationScenario,
+  automationId: string,
+) {
+  authenticate(scenario);
+  return automationsClient().enable({
+    headers: authHeaders(),
+    params: { id: automationId },
+    body: undefined,
+  });
+}
+
+async function setStripeFeature(
+  scenario: StripeAutomationScenario,
+  enabled: boolean,
+): Promise<void> {
+  await connectors.updateFeatureSwitches(scenario.actor, {
+    [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: enabled,
+  });
+}
+
+async function setupScenario(
+  options: { readonly featureEnabled?: boolean } = {},
+): Promise<StripeAutomationScenario> {
+  const { actor } = await workflows.setupWorkflowOrg();
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped workflow owner");
+  }
+  const { agentId } = await workflows.createAgent(actor, {
+    displayName: "Stripe Automation Agent",
+  });
+  const workflowId = await workflows.createWorkflow(actor, {
+    agentId,
+    name: `stripe-invoice-paid-${randomUUID()}`,
+  });
+  const scenario = { actor, orgId: actor.orgId, workflowId };
+  if (options.featureEnabled !== false) {
+    await setStripeFeature(scenario, true);
+  }
+  return scenario;
+}
+
+async function connectStripeOAuth(
+  actor: ApiTestUser,
+  options: StripeOAuthOptions = {},
+): Promise<ConnectedStripeOAuth> {
+  const provider = mockStripeConnectorOAuth({
+    ...(options.accountId === undefined
+      ? {}
+      : { accountId: options.accountId }),
+    ...(options.accessToken === undefined
+      ? {}
+      : { accessToken: options.accessToken }),
+    ...(options.livemode === undefined ? {} : { livemode: options.livemode }),
+  });
+  const started = await connectors.startOauth(actor, "stripe", "oauth");
+  const state = new URL(started.authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected Stripe OAuth state");
+  }
+  const code = options.code ?? `stripe-oauth-${randomUUID()}`;
+  await connectors.completeOauthCallback("stripe", { code, state });
+  const connector = await connectors.readConnectorBySlug(actor, "stripe");
+  return { code, connector, provider };
+}
+
+async function applyCorruptFixture(
+  connectorId: string,
+  state: TestStripeInvoicePaidFixtureState,
+): Promise<void> {
   const response = await accept(
     setupApp({
       context,
       routes: testStripeInvoicePaidReadinessRoutes,
-    })(testStripeInvoicePaidReadinessContract).action({ body }),
+    })(testStripeInvoicePaidFixtureContract).apply({
+      body: { connector_id: connectorId, state },
+    }),
     [200],
   );
-  return response.body;
+  expect(response.body).toStrictEqual({ ok: true });
 }
 
-async function seedConnection(
-  owner: ReadinessOwner,
-  args: {
-    readonly authMethod?: "api-token" | "cli" | "oauth";
-    readonly externalId?: string | null;
-    readonly livemode?: string | null;
-    readonly needsReconnect?: boolean;
-    readonly orgId?: string;
-    readonly storageCompatible?: boolean;
-    readonly userId?: string;
-  } = {},
-): Promise<string> {
-  const response = await action({
-    action: "seed-connection",
-    org_id: args.orgId ?? owner.orgId,
-    user_id: args.userId ?? owner.userId,
-    auth_method: args.authMethod ?? "oauth",
-    ...(args.externalId === undefined ? {} : { external_id: args.externalId }),
-    ...(args.livemode === undefined ? {} : { livemode: args.livemode }),
-    ...(args.needsReconnect === undefined
-      ? {}
-      : { needs_reconnect: args.needsReconnect }),
-    ...(args.storageCompatible === undefined
-      ? {}
-      : { storage_compatible: args.storageCompatible }),
+describe("Stripe invoice-paid workflow automation readiness", () => {
+  it("gates creation before connector readiness while the feature is off", async () => {
+    const scenario = await setupScenario({ featureEnabled: false });
+
+    const rejected = await accept(
+      createStripeAutomationRequest(scenario),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Stripe invoice-paid workflow automations are not enabled",
+    );
   });
-  if (!response.connector_id) {
-    throw new Error("Expected Stripe connector fixture ID");
-  }
-  return response.connector_id;
-}
 
-async function resolveBinding(
-  owner: ReadinessOwner,
-): Promise<
-  NonNullable<TestStripeInvoicePaidReadinessActionResponse["readiness"]>
-> {
-  const response = await action({
-    action: "resolve-binding",
-    org_id: owner.orgId,
-    user_id: owner.userId,
+  it("requires an exact owner Stripe connection", async () => {
+    const scenario = await setupScenario();
+
+    const rejected = await accept(
+      createStripeAutomationRequest(scenario),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toContain("Connect Stripe with OAuth");
   });
-  if (!response.readiness) {
-    throw new Error("Expected Stripe readiness result");
-  }
-  return response.readiness;
-}
 
-async function validateBinding(
-  owner: ReadinessOwner,
-  eventConfig: StripeInvoicePaidEventConfig,
-) {
-  const response = await action({
-    action: "validate-binding",
-    org_id: owner.orgId,
-    user_id: owner.userId,
-    event_config: eventConfig,
+  it("rejects a public api-token connection with OAuth guidance", async () => {
+    const scenario = await setupScenario();
+    const connected = await connectors.connectManualGrant(
+      scenario.actor,
+      "stripe",
+      "api-token",
+      { apiKey: "sk_test_stripe_workflow" },
+    );
+    expect(connected.authMethod).toBe("api-token");
+
+    const rejected = await accept(
+      createStripeAutomationRequest(scenario),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toMatch(/require OAuth/u);
   });
-  if (!response.readiness) {
-    throw new Error("Expected Stripe readiness result");
-  }
-  return response.readiness;
-}
 
-function persistedConfig(
-  connectorId: string,
-  stripeAccountId = STRIPE_ACCOUNT_ID,
-): StripeInvoicePaidEventConfig {
-  return {
-    ...createConfig(),
-    connectorId,
-    stripeAccountId,
-    mode: "live",
-  };
-}
+  it("rejects a public Stripe CLI connection with OAuth guidance", async () => {
+    const scenario = await setupScenario();
+    mockStripeCliDashboardAuth();
+    const session = await connectors.startDeviceAuth(
+      scenario.actor,
+      "stripe",
+      "cli",
+      { mode: "live" },
+    );
+    mockNow(now() + 2000);
+    const polled = await connectors.pollDeviceAuth(
+      scenario.actor,
+      "stripe",
+      session.sessionId,
+      session.sessionToken,
+    );
+    clearMockNow();
+    if (polled.status !== "complete") {
+      throw new Error(
+        `Expected complete Stripe CLI auth, got ${polled.status}`,
+      );
+    }
+    expect(polled.connector.authMethod).toBe("cli");
 
-describe("Stripe invoice-paid standalone readiness service", () => {
-  it("resolves a Live OAuth binding without an access-token fixture", async () => {
-    const owner = readinessOwner();
-    const connectorId = await seedConnection(owner);
+    const rejected = await accept(
+      createStripeAutomationRequest(scenario),
+      [400],
+    );
 
-    await expect(resolveBinding(owner)).resolves.toStrictEqual({
-      kind: "ok",
-      binding: {
-        connectorId,
+    expect(rejected.body.error.message).toMatch(/require OAuth/u);
+  });
+
+  it("persists a storage-v2 Live OAuth binding and supports the full lifecycle", async () => {
+    const scenario = await setupScenario();
+    const connected = await connectStripeOAuth(scenario.actor, {
+      accessToken: "stripe-live-storage-v2-token",
+      code: "stripe-live-storage-v2-code",
+    });
+    expect(connected.connector).toMatchObject({
+      slug: "stripe",
+      authMethod: "oauth",
+      externalId: STRIPE_ACCOUNT_ID,
+      connectionStatus: "connected",
+    });
+    expect(connected.provider.tokenBodies).toHaveLength(1);
+    expect(connected.provider.tokenBodies[0]?.get("client_secret")).toBe(
+      "stripe-client-secret",
+    );
+    expect(connected.provider.tokenBodies[0]?.get("code")).toBe(connected.code);
+    expect(connected.provider.accountAuthorizationHeaders).toStrictEqual([
+      "Bearer stripe-live-storage-v2-token",
+    ]);
+
+    const listedConnectors = await connectors.listConnectors(scenario.actor);
+    expect(listedConnectors.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorSlug: "stripe",
+        authMethod: "oauth",
+        namespace: "secrets",
+        name: "STRIPE_TOKEN",
+        source: {
+          kind: "connector-secret",
+          name: "STRIPE_ACCESS_TOKEN",
+        },
+      }),
+    );
+    expect(
+      listedConnectors.connectorProvidedBindings.some((binding) => {
+        return binding.name === "STRIPE_LIVEMODE";
+      }),
+    ).toBeFalsy();
+
+    const created = await accept(
+      createStripeAutomationRequest(scenario),
+      [201],
+    );
+    expect(created.body).toMatchObject({
+      enabled: false,
+      kind: "event",
+      eventType: "stripe-invoice-paid",
+      eventConfig: {
+        provider: "stripe",
+        event: "invoice_paid",
+        billingReasons: ["subscription_cycle"],
+        connectorId: connected.connector.id,
         stripeAccountId: STRIPE_ACCOUNT_ID,
         mode: "live",
       },
     });
+    expect(JSON.stringify(created.body)).not.toContain(
+      "stripe-live-storage-v2-token",
+    );
+
+    authenticate(scenario);
+    const listed = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toContainEqual(
+      expect.objectContaining({ id: created.body.id }),
+    );
+    authenticate(scenario);
+    await expect(
+      accept(
+        automationsClient().get({
+          headers: authHeaders(),
+          params: { id: created.body.id },
+        }),
+        [200],
+      ),
+    ).resolves.toMatchObject({ body: { id: created.body.id } });
+
+    const enabled = await accept(
+      enableStripeAutomationRequest(scenario, created.body.id),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+
+    await setStripeFeature(scenario, false);
+    authenticate(scenario);
+    const listedWhileOff = await accept(
+      automationsClient().list({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+      }),
+      [200],
+    );
+    expect(listedWhileOff.body).toContainEqual(
+      expect.objectContaining({ id: created.body.id }),
+    );
+    authenticate(scenario);
+    await expect(
+      accept(
+        automationsClient().get({
+          headers: authHeaders(),
+          params: { id: created.body.id },
+        }),
+        [200],
+      ),
+    ).resolves.toMatchObject({ body: { id: created.body.id } });
+    authenticate(scenario);
+    const disabled = await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    expect(disabled.body.enabled).toBeFalsy();
+    const enableRejected = await accept(
+      enableStripeAutomationRequest(scenario, created.body.id),
+      [400],
+    );
+    expect(enableRejected.body.error.message).toContain("not enabled");
+    authenticate(scenario);
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [204],
+    );
   });
 
-  it("requires a connection owned by the exact organization and user", async () => {
-    const owner = readinessOwner();
-    await seedConnection(owner, { userId: `${owner.userId}_other` });
-    await seedConnection(owner, { orgId: `${owner.orgId}_other` });
-
-    await expect(resolveBinding(owner)).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringContaining("Connect Stripe with OAuth"),
+  it("rejects a fresh public Test-mode OAuth connection", async () => {
+    const scenario = await setupScenario();
+    const connected = await connectStripeOAuth(scenario.actor, {
+      livemode: false,
     });
+    expect(connected.connector.authMethod).toBe("oauth");
+
+    const rejected = await accept(
+      createStripeAutomationRequest(scenario),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toMatch(/require Live mode/u);
   });
 
-  it.each(["api-token", "cli"] as const)(
-    "rejects the %s auth method with an OAuth-required error",
-    async (authMethod) => {
-      const owner = readinessOwner();
-      await seedConnection(owner, { authMethod });
+  it("does not select same-account connections from another user or organization", async () => {
+    const scenario = await setupScenario();
+    const otherUser = workflows.user({
+      userId: `user_other_${randomUUID()}`,
+      orgId: scenario.orgId,
+      orgRole: "org:member",
+    });
+    const otherOrg = workflows.user({
+      userId: `user_other_org_${randomUUID()}`,
+      orgId: `org_other_${randomUUID()}`,
+      orgRole: "org:member",
+    });
+    await connectStripeOAuth(otherUser, { accountId: STRIPE_ACCOUNT_ID });
+    await connectStripeOAuth(otherOrg, { accountId: STRIPE_ACCOUNT_ID });
 
-      await expect(resolveBinding(owner)).resolves.toMatchObject({
-        kind: "bad_request",
-        message: expect.stringMatching(/require OAuth/u),
-      });
+    const rejected = await accept(
+      createStripeAutomationRequest(scenario),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toContain("Connect Stripe with OAuth");
+  });
+
+  it("re-enables after a same-account Live OAuth reconnect", async () => {
+    const scenario = await setupScenario();
+    const initial = await connectStripeOAuth(scenario.actor);
+    const created = await accept(
+      createStripeAutomationRequest(scenario),
+      [201],
+    );
+    const reconnected = await connectStripeOAuth(scenario.actor, {
+      accountId: STRIPE_ACCOUNT_ID,
+      livemode: true,
+      code: "stripe-same-account-reconnect",
+    });
+    expect(reconnected.connector.id).toBe(initial.connector.id);
+
+    const enabled = await accept(
+      enableStripeAutomationRequest(scenario, created.body.id),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+  });
+
+  it.each([
+    {
+      name: "different account",
+      accountId: "acct_different_workflow",
+      livemode: true,
+      message: /delete and recreate/u,
     },
-  );
+    {
+      name: "Test mode",
+      accountId: STRIPE_ACCOUNT_ID,
+      livemode: false,
+      message: /require Live mode/u,
+    },
+  ])("fails closed after a $name public OAuth reconnect", async (reconnect) => {
+    const scenario = await setupScenario();
+    const initial = await connectStripeOAuth(scenario.actor);
+    const created = await accept(
+      createStripeAutomationRequest(scenario),
+      [201],
+    );
+    const reconnected = await connectStripeOAuth(scenario.actor, reconnect);
+    expect(reconnected.connector.id).toBe(initial.connector.id);
 
-  it("rejects storage-incompatible connections", async () => {
-    const owner = readinessOwner();
-    await seedConnection(owner, { storageCompatible: false });
+    const rejected = await accept(
+      enableStripeAutomationRequest(scenario, created.body.id),
+      [400],
+    );
+    expect(rejected.body.error.message).toMatch(reconnect.message);
+  });
 
-    await expect(resolveBinding(owner)).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringContaining("Reconnect Stripe with OAuth"),
+  it("does not rebind after connector deletion and recreation", async () => {
+    const scenario = await setupScenario();
+    const initial = await connectStripeOAuth(scenario.actor);
+    const created = await accept(
+      createStripeAutomationRequest(scenario),
+      [201],
+    );
+    await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+    const replacement = await connectStripeOAuth(scenario.actor, {
+      accountId: STRIPE_ACCOUNT_ID,
+      code: "stripe-recreated-connection",
     });
+    expect(replacement.connector.id).not.toBe(initial.connector.id);
+
+    const rejected = await accept(
+      enableStripeAutomationRequest(scenario, created.body.id),
+      [400],
+    );
+    expect(rejected.body.error.message).toMatch(/delete and recreate/u);
+  });
+
+  it("returns an explicit immutable error from the update route", async () => {
+    const scenario = await setupScenario();
+    await connectStripeOAuth(scenario.actor);
+    const created = await accept(
+      createStripeAutomationRequest(scenario),
+      [201],
+    );
+    authenticate(scenario);
+
+    const rejected = await accept(
+      automationsClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Stripe invoice-paid event automations cannot be updated",
+    );
   });
 
   it.each([
-    { name: "reconnect-required", needsReconnect: true },
-    { name: "missing external account", externalId: null },
-    { name: "empty external account", externalId: "" },
-  ])("rejects $name connections", async (fixture) => {
-    const owner = readinessOwner();
-    await seedConnection(owner, fixture);
+    "storage-incompatible",
+    "needs-reconnect",
+    "missing-external-id",
+    "blank-external-id",
+    "missing-livemode",
+    "malformed-livemode",
+  ] as const)("fails closed through create for %s state", async (state) => {
+    const scenario = await setupScenario();
+    const connected = await connectStripeOAuth(scenario.actor);
 
-    await expect(resolveBinding(owner)).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringContaining("Reconnect Stripe with OAuth"),
-    });
-  });
+    // The public OAuth API constructs the valid baseline. This fixture changes
+    // only a state that no production connector endpoint can create.
+    await applyCorruptFixture(connected.connector.id, state);
+    const rejected = await accept(
+      createStripeAutomationRequest(scenario),
+      [400],
+    );
 
-  it("returns an actionable Live-mode-only error for Test mode", async () => {
-    const owner = readinessOwner();
-    await seedConnection(owner, { livemode: "false" });
-
-    await expect(resolveBinding(owner)).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringMatching(/require Live mode/u),
-    });
-  });
-
-  it.each([
-    { name: "missing", livemode: null },
-    { name: "malformed", livemode: "TRUE" },
-  ])("fails closed for $name livemode", async ({ livemode }) => {
-    const owner = readinessOwner();
-    await seedConnection(owner, { livemode });
-
-    await expect(resolveBinding(owner)).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringContaining("Reconnect Stripe with OAuth"),
-    });
-  });
-
-  it("accepts a same-account Live reconnect that preserves connector ID", async () => {
-    const owner = readinessOwner();
-    const connectorId = await seedConnection(owner);
-    await action({
-      action: "update-connection",
-      connector_id: connectorId,
-      needs_reconnect: true,
-    });
-    await action({
-      action: "update-connection",
-      connector_id: connectorId,
-      external_id: STRIPE_ACCOUNT_ID,
-      needs_reconnect: false,
-      livemode: "true",
-    });
-
-    await expect(
-      validateBinding(owner, persistedConfig(connectorId)),
-    ).resolves.toMatchObject({ kind: "ok", binding: { connectorId } });
-  });
-
-  it("rejects a reconnect to a different Stripe account", async () => {
-    const owner = readinessOwner();
-    const connectorId = await seedConnection(owner);
-    await action({
-      action: "update-connection",
-      connector_id: connectorId,
-      external_id: "acct_different",
-    });
-
-    await expect(
-      validateBinding(owner, persistedConfig(connectorId)),
-    ).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringMatching(/delete and recreate/u),
-    });
-  });
-
-  it("rejects a reconnect to Test mode", async () => {
-    const owner = readinessOwner();
-    const connectorId = await seedConnection(owner);
-    await action({
-      action: "update-connection",
-      connector_id: connectorId,
-      livemode: "false",
-    });
-
-    await expect(
-      validateBinding(owner, persistedConfig(connectorId)),
-    ).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringMatching(/require Live mode/u),
-    });
-  });
-
-  it("does not silently rebind after connector deletion", async () => {
-    const owner = readinessOwner();
-    const connectorId = await seedConnection(owner);
-    await action({ action: "delete-connection", connector_id: connectorId });
-    const replacementId = await seedConnection(owner);
-
-    expect(replacementId).not.toBe(connectorId);
-    await expect(
-      validateBinding(owner, persistedConfig(connectorId)),
-    ).resolves.toMatchObject({
-      kind: "bad_request",
-      message: expect.stringMatching(/delete and recreate/u),
-    });
+    expect(rejected.body.error.message).toContain(
+      "Reconnect Stripe with OAuth",
+    );
   });
 });

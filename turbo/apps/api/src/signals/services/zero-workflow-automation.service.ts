@@ -699,6 +699,20 @@ function githubEventRowToSummary(
   }
 }
 
+function stripeInvoicePaidRowToSummary(
+  row: AutomationRow,
+  chatThreadId: string | null,
+): ZeroWorkflowAutomationSummary {
+  return {
+    ...rowSummaryBase(row, chatThreadId),
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: stripeInvoicePaidEventConfigSchema.parse(row.eventConfig),
+    schedule: null,
+    scheduleSummary: null,
+  };
+}
+
 function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
@@ -819,14 +833,7 @@ function eventRowToSummary(
     };
   }
   if (row.eventType === "stripe-invoice-paid") {
-    return {
-      ...rowSummaryBase(row, chatThreadId),
-      kind: "event",
-      eventType: "stripe-invoice-paid",
-      eventConfig: stripeInvoicePaidEventConfigSchema.parse(row.eventConfig),
-      schedule: null,
-      scheduleSummary: null,
-    };
+    return stripeInvoicePaidRowToSummary(row, chatThreadId);
   }
   return null;
 }
@@ -2374,6 +2381,32 @@ async function createStripeInvoicePaidEventAutomationForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+const createStripeInvoicePaidEventAutomation$ = command(
+  async (
+    { get },
+    args: {
+      readonly context: CreateEventAutomationWorkflowContext;
+      readonly input: CreateStripeInvoicePaidEventAutomationInput;
+    },
+    signal: AbortSignal,
+  ): Promise<AutomationResult> => {
+    const featureEnabled = await get(
+      stripeInvoicePaidWorkflowAutomationEnabledForOwner(
+        args.input.orgId,
+        args.input.member.userId,
+      ),
+    );
+    signal.throwIfAborted();
+    if (!featureEnabled) {
+      return stripeInvoicePaidWorkflowAutomationsDisabledResult();
+    }
+    return await createStripeInvoicePaidEventAutomationForWorkflow({
+      ...args,
+      signal,
+    });
+  },
+);
+
 async function createChatRunFinishedEventAutomationForWorkflow(args: {
   readonly context: {
     readonly db: Db;
@@ -2410,7 +2443,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
 
 const createEventAutomationForWorkflow$ = command(
   async (
-    { get },
+    { get, set },
     args: {
       readonly db: Db;
       readonly input: CreateEventAutomationInput;
@@ -2522,21 +2555,13 @@ const createEventAutomationForWorkflow$ = command(
     }
 
     if (automationCreateInputIsStripeInvoicePaid(input)) {
-      const featureEnabled = await get(
-        stripeInvoicePaidWorkflowAutomationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
+      const result = await set(
+        createStripeInvoicePaidEventAutomation$,
+        { context: args, input },
+        signal,
       );
       signal.throwIfAborted();
-      if (!featureEnabled) {
-        return stripeInvoicePaidWorkflowAutomationsDisabledResult();
-      }
-      return await createStripeInvoicePaidEventAutomationForWorkflow({
-        context: args,
-        input,
-        signal,
-      });
+      return result;
     }
 
     if (automationCreateInputIsGmail(input)) {
@@ -3423,14 +3448,9 @@ async function persistEnabledWorkflowAutomation(
 async function validateEventAutomationEnableReadiness(args: {
   readonly automation: AutomationRow;
   readonly db: Db;
-  readonly stripeFeatureEnabled: () => Promise<boolean>;
   readonly signal: AbortSignal;
 }): Promise<AutomationResult | null> {
   if (args.automation.eventType === "stripe-invoice-paid") {
-    if (!(await args.stripeFeatureEnabled())) {
-      return stripeInvoicePaidWorkflowAutomationsDisabledResult();
-    }
-    args.signal.throwIfAborted();
     const readiness = await validateStripeInvoicePaidAutomationBinding({
       db: args.db,
       orgId: args.automation.orgId,
@@ -3456,9 +3476,31 @@ async function validateEventAutomationEnableReadiness(args: {
     : null;
 }
 
+const validateStripeInvoicePaidEnableFeature$ = command(
+  async (
+    { get },
+    automation: AutomationRow,
+    signal: AbortSignal,
+  ): Promise<AutomationResult | null> => {
+    if (automation.eventType !== "stripe-invoice-paid") {
+      return null;
+    }
+    const featureEnabled = await get(
+      stripeInvoicePaidWorkflowAutomationEnabledForOwner(
+        automation.orgId,
+        automation.ownerUserId,
+      ),
+    );
+    signal.throwIfAborted();
+    return featureEnabled
+      ? null
+      : stripeInvoicePaidWorkflowAutomationsDisabledResult();
+  },
+);
+
 export const enableWorkflowAutomation$ = command(
   async (
-    { get, set },
+    { set },
     args: AutomationActionInput,
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
@@ -3469,17 +3511,18 @@ export const enableWorkflowAutomation$ = command(
       return owned;
     }
     const { automation } = owned;
+    const stripeFeatureFailure = await set(
+      validateStripeInvoicePaidEnableFeature$,
+      automation,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (stripeFeatureFailure) {
+      return stripeFeatureFailure;
+    }
     const eventEnableFailure = await validateEventAutomationEnableReadiness({
       automation,
       db: writeDb,
-      stripeFeatureEnabled: async () => {
-        return await get(
-          stripeInvoicePaidWorkflowAutomationEnabledForOwner(
-            automation.orgId,
-            automation.ownerUserId,
-          ),
-        );
-      },
       signal,
     });
     if (eventEnableFailure) {
