@@ -14,6 +14,8 @@ import {
   activeChatEventThreadIds$,
   receiveActiveChatEvents$,
 } from "./chat-event-signal-registry.ts";
+import { sidebarActiveThreadIds$ } from "./chat-thread-event-sourcing.ts";
+import { allUnreadThreadIds$ } from "./sidebar-unread-threads.ts";
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
@@ -167,8 +169,32 @@ const subscribeChatEventBackgroundSync$ = command(
   },
 );
 
+const syncInitialUnreadAndActiveChatThreadEvents$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const [unreadThreadIds, activeThreadIds] = await Promise.all([
+      get(allUnreadThreadIds$),
+      get(sidebarActiveThreadIds$),
+    ]);
+    signal.throwIfAborted();
+
+    const threadIds = new Set([...unreadThreadIds, ...activeThreadIds]);
+    await Promise.all(
+      Array.from(threadIds, (threadId) => {
+        return set(
+          handleUserChannelMessage$,
+          { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
+          signal,
+        );
+      }),
+    );
+  },
+);
+
 export const setupChatEventBackgroundSync$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    await set(subscribeChatEventBackgroundSync$, signal);
+    await Promise.all([
+      set(subscribeChatEventBackgroundSync$, signal),
+      set(syncInitialUnreadAndActiveChatThreadEvents$, signal),
+    ]);
   },
 );
