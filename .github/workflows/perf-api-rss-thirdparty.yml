@@ -1,0 +1,51 @@
+name: Perf API RSS Third-Party Ablation
+
+on:
+  push:
+    branches:
+      - "perf/api-rss-thirdparty**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-api-rss-thirdparty-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ablate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        variant:
+          - head-a
+          - head-b
+          - head-c
+          - stub-stripe
+          - stub-clerk
+          - stub-slack
+          - stub-aws
+          - stub-pi
+          - stub-zod
+          - stub-drizzle
+          - stub-ccstate
+          - stub-all-sdks
+          - dts-db
+          - dts-core
+          - dts-api-contracts
+          - dts-all-internal
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/toolchain-init
+      - name: Apply ablation
+        run: bash .github/scripts/rss5-ablate.sh "${{ matrix.variant }}"
+      - name: Measure tsc peak RSS
+        working-directory: turbo/apps/api
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/rss5-measure.sh" "${{ matrix.variant }}"
