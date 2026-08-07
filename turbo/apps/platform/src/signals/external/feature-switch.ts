@@ -70,10 +70,6 @@ export const videoTemplateOptionsEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VideoTemplateOptions] ?? false;
 });
 
-export const cjkFriendlyMarkdownEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.CjkFriendlyMarkdown] ?? false;
-});
-
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });

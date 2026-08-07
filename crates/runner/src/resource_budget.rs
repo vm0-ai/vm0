@@ -1,12 +1,13 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use tokio::sync::Notify;
 use tracing::error;
 
 /// Resource-budget concurrency control.
 ///
 /// Tracks running vcpu, memory, and job count against effective limits.
-/// Uses a mutex for correctness — hold times are negligible (no I/O),
-/// and lease reservation is called from a single async task (main loop).
+/// Uses a mutex for correctness — hold times are negligible (no I/O), and
+/// ordinary admission plus claimed fallback tasks may reserve concurrently.
 ///
 /// Three conditions must hold for admission:
 /// 1. `running_vcpu + vcpu <= effective_vcpu`
@@ -21,6 +22,7 @@ pub struct ResourceBudget {
     effective_memory_mb: u32,
     max_concurrent: usize,
     state: Mutex<BudgetState>,
+    availability: Notify,
 }
 
 /// Owned reservation against a [`ResourceBudget`].
@@ -72,13 +74,16 @@ impl BudgetLease {
             return;
         };
 
-        if let Err(error) = budget.release_reserved(self.vcpu, self.memory_mb) {
-            error!(
-                ?error,
-                vcpu = self.vcpu,
-                memory_mb = self.memory_mb,
-                "failed to release resource budget lease"
-            );
+        match budget.release_reserved(self.vcpu, self.memory_mb) {
+            Ok(()) => budget.availability.notify_waiters(),
+            Err(error) => {
+                error!(
+                    ?error,
+                    vcpu = self.vcpu,
+                    memory_mb = self.memory_mb,
+                    "failed to release resource budget lease"
+                );
+            }
         }
     }
 }
@@ -112,6 +117,7 @@ impl ResourceBudget {
                 running_memory_mb: 0,
                 running_count: 0,
             }),
+            availability: Notify::new(),
         }
     }
 
@@ -136,6 +142,24 @@ impl ResourceBudget {
             Some(BudgetLease::new(Arc::clone(budget), vcpu, memory_mb))
         } else {
             None
+        }
+    }
+
+    /// Wait until resources can be reserved, without losing a release that
+    /// races the capacity check.
+    pub async fn reserve_lease_when_available(
+        budget: &Arc<Self>,
+        vcpu: u32,
+        memory_mb: u32,
+    ) -> BudgetLease {
+        loop {
+            let notified = budget.availability.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if let Some(lease) = Self::try_reserve_lease(budget, vcpu, memory_mb) {
+                return lease;
+            }
+            notified.await;
         }
     }
 
@@ -384,6 +408,28 @@ mod tests {
         assert_eq!(budget.allocated(), (2, 2048, 1));
 
         drop(lease);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn waiting_reservation_wakes_when_a_lease_is_released() {
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 1));
+        let occupied = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let waiting_budget = Arc::clone(&budget);
+        let waiter = tokio::spawn(async move {
+            ResourceBudget::reserve_lease_when_available(&waiting_budget, 2, 4096).await
+        });
+
+        tokio::task::yield_now().await;
+        assert!(!waiter.is_finished());
+        drop(occupied);
+
+        let replacement = tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
+            .await
+            .expect("released capacity should wake the waiter")
+            .expect("capacity waiter should not panic");
+        assert_eq!(budget.allocated(), (2, 4096, 1));
+        drop(replacement);
         assert_eq!(budget.allocated(), (0, 0, 0));
     }
 

@@ -18,6 +18,7 @@ static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 #[derive(Clone, Copy)]
 pub(crate) enum RunnerPreSpawnPhase {
     ResumeSessionValidation,
+    FinalizingWait,
     SessionHistoryMaterializerStart,
     DeviceRateLimits,
     IdleReuseLookup,
@@ -29,8 +30,9 @@ pub(crate) enum RunnerPreSpawnPhase {
 }
 
 impl RunnerPreSpawnPhase {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::ResumeSessionValidation,
+        Self::FinalizingWait,
         Self::SessionHistoryMaterializerStart,
         Self::DeviceRateLimits,
         Self::IdleReuseLookup,
@@ -44,6 +46,7 @@ impl RunnerPreSpawnPhase {
     const fn action_type(self) -> &'static str {
         match self {
             Self::ResumeSessionValidation => "runner_claim_resume_session_validation",
+            Self::FinalizingWait => "runner_claim_finalizing_wait",
             Self::SessionHistoryMaterializerStart => {
                 "runner_claim_session_history_materializer_start"
             }
@@ -61,6 +64,7 @@ impl RunnerPreSpawnPhase {
 #[derive(Default)]
 struct RunnerPreSpawnPhaseDurations {
     resume_session_validation: Option<Duration>,
+    finalizing_wait: Option<Duration>,
     session_history_materializer_start: Option<Duration>,
     device_rate_limits: Option<Duration>,
     idle_reuse_lookup: Option<Duration>,
@@ -75,6 +79,7 @@ impl RunnerPreSpawnPhaseDurations {
     fn get_mut(&mut self, phase: RunnerPreSpawnPhase) -> &mut Option<Duration> {
         match phase {
             RunnerPreSpawnPhase::ResumeSessionValidation => &mut self.resume_session_validation,
+            RunnerPreSpawnPhase::FinalizingWait => &mut self.finalizing_wait,
             RunnerPreSpawnPhase::SessionHistoryMaterializerStart => {
                 &mut self.session_history_materializer_start
             }
@@ -95,6 +100,7 @@ impl RunnerPreSpawnPhaseDurations {
     fn get(&self, phase: RunnerPreSpawnPhase) -> Option<Duration> {
         match phase {
             RunnerPreSpawnPhase::ResumeSessionValidation => self.resume_session_validation,
+            RunnerPreSpawnPhase::FinalizingWait => self.finalizing_wait,
             RunnerPreSpawnPhase::SessionHistoryMaterializerStart => {
                 self.session_history_materializer_start
             }

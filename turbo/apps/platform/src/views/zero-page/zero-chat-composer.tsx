@@ -208,7 +208,10 @@ import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.
 import { shouldUseUserMessage } from "../../signals/zero-page/user-message-document-codec.ts";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
-import { AvatarTemplatePickerContent } from "./avatar-template-picker.tsx";
+import {
+  AvatarTemplatePickerContent,
+  AvatarTemplatePickerToolbar,
+} from "./avatar-template-picker.tsx";
 import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
 import {
   avatarTemplateSelection,
@@ -4936,6 +4939,7 @@ function TemplatePickerDialog({
     hasWorkflowTab,
   });
   const showTemplatePickerSearch = selectedCategory === "workflow";
+  const showAvatarPickerToolbar = selectedCategory === "avatar" && hasAvatarTab;
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -5192,7 +5196,9 @@ function TemplatePickerDialog({
                 <div
                   className={cn(
                     "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                    showTemplatePickerSearch ? "flex" : "hidden sm:flex",
+                    showTemplatePickerSearch || showAvatarPickerToolbar
+                      ? "flex"
+                      : "hidden sm:flex",
                   )}
                 >
                   {showTemplatePickerSearch ? (
@@ -5200,6 +5206,9 @@ function TemplatePickerDialog({
                       search={search}
                       onSearchChange={handleSearchChange}
                     />
+                  ) : null}
+                  {showAvatarPickerToolbar ? (
+                    <AvatarTemplatePickerToolbar signals={signals} />
                   ) : null}
                 </div>
                 <TemplatePickerCategoryContent

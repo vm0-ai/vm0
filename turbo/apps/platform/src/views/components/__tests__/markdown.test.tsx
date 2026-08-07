@@ -5,7 +5,6 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { StoreProvider } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -537,7 +536,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: true },
     });
 
     await waitFor(() => {
@@ -564,7 +562,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: true },
     });
 
     await waitFor(() => {
@@ -572,26 +569,6 @@ describe("assistant markdown", () => {
         screen.getByText("删除线（test）", { selector: "del, s" }),
       ).toBeInTheDocument();
     });
-  });
-
-  it("falls back to stock commonmark when the cjk switch is off", async () => {
-    mockThread("**加粗（x）**后面\n\n~~删除线（test）~~后面");
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: false },
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
-        "**加粗（x）**后面",
-      );
-    });
-    expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
-      "~~删除线（test）~~后面",
-    );
-    expect(document.querySelector(".wmde-markdown del")).toBeNull();
   });
 
   it("keeps ascii markdown rendering unchanged", async () => {
@@ -607,13 +584,9 @@ describe("assistant markdown", () => {
       ].join("\n"),
     );
 
-    // The switch must be on explicitly: this asserts ascii output is unchanged
-    // *by the cjk plugins*, so it would stop guarding anything if it ran on the
-    // stock CommonMark path.
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: { [FeatureSwitchKey.CjkFriendlyMarkdown]: true },
     });
 
     await waitFor(() => {

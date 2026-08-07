@@ -19,27 +19,9 @@ import type { Api, Message, Model } from "@earendil-works/pi-ai";
 
 import { createPiExecutionTools } from "./tools";
 import { executePiUnresolvedToolBatch } from "./recovery";
-
-export const PI_OPENAI_COMPATIBLE_PROVIDERS = [
-  "deepseek",
-  "moonshotai",
-  "openai",
-  "openrouter",
-  "vercel-ai-gateway",
-  "codex",
-] as const;
-
-export type PiOpenAICompatibleProvider =
-  (typeof PI_OPENAI_COMPATIBLE_PROVIDERS)[number];
+import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
 
 type PiOpenAICompletionsProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
-
-export interface PiAgentModelConfig {
-  readonly provider: PiOpenAICompatibleProvider;
-  readonly baseUrl: string;
-  readonly apiKey: string;
-  readonly model: string;
-}
 
 function providerModels(provider: PiOpenAICompletionsProvider) {
   switch (provider) {
@@ -292,5 +274,3 @@ export async function runPiAgentResume(args: {
   );
   return [...toolResults, ...continued];
 }
-
-export type { AgentEvent as PiAgentEvent, AgentMessage as PiAgentMessage };
