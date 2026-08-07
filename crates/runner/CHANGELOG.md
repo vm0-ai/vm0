@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.160.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.2...runner-rs-v0.160.3) (2026-08-07)
+
+
+### Performance Improvements
+
+* **runner:** avoid rewalking unchanged storage cache entries ([#25662](https://github.com/vm0-ai/vm0/issues/25662)) ([b7e071d](https://github.com/vm0-ai/vm0/commit/b7e071d30d8b64fe6c38232c43213196dc7ff061))
+
 ## [0.160.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.1...runner-rs-v0.160.2) (2026-08-07)
 
 
