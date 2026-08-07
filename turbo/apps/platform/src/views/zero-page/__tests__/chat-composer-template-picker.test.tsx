@@ -616,6 +616,7 @@ describe("chat composer templates", () => {
       videoUrl: "https://example.com/ada.mp4",
       coverUrl: "https://example.com/ada.jpg",
       aspectRatio: 0,
+      style: "professional",
       gender: "male",
       age: "young_adult",
     };
@@ -625,6 +626,19 @@ describe("chat composer templates", () => {
       sampleUrl: "https://example.com/christopher.mp3",
       language: "English",
       gender: "male",
+      age: "young",
+      accent: "american",
+      useCase: "advertisement",
+    };
+    const alternateVoice = {
+      id: "es-ES-AlvaroNeural",
+      name: "Alvaro",
+      sampleUrl: "https://example.com/alvaro.mp3",
+      language: "Spanish",
+      gender: "male",
+      age: "young",
+      accent: "british",
+      useCase: "advertisement",
     };
     const secondVoice = {
       id: "en-US-AvaNeural",
@@ -632,12 +646,20 @@ describe("chat composer templates", () => {
       sampleUrl: "https://example.com/ava.mp3",
       language: "English",
       gender: "female",
+      age: "young",
+      accent: "american",
+      useCase: "advertisement",
     };
     context.mocks.api(
       zeroAvatarVideoContract.avatars,
       async ({ query, respond }) => {
         observedQueries.push(query);
-        if (query.page === 1 && query.style === "professional") {
+        if (
+          query.page === 1 &&
+          query.style === "professional" &&
+          query.scene === "business" &&
+          query.ethnicity === "north_american"
+        ) {
           await avatarFilterReady.promise;
         }
         if (query.page === 2) {
@@ -652,27 +674,46 @@ describe("chat composer templates", () => {
       zeroAvatarVideoContract.voices,
       async ({ query, respond }) => {
         observedVoiceQueries.push(query);
-        if (query.page === 1 && query.language === "english") {
+        if (
+          query.pageSize === 24 &&
+          query.page === 1 &&
+          query.language === "spanish"
+        ) {
           await voiceFilterReady.promise;
         }
         if (query.pageSize === 24 && query.page === 2) {
           await voicePageTwoReady.promise;
         }
-        const loadingFilterOptions = query.pageSize === 100;
+        const loadingFilterOptions =
+          query.pageSize === 100 &&
+          query.language === undefined &&
+          query.gender === undefined &&
+          query.age === undefined &&
+          query.useCase === undefined;
+        const loadingRecommendation =
+          query.pageSize === 100 && query.language !== undefined;
+        const voices = loadingFilterOptions
+          ? [alternateVoice, selectedVoice]
+          : loadingRecommendation
+            ? [alternateVoice, selectedVoice]
+            : query.page === 2
+              ? [secondVoice]
+              : query.language === "english"
+                ? [selectedVoice]
+                : [alternateVoice, selectedVoice];
         return respond(200, {
-          voices: query.page === 2 ? [secondVoice] : [selectedVoice],
+          voices,
           hasMore:
             query.page === 1 && (query.pageSize === 24 || loadingFilterOptions),
-          filterOptions:
-            loadingFilterOptions && query.page === 2
-              ? {
-                  languages: ["spanish"],
-                  useCases: ["social_media"],
-                }
-              : {
-                  languages: ["english"],
-                  useCases: ["narrative_story"],
-                },
+          filterOptions: loadingFilterOptions
+            ? {
+                languages: ["english", "spanish"],
+                useCases: ["advertisement", "narrative_story", "social_media"],
+              }
+            : {
+                languages: ["english"],
+                useCases: ["narrative_story"],
+              },
         });
       },
     );
@@ -715,6 +756,10 @@ describe("chat composer templates", () => {
       await user.click(within(dialog).getByText("Filters"));
       await user.click(screen.getByLabelText("Style: All"));
       await user.click(screen.getByRole("option", { name: "Professional" }));
+      await user.click(screen.getByLabelText("Scene: All"));
+      await user.click(screen.getByRole("option", { name: "Business" }));
+      await user.click(screen.getByLabelText("Ethnicity: All"));
+      await user.click(screen.getByRole("option", { name: "North american" }));
       await user.keyboard("{Escape}");
       await waitFor(() => {
         expect(
@@ -728,6 +773,8 @@ describe("chat composer templates", () => {
           pageSize: 24,
           aspectRatio: "landscape",
           style: "professional",
+          scene: "business",
+          ethnicity: "north_american",
         });
       });
       const firstCard = within(dialog).getByLabelText(
@@ -826,10 +873,25 @@ describe("chat composer templates", () => {
         expect(observedVoiceQueries).toContainEqual({
           page: 1,
           pageSize: 24,
+          language: "english",
           gender: "male",
           age: "young",
+          useCase: "advertisement",
         });
       });
+      const firstVoiceCard = await within(dialog).findByLabelText(
+        "Select voice Christopher",
+      );
+      expect(voiceScroll?.querySelector("[data-avatar-voice-card]")).toBe(
+        firstVoiceCard,
+      );
+      expect(firstVoiceCard).toHaveAttribute("data-recommended");
+      expect(firstVoiceCard).toHaveAttribute("aria-pressed", "false");
+      expect(firstVoiceCard).toHaveClass(
+        "border-primary/40",
+        "bg-primary/[0.025]",
+      );
+      expect(within(firstVoiceCard).getByText("Recommended")).toBeVisible();
       const voiceFiltersButton = within(dialog).getByText("Filters", {
         selector: "button",
       });
@@ -840,11 +902,15 @@ describe("chat composer templates", () => {
       await user.click(voiceFiltersButton);
       expect(screen.getByLabelText("Gender: Male")).toBeInTheDocument();
       expect(screen.getByLabelText("Age: Young")).toBeInTheDocument();
-      await user.click(await screen.findByLabelText("Language: All"));
+      expect(screen.getByLabelText("Language: English")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Use case: Advertisement"),
+      ).toBeInTheDocument();
+      await user.click(screen.getByLabelText("Language: English"));
       expect(
         screen.getByRole("option", { name: "Spanish" }),
       ).toBeInTheDocument();
-      await user.click(screen.getByRole("option", { name: "English" }));
+      await user.click(screen.getByRole("option", { name: "Spanish" }));
       await user.keyboard("{Escape}");
       await waitFor(() => {
         expect(
@@ -856,17 +922,18 @@ describe("chat composer templates", () => {
         expect(observedVoiceQueries).toContainEqual({
           page: 1,
           pageSize: 24,
-          language: "english",
+          language: "spanish",
           gender: "male",
           age: "young",
+          useCase: "advertisement",
         });
       });
+      const filteredFirstVoiceCard = await within(dialog).findByLabelText(
+        "Select voice Christopher",
+      );
       if (!(voiceScroll instanceof HTMLElement)) {
         throw new Error("Voice catalog scroll area not found");
       }
-      const firstVoiceCard = within(dialog).getByLabelText(
-        "Select voice Christopher",
-      );
       Object.defineProperties(voiceScroll, {
         scrollHeight: { configurable: true, value: 1200 },
         clientHeight: { configurable: true, value: 500 },
@@ -877,7 +944,7 @@ describe("chat composer templates", () => {
       voicePageTwoReady.resolve();
       await within(dialog).findByLabelText("Select voice Ava");
       expect(within(dialog).getByLabelText("Select voice Christopher")).toBe(
-        firstVoiceCard,
+        filteredFirstVoiceCard,
       );
       expect(voiceScroll.scrollTop).toBe(500);
       const voicePreview = within(dialog).getByLabelText(
@@ -918,21 +985,47 @@ describe("chat composer templates", () => {
             style: "professional",
           },
           {
+            page: 1,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+            scene: "business",
+          },
+          {
+            page: 1,
+            pageSize: 24,
+            aspectRatio: "landscape",
+            style: "professional",
+            scene: "business",
+            ethnicity: "north_american",
+          },
+          {
             page: 2,
             pageSize: 24,
             aspectRatio: "landscape",
             style: "professional",
+            scene: "business",
+            ethnicity: "north_american",
           },
         ]);
         expect(observedVoiceQueries).toStrictEqual(
           expect.arrayContaining([
             { page: 1, pageSize: 100 },
-            { page: 2, pageSize: 100 },
             {
               page: 1,
-              pageSize: 24,
+              pageSize: 100,
+              language: "english",
               gender: "male",
               age: "young",
+              useCase: "advertisement",
+            },
+            {
+              page: 1,
+              pageSize: 100,
+              language: "spanish",
+              gender: "male",
+              age: "young",
+              useCase: "advertisement",
             },
             {
               page: 1,
@@ -940,16 +1033,37 @@ describe("chat composer templates", () => {
               language: "english",
               gender: "male",
               age: "young",
+              useCase: "advertisement",
+            },
+            {
+              page: 1,
+              pageSize: 24,
+              language: "spanish",
+              gender: "male",
+              age: "young",
+              useCase: "advertisement",
             },
             {
               page: 2,
               pageSize: 24,
-              language: "english",
+              language: "spanish",
               gender: "male",
               age: "young",
+              useCase: "advertisement",
             },
           ]),
         );
+        expect(
+          observedVoiceQueries.filter((query) => {
+            return (
+              query.pageSize === 100 &&
+              query.language === undefined &&
+              query.gender === undefined &&
+              query.age === undefined &&
+              query.useCase === undefined
+            );
+          }),
+        ).toStrictEqual([{ page: 1, pageSize: 100 }]);
         expect(submittedTemplate).toStrictEqual({
           type: "video",
           selection: {
