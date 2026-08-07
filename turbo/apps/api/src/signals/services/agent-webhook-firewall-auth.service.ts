@@ -4141,6 +4141,7 @@ interface CurrentCustomConnectorAuthRef {
   readonly connectorRevision: number;
   readonly key: string;
   readonly encryptedValue: string | null;
+  readonly required: boolean;
 }
 
 async function loadCurrentCustomConnectorAuthRefs(args: {
@@ -4158,39 +4159,72 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     return undefined;
   }
 
-  const refs: CurrentCustomConnectorAuthRef[] = runtime.values.map((value) => {
-    return {
-      secretName: customConnectorSecretKey({
+  const declaredFields = new Map(
+    runtime.connector.fields.map((field) => {
+      const secretName = customConnectorSecretKey({
+        connectorId: runtime.connector.id,
+        kind: field.kind,
+        key: field.key,
+      });
+      return [secretName, field] as const;
+    }),
+  );
+  const refs = new Map<string, CurrentCustomConnectorAuthRef>(
+    runtime.values.map((value) => {
+      const secretName = customConnectorSecretKey({
         connectorId: runtime.connector.id,
         kind: value.kind,
         key: value.key,
-      }),
+      });
+      return [
+        secretName,
+        {
+          secretName,
+          connectorId: runtime.connector.id,
+          connectorRevision: runtime.connector.revision,
+          key: value.key,
+          encryptedValue: value.encryptedValue,
+          required: declaredFields.get(secretName)?.required ?? true,
+        } satisfies CurrentCustomConnectorAuthRef,
+      ] as const;
+    }),
+  );
+  for (const [secretName, field] of declaredFields) {
+    if (refs.has(secretName)) {
+      continue;
+    }
+    refs.set(secretName, {
+      secretName,
       connectorId: runtime.connector.id,
       connectorRevision: runtime.connector.revision,
-      key: value.key,
-      encryptedValue: value.encryptedValue,
-    } satisfies CurrentCustomConnectorAuthRef;
-  });
+      key: field.key,
+      encryptedValue: null,
+      required: field.required,
+    });
+  }
   if (runtime.connector.authMode === "oauth") {
-    refs.push({
-      secretName: customConnectorSecretKey({
-        connectorId: runtime.connector.id,
-        kind: "secret",
-        key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-      }),
+    const secretName = customConnectorSecretKey({
+      connectorId: runtime.connector.id,
+      kind: "secret",
+      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+    });
+    refs.set(secretName, {
+      secretName,
       connectorId: runtime.connector.id,
       connectorRevision: runtime.connector.revision,
       key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
       encryptedValue: null,
+      required: true,
     });
   }
-  return refs;
+  return [...refs.values()];
 }
 
 type CurrentCustomConnectorSecretsResolution =
   | {
       readonly kind: "available";
       readonly secrets: Record<string, string>;
+      readonly missingOptionalSecrets: readonly string[];
       readonly expiresAt: number | null;
       readonly refreshedConnectors: readonly string[];
       readonly refreshedSecrets: readonly string[];
@@ -4231,6 +4265,7 @@ async function resolveCurrentCustomConnectorSecrets(args: {
     args.auth.userId,
   );
   const currentSecrets: Record<string, string> = {};
+  const missingOptionalSecrets: string[] = [];
   let expiresAt: number | null = null;
   const refreshedConnectors: string[] = [];
   const refreshedSecrets: string[] = [];
@@ -4280,6 +4315,10 @@ async function resolveCurrentCustomConnectorSecrets(args: {
       }
     }
     if (!encryptedValue) {
+      if (!ref.required) {
+        missingOptionalSecrets.push(alias);
+        continue;
+      }
       return { kind: "unavailable" };
     }
     currentSecrets[alias] = await decryptStoredSecretValue(
@@ -4290,9 +4329,62 @@ async function resolveCurrentCustomConnectorSecrets(args: {
   return {
     kind: "available",
     secrets: currentSecrets,
+    missingOptionalSecrets,
     expiresAt,
     refreshedConnectors,
     refreshedSecrets,
+  };
+}
+
+function templateReferencesMissingOptionalSecret(args: {
+  readonly template: string;
+  readonly missingOptionalSecrets: ReadonlySet<string>;
+  readonly kind: "header" | "simple";
+}): boolean {
+  let referencesMissingSecret = false;
+  const collect = (namespace: string, key: string): void => {
+    if (namespace === "secrets" && args.missingOptionalSecrets.has(key)) {
+      referencesMissingSecret = true;
+    }
+  };
+  if (args.kind === "header") {
+    collectHeaderReferencedKeys(args.template, collect);
+  } else {
+    collectSimpleReferencedKeys(args.template, collect);
+  }
+  return referencesMissingSecret;
+}
+
+function omitMissingOptionalCustomAuthEntries(args: {
+  readonly authHeaders: Record<string, string>;
+  readonly authQuery: Record<string, string> | undefined;
+  readonly missingOptionalSecrets: readonly string[];
+}): {
+  readonly authHeaders: Record<string, string>;
+  readonly authQuery: Record<string, string> | undefined;
+} {
+  const missingOptionalSecrets = new Set(args.missingOptionalSecrets);
+  return {
+    authHeaders: Object.fromEntries(
+      Object.entries(args.authHeaders).filter(([, template]) => {
+        return !templateReferencesMissingOptionalSecret({
+          template,
+          missingOptionalSecrets,
+          kind: "header",
+        });
+      }),
+    ),
+    authQuery: args.authQuery
+      ? Object.fromEntries(
+          Object.entries(args.authQuery).filter(([, template]) => {
+            return !templateReferencesMissingOptionalSecret({
+              template,
+              missingOptionalSecrets,
+              kind: "simple",
+            });
+          }),
+        )
+      : undefined,
   };
 }
 
@@ -4343,12 +4435,19 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
   if ("status" in billableCacheExpiry) {
     return billableCacheExpiry;
   }
-  const resolved = resolveTemplates({
+  // Runtime sync keeps firewall shape definition-driven. Optional credential
+  // availability affects only the auth entries returned for this request.
+  const availableAuth = omitMissingOptionalCustomAuthEntries({
     authHeaders: args.body.authHeaders,
+    authQuery: args.body.authQuery,
+    missingOptionalSecrets: currentSecrets.missingOptionalSecrets,
+  });
+  const resolved = resolveTemplates({
+    authHeaders: availableAuth.authHeaders,
     secrets: currentSecrets.secrets,
     vars: args.body.vars ?? {},
     authBase: args.body.authBase,
-    authQuery: args.body.authQuery,
+    authQuery: availableAuth.authQuery,
     authAwsSigv4: args.body.authAwsSigv4,
   });
   if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {

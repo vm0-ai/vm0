@@ -3686,7 +3686,7 @@ class CustomConnectorRuntimeBuildStats {
 
 function customConnectorRuntimeAuth(args: {
   readonly connector: CustomConnectorRuntimeDataRows[number]["connector"];
-  readonly valueMarkers: ReadonlySet<string>;
+  readonly valueMarkers: ReadonlySet<string> | undefined;
 }): {
   readonly headers: Record<string, string>;
   readonly query: Record<string, string>;
@@ -3715,61 +3715,6 @@ function customConnectorRuntimeAuth(args: {
       }),
     ),
   };
-}
-
-function customConnectorRuntimeAuthForRow(args: {
-  readonly row: CustomConnectorRuntimeDataRows[number];
-  readonly valueMarkers: ReadonlySet<string>;
-  readonly preserveFirewallWithoutCredentials: boolean;
-}): {
-  readonly headers: Record<string, string>;
-  readonly query: Record<string, string>;
-} {
-  const authValueMarkers = new Set(args.valueMarkers);
-  if (args.preserveFirewallWithoutCredentials) {
-    for (const field of args.row.connector.fields) {
-      if (field.required) {
-        authValueMarkers.add(customConnectorValueMarkerKey(field));
-      }
-    }
-    if (args.row.connector.authMode === "oauth") {
-      authValueMarkers.add(
-        customConnectorValueMarkerKey({
-          kind: "secret",
-          key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-        }),
-      );
-    }
-  }
-  const auth = customConnectorRuntimeAuth({
-    connector: args.row.connector,
-    valueMarkers: authValueMarkers,
-  });
-  if (
-    !args.preserveFirewallWithoutCredentials ||
-    Object.keys(auth.headers).length > 0 ||
-    Object.keys(auth.query).length > 0
-  ) {
-    return auth;
-  }
-
-  const declaredValueMarkers = new Set(
-    args.row.connector.fields.map((field) => {
-      return customConnectorValueMarkerKey(field);
-    }),
-  );
-  if (args.row.connector.authMode === "oauth") {
-    declaredValueMarkers.add(
-      customConnectorValueMarkerKey({
-        kind: "secret",
-        key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-      }),
-    );
-  }
-  return customConnectorRuntimeAuth({
-    connector: args.row.connector,
-    valueMarkers: declaredValueMarkers,
-  });
 }
 
 async function buildCustomConnectorRuntimeApis(args: {
@@ -3916,11 +3861,11 @@ export async function buildCustomConnectorRuntimeContext(
       continue;
     }
     const authTemplateStartedAt = now();
-    const { headers, query } = customConnectorRuntimeAuthForRow({
-      row,
-      valueMarkers,
-      preserveFirewallWithoutCredentials:
-        args.preserveFirewallWithoutCredentials,
+    const { headers, query } = customConnectorRuntimeAuth({
+      connector: row.connector,
+      valueMarkers: args.preserveFirewallWithoutCredentials
+        ? undefined
+        : valueMarkers,
     });
     stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
     if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {

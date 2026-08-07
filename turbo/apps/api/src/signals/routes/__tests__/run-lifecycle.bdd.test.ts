@@ -9197,7 +9197,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("omits custom connector auth entries backed only by missing optional fields", async () => {
+  it("preserves runtime auth templates while omitting missing optional values", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -9279,8 +9279,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
     expect(runtimeApi.auth.headers).toStrictEqual({
       Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+      "X-Secondary": `\${{ secrets.${secondarySecretKey} }}`,
     });
-    expect(runtimeApi.auth.query).toStrictEqual({});
+    expect(runtimeApi.auth.query).toStrictEqual({
+      tenant: `\${{ secrets.${tenantVarKey} }}`,
+    });
     const runtimeResolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -9288,6 +9291,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(runtimeResolved.body).toMatchObject({
       headers: { Authorization: "Bearer optional-primary" },
+      query: {},
     });
 
     const resolved = await fw.requestFirewallAuth(
@@ -9312,7 +9316,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("keeps legacy omission while sync preserves missing optional auth", async () => {
+  it("keeps legacy omission while sync preserves optional-only firewall", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -9360,7 +9364,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
-    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    const idPart = saved.connector.id.replaceAll("-", "");
+    const internalName = `custom_connector_${idPart}`;
+    const secretKey = `CUSTOM_${idPart}_S_SECRET`;
     expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
     expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
 
@@ -9369,19 +9375,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const runtime = availableCustomConnectorRuntime(runtimeResult);
     expect(runtime.firewall.customConnectorId).toBe(saved.connector.id);
-    const { body: runtimeAuthBody } = customConnectorRuntimeAuthBody(
-      runtime,
-      fw.encryptedSecretsBody({}),
-    );
-    const unavailableAuth = await fw.requestFirewallAuth(
+    const { api: runtimeApi, body: runtimeAuthBody } =
+      customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
+    expect(runtimeApi.auth.headers).toStrictEqual({
+      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+    });
+    const resolvedAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
-      [424],
+      [200],
     );
-    if (unavailableAuth.status !== 424) {
-      throw new Error("Expected missing optional custom connector credentials");
+    if (resolvedAuth.status !== 200) {
+      throw new Error("Expected optional-only custom connector auth");
     }
-    expect(unavailableAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+    expect(resolvedAuth.body.headers).toStrictEqual({});
+    expect(resolvedAuth.body.query).toStrictEqual({});
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
