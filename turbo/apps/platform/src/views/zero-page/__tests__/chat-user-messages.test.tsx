@@ -129,14 +129,19 @@ describe("user messages", () => {
       language: "English",
       gender: "male",
     };
+    const avatarOptions = {
+      titleSnapshot: avatar.name,
+      previewUrl: avatar.coverUrl,
+      voiceId: voice.id,
+      aspectRatio: "landscape" as const,
+    };
+    // The stored message predates avatarOptions, so it carries only the flat
+    // fields; reopening it must still resolve the avatar and its voice.
     const template = {
       type: "video" as const,
       selection: {
         stylePresetId: avatarTemplateStylePresetId(avatar.id),
-        titleSnapshot: avatar.name,
-        previewUrl: avatar.coverUrl,
-        voiceId: voice.id,
-        aspectRatio: "landscape" as const,
+        ...avatarOptions,
       },
     };
     context.mocks.api(zeroAvatarVideoContract.voices, ({ respond }) => {
@@ -216,8 +221,13 @@ describe("user messages", () => {
     });
     await user.click(screen.getByLabelText("Send"));
 
+    // Re-selecting the voice rewrites the selection, which now nests the
+    // options and mirrors them flat.
     await waitFor(() => {
-      expect(submittedTemplate).toStrictEqual(template);
+      expect(submittedTemplate).toStrictEqual({
+        ...template,
+        selection: { ...template.selection, avatarOptions },
+      });
     });
   });
 

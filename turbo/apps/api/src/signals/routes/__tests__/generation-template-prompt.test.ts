@@ -190,6 +190,136 @@ describe("buildGenerationTemplatePrompt", () => {
       "read its SKILL.md before final generation",
     );
     expect(result.prompt).toContain("without `--template`");
+    expect(result.prompt).not.toContain("Parameters the user set explicitly");
+  });
+
+  it("pins the video parameters the user chose", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: item.id,
+        videoOptions: {
+          model: "seedance-1-5-pro-251215",
+          aspectRatio: "9:16",
+          duration: "6s",
+          resolution: "1080p",
+          generateAudio: false,
+        },
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("Parameters the user set explicitly");
+    expect(result.prompt).toContain("- Model: seedance-1.5-pro");
+    expect(result.prompt).toContain("- Aspect ratio: 9:16");
+    expect(result.prompt).toContain("- Duration: 6s");
+    expect(result.prompt).toContain("- Resolution: 1080p");
+    expect(result.prompt).toContain("- Audio: off");
+    expect(result.prompt).toContain(
+      "--model seedance-1.5-pro --aspect-ratio 9:16 --duration 6s --resolution 1080p --no-audio",
+    );
+  });
+
+  it("omits a silent MiniMax request the generation service would reject", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: item.id,
+        videoOptions: {
+          // MiniMax H3 always returns native audio, so the service answers a
+          // silent request with 400 rather than honouring it.
+          model: "MiniMax-H3",
+          generateAudio: false,
+        },
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("- Model: minimax-h3");
+    expect(result.prompt).not.toContain("Audio:");
+    expect(result.prompt).not.toContain("--no-audio");
+  });
+
+  it("omits video parameters the chosen model cannot honour", () => {
+    const item = VIDEO_TEMPLATE_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: item.id,
+        videoOptions: {
+          // Veo accepts only 16:9 and 9:16, and only 4s, 6s, or 8s.
+          model: "fal-ai/veo3.1/fast",
+          aspectRatio: "21:9",
+          duration: "5s",
+          resolution: "1080p",
+        },
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("- Model: veo3.1-fast");
+    expect(result.prompt).toContain("- Resolution: 1080p");
+    expect(result.prompt).not.toContain("21:9");
+    expect(result.prompt).not.toContain("Duration:");
+    expect(result.prompt).toContain("--model veo3.1-fast --resolution 1080p");
+  });
+
+  it("reads avatar options from the flat fields older bundles wrote", () => {
+    const flat = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: "avatar-template:42",
+        voiceId: "voice-legacy",
+        aspectRatio: "landscape",
+      },
+    });
+    const nested = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: "avatar-template:42",
+        avatarOptions: { voiceId: "voice-legacy", aspectRatio: "landscape" },
+      },
+    });
+
+    expect(flat.status).toBe("resolved");
+    expect(nested).toStrictEqual(flat);
+    if (flat.status !== "resolved") {
+      return;
+    }
+    expect(flat.prompt).toContain("Public JoggAI voice ID: voice-legacy");
+    expect(flat.prompt).toContain("Aspect ratio: landscape");
+  });
+
+  it("prefers nested avatar options over the flat fallback", () => {
+    const result = buildGenerationTemplatePrompt({
+      type: "video",
+      selection: {
+        stylePresetId: "avatar-template:42",
+        avatarOptions: { voiceId: "voice-nested" },
+        voiceId: "voice-flat",
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("Public JoggAI voice ID: voice-nested");
+    expect(result.prompt).not.toContain("voice-flat");
   });
 
   it("builds workflow template guidance", () => {

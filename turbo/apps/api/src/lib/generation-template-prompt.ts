@@ -13,7 +13,17 @@ import {
   type WebsiteTemplateItem,
 } from "@vm0/core/website-template-items";
 import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
-import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import {
+  parseAvatarTemplateStylePresetId,
+  readAvatarTemplateOptions,
+  type AvatarTemplateOptions,
+} from "@vm0/core/avatar-template";
+import {
+  DEFAULT_VIDEO_MODEL,
+  VIDEO_MODEL_CONFIGS,
+  type VideoModelConfig,
+} from "@vm0/core/video-model-catalog";
+import type { VideoGenerationOptions } from "@vm0/api-contracts/contracts/chat-threads";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -28,7 +38,15 @@ interface VideoGenerationTemplateInput {
   readonly type: "video";
   readonly selection: {
     readonly stylePresetId: string;
+    readonly videoOptions?: VideoGenerationOptions;
+    readonly avatarOptions?: AvatarTemplateOptions;
+    /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
+    readonly titleSnapshot?: string;
+    /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
+    readonly previewUrl?: string;
+    /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
     readonly voiceId?: string;
+    /** @deprecated Read-only fallback; see readAvatarTemplateOptions. */
     readonly aspectRatio?: "portrait" | "landscape" | "square";
   };
 }
@@ -269,6 +287,98 @@ function buildWebsiteTemplatePackagePrompt(
   };
 }
 
+interface SelectedVideoParameter {
+  readonly label: string;
+  readonly flag: string;
+}
+
+/**
+ * The generation service rejects a silent MiniMax request outright — that model
+ * always returns native audio — and forces silence for a model that cannot
+ * generate audio at all. Neither choice survives the request, so it is dropped
+ * like any other value the model cannot honour.
+ */
+function honoursGenerateAudio(
+  config: VideoModelConfig,
+  generateAudio: boolean,
+): boolean {
+  if (!config.supportsGenerateAudio) {
+    return false;
+  }
+  return generateAudio || config.provider !== "minimax";
+}
+
+/**
+ * Options the composer stores are sparse: only what the user touched is
+ * present. Values the chosen model cannot honour are dropped rather than
+ * rewritten, which leaves the generation service free to apply its own default
+ * for that model instead of receiving a value it would reject.
+ */
+function selectedVideoParameters(
+  options: VideoGenerationOptions | undefined,
+): readonly SelectedVideoParameter[] {
+  if (!options) {
+    return [];
+  }
+  // Annotated so the per-model literal tuples widen to the shared value
+  // domains; `includes` below is invariant in its argument.
+  //
+  // A retired model id can still reach this point: persisted messages and
+  // drafts are projected from jsonb without being re-parsed against the
+  // contract, so a model dropped from the catalog leaves no config to
+  // validate the rest of the selection against.
+  const config: VideoModelConfig | undefined =
+    VIDEO_MODEL_CONFIGS[options.model ?? DEFAULT_VIDEO_MODEL];
+  if (config === undefined) {
+    return [];
+  }
+  const parameters: SelectedVideoParameter[] = [];
+  if (options.model !== undefined) {
+    parameters.push({
+      label: `Model: ${config.alias}`,
+      flag: `--model ${config.alias}`,
+    });
+  }
+  if (
+    options.aspectRatio !== undefined &&
+    config.aspectRatios.includes(options.aspectRatio)
+  ) {
+    parameters.push({
+      label: `Aspect ratio: ${options.aspectRatio}`,
+      flag: `--aspect-ratio ${options.aspectRatio}`,
+    });
+  }
+  if (
+    options.duration !== undefined &&
+    config.durations.includes(options.duration)
+  ) {
+    parameters.push({
+      label: `Duration: ${options.duration}`,
+      flag: `--duration ${options.duration}`,
+    });
+  }
+  if (
+    options.resolution !== undefined &&
+    config.resolutions.includes(options.resolution)
+  ) {
+    parameters.push({
+      label: `Resolution: ${options.resolution}`,
+      flag: `--resolution ${options.resolution}`,
+    });
+  }
+  if (
+    options.generateAudio !== undefined &&
+    honoursGenerateAudio(config, options.generateAudio)
+  ) {
+    parameters.push({
+      label: `Audio: ${options.generateAudio ? "on" : "off"}`,
+      // Audio is on by default, so only silence needs a flag.
+      flag: options.generateAudio ? "" : "--no-audio",
+    });
+  }
+  return parameters;
+}
+
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
@@ -276,10 +386,13 @@ function buildVideoGenerationTemplatePrompt(
     generationTemplate.selection.stylePresetId,
   );
   if (avatarId !== undefined) {
+    const avatarOptions = readAvatarTemplateOptions(
+      generationTemplate.selection,
+    );
     return buildAvatarGenerationTemplatePrompt(
       avatarId,
-      generationTemplate.selection.voiceId,
-      generationTemplate.selection.aspectRatio,
+      avatarOptions.voiceId,
+      avatarOptions.aspectRatio,
     );
   }
 
@@ -293,6 +406,33 @@ function buildVideoGenerationTemplatePrompt(
   const sourceRef = template.source.ref;
   const sourcePath = template.source.path;
   const templateSource = `${sourceRepo}@${sourceRef}:${sourcePath}`;
+  const parameters = selectedVideoParameters(
+    generationTemplate.selection.videoOptions,
+  );
+  const parameterLines =
+    parameters.length > 0
+      ? [
+          "",
+          "Parameters the user set explicitly. Keep every one of them; do not",
+          "substitute a different model, framing, length, or resolution, and do",
+          "not drop a flag because the template suggests another value:",
+          ...parameters.map((parameter) => {
+            return `- ${parameter.label}`;
+          }),
+        ]
+      : [];
+  const generationFlags = parameters
+    .map((parameter) => {
+      return parameter.flag;
+    })
+    .filter((flag) => {
+      return flag.length > 0;
+    })
+    .join(" ");
+  const finalGenerationLine =
+    generationFlags.length > 0
+      ? `- Then run final direct video generation from the resolved prompt without \`--template\`, passing \`${generationFlags}\` verbatim.`
+      : "- Then run final direct video generation from the resolved prompt and parameters without `--template`.";
 
   return {
     status: "resolved",
@@ -303,11 +443,12 @@ function buildVideoGenerationTemplatePrompt(
       `- Template: ${template.name} (${template.id})`,
       `- Template description: ${template.description}`,
       `- Template source: ${templateSource}`,
+      ...parameterLines,
       "",
       "When you produce a video from the user's request:",
       `- Run once to fetch the locked video authoring packet: zero generate video --provider built-in --template ${template.id} --prompt "<user request>"`,
       `- The packet points back to the selected template source (${templateSource}); read its SKILL.md before final generation.`,
-      "- Then run final direct video generation from the resolved prompt and parameters without `--template`.",
+      finalGenerationLine,
       "- If a connector/provider is requested, follow connector guidance instead.",
       "- If a flag above no longer applies, run `zero generate video -h` to discover the current flags, models, and providers.",
     ].join("\n"),

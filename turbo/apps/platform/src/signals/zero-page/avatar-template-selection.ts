@@ -6,6 +6,7 @@ import type {
 import {
   avatarTemplateStylePresetId,
   parseAvatarTemplateStylePresetId,
+  readAvatarTemplateOptions,
 } from "@vm0/core/avatar-template";
 
 import { i18n } from "../../i18n/index.ts";
@@ -23,14 +24,25 @@ export function toAvatarGenerationTemplate(
   voice: ZeroAvatarVideoVoice,
   aspectRatio: "portrait" | "landscape",
 ): GenerationTemplateRequest {
+  const avatarOptions = {
+    titleSnapshot: avatar.name,
+    previewUrl: avatar.coverUrl,
+    voiceId: voice.id,
+    aspectRatio,
+  };
   return {
     type: "video",
     selection: {
       stylePresetId: avatarTemplateStylePresetId(avatar.id),
-      titleSnapshot: avatar.name,
-      previewUrl: avatar.coverUrl,
-      voiceId: voice.id,
-      aspectRatio,
+      avatarOptions,
+      // Mirrored flat because an API or frontend bundle that predates
+      // avatarOptions drops the nested object, and losing the voice would
+      // silently generate the avatar with a different one.
+      //
+      // Delete once the web-client floor in web-client-compatibility.json has
+      // been raised past the app version shipping this change. Tracked in
+      // https://github.com/vm0-ai/vm0/issues/25620.
+      ...avatarOptions,
     },
   };
 }
@@ -47,19 +59,20 @@ export function avatarTemplateSelection(
   if (avatarId === undefined) {
     return undefined;
   }
+  const options = readAvatarTemplateOptions(template.selection);
   return {
     avatarId,
     title:
-      template.selection.titleSnapshot ??
+      options.titleSnapshot ??
       i18n.t(
         ($) => {
           return $.artifacts.templates.avatarWithId;
         },
         { id: avatarId },
       ),
-    previewUrl: template.selection.previewUrl,
-    voiceId: template.selection.voiceId,
-    aspectRatio: template.selection.aspectRatio,
+    previewUrl: options.previewUrl,
+    voiceId: options.voiceId,
+    aspectRatio: options.aspectRatio,
   };
 }
 

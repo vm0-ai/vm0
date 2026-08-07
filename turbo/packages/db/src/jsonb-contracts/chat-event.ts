@@ -1,4 +1,8 @@
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  AvatarGenerationOptions,
+  UserMessageDocument,
+  VideoGenerationOptions,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 /** attach_files stores legacy file IDs. */
 export type ChatEventAttachFiles = string[];
@@ -18,6 +22,8 @@ export interface ChatEventVideoGenerationTemplate {
   readonly type: "video";
   readonly selection: {
     readonly stylePresetId: string;
+    readonly videoOptions?: VideoGenerationOptions;
+    readonly avatarOptions?: AvatarGenerationOptions;
   };
 }
 
