@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.3...guest-session-prune-v0.3.4) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
 ## [0.3.3](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.2...guest-session-prune-v0.3.3) (2026-08-03)
 
 
