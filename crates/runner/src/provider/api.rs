@@ -4438,16 +4438,16 @@ mod tests {
             .claim(candidate)
             .await
             .expect("cold Pi claim should succeed");
-        let (_, _, _, mut pi_standby_source) = claimed.into_run_parts();
+        let (_, _, _, pi_standby_source) = claimed.into_run_parts();
         let signal = tokio::time::timeout(
             Duration::from_millis(100),
             pi_standby_source
-                .as_mut()
                 .expect("Pi context should install standby control")
                 .wait(),
         )
         .await
-        .expect("cold Pi claim should not wait for another Ably handoff");
+        .expect("cold Pi claim should not wait for another Ably handoff")
+        .expect("cold Pi standby source should not be superseded");
 
         assert_eq!(signal, crate::pi_standby::PiStandbySignal::Handoff);
         claim_mock.assert_calls_async(1).await;
