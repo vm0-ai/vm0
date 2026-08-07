@@ -726,7 +726,6 @@ export function zeroBillingStatus(
       org: org[0],
       canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
       canReduceConcurrency:
-        env("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED") === "true" &&
         env("STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID") !== undefined,
       canBuyCredits: capabilities?.canBuyCredits ?? false,
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,

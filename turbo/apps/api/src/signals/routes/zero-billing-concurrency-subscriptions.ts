@@ -52,11 +52,6 @@ const reduceConcurrencySubscriptionAuthed$ = command(
         "Billing redirects must use the configured app origin",
       );
     }
-    if (env("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED") !== "true") {
-      return badRequestMessage(
-        "Concurrency subscription updates are temporarily unavailable",
-      );
-    }
     const portalConfigurationId = env(
       "STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID",
     );

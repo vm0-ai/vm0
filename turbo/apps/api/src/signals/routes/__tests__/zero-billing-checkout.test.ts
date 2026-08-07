@@ -115,7 +115,6 @@ function setZeroPrice(): void {
     "STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID",
     TEST_CONCURRENCY_PORTAL_CONFIGURATION,
   );
-  mockEnv("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED", "true");
 }
 
 function setUsagePackPrices(): void {
@@ -2026,9 +2025,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       }),
     ]);
 
-    const client = setupApp({ context })(
-      zeroBillingConcurrencySubscriptionContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
     const successUrl = `${APP_ORIGIN}/?concurrency=reduced`;
     const cancelUrl = `${APP_ORIGIN}/billing?concurrency=canceled`;
     const response = await accept(
@@ -2078,7 +2078,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const response = await accept(
-      setupApp({ context })(zeroBillingConcurrencySubscriptionContract).reduce({
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencySubscriptionRoutes,
+      })(zeroBillingConcurrencySubscriptionContract).reduce({
         params: { subscriptionId },
         body: {
           quantity: 3,
@@ -2098,80 +2101,6 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       },
     });
     expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
-  });
-
-  it("holds slot reductions until Portal updates are enabled", async () => {
-    const subscriptionId = `sub_${randomUUID()}`;
-    const fixture = await createConcurrencySubscriptionOrg({
-      subscriptionId,
-      slots: 3,
-      periodEnd: new Date("2099-05-20T00:00:00Z"),
-      tier: "team",
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED", "false");
-
-    const status = await readBillingStatus(fixture);
-    expect(status.concurrencySubscriptions[0]).not.toHaveProperty("canReduce");
-
-    const response = await accept(
-      setupApp({ context })(zeroBillingConcurrencySubscriptionContract).reduce({
-        params: { subscriptionId },
-        body: {
-          quantity: 2,
-          successUrl: `${APP_ORIGIN}/?concurrency=reduced`,
-          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Concurrency subscription updates are temporarily unavailable",
-        code: "BAD_REQUEST",
-      },
-    });
-    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
-  });
-
-  it("holds additional slot purchases until Portal updates are enabled", async () => {
-    const subscriptionId = `sub_${randomUUID()}`;
-    const fixture = await createConcurrencySubscriptionOrg({
-      subscriptionId,
-      slots: 2,
-      periodEnd: new Date("2099-05-20T00:00:00Z"),
-      tier: "team",
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    mockEnv("STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED", "false");
-
-    const response = await accept(
-      setupApp({
-        context,
-        routes: zeroBillingConcurrencyCheckoutRoutes,
-      })(zeroBillingConcurrencyCheckoutContract).create({
-        body: {
-          quantity: 1,
-          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Additional concurrency purchases are temporarily unavailable",
-        code: "BAD_REQUEST",
-      },
-    });
-    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
-    expect(
-      context.mocks.stripe.billingPortal.sessions.create,
-    ).not.toHaveBeenCalled();
   });
 
   it("returns 400 when the concurrency portal configuration is missing", async () => {
