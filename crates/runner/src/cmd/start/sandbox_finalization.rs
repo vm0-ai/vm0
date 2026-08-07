@@ -911,6 +911,7 @@ mod tests {
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
     use sha2::{Digest, Sha256};
 
+    use super::super::active_runs::ActiveRuns;
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::{
         ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
@@ -939,6 +940,10 @@ mod tests {
         WorkspaceImagePromotionOutcome, WorkspaceImagePromotionRequest,
         WorkspaceSessionHistorySidecarRepresentation,
     };
+
+    fn test_active_runs() -> ActiveRuns {
+        ActiveRuns::new(Arc::new(tokio::sync::Notify::new()))
+    }
 
     async fn prepare_and_publish_workspace_image(
         sandbox: &dyn Sandbox,
@@ -2218,9 +2223,9 @@ mod tests {
         let cache_states = cache.held_workspace_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].reuse_key, reuse_key);
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        let active_runs = test_active_runs();
         let snapshot_states =
-            workspace_cache_snapshot.current_held_workspace_states(&active_reuse_keys, None);
+            workspace_cache_snapshot.current_held_workspace_states(&active_runs, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].reuse_key, reuse_key);
         assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
@@ -2322,9 +2327,9 @@ mod tests {
         )
         .unwrap();
         assert!(metadata.get("cliAgentSessionId").is_none());
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        let active_runs = test_active_runs();
         let snapshot_states =
-            workspace_cache_snapshot.current_held_workspace_states(&active_reuse_keys, None);
+            workspace_cache_snapshot.current_held_workspace_states(&active_runs, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].reuse_key, reuse_key);
         assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
@@ -2387,10 +2392,10 @@ mod tests {
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(cache.held_workspace_states().await.is_empty());
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
+        let active_runs = test_active_runs();
         assert!(
             workspace_cache_snapshot
-                .current_held_workspace_states(&active_reuse_keys, None)
+                .current_held_workspace_states(&active_runs, None)
                 .is_empty(),
             "failed post-freeze stop must not advertise reusable state"
         );
