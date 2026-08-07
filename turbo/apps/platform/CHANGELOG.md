@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.706.0](https://github.com/vm0-ai/vm0/compare/app-v0.705.0...app-v0.706.0) (2026-08-07)
+
+
+### Features
+
+* **composer:** show every video parameter on inline and sent template chips ([#25715](https://github.com/vm0-ai/vm0/issues/25715)) ([313a02b](https://github.com/vm0-ai/vm0/commit/313a02ba3fa3bab6f4aa758ce3f00b07f85900f3))
+* soften the dialog scrim and blur the backdrop ([#25719](https://github.com/vm0-ai/vm0/issues/25719)) ([2cde403](https://github.com/vm0-ai/vm0/commit/2cde403e644688352438534e7ca6289e40f9cf01))
+
+
+### Refactoring
+
+* **chat:** make user message parts canonical ([#25717](https://github.com/vm0-ai/vm0/issues/25717)) ([2020c27](https://github.com/vm0-ai/vm0/commit/2020c2720a08dc98f3159299bc9b6e1897351c60))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.1
+    * @vm0/connectors bumped to 1.204.2
+    * @vm0/core bumped to 8.529.1
+
 ## [0.705.0](https://github.com/vm0-ai/vm0/compare/app-v0.704.0...app-v0.705.0) (2026-08-07)
 
 
