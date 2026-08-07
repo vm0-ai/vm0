@@ -115,15 +115,37 @@ pub(super) async fn gc_entry_is_real_dir(entry: &tokio::fs::DirEntry) -> std::io
 /// Last-used time comes from the root directory's own mtime, which `touch_mtime`
 /// updates on every cache hit and `runner start`.
 pub(super) async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
+    let stats = collect_dir_stats(dir).await;
+    (stats.size, stats.mtime)
+}
+
+pub(super) struct DirStats {
+    pub(super) size: u64,
+    pub(super) mtime: SystemTime,
+    pub(super) root_metadata: Option<std::fs::Metadata>,
+}
+
+/// Compute directory stats while retaining the root metadata fetched for the walk.
+pub(super) async fn collect_dir_stats(dir: &Path) -> DirStats {
     const BYTES_PER_BLOCK: u64 = 512;
 
     let root_meta = match tokio::fs::symlink_metadata(dir).await {
         Ok(meta) => meta,
-        Err(_) => return (0, SystemTime::UNIX_EPOCH),
+        Err(_) => {
+            return DirStats {
+                size: 0,
+                mtime: SystemTime::UNIX_EPOCH,
+                root_metadata: None,
+            };
+        }
     };
     let mtime = root_meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
     if !root_meta.file_type().is_dir() {
-        return (root_meta.blocks() * BYTES_PER_BLOCK, mtime);
+        return DirStats {
+            size: root_meta.blocks() * BYTES_PER_BLOCK,
+            mtime,
+            root_metadata: Some(root_meta),
+        };
     }
 
     let mut total_bytes = 0u64;
@@ -157,7 +179,11 @@ pub(super) async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
         }
     }
 
-    (total_bytes, mtime)
+    DirStats {
+        size: total_bytes,
+        mtime,
+        root_metadata: Some(root_meta),
+    }
 }
 
 #[cfg(test)]

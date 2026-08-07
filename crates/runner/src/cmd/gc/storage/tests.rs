@@ -86,13 +86,17 @@ async fn storage_candidate_for(path: PathBuf) -> StorageCandidate {
         .and_then(|name| name.to_str())
         .unwrap()
         .to_owned();
-    let (size, mtime) = dir_stats(&path).await;
+    let stats = collect_dir_stats(&path).await;
     StorageCandidate {
         path,
         name,
         version,
-        size,
-        mtime,
+        size: stats.size,
+        mtime: stats.mtime,
+        identity: stats
+            .root_metadata
+            .as_ref()
+            .map(StorageDirectoryIdentity::from),
     }
 }
 
@@ -774,6 +778,59 @@ async fn gc_storage_cache_delete_recheck_treats_symlink_candidate_as_removed() {
 }
 
 #[tokio::test]
+async fn gc_storage_cache_delete_recheck_reuses_unchanged_candidate_size() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old_gc_time());
+    let mut candidate = storage_candidate_for(entry.clone()).await;
+    let scan_size = candidate.size.saturating_add(1);
+    candidate.size = scan_size;
+
+    let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), true).await;
+
+    assert_eq!(result.freed, scan_size);
+    assert_eq!(result.remaining_size, None);
+    assert!(!result.remaining_entry);
+    assert!(result.evicted);
+    assert!(entry.exists(), "dry-run must keep the unchanged candidate");
+}
+
+#[tokio::test]
+async fn gc_storage_cache_delete_recheck_reaccounts_replaced_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let old = old_gc_time();
+    let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+    let candidate = storage_candidate_for(entry.clone()).await;
+
+    let replacement = make_storage_entry_at(
+        dir.path().join("replacement-version"),
+        &[0u8; 128 * 1024],
+        old,
+    );
+    let replacement_size = dir_stats(&replacement).await.0;
+    assert_ne!(replacement_size, candidate.size);
+    assert_ne!(
+        std::fs::symlink_metadata(&replacement).unwrap().ino(),
+        candidate.identity.unwrap().inode
+    );
+    std::fs::remove_dir_all(&entry).unwrap();
+    std::fs::rename(&replacement, &entry).unwrap();
+
+    let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), true).await;
+
+    assert_eq!(result.freed, replacement_size);
+    assert_eq!(result.remaining_size, None);
+    assert!(!result.remaining_entry);
+    assert!(result.evicted);
+    assert!(entry.exists(), "dry-run must keep the replacement");
+}
+
+#[tokio::test]
 async fn gc_storage_cache_delete_recheck_keeps_candidate_that_became_recent() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
@@ -782,7 +839,9 @@ async fn gc_storage_cache_delete_recheck_keeps_candidate_that_became_recent() {
     let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
     let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
     let candidate = storage_candidate_for(entry.clone()).await;
+    let scanned_size = candidate.size;
 
+    std::fs::write(entry.join("archive.tar.gz"), vec![0u8; 128 * 1024]).unwrap();
     std::fs::File::open(&entry)
         .unwrap()
         .set_times(std::fs::FileTimes::new().set_modified(SystemTime::now()))
@@ -791,6 +850,7 @@ async fn gc_storage_cache_delete_recheck_keeps_candidate_that_became_recent() {
     let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
     let (fresh_size, _) = dir_stats(&entry).await;
 
+    assert_ne!(fresh_size, scanned_size);
     assert_eq!(result.freed, 0);
     assert_eq!(result.remaining_size, Some(fresh_size));
     assert!(result.remaining_entry);
