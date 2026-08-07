@@ -48,6 +48,12 @@ async function waitForAgentDraftClear(
   await draftCleared;
 }
 
+async function clearComposerEditor(editor: Locator): Promise<void> {
+  await editor.press("ControlOrMeta+A");
+  await editor.press("Backspace");
+  await expect(editor).toHaveText("");
+}
+
 function isConnectorCatalogStatusResponse(
   value: unknown,
 ): value is ConnectorCatalogStatusResponse {
@@ -210,7 +216,7 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await expectInside(sendButton, composer);
 
   await waitForAgentDraftClear(page, async () => {
-    await editor.fill("");
+    await clearComposerEditor(editor);
   });
 });
 
@@ -420,6 +426,6 @@ test("selected avatar and voice cards keep a single border", async ({
 
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
   await waitForAgentDraftClear(page, async () => {
-    await page.getByRole("textbox", { name: "Message" }).fill("");
+    await clearComposerEditor(page.getByRole("textbox", { name: "Message" }));
   });
 });
