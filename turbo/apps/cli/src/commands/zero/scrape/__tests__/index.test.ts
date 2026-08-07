@@ -197,6 +197,35 @@ describe("zero scrape command", () => {
     expect(output()).toContain("# Example\n\nContent");
   });
 
+  it("prints parsed page counts and warns when a PDF is truncated", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/zero/scrape", () => {
+        return HttpResponse.json({
+          requestedUrl: "https://example.com/report.pdf",
+          format: "markdown",
+          mode: "standard",
+          provider: "firecrawl",
+          creditsCharged: 400,
+          billingCategory: "standard.markdown",
+          billingQuantity: 100,
+          metadata: { numPages: 100, totalPages: 240 },
+          result: { markdown: "# Annual report" },
+        });
+      }),
+    );
+
+    await zeroScrapeCommand.parseAsync([
+      "node",
+      "cli",
+      "https://example.com/report.pdf",
+    ]);
+
+    expect(output()).toContain("Billing quantity: 100");
+    expect(output()).toContain("Pages parsed: 100");
+    expect(output()).toContain("parsed the first 100 of 240 pages");
+    expect(output()).toContain("# Annual report");
+  });
+
   it("rejects invalid formats before calling the API", async () => {
     let apiRequests = 0;
     server.use(

@@ -26,6 +26,8 @@ export const zeroScrapeMetadataSchema = z.object({
   language: z.string().optional(),
   statusCode: z.number().int().optional(),
   publishedTime: z.string().optional(),
+  numPages: z.number().int().optional(),
+  totalPages: z.number().int().optional(),
 });
 
 const zeroScrapeResponseBaseSchema = z.object({

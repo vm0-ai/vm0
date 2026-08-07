@@ -442,7 +442,7 @@ describe("zero scrape route", () => {
     expect(requestBody).toStrictEqual({
       url: "https://example.com/page",
       formats: ["markdown"],
-      parsers: [],
+      parsers: [{ type: "pdf", maxPages: 100 }],
       proxy: "basic",
       skipTlsVerification: false,
       maxAge: 0,
@@ -463,6 +463,54 @@ describe("zero scrape route", () => {
       },
     });
     expect(beforeCredits - afterCredits).toBe(4);
+  });
+
+  it("bills a parsed PDF per page and reports truncated page counts", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Annual report",
+            metadata: {
+              sourceURL: "https://example.com/report.pdf",
+              numPages: 3,
+              totalPages: 12,
+            },
+          },
+        });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/report.pdf",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [200],
+    );
+    const afterCredits = await credits(actor);
+
+    expect(response.body).toMatchObject({
+      format: "markdown",
+      billingCategory: "standard.markdown",
+      billingQuantity: 3,
+      creditsCharged: 12,
+      metadata: { numPages: 3, totalPages: 12 },
+      result: { markdown: "# Annual report" },
+    });
+    expect(beforeCredits - afterCredits).toBe(12);
   });
 
   it("records usage when the request aborts after Firecrawl succeeds", async () => {
@@ -834,7 +882,7 @@ describe("zero scrape route", () => {
     expect(requestBody).toStrictEqual({
       url: "https://example.com/page",
       formats: ["links"],
-      parsers: [],
+      parsers: [{ type: "pdf", maxPages: 100 }],
       proxy: "enhanced",
       skipTlsVerification: false,
       maxAge: 0,

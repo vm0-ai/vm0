@@ -30,6 +30,9 @@ const MAX_FIRECRAWL_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_FIRECRAWL_ERROR_MESSAGE_CHARS = 4096;
 const MAX_MARKDOWN_CHARS = 1_000_000;
 const MAX_LINKS = 5000;
+// Firecrawl bills PDF parsing per page, so bound the work a single scrape can
+// trigger. Truncation is reported back through metadata.totalPages.
+const MAX_PDF_PAGES = 100;
 
 const SCRAPE_MODE_CONFIG = {
   standard: {
@@ -119,6 +122,7 @@ interface ZeroScrapeSuccessArgs {
   readonly requestedUrl: URL;
   readonly normalized: NormalizedScrape;
   readonly creditsCharged: number;
+  readonly billingQuantity: number;
 }
 
 interface ZeroScrapeSuccessBase {
@@ -139,14 +143,14 @@ interface CompleteScrapeSuccessArgs {
   readonly request: ZeroScrapeRequest;
   readonly requestedUrl: URL;
   readonly firecrawlResult: FirecrawlBodyResult;
-  readonly recordUsage: () => Promise<number>;
+  readonly recordUsage: (quantity: number) => Promise<number>;
 }
 
 interface CompleteScrapeAfterProviderArgs {
   readonly apiKey: string;
   readonly request: ZeroScrapeRequest;
   readonly requestedUrl: URL;
-  readonly recordUsage: () => Promise<number>;
+  readonly recordUsage: (quantity: number) => Promise<number>;
   readonly providerSignal: AbortSignal;
 }
 
@@ -194,6 +198,14 @@ function billingCategory(args: ZeroScrapeRequest): ZeroScrapeBillingCategory {
 
 function firecrawlProxy(mode: ZeroScrapeRequest["mode"]): "basic" | "enhanced" {
   return SCRAPE_MODE_CONFIG[mode].firecrawlProxy;
+}
+
+// Firecrawl reports numPages only for parsed documents and charges one credit
+// per page, so a PDF scrape bills one unit per parsed page and a web page
+// bills a single unit.
+function billingQuantity(metadata: ZeroScrapeResponse["metadata"]): number {
+  const numPages = metadata?.numPages;
+  return numPages !== undefined && numPages > 0 ? numPages : 1;
 }
 
 function targetPolicyMessage(error: ScrapeTargetPolicyError): string {
@@ -290,7 +302,7 @@ async function fetchFirecrawlScrape(
         body: JSON.stringify({
           url: targetUrl.toString(),
           formats: [request.format],
-          parsers: [],
+          parsers: [{ type: "pdf", maxPages: MAX_PDF_PAGES }],
           proxy: firecrawlProxy(request.mode),
           skipTlsVerification: false,
           maxAge: 0,
@@ -392,6 +404,8 @@ function normalizeMetadata(
     language: optionalString(metadata, "language"),
     statusCode: optionalInteger(metadata, "statusCode"),
     publishedTime: optionalString(metadata, "publishedTime"),
+    numPages: optionalInteger(metadata, "numPages"),
+    totalPages: optionalInteger(metadata, "totalPages"),
   };
 
   return Object.values(normalized).some((value) => {
@@ -463,7 +477,7 @@ function successResponseBase(
     ...(args.normalized.finalUrl ? { finalUrl: args.normalized.finalUrl } : {}),
     provider: PROVIDER,
     creditsCharged: args.creditsCharged,
-    billingQuantity: 1,
+    billingQuantity: args.billingQuantity,
     ...(args.normalized.metadata ? { metadata: args.normalized.metadata } : {}),
   };
 }
@@ -575,12 +589,14 @@ async function completeScrapeSuccess(
     return finalUrlError;
   }
 
-  const creditsCharged = await args.recordUsage();
+  const quantity = billingQuantity(normalized.metadata);
+  const creditsCharged = await args.recordUsage(quantity);
   const body = successBody({
     request: args.request,
     requestedUrl: args.requestedUrl,
     normalized,
     creditsCharged,
+    billingQuantity: quantity,
   });
   return { status: 200 as const, body };
 }
@@ -662,7 +678,7 @@ export const zeroScrape$ = command(
       request: args.body,
       requestedUrl: target.url,
       providerSignal: requestSignal,
-      recordUsage: () => {
+      recordUsage: (quantity: number) => {
         // Firecrawl has completed successfully, so a client disconnect must not
         // skip billing. The instance lifecycle still owns the usage commit.
         return set(
@@ -677,6 +693,7 @@ export const zeroScrape$ = command(
               kind: USAGE_KIND,
               provider: PROVIDER,
               category,
+              quantity,
             },
             label: "scrape",
           },

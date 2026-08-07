@@ -40,11 +40,29 @@ function parseMode(value: string): ZeroScrapeMode {
   );
 }
 
+function renderPdfPages(response: ZeroScrapeResponse): void {
+  const numPages = response.metadata?.numPages;
+  if (numPages === undefined) {
+    return;
+  }
+
+  const totalPages = response.metadata?.totalPages;
+  console.log(chalk.dim(`  Pages parsed: ${numPages}`));
+  if (totalPages !== undefined && totalPages > numPages) {
+    console.log(
+      chalk.yellow(
+        `  Truncated: parsed the first ${numPages} of ${totalPages} pages`,
+      ),
+    );
+  }
+}
+
 function renderScrapeMetadata(response: ZeroScrapeResponse): void {
   console.log(chalk.dim(`  Provider: ${response.provider}`));
   console.log(chalk.dim(`  Billing category: ${response.billingCategory}`));
   console.log(chalk.dim(`  Billing quantity: ${response.billingQuantity}`));
   console.log(chalk.dim(`  Credits charged: ${response.creditsCharged}`));
+  renderPdfPages(response);
 }
 
 function renderScrapeResult(response: ZeroScrapeResponse): void {
@@ -100,10 +118,13 @@ export const zeroScrapeCommand = new Command()
 Examples:
   Scrape markdown:  zero scrape https://example.com --format markdown
   Scrape links:     zero scrape https://example.com --format links
+  Scrape a PDF:     zero scrape https://example.com/report.pdf --format markdown
   Enhanced scrape:  zero scrape https://example.com --mode enhanced --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires scrape:read capability) or a CLI token
   - Firecrawl calls and credit billing happen on the vm0 API server
-  - Enhanced mode is explicit because it uses a higher billing category`,
+  - Enhanced mode is explicit because it uses a higher billing category
+  - PDF URLs are parsed into markdown, falling back to OCR for scanned pages
+  - PDF scrapes bill one unit per parsed page and stop after 100 pages`,
   );
