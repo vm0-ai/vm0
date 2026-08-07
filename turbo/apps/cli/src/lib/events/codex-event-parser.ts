@@ -2,8 +2,8 @@
  * Event parser for OpenAI Codex CLI JSONL events.
  *
  * The parser accepts the Codex-style compatibility events produced by the vm0
- * guest-agent app-server adapter. It deliberately does not consume raw
- * app-server JSON-RPC notifications.
+ * guest-agent app-server adapter and historical persisted Codex JSONL events.
+ * It deliberately does not consume raw app-server JSON-RPC notifications.
  */
 
 import type { ParsedEvent } from "./claude-event-parser";

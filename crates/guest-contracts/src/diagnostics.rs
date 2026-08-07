@@ -639,7 +639,7 @@ impl FailureReason {
 pub enum FailureDetailSource {
     /// The reason came from a Claude result payload.
     ClaudeResult,
-    /// The reason came from Codex JSONL output.
+    /// The reason came from a Codex compatibility JSONL event.
     CodexJsonl,
     /// The reason came from stderr output.
     Stderr,
