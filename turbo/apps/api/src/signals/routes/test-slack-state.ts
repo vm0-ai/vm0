@@ -555,7 +555,6 @@ function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
-      triggerSource: chatEvents.triggerSource,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
