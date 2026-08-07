@@ -1,3 +1,4 @@
+import { gatewayTypecheckBoundary } from "./rules/gateway-typecheck-boundary.ts";
 import { noCatchAbort } from "./rules/no-catch-abort.ts";
 import { noFnDollarSuffix } from "./rules/no-fn-dollar-suffix.ts";
 import { noGetterSetterParams } from "./rules/no-getter-setter-params.ts";
@@ -19,6 +20,7 @@ export const apiLintPlugin = {
     version: "1.0.0",
   },
   rules: {
+    "gateway-typecheck-boundary": gatewayTypecheckBoundary,
     "no-catch-abort": noCatchAbort,
     "no-fn-dollar-suffix": noFnDollarSuffix,
     "no-getter-setter-params": noGetterSetterParams,
