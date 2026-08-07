@@ -322,19 +322,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let a video template chip in the chat composer set the generation model, aspect ratio, duration, resolution, and audio.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
     enabled: false,
-  },
-  [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Search presentation, website, illustration, and video templates from the shared template picker search field.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",

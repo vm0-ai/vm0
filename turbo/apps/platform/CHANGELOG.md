@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.703.2](https://github.com/vm0-ai/vm0/compare/app-v0.703.1...app-v0.703.2) (2026-08-07)
+
+
+### Refactoring
+
+* **chat:** remove unread ids rollout compatibility ([#25694](https://github.com/vm0-ai/vm0/issues/25694)) ([6ba5a0c](https://github.com/vm0-ai/vm0/commit/6ba5a0cfd055ba88dcc87a0ee9b475d92d309641))
+* remove the templatePickerGlobalSearch feature switch ([#25686](https://github.com/vm0-ai/vm0/issues/25686)) ([b427e71](https://github.com/vm0-ai/vm0/commit/b427e716c76ad5cfa9372ef09f52d622e6443b57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.291.0
+    * @vm0/core bumped to 8.528.1
+
+## [0.703.1](https://github.com/vm0-ai/vm0/compare/app-v0.703.0...app-v0.703.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **platform:** make avatar filter toolbar opaque ([#25667](https://github.com/vm0-ai/vm0/issues/25667)) ([817d11f](https://github.com/vm0-ai/vm0/commit/817d11f18af82864a61a640fd29b21750a22f045))
+
+## [0.703.0](https://github.com/vm0-ai/vm0/compare/app-v0.702.0...app-v0.703.0) (2026-08-07)
+
+
+### Features
+
+* **billing:** unify concurrency slot changes ([#25669](https://github.com/vm0-ai/vm0/issues/25669)) ([861ea6c](https://github.com/vm0-ai/vm0/commit/861ea6c027baf8449e1baeaf564cbb90e8e9a120))
+
 ## [0.702.0](https://github.com/vm0-ai/vm0/compare/app-v0.701.0...app-v0.702.0) (2026-08-07)
 
 

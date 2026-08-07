@@ -258,7 +258,7 @@ export function PinnedAgentListSection({
                   data-testid="pinned-agent-card"
                   className={`group flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
                     isPrimarySelected
-                      ? "bg-gray-200 text-foreground"
+                      ? "bg-sidebar-accent-active text-sidebar-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
                 >
@@ -333,7 +333,7 @@ export function PinnedAgentListSection({
                   e.stopPropagation();
                   openAgentListDialog();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent-active transition-colors"
                 aria-label={t(($) => {
                   return $.sidebar.openConversation;
                 })}
@@ -393,9 +393,9 @@ export function PinnedAgentListSection({
                       hasSideActions ? "pl-2 pr-8" : "px-2"
                     } ${
                       isPrimarySelected
-                        ? "bg-gray-200 text-foreground font-medium"
+                        ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
                         : isFromChat
-                          ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
+                          ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent text-sidebar-foreground hover:bg-sidebar-accent-active"
                           : "text-sidebar-foreground hover:bg-sidebar-accent"
                     }`}
                   >

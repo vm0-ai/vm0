@@ -2,6 +2,7 @@ import { posix } from "node:path";
 
 import type { Computed } from "ccstate";
 import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
+import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { storageVersions } from "@vm0/db/schema/storage";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import {
@@ -38,7 +39,15 @@ interface LoadedStorageVersion extends StorageVersionIdentity {
 interface PiLaunchStorageResources {
   readonly env: ExecutionEnv;
   readonly agentInstructions: string | null;
+  readonly memory: {
+    readonly directory: string;
+    readonly primaryFile: string;
+    readonly prefix: string | null;
+  } | null;
 }
+
+const PI_MEMORY_PRIMARY_FILENAME = "MEMORY.md";
+const PI_MEMORY_PREFIX_MAX_BYTES = 8 * 1024;
 
 function success<T>(value: T): Result<T, FileError> {
   return { ok: true, value };
@@ -432,6 +441,7 @@ async function loadStorageVersions(
       storageId: storageVersions.storageId,
       versionId: storageVersions.id,
       s3Key: storageVersions.s3Key,
+      fileCount: storageVersions.fileCount,
     })
     .from(storageVersions)
     .where(inArray(storageVersions.id, versionIds));
@@ -442,26 +452,33 @@ async function loadStorageVersions(
   );
   const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
   const loaded = await Promise.all(
-    [...unique.entries()].map(async ([key, identity]) => {
-      const row = rowByKey.get(key);
-      if (!row) {
-        throw new Error(
-          `Pi Storage version not found: ${identity.storageId}@${identity.versionId}`,
+    [...unique.entries()].map(
+      async ([key, identity]): Promise<
+        readonly [string, LoadedStorageVersion]
+      > => {
+        const row = rowByKey.get(key);
+        if (!row) {
+          throw new Error(
+            `Pi Storage version not found: ${identity.storageId}@${identity.versionId}`,
+          );
+        }
+        if (row.fileCount === 0) {
+          return [key, { ...identity, files: [] }];
+        }
+        const archive = await get(
+          downloadS3Buffer(bucket, `${row.s3Key}/archive.tar.gz`),
         );
-      }
-      const archive = await get(
-        downloadS3Buffer(bucket, `${row.s3Key}/archive.tar.gz`),
-      );
-      return [
-        key,
-        {
-          ...identity,
-          files: extractBinaryFilesFromTarGz(archive).map((file) => {
-            return { ...file, path: safeArchivePath(file.path) };
-          }),
-        },
-      ] as const;
-    }),
+        return [
+          key,
+          {
+            ...identity,
+            files: extractBinaryFilesFromTarGz(archive).map((file) => {
+              return { ...file, path: safeArchivePath(file.path) };
+            }),
+          },
+        ];
+      },
+    ),
   );
   return new Map(loaded);
 }
@@ -474,7 +491,33 @@ function instructionsMount(
   });
 }
 
-/** Load the exact Skill file view and Agent instructions pinned for a Pi run. */
+function memoryMount(
+  mounts: readonly PersistedStorageMount[],
+): PersistedStorageMount | undefined {
+  return mounts.find((mount) => {
+    return mount.name === MEMORY_ARTIFACT_NAME;
+  });
+}
+
+function memoryFilePrefix(content: Buffer): string | null {
+  if (content.length === 0) {
+    return null;
+  }
+  const truncated = content.length > PI_MEMORY_PREFIX_MAX_BYTES;
+  const prefixBytes = truncated
+    ? content.subarray(0, PI_MEMORY_PREFIX_MAX_BYTES)
+    : content;
+  const decoded = new TextDecoder("utf-8").decode(prefixBytes, {
+    stream: truncated,
+  });
+  if (!truncated) {
+    return decoded;
+  }
+  const finalNewline = decoded.lastIndexOf("\n");
+  return finalNewline === -1 ? decoded : decoded.slice(0, finalNewline + 1);
+}
+
+/** Load the exact Skill, instructions, and memory file view pinned for a Pi run. */
 export async function loadPiLaunchStorageResources(
   get: <T>(computedValue: Computed<T>) => T,
   db: Db,
@@ -484,6 +527,7 @@ export async function loadPiLaunchStorageResources(
   },
 ): Promise<PiLaunchStorageResources> {
   const instructionMount = instructionsMount(args.persistedStorageMounts);
+  const durableMemoryMount = memoryMount(args.persistedStorageMounts);
   const identities: StorageVersionIdentity[] = args.snapshot.entries.map(
     (entry) => {
       return { storageId: entry.storageId, versionId: entry.versionId };
@@ -493,6 +537,12 @@ export async function loadPiLaunchStorageResources(
     identities.push({
       storageId: instructionMount.storageId,
       versionId: instructionMount.version,
+    });
+  }
+  if (durableMemoryMount?.version) {
+    identities.push({
+      storageId: durableMemoryMount.storageId,
+      versionId: durableMemoryMount.version,
     });
   }
   const versions = await loadStorageVersions(get, db, identities);
@@ -534,5 +584,44 @@ export async function loadPiLaunchStorageResources(
     agentInstructions = instructionFile?.content.toString("utf8") ?? null;
   }
 
-  return { env: new StorageExecutionEnv(files), agentInstructions };
+  let memory: PiLaunchStorageResources["memory"] = null;
+  if (durableMemoryMount) {
+    const primaryFile = posix.join(
+      durableMemoryMount.mountPath,
+      PI_MEMORY_PRIMARY_FILENAME,
+    );
+    let prefix: string | null = null;
+    if (durableMemoryMount.version) {
+      const version = versions.get(
+        versionKey({
+          storageId: durableMemoryMount.storageId,
+          versionId: durableMemoryMount.version,
+        }),
+      );
+      if (!version) {
+        throw new Error(
+          `Pi memory Storage version not loaded: ${durableMemoryMount.storageId}@${durableMemoryMount.version}`,
+        );
+      }
+      for (const file of version.files) {
+        files.push({
+          path: posix.join(durableMemoryMount.mountPath, file.path),
+          content: file.content,
+        });
+      }
+      const primaryMemoryFile = version.files.find((file) => {
+        return file.path === PI_MEMORY_PRIMARY_FILENAME;
+      });
+      prefix = primaryMemoryFile
+        ? memoryFilePrefix(primaryMemoryFile.content)
+        : null;
+    }
+    memory = {
+      directory: durableMemoryMount.mountPath,
+      primaryFile,
+      prefix,
+    };
+  }
+
+  return { env: new StorageExecutionEnv(files), agentInstructions, memory };
 }

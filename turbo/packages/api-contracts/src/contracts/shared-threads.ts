@@ -167,10 +167,7 @@ const sharedThreadAuthHeadersSchema: ZodSchema<
   SharedThreadAuthHeaders
 > = authHeadersSchema;
 
-const sharedThreadsRuntimeSpec: Record<
-  "create" | "get" | "meta",
-  AppRouteSpec
-> = {
+const sharedThreadsRuntimeSpec = {
   create: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/shared-threads",
@@ -207,7 +204,7 @@ const sharedThreadsRuntimeSpec: Record<
     },
     summary: "Read public metadata for a shared chat snapshot",
   },
-};
+} as const satisfies Record<"create" | "get" | "meta", AppRouteSpec>;
 
 const sharedThreadsRuntimeContract = c.router(sharedThreadsRuntimeSpec);
 
@@ -248,5 +245,5 @@ export type SharedThreadsContract = {
 
 // Keep runtime validation from the Zod-backed router while exposing compact,
 // explicit request and response slots to downstream API and app typechecks.
-export const sharedThreadsContract =
-  sharedThreadsRuntimeContract as unknown as SharedThreadsContract;
+export const sharedThreadsContract: SharedThreadsContract =
+  sharedThreadsRuntimeContract;

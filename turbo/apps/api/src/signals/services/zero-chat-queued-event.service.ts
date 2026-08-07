@@ -29,10 +29,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import {
-  pgBooleanDecoder,
-  pgNullDecoder,
-} from "../../lib/db-structured-result";
+import { pgNullDecoder } from "../../lib/db-structured-result";
 import { db$, type Db } from "../external/db";
 import {
   chatQueueEventPriority,
@@ -53,7 +50,6 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { noGoalChangeAfterQueueEvent } from "./chat-goal-queue.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
 import {
@@ -66,7 +62,10 @@ import {
   rolloutCompatibleAutonomyBudgetColumn,
 } from "./autonomy-budget-schema.service";
 import type { Tx } from "../../lib/db-types";
-import { withRunModelAnnotation } from "./zero-chat-user-message.service";
+import {
+  createUserMessageDocument,
+  withRunModelAnnotation,
+} from "./zero-chat-user-message.service";
 import { chatAgentRunContextSchemaAvailable } from "./chat-agent-run-context-schema.service";
 
 type DbTransaction = Tx;
@@ -195,6 +194,8 @@ export type QueueFirstRunAssociation =
       readonly eventId: string;
       readonly prompt: string;
       readonly goalId: string;
+      readonly goalObjectiveBrief: string;
+      readonly goalStateRevision: string;
       readonly orgId: string;
       readonly userId: string;
     };
@@ -217,9 +218,29 @@ export type QueueFirstRunSessionSnapshotState =
   | "session_changed"
   | "unvalidated";
 
+/** Keep the exact goal source row stable through the later chat queue claim. */
+export async function lockGoalQueueFirstRunSource(
+  db: DbTransaction,
+  args: Extract<QueueFirstRunAssociation, { readonly kind: "goal_event" }>,
+): Promise<void> {
+  await db
+    .select({ id: threadGoals.id })
+    .from(threadGoals)
+    .where(
+      and(
+        eq(threadGoals.id, args.goalId),
+        eq(threadGoals.chatThreadId, args.threadId),
+        eq(threadGoals.orgId, args.orgId),
+        eq(threadGoals.ownerUserId, args.userId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+}
+
 /**
- * Establish the thread-first lock order shared by every event-backed queue
- * claim, rejection, and revocation.
+ * Establish the shared thread lock for every event-backed queue claim,
+ * rejection, and revocation. Goal claims stabilize their source row first.
  */
 export async function lockUserMessageQueueThread(
   db: Db,
@@ -540,9 +561,6 @@ async function resolveGoalQueueFirstClaimSnapshot(
       ...queueFirstReplacementTargetFields,
       goalId: threadGoals.id,
       goalStatus: threadGoals.status,
-      goalSnapshotCurrent:
-        noGoalChangeAfterQueueEvent(db).mapWith(pgBooleanDecoder),
-      userMessage: chatEvents.userMessage,
     })
     .from(chatEvents)
     .leftJoin(
@@ -553,6 +571,8 @@ async function resolveGoalQueueFirstClaimSnapshot(
         eq(threadGoals.orgId, args.orgId),
         eq(threadGoals.ownerUserId, args.userId),
         eq(chatEvents.runGroupId, threadGoals.id),
+        // Match the lossless revision captured before run preparation.
+        eq(sql`${threadGoals.updatedAt}::text`, args.goalStateRevision),
       ),
     )
     .where(
@@ -573,14 +593,17 @@ async function resolveGoalQueueFirstClaimSnapshot(
     head.eventType !== "input.goal" ||
     head.id !== args.eventId ||
     head.goalId !== args.goalId ||
-    head.goalStatus !== "active" ||
-    !head.goalSnapshotCurrent
+    head.goalStatus !== "active"
   ) {
     return null;
   }
-  if (!head.userMessage) {
-    throw new Error("Goal queue event is missing its user message");
-  }
+  const userMessage = createUserMessageDocument({
+    text: null,
+    nonContentPart: {
+      type: "goal",
+      goalBrief: args.goalObjectiveBrief,
+    },
+  });
   return {
     target: replacementTargetFromQueueHead(head),
     routingContextType: "goal",
@@ -589,8 +612,8 @@ async function resolveGoalQueueFirstClaimSnapshot(
       eventType: "input.prompt",
       userMessage:
         args.selectedModel === null
-          ? head.userMessage
-          : withRunModelAnnotation(head.userMessage, args.selectedModel),
+          ? userMessage
+          : withRunModelAnnotation(userMessage, args.selectedModel),
       runId: args.runId,
       runGroupId: args.goalId,
     },

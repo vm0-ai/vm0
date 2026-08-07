@@ -109,17 +109,50 @@ function promptParts(parts: ReadonlyArray<string | null | undefined>): string {
     .join("\n\n");
 }
 
+function renderPiMemoryPrompt(memory: {
+  readonly directory: string;
+  readonly primaryFile: string;
+  readonly prefix: string | null;
+}): string {
+  return promptParts([
+    `## Memory
+
+Your durable memory directory is:
+
+\`${memory.directory}\`
+
+The primary memory file is:
+
+\`${memory.primaryFile}\`
+
+Read \`${memory.primaryFile}\` and related files when more detail is needed. When the user explicitly asks you to remember, update, or forget something, modify files in this directory.`,
+    memory.prefix
+      ? `### MEMORY.md prefix
+
+The following is only a possibly truncated prefix of \`${memory.primaryFile}\`:
+
+${memory.prefix}`
+      : null,
+  ]);
+}
+
 /** Render the system prompt shared by both Pi runtimes. */
 export function renderPiSystemPrompt(args: {
   readonly agentName: string;
   readonly appendSystemPrompt?: string | null;
   readonly agentInstructions?: string | null;
+  readonly memory?: {
+    readonly directory: string;
+    readonly primaryFile: string;
+    readonly prefix: string | null;
+  } | null;
   readonly skills: readonly Skill[];
 }): string {
   return promptParts([
     renderPiBaseSystemPrompt(args.agentName),
     args.appendSystemPrompt,
     args.agentInstructions,
+    args.memory ? renderPiMemoryPrompt(args.memory) : null,
     formatSkillsForSystemPrompt([...args.skills]),
   ]);
 }

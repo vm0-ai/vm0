@@ -295,29 +295,26 @@ const artifactDetailSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const artifactCatalogAuthHeadersSchema =
-  authHeadersSchema as unknown as ZodSchema<
-    ArtifactCatalogAuthHeaders,
-    ArtifactCatalogAuthHeaders
-  >;
-const artifactCatalogQuerySchema =
-  artifactCatalogListQuerySchema as unknown as ZodSchema<
-    ArtifactCatalogListQuery,
-    ArtifactCatalogListClientQuery
-  >;
-const artifactCatalogPathParamsSchema =
-  artifactIdPathParamsSchema as unknown as ZodSchema<
-    ArtifactIdPathParams,
-    ArtifactIdPathParams
-  >;
-const artifactCatalogListResultSchema =
-  artifactCatalogListResponseSchema as unknown as ZodLikeSchema<ArtifactCatalogListResponse>;
-const artifactCatalogDetailResultSchema =
-  artifactDetailSchema as unknown as ZodLikeSchema<ArtifactDetail>;
-const artifactCatalogApiErrorSchema =
-  apiErrorSchema as unknown as ZodLikeSchema<ApiErrorResponse>;
+const artifactCatalogAuthHeadersSchema: ZodSchema<
+  ArtifactCatalogAuthHeaders,
+  ArtifactCatalogAuthHeaders
+> = authHeadersSchema;
+const artifactCatalogQuerySchema: ZodSchema<
+  ArtifactCatalogListQuery,
+  ArtifactCatalogListClientQuery
+> = artifactCatalogListQuerySchema;
+const artifactCatalogPathParamsSchema: ZodSchema<
+  ArtifactIdPathParams,
+  ArtifactIdPathParams
+> = artifactIdPathParamsSchema;
+const artifactCatalogListResultSchema: ZodLikeSchema<ArtifactCatalogListResponse> =
+  artifactCatalogListResponseSchema;
+const artifactCatalogDetailResultSchema: ZodLikeSchema<ArtifactDetail> =
+  artifactDetailSchema;
+const artifactCatalogApiErrorSchema: ZodLikeSchema<ApiErrorResponse> =
+  apiErrorSchema;
 
-const artifactCatalogRuntimeSpec: Record<"list" | "get", AppRouteSpec> = {
+const artifactCatalogRuntimeSpec = {
   list: {
     method: "GET",
     path: "/api/zero/artifacts/catalog",
@@ -343,7 +340,7 @@ const artifactCatalogRuntimeSpec: Record<"list" | "get", AppRouteSpec> = {
     },
     summary: "Get one artifact with its kind-specific detail",
   },
-};
+} as const satisfies Record<"list" | "get", AppRouteSpec>;
 
 const artifactCatalogRuntimeContract = c.router(artifactCatalogRuntimeSpec);
 
@@ -378,5 +375,5 @@ export type ArtifactCatalogContract = {
 
 // Keep runtime validation from the Zod-backed router while exposing compact,
 // explicit request and response slots to downstream API and app typechecks.
-export const artifactCatalogContract =
-  artifactCatalogRuntimeContract as unknown as ArtifactCatalogContract;
+export const artifactCatalogContract: ArtifactCatalogContract =
+  artifactCatalogRuntimeContract;

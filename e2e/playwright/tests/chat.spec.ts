@@ -143,7 +143,12 @@ async function expectInside(inner: Locator, outer: Locator): Promise<void> {
 }
 
 async function cardEdgeAppearance(locator: Locator) {
-  return locator.evaluate((element) => {
+  return locator.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => {
+        return animation.finished;
+      }),
+    );
     const style = getComputedStyle(element);
     return {
       borderWidths: [
@@ -153,6 +158,25 @@ async function cardEdgeAppearance(locator: Locator) {
         style.borderLeftWidth,
       ],
       boxShadow: style.boxShadow,
+    };
+  });
+}
+
+async function toolbarSurfaceAppearance(locator: Locator) {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Canvas context unavailable");
+    }
+    context.fillStyle = style.backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return {
+      backgroundAlpha: context.getImageData(0, 0, 1, 1).data[3],
+      borderBottomWidth: style.borderBottomWidth,
     };
   });
 }
@@ -357,7 +381,7 @@ test("image lightbox centers and pans across the full viewer", async ({
   });
 });
 
-test("selected avatar and voice cards keep a single border", async ({
+test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
   await page.route("**/api/zero/feature-switches", async (route) => {
@@ -377,6 +401,13 @@ test("selected avatar and voice cards keep a single border", async ({
         avatars: [
           { id: 81, name: "Ada", aspectRatio: 0 },
           { id: 82, name: "Alex", aspectRatio: 0 },
+          ...Array.from({ length: 16 }, (_, index) => {
+            return {
+              id: index + 83,
+              name: `Avatar ${String(index + 3)}`,
+              aspectRatio: 0,
+            };
+          }),
         ],
       },
     });
@@ -408,6 +439,28 @@ test("selected avatar and voice cards keep a single border", async ({
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
   await page.getByRole("button", { name: "Template" }).click();
   await page.getByRole("tab", { name: "Avatar" }).click();
+  const dialog = page.getByRole("dialog");
+  const avatarScroll = dialog.locator("[data-avatar-template-grid-scroll]");
+  const avatarToolbar = avatarScroll.locator("[data-avatar-catalog-toolbar]");
+  await expect(avatarToolbar).toBeVisible();
+  await avatarScroll.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(async () => {
+      return avatarScroll.evaluate((element) => {
+        return element.scrollTop;
+      });
+    })
+    .toBeGreaterThan(0);
+  await expect(avatarToolbar).toBeInViewport();
+  await expect
+    .poll(async () => {
+      return toolbarSurfaceAppearance(avatarToolbar);
+    })
+    .toEqual({ backgroundAlpha: 255, borderBottomWidth: "0px" });
+
   await page.getByRole("button", { name: "Select template Ada" }).click();
   await page.getByRole("button", { name: "Select voice Christopher" }).click();
 
@@ -441,7 +494,7 @@ test("selected avatar and voice cards keep a single border", async ({
   expect(selectedVoiceEdge.borderWidths).toEqual(["1px", "1px", "1px", "1px"]);
   expect(selectedVoiceEdge).toEqual(unselectedVoiceEdge);
 
-  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Close" }).click();
   await waitForAgentDraftClear(page, async () => {
     await clearComposerEditor(page.getByRole("textbox", { name: "Message" }));
   });

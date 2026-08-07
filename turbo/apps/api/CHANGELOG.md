@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.399.0](https://github.com/vm0-ai/vm0/compare/api-v1.398.2...api-v1.399.0) (2026-08-07)
+
+
+### Features
+
+* **pi:** add durable memory context ([#25687](https://github.com/vm0-ai/vm0/issues/25687)) ([79361ae](https://github.com/vm0-ai/vm0/commit/79361aed5b235b0d757f08f4cc1c9186f33427c0))
+
+
+### Refactoring
+
+* **api:** source goal runs from thread goals ([#25695](https://github.com/vm0-ai/vm0/issues/25695)) ([17fac76](https://github.com/vm0-ai/vm0/commit/17fac763e7d8505d373d61d35aa6b217ddb0ba43))
+* **chat:** remove unread ids rollout compatibility ([#25694](https://github.com/vm0-ai/vm0/issues/25694)) ([6ba5a0c](https://github.com/vm0-ai/vm0/commit/6ba5a0cfd055ba88dcc87a0ee9b475d92d309641))
+* reduce fallback slop in internal contracts ([#25531](https://github.com/vm0-ai/vm0/issues/25531)) ([bd0ed3f](https://github.com/vm0-ai/vm0/commit/bd0ed3f5006eca57bb31a7dedd0681095ed7a11a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.291.0
+    * @vm0/core bumped to 8.528.1
+    * @vm0/db bumped to 1.177.2
+    * @vm0/pi-agent-runtime bumped to 1.2.0
+
+## [1.398.2](https://github.com/vm0-ai/vm0/compare/api-v1.398.1...api-v1.398.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* parse google forms publish state as an object ([#25675](https://github.com/vm0-ai/vm0/issues/25675)) ([dd41752](https://github.com/vm0-ai/vm0/commit/dd41752958fdcc9af412622f92bb1cff3c6f5f03))
+* **test:** preserve shared vm0 key fixtures ([#25679](https://github.com/vm0-ai/vm0/issues/25679)) ([41f5817](https://github.com/vm0-ai/vm0/commit/41f581725e7486a2453b768de1e2b8e80c2ce41f))
+
 ## [1.398.1](https://github.com/vm0-ai/vm0/compare/api-v1.398.0...api-v1.398.1) (2026-08-07)
 
 

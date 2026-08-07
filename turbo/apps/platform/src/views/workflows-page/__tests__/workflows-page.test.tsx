@@ -178,6 +178,10 @@ type WorkflowGoogleCalendarEventCancelledAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-cancelled" }
 >;
+type WorkflowGoogleFormsResponseSubmittedAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { kind: "event"; eventType: "google-forms-response-submitted" }
+>;
 type WorkflowGoogleMeetTranscriptGeneratedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-meet-transcript-generated" }
@@ -362,6 +366,34 @@ function googleMeetTranscriptGeneratedWorkflowAutomation(): WorkflowGoogleMeetTr
     chatThreadId: "thread_google_meet_transcript_generated",
     nextRunAt: null,
     lastRunAt: null,
+  };
+}
+
+function googleFormsResponseSubmittedWorkflowAutomation(
+  warning?: string,
+): WorkflowGoogleFormsResponseSubmittedAutomationSummary {
+  return {
+    id: "workflow-automation-google-forms-response-submitted",
+    kind: "event",
+    eventType: "google-forms-response-submitted",
+    eventConfig: {
+      provider: "google-forms",
+      event: "response_submitted",
+      connectorId: "00000000-0000-4000-a000-000000000412",
+      form: {
+        id: "1FAIpQLScGoogleFormsAutomationTest",
+        title: "Customer feedback",
+        url: "https://docs.google.com/forms/d/1FAIpQLScGoogleFormsAutomationTest/edit",
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_google_forms_response_submitted",
+    nextRunAt: null,
+    lastRunAt: null,
+    ...(warning ? { warning } : {}),
   };
 }
 
@@ -2801,6 +2833,103 @@ describe("workflow detail page", () => {
         },
       });
     });
+  });
+
+  it("hides Google Forms automation creation when the feature is disabled", async () => {
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: false,
+    });
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    expect(
+      queryAllByRoleFast("button", picker).some((candidate) => {
+        return textFor(candidate) === "Google Forms";
+      }),
+    ).toBeFalsy();
+    expect(
+      within(picker).queryByText("Google Forms response submitted"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("creates a Google Forms automation and shows the API warning", async () => {
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
+    const warning = "This Google Form is not accepting responses yet.";
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(
+      zeroWorkflowAutomationsContract.create,
+      ({ body, respond }) => {
+        createBodies.push(body);
+        return respond(
+          201,
+          googleFormsResponseSubmittedWorkflowAutomation(warning),
+        );
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Google Forms", /^Google Forms response submitted/);
+
+    const createAutomationForm = await screen.findByRole("form", {
+      name: "Add Google Forms response automation",
+    });
+    await fill(
+      within(createAutomationForm).getByLabelText("Form link"),
+      "https://docs.google.com/forms/d/1FAIpQLScGoogleFormsAutomationTest/edit",
+    );
+    fireEvent.submit(createAutomationForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "google-forms-response-submitted",
+        eventConfig: {
+          provider: "google-forms",
+          event: "response_submitted",
+          formUrl:
+            "https://docs.google.com/forms/d/1FAIpQLScGoogleFormsAutomationTest/edit",
+        },
+      });
+    });
+    await expect(screen.findByText(warning)).resolves.toBeInTheDocument();
+  });
+
+  it("shows the Google Forms edit-page guidance returned by the API", async () => {
+    const guidance =
+      "Please open the form's edit page and copy the link from the address bar.";
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(zeroWorkflowAutomationsContract.create, ({ respond }) => {
+      return respond(400, {
+        error: { code: "BAD_REQUEST", message: guidance },
+      });
+    });
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: true,
+    });
+
+    click(await screen.findByText("Add automation"));
+    await screen.findByRole("dialog");
+    pickAutomation("Google Forms", /^Google Forms response submitted/);
+
+    const createAutomationForm = await screen.findByRole("form", {
+      name: "Add Google Forms response automation",
+    });
+    await fill(
+      within(createAutomationForm).getByLabelText("Form link"),
+      "https://docs.google.com/forms/d/e/responder-id/viewform",
+    );
+    fireEvent.submit(createAutomationForm);
+
+    await expect(screen.findByText(guidance)).resolves.toBeInTheDocument();
+    expect(createAutomationForm).toBeInTheDocument();
   });
 
   it("creates a Google Meet transcript-generated automation", async () => {
