@@ -48,8 +48,9 @@ it("does not read legacy vm0 preview bypass query params", () => {
 
 **Delete the old test together with the old code.** When a behavior is
 replaced, update the existing test to the new behavior instead of keeping the
-old assertion alongside it. PR #22573 removed roughly forty such tombstones in
-one pass; that entire class of test should never have been written.
+old assertion alongside it. PR #22573 removed dozens of retired-behavior tests
+in one pass, many of them tombstones; that class of test should never have been
+written.
 
 **The narrow exception** is a fail-closed security boundary, where the
 assertion is that an attacker-supplied legacy credential, token prefix, or
@@ -172,35 +173,65 @@ Everything else is slop.
 ## 7. Rolling Update Windows
 
 A rollout fallback is only justified for the duration that an old version can
-still be live. These are the production version-skew windows pr-auto uses when
-it audits a merged PR for retained version-migration fallbacks. Use the same
-numbers when you write, size, or remove a compatibility branch.
+still be live. Size every compatibility branch against the surface it protects.
 
-| Surface                   | Maximum skew  | What resolves it                                            |
-| ------------------------- | ------------- | ----------------------------------------------------------- |
-| DB vs API                 | ~4 seconds    | DB deploys ahead of API; after that the API matches the DB. |
-| Existing runner / sandbox | up to 2 hours | Old instances drain; newly created ones match immediately.  |
-| Old web / app clients     | ~2 days       | A refresh loads the current version.                        |
+Two different numbers matter, and confusing them is how compatibility code gets
+deleted too early:
+
+- the **nominal deploy gap**, how far apart the pipeline intends to promote two
+  surfaces, and
+- the **observed maximum exposure**, how long the two versions have actually
+  overlapped in production, including promotion drift, rollback, and draining
+  instances.
+
+Only the second number bounds a fallback.
+
+| Surface                   | Nominal deploy gap | Observed maximum exposure | What resolves it                                                                    |
+| ------------------------- | ------------------ | ------------------------- | ----------------------------------------------------------------------------------- |
+| DB vs API                 | ~4 seconds         | ~102 minutes              | API and DB converge only after promotion completes without drift or rollback.       |
+| Existing runner / sandbox | none               | up to 2 hours             | Old instances drain; newly created ones match immediately.                          |
+| Old web / app clients     | none               | ~2 days                   | A refresh loads the current version; a `426` response can force the prompt earlier. |
 
 How to use them:
 
-- **DB ahead of API (~4s).** A migration is live while the previous API is
-  still serving or draining. This window is short but real, which is why
-  migrations must be additive and destructive steps split into a later PR. It
-  does not justify a permanent tolerant reader.
+- **DB vs API.** `docs/deployment-compatibility.md` is the source of truth for
+  this surface; treat the numbers above as a summary of it, not a replacement.
+  The pipeline promotes migrations before API traffic, nominally within a few
+  seconds, but intended ordering is not compatibility. Recorded incidents ran
+  far longer: migration `0697` exposed new readers for **102 minutes**, `0723`
+  for **12 minutes**, `0700` for **10 minutes**, and `0722` for **2 minutes**.
+  Never size a DB/API compatibility branch by the nominal gap.
+
+  This surface also has **two independent directions**, and a fallback that
+  covers one does not cover the other:
+
+  - **Old code after migration** — the schema has changed while the previous
+    API is still serving or draining. Every statement that API can issue must
+    stay legal, including columns an ORM adds to `SELECT` or `RETURNING`.
+  - **New code before migration** — the new API is serving before the migration
+    is visible to it. This is the direction that produced `42703`, `22P02`, and
+    `42P01` in production. New readers and writers must not require the new
+    column, enum value, relation, or constraint until the migration lands.
+
 - **Old runner or sandbox (up to 2h).** The backend must accept the old runner
-  protocol for the full drain. Runner-facing endpoints, payload variants, and
+  protocol for the full drain. The bound is the guest runtime budget,
+  `JOB_TIMEOUT = Duration::from_secs(7200)` in
+  `crates/runner/src/executor/mod.rs`: a draining runner can still be finishing
+  a claimed run for that long. Runner-facing endpoints, payload variants, and
   event shapes cannot be deleted in the same PR that stops emitting them; the
   removal is a follow-up after the window closes. Newly created runners and
   sandboxes are already on the new version, so no fallback is needed for them.
 - **Old web or app clients (~2 days).** Frontend-to-API compatibility branches
   are sized by this window. It is the longest one, so a client-facing rollout
   fallback is the one most worth writing — and the one most often left behind.
+  A raised client-version floor can end it earlier by returning `426 Upgrade
+Required`, but only once an open page makes a handled API request; an idle
+  page never discovers it.
 
-State the applicable window in the code comment and in the PR summary, so the
-removal condition is a date-bounded fact rather than a judgment call. If a
-fallback protects more than one surface, state every relevant window; the
-removal waits for the longest one.
+State the applicable surface and its observed maximum exposure in the code
+comment and in the PR summary, so the removal condition is a bounded fact rather
+than a judgment call. If a fallback protects more than one surface, state every
+relevant window; the removal waits for the longest one.
 
 These windows apply only to GA behavior. A feature still behind a non-GA
 feature switch has no old external client to protect, so none of these windows

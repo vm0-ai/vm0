@@ -176,7 +176,6 @@ Use the testing docs as the authoritative source for testing conventions. Key st
 | Test behavior not mocks — no `expect(mock).toHaveBeenCalled()` as sole assertion | P1       |
 | Mock cleanup — `vi.clearAllMocks()` in `beforeEach` when mocks are used          | P1       |
 | New user-facing features must be gated behind a `FeatureSwitchKey`               | P1       |
-| No negative tests asserting removed behavior stays removed                       | P1       |
 
 ### Step 5: Code Review Analysis
 
@@ -220,7 +219,14 @@ Review the diff for:
 
 **Fallback Discipline**
 
-Apply `docs/fallback.md`. The default is no fallback.
+Apply `docs/fallback.md`. The default is no fallback. `docs/fallback.md` is the
+authoritative source for the rules below, including this severity table:
+
+| Rule                                                                    | Severity |
+| ----------------------------------------------------------------------- | -------- |
+| No negative tests asserting removed behavior stays removed              | P1       |
+| Every fallback in the diff must be declared in the PR summary           | P1       |
+| A rollout fallback must name its surface, window, and removal condition | P1       |
 
 - Request changes for a fallback that guards a state the owning contract
   already prevents: a `??`/`||` chain on a required SDK field, Zod-required
@@ -233,10 +239,14 @@ Apply `docs/fallback.md`. The default is no fallback.
 - A new cross-version rollout fallback must carry a comment naming the
   affected surface, its rollout window, the condition that makes it removable,
   and a follow-up issue or PR. An open-ended "tolerate the old shape" branch is
-  a finding. Check the window against the production version-skew facts:
-  DB ahead of API for about 4 seconds, existing runner or sandbox instances old
-  for up to 2 hours, old web or app clients in use for about 2 days. A branch
-  sized to the wrong surface's window is a finding.
+  a finding. Size the window by the observed maximum exposure, not the nominal
+  deploy gap: DB/API skew has reached about 102 minutes in recorded incidents
+  even though the pipeline promotes within seconds, existing runner or sandbox
+  instances stay old for up to 2 hours, and old web or app clients stay in use
+  for about 2 days. A branch sized to the wrong surface's window, or to a
+  nominal gap, is a finding. For DB/API changes, check both directions defined
+  in `docs/deployment-compatibility.md`: old code after migration and new code
+  before migration.
 - A PR that removes a fallback must state its evidence — type/schema,
   single-writer, production query, or closed rollback window — and must delete
   the branch, its contract entry, and its own tests together.
@@ -314,7 +324,7 @@ LGTM
 - <file path>: <issue description>
 
 ### Fallbacks
-- <file path and symbol>: <old/new interaction it protects> — surface <DB/API ~4s | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, declared in PR summary <Yes / No — P1>, verdict <Justified / Not justified>
+- <file path and symbol>: <old/new interaction it protects> — surface <DB/API up to ~102min | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, declared in PR summary <Yes / No — P1>, verdict <Justified / Not justified>
 - <or: None>
 
 ### Testing
