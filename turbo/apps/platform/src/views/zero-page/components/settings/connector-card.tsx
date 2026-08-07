@@ -290,7 +290,7 @@ function ConnectionConnectorCard({
           />
         </div>
         {connected ? (
-          <div className="flex shrink-0 items-center justify-end gap-0">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-0">
             {manageAccess}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
