@@ -4,6 +4,10 @@ import {
   type RunSkillSnapshot,
 } from "@vm0/api-contracts/contracts/runners";
 import {
+  getModelProviderPiChatCompletionsUrl,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   isPiAgentModelSupported,
   type ExecutionEnv,
   type PiAgentModelConfig,
@@ -51,17 +55,24 @@ export function piSandboxModelConfig(config: PiEdgeModelConfig): PiModelConfig {
   };
 }
 
-const PI_EDGE_DEFAULT_BASE_URLS: Readonly<Record<string, string>> = {
-  "openai-api-key": "https://api.openai.com/v1/",
-  deepseek: "https://api.deepseek.com/",
-  "moonshot-api-key": "https://api.moonshot.ai/v1/",
-};
+/**
+ * Pi base URLs are derived from the model-provider firewall table rather than
+ * duplicated here. The firewall injects the real key only on bases it lists,
+ * so a second copy of these URLs could drift out of the firewall's coverage
+ * and leave a standby turn shipping the placeholder upstream.
+ */
+function piEdgeDefaultBaseUrl(concreteType: string): string | undefined {
+  const chatCompletionsUrl = getModelProviderPiChatCompletionsUrl(
+    concreteType as ModelProviderType,
+  );
+  return chatCompletionsUrl?.replace(/chat\/completions$/, "");
+}
 
 export function isPiEdgeCompatibleProviderType(type: string): boolean {
   return (
     type === "openrouter-codex" ||
     type === "vercel-ai-gateway-codex" ||
-    Object.hasOwn(PI_EDGE_DEFAULT_BASE_URLS, type)
+    piEdgeDefaultBaseUrl(type) !== undefined
   );
 }
 
@@ -113,8 +124,7 @@ export function resolvePiEdgeModelConfig(
     return null;
   }
   const baseUrl =
-    provider.environment.OPENAI_BASE_URL ??
-    PI_EDGE_DEFAULT_BASE_URLS[concreteType];
+    provider.environment.OPENAI_BASE_URL ?? piEdgeDefaultBaseUrl(concreteType);
   const model =
     provider.environment.OPENAI_MODEL ??
     provider.environment.ANTHROPIC_MODEL ??
