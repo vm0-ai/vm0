@@ -1091,7 +1091,6 @@
     "actions": {
       "authorize": "Authorize",
       "cancel": "Cancel",
-      "configure": "Configure",
       "confirm": "Confirm",
       "continue": "Continue",
       "copied": "Copied!",
@@ -1324,7 +1323,6 @@
       "available_other": "Available connectors to connect ({{count}})",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
-      "customConnectDescription": "Review and connect this custom connector.",
       "find": "Find connectors...",
       "remove": "Remove {{connectorName}}",
       "title": "Connectors"
@@ -1934,19 +1932,6 @@
         "description": "These OAuth changes will disconnect every member currently connected with OAuth. They'll need to connect this custom connector again.",
         "title": "Disconnect existing OAuth connections?"
       }
-    },
-    "customProposal": {
-      "configure": "Configure {{connector}}",
-      "descriptionAgent": "Saving will connect your values and authorize {{agent}}.",
-      "descriptionUser": "Saving will connect this custom connector for your account.",
-      "documentTitle": "Configure custom connector",
-      "invalid": "This custom connector proposal link is invalid or expired.",
-      "requestScope": "Request scope",
-      "returnToChat": "Return to the chat and reply ACK so the agent can verify the connector.",
-      "saved": "Saved",
-      "savedToast": "{{connector}} saved",
-      "targetFallback": "this agent",
-      "update": "Update {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Authorize {{agent}}",
