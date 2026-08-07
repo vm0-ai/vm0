@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.701.0](https://github.com/vm0-ai/vm0/compare/app-v0.700.0...app-v0.701.0) (2026-08-07)
+
+
+### Features
+
+* **api:** carry user-chosen video parameters into the generation prompt ([#25613](https://github.com/vm0-ai/vm0/issues/25613)) ([9757fe0](https://github.com/vm0-ai/vm0/commit/9757fe07ba8fb32965ceec2fd85224eafad840f4))
+* **automation:** ingest stripe invoice-paid events ([#25640](https://github.com/vm0-ai/vm0/issues/25640)) ([d046a1f](https://github.com/vm0-ai/vm0/commit/d046a1fa94647f2e21bb6519d4bc7b5687dcca70))
+
+
+### Refactoring
+
+* **platform:** disallow computed lifecycle signals ([#25651](https://github.com/vm0-ai/vm0/issues/25651)) ([34150c0](https://github.com/vm0-ai/vm0/commit/34150c0944654674d55c01e78db74e281923515f))
+* remove aws connector feature switch ([#25601](https://github.com/vm0-ai/vm0/issues/25601)) ([2135473](https://github.com/vm0-ai/vm0/commit/213547353a9643da453811b77c7e9e81f26f6e3e))
+* remove the structured prompt inline templates feature switch ([#25441](https://github.com/vm0-ai/vm0/issues/25441)) ([f890e58](https://github.com/vm0-ai/vm0/commit/f890e58986ddee61ab943182a4b0b84bda62e0be))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.290.0
+    * @vm0/core bumped to 8.527.0
+
 ## [0.700.0](https://github.com/vm0-ai/vm0/compare/app-v0.699.1...app-v0.700.0) (2026-08-07)
 
 
