@@ -9,6 +9,9 @@
   --brand-ring: rgba(237, 78, 1, 0.3);
   --desktop-titlebar-height: 52px;
   --desktop-titlebar-left-inset: 92px;
+  /* Mirrors the icon stroke token in packages/ui styles/globals.css, which
+   * this app does not import. */
+  --icon-stroke-width: 1.75;
   font-family:
     Inter,
     ui-sans-serif,
@@ -20,6 +23,11 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Single global icon stroke width; lucide-react tags every icon "lucide". */
+svg.lucide {
+  stroke-width: var(--icon-stroke-width);
 }
 
 html,
