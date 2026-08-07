@@ -634,28 +634,32 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_megapixel", usd(0.03), 1],
   ]),
 
-  // BytePlus ModelArk video generation (raw provider cost).
+  // BytePlus ModelArk video generation with the standard 20% markup.
+  ...usageGroup("video", "dreamina-seedance-2-5-260628", [
+    ["output_video_tokens.480p_720p.no_video", usd(10.7 * 1.2), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", usd(6.4 * 1.2), 1_000_000],
+  ]),
   ...usageGroup("video", "dreamina-seedance-2-0-260128", [
-    ["output_video_tokens.480p_720p.no_video", usd(7), 1_000_000],
-    ["output_video_tokens.480p_720p.with_video", usd(4.3), 1_000_000],
-    ["output_video_tokens.1080p.no_video", usd(7.7), 1_000_000],
-    ["output_video_tokens.1080p.with_video", usd(4.7), 1_000_000],
+    ["output_video_tokens.480p_720p.no_video", usd(7 * 1.2), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", usd(4.3 * 1.2), 1_000_000],
+    ["output_video_tokens.1080p.no_video", usd(7.7 * 1.2), 1_000_000],
+    ["output_video_tokens.1080p.with_video", usd(4.7 * 1.2), 1_000_000],
   ]),
   ...usageGroup("video", "dreamina-seedance-2-0-fast-260128", [
-    ["output_video_tokens.480p_720p.no_video", usd(5.6), 1_000_000],
-    ["output_video_tokens.480p_720p.with_video", usd(3.3), 1_000_000],
+    ["output_video_tokens.480p_720p.no_video", usd(5.6 * 1.2), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", usd(3.3 * 1.2), 1_000_000],
   ]),
   ...usageGroup("video", "seedance-1-5-pro-251215", [
-    ["output_video_tokens.audio", usd(2.4), 1_000_000],
-    ["output_video_tokens.silent", usd(1.2), 1_000_000],
+    ["output_video_tokens.audio", usd(2.4 * 1.2), 1_000_000],
+    ["output_video_tokens.silent", usd(1.2 * 1.2), 1_000_000],
   ]),
-  // MiniMax H3 official PAYG rates with the 2x built-in markup.
+  // MiniMax H3 official PAYG rates with the standard 20% markup.
   ...usageGroup("video", "MiniMax-H3", [
-    ["output_video_seconds.768p", usd(0.16), 1],
-    ["output_video_seconds.2k", usd(0.26), 1],
-    ["input_video_seconds.768p", usd(0.16), 1],
-    ["input_video_seconds.2k", usd(0.26), 1],
-    ["input_image.additional", usd(0.08), 1],
+    ["output_video_seconds.768p", usd(0.08 * 1.2), 1],
+    ["output_video_seconds.2k", usd(0.13 * 1.2), 1],
+    ["input_video_seconds.768p", usd(0.08 * 1.2), 1],
+    ["input_video_seconds.2k", usd(0.13 * 1.2), 1],
+    ["input_image.additional", usd(0.04 * 1.2), 1],
   ]),
   // JoggAI Professional API cost: $399 / 800 credits, with one provider
   // credit consumed per started two minutes of talking-avatar output. Apply

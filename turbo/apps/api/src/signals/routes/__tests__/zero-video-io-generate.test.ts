@@ -39,6 +39,7 @@ const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
 const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
+const SEEDANCE_2_5_MODEL = "dreamina-seedance-2-5-260628";
 const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 const BYTEPLUS_VIDEO_URL =
@@ -67,51 +68,63 @@ const WEB_ORIGIN = "https://www.vm0.test";
 
 const VIDEO_PRICING_DEFAULTS = [
   {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.480p_720p.no_video",
+    unitPrice: 12_840,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_5_MODEL,
+    category: "output_video_tokens.480p_720p.with_video",
+    unitPrice: 7680,
+    unitSize: 1_000_000,
+  },
+  {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.no_video",
-    unitPrice: 14_000,
+    unitPrice: 8400,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.480p_720p.with_video",
-    unitPrice: 8600,
+    unitPrice: 5160,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.1080p.no_video",
-    unitPrice: 15_400,
+    unitPrice: 9240,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-260128",
     category: "output_video_tokens.1080p.with_video",
-    unitPrice: 9400,
+    unitPrice: 5640,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-fast-260128",
     category: "output_video_tokens.480p_720p.no_video",
-    unitPrice: 11_200,
+    unitPrice: 6720,
     unitSize: 1_000_000,
   },
   {
     provider: "dreamina-seedance-2-0-fast-260128",
     category: "output_video_tokens.480p_720p.with_video",
-    unitPrice: 6600,
+    unitPrice: 3960,
     unitSize: 1_000_000,
   },
   {
     provider: "seedance-1-5-pro-251215",
     category: "output_video_tokens.audio",
-    unitPrice: 4800,
+    unitPrice: 2880,
     unitSize: 1_000_000,
   },
   {
     provider: "seedance-1-5-pro-251215",
     category: "output_video_tokens.silent",
-    unitPrice: 2400,
+    unitPrice: 1440,
     unitSize: 1_000_000,
   },
   {
@@ -153,31 +166,31 @@ const VIDEO_PRICING_DEFAULTS = [
   {
     provider: MINIMAX_H3_MODEL,
     category: "output_video_seconds.768p",
-    unitPrice: 160,
+    unitPrice: 96,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "output_video_seconds.2k",
-    unitPrice: 260,
+    unitPrice: 156,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "input_video_seconds.768p",
-    unitPrice: 160,
+    unitPrice: 96,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "input_video_seconds.2k",
-    unitPrice: 260,
+    unitPrice: 156,
     unitSize: 1,
   },
   {
     provider: MINIMAX_H3_MODEL,
     category: "input_image.additional",
-    unitPrice: 80,
+    unitPrice: 48,
     unitSize: 1,
   },
 ] as const;
@@ -806,7 +819,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 1383,
+      creditsCharged: 830,
       model: VIDEO_IO_MODEL,
       aspectRatio: "16:9",
       duration: "8s",
@@ -868,7 +881,201 @@ describe("POST /api/zero/video-io/generate", () => {
     // The callback-token charge (123,456 tokens at the no-video 720p rate) is
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1383);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 830);
+  });
+
+  it("generates Seedance 2.5 with expanded references and 20% markup pricing", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const referenceImageUrls = Array.from({ length: 30 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.png`;
+    });
+    const referenceVideoUrls = Array.from({ length: 10 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.mp4`;
+    });
+    const referenceAudioUrls = Array.from({ length: 10 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.mp3`;
+    });
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-5-video-task",
+          status: "queued",
+        });
+      }),
+      http.get(BYTEPLUS_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "tell a complete cinematic story",
+        model: "dreamina-seedance-2.5",
+        duration: "30s",
+        resolution: "720p",
+        aspectRatio: "16:9",
+        imageUrls: referenceImageUrls,
+        videoUrls: referenceVideoUrls,
+        audioUrls: referenceAudioUrls,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const callbackUrl = readCallbackUrl(observedBody);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_5_MODEL,
+      callback_url: callbackUrl,
+      resolution: "720p",
+      ratio: "16:9",
+      duration: 30,
+      generate_audio: true,
+    });
+    const content = asRecord(observedBody).content;
+    expect(Array.isArray(content)).toBeTruthy();
+    if (!Array.isArray(content)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expect(content).toHaveLength(51);
+    const roles = content.map((entry) => {
+      return asRecord(entry).role;
+    });
+    expect(
+      roles.filter((role) => {
+        return role === "reference_image";
+      }),
+    ).toHaveLength(30);
+    expect(
+      roles.filter((role) => {
+        return role === "reference_video";
+      }),
+    ).toHaveLength(10);
+    expect(
+      roles.filter((role) => {
+        return role === "reference_audio";
+      }),
+    ).toHaveLength(10);
+
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "seedance-2-5-video-task",
+      model: SEEDANCE_2_5_MODEL,
+      status: "succeeded",
+      content: { video_url: BYTEPLUS_VIDEO_URL },
+      usage: { completion_tokens: 100_000 },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      creditsCharged: 768,
+      model: SEEDANCE_2_5_MODEL,
+      duration: "30s",
+      durationSeconds: 30,
+      resolution: "720p",
+      sourceUrl: BYTEPLUS_VIDEO_URL,
+      requestId: "seedance-2-5-video-task",
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 768);
+  });
+
+  it("allows Seedance 2.5 audio-only references", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-5-audio-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "follow the rhythm and instrumentation",
+        model: "dreamina-seedance-2.5",
+        audioUrls: ["https://example.com/reference.mp3"],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_5_MODEL,
+      content: [
+        {
+          type: "text",
+          text: "follow the rhythm and instrumentation",
+        },
+        {
+          type: "audio_url",
+          audio_url: { url: "https://example.com/reference.mp3" },
+          role: "reference_audio",
+        },
+      ],
+    });
+  });
+
+  it("submits Seedance 2.5 frame generation with its required adaptive ratio", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-5-frame-task",
+          status: "queued",
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "animate the opening frame",
+        model: "dreamina-seedance-2.5",
+        aspectRatio: "4:3",
+        firstFrameImageUrl: "https://example.com/first.png",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_5_MODEL,
+      ratio: "adaptive",
+      content: [
+        { type: "text", text: "animate the opening frame" },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/first.png" },
+          role: "first_frame",
+        },
+      ],
+    });
   });
 
   it("submits a single Dreamina first-frame image without a frame role", async () => {
@@ -1096,16 +1303,16 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(statusResponse.status).toBe(200);
     const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
-      creditsCharged: 1880,
+      creditsCharged: 1128,
       model: "dreamina-seedance-2-0-260128",
       sourceUrl: BYTEPLUS_VIDEO_URL,
       requestId: "dreamina-video-task",
     });
 
-    // creditsCharged 1880 = 200,000 tokens at the 1080p with-video rate
-    // (9400/1M); the no-video rate would charge 3080, so the exact balance
+    // creditsCharged 1128 = 200,000 tokens at the 1080p with-video rate
+    // (5640/1M); the no-video rate would charge 1848, so the exact balance
     // drop pins the with-video pricing category.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1880);
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1128);
   });
 
   it("generates MiniMax H3 with full references and charges every billed usage component", async () => {
@@ -1255,7 +1462,7 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
-      creditsCharged: 2500,
+      creditsCharged: 1500,
       model: MINIMAX_H3_MODEL,
       aspectRatio: "16:9",
       duration: "5s",
@@ -1266,9 +1473,9 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "minimax-h3-task",
     });
 
-    // 5 output seconds at 260 credits, 4 reference-video seconds at 260
-    // credits, and 2 reference images after the five-image free tier at 80.
-    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 2500);
+    // 5 output seconds at 156 credits, 4 reference-video seconds at 156
+    // credits, and 2 reference images after the five-image free tier at 48.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1500);
   });
 
   it("submits MiniMax H3 first and last frames with adaptive ratio", async () => {

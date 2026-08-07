@@ -65,6 +65,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "fal-ai/qwen-image": "Qwen Image",
   "fal-ai/bytedance/seedream/v4/text-to-image": "Seedream 4",
   // Built-in video generation
+  "dreamina-seedance-2-5-260628": "Seedance 2.5",
   "dreamina-seedance-2-0-260128": "Seedance 2.0",
   "dreamina-seedance-2-0-fast-260128": "Seedance 2.0 Fast",
   "seedance-2-0-260128": "Seedance 2.0",
