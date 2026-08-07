@@ -43,9 +43,10 @@
 //!    rejects a conflict marker without the preceding 409 and rejects
 //!    completion while conflict recovery is outstanding.
 //! 6. The child finishes with `pi-complete`, `pi-released`, or `pi-error`.
-//!    Completion is accepted only when the fixed digests are unchanged and its
-//!    final event sequence equals guest-agent's last acknowledged sequence.
-//!    Release reasons are limited to `api-complete` and `ttl`.
+//!    Completion is accepted only when the fixed digests are unchanged, its
+//!    exit code is 0 or 1, and its final event sequence equals guest-agent's
+//!    last acknowledged sequence. Release reasons are limited to
+//!    `api-complete` and `ttl`.
 //!
 //! Frame names, ordering, identity fields, digests, CAS behavior, and the final
 //! acknowledgement watermark form a cross-language compatibility contract
@@ -58,7 +59,9 @@
 //! value from the child environment. It retains those credentials to relay
 //! transcript reads and exact Pi event writes; the child still receives the
 //! environment required for model execution. Native Pi event payloads bypass
-//! the legacy CLI secret masker, while diagnostic text remains masked.
+//! the legacy CLI secret masker so they can be relayed unchanged. Collected
+//! child stderr and a terminal `pi-complete` error are masked before they are
+//! returned.
 //!
 //! User cancellation, heartbeat failure, timeout, or a protocol error is a
 //! terminal execution failure, not a standby release. A valid `pi-complete`
