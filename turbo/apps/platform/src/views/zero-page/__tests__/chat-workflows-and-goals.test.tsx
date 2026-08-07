@@ -17,7 +17,11 @@ import {
   createMockWorkflowAutomation,
   setMockWorkflowAutomations,
 } from "../../../mocks/handlers/workflow-automations-store.ts";
-import { click, fill } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import {
   expectQueuedMessages,
   mockChatLifecycle,
@@ -1579,7 +1583,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(illustrationChip).toHaveTextContent(illustrationTemplate.title);
       expect(websiteChip).toHaveTextContent(websiteTemplate.title);
       // Sent templates are a record of the run, so they stay static text.
-      expect(videoChip).not.toHaveAttribute("aria-haspopup");
+      expect(queryAllByRoleFast("button")).not.toContain(videoChip);
     });
   });
 

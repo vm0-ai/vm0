@@ -13,16 +13,6 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
-// Sent templates are static text, so they carry no role or accessible name to
-// query by.
-function sentTemplateReferences(): HTMLElement[] {
-  return Array.from(
-    document.querySelectorAll<HTMLElement>(
-      "[data-structured-template-reference]",
-    ),
-  );
-}
-
 describe("user messages", () => {
   it("renders templates inline in message and feedback-note order", async () => {
     const user = userEvent.setup({ delay: null });
@@ -82,14 +72,15 @@ describe("user messages", () => {
       expect(element).toBeInstanceOf(HTMLElement);
       return element as HTMLElement;
     });
-    const references = sentTemplateReferences();
+    const references = screen.getAllByTitle(
+      `Illustration · ${templateItem.title}`,
+    );
     expect(references).toHaveLength(2);
+    const buttons = queryAllByRoleFast("button");
     for (const reference of references) {
-      // A sent template is a record, not a control: it must not read or behave
-      // as a button.
-      expect(reference.tagName).toBe("SPAN");
-      expect(reference).not.toHaveAttribute("aria-haspopup");
       expect(reference.textContent).toBe(templateItem.title);
+      // A sent template is a record, not a control, so it exposes no button.
+      expect(buttons).not.toContain(reference);
     }
     const feedback = document.querySelector("[data-structured-feedback-group]");
     expect(feedback).toBeInstanceOf(HTMLElement);
@@ -148,9 +139,10 @@ describe("user messages", () => {
       },
     });
 
-    await waitFor(() => {
-      expect(sentTemplateReferences()[0]).toHaveTextContent("9:16 \u00b7 8s");
-    });
+    const reference = await screen.findByTitle(
+      `Video \u00b7 ${templateItem.title}`,
+    );
+    expect(reference).toHaveTextContent("9:16 \u00b7 8s");
   });
 
   it("renders ordered snapshots with literal Markdown text", async () => {
@@ -273,7 +265,7 @@ describe("user messages", () => {
       'a[aria-label="Open chat Archived source"]',
     );
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
-    const template = sentTemplateReferences()[0];
+    const template = screen.getByTitle("Presentation · Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
     expect(image).toBeInTheDocument();
     // Templates render inline at their position in the message, so the chip
