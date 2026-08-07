@@ -180,6 +180,10 @@ const resolvePaneThread$ = command(
 
 const waitForThreadMetaResolution$ = command(
   async ({ get }, threadId: string, signal: AbortSignal): Promise<void> => {
+    if (get(threadMeta(threadId))) {
+      return;
+    }
+
     await get(initialLocalChatThreadEventsLoaded$);
     signal.throwIfAborted();
 
