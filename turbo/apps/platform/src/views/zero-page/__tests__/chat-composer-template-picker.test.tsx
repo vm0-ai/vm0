@@ -184,7 +184,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.VideoTemplateOptions]: true,
       },
       path: `/chats/${THREAD_ID}`,

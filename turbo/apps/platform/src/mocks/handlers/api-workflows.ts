@@ -587,6 +587,12 @@ function createStripeInvoicePaidAutomationSummary(
     },
     schedule: null,
     scheduleSummary: null,
+    health: {
+      lastMatchingEventReceivedAt: null,
+      lastDeliveryStatus: null,
+      lastDeliveryStatusAt: null,
+      warning: null,
+    },
   };
 }
 

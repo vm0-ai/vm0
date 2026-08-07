@@ -154,7 +154,6 @@ describe("user messages", () => {
       context,
       path: `/chats/${threadId}`,
       featureSwitches: {
-        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.VideoTemplateOptions]: true,
       },
     });

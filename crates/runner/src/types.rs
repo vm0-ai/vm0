@@ -1319,8 +1319,6 @@ pub enum ConnectorRuntimeCustomAbsentReason {
     Connector,
     #[serde(rename = "grant-unavailable")]
     Grant,
-    #[serde(rename = "credentials-unavailable")]
-    Credentials,
     #[serde(rename = "permission-bundle-unavailable")]
     PermissionBundle,
     #[serde(rename = "runtime-configuration-unavailable")]
