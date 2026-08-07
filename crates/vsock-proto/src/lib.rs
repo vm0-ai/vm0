@@ -167,9 +167,10 @@ pub use payloads::exec_operation::{
     ExecTermination, ExecTimeoutPolicy, MAX_EXEC_STDIN_BYTES, decode_exec_cancel,
     decode_exec_control, decode_exec_control_result, decode_exec_output, decode_exec_result,
     decode_exec_start, decode_exec_started, encode_exec_cancel, encode_exec_control,
-    encode_exec_control_result, encode_exec_output, encode_exec_output_frame_into,
-    encode_exec_result, encode_exec_result_frame_into, encode_exec_start,
-    encode_exec_start_with_expected_exit_codes, encode_exec_started,
+    encode_exec_control_frame_into, encode_exec_control_result, encode_exec_output,
+    encode_exec_output_frame_into, encode_exec_result, encode_exec_result_frame_into,
+    encode_exec_start, encode_exec_start_with_expected_exit_codes, encode_exec_started,
+    validate_exec_control,
 };
 pub use payloads::write_file::{
     WriteFileBatchEntry, decode_write_file, decode_write_file_result, decode_write_files,
