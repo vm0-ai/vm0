@@ -18,6 +18,7 @@ import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
+import type { ModelTokenCategory } from "./model-token-categories";
 import { projectPiEventsInTransaction } from "./pi-transcript.service";
 import {
   insertAssistantEventsInTransaction,
@@ -38,15 +39,7 @@ const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
   "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
 
 export interface PiEdgeModelUsageEntry {
-  readonly category:
-    | "tokens.input"
-    | "tokens.output"
-    | "tokens.cache_read"
-    | "tokens.cache_creation"
-    | "tokens.input.long_context"
-    | "tokens.output.long_context"
-    | "tokens.cache_read.long_context"
-    | "tokens.cache_creation.long_context";
+  readonly category: ModelTokenCategory;
   readonly quantity: number;
 }
 
