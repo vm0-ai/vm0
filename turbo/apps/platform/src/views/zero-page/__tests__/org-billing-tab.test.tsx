@@ -313,7 +313,7 @@ describe("organization billing settings", () => {
         screen.getByRole("heading", { name: "Plano" }),
       ).toBeInTheDocument();
       expect(screen.getByText("Plano Pro")).toBeInTheDocument();
-      expect(screen.getByText("Forma de pagamento")).toBeInTheDocument();
+      expect(screen.getByText("Métodos de pagamento")).toBeInTheDocument();
       expect(
         screen.getByRole("heading", { name: "Comprar créditos" }),
       ).toBeInTheDocument();
@@ -644,7 +644,7 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Update the payment method used for billing in Stripe.",
+          "Manage the payment methods used for billing in Stripe.",
         ),
       ).toBeInTheDocument();
     });
@@ -780,7 +780,7 @@ describe("organization billing settings", () => {
     await openBillingTab();
 
     await waitFor(() => {
-      expect(screen.getByText("Payment method")).toBeInTheDocument();
+      expect(screen.getByText("Payment methods")).toBeInTheDocument();
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
@@ -811,7 +811,7 @@ describe("organization billing settings", () => {
     await openBillingTab();
 
     await waitFor(() => {
-      expect(screen.getByText("Payment method")).toBeInTheDocument();
+      expect(screen.getByText("Payment methods")).toBeInTheDocument();
       expect(screen.getByText("No active plan")).toBeInTheDocument();
     });
 
@@ -842,7 +842,7 @@ describe("organization billing settings", () => {
         screen.getByText("Custom access with 10 concurrent runs"),
       ).toBeInTheDocument();
       expect(screen.getByText("10 concurrent runs")).toBeInTheDocument();
-      expect(screen.getByText("Payment method")).toBeInTheDocument();
+      expect(screen.getByText("Payment methods")).toBeInTheDocument();
     });
     expect(screen.queryByText("Upgrade")).not.toBeInTheDocument();
     expect(screen.queryByText("Downgrade")).not.toBeInTheDocument();

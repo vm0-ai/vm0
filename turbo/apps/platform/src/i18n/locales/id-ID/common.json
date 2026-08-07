@@ -906,7 +906,7 @@
       "to": "Ke"
     },
     "manage": {
-      "description": "Perbarui metode pembayaran yang digunakan untuk penagihan di Stripe.",
+      "description": "Kelola metode pembayaran yang digunakan untuk penagihan di Stripe.",
       "title": "Metode pembayaran"
     },
     "plans": {

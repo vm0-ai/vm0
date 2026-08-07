@@ -28,10 +28,18 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const APP_ORIGIN = "http://app.localhost:3002";
+const PORTAL_CONFIGURATION_ID = "bpc_payment_methods";
 
 describe("POST /api/zero/billing/portal", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
     return store.set(deleteInvoicesOrg$, fixture, context.signal);
+  });
+
+  beforeEach(() => {
+    mockEnv(
+      "STRIPE_PAYMENT_METHOD_PORTAL_CONFIGURATION_ID",
+      PORTAL_CONFIGURATION_ID,
+    );
   });
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
@@ -55,6 +63,31 @@ describe("POST /api/zero/billing/portal", () => {
         code: "PROVIDER_UNAVAILABLE",
       },
     });
+  });
+
+  it("returns 503 when the payment method portal is not configured", async () => {
+    mockEnv("STRIPE_PAYMENT_METHOD_PORTAL_CONFIGURATION_ID", undefined);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: { returnUrl: `${APP_ORIGIN}/settings` },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Billing portal not configured",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).not.toHaveBeenCalled();
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -181,18 +214,12 @@ describe("POST /api/zero/billing/portal", () => {
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: fixture.stripeCustomerId,
+      configuration: PORTAL_CONFIGURATION_ID,
       return_url: returnUrl,
-      flow_data: {
-        type: "payment_method_update",
-        after_completion: {
-          type: "redirect",
-          redirect: { return_url: returnUrl },
-        },
-      },
     });
   });
 
-  it("creates a customer for payment method updates without a subscription", async () => {
+  it("creates a customer for payment method management without a subscription", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
@@ -224,14 +251,8 @@ describe("POST /api/zero/billing/portal", () => {
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: customerId,
+      configuration: PORTAL_CONFIGURATION_ID,
       return_url: returnUrl,
-      flow_data: {
-        type: "payment_method_update",
-        after_completion: {
-          type: "redirect",
-          redirect: { return_url: returnUrl },
-        },
-      },
     });
   });
 
@@ -272,16 +293,8 @@ describe("POST /api/zero/billing/portal", () => {
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: customerId,
+      configuration: PORTAL_CONFIGURATION_ID,
       return_url: `${APP_ORIGIN}/settings/billing`,
-      flow_data: {
-        type: "payment_method_update",
-        after_completion: {
-          type: "redirect",
-          redirect: {
-            return_url: `${APP_ORIGIN}/settings/billing`,
-          },
-        },
-      },
     });
   });
 

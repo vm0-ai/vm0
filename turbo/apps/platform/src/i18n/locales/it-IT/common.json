@@ -927,8 +927,8 @@
       "to": "A"
     },
     "manage": {
-      "description": "Aggiorna il metodo di pagamento utilizzato per la fatturazione in Stripe.",
-      "title": "Metodo di pagamento"
+      "description": "Gestisci i metodi di pagamento utilizzati per la fatturazione in Stripe.",
+      "title": "Metodi di pagamento"
     },
     "plans": {
       "cancellationNotice": "Il tuo piano {{plan}} è stato annullato e terminerà il {{date}}.",

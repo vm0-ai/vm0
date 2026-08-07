@@ -906,7 +906,7 @@
       "to": "に"
     },
     "manage": {
-      "description": "Stripe で請求に使用する支払い方法を更新します。",
+      "description": "Stripe で請求に使用する支払い方法を管理します。",
       "title": "支払い方法"
     },
     "plans": {

@@ -906,8 +906,8 @@
       "to": "To"
     },
     "manage": {
-      "description": "Update the payment method used for billing in Stripe.",
-      "title": "Payment method"
+      "description": "Manage the payment methods used for billing in Stripe.",
+      "title": "Payment methods"
     },
     "plans": {
       "cancellationNotice": "Your {{plan}} plan has been cancelled and will end on {{date}}.",

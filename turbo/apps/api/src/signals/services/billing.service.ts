@@ -57,13 +57,17 @@ async function stripeCustomerIdForOrg(
 }
 
 /**
- * Create a Stripe Billing Portal session for updating the org's default
- * payment method.
+ * Create a Stripe Billing Portal session for managing the org's saved payment
+ * methods.
  */
 export const createBillingPortalSession$ = command(
   async (
     { get, set },
-    args: { readonly orgId: string; readonly returnUrl: string },
+    args: {
+      readonly orgId: string;
+      readonly portalConfigurationId: string;
+      readonly returnUrl: string;
+    },
     signal: AbortSignal,
   ): Promise<string> => {
     const db = get(db$);
@@ -82,14 +86,8 @@ export const createBillingPortalSession$ = command(
     const stripe = getStripeClient();
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
+      configuration: args.portalConfigurationId,
       return_url: args.returnUrl,
-      flow_data: {
-        type: "payment_method_update",
-        after_completion: {
-          type: "redirect",
-          redirect: { return_url: args.returnUrl },
-        },
-      },
     });
     signal.throwIfAborted();
 

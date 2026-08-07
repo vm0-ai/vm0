@@ -906,7 +906,7 @@
       "to": "종료"
     },
     "manage": {
-      "description": "Stripe에서 청구에 사용할 결제 수단을 업데이트합니다.",
+      "description": "Stripe에서 청구에 사용되는 결제 수단을 관리합니다.",
       "title": "결제 수단"
     },
     "plans": {
