@@ -598,6 +598,106 @@ async function outputMessages(actor: ApiTestUser, threadId: string) {
   });
 }
 
+async function expectQueuedPiEdgePromotion(args: {
+  readonly fixture: PiEdgeFixture;
+  readonly model: SupportedRunModel;
+  readonly completionsUrl: string;
+  readonly completionResponse: () => Response;
+}): Promise<void> {
+  const occupyingRun = await sendChatRun(
+    args.fixture,
+    "occupy the only concurrency slot",
+    undefined,
+    args.model,
+  );
+  expect(
+    (await api.readRun(args.fixture.actor, occupyingRun.runId)).status,
+  ).toBe("pending");
+
+  await enablePiLoop(args.fixture);
+  const modelStarted = createDeferredPromise<void>(context.signal);
+  const releaseModel = createDeferredPromise<void>(context.signal);
+  onTestFinished(() => {
+    if (!releaseModel.settled()) {
+      releaseModel.resolve();
+    }
+  });
+  server.use(
+    http.post(args.completionsUrl, async () => {
+      modelStarted.resolve();
+      await releaseModel.promise;
+      return args.completionResponse();
+    }),
+  );
+
+  const queuedRun = await sendChatRun(
+    args.fixture,
+    "start Pi after the queue picks this run",
+    undefined,
+    args.model,
+  );
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "queued",
+  );
+  expect(modelStarted.settled()).toBeFalsy();
+
+  const promotionController = new AbortController();
+  context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+    if (topic === "queue:changed" && !promotionController.signal.aborted) {
+      const error = new Error("abort after queued run promotion commit");
+      error.name = "AbortError";
+      promotionController.abort(error);
+    }
+    return Promise.resolve(undefined);
+  });
+  const completed = await webhooks.requestAgentComplete(
+    {
+      runId: occupyingRun.runId,
+      exitCode: 1,
+      error: "release the concurrency slot for promotion",
+    },
+    {
+      authorization: `Bearer ${generateSandboxToken(
+        args.fixture.actor.userId,
+        occupyingRun.runId,
+        args.fixture.orgId,
+      )}`,
+    },
+    [200],
+    promotionController.signal,
+  );
+  expect(completed.status).toBe(200);
+  await modelStarted.promise;
+  expect(promotionController.signal.aborted).toBeTruthy();
+
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "pending",
+  );
+  const defaultPoll = await api.pollRunner(args.fixture.runnerGroup);
+  expect(defaultPoll.body.job).toBeNull();
+  const standbyPoll = await api.requestPollRunner(
+    true,
+    {
+      group: args.fixture.runnerGroup,
+      supportedProfiles: [PI_STANDBY_PROFILE],
+    },
+    [200],
+  );
+  if (standbyPoll.status !== 200) {
+    throw new Error("Expected promoted Pi standby poll to return 200");
+  }
+  expect(standbyPoll.body.job).toMatchObject({
+    runId: queuedRun.runId,
+    experimentalProfile: PI_STANDBY_PROFILE,
+  });
+
+  releaseModel.resolve();
+  await flushWaitUntilForTest();
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "completed",
+  );
+}
+
 describe("PiLoop edge turn", () => {
   it("uses the org gate, migrates legacy memory into Pi, and completes in the API", async () => {
     const fixture = await piEdgeFixture();
@@ -1348,100 +1448,33 @@ describe("PiLoop edge turn", () => {
     );
   });
 
-  it("starts the Pi edge turn when a concurrency-queued run is promoted", async () => {
+  it("starts the Pi edge turn when a concurrency-queued OpenAI-compatible run is promoted", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const fixture = await piEdgeFixture();
-    const occupyingRun = await sendChatRun(
+    await expectQueuedPiEdgePromotion({
       fixture,
-      "occupy the only concurrency slot",
-    );
-    expect((await api.readRun(fixture.actor, occupyingRun.runId)).status).toBe(
-      "pending",
-    );
-
-    await enablePiLoop(fixture);
-    const modelStarted = createDeferredPromise<void>(context.signal);
-    const releaseModel = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!releaseModel.settled()) {
-        releaseModel.resolve();
-      }
-    });
-    server.use(
-      http.post(COMPLETIONS_URL, async () => {
-        modelStarted.resolve();
-        await releaseModel.promise;
+      model: MODEL,
+      completionsUrl: COMPLETIONS_URL,
+      completionResponse: () => {
         return assistantTextStream(
           "promoted edge answer",
           "promoted edge reasoning",
         );
-      }),
-    );
+      },
+    });
+  });
 
-    const queuedRun = await sendChatRun(
+  it("starts the Pi edge turn when a concurrency-queued Codex run is promoted", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const fixture = await codexPiEdgeFixture();
+    await expectQueuedPiEdgePromotion({
       fixture,
-      "start Pi after the queue picks this run",
-    );
-    expect((await api.readRun(fixture.actor, queuedRun.runId)).status).toBe(
-      "queued",
-    );
-    expect(modelStarted.settled()).toBeFalsy();
-
-    const promotionController = new AbortController();
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed" && !promotionController.signal.aborted) {
-        const error = new Error("abort after queued run promotion commit");
-        error.name = "AbortError";
-        promotionController.abort(error);
-      }
-      return Promise.resolve(undefined);
+      model: CODEX_MODEL,
+      completionsUrl: CODEX_RESPONSES_URL,
+      completionResponse: () => {
+        return codexTextSseStream("promoted codex edge answer");
+      },
     });
-    const completed = await webhooks.requestAgentComplete(
-      {
-        runId: occupyingRun.runId,
-        exitCode: 1,
-        error: "release the concurrency slot for promotion",
-      },
-      {
-        authorization: `Bearer ${generateSandboxToken(
-          fixture.actor.userId,
-          occupyingRun.runId,
-          fixture.orgId,
-        )}`,
-      },
-      [200],
-      promotionController.signal,
-    );
-    expect(completed.status).toBe(200);
-    await modelStarted.promise;
-    expect(promotionController.signal.aborted).toBeTruthy();
-
-    expect((await api.readRun(fixture.actor, queuedRun.runId)).status).toBe(
-      "pending",
-    );
-    const defaultPoll = await api.pollRunner(fixture.runnerGroup);
-    expect(defaultPoll.body.job).toBeNull();
-    const standbyPoll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
-      },
-      [200],
-    );
-    if (standbyPoll.status !== 200) {
-      throw new Error("Expected promoted Pi standby poll to return 200");
-    }
-    expect(standbyPoll.body.job).toMatchObject({
-      runId: queuedRun.runId,
-      experimentalProfile: PI_STANDBY_PROFILE,
-    });
-
-    releaseModel.resolve();
-    await flushWaitUntilForTest();
-    expect((await api.readRun(fixture.actor, queuedRun.runId)).status).toBe(
-      "completed",
-    );
   });
 
   it("requeues an expired standby onto the cold-start lane without settling the run", async () => {

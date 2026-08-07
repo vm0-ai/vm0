@@ -20,13 +20,17 @@ import type { Api, Message, Model } from "@earendil-works/pi-ai";
 import { createPiExecutionTools } from "./tools";
 import { executePiUnresolvedToolBatch } from "./recovery";
 
+export const PI_OPENAI_COMPATIBLE_PROVIDERS = [
+  "deepseek",
+  "moonshotai",
+  "openai",
+  "openrouter",
+  "vercel-ai-gateway",
+  "codex",
+] as const;
+
 export type PiOpenAICompatibleProvider =
-  | "deepseek"
-  | "moonshotai"
-  | "openai"
-  | "openrouter"
-  | "vercel-ai-gateway"
-  | "codex";
+  (typeof PI_OPENAI_COMPATIBLE_PROVIDERS)[number];
 
 type PiOpenAICompletionsProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
 

@@ -9,6 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   isPiAgentModelSupported,
+  PI_OPENAI_COMPATIBLE_PROVIDERS,
   type ExecutionEnv,
   type PiAgentModelConfig,
   type PiOpenAICompatibleProvider,
@@ -25,13 +26,7 @@ export type PiEdgeModelConfig = PiAgentModelConfig;
 
 export const piEdgeModelConfigSchema = z
   .object({
-    provider: z.enum([
-      "deepseek",
-      "moonshotai",
-      "openai",
-      "openrouter",
-      "vercel-ai-gateway",
-    ]),
+    provider: z.enum(PI_OPENAI_COMPATIBLE_PROVIDERS),
     baseUrl: z.url(),
     apiKey: z.string().min(1),
     model: z.string().min(1),

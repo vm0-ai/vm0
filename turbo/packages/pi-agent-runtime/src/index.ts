@@ -12,6 +12,7 @@ export {
   piMessageRequiresSandbox,
 } from "./tools";
 export {
+  PI_OPENAI_COMPATIBLE_PROVIDERS,
   isPiAgentModelSupported,
   resolvePiAgentModel,
   runPiAgentPrompt,
