@@ -1185,6 +1185,7 @@ pub(super) struct RunControls {
     pub(super) cooperative_user_cancel: CancellationToken,
     pub(super) hard_cancel: CancellationToken,
     pub(super) active_input_source: Option<ActiveInputSource>,
+    pub(super) pi_standby_source: Option<crate::pi_standby::PiStandbySubscription>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
     pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
@@ -1278,6 +1279,7 @@ impl RunControls {
             cooperative_user_cancel: cancellation.cooperative_user(),
             hard_cancel: cancellation.hard(),
             active_input_source,
+            pi_standby_source: None,
             spawn_timing: None,
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
             prepared_storage: None,
@@ -1288,6 +1290,14 @@ impl RunControls {
 
     pub(super) fn with_spawn_timing(mut self, spawn_timing: RunnerSpawnTiming) -> Self {
         self.spawn_timing = Some(spawn_timing);
+        self
+    }
+
+    pub(super) fn with_pi_standby_source(
+        mut self,
+        source: Option<crate::pi_standby::PiStandbySubscription>,
+    ) -> Self {
+        self.pi_standby_source = source;
         self
     }
 
@@ -1601,6 +1611,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         cooperative_user_cancel,
         hard_cancel,
         active_input_source,
+        pi_standby_source,
         spawn_timing,
         session_history_restore_plan,
         mut prepared_storage,
@@ -2233,6 +2244,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         process_control.clone(),
         cancel.clone(),
     );
+    let pi_standby_forwarder = super::pi_standby::PiStandbyForwarder::start(
+        context.run_id,
+        pi_standby_source,
+        process_control.clone(),
+        cancel.clone(),
+    );
 
     // Spawn background task to drain stdout chunks and write to the host stream log file.
     let host_log_path = config.log_paths.system_stream_log(context.run_id);
@@ -2304,6 +2321,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // state. Join active input and model prefetch; drain or abort stdout based
     // on the wait outcome.
     if let Some(forwarder) = active_input_forwarder {
+        forwarder.stop().await;
+    }
+    if let Some(forwarder) = pi_standby_forwarder {
         forwarder.stop().await;
     }
 

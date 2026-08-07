@@ -1196,6 +1196,26 @@ def run_codex(codex_home, *args):
     )
 
 
+def zstd_compress(history_bytes):
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            (
+                "const fs=require('node:fs');"
+                "const zlib=require('node:zlib');"
+                "process.stdout.write("
+                "zlib.zstdCompressSync(fs.readFileSync(0)));"
+            ),
+        ],
+        input=history_bytes,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    return result.stdout
+
+
 def event_type(record):
     if record.get("type") != "event_msg":
         return None
@@ -1338,6 +1358,63 @@ def probe_current_codex(
         len(turn_completions) >= 2
         and turn_starts[-1] == turn_completions[-1]
     ), "Codex did not append a complete turn"
+
+
+def probe_zstd_materialization(
+    root,
+    candidate_relative_path,
+    candidate_bytes,
+    session_id,
+    port,
+):
+    codex_home = root / ".codex"
+    write_config(codex_home, port)
+    history_file = codex_home / "sessions" / candidate_relative_path
+    compressed_history_file = Path(f"{history_file}.zst")
+    compressed_history_file.parent.mkdir(parents=True)
+    compressed_history_file.write_bytes(zstd_compress(candidate_bytes))
+
+    requests.clear()
+    resumed = run_codex(
+        codex_home,
+        "resume",
+        session_id,
+        append_token,
+    )
+    output = resumed.stdout + resumed.stderr
+    assert (
+        f"no rollout found for thread id {session_id}" not in output.lower()
+    ), output
+    assert requests and requests[-1][0] == "/v1/responses", (
+        f"Codex did not resume the zstd rollout\n{output}"
+    )
+    assert not compressed_history_file.exists(), (
+        "Codex left the compressed rollout after append"
+    )
+    assert history_file.is_file(), (
+        "Codex did not materialize the compressed rollout as plain JSONL"
+    )
+    materialized = history_file.read_bytes()
+    assert materialized.startswith(candidate_bytes), (
+        "Codex changed the retained history while materializing zstd"
+    )
+    assert len(materialized) > len(candidate_bytes), (
+        "Codex did not append to the materialized rollout"
+    )
+
+    started = [
+        json.loads(line)
+        for line in resumed.stdout.splitlines()
+        if line.startswith("{")
+    ]
+    thread_started = [
+        event
+        for event in started
+        if event.get("type") == "thread.started"
+    ]
+    assert thread_started and thread_started[0].get("thread_id") == session_id, (
+        "Codex changed the zstd-restored thread ID"
+    )
 
 
 with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
@@ -1489,6 +1566,13 @@ with tempfile.TemporaryDirectory(prefix="codex-compact-smoke-") as temp_root:
             root / "current",
             candidate_relative_path,
             full_bytes,
+            candidate_bytes,
+            session_id,
+            port,
+        )
+        probe_zstd_materialization(
+            root / "zstd",
+            candidate_relative_path,
             candidate_bytes,
             session_id,
             port,

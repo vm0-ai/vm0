@@ -1,6 +1,5 @@
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
-import { E2E_ROUTES } from "./e2e-routes";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
@@ -44,6 +43,7 @@ import { webhooksAgentCheckpointsRoutes } from "./routes/webhooks-agent-checkpoi
 import { webhooksAgentCompleteRoutes } from "./routes/webhooks-agent-complete";
 import { webhooksAgentEventsRoutes } from "./routes/webhooks-agent-events";
 import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewall-auth";
+import { webhooksAgentPiTranscriptRoutes } from "./routes/webhooks-agent-pi-transcript";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
 import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
@@ -135,7 +135,6 @@ import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
-import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { zeroStrapiIntegrationsRoutes } from "./routes/zero-strapi-integrations";
 import { zeroStrapiEventsRoutes } from "./routes/zero-strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
@@ -223,6 +222,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentCompleteRoutes,
   ...webhooksAgentEventsRoutes,
   ...webhooksAgentFirewallAuthRoutes,
+  ...webhooksAgentPiTranscriptRoutes,
   ...webhooksAgentStorageRoutes,
   ...connectorsSlugCallbackRoutes,
   ...cronAggregateInsightsRoutes,
@@ -338,7 +338,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserModelPreferenceRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
-  ...zeroWorkflowQueueRoutes,
   ...zeroStrapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,
@@ -392,5 +391,4 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,
-  ...E2E_ROUTES,
 ];

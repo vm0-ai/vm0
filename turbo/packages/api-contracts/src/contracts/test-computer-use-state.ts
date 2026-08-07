@@ -42,7 +42,7 @@ export const testComputerUseStateContract = c.router({
       400: testComputerUseStateErrorSchema,
       404: z.string(),
     },
-    summary: "Seed computer-use e2e run state",
+    summary: "Seed computer-use API integration test state",
   },
   get: {
     method: "GET",
@@ -55,7 +55,7 @@ export const testComputerUseStateContract = c.router({
       400: testComputerUseStateErrorSchema,
       404: z.string(),
     },
-    summary: "Read computer-use e2e run state",
+    summary: "Read computer-use API integration test state",
   },
   delete: {
     method: "DELETE",
@@ -68,7 +68,7 @@ export const testComputerUseStateContract = c.router({
       400: testComputerUseStateErrorSchema,
       404: z.string(),
     },
-    summary: "Clear computer-use e2e run state",
+    summary: "Clear computer-use API integration test state",
   },
 });
 

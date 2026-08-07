@@ -2,6 +2,7 @@ import {
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
@@ -16,6 +17,17 @@ interface WorkflowAutomationEventFixtureArgs {
   readonly automationId: string;
   readonly chatThreadId: string;
   readonly triggerBrief: string;
+}
+
+export async function readWorkflowRunTriggerSourceFixture(
+  runId: string,
+): Promise<string | null> {
+  const [run] = await db()
+    .select({ triggerSource: zeroRuns.triggerSource })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return run?.triggerSource ?? null;
 }
 
 /** Admit a complete generic-webhook context through the production queue path. */

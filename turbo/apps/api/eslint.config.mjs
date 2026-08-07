@@ -95,7 +95,7 @@ const apiTestDirectDbImportMessage =
   "API tests must not import DB handles directly. Exercise setup and assertions through API endpoints; add a test route only when an external-behavior exception is justified.";
 
 const productionRouteTestImportMessage =
-  "Production route composition must not import test-only routes. Mount required test fixture routes explicitly from tests.";
+  "Production source must not import test-only routes. Mount required test fixture routes explicitly from tests through setupApp().";
 
 const lowerLayerRouteImportMessage =
   "Lower layers must not import HTTP route or bootstrap aggregation modules. Move shared behavior to lib, command, computed, external, or service modules.";
@@ -312,6 +312,32 @@ export default [
     },
   },
   {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/signals/routes/test-*.ts",
+      "src/signals/routes/cli-auth-test.ts",
+      "src/signals/route.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/routes/test-*", "**/routes/test-*/**"],
+              message: productionRouteTestImportMessage,
+            },
+            {
+              group: ["**/routes/cli-auth-test"],
+              message: productionRouteTestImportMessage,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/signals/route.ts"],
     rules: {
       "no-restricted-imports": [
@@ -319,7 +345,11 @@ export default [
         {
           patterns: [
             {
-              group: ["./routes/test-*", "./routes/test-*/**"],
+              group: ["**/routes/test-*", "**/routes/test-*/**"],
+              message: productionRouteTestImportMessage,
+            },
+            {
+              group: ["**/routes/cli-auth-test"],
               message: productionRouteTestImportMessage,
             },
             {
@@ -327,12 +357,6 @@ export default [
               importNames: ["createTestFixtureZeroRun$"],
               message:
                 "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
-            },
-          ],
-          paths: [
-            {
-              name: "./routes/cli-auth-test",
-              message: productionRouteTestImportMessage,
             },
           ],
         },

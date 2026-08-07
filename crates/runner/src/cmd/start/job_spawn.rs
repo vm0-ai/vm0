@@ -113,6 +113,7 @@ struct ExecutorInvocation {
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
     active_input_source: Option<crate::active_input::ActiveInputSource>,
+    pi_standby_source: Option<crate::pi_standby::PiStandbySubscription>,
 }
 
 struct ExecutorPhaseOutcome {
@@ -139,6 +140,7 @@ impl ExecutorInvocation {
             sandbox_token,
             sandbox_prepared,
             active_input_source,
+            pi_standby_source,
         } = self;
         let exec_config_for_panic = Arc::clone(&exec_config);
         let cancel_for_outcome = cancellation.any();
@@ -157,6 +159,7 @@ impl ExecutorInvocation {
                     executor::ExecutionHooks {
                         sandbox_prepared: None,
                         active_input_source,
+                        pi_standby_source,
                         pre_spawn_timing: Some(pre_spawn_timing),
                         session_history_restore_plan,
                     },
@@ -176,6 +179,7 @@ impl ExecutorInvocation {
                     executor::ExecutionHooks {
                         sandbox_prepared,
                         active_input_source,
+                        pi_standby_source,
                         pre_spawn_timing: Some(pre_spawn_timing),
                         session_history_restore_plan,
                     },
@@ -567,7 +571,8 @@ pub(super) fn spawn_job(
         session_history_restore_plan,
         active_reuse_key_guard,
     } = request;
-    let (context, completion_auth, active_input_source) = claimed.into_parts();
+    let (context, completion_auth, active_input_source, pi_standby_source) =
+        claimed.into_run_parts();
     let run_id = context.run_id;
     let reuse_key = context.reuse_key().map(str::to_owned);
     let cli_agent_session_id = if executor::validate_resume_session_id(&context).is_ok() {
@@ -662,6 +667,7 @@ pub(super) fn spawn_job(
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,
         active_input_source,
+        pi_standby_source,
     };
     let finalization = FinalizationPhase {
         run_id,

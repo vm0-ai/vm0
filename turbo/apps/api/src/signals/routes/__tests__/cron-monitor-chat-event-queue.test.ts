@@ -120,7 +120,7 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("does not alert for pointerless web, test, or agent prompts", async () => {
+  it("does not alert for web or agent-run prompts", async () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(

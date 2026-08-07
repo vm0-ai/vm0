@@ -33,6 +33,7 @@ mod codex_model_catalog_prefetch;
 mod diagnostics;
 mod env;
 mod guest_state;
+mod pi_standby;
 mod sandbox_run;
 mod session_history_cpu;
 mod session_history_download;
@@ -57,6 +58,7 @@ pub(crate) use session_history_restore_plan::{
 };
 
 use crate::active_input::ActiveInputSource;
+use crate::pi_standby::PiStandbySubscription;
 use agent_run::{ProcessCancelTimeouts, RunControls};
 use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
@@ -233,6 +235,7 @@ impl SandboxPreparedNotifier {
 pub(crate) struct ExecutionHooks {
     pub(crate) sandbox_prepared: Option<SandboxPreparedNotifier>,
     pub(crate) active_input_source: Option<ActiveInputSource>,
+    pub(crate) pi_standby_source: Option<PiStandbySubscription>,
     pub(crate) pre_spawn_timing: Option<RunnerPreSpawnTiming>,
     pub(crate) session_history_restore_plan: SessionHistoryRestorePlan,
 }
@@ -243,6 +246,7 @@ impl ExecutionHooks {
         Self {
             sandbox_prepared: None,
             active_input_source: None,
+            pi_standby_source: None,
             pre_spawn_timing: None,
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
         }
@@ -586,6 +590,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     let ExecutionHooks {
         sandbox_prepared,
         active_input_source,
+        pi_standby_source,
         pre_spawn_timing,
         session_history_restore_plan,
     } = hooks;
@@ -625,6 +630,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             &mut telemetry,
             NewSandboxHooks {
                 controls: RunControls::from_cancellation(cancellation, active_input_source)
+                    .with_pi_standby_source(pi_standby_source)
                     .with_spawn_timing(spawn_timing)
                     .with_session_history_restore_plan(session_history_restore_plan),
                 sandbox_prepared: sandbox_prepared.as_ref(),
@@ -686,6 +692,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let ExecutionHooks {
         sandbox_prepared: _,
         active_input_source,
+        pi_standby_source,
         pre_spawn_timing,
         session_history_restore_plan,
     } = hooks;
@@ -791,6 +798,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             &prev_storage,
             &mut telemetry,
             RunControls::from_cancellation(cancellation, active_input_source)
+                .with_pi_standby_source(pi_standby_source)
                 .with_spawn_timing(spawn_timing)
                 .with_session_history_restore_plan(session_history_restore_plan)
                 .with_guest_state_prepared(guest_state_prepared),

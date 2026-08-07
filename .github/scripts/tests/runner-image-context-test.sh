@@ -93,30 +93,6 @@ assert_contains "$out" "release-skip=true"
 assert_contains "$out" "skip-reason=release-please-push"
 assert_contains "$out" "job-ref="
 
-assert_fails "turbo-consumer requires EVENT_NAME" \
-  WEB_CHANGED=true \
-  "$CONTEXT" turbo-consumer
-
-for flag in WEB_CHANGED API_CHANGED CLI_CHANGED CRATES_CHANGED CI_CHANGED E2E_CHANGED; do
-  out=$(run_clean \
-    EVENT_NAME=pull_request \
-    "${flag}=true" \
-    "$CONTEXT" turbo-consumer)
-  assert_contains "$out" "turbo-runner-consumer-needed=true"
-done
-
-out=$(run_clean \
-  EVENT_NAME=merge_group \
-  API_CHANGED=true \
-  "$CONTEXT" turbo-consumer)
-assert_contains "$out" "turbo-runner-consumer-needed=true"
-
-out=$(run_clean \
-  EVENT_NAME=push \
-  WEB_CHANGED=true \
-  "$CONTEXT" turbo-consumer)
-assert_contains "$out" "turbo-runner-consumer-needed=false"
-
 out=$(run_clean "$CONTEXT" playwright-consumer)
 assert_contains "$out" "playwright-runner-consumer-needed=false"
 
@@ -159,17 +135,17 @@ assert_contains "$out" "runner-image-inputs-changed=true"
 assert_fails "needed requires EVENT_NAME" \
   RELEASE_SKIP=false \
   METAL_HOSTS=dev-1 \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
   "$CONTEXT" needed
 
 out=$(assert_needed_case "release skip" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=true \
   METAL_HOSTS=dev-1 \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=true)
 assert_contains "$out" "has-metal-hosts=true"
-assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "playwright-runner-consumer-needed=false"
 assert_contains "$out" "crates-runner-consumer-needed=false"
 assert_contains "$out" "runner-image-consumer-needed=false"
 assert_contains "$out" "runner-image-inputs-changed=false"
@@ -181,10 +157,10 @@ out=$(assert_needed_case "release skip with runner host groups" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=true \
   RUNNER_HOST_GROUPS_CONFIGURED=true \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=true)
 assert_contains "$out" "has-metal-hosts=true"
-assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "playwright-runner-consumer-needed=false"
 assert_contains "$out" "crates-runner-consumer-needed=false"
 assert_contains "$out" "runner-image-consumer-needed=false"
 assert_contains "$out" "runner-image-inputs-changed=false"
@@ -196,7 +172,7 @@ out=$(assert_needed_case "no metal hosts" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=false \
   METAL_HOSTS= \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=true)
 assert_contains "$out" "has-metal-hosts=false"
 assert_contains "$out" "runner-image-consumer-needed=false"
@@ -208,7 +184,7 @@ out=$(assert_needed_case "no runner host groups" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=false \
   RUNNER_HOST_GROUPS_CONFIGURED=false \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=true)
 assert_contains "$out" "has-metal-hosts=false"
 assert_contains "$out" "runner-image-consumer-needed=false"
@@ -220,10 +196,10 @@ out=$(assert_needed_case "runner host group without legacy metal hosts" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=false \
   RUNNER_HOST_GROUPS_CONFIGURED=true \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=true)
 assert_contains "$out" "has-metal-hosts=true"
-assert_contains "$out" "turbo-runner-consumer-needed=true"
+assert_contains "$out" "playwright-runner-consumer-needed=true"
 assert_contains "$out" "runner-image-consumer-needed=true"
 assert_contains "$out" "runner-image-inputs-changed=true"
 assert_contains "$out" "current-runner-image-needed=true"
@@ -235,7 +211,7 @@ out=$(assert_needed_case "no consumer" \
   METAL_HOSTS=dev-1 \
   RUNNER_IMAGE_INPUTS_CHANGED=true)
 assert_contains "$out" "has-metal-hosts=true"
-assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "playwright-runner-consumer-needed=false"
 assert_contains "$out" "crates-runner-consumer-needed=false"
 assert_contains "$out" "runner-image-consumer-needed=false"
 assert_contains "$out" "runner-image-inputs-changed=true"
@@ -243,50 +219,13 @@ assert_contains "$out" "current-runner-image-needed=false"
 assert_contains "$out" "stable-runner-image-allowed=false"
 assert_contains "$out" "image-selection-reason=no-runner-image-consumer"
 
-out=$(assert_needed_case "turbo web-only consumer before stable reuse" \
-  EVENT_NAME=pull_request \
-  RELEASE_SKIP=false \
-  METAL_HOSTS=dev-1,dev-2 \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
-  RUNNER_IMAGE_INPUTS_CHANGED=false)
-assert_contains "$out" "turbo-runner-consumer-needed=true"
-assert_contains "$out" "crates-runner-consumer-needed=false"
-assert_contains "$out" "runner-image-consumer-needed=true"
-assert_contains "$out" "runner-image-inputs-changed=false"
-assert_contains "$out" "stable-runner-image-allowed=true"
-assert_contains "$out" "current-runner-image-needed=true"
-assert_contains "$out" "image-selection-reason=runner-image-consumer-without-stable-reuse"
-
-out=$(assert_needed_case "turbo cli-only consumer with stable reuse enabled" \
-  EVENT_NAME=pull_request \
-  RELEASE_SKIP=false \
-  METAL_HOSTS=dev-1 \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
-  RUNNER_IMAGE_INPUTS_CHANGED=false \
-  STABLE_RUNNER_IMAGE_REUSE_ENABLED=true)
-assert_contains "$out" "runner-image-consumer-needed=true"
-assert_contains "$out" "runner-image-inputs-changed=false"
-assert_contains "$out" "stable-runner-image-allowed=true"
-assert_contains "$out" "current-runner-image-needed=false"
-assert_contains "$out" "image-selection-reason=stable-runner-image-allowed"
-
-out=$(assert_needed_case "turbo e2e-only consumer before stable reuse" \
-  EVENT_NAME=pull_request \
-  RELEASE_SKIP=false \
-  METAL_HOSTS=dev-1 \
-  TURBO_RUNNER_CONSUMER_NEEDED=true)
-assert_contains "$out" "turbo-runner-consumer-needed=true"
-assert_contains "$out" "runner-image-inputs-changed=false"
-assert_contains "$out" "stable-runner-image-allowed=true"
-assert_contains "$out" "current-runner-image-needed=true"
-
 out=$(assert_needed_case "crates ci-only consumer before stable reuse" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=false \
   METAL_HOSTS=dev-1 \
   CRATES_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=false)
-assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "playwright-runner-consumer-needed=false"
 assert_contains "$out" "crates-runner-consumer-needed=true"
 assert_contains "$out" "runner-image-consumer-needed=true"
 assert_contains "$out" "runner-image-inputs-changed=false"
@@ -300,7 +239,6 @@ out=$(assert_needed_case "main Playwright runner consumer" \
   METAL_HOSTS=dev-1 \
   PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=false)
-assert_contains "$out" "turbo-runner-consumer-needed=false"
 assert_contains "$out" "playwright-runner-consumer-needed=true"
 assert_contains "$out" "crates-runner-consumer-needed=false"
 assert_contains "$out" "runner-image-consumer-needed=true"
@@ -315,7 +253,7 @@ out=$(assert_needed_case "crates runner input" \
   METAL_HOSTS=dev-1 \
   CRATES_RUNNER_CONSUMER_NEEDED=true \
   RUNNER_IMAGE_INPUTS_CHANGED=true)
-assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "playwright-runner-consumer-needed=false"
 assert_contains "$out" "crates-runner-consumer-needed=true"
 assert_contains "$out" "runner-image-consumer-needed=true"
 assert_contains "$out" "runner-image-inputs-changed=true"
@@ -332,27 +270,6 @@ out=$(assert_needed_case "guest input" \
 assert_contains "$out" "crates-runner-consumer-needed=true"
 assert_contains "$out" "runner-image-inputs-changed=true"
 assert_contains "$out" "current-runner-image-needed=true"
-
-out=$(assert_needed_case "turbo ignored on push" \
-  EVENT_NAME=push \
-  RELEASE_SKIP=false \
-  METAL_HOSTS=dev-1 \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
-  RUNNER_IMAGE_INPUTS_CHANGED=false)
-assert_contains "$out" "turbo-runner-consumer-needed=false"
-assert_contains "$out" "runner-image-consumer-needed=false"
-assert_contains "$out" "current-runner-image-needed=false"
-
-out=$(assert_needed_case "runner host group still ignores turbo on push" \
-  EVENT_NAME=push \
-  RELEASE_SKIP=false \
-  RUNNER_HOST_GROUPS_CONFIGURED=true \
-  TURBO_RUNNER_CONSUMER_NEEDED=true \
-  RUNNER_IMAGE_INPUTS_CHANGED=false)
-assert_contains "$out" "has-metal-hosts=true"
-assert_contains "$out" "turbo-runner-consumer-needed=false"
-assert_contains "$out" "runner-image-consumer-needed=false"
-assert_contains "$out" "current-runner-image-needed=false"
 
 assert_fails "artifact-name requires TARGET" \
   HEAD_SHA=abc \

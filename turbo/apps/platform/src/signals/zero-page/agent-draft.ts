@@ -200,9 +200,14 @@ export const loadAgentDraft$ = command(
       return;
     }
 
-    const hasLocalDraft =
-      get(draft.input$).trim() !== "" || get(draft.attachments$).length > 0;
-    if (hasLocalDraft) {
+    const hasLocalDraft = (): boolean => {
+      return (
+        get(draft.input$).trim() !== "" ||
+        get(draft.generationTemplate$) !== undefined ||
+        get(draft.attachments$).length > 0
+      );
+    };
+    if (hasLocalDraft()) {
       return;
     }
 
@@ -215,6 +220,13 @@ export const loadAgentDraft$ = command(
       [200],
     );
     signal.throwIfAborted();
+
+    // The composer is interactive while the remote draft loads. Preserve any
+    // input the user added after the request started instead of replacing it
+    // with the older server snapshot.
+    if (hasLocalDraft()) {
+      return;
+    }
 
     const response = zeroAgentDraftResponseSchema.parse(result.body);
     const restoredDraft = userMessageAgentDraftState(response);

@@ -17,7 +17,8 @@ use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, minimal_context, test_executor_config, test_telemetry,
 };
 use crate::executor::{
-    SessionHistoryMaterializer, SessionHistoryRestorePlan, effective_cli_framework,
+    SessionHistoryCpuPool, SessionHistoryMaterializer, SessionHistoryRestorePlan,
+    effective_cli_framework,
 };
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
 use crate::test_fixtures::session_history::OneShotSessionHistoryServer;
@@ -909,6 +910,84 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
         "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl.zst"
     );
     assert_eq!(writes[0].content, compressed_history);
+    history_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn run_in_sandbox_materializes_prune_eligible_codex_zstd_sidecar_as_raw() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let history =
+        b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let compressed_history = zstd_bytes(history);
+    config.session_history_cpu =
+        SessionHistoryCpuPool::with_test_codex_raw_restore_threshold(1, history.len() as u64 - 1);
+    let sidecar_path = dir.path().join("session-history.blob");
+    tokio::fs::write(&sidecar_path, &compressed_history)
+        .await
+        .unwrap();
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(&compressed_history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                encoding: ResumeSessionHistoryEncoding::Zstd,
+                raw_size: history.len() as u64,
+                encoded_size: compressed_history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let restore_plan = local_sidecar_restore_plan(
+        &ctx,
+        &config,
+        WorkspaceSessionHistorySidecar {
+            path: sidecar_path,
+            representation: WorkspaceSessionHistorySidecarRepresentation::CodexZstd,
+            encoded_size: compressed_history.len() as u64,
+        },
+        cancel.clone(),
+    )
+    .await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(cancel, None).with_session_history_restore_plan(restore_plan),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
     history_mock.assert_calls_async(0).await;
 }
 

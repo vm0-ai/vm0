@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Bounded native session-history pruning for vm0 guest checkpoints"
 
 [dependencies]
+guest-contracts.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 

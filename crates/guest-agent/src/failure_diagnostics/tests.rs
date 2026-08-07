@@ -371,6 +371,31 @@ fn cli_failure_reason_classifies_claude_result_credit_affordability_diagnostic()
 }
 
 #[test]
+fn cli_failure_reason_classifies_deepseek_insufficient_credits_envelope() {
+    let message = r#"unexpected status 402 Payment Required: {"error": "insufficient_credits", "message": "Insufficient credits. Add credits or configure your own API key to continue.", "permission": "model-provider:deepseek", "base": "https://api.deepseek.com/responses"}, url: https://api.deepseek.com/responses"#;
+    let failure_message = selected_failure_message(message, FailureDetailSource::CodexJsonl, None);
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("plain prompt"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(failure_message.source);
+    let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
+
+    assert_eq!(failure_message.message, message);
+    assert_eq!(diagnostic.failure_class, FailureClass::CliNonzero);
+    assert_eq!(
+        diagnostic.failure_reason,
+        Some(FailureReason::InsufficientCredits)
+    );
+    assert_eq!(
+        diagnostic.failure_detail_source,
+        Some(FailureDetailSource::CodexJsonl)
+    );
+}
+
+#[test]
 fn cli_failure_reason_ignores_generic_402_error() {
     let reason = classify_cli_failure_reason(
         AgentFramework::ClaudeCode,
@@ -378,6 +403,22 @@ fn cli_failure_reason_ignores_generic_402_error() {
     );
 
     assert_eq!(reason, None);
+}
+
+#[test]
+fn cli_failure_reason_ignores_unverified_insufficient_credits_envelopes() {
+    for message in [
+        r#"unexpected status 402 Payment Required: {"error":"payment_required","message":"insufficient_credits"}"#,
+        r#"unexpected status 402 Payment Required: {"debug":{"error":"insufficient_credits"}}"#,
+        r#"provider response: {"error":"insufficient_credits"}"#,
+        r#"provider response: {"error":"insufficient_credits"}; later request returned 402 Payment Required"#,
+        r#"unexpected status 402 Payment Required: {"error":"payment_required"}; trailing {"error":"insufficient_credits"}"#,
+        r#"unexpected status 402 Payment Required: {invalid {"error":"insufficient_credits"}"#,
+    ] {
+        let reason = classify_cli_failure_reason(AgentFramework::Codex, message);
+
+        assert_eq!(reason, None, "message: {message}");
+    }
 }
 
 #[test]

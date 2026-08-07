@@ -43,6 +43,7 @@ export enum FeatureSwitchKey {
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
   GoogleFormsWorkflowAutomations = "googleFormsWorkflowAutomations",
+  StripeInvoicePaidWorkflowAutomations = "stripeInvoicePaidWorkflowAutomations",
   GithubWebhookAutomations = "githubWebhookAutomations",
   MorningBrief = "morningBrief",
   ManualMorningBrief = "manualMorningBrief",
@@ -53,8 +54,10 @@ export enum FeatureSwitchKey {
   WorkdayConnector = "workdayConnector",
   CodexFastMode = "codexFastMode",
   NewChatDefaultModelAction = "newChatDefaultModelAction",
+  ChatNextRunModelNotice = "chatNextRunModelNotice",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
+  TemplatePickerGlobalSearch = "templatePickerGlobalSearch",
   UsagePackPlans = "usagePackPlans",
 
   ZapierConnector = "zapierConnector",
@@ -70,5 +73,6 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   SharedThreadSharing = "sharedThreadSharing",
+  PiLoop = "piLoop",
   CjkFriendlyMarkdown = "cjkFriendlyMarkdown",
 }

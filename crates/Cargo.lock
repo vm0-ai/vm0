@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.13"
+version = "1.0.14"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -252,9 +252,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-s3"
-version = "1.140.0"
+version = "1.141.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9660cf991e512fbe6094f1041ff3d3282bc5aeeeb6184e8de437ec2de024a10"
+checksum = "d9f9420d3a2467eed22ed3635ca653653162c386a0b0f65c78189f9bd3c1379e"
 dependencies = [
  "arc-swap",
  "aws-credential-types",
@@ -788,9 +788,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.5"
+version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "301b56658598e48f3648647ac6fc887be7e7108eddfa4e9b63fcf3ec58c0cadf"
+checksum = "473c7e07f409a8d772161724aa8db6a765a2532a70f9667eeb7b49d3d02fbdca"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -798,9 +798,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.5"
+version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a65403d1a1bd28f7dc68eb8506e8874808ee5eecb59298de588e2e1407a078"
+checksum = "7b48fea5a88e9ae728a2dcbedbfc0e730f7d60da42e1cb049a83c9fb8b789889"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1254,7 +1254,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.64.8"
+version = "0.64.9"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1293,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.63"
+version = "0.2.64"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "libc",
  "serde",
@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.22.19"
+version = "0.22.20"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.145"
+version = "0.16.146"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1343,7 +1343,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.43"
+version = "0.21.44"
 dependencies = [
  "api-contracts",
  "guest-contracts",
@@ -1376,6 +1376,7 @@ dependencies = [
 name = "guest-session-prune"
 version = "0.3.3"
 dependencies = [
+ "guest-contracts",
  "proptest",
  "serde_json",
  "tempfile",
@@ -1384,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.51"
+version = "0.1.52"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2606,7 +2607,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.159.0"
+version = "0.159.2"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2830,7 +2831,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.192"
+version = "0.37.193"
 dependencies = [
  "async-trait",
  "clap",
@@ -2861,7 +2862,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.75"
+version = "0.8.76"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3784,7 +3785,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.64"
+version = "0.19.65"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3817,7 +3818,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-test"
-version = "0.9.190"
+version = "0.9.191"
 dependencies = [
  "guest-write-file",
  "libc",
@@ -4250,18 +4251,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.55"
+version = "0.8.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5a105cd7b140f6eeec8acff2ea38135d3cab283ada58540f629fe51e46696eb"
+checksum = "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.55"
+version = "0.8.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fe976fb70c78cd64cccfe3a6fc142244e8a77b70959b30faf9d0ac37ee228eb"
+checksum = "f2ab42fc20575779bd240faa45f94a74256f755c0fa9e89f0ede20d91d0cdfc1"
 dependencies = [
  "proc-macro2",
  "quote",

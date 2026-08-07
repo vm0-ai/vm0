@@ -256,6 +256,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable Stripe invoice-paid workflow automations with immutable Live-mode OAuth bindings.",
+    enabled: false,
+  },
   [FeatureSwitchKey.GithubWebhookAutomations]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -305,10 +311,22 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatNextRunModelNotice]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a composer notice when the selected model differs from the running chat model.",
+    enabled: true,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
       "Send preview chat runs through real agent CLIs instead of preview mock runners.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PiLoop]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
     enabled: false,
   },
   [FeatureSwitchKey.ComposerUploadPopover]: {
@@ -316,6 +334,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
     enabled: false,
+  },
+  [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Search presentation, website, illustration, and video templates from the shared template picker search field.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
@@ -340,8 +365,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatErrorRecovery]: {
     maintainer: "ethan@vm0.ai",
@@ -367,7 +391,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Close markdown emphasis (`*`, `**`, `***`, `~~`) that sits directly against CJK punctuation, which plain CommonMark leaves as literal asterisks. Turn off to fall back to stock CommonMark parsing.",
-    enabled: true,
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",

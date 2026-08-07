@@ -5,6 +5,7 @@ import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  PI_STANDBY_PROFILE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
@@ -20,6 +21,7 @@ import {
   type HeldSandboxState,
   type HeldWorkspaceState,
   type RunnerPreferenceClaimState,
+  type RunnerPreferenceDecision,
   type RunnerPreferenceResolution,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
@@ -102,7 +104,6 @@ import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runt
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
 import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
 import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
-import { withRunModelAnnotation } from "../services/zero-chat-user-message.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -118,8 +119,10 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  runnerPreferenceDecisionTelemetryDimensions,
+  runnerPreferenceDeliveryFields,
   runnerReuseKeyTelemetryKind,
-  runnerReusePreferenceLookupError,
+  runnerReusePreferenceLookupErrorDecision,
   runnerReusePreferencePollPriority,
   resolveRunnerReusePreference,
 } from "../services/runner-reuse-preference";
@@ -551,7 +554,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolution;
+  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
   readonly reuseKeyKind: "thread" | "session" | "none";
   readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
@@ -564,8 +567,10 @@ function recordPollTimingMetrics(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
-    runner_preference_resolution: args.runnerPreferenceResolution,
     reuse_key_kind: args.reuseKeyKind,
+    ...runnerPreferenceDecisionTelemetryDimensions(
+      args.runnerPreferenceDecision,
+    ),
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
@@ -654,7 +659,7 @@ async function resolvePollRunnerReusePreference(
       });
     },
   );
-  return resolution ?? runnerReusePreferenceLookupError();
+  return resolution ?? runnerReusePreferenceLookupErrorDecision();
 }
 
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -732,7 +737,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-  const reusePreference = await resolvePollRunnerReusePreference(db, {
+  const runnerPreferenceDecision = await resolvePollRunnerReusePreference(db, {
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
@@ -742,13 +747,16 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     currentDate,
   });
   signal.throwIfAborted();
+  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
+    runnerPreferenceDecision,
+  );
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    runnerPreferenceResolution: reusePreference.outcome,
+    runnerPreferenceDecision,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
     historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
@@ -771,8 +779,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        runnerPreference: reusePreference.runnerPreference ?? undefined,
-        runnerPreferenceResolution: reusePreference.outcome,
+        ...runnerPreferenceFields,
       },
     },
   };
@@ -1010,24 +1017,13 @@ async function lockRunnerJob(
   return row;
 }
 
-async function transitionClaimedJobToRunning(
-  db: Db,
+function buildClaimTransitionSql(
   runId: string,
-  runnerIdentity: RunnerClaimIdentity | undefined,
-  signal: AbortSignal,
-  timing: ClaimRouteTimingCollector,
-): Promise<ClaimTransitionResult> {
-  const runnerId = runnerIdentity?.runnerId ?? null;
-  const runnerHeartbeatGeneration = runnerIdentity?.heartbeatGeneration ?? null;
-  return await db.transaction(async (tx) => {
-    const result = await timing.measure(
-      "claim_route_transition_execute",
-      "nested",
-      async () => {
-        // Materialized outputs make the row locks depend on run, then queue.
-        return await executeRawRows(
-          tx,
-          sql`
+  runnerId: string | null,
+  runnerHeartbeatGeneration: number | null,
+): SQL {
+  // Materialized outputs make the row locks depend on run, then queue.
+  return sql`
           WITH locked_run AS MATERIALIZED (
             SELECT
               ${agentRuns.id} AS "id",
@@ -1039,6 +1035,7 @@ async function transitionClaimedJobToRunning(
           locked_job AS MATERIALIZED (
             SELECT
               ${runnerJobQueue.runId} AS "runId",
+              ${runnerJobQueue.profile} AS "profile",
               ${lte(runnerJobQueue.expiresAt, sql`now()`)} AS "isExpired"
             FROM ${runnerJobQueue}
             INNER JOIN locked_run
@@ -1085,6 +1082,10 @@ async function transitionClaimedJobToRunning(
               sql`locked_job."runId" = locked_run."id"`,
               sql`(
                 locked_run."status" <> 'pending'
+                OR locked_job."profile" <> ${PI_STANDBY_PROFILE}
+              )`,
+              sql`(
+                locked_run."status" <> 'pending'
                 OR EXISTS (
                   SELECT 1
                   FROM updated_run
@@ -1093,6 +1094,17 @@ async function transitionClaimedJobToRunning(
               )`,
             )}
             RETURNING ${runnerJobQueue.runId} AS "runId"
+          ),
+          retained_pi_job AS (
+            SELECT locked_job."runId" AS "runId"
+            FROM locked_job
+            WHERE
+              locked_job."profile" = ${PI_STANDBY_PROFILE}
+              AND EXISTS (
+                SELECT 1
+                FROM updated_run
+                WHERE updated_run."id" = locked_job."runId"
+              )
           )
           SELECT
             CASE
@@ -1112,7 +1124,10 @@ async function transitionClaimedJobToRunning(
                 )
                 THEN 'job-not-found'
               WHEN EXISTS (SELECT 1 FROM updated_run)
-                AND EXISTS (SELECT 1 FROM deleted_job)
+                AND (
+                  EXISTS (SELECT 1 FROM deleted_job)
+                  OR EXISTS (SELECT 1 FROM retained_pi_job)
+                )
                 THEN 'claimed'
               ELSE 'invariant-error'
             END AS "status",
@@ -1123,9 +1138,27 @@ async function transitionClaimedJobToRunning(
                 )::double precision
               FROM updated_run
             ) AS "claimedAtMs"
-          `,
-          claimTransitionSqlRowSchema,
-        );
+          `;
+}
+
+async function transitionClaimedJobToRunning(
+  db: Db,
+  runId: string,
+  runnerIdentity: RunnerClaimIdentity | undefined,
+  signal: AbortSignal,
+  timing: ClaimRouteTimingCollector,
+): Promise<ClaimTransitionResult> {
+  const query = buildClaimTransitionSql(
+    runId,
+    runnerIdentity?.runnerId ?? null,
+    runnerIdentity?.heartbeatGeneration ?? null,
+  );
+  return await db.transaction(async (tx) => {
+    const result = await timing.measure(
+      "claim_route_transition_execute",
+      "nested",
+      async () => {
+        return await executeRawRows(tx, query, claimTransitionSqlRowSchema);
       },
     );
     signal.throwIfAborted();
@@ -2744,10 +2777,7 @@ async function loadRunningActiveInputRun(
   },
 ) {
   const [run] = await db
-    .select({
-      chatThreadId: zeroRuns.chatThreadId,
-      selectedModel: zeroRuns.selectedModel,
-    })
+    .select({ chatThreadId: zeroRuns.chatThreadId })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
@@ -2762,10 +2792,7 @@ async function loadRunningActiveInputRun(
   if (!run?.chatThreadId) {
     return null;
   }
-  return {
-    chatThreadId: run.chatThreadId,
-    selectedModel: run.selectedModel,
-  };
+  return { chatThreadId: run.chatThreadId };
 }
 
 function pendingActiveInputRows(
@@ -2782,7 +2809,6 @@ function pendingActiveInputRows(
       eventType: chatEvents.eventType,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
-      triggerSource: chatEvents.triggerSource,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
       generationTemplate: chatEvents.generationTemplate,
@@ -2810,7 +2836,6 @@ async function claimPendingActiveInputEvent(
   tx: ActiveInputClaimTransaction,
   event: PendingActiveInputRow,
   runId: string,
-  selectedModel: string | null,
 ): Promise<void> {
   if (!event.userMessage) {
     throw new Error("Pending active input has invalid prompt data");
@@ -2829,28 +2854,21 @@ async function claimPendingActiveInputEvent(
     contextType: event.contextType,
     contextId: event.contextId,
   };
-  const userMessage =
-    selectedModel === null
-      ? event.userMessage
-      : withRunModelAnnotation(event.userMessage, selectedModel);
   const replacement =
     event.eventType === "input.budget"
       ? await replaceLoadedChatEvent(tx, target, {
           chatThreadId: event.chatThreadId,
           eventType: "input.budget",
           runId,
-          userMessage,
+          userMessage: event.userMessage,
         })
       : await replaceLoadedChatEvent(tx, target, {
           chatThreadId: event.chatThreadId,
           eventType: "input.prompt",
           runId,
-          userMessage,
+          userMessage: event.userMessage,
           attachFiles: event.attachFiles,
           generationTemplate: event.generationTemplate,
-          ...(event.triggerSource
-            ? { triggerSource: event.triggerSource }
-            : {}),
         });
   if (!replacement) {
     throw new Error("Active input claim lost after locking the thread");
@@ -2871,6 +2889,9 @@ async function materializePendingActiveInputPrompts(
     ) {
       return null;
     }
+    if (event.contextType === null) {
+      throw new Error("Pending active input is missing its context type");
+    }
     prompts.set(
       event.id,
       await materializeActiveInputPrompt(db, {
@@ -2878,7 +2899,7 @@ async function materializePendingActiveInputPrompts(
           id: event.id,
           chatThreadId: event.chatThreadId,
           eventType: event.eventType,
-          triggerSource: event.triggerSource,
+          contextType: event.contextType,
           userMessage: event.userMessage,
           generationTemplate: event.generationTemplate,
         },
@@ -3012,7 +3033,7 @@ const claimActiveInputsInner$ = command(
         return null;
       }
       for (const event of events) {
-        await claimPendingActiveInputEvent(tx, event, runId, run.selectedModel);
+        await claimPendingActiveInputEvent(tx, event, runId);
       }
       return true;
     });

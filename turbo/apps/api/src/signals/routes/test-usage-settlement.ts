@@ -16,7 +16,7 @@ import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.s
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const body$ = bodyResultOf(testUsageSettlementContract.process);
 const setupBody$ = bodyResultOf(testUsageSettlementContract.setup);

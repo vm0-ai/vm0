@@ -15,7 +15,6 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eTeamsMockCallLog } from "@vm0/db/schema/e2e-teams-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
@@ -36,7 +35,6 @@ import {
 } from "drizzle-orm";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -46,7 +44,7 @@ import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
@@ -76,30 +74,6 @@ function contentKeys(value: unknown): string[] {
     return Object.keys(value);
   }
   return [];
-}
-
-function e2eTeamsMockEnabled(): boolean {
-  const flag = optionalEnv("E2E_TEAMS_MOCK_ENABLED");
-  return flag === "1" || flag === "true";
-}
-
-function resolvedTeamsMockBaseUrl(): string | null {
-  const baseUrl = optionalEnv("TEAMS_MOCK_BASE_URL");
-  if (baseUrl) {
-    return baseUrl.replace(/\/+$/u, "");
-  }
-
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (e2eTeamsMockEnabled() && vercelUrl) {
-    return `https://${vercelUrl}/api/test/teams-mock`;
-  }
-
-  const apiBackendUrl = optionalEnv("VM0_API_BACKEND_URL");
-  if (e2eTeamsMockEnabled() && apiBackendUrl) {
-    return `${apiBackendUrl.replace(/\/+$/u, "")}/api/test/teams-mock`;
-  }
-
-  return null;
 }
 
 interface UpsertTeamsInstallationInput {
@@ -700,37 +674,6 @@ async function defaultComposeVersionFor(
   return row ?? null;
 }
 
-function recentMockCalls(db: ReadonlyDb, tenantId: string | undefined) {
-  const query = db
-    .select({
-      method: e2eTeamsMockCallLog.method,
-      tenantId: e2eTeamsMockCallLog.tenantId,
-      conversationId: e2eTeamsMockCallLog.conversationId,
-      activityId: e2eTeamsMockCallLog.activityId,
-      bodyJson: e2eTeamsMockCallLog.bodyJson,
-      createdAt: e2eTeamsMockCallLog.createdAt,
-    })
-    .from(e2eTeamsMockCallLog)
-    .orderBy(desc(e2eTeamsMockCallLog.createdAt))
-    .limit(50);
-  if (!tenantId) {
-    return query;
-  }
-  return db
-    .select({
-      method: e2eTeamsMockCallLog.method,
-      tenantId: e2eTeamsMockCallLog.tenantId,
-      conversationId: e2eTeamsMockCallLog.conversationId,
-      activityId: e2eTeamsMockCallLog.activityId,
-      bodyJson: e2eTeamsMockCallLog.bodyJson,
-      createdAt: e2eTeamsMockCallLog.createdAt,
-    })
-    .from(e2eTeamsMockCallLog)
-    .where(eq(e2eTeamsMockCallLog.tenantId, tenantId))
-    .orderBy(desc(e2eTeamsMockCallLog.createdAt))
-    .limit(50);
-}
-
 const getTeamsState$ = computed(async (get) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -767,7 +710,6 @@ const getTeamsState$ = computed(async (get) => {
     db,
     compose?.headVersionId,
   );
-  const mockCalls = await recentMockCalls(db, query.tenant_id);
   const callbacks = await recentTeamsCallbacks(db, stateOrgId);
 
   return {
@@ -805,10 +747,6 @@ const getTeamsState$ = computed(async (get) => {
             content_keys: contentKeys(composeVersion.content),
           }
         : null,
-      resolved_teams_mock_base_url: resolvedTeamsMockBaseUrl(),
-      mock_calls: mockCalls.map((call) => {
-        return { ...call, createdAt: isoString(call.createdAt) };
-      }),
     },
   };
 });
@@ -1057,10 +995,6 @@ async function deleteTeamsTenantsForState(
   await db
     .delete(teamsOrgInstallations)
     .where(inArray(teamsOrgInstallations.teamsTenantId, tenantIds));
-  signal.throwIfAborted();
-  await db
-    .delete(e2eTeamsMockCallLog)
-    .where(inArray(e2eTeamsMockCallLog.tenantId, tenantIds));
   signal.throwIfAborted();
 }
 

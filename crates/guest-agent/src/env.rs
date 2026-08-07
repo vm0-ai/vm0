@@ -274,6 +274,9 @@ pub struct GuestConfig {
     pub artifacts: Vec<ArtifactEnv>,
     pub feature_flags: HashMap<String, bool>,
     pub codex_runtime_config: String,
+    pub pi_system_prompt: String,
+    pub pi_model_config: String,
+    pub run_skill_snapshot: String,
     pub stuck_tool_timeout_secs: u64,
     pub post_result_sigterm_grace: Duration,
     pub post_result_total_cap: Duration,
@@ -356,6 +359,9 @@ impl GuestConfig {
             artifacts,
             feature_flags,
             codex_runtime_config: payload.codex_runtime_config,
+            pi_system_prompt: payload.pi_system_prompt,
+            pi_model_config: payload.pi_model_config,
+            run_skill_snapshot: payload.run_skill_snapshot,
             stuck_tool_timeout_secs: u64_value_or(
                 guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
                 non_empty(&raw.stuck_tool_timeout_secs),
@@ -910,6 +916,9 @@ mod tests {
                     .to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
+            pi_system_prompt: "fixed Pi prompt".to_string(),
+            pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
+            run_skill_snapshot: r#"{"digest":"sha256:test"}"#.to_string(),
         };
         let path = write_run_payload_fixture(&runtime_dir, &payload);
         let parent = path.parent().unwrap().to_path_buf();
@@ -931,6 +940,9 @@ mod tests {
         assert_eq!(config.artifacts.len(), 1);
         assert_eq!(config.feature_flags.get("flag"), Some(&true));
         assert_eq!(config.codex_runtime_config, r#"{"providerId":"deepseek"}"#);
+        assert_eq!(config.pi_system_prompt, "fixed Pi prompt");
+        assert_eq!(config.pi_model_config, r#"{"provider":"deepseek"}"#);
+        assert_eq!(config.run_skill_snapshot, r#"{"digest":"sha256:test"}"#);
         assert!(!path.exists());
         assert!(!parent.exists());
     }

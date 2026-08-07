@@ -49,6 +49,8 @@ import {
 } from "./zero-runs-create.service";
 import { isQueueFirstRunClaimLost } from "./agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import type { PiEdgeTurnArgs } from "./pi-edge-config";
+import { runPiEdgeTurn$ } from "./pi-edge-loop.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
 import {
   autonomyBudgetSchemaAvailable,
@@ -1575,6 +1577,7 @@ async function appendAssociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
+  readonly triggerSource: "web" | "agent";
   // When false, the thread's in-progress draft is preserved. Automation posts
   // are not user-initiated typing, so they must not clear the user's draft.
   readonly clearDraft: boolean;
@@ -1592,7 +1595,7 @@ async function appendAssociatedUserMessage(params: {
       eventType: "input.prompt",
       userMessage: params.userMessage,
       runId: params.runId,
-      contextType: "web",
+      ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
       attachFiles: fileIds,
       generationTemplate: params.generationTemplate,
     };
@@ -2442,6 +2445,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly appendInitialThinking: boolean;
   readonly touchThreadSort: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
+  readonly triggerSource: "web" | "agent";
 }): void {
   waitUntil(
     (async () => {
@@ -2461,6 +2465,7 @@ function scheduleAssociatedUserMessage(params: {
         userMessage: params.body.userMessage,
         generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
+        triggerSource: params.triggerSource,
         clearDraft: true,
       });
       if (inserted) {
@@ -2502,6 +2507,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly initialThinkingEnabled: boolean;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
+  readonly triggerSource: "web" | "agent";
   readonly queueFirstClaim:
     | {
         readonly createdAt: Date;
@@ -2544,6 +2550,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     appendInitialThinking,
     touchThreadSort: params.touchThreadSort,
     attachFileMetadata: params.attachFileMetadata,
+    triggerSource: params.triggerSource,
   });
 }
 
@@ -2863,6 +2870,7 @@ function buildCreateZeroRunArgs(params: {
     generationTemplatePrompt: prepared.generationTemplatePrompt,
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
+    agentRunSource: prepared.agentRunSource,
   };
   return {
     auth: args.auth,
@@ -2993,6 +3001,7 @@ function scheduleNormalChatRunSideEffects(params: {
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,
     ),
+    triggerSource: params.prepared.triggerSource,
     queueFirstClaim: {
       createdAt: params.queueFirstClaimedAt,
     },
@@ -3021,6 +3030,21 @@ async function buildNormalChatRunArgs(
   });
   signal.throwIfAborted();
   return createRunArgs;
+}
+
+function piEdgeKickoff(
+  run: (turnArgs: PiEdgeTurnArgs) => Promise<unknown>,
+): (turnArgs: PiEdgeTurnArgs) => void {
+  return (turnArgs) => {
+    waitUntil(
+      tapError(run(turnArgs), (error) => {
+        L.error("Pi edge turn dispatch failed", {
+          runId: turnArgs.runId,
+          error,
+        });
+      }),
+    );
+  };
 }
 
 const createNormalChatRun$ = command(
@@ -3100,6 +3124,9 @@ const createNormalChatRun$ = command(
       createQueueFirstZeroRun$,
       {
         ...createRunArgs,
+        kickoffPiEdgeTurn: piEdgeKickoff((turnArgs) => {
+          return set(runPiEdgeTurn$, turnArgs, signal);
+        }),
         apiStartTime: queuedMessage.createdAt.getTime(),
         zeroRunMetadata: {
           autonomyBudget: queuedMessage.autonomyBudget.autonomyBudget,

@@ -684,8 +684,8 @@
       "previewWebsite": "Aperçu du modèle de site Web {{title}}",
       "previousHtmlPreview": "Aperçu HTML précédent de {{title}}",
       "previousSlide": "Aperçu de la diapositive précédente",
-      "searchConnector": "Recherche de connecteur...",
-      "searchConnectors": "Rechercher des connecteurs",
+      "searchConnector": "Rechercher des modèles",
+      "searchConnectors": "Rechercher des modèles",
       "selected": "Modèle : {{title}}",
       "selectStyle": "Sélectionner le style {{style}}",
       "selectTemplate": "Sélectionner le modèle {{title}}",
@@ -1114,7 +1114,6 @@
     "actions": {
       "authorize": "Autoriser",
       "cancel": "Annuler",
-      "configure": "Configurer",
       "confirm": "Confirmer",
       "continue": "Continuer",
       "copied": "Copié !",
@@ -1351,7 +1350,6 @@
       "available_other": "Connecteurs disponibles à connecter ({{count}})",
       "configurePermissions": "Configurer les autorisations de {{connectorName}}",
       "customAuthorizeDescription": "Examiner, connecter et autoriser ce connecteur personnalisé pour l'agent.",
-      "customConnectDescription": "Examiner et connecter ce connecteur personnalisé.",
       "find": "Rechercher des connecteurs...",
       "remove": "Supprimer {{connectorName}}",
       "title": "Connecteurs"
@@ -1496,6 +1494,7 @@
       "message_one": "{{count}} message",
       "message_many": "{{count}} messages",
       "message_other": "{{count}} messages",
+      "modelChangeAppliesNextRun": "Votre modèle sélectionné sera appliqué à votre prochaine exécution.",
       "openGoalDetails": "Ouvrir les détails de l'objectif",
       "pendingAutomationEvent": "Événement d'automatisation en attente",
       "queuedMessage": "Message en file d'attente",
@@ -1975,19 +1974,6 @@
         "description": "Ces modifications OAuth déconnecteront tous les membres actuellement connectés avec OAuth. Ils devront reconnecter ce connecteur personnalisé.",
         "title": "Déconnecter les connexions OAuth existantes ?"
       }
-    },
-    "customProposal": {
-      "configure": "Configurer {{connector}}",
-      "descriptionAgent": "L'enregistrement connectera vos valeurs et autorisera {{agent}}.",
-      "descriptionUser": "L'enregistrement connectera ce connecteur personnalisé pour votre compte.",
-      "documentTitle": "Configurer un connecteur personnalisé",
-      "invalid": "Ce lien de proposition de connecteur personnalisé est invalide ou expiré.",
-      "requestScope": "Portée de la demande",
-      "returnToChat": "Revenez au chat et répondez ACK afin que l'agent puisse vérifier le connecteur.",
-      "saved": "Enregistré",
-      "savedToast": "{{connector}} enregistré",
-      "targetFallback": "cet agent",
-      "update": "Mettre à jour {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Autoriser {{agent}}",

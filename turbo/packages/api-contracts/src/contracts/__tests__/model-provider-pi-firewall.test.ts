@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  MODEL_PROVIDER_FIREWALL_CONFIGS,
+  getModelProviderPiChatCompletionsUrl,
+} from "../model-provider-firewalls";
+
+/**
+ * The sandbox never holds a real model credential. It runs with the firewall
+ * placeholder and the mitm proxy substitutes the secret at egress, but only for
+ * the base URLs a provider's firewall lists, and base matching is a prefix
+ * match. So if the Pi standby loop's chat-completions URL falls outside every
+ * listed base, the placeholder is forwarded verbatim and the provider answers
+ * 401. That is exactly what a live handoff hit before this coverage existed.
+ */
+const PI_CAPABLE_PROVIDERS = [
+  "deepseek",
+  "openai-api-key",
+  "moonshot-api-key",
+] as const;
+
+function firewallBases(provider: string): readonly string[] {
+  const configs: Record<string, { apis: readonly { base: string }[] }> =
+    MODEL_PROVIDER_FIREWALL_CONFIGS;
+  return (configs[provider]?.apis ?? []).map((api) => {
+    return api.base;
+  });
+}
+
+describe("model provider firewall covers the Pi standby request", () => {
+  it.each(PI_CAPABLE_PROVIDERS)("covers %s", (provider) => {
+    const requestUrl = getModelProviderPiChatCompletionsUrl(provider);
+    expect(requestUrl).toBeDefined();
+
+    const bases = firewallBases(provider);
+    const covered = bases.some((base) => {
+      return requestUrl?.startsWith(base.replace(/\/+$/, ""));
+    });
+
+    expect(
+      covered,
+      `${provider}: Pi calls ${requestUrl}, firewall bases are ${bases.join(", ")}`,
+    ).toBe(true);
+  });
+
+  it("keeps credential injection scoped to inference paths", () => {
+    for (const provider of PI_CAPABLE_PROVIDERS) {
+      for (const base of firewallBases(provider)) {
+        expect(base).toMatch(/\/(chat\/completions|responses|v1\/messages)$/);
+      }
+    }
+  });
+
+  it("exposes no Pi endpoint for providers the Pi loop cannot drive", () => {
+    expect(getModelProviderPiChatCompletionsUrl("anthropic-api-key")).toBe(
+      undefined,
+    );
+  });
+});

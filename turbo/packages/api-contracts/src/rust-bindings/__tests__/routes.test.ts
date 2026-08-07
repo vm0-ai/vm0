@@ -93,6 +93,12 @@ const expectedBindings = [
     rustConstName: "SEND",
   },
   {
+    method: "GET",
+    path: "/api/webhooks/agent/pi-transcript",
+    rustModulePath: ["webhooks", "agent", "pi_transcript"],
+    rustConstName: "READ",
+  },
+  {
     method: "POST",
     path: "/api/webhooks/agent/telemetry",
     rustModulePath: ["webhooks", "agent", "telemetry"],

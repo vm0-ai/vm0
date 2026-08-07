@@ -146,7 +146,6 @@ async function loadTeamsLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "teams"),
-        eq(chatEvents.triggerSource, "teams"),
       ),
     )
     .limit(1);

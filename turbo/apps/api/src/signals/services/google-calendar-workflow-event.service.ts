@@ -25,11 +25,6 @@ import { onRejection, tapError } from "../utils";
 import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
-import {
-  googleCalendarWatchTransitionSchemaAvailable,
-  rolloutCompatibleGoogleCalendarWatchStateColumns,
-  upsertRolloutCompatibleGoogleCalendarWatchState,
-} from "./google-calendar-watch-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -978,7 +973,7 @@ async function loadCalendarWatchState(args: {
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarWatchStateRow | null> {
   const [state] = await args.db
-    .select(rolloutCompatibleGoogleCalendarWatchStateColumns())
+    .select()
     .from(googleCalendarWatchStates)
     .where(
       and(
@@ -1082,17 +1077,6 @@ async function prepareCalendarWatch(args: {
     };
   }
 
-  const transitionSchemaAvailable =
-    await googleCalendarWatchTransitionSchemaAvailable(args.db);
-  args.signal.throwIfAborted();
-  if (args.previousState && !transitionSchemaAvailable) {
-    return {
-      kind: "bad_request",
-      message:
-        "Google Calendar watch renewal is waiting for the database migration",
-    };
-  }
-
   const baselineResult = await establishCalendarWatchBaseline(args);
   if (baselineResult.kind !== "ok") {
     return baselineResult;
@@ -1107,7 +1091,6 @@ async function prepareCalendarWatch(args: {
     channelId,
     channelToken,
     currentTime,
-    transitionSchemaAvailable,
   });
   await replaceCalendarWatchBaselineSnapshots({
     db: args.db,
@@ -1167,7 +1150,6 @@ async function persistPendingCalendarWatch(args: {
   readonly channelId: string;
   readonly channelToken: string;
   readonly currentTime: Date;
-  readonly transitionSchemaAvailable: boolean;
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarWatchStateRow> {
   const previousChannel = args.previousState
@@ -1179,9 +1161,9 @@ async function persistPendingCalendarWatch(args: {
     : null;
   const syncToken =
     args.baseline?.nextSyncToken ?? args.previousState?.syncToken ?? null;
-  const state = await upsertRolloutCompatibleGoogleCalendarWatchState(args.db, {
-    transitionSchemaAvailable: args.transitionSchemaAvailable,
-    values: {
+  const [state] = await args.db
+    .insert(googleCalendarWatchStates)
+    .values({
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.access.connectorId,
@@ -1199,24 +1181,30 @@ async function persistPendingCalendarWatch(args: {
       needsRewatch: true,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-    },
-    set: {
-      orgId: args.orgId,
-      userId: args.userId,
-      channelId: args.channelId,
-      channelToken: args.channelToken,
-      resourceId: "",
-      resourceUri: "",
-      previousChannelId: previousChannel?.channelId ?? null,
-      previousChannelToken: previousChannel?.channelToken ?? null,
-      previousResourceId: previousChannel?.resourceId ?? null,
-      ...(args.baseline ? { syncToken: args.baseline.nextSyncToken } : {}),
-      watchExpirationAt: watchExpirationDate(undefined, args.currentTime),
-      lastWatchRenewedAt: args.currentTime,
-      needsRewatch: true,
-      updatedAt: args.currentTime,
-    },
-  });
+    })
+    .onConflictDoUpdate({
+      target: [
+        googleCalendarWatchStates.connectorId,
+        googleCalendarWatchStates.calendarId,
+      ],
+      set: {
+        orgId: args.orgId,
+        userId: args.userId,
+        channelId: args.channelId,
+        channelToken: args.channelToken,
+        resourceId: "",
+        resourceUri: "",
+        previousChannelId: previousChannel?.channelId ?? null,
+        previousChannelToken: previousChannel?.channelToken ?? null,
+        previousResourceId: previousChannel?.resourceId ?? null,
+        ...(args.baseline ? { syncToken: args.baseline.nextSyncToken } : {}),
+        watchExpirationAt: watchExpirationDate(undefined, args.currentTime),
+        lastWatchRenewedAt: args.currentTime,
+        needsRewatch: true,
+        updatedAt: args.currentTime,
+      },
+    })
+    .returning();
   args.signal.throwIfAborted();
   if (!state) {
     throw new Error("Failed to persist pending Google Calendar watch state");
@@ -1999,9 +1987,8 @@ async function loadCalendarWatchStateForNotification(args: {
   readonly notification: GoogleCalendarWebhookNotification;
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarWatchStateRow | null> {
-  const stateColumns = rolloutCompatibleGoogleCalendarWatchStateColumns();
   const [state] = await args.db
-    .select(stateColumns)
+    .select()
     .from(googleCalendarWatchStates)
     .where(
       or(
@@ -2020,9 +2007,18 @@ async function loadCalendarWatchStateForNotification(args: {
           ),
         ),
         and(
-          eq(stateColumns.previousChannelId, args.notification.channelId),
-          eq(stateColumns.previousChannelToken, args.notification.channelToken),
-          eq(stateColumns.previousResourceId, args.notification.resourceId),
+          eq(
+            googleCalendarWatchStates.previousChannelId,
+            args.notification.channelId,
+          ),
+          eq(
+            googleCalendarWatchStates.previousChannelToken,
+            args.notification.channelToken,
+          ),
+          eq(
+            googleCalendarWatchStates.previousResourceId,
+            args.notification.resourceId,
+          ),
         ),
       ),
     )

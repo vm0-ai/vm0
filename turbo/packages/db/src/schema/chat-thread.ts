@@ -17,7 +17,6 @@ import { computerUseHosts } from "./computer-use-host";
 import type {
   ChatThreadDraftAttachments,
   ChatThreadDraftUserMessage,
-  ChatThreadGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-thread";
 import { agentRuns, agentSessions } from "./agent-run-session-conversation";
 
@@ -99,14 +98,6 @@ export const chatThreads = pgTable(
     codexServiceTier: varchar("codex_service_tier", {
       length: 20,
     }).$type<CodexServiceTier>(),
-    /**
-     * Legacy generation template column retained for schema compatibility.
-     * Current prompt injection reads the generation template attached to the
-     * current input event only.
-     */
-    generationTemplate: jsonb(
-      "generation_template",
-    ).$type<ChatThreadGenerationTemplate>(),
     computerUseHostId: uuid("computer_use_host_id").references(
       () => {
         return computerUseHosts.id;

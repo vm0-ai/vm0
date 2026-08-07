@@ -684,8 +684,8 @@
       "previewWebsite": "Anteprima del modello di sito web {{title}}",
       "previousHtmlPreview": "{{title}} anteprima HTML precedente",
       "previousSlide": "Anteprima della diapositiva precedente",
-      "searchConnector": "Cerca connettore...",
-      "searchConnectors": "Cerca connettori",
+      "searchConnector": "Cerca modelli",
+      "searchConnectors": "Cerca modelli",
       "selected": "Modello: {{title}}",
       "selectStyle": "Seleziona lo stile {{style}}",
       "selectTemplate": "Seleziona il modello {{title}}",
@@ -1114,7 +1114,6 @@
     "actions": {
       "authorize": "Autorizza",
       "cancel": "Annulla",
-      "configure": "Configura",
       "confirm": "Conferma",
       "continue": "Continua",
       "copied": "Copiato!",
@@ -1351,7 +1350,6 @@
       "available_other": "Connettori disponibili per la connessione ({{count}})",
       "configurePermissions": "Configura le autorizzazioni {{connectorName}}",
       "customAuthorizeDescription": "Esamina, connetti e autorizza questo connettore personalizzato per l'agente.",
-      "customConnectDescription": "Esamina e collega questo connettore personalizzato.",
       "find": "Trova connettori...",
       "remove": "Rimuovi {{connectorName}}",
       "title": "Connettori"
@@ -1496,6 +1494,7 @@
       "message_one": "{{count}} messaggio",
       "message_many": "{{count}} messaggi",
       "message_other": "{{count}} messaggi",
+      "modelChangeAppliesNextRun": "Il modello selezionato verrà applicato alla prossima esecuzione.",
       "openGoalDetails": "Apri i dettagli dell'obiettivo",
       "pendingAutomationEvent": "Evento di automazione in sospeso",
       "queuedMessage": "Messaggio in coda",
@@ -1975,19 +1974,6 @@
         "description": "Queste modifiche a OAuth disconnetteranno tutti i membri attualmente connessi a OAuth. Dovranno connettere nuovamente questo connettore personalizzato.",
         "title": "Disconnettere le connessioni OAuth esistenti?"
       }
-    },
-    "customProposal": {
-      "configure": "Configura {{connector}}",
-      "descriptionAgent": "Il salvataggio collegherà i tuoi valori e autorizzerà {{agent}}.",
-      "descriptionUser": "Il salvataggio collegherà questo connettore personalizzato al tuo account.",
-      "documentTitle": "Configura connettore personalizzato",
-      "invalid": "Questo collegamento alla proposta di connettore personalizzato non è valido o è scaduto.",
-      "requestScope": "Richiedi ambito",
-      "returnToChat": "Torna alla chat e rispondi ACK in modo che l'agente possa verificare il connettore.",
-      "saved": "Salvato",
-      "savedToast": "{{connector}} salvato",
-      "targetFallback": "questo agente",
-      "update": "Aggiorna {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Autorizza {{agent}}",

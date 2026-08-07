@@ -1524,10 +1524,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
       if (!claimedEvent || claimedEvent.eventType !== "input.prompt") {
         throw new Error("Expected the pending active input to be claimed");
       }
-      expect(claimedEvent.userMessage.parts).toContainEqual({
-        type: "model",
-        selectedModel: "claude-sonnet-4-6",
-      });
+      expect(
+        claimedEvent.userMessage.parts.some((part) => {
+          return part.type === "model";
+        }),
+      ).toBeFalsy();
     }
 
     const emptyControlPayloadBytes = Buffer.byteLength(
@@ -1701,10 +1702,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (!budgetEvent || budgetEvent.eventType !== "input.budget") {
       throw new Error("Expected the run time budget input to be claimed");
     }
-    expect(budgetEvent.userMessage.parts).toContainEqual({
-      type: "model",
-      selectedModel: "claude-sonnet-4-6",
-    });
+    expect(
+      budgetEvent.userMessage.parts.some((part) => {
+        return part.type === "model";
+      }),
+    ).toBeFalsy();
 
     mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
     await webhooks.requestAgentEvents(
@@ -7172,6 +7174,27 @@ describe("CHAT-02: shared user message queue", () => {
     await expect(
       readRunAutonomyBudgetFixture(context, firstTargetRunId),
     ).resolves.toBe(9);
+    const firstTargetRun = await api.readRun(actor, firstTargetRunId);
+    const firstTargetSystemPrompt = firstTargetRun.appendSystemPrompt ?? "";
+    expect(firstTargetSystemPrompt).toContain("# This Run's Trigger");
+    expect(firstTargetSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
+    expect(firstTargetSystemPrompt).toContain(
+      `SOURCE_THREAD_ID: ${source.threadId}`,
+    );
+    expect(firstTargetSystemPrompt).toContain(`SOURCE_AGENT_ID: ${agentId}`);
+    expect(firstTargetSystemPrompt).toContain(
+      "SOURCE_THREAD_TITLE: New thread",
+    );
+    expect(firstTargetSystemPrompt).toContain(
+      `zero chat messages --thread-id ${source.threadId}`,
+    );
+    expect(firstTargetSystemPrompt).toContain(
+      `zero logs ${source.runId} --all`,
+    );
+    const sourceRun = await api.readRun(actor, source.runId);
+    expect(sourceRun.appendSystemPrompt ?? "").not.toContain(
+      "# This Run's Trigger",
+    );
     const firstMessages = await waitForThreadMessages(
       actor,
       firstTargetThread.id,
@@ -7488,6 +7511,11 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(rotatedState.zero_run).toMatchObject({ triggerSource: "agent" });
     expect(rotatedSystemPrompt).toContain("# Web Chat Run Context");
+    expect(rotatedSystemPrompt).toContain("# This Run's Trigger");
+    expect(rotatedSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
+    expect(rotatedSystemPrompt).toContain(
+      `SOURCE_THREAD_ID: ${source.threadId}`,
+    );
     expect(rotatedSystemPrompt).toContain(rotatedAnchorPrompt);
     expect(rotatedSystemPrompt).not.toContain("# Incomplete Rounds Context");
     expect(rotatedSystemPrompt).toContain("Web chat files: use");

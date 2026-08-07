@@ -6,6 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
   RunnerPreference,
+  RunnerPreferenceDecision,
   RunnerPreferenceResolution,
 } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
@@ -106,6 +107,19 @@ export async function publishConnectorChangedForUserSafely(
     (error) => {
       L.warn("Failed to publish connector changed signal", {
         connectorSlug,
+        error,
+      });
+    },
+  );
+}
+
+export async function publishCustomConnectorListChangedForUserSafely(
+  userId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "customConnectorListChanged"),
+    (error) => {
+      L.warn("Failed to publish custom connector list changed signal", {
         error,
       });
     },
@@ -379,6 +393,42 @@ export async function publishActiveInputToRunnerGroup(
   L.debug(`Published active input ${runId} to runner-group:${group}`);
 }
 
+/** Wake the Pi standby runtime after the complete pending tool batch commits. */
+async function publishPiHandoffToRunnerGroup(
+  group: string,
+  runId: string,
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("pi-handoff", { runId });
+  L.debug(`Published Pi handoff ${runId} to runner-group:${group}`);
+}
+
+export async function publishPiHandoffToRunnerGroupSafely(
+  group: string,
+  runId: string,
+): Promise<void> {
+  await tapError(publishPiHandoffToRunnerGroup(group, runId), (error) => {
+    L.warn("Failed to publish Pi handoff", { group, runId, error });
+  });
+}
+
+/** Release a prewarmed Pi Sandbox after the API has settled the run. */
+export async function publishPiStandbyReleaseToRunnerGroupSafely(
+  group: string,
+  runId: string,
+): Promise<void> {
+  await tapError(
+    (async () => {
+      const channel = ablyClient().channels.get(`runner-group:${group}`);
+      await channel.publish("pi-standby-release", { runId });
+      L.debug(`Published Pi standby release ${runId} to runner-group:${group}`);
+    })(),
+    (error) => {
+      L.warn("Failed to publish Pi standby release", { group, runId, error });
+    },
+  );
+}
+
 export async function publishRunnerJobNotification(
   group: string,
   runId: string,
@@ -388,7 +438,8 @@ export async function publishRunnerJobNotification(
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
-    readonly runnerPreference: RunnerPreference | null;
+    readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+    readonly runnerPreference?: RunnerPreference;
     readonly runnerPreferenceResolution: RunnerPreferenceResolution;
   },
 ): Promise<boolean> {
@@ -410,6 +461,7 @@ export async function publishRunnerJobNotification(
           : {}),
         ...(metadata
           ? {
+              runnerPreferenceDecision: metadata.runnerPreferenceDecision,
               runnerPreferenceResolution: metadata.runnerPreferenceResolution,
             }
           : {}),

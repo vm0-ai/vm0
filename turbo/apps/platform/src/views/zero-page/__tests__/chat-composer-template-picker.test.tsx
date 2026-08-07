@@ -429,6 +429,9 @@ describe("chat composer templates", () => {
 
     detachedSetupPage({
       context,
+      featureSwitches: {
+        [FeatureSwitchKey.TemplatePickerGlobalSearch]: false,
+      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -443,6 +446,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
+    expect(screen.queryByLabelText("Search templates")).not.toBeInTheDocument();
 
     expect(tabByText("Presentation")).toBeInTheDocument();
     expect(tabByText("Illustration")).toBeInTheDocument();
@@ -455,11 +459,6 @@ describe("chat composer templates", () => {
     ).toBeFalsy();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("bg-gray-200");
-    expect(tabByText("Presentation")).toHaveClass("font-medium");
-    expect(tabByText("Presentation")).toHaveClass("text-sidebar-foreground");
-    expect(tabByText("Illustration")).toHaveClass("text-sidebar-foreground");
-    expect(tabByText("Illustration")).not.toHaveClass("bg-gray-200");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
@@ -470,9 +469,6 @@ describe("chat composer templates", () => {
     });
     expect(categorySidebar).toBeInstanceOf(HTMLElement);
     expect(categorySidebar).toHaveAttribute("aria-orientation", "vertical");
-    expect(categorySidebar).toHaveClass("hidden");
-    expect(categorySidebar).toHaveClass("sm:flex");
-    expect(categorySidebar).toHaveClass("bg-gray-50");
 
     await user.click(categorySelect);
     await user.click(
@@ -511,7 +507,7 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(tabByText("Workflow")).toHaveFocus();
       expect(tabByText("Workflow")).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByLabelText("Search connectors")).toBeInTheDocument();
+      expect(screen.getByLabelText("Search templates")).toBeInTheDocument();
     });
 
     fireEvent.keyDown(tabByText("Workflow"), { key: "Home" });
@@ -522,6 +518,80 @@ describe("chat composer templates", () => {
         "true",
       );
     });
+  });
+
+  it("filters every non-avatar template catalogue when global search is enabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.TemplatePickerGlobalSearch]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    const catalogues = [
+      {
+        category: "Presentation",
+        item: PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select template ${title}`;
+        },
+      },
+      {
+        category: "Website",
+        item: WEBSITE_TEMPLATE_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select website template ${title}`;
+        },
+      },
+      {
+        category: "Illustration",
+        item: ILLUSTRATION_TEMPLATE_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select template ${title}`;
+        },
+      },
+      {
+        category: "Video",
+        item: VIDEO_TEMPLATE_ITEMS[0]!,
+        selectLabel: (title: string) => {
+          return `Select video template ${title}`;
+        },
+      },
+    ] as const;
+
+    for (const { category, item, selectLabel } of catalogues) {
+      await user.click(tabByText(category));
+      await waitFor(() => {
+        expect(tabByText(category)).toHaveAttribute("aria-selected", "true");
+      });
+
+      const search = screen.getByLabelText("Search templates");
+      await fill(search, "no matching template title");
+      await waitFor(() => {
+        expect(screen.getByText("No matches")).toBeInTheDocument();
+      });
+
+      await fill(search, item.title);
+      await waitFor(() => {
+        expect(screen.queryByText("No matches")).not.toBeInTheDocument();
+        expect(
+          screen.getByLabelText(selectLabel(item.title)),
+        ).toBeInTheDocument();
+      });
+    }
   });
 
   it("previews avatars and sends the selected avatar and voice", async () => {
@@ -2352,7 +2422,9 @@ describe("chat composer templates", () => {
 
     // Variant thumbnails switch the hero inline within the card; there is no
     // longer a second preview dialog.
-    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    const card = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!card) {
       throw new Error("Illustration card not found");
     }
@@ -2365,7 +2437,7 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
@@ -2498,7 +2570,9 @@ describe("chat composer templates", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(scrollTo).not.toHaveBeenCalled();
 
-    const card = screen.getByAltText(heroAlt).closest<HTMLElement>("div.group");
+    const card = screen
+      .getByAltText(heroAlt)
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!card) {
       throw new Error("Illustration card not found");
     }
@@ -2612,7 +2686,7 @@ describe("chat composer templates", () => {
     // Clicking near the right boundary scrolls all the way to the end.
     const remountedCard = screen
       .getByAltText(heroAlt)
-      .closest<HTMLElement>("div.group");
+      .closest<HTMLElement>("[data-illustration-template-card]");
     if (!remountedCard) {
       throw new Error("Remounted illustration card not found");
     }
@@ -2920,7 +2994,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
@@ -2962,16 +3036,16 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText("Search connectors")).toHaveAttribute(
+    expect(screen.getByLabelText("Search templates")).toHaveAttribute(
       "placeholder",
-      "Search connector...",
+      "Search templates",
     );
-    await fill(screen.getByLabelText("Search connectors"), "no workflow match");
+    await fill(screen.getByLabelText("Search templates"), "no workflow match");
     await waitFor(() => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search connectors"), "auto-inbox");
+    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
     click(
       screen.getByLabelText(
         `Select workflow template ${workflowTemplate.title}`,
@@ -3046,7 +3120,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Search connectors")).toBeNull();
+    expect(screen.queryByLabelText("Search templates")).toBeNull();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );

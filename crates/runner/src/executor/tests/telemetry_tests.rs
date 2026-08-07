@@ -676,6 +676,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
+            pi_standby_source: None,
             pre_spawn_timing: Some(pre_spawn_timing_with_phases()),
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
         },
@@ -752,6 +753,7 @@ async fn execute_job_records_exact_reuse_speculation_timing() {
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
+            pi_standby_source: None,
             pre_spawn_timing: Some(pre_spawn_timing_with_exact_reuse_speculation()),
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
         },
@@ -1019,6 +1021,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
+            pi_standby_source: None,
             pre_spawn_timing: Some(pre_spawn_timing_with_phases()),
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
         },
@@ -1079,6 +1082,7 @@ async fn start_process_failure_records_phase_failure_without_spawn_completion() 
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
+            pi_standby_source: None,
             pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
         },

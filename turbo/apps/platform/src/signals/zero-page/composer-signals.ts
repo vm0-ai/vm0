@@ -25,6 +25,7 @@ import {
   isUsageEvent,
   lastAssistantCancelledFromGroups,
   queuedEventsFromSemanticEvents,
+  runningModelFromChatEvents,
   semanticChatEventsFromChatEvents,
 } from "../chat-page/chat-event-state.ts";
 import { messageDocumentToDisplayText } from "./user-message-document-codec.ts";
@@ -147,6 +148,7 @@ interface ComposerDraftSignals extends ComposerDraftUiSignals {
 interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly explicitDefaultModelActionEnabled$: Computed<boolean>;
   readonly modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  readonly runningModel$: Computed<Promise<string | null>>;
   readonly selectedModelOauthAvailable$: Computed<Promise<boolean>>;
   readonly setModelSelection$: Command<
     Promise<void>,
@@ -494,6 +496,7 @@ export function createComposerSignals(
       ...ui.model,
       explicitDefaultModelActionEnabled$,
       modelSelection$: options.modelSelection$,
+      runningModel$: eventSignals.runningModel$,
       selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,
       setModelSelection$: options.setModelSelection$,
       configureSelectedModel$: options.configureSelectedModel$,
@@ -549,6 +552,9 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   const runIndicatorState$ = computed((get) => {
     return deriveRunIndicatorStateFromChatEvents(get(chatEvents$));
   });
+  const runningModel$ = computed((get): Promise<string | null> => {
+    return Promise.resolve(runningModelFromChatEvents(get(chatEvents$)));
+  });
   const sending$ = computed((get): Promise<boolean> => {
     const running = get(runIndicatorState$) !== null;
     const lastAssistantCancelled = lastAssistantCancelledFromGroups(
@@ -599,6 +605,7 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   return {
     actionsLoading$,
     sending$,
+    runningModel$,
     pendingEvents$,
     activeGoalObjective$,
     hasEvents$,

@@ -46,7 +46,6 @@ import {
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
-  type PatchCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroOrgContract,
@@ -90,7 +89,6 @@ import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
 import { zeroCustomConnectorsCreateRoutes } from "../../zero-custom-connectors-create";
 import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
-import { zeroCustomConnectorsPatchRoutes } from "../../zero-custom-connectors-patch";
 import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
@@ -224,7 +222,6 @@ const authOrgRoutes = [
   ...zeroCustomConnectorsRoutes,
   ...zeroCustomConnectorsCreateRoutes,
   ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsPatchRoutes,
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,
   ...zeroCustomConnectorSecretDeleteRoutes,
@@ -1532,25 +1529,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async patchCustomConnector(
-      actor: ApiTestUser,
-      connectorId: string,
-      body: PatchCustomConnectorBody,
-    ): Promise<CustomConnectorResponse> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorByIdContract,
-      );
-      const response = await accept(
-        client.patch({
-          headers: authenticate(actor),
-          params: { id: connectorId },
-          body,
-        }),
         [200],
       );
       return response.body;

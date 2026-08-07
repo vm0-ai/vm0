@@ -1,36 +1,52 @@
+import { randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { mockOptionalEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const bdd = createBddApi(context);
+const chat = createChatFilesBddApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 
 describe("POST /api/webhooks/agent/events telemetry", () => {
   it("redacts legacy Pi transcript payloads before Axiom ingest", async () => {
     const actor = bdd.user();
-    bdd.acceptAgentStorageWrites();
+    chatCallbacks.acceptChatObjectStorage();
+    chatCallbacks.disableVapid();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     runs.configureRunnerGroup();
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "Legacy Pi telemetry guard",
       visibility: "private",
     });
-    const run = await runs.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "verify legacy Pi telemetry redaction",
-      modelProvider: "anthropic-api-key",
-    });
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: "verify legacy Pi telemetry redaction",
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the chat send to create a thread-bound run");
+    }
+    const runId = sent.body.runId;
 
     const ingestedBodies: unknown[] = [];
     server.use(
@@ -50,7 +66,7 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
     const secretTranscript = "private legacy Pi transcript";
     const response = await webhooks.requestAgentEvents(
       {
-        runId: run.runId,
+        runId,
         events: [
           {
             type: "pi.message.completed",
@@ -65,7 +81,7 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
           },
         ],
       },
-      webhooks.sandboxWebhookHeaders({ runId: run.runId }),
+      webhooks.sandboxWebhookHeaders({ runId }),
       [200],
     );
     expect(response.body).toStrictEqual({
@@ -78,7 +94,7 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
     expect(ingestedBodies).toStrictEqual([
       [
         {
-          runId: run.runId,
+          runId,
           userId: "user_bdd_sandbox_webhook",
           sequenceNumber: 1,
           eventType: "pi.message.completed",
