@@ -4,7 +4,7 @@ import { isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
 
 import { command } from "ccstate";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, exists, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
@@ -799,6 +799,7 @@ async function loadConnection(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
+  readonly storageVersion: number;
   readonly lockRow?: boolean;
 }): Promise<StoredConnection | null> {
   const query = args.db
@@ -814,6 +815,20 @@ async function loadConnection(args: {
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
+        eq(connectors.storageVersion, args.storageVersion),
+        exists(
+          args.db
+            .select({ id: orgCustomConnectors.id })
+            .from(orgCustomConnectors)
+            .where(
+              and(
+                eq(orgCustomConnectors.id, args.connectorId),
+                eq(orgCustomConnectors.orgId, args.orgId),
+                eq(orgCustomConnectors.authMode, "oauth"),
+                eq(orgCustomConnectors.storageVersion, args.storageVersion),
+              ),
+            ),
+        ),
       ),
     );
   const rows = args.lockRow
@@ -946,6 +961,7 @@ async function resolveCustomConnectorOAuth2AccessToken(
     orgId: args.orgId,
     userId: args.userId,
     connectorId: args.connector.id,
+    storageVersion: args.connector.storageVersion,
   });
   args.signal.throwIfAborted();
   if (!connection) {
@@ -964,6 +980,7 @@ async function resolveCustomConnectorOAuth2AccessToken(
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.connector.id,
+      storageVersion: args.connector.storageVersion,
       lockRow: true,
     });
     args.signal.throwIfAborted();
@@ -1112,7 +1129,27 @@ async function loadLiveCustomConnector(args: {
     : null;
 }
 
-export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
+export async function resolveCurrentCustomConnectorOAuth2AccessToken(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorId: string;
+  readonly featureContext: FeatureSwitchContext;
+  readonly signal: AbortSignal;
+  readonly forceRefresh?: boolean;
+}): Promise<CustomConnectorOAuth2AccessTokenResolution> {
+  const connector = await loadLiveCustomConnector(args);
+  args.signal.throwIfAborted();
+  if (!connector || connector.authMode !== "oauth") {
+    return { kind: "unavailable" };
+  }
+  return await resolveCustomConnectorOAuth2AccessToken({
+    ...args,
+    connector,
+  });
+}
+
+export async function resolveRevisionPinnedCustomConnectorOAuth2AccessToken(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;

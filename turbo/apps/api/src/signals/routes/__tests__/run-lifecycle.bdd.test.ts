@@ -88,7 +88,10 @@ import {
   seedSlackEnvironmentAgent$,
   seedSlackOrgInstallation$,
 } from "./helpers/zero-integrations-slack";
-import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
+import {
+  setConnectorCredentialStorageState,
+  setCustomConnectorCredentialStorageState,
+} from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
   enableFakeKms,
@@ -8473,6 +8476,57 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       state: "available",
     });
 
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "manual",
+      storageVersion: 2,
+    });
+    const [incompatibleRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(incompatibleRuntime).toMatchObject({
+      target,
+      state: "absent",
+      reason: "connector-unavailable",
+    });
+    const incompatibleAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (incompatibleAuth.status !== 424) {
+      throw new Error("Expected incompatible custom connector credentials");
+    }
+    expect(incompatibleAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "manual",
+      storageVersion: 1,
+    });
+    const [compatibleRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(compatibleRuntime).toMatchObject({
+      target,
+      state: "available",
+    });
+    const compatibleAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(compatibleAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer restored-custom-secret-value" },
+    });
+
     await connectors.updateCustomConnector(actor, custom.id, {
       displayName: "BDD Internal API Updated",
       prefixTemplates: ["https://*.internal.example.com/v2/"],
@@ -8695,6 +8749,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.secretValues).not.toContain(
       "Bearer custom-oauth-initial-access-token",
     );
+    const revisionPinnedAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    expect(revisionPinnedAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-oauth-initial-access-token" },
+    });
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "custom", customConnectorId: custom.id }],
     });
@@ -8772,6 +8839,36 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       refreshedSecrets: [],
     });
     expect(provider.tokenBodies).toHaveLength(2);
+
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "oauth",
+      storageVersion: 2,
+    });
+    const incompatibleOAuthAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (incompatibleOAuthAuth.status !== 424) {
+      throw new Error("Expected incompatible custom OAuth credentials");
+    }
+    expect(incompatibleOAuthAuth.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+    expect(provider.tokenBodies).toHaveLength(2);
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
 
     const forceRefreshAt = firstRefreshAt + 10 * 60_000;
     mockNow(forceRefreshAt);
@@ -9402,6 +9499,76 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("omits incompatible custom credentials from initial and synced runtime", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Incompatible Runtime",
+        prefixTemplates: [`https://${rand}.incompatible.test/v1/`],
+        fields: [
+          {
+            key: "secret",
+            label: "API key",
+            kind: "secret",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "X-Connector",
+            valueTemplate: "incompatible-runtime",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "secret",
+          kind: "secret",
+          value: "incompatible-runtime-secret",
+        },
+      ],
+      agentId,
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: saved.connector.id,
+      authMethod: "manual",
+      storageVersion: 2,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use the incompatible custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+    });
+    expect(runtimeResult).toMatchObject({
+      state: "absent",
+      reason: "connector-unavailable",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, saved.connector.id);
   });
 
   it("keeps legacy omission while sync preserves optional-only firewall", async () => {

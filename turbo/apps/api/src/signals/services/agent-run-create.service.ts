@@ -3891,6 +3891,9 @@ export async function buildCustomConnectorRuntimeContext(
   );
   const stats = new CustomConnectorRuntimeBuildStats(args.rows);
   for (const row of args.rows) {
+    if (row.credentialAccess.kind === "incompatible") {
+      continue;
+    }
     const missingRequiredStartedAt = now();
     const valueMarkers = new Set(
       row.values.map((value) => {
@@ -4106,6 +4109,7 @@ async function loadCustomConnectorContext(
   for (const row of rows) {
     refreshedRows.push({
       connector: row.connector,
+      credentialAccess: row.credentialAccess,
       values: await refreshCustomConnectorOAuth2ValuesIfNeeded({
         db,
         orgId: args.orgId,

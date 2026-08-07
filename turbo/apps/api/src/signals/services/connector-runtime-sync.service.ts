@@ -7,6 +7,7 @@ import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zer
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { and, eq, inArray } from "drizzle-orm";
 
+import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
 import {
@@ -22,6 +23,8 @@ import {
   CustomConnectorRuntimePrefixError,
   loadCustomConnectorRuntimeData,
 } from "./zero-custom-connector.service";
+
+const L = logger("connector-runtime-sync");
 
 interface ConnectorRuntimeScope {
   readonly orgId: string;
@@ -134,6 +137,18 @@ async function resolveCustomTarget(args: {
 }): Promise<ConnectorRuntimeResolution> {
   const custom = args.snapshot.customTargets.get(args.target.customConnectorId);
   if (!custom) {
+    return customAbsentResult(args.target, "connector-unavailable");
+  }
+  if (custom.row.credentialAccess.kind === "incompatible") {
+    L.debug("Custom connector credential storage is incompatible", {
+      customConnectorId: args.target.customConnectorId,
+      memberConnectorId: custom.row.credentialAccess.memberConnectorId,
+      expectedAuthMethod: custom.row.credentialAccess.expectedAuthMethod,
+      storedAuthMethod: custom.row.credentialAccess.storedAuthMethod,
+      expectedStorageVersion:
+        custom.row.credentialAccess.expectedStorageVersion,
+      storedStorageVersion: custom.row.credentialAccess.storedStorageVersion,
+    });
     return customAbsentResult(args.target, "connector-unavailable");
   }
   if (!custom.grant) {

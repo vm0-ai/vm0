@@ -9,11 +9,7 @@ import {
   type OrgCustomConnectorHeaderInjection,
   type OrgCustomConnectorQueryInjection,
 } from "@vm0/db/schema/org-custom-connector";
-import { connectors as connectorConnections } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -24,6 +20,10 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
+import {
+  loadCurrentCustomConnectorOAuthConnectionIds,
+  loadCurrentCustomConnectorValueMarkers,
+} from "./custom-connector-credential-access.service";
 import {
   effectiveCustomConnectorPermissionBundleRef,
   FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
@@ -267,52 +267,13 @@ async function loadCustomConnectorGrantValueMarkers(
     readonly connectorIds: readonly string[];
   },
 ): Promise<ReadonlySet<string>> {
-  if (args.connectorIds.length === 0) {
-    return new Set();
-  }
-
-  const valueRows = await db
-    .select({
-      connectorId: orgCustomConnectorValues.connectorId,
-      kind: orgCustomConnectorValues.kind,
-      key: orgCustomConnectorValues.key,
-    })
-    .from(orgCustomConnectorValues)
-    .where(
-      and(
-        eq(orgCustomConnectorValues.orgId, args.orgId),
-        eq(orgCustomConnectorValues.userId, args.userId),
-        inArray(orgCustomConnectorValues.connectorId, [...args.connectorIds]),
-      ),
-    );
-  const legacyRows = await db
-    .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-    .from(orgCustomConnectorSecrets)
-    .where(
-      and(
-        eq(orgCustomConnectorSecrets.orgId, args.orgId),
-        eq(orgCustomConnectorSecrets.userId, args.userId),
-        inArray(orgCustomConnectorSecrets.connectorId, [...args.connectorIds]),
-      ),
-    );
-
+  const valueMarkers = await loadCurrentCustomConnectorValueMarkers(db, args);
   const markers = new Set<string>();
-  for (const row of valueRows) {
-    if (row.kind !== "secret" && row.kind !== "variable") {
-      continue;
-    }
+  for (const row of valueMarkers) {
     markers.add(
       `${row.connectorId}:${customConnectorValueMarkerKey({
         kind: row.kind,
         key: row.key,
-      })}`,
-    );
-  }
-  for (const row of legacyRows) {
-    markers.add(
-      `${row.connectorId}:${customConnectorValueMarkerKey({
-        kind: "secret",
-        key: LEGACY_SECRET_KEY,
       })}`,
     );
   }
@@ -386,42 +347,6 @@ interface LockedCustomConnectorValidation {
   readonly unconfiguredIds: readonly string[];
   readonly revisions: ReadonlyMap<string, number>;
   readonly permissionBundleRefs: ReadonlyMap<string, string | null>;
-}
-
-async function loadCustomConnectorOAuthConnectionIds(
-  db: Pick<Db, "select">,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connectorIds: readonly string[];
-  },
-): Promise<ReadonlySet<string>> {
-  const rows = await db
-    .select({
-      customConnectorId: connectorConnections.customConnectorId,
-    })
-    .from(connectorConnections)
-    .innerJoin(
-      secrets,
-      and(
-        eq(secrets.connectorId, connectorConnections.id),
-        eq(secrets.name, "access_token"),
-      ),
-    )
-    .where(
-      and(
-        eq(connectorConnections.orgId, args.orgId),
-        eq(connectorConnections.userId, args.userId),
-        eq(connectorConnections.authMethod, "oauth"),
-        eq(connectorConnections.needsReconnect, false),
-        inArray(connectorConnections.customConnectorId, [...args.connectorIds]),
-      ),
-    );
-  return new Set(
-    rows.flatMap((row) => {
-      return row.customConnectorId ? [row.customConnectorId] : [];
-    }),
-  );
 }
 
 function customConnectorGrantIsConfigured(args: {
@@ -556,7 +481,7 @@ async function lockCustomConnectorsForReplace(
       userId: args.userId,
       connectorIds,
     }),
-    loadCustomConnectorOAuthConnectionIds(db, {
+    loadCurrentCustomConnectorOAuthConnectionIds(db, {
       orgId: args.orgId,
       userId: args.userId,
       connectorIds,

@@ -78,6 +78,14 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       token_expires_at: z.iso.datetime().nullable().optional(),
     }),
     z.object({
+      action: z.literal("set-custom-parent-state"),
+      org_id: z.string(),
+      user_id: z.string(),
+      custom_connector_id: z.uuid(),
+      auth_method: z.enum(["manual", "oauth"]),
+      storage_version: z.number().int().positive(),
+    }),
+    z.object({
       action: z.literal("set-secret-owner"),
       org_id: z.string(),
       user_id: z.string(),

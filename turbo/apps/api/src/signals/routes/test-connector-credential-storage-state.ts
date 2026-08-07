@@ -319,6 +319,34 @@ async function setConnectorState(
       };
 }
 
+async function setCustomParentState(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"set-custom-parent-state">,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(connectors)
+    .set({
+      authMethod: body.auth_method,
+      storageVersion: body.storage_version,
+    })
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.customConnectorId, body.custom_connector_id),
+      ),
+    )
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  return updated
+    ? actionOk({ connector_id: updated.id })
+    : {
+        status: 400 as const,
+        body: { error: "Custom connector storage test fixture was not found" },
+      };
+}
+
 async function setSecretOwner(
   db: Db,
   body: ConnectorCredentialStorageAction<"set-secret-owner">,
@@ -406,6 +434,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "set-connector-state": {
         return await setConnectorState(db, body, signal);
+      }
+      case "set-custom-parent-state": {
+        return await setCustomParentState(db, body, signal);
       }
       case "set-secret-owner": {
         return await setSecretOwner(db, body, signal);
