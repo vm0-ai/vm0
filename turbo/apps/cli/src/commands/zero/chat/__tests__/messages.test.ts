@@ -121,6 +121,33 @@ function errorEvent(args: { id: string; seqId: number; error: string }) {
   };
 }
 
+function runFailedEvent(args: { id: string; seqId: number; error: string }) {
+  return {
+    id: args.id,
+    threadId: THREAD_ID,
+    eventType: "run.failed" as const,
+    content: args.error,
+    error: args.error,
+    runLifecycleEvent: "failed" as const,
+    runId: RUN_ID,
+    seqId: args.seqId,
+    createdAt: "2026-07-29T08:03:00.000Z",
+  };
+}
+
+function runCancelledEvent(args: { id: string; seqId: number }) {
+  return {
+    id: args.id,
+    threadId: THREAD_ID,
+    eventType: "run.cancelled" as const,
+    content: null,
+    runLifecycleEvent: "cancelled" as const,
+    runId: RUN_ID,
+    seqId: args.seqId,
+    createdAt: "2026-07-29T08:04:00.000Z",
+  };
+}
+
 describe("zero chat messages command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
@@ -318,6 +345,54 @@ describe("zero chat messages command", () => {
     expect(output).toContain("[Automation: Gmail label applied]");
     expect(output).toContain("[Goal: Merge PR #1]");
     expect(output).toContain("Session history file not found");
+  });
+
+  it("prints the terminal error of a run that failed without answering", async () => {
+    server.use(
+      http.get(EVENTS_URL, () => {
+        return HttpResponse.json({
+          events: [
+            promptEvent({
+              id: "00000000-0000-4000-8000-000000000025",
+              seqId: 1,
+              text: "delegated prompt",
+              createdAt: "2026-07-29T08:02:30.000Z",
+            }),
+            runFailedEvent({
+              id: "00000000-0000-4000-8000-000000000026",
+              seqId: 2,
+              error: "Agent exited before answering",
+            }),
+          ],
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "messages"]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).not.toContain("No chat messages found");
+    expect(output).toContain("Agent exited before answering");
+  });
+
+  it("skips a terminal run event that carries no error", async () => {
+    server.use(
+      http.get(EVENTS_URL, () => {
+        return HttpResponse.json({
+          events: [
+            runCancelledEvent({
+              id: "00000000-0000-4000-8000-000000000027",
+              seqId: 1,
+            }),
+          ],
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "messages"]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("No chat messages found");
   });
 
   it("renders attachments and mentions instead of reporting empty text", async () => {

@@ -114,8 +114,9 @@ function userMessageText(document: UserMessageDocument): string {
 
 /**
  * Every user-role and assistant-role event that carries message text, matching
- * the roles the chat UI renders. Thinking, followups, run lifecycle, control,
- * browser, and usage events are not messages.
+ * what the chat UI renders. Thinking, followups, control, browser, and usage
+ * events are not messages, and neither are run lifecycle events except the
+ * terminal ones, which carry the failure text the user reads.
  */
 function toChatMessage(event: ChatEvent): ChatMessage | null {
   if (
@@ -158,6 +159,20 @@ function toChatMessage(event: ChatEvent): ChatMessage | null {
       runId: event.runId ?? null,
       text: event.error.trim(),
     };
+  }
+  // A terminal run event carries the failure the user sees only when it has an
+  // error. Without one it is a lifecycle marker, like queued and dequeued.
+  if (event.eventType === "run.failed" || event.eventType === "run.cancelled") {
+    const error = event.error?.trim();
+    return error
+      ? {
+          eventId: event.id,
+          role: "assistant",
+          createdAt: event.createdAt,
+          runId: event.runId,
+          text: error,
+        }
+      : null;
   }
   return null;
 }
