@@ -525,18 +525,15 @@ function PermissionConnectorCard({
       <div className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors">
         <ConnectorIcon icon={connector.icon} size={20} />
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex items-center gap-2">
             <span
               data-testid="connector-card-label"
-              className="shrink-0 truncate text-sm font-medium text-foreground"
+              className="text-sm font-medium text-foreground"
             >
               {connector.label}
             </span>
             {connector.connection?.externalUsername ? (
-              <span
-                className="min-w-0 truncate text-xs text-muted-foreground"
-                title={connector.connection.externalUsername}
-              >
+              <span className="text-xs text-muted-foreground">
                 @{connector.connection.externalUsername}
               </span>
             ) : null}
