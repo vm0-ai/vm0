@@ -169,12 +169,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the TikTok Ads Manager connector",
     enabled: false,
   },
-  [FeatureSwitchKey.AwsConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the temporary AWS remote login connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",

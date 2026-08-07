@@ -252,7 +252,6 @@ async function setupAwsExternalCodeConnection(): Promise<{
   detachedSetupPage({
     context,
     path: "/connectors",
-    featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
   });
 
   await fill(await screen.findByPlaceholderText("Find connectors"), "aws");
@@ -1345,16 +1344,16 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.AwsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "aws");
+    await fill(searchInput, "meta");
 
     await expect(
       screen.findByText(/No connectors matching/),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Connect Meta Ads")).not.toBeInTheDocument();
   });
 
   it("refreshes connector catalog status when connector feature switches change", async () => {
@@ -1363,11 +1362,11 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.AwsConnector]: false },
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: false },
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "aws");
+    await fill(searchInput, "meta");
 
     await expect(
       screen.findByText(/No connectors matching/),
@@ -1375,18 +1374,18 @@ describe("connectors page", () => {
 
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
-        switches: { [FeatureSwitchKey.AwsConnector]: true },
-        effectiveSwitches: { [FeatureSwitchKey.AwsConnector]: true },
+        switches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+        effectiveSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
       });
     });
     await context.store.set(
       setFeatureSwitch$,
-      { [FeatureSwitchKey.AwsConnector]: true },
+      { [FeatureSwitchKey.MetaAdsConnector]: true },
       context.signal,
     );
 
     await expect(
-      screen.findByLabelText("Connect AWS"),
+      screen.findByLabelText("Connect Meta Ads"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -3132,7 +3131,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.AwsConnector]: true },
     });
 
     await waitFor(() => {

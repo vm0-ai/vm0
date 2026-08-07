@@ -14,7 +14,6 @@ import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 interface AuthenticatedFixture {
   readonly orgId: string;
@@ -108,15 +107,12 @@ describe("GET /api/zero/connectors", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    expect(nonStaff.body.configuredConnectorSlugs).not.toContain("aws");
+    expect(nonStaff.body.configuredConnectorSlugs).toContain("aws");
+    expect(nonStaff.body.configuredConnectorSlugs).not.toContain("test-oauth");
     expect(nonStaff.body.configuredConnectorSlugs).toContain("nintendo-store");
     expect(nonStaff.body.configuredConnectorSlugs).toContain(
       "nintendo-switch-parental-controls",
     );
-
-    mocks.clerk.session(fixture.userId, STAFF_ORG_ID);
-    const staff = await accept(client.list({ headers: authHeaders() }), [200]);
-    expect(staff.body.configuredConnectorSlugs).toContain("aws");
   });
 
   it("returns connectors created through the connector API", async () => {

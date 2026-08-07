@@ -3523,19 +3523,12 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
 
     const actor = bdd.user();
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: true,
-    });
     const cleanupConnector = createConnectorCleanup(actor, "aws");
     onTestFinished(async () => {
       await cleanupConnector();
-      await connectorsApi.deleteFeatureSwitches(actor);
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: false,
-    });
     const completed = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,

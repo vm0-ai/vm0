@@ -776,9 +776,6 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, headers } = await firewallRun();
     context.mocks.ably.publish.mockResolvedValue(undefined);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: true,
-    });
     const oldCredentials = {
       accessKeyId: "old-aws-access-key-id",
       secretAccessKey: "old-aws-secret-access-key",
@@ -840,7 +837,6 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     });
 
     await connectors.deleteConnectorBySlug(actor, "aws");
-    await connectors.deleteFeatureSwitches(actor);
   });
 
   it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {

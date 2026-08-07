@@ -1,14 +1,11 @@
 /**
  * CONN-02: external-code authorization sessions through public APIs.
  *
- * Feature-switched connectors are enabled per test actor through
- * POST /api/zero/feature-switches. External provider endpoints are mocked with
- * MSW at the HTTP boundary.
+ * External provider endpoints are mocked with MSW at the HTTP boundary.
  */
 
 import { Buffer } from "node:buffer";
 
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -79,14 +76,10 @@ const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN =
 const NINTENDO_SWITCH_PARENTAL_CONTROLS_UNLOCK_CODE =
   "bdd-switch-parental-controls-unlock-code-must-not-leak";
 
-async function awsActor(): Promise<ApiTestUser> {
+function awsActor(): ApiTestUser {
   const bdd = createBddApi(context);
-  const actor = bdd.user();
   context.mocks.ably.publish.mockResolvedValue(undefined);
-  await connectorsApi.updateFeatureSwitches(actor, {
-    [FeatureSwitchKey.AwsConnector]: true,
-  });
-  return actor;
+  return bdd.user();
 }
 
 function expectNoVisibleSecret(value: unknown, secret: string): void {
@@ -474,8 +467,6 @@ describe("CONN-02: external-code session lifecycle", () => {
         return secret.type === "connector";
       }),
     ).toStrictEqual([]);
-
-    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("supersedes pending sessions and restores provider-rejected sessions to pending", async () => {
@@ -532,7 +523,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(readBack.id).toBe(retried.connector.id);
 
     await connectorsApi.deleteConnectorBySlug(actor, "aws");
-    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("returns generic external-code copy when the PlayStation NPSSO token is rejected", async () => {
@@ -890,24 +880,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
-  it("completes after the AWS connector switch is disabled", async () => {
-    const provider = mockAwsExternalCodeProvider();
-    const actor = await awsActor();
-
-    const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.AwsConnector]: false,
-    });
-
-    const completed = await connectorsApi.completeExternalCode(actor, "aws", {
-      sessionId: session.sessionId,
-      sessionToken: session.sessionToken,
-      code: awsVerificationCode(session.authorizationUrl),
-    });
-    expect(completed.status).toBe("complete");
-    expect(provider.tokenRequests).toHaveLength(1);
-  });
-
   it("keeps an in-flight completion exclusive without superseding it", async () => {
     const provider = mockAwsDeferredTokenExchange();
     const actor = await awsActor();
@@ -964,7 +936,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(provider.tokenRequests).toHaveLength(2);
 
     await connectorsApi.deleteConnectorBySlug(actor, "aws");
-    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("expires external-code sessions past their deadline, including stale completing claims", async () => {
