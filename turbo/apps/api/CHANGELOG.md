@@ -1,5 +1,59 @@
 # Changelog
 
+## [1.401.0](https://github.com/vm0-ai/vm0/compare/api-v1.400.0...api-v1.401.0) (2026-08-07)
+
+
+### Features
+
+* add seedance 2.5 video generation ([#25706](https://github.com/vm0-ai/vm0/issues/25706)) ([4980128](https://github.com/vm0-ai/vm0/commit/49801285e195ef2ada1c42a721ca79cfce7b0c62))
+
+
+### Refactoring
+
+* **pi-agent-runtime:** publish a vm0-owned type surface ([#25711](https://github.com/vm0-ai/vm0/issues/25711)) ([2110a56](https://github.com/vm0-ai/vm0/commit/2110a56c21d6c67ecf8cb7c075a7358cffd98b4d))
+
+
+### Performance Improvements
+
+* **api:** isolate the aws sdk type surface behind a gateway typecheck project ([#25714](https://github.com/vm0-ai/vm0/issues/25714)) ([c906788](https://github.com/vm0-ai/vm0/commit/c9067884109d6ad28b7d244b65b30338d173361d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.0
+    * @vm0/core bumped to 8.529.0
+    * @vm0/db bumped to 1.178.0
+    * @vm0/pi-agent-runtime bumped to 1.3.1
+
+## [1.400.0](https://github.com/vm0-ai/vm0/compare/api-v1.399.0...api-v1.400.0) (2026-08-07)
+
+
+### Features
+
+* **pi:** support codex subscription model providers ([#25703](https://github.com/vm0-ai/vm0/issues/25703)) ([0c35f8f](https://github.com/vm0-ai/vm0/commit/0c35f8f533d8f85a3a16a9bc6751bef5d2b1a9ea))
+
+
+### Bug Fixes
+
+* **api:** reject saturated pi edge launches ([#25678](https://github.com/vm0-ai/vm0/issues/25678)) ([a74438d](https://github.com/vm0-ai/vm0/commit/a74438d4a6e5f736d7fcd74d4a82273b253455a7))
+
+
+### Refactoring
+
+* remove pexels connector and image provider ([#23668](https://github.com/vm0-ai/vm0/issues/23668)) ([6344d47](https://github.com/vm0-ai/vm0/commit/6344d47abc26e22f09d5ece2941e7c5f3cf4dda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.292.0
+    * @vm0/core bumped to 8.528.2
+    * @vm0/db bumped to 1.177.3
+    * @vm0/pi-agent-runtime bumped to 1.3.0
+
 ## [1.399.0](https://github.com/vm0-ai/vm0/compare/api-v1.398.2...api-v1.399.0) (2026-08-07)
 
 

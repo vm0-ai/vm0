@@ -4,12 +4,10 @@ import {
   loadSourcedSkills,
   type ExecutionEnv,
   type Skill,
-  type SkillDiagnostic,
 } from "@earendil-works/pi-agent-core";
-import type {
-  RunSkillSnapshot,
-  RunSkillSnapshotEntry,
-} from "@vm0/api-contracts/contracts/runners";
+import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
+
+import type { PiRunSkills } from "./types";
 
 const PI_AGENT_NAME_PLACEHOLDER = "{{agent_name}}";
 
@@ -66,17 +64,6 @@ function renderPiBaseSystemPrompt(agentName: string): string {
 
 /** Default base prompt used when no user-facing agent identity is available. */
 export const PI_BASE_SYSTEM_PROMPT = renderPiBaseSystemPrompt("Okou");
-
-export interface PiRunSkills {
-  readonly skills: readonly Skill[];
-  readonly sourcedSkills: ReadonlyArray<{
-    readonly skill: Skill;
-    readonly source: RunSkillSnapshotEntry;
-  }>;
-  readonly diagnostics: ReadonlyArray<
-    SkillDiagnostic & { readonly source: RunSkillSnapshotEntry }
-  >;
-}
 
 /** Load only the exact Skill directories pinned in this run's snapshot. */
 export async function loadPiRunSkills(

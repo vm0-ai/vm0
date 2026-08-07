@@ -105,10 +105,7 @@ import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import {
-  PRESENTATION_TEMPLATE_PICKER_ITEMS,
-  r2ImageTransformUrl,
-} from "@vm0/core";
+import { r2ImageTransformUrl } from "@vm0/core";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
   PlatformConnectorPermissionMetadata,
@@ -264,7 +261,6 @@ import type {
   RecommendedFollowupSource,
   ThinkingIndicatorMode,
 } from "../../signals/chat-page/chat-panel-signals.ts";
-import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
 import {
   applyChatThreadEmoji,
   removeChatThreadEmoji,
@@ -7166,9 +7162,11 @@ const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
 const STRUCTURED_INLINE_REFERENCE_CLASS =
   "relative -top-px mx-0.5 inline-flex h-7 max-w-[240px] items-center " +
   "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
-  "font-medium text-orange-600 transition-colors hover:bg-orange-500/15 " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
-  "active:bg-orange-500/20 dark:bg-orange-400/15 dark:text-orange-300 " +
+  "font-medium text-orange-600 dark:bg-orange-400/15 dark:text-orange-300";
+const STRUCTURED_INLINE_LINK_REFERENCE_CLASS =
+  `${STRUCTURED_INLINE_REFERENCE_CLASS} transition-colors ` +
+  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 " +
+  "focus-visible:ring-orange-500/30 active:bg-orange-500/20 " +
   "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
 /**
@@ -7192,106 +7190,28 @@ function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
   );
 }
 
-function templatePickerCategoryForReference(
-  template: GenerationTemplateRequest,
-): string {
-  if (avatarTemplateSelection(template)) {
-    return "avatar";
-  }
-  return template.type === "presentation" ? "slides" : template.type;
-}
-
-function presentationTemplatePreviewSlug(
-  template: GenerationTemplateRequest,
-): string | null {
-  if (template.type !== "presentation") {
-    return null;
-  }
-  return (
-    PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
-      return item.templateId === template.selection.templateId;
-    })?.slug ?? null
-  );
-}
-
+/**
+ * A sent template is a record of what the message used, not a control. It
+ * renders as static text so the history stays read-only.
+ */
 function UserMessageTemplateReference({
   part,
-  signals,
 }: {
   part: Extract<UserMessagePart, { type: "template" }>;
-  signals: ComposerSignals;
 }) {
-  const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
   const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
-  const setTemplatePickerCategory = useSet(
-    signals.template.setTemplatePickerCategory$,
-  );
-  const setTemplatePickerOpen = useSet(signals.template.setTemplatePickerOpen$);
-  const setTemplatePickerPreviewSlug = useSet(
-    signals.template.setTemplatePickerPreviewSlug$,
-  );
-  const setTemplatePickerReferenceValue = useSet(
-    signals.template.setTemplatePickerReferenceValue$,
-  );
-  const setTemplatePickerSearch = useSet(
-    signals.template.setTemplatePickerSearch$,
-  );
-  const selectAvatarTemplateForVoice = useSet(
-    signals.template.selectAvatarTemplateForVoice$,
-  );
-  const setAvatarTemplateFilters = useSet(
-    signals.template.setAvatarTemplateFilters$,
-  );
   return (
-    <button
-      type="button"
+    <span
       data-structured-template-reference=""
-      aria-label={t(
-        ($) => {
-          return $.chat.templates.messageTemplate;
-        },
-        {
-          title: part.titleSnapshot,
-        },
-      )}
-      aria-haspopup="dialog"
       className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
-      onClick={() => {
-        const avatar = avatarTemplateSelection(part.template);
-        if (avatar) {
-          setAvatarTemplateFilters({
-            aspectRatio:
-              avatar.aspectRatio === "landscape" ? "landscape" : "portrait",
-            style: undefined,
-            gender: undefined,
-            age: undefined,
-            scene: undefined,
-            ethnicity: undefined,
-          });
-          selectAvatarTemplateForVoice({
-            id: avatar.avatarId,
-            name: avatar.title,
-            coverUrl: avatar.previewUrl,
-          });
-        }
-        setTemplatePickerCategory(
-          templatePickerCategoryForReference(part.template),
-        );
-        setTemplatePickerSearch("");
-        setTemplatePickerPreviewSlug(
-          presentationTemplatePreviewSlug(part.template),
-        );
-        setTemplatePickerReferenceValue(part.template);
-        setTemplatePickerOpen(true);
-      }}
     >
       <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
       {spec !== null && <SentVideoTemplateSpec spec={spec} />}
-    </button>
+    </span>
   );
 }
 
@@ -7425,7 +7345,7 @@ function UserMessageChatThreadReference({
         },
         { title },
       )}
-      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      className={STRUCTURED_INLINE_LINK_REFERENCE_CLASS}
       title={title}
     >
       <IconMessageCircle size={13} stroke={1.7} className="shrink-0" />
@@ -7455,7 +7375,7 @@ function UserMessageAgentReference({
         },
         { name },
       )}
-      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      className={STRUCTURED_INLINE_LINK_REFERENCE_CLASS}
       title={name}
     >
       <AvatarFromUrl
@@ -7472,11 +7392,9 @@ function UserMessageAgentReference({
 function UserMessageFeedbackNote({
   note,
   agentReferenceSignalsForId,
-  composerSignals,
 }: {
   note: readonly FeedbackNotePart[];
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
   return (
@@ -7506,13 +7424,7 @@ function UserMessageFeedbackNote({
           );
         }
         if (part.type === "template") {
-          return (
-            <UserMessageTemplateReference
-              key={key}
-              part={part}
-              signals={composerSignals}
-            />
-          );
+          return <UserMessageTemplateReference key={key} part={part} />;
         }
         return <span key={key}>{part.text}</span>;
       })}
@@ -7604,11 +7516,9 @@ function userMessageFeedbackHeading(
 function UserMessageFeedbackGroup({
   parts,
   agentReferenceSignalsForId,
-  composerSignals,
 }: {
   parts: readonly UserMessageFeedbackPart[];
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
   let firstPart = true;
@@ -7638,7 +7548,6 @@ function UserMessageFeedbackGroup({
             <UserMessageFeedbackNote
               note={part.note}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
-              composerSignals={composerSignals}
             />
           </div>
         );
@@ -7662,12 +7571,10 @@ function UserMessagePartView({
   part,
   attachments,
   agentReferenceSignalsForId,
-  composerSignals,
 }: {
   part: UserMessageStandalonePart;
   attachments: readonly ResolvedAttachFile[];
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
 }): ReactNode {
   if (part.type === "text") {
     return <span>{part.text}</span>;
@@ -7690,9 +7597,7 @@ function UserMessagePartView({
     );
   }
   if (part.type === "template") {
-    return (
-      <UserMessageTemplateReference part={part} signals={composerSignals} />
-    );
+    return <UserMessageTemplateReference part={part} />;
   }
   if (part.type === "file") {
     const attachment = attachments.find((candidate) => {
@@ -7709,13 +7614,11 @@ function UserMessageView({
   attachments,
   elevatedFileIds,
   agentReferenceSignalsForId,
-  composerSignals,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter(
@@ -7755,7 +7658,6 @@ function UserMessageView({
           key={`feedback:${String(index)}`}
           parts={feedbackParts}
           agentReferenceSignalsForId={agentReferenceSignalsForId}
-          composerSignals={composerSignals}
         />,
       );
       index = nextIndex;
@@ -7770,7 +7672,6 @@ function UserMessageView({
         part={part}
         attachments={attachments}
         agentReferenceSignalsForId={agentReferenceSignalsForId}
-        composerSignals={composerSignals}
       />,
     );
     index += 1;
@@ -7795,14 +7696,12 @@ function UserMessageContent({
   referenceAttachments,
   onImageClick,
   agentReferenceSignalsForId,
-  composerSignals,
 }: {
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
-  composerSignals: ComposerSignals;
 }) {
   // Attachments read as their own object, so they all sit above the bubble
   // instead of interrupting the sentence they were dropped into. Attachments
@@ -7836,7 +7735,6 @@ function UserMessageContent({
               attachments={referenceAttachments}
               elevatedFileIds={elevatedFileIds}
               agentReferenceSignalsForId={agentReferenceSignalsForId}
-              composerSignals={composerSignals}
             />
           </div>
         </div>
@@ -8095,7 +7993,6 @@ function PagedUserMessage({
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
               agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
-              composerSignals={thread.composer}
             />
           ) : (
             <>

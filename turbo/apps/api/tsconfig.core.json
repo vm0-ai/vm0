@@ -4,6 +4,7 @@
     "composite": true,
     "declaration": true,
     "declarationMap": false,
+    "disableSourceOfProjectReferenceRedirect": true,
     "emitDeclarationOnly": true,
     "noEmit": false,
     "rootDir": "./src",
@@ -24,6 +25,13 @@
     "src/index.ts",
     "src/production-bootstrap.ts",
     "src/server.ts",
-    "src/signals/route.ts"
-  ]
+    "src/signals/route.ts",
+    "src/lib/env.ts",
+    "src/lib/log.ts",
+    "src/lib/secret-kms-client.ts",
+    "src/lib/singleton.ts",
+    "src/signals/external/s3.ts",
+    "src/signals/utils.ts"
+  ],
+  "references": [{ "path": "./tsconfig.gateways.json" }]
 }

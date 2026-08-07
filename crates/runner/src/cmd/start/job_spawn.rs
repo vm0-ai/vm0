@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{error, warn};
 
-use super::active_reuse_keys::{ActiveReuseKeyGuard, ActiveReuseKeys};
+use super::active_runs::{ActiveRunFinalizationPublisher, ActiveRunGuard, ActiveRuns};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
@@ -38,7 +38,7 @@ use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
 use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
-use crate::resource_budget::BudgetLease;
+use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{
     RunCancellationHandle, RunCancellationRegistration, RunCancellationSignals,
 };
@@ -61,6 +61,7 @@ pub(super) struct JobProfile {
 }
 
 /// Shared state passed to each spawned job task.
+#[derive(Clone)]
 pub(super) struct SpawnContext {
     pub(super) provider: Arc<dyn JobProvider>,
     pub(super) exec_config: Arc<ExecutorConfig>,
@@ -78,7 +79,8 @@ pub(super) struct SpawnContext {
     pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
-    pub(super) active_reuse_keys: ActiveReuseKeys,
+    pub(super) active_runs: ActiveRuns,
+    pub(super) budget: Arc<ResourceBudget>,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
@@ -95,7 +97,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) reuse_result: SandboxReuseResult,
     pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
-    pub(super) active_reuse_key_guard: ActiveReuseKeyGuard,
+    pub(super) active_run_guard: ActiveRunGuard,
 }
 
 struct ExecutorInvocation {
@@ -257,6 +259,7 @@ struct FinalizationPhase {
     network_log_drain: NetworkLogDrainCoordinator,
     cancel: RunCancellationHandle,
     cleanup_state: RunCleanupState,
+    active_run_finalization: ActiveRunFinalizationPublisher,
     #[cfg(test)]
     outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
@@ -292,6 +295,7 @@ impl FinalizationPhase {
             network_log_drain,
             cancel,
             cleanup_state,
+            active_run_finalization,
             #[cfg(test)]
             outer_job_panic,
             #[cfg(test)]
@@ -373,6 +377,7 @@ impl FinalizationPhase {
             },
         )
         .await;
+        active_run_finalization.mark_finalized();
         let finalization_duration = finalization_started.elapsed();
         let disposition = cleanup_state_after_finalize.disposition();
         let reuse_state_changed = completion_ready.reuse_state_changed();
@@ -442,7 +447,7 @@ struct CompletionPhase {
     status: Arc<StatusTracker>,
     usage_flush_tx: mpsc::Sender<()>,
     reuse_state_notify: Arc<tokio::sync::Notify>,
-    active_reuse_key_guard: ActiveReuseKeyGuard,
+    active_run_guard: ActiveRunGuard,
     cleanup_state: RunCleanupState,
 }
 
@@ -454,7 +459,7 @@ impl CompletionPhase {
             status,
             usage_flush_tx,
             reuse_state_notify,
-            active_reuse_key_guard,
+            active_run_guard,
             cleanup_state,
         } = self;
 
@@ -471,7 +476,7 @@ impl CompletionPhase {
             true,
             None,
         );
-        if active_reuse_key_guard.release() {
+        if active_run_guard.release() {
             telemetry.record(
                 "runner_active_reuse_key_released",
                 Duration::ZERO,
@@ -556,10 +561,18 @@ impl DeferredUploadPhase {
 /// then release it. An accepted idle entry owns and retains the lease until reuse
 /// or destruction.
 pub(super) fn spawn_job(
-    request: SpawnJobRequest,
+    mut request: SpawnJobRequest,
     ctx: &SpawnContext,
     jobs: &mut JoinSet<RunCancellationRegistration>,
 ) {
+    request.pre_spawn_timing.mark_task_enqueued();
+    jobs.spawn(run_job(request, ctx.clone()));
+}
+
+pub(super) async fn run_job(
+    request: SpawnJobRequest,
+    ctx: SpawnContext,
+) -> RunCancellationRegistration {
     let started_at = Instant::now();
     let SpawnJobRequest {
         claimed,
@@ -569,8 +582,9 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        active_reuse_key_guard,
+        active_run_guard,
     } = request;
+    let active_run_finalization = active_run_guard.finalization_publisher();
     let (context, completion_auth, active_input_source, pi_standby_source) =
         claimed.into_run_parts();
     let run_id = context.run_id;
@@ -691,6 +705,7 @@ pub(super) fn spawn_job(
         network_log_drain: exec_config.network_log_drain.clone(),
         cancel: job_cancel.clone(),
         cleanup_state: cleanup_state_for_body.clone(),
+        active_run_finalization,
         #[cfg(test)]
         outer_job_panic,
         #[cfg(test)]
@@ -705,64 +720,60 @@ pub(super) fn spawn_job(
     executor
         .pre_spawn_timing
         .record_phase_elapsed(RunnerPreSpawnPhase::SpawnJobSetup, started_at);
-    executor.pre_spawn_timing.mark_task_enqueued();
-    jobs.spawn(async move {
-        let active_reuse_key_guard = active_reuse_key_guard;
-        let body = async move {
-            #[cfg(test)]
-            maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
+    let body = async move {
+        #[cfg(test)]
+        maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
-            let executor_result = executor.execute().await;
-            let cancelled_for_log = job_cancel.is_cancelled();
-            log_terminal_job_outcome(
-                run_id,
-                executor_result.exit_code,
-                reused,
-                cancelled_for_log,
-                executor_result.outcome.failure.as_ref(),
-            );
+        let executor_result = executor.execute().await;
+        let cancelled_for_log = job_cancel.is_cancelled();
+        log_terminal_job_outcome(
+            run_id,
+            executor_result.exit_code,
+            reused,
+            cancelled_for_log,
+            executor_result.outcome.failure.as_ref(),
+        );
 
-            let FinalizedJob {
-                completion_ready,
-                mut telemetry,
-            } = finalization.finalize(executor_result).await;
-            CompletionPhase {
-                run_id,
-                provider,
-                status,
-                usage_flush_tx,
-                reuse_state_notify,
-                active_reuse_key_guard,
-                cleanup_state: cleanup_state_for_body,
-            }
-            .complete(completion_ready, &mut telemetry)
-            .await;
-            deferred_upload.flush(telemetry).await;
-        };
-
-        match AssertUnwindSafe(body).catch_unwind().await {
-            Ok(()) => cancellation,
-            Err(payload) => {
-                let cleanup = cleanup_panicked_job(
-                    run_id,
-                    sandbox_id,
-                    cancellation,
-                    status_for_panic,
-                    idle_pool_for_panic,
-                    cleanup_state_for_panic,
-                    orphaned_active_runs_for_panic,
-                );
-                if AssertUnwindSafe(cleanup).catch_unwind().await.is_err() {
-                    error!(
-                        run_id = %run_id,
-                        sandbox_id = %sandbox_id,
-                        "outer job panic cleanup panicked"
-                    );
-                }
-                std::panic::resume_unwind(payload);
-            }
+        let FinalizedJob {
+            completion_ready,
+            mut telemetry,
+        } = finalization.finalize(executor_result).await;
+        CompletionPhase {
+            run_id,
+            provider,
+            status,
+            usage_flush_tx,
+            reuse_state_notify,
+            active_run_guard,
+            cleanup_state: cleanup_state_for_body,
         }
-    });
+        .complete(completion_ready, &mut telemetry)
+        .await;
+        deferred_upload.flush(telemetry).await;
+    };
+
+    match AssertUnwindSafe(body).catch_unwind().await {
+        Ok(()) => cancellation,
+        Err(payload) => {
+            let cleanup = cleanup_panicked_job(
+                run_id,
+                sandbox_id,
+                cancellation,
+                status_for_panic,
+                idle_pool_for_panic,
+                cleanup_state_for_panic,
+                orphaned_active_runs_for_panic,
+            );
+            if AssertUnwindSafe(cleanup).catch_unwind().await.is_err() {
+                error!(
+                    run_id = %run_id,
+                    sandbox_id = %sandbox_id,
+                    "outer job panic cleanup panicked"
+                );
+            }
+            std::panic::resume_unwind(payload);
+        }
+    }
 }
 
 fn signal_usage_flush(run_id: RunId, usage_flush_tx: &mpsc::Sender<()>) {
@@ -830,6 +841,7 @@ mod tests {
 
     use sandbox::SandboxId;
 
+    use super::super::active_runs::ActiveRuns;
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::RunCleanupState;
     use super::super::orphan_reap::OrphanedActiveRuns;
@@ -921,6 +933,8 @@ mod tests {
         idle_pool: SharedIdlePool,
         parking_gate: ParkingGate,
         reuse_state_notify: Arc<tokio::sync::Notify>,
+        active_runs: ActiveRuns,
+        active_run_guards: std::sync::Mutex<Vec<ActiveRunGuard>>,
     }
 
     impl FinalizationTelemetryFixture {
@@ -942,12 +956,16 @@ mod tests {
                 parking_gate.clone(),
             )));
 
+            let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
+            let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
             Self {
                 _dir: dir,
                 status,
                 idle_pool,
                 parking_gate,
-                reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
+                reuse_state_notify,
+                active_runs,
+                active_run_guards: std::sync::Mutex::new(Vec::new()),
             }
         }
 
@@ -959,6 +977,14 @@ mod tests {
             active_lease: BudgetLease,
             cleanup_state: RunCleanupState,
         ) -> FinalizationPhase {
+            let active_run_guard =
+                self.active_runs
+                    .register(run_id, Some(session_id.into()), "vm0/default".into());
+            let active_run_finalization = active_run_guard.finalization_publisher();
+            self.active_run_guards
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(active_run_guard);
             FinalizationPhase {
                 run_id,
                 sandbox_id,
@@ -981,6 +1007,7 @@ mod tests {
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 cancel: RunCancellationHandle::new(),
                 cleanup_state,
+                active_run_finalization,
                 outer_job_panic: None,
                 test_observer: StartLoopTestObserver::default(),
             }
@@ -1405,12 +1432,9 @@ mod tests {
             "finalizer should send the early park refresh"
         );
 
-        let active_reuse_keys = super::super::active_reuse_keys::new_active_reuse_keys();
-        let active_reuse_key_guard = ActiveReuseKeyGuard::new(
-            Arc::clone(&active_reuse_keys),
-            Arc::clone(&fixture.reuse_state_notify),
-            Some(session_id.to_owned()),
-        );
+        let active_runs = ActiveRuns::new(Arc::clone(&fixture.reuse_state_notify));
+        let active_run_guard =
+            active_runs.register(run_id, Some(session_id.to_owned()), "vm0/default".into());
         let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
 
         CompletionPhase {
@@ -1419,7 +1443,7 @@ mod tests {
             status: Arc::clone(&fixture.status),
             usage_flush_tx,
             reuse_state_notify: Arc::clone(&fixture.reuse_state_notify),
-            active_reuse_key_guard,
+            active_run_guard,
             cleanup_state: RunCleanupState::new(),
         }
         .complete(completion_ready, &mut telemetry)
@@ -1429,7 +1453,7 @@ mod tests {
         assert_telemetry_action(&telemetry, "runner_active_reuse_key_released");
 
         assert!(
-            super::super::active_reuse_keys::active_reuse_keys(&active_reuse_keys).is_empty(),
+            active_runs.reuse_keys().is_empty(),
             "completion should release the active reuse-key guard before notifying"
         );
         assert!(

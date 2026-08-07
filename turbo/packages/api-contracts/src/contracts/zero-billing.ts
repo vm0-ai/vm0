@@ -72,6 +72,7 @@ const usageAllowanceSchema = z.object({
 
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
+  paymentMethodManagementAvailable: z.boolean().optional(),
   canBuyConcurrency: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   autoRechargeAllowed: z.boolean().optional(),
@@ -242,6 +243,7 @@ const creditCheckoutRequestSchema = z
 
 const portalRequestSchema = z.object({
   returnUrl: stripeRedirectUrlSchema,
+  mode: z.literal("payment_methods").optional(),
 });
 
 const autoRechargeUpdateRequestSchema = z

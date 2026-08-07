@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.160.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.4...runner-rs-v0.160.5) (2026-08-07)
+
+
+### Performance Improvements
+
+* **runner:** claim finalizing successors early ([#25685](https://github.com/vm0-ai/vm0/issues/25685)) ([9692323](https://github.com/vm0-ai/vm0/commit/969232302fd2fa66186fbdb05a845aaee23c879b))
+
 ## [0.160.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.3...runner-rs-v0.160.4) (2026-08-07)
 
 ## [0.160.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.2...runner-rs-v0.160.3) (2026-08-07)

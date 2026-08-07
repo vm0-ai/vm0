@@ -2,11 +2,9 @@ import { http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import {
-  NodeExecutionEnv,
-  resolvePiAgentModel,
-  runPiAgentPrompt,
-} from "./node";
+import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+
+import { resolvePiAgentModel, runPiAgentPrompt } from "./agent-loop";
 
 const CODEX_ACCOUNT_ID_CLAIM_PATH = "https://api.openai.com/auth";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";

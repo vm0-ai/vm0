@@ -790,10 +790,14 @@ describe("chat composer templates", () => {
         "overflow-y-auto",
         "[scrollbar-width:none]",
       );
-      const avatarToolbar = avatarScroll.querySelector(
-        "[data-avatar-catalog-toolbar]",
-      );
-      expect(avatarToolbar).toHaveClass("sticky", "top-0");
+      // The toolbar lives in the dialog header row next to the close button,
+      // so it must not sit inside the scrolling catalog area.
+      expect(
+        avatarScroll.querySelector("[data-avatar-catalog-toolbar]"),
+      ).toBeNull();
+      expect(
+        dialog.querySelector("[data-avatar-catalog-toolbar]"),
+      ).not.toBeNull();
       Object.defineProperties(avatarScroll, {
         scrollHeight: { configurable: true, value: 1200 },
         clientHeight: { configurable: true, value: 500 },

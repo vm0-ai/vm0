@@ -74,8 +74,9 @@ use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegist
 use crate::status::{StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::WorkspaceImageCache;
 
-mod active_reuse_keys;
+mod active_runs;
 mod factory_lifecycle;
+mod finalizing_claim;
 mod heartbeat;
 mod identity;
 mod idle_lifecycle;
@@ -89,7 +90,7 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
-use active_reuse_keys::{ActiveReuseKeys, new_active_reuse_keys};
+use active_runs::ActiveRuns;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
@@ -755,8 +756,8 @@ async fn run_start_with_home(
         )
         .await?;
 
-    let active_reuse_keys = new_active_reuse_keys();
     let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
+    let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
     let config = RunConfig {
         runner: RunnerInfo {
             id: runner_id,
@@ -783,7 +784,7 @@ async fn run_start_with_home(
             idle_pool,
             parking_gate,
             status,
-            active_reuse_keys,
+            active_runs,
             reuse_state_notify,
         },
         provider: ProviderState {
@@ -871,7 +872,7 @@ struct RunnerSharedState {
     idle_pool: SharedIdlePool,
     parking_gate: ParkingGate,
     status: Arc<StatusTracker>,
-    active_reuse_keys: ActiveReuseKeys,
+    active_runs: ActiveRuns,
     reuse_state_notify: Arc<tokio::sync::Notify>,
 }
 
@@ -1211,6 +1212,7 @@ mod start_loop_observer_tests {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OuterJobPanicPoint {
+    ClaimedWithoutSandbox,
     ActiveOrUnknown,
     IdlePoolOwned,
     DestroyCompleted,
@@ -1493,7 +1495,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // waiting for the next 10-second tick.
     let reuse_state_notify = Arc::clone(&shared.reuse_state_notify);
     let orphaned_active_runs = OrphanedActiveRuns::new();
-    let active_reuse_keys = shared.active_reuse_keys.clone();
+    let active_runs = shared.active_runs.clone();
     let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
@@ -1511,7 +1513,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         budget: &capacity.budget,
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
-        active_reuse_keys: &active_reuse_keys,
+        active_runs: &active_runs,
         workspace_cache_snapshot: workspace_cache_snapshot.clone(),
     });
     refresh_workspace_cache_snapshot(
@@ -1539,7 +1541,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         parking_gate: shared.parking_gate.clone(),
         reuse_state_notify: Arc::clone(&reuse_state_notify),
         usage_flush_tx,
-        active_reuse_keys: active_reuse_keys.clone(),
+        active_runs: active_runs.clone(),
+        budget: Arc::clone(&capacity.budget),
         workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
@@ -1615,10 +1618,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     continue;
                 }
             }
+            // A selected finalizing successor can claim against an exact
+            // in-process predecessor without reserving fresh capacity.
             capacity
                 .budget
                 .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
                 || shared.idle_pool.lock().await.len() > 0
+                || active_runs.has_reusable_run()
         } else {
             false
         };

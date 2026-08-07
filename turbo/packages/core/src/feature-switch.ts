@@ -194,11 +194,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
-  [FeatureSwitchKey.PexelsConnector]: {
-    maintainer: "bingjie@vm0.ai",
-    description: "Enable the Pexels stock photo and video connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -336,6 +331,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
   },
+  [FeatureSwitchKey.PaymentMethodManagement]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show payment method management without requiring an active subscription.",
+    // Remove the switch and disabled paths with #25716 after the app/API
+    // rollout and the roughly two-day stale-client window are complete.
+    enabled: true,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -360,19 +363,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Create immutable public snapshots from explicitly selected chat messages.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ArtifactSidebarInlineOpen]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CjkFriendlyMarkdown]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Close markdown emphasis (`*`, `**`, `***`, `~~`) that sits directly against CJK punctuation, which plain CommonMark leaves as literal asterisks. Turn off to fall back to stock CommonMark parsing.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

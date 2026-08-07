@@ -909,6 +909,10 @@
       "description": "Langganan, metode pembayaran, dan faktur di Stripe.",
       "title": "Kelola penagihan"
     },
+    "paymentMethods": {
+      "description": "Kelola metode pembayaran yang digunakan untuk penagihan di Stripe.",
+      "title": "Metode pembayaran"
+    },
     "plans": {
       "cancellationNotice": "Paket {{plan}} Anda telah dibatalkan dan akan berakhir pada {{date}}.",
       "changeAnytime": "Naikkan atau turunkan paket kapan saja.",
@@ -1581,7 +1585,6 @@
         "website": "Situs web",
         "workflow": "Alur kerja"
       },
-      "messageTemplate": "Template pesan {{title}}",
       "previewTemplate": "Pratinjau template {{title}}",
       "previewVideo": "Pratinjau template video {{title}}",
       "previewWebsite": "Pratinjau template situs web {{title}}",
@@ -5112,6 +5115,43 @@
         "localeSummary": "Locale {{locale}}",
         "rule": "Saat entri Strapi yang cocok dipublikasikan"
       },
+      "stripe": {
+        "addAction": "Tambahkan otomatisasi Stripe",
+        "addAria": "Tambahkan otomatisasi faktur Stripe dibayar",
+        "addDescription": "Jalankan alur kerja ini saat faktur yang cocok dibayar di akun Stripe Live yang terhubung.",
+        "addTitle": "Tambahkan otomatisasi Stripe",
+        "anyBillingReason": "Alasan penagihan apa pun",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "Item faktur tertunda otomatis",
+          "manual": "Manual",
+          "quoteAccept": "Penawaran diterima",
+          "subscription": "Langganan",
+          "subscriptionCreate": "Langganan dibuat",
+          "subscriptionCycle": "Siklus langganan",
+          "subscriptionThreshold": "Ambang langganan",
+          "subscriptionUpdate": "Langganan diperbarui",
+          "upcoming": "Mendatang"
+        },
+        "billingReasons": "Alasan penagihan",
+        "billingReasonsHint": "Jangan pilih apa pun untuk mencocokkan semua alasan penagihan.",
+        "bindingSummary": "Akun Stripe {{accountId}} · Mode Live · {{billingReasons}}",
+        "delivery": "Pengiriman",
+        "deliveryStatus": {
+          "delivered": "Terkirim",
+          "failed": "Gagal",
+          "pending": "Tertunda",
+          "skipped": "Dilewati"
+        },
+        "deliveryWarning": "Pengiriman terminal terbaru gagal. Periksa aktivitas alur kerja sebelum mencoba lagi.",
+        "immutableHint": "Akun Stripe dan alasan penagihan bersifat tetap. Untuk mengubahnya, hapus otomatisasi ini lalu buat ulang.",
+        "invoicePaidDescription": "Jalankan saat faktur Stripe yang cocok dibayar.",
+        "invoicePaidTitle": "Faktur Stripe dibayar",
+        "lastEvent": "Peristiwa terakhir",
+        "manageConnection": "Kelola koneksi Stripe",
+        "noDeliveries": "Belum ada pengiriman",
+        "noMatchingEvents": "Belum ada peristiwa yang cocok",
+        "rule": "Saat faktur Stripe yang cocok dibayar"
+      },
       "types": {
         "chat": "Chat",
         "github": "GitHub",
@@ -5121,6 +5161,7 @@
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {

@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.529.0](https://github.com/vm0-ai/vm0/compare/core-v8.528.2...core-v8.529.0) (2026-08-07)
+
+
+### Features
+
+* add seedance 2.5 video generation ([#25706](https://github.com/vm0-ai/vm0/issues/25706)) ([4980128](https://github.com/vm0-ai/vm0/commit/49801285e195ef2ada1c42a721ca79cfce7b0c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.0
+
+## [8.528.2](https://github.com/vm0-ai/vm0/compare/core-v8.528.1...core-v8.528.2) (2026-08-07)
+
+
+### Refactoring
+
+* remove artifactSidebarInlineOpen feature switch ([#25691](https://github.com/vm0-ai/vm0/issues/25691)) ([276a21a](https://github.com/vm0-ai/vm0/commit/276a21acfecc092500a9a955918d0842d19d8507))
+* remove cjk-friendly-markdown feature switch ([#25689](https://github.com/vm0-ai/vm0/issues/25689)) ([0638de8](https://github.com/vm0-ai/vm0/commit/0638de803c03b1a8baa75a718db06ec5b6ef580d))
+* remove pexels connector and image provider ([#23668](https://github.com/vm0-ai/vm0/issues/23668)) ([6344d47](https://github.com/vm0-ai/vm0/commit/6344d47abc26e22f09d5ece2941e7c5f3cf4dda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.292.0
+
 ## [8.528.1](https://github.com/vm0-ai/vm0/compare/core-v8.528.0...core-v8.528.1) (2026-08-07)
 
 

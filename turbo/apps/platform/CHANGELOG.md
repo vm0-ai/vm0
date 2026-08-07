@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.705.0](https://github.com/vm0-ai/vm0/compare/app-v0.704.0...app-v0.705.0) (2026-08-07)
+
+
+### Features
+
+* **platform:** move avatar catalog filters into the dialog header row ([#25705](https://github.com/vm0-ai/vm0/issues/25705)) ([3e52c0d](https://github.com/vm0-ai/vm0/commit/3e52c0d2716cb0f632e4cc075eca19885b51b3de))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.0
+    * @vm0/core bumped to 8.529.0
+
+## [0.704.0](https://github.com/vm0-ai/vm0/compare/app-v0.703.2...app-v0.704.0) (2026-08-07)
+
+
+### Features
+
+* **platform:** add stripe invoice paid automation ui ([#25710](https://github.com/vm0-ai/vm0/issues/25710)) ([d06fa44](https://github.com/vm0-ai/vm0/commit/d06fa442830df8397740e1ef00eba1c77f686311))
+
+
+### Bug Fixes
+
+* make sent template chips static in chat history ([#25713](https://github.com/vm0-ai/vm0/issues/25713)) ([5c5fe3a](https://github.com/vm0-ai/vm0/commit/5c5fe3ab245ef388e263126e69a41facee045a2e))
+* **platform:** make the shared thread page scrollable ([#25702](https://github.com/vm0-ai/vm0/issues/25702)) ([8021675](https://github.com/vm0-ai/vm0/commit/802167562a4cd38c64f9bec9e458f6ea58ba3ca2))
+
+
+### Refactoring
+
+* remove artifactSidebarInlineOpen feature switch ([#25691](https://github.com/vm0-ai/vm0/issues/25691)) ([276a21a](https://github.com/vm0-ai/vm0/commit/276a21acfecc092500a9a955918d0842d19d8507))
+* remove cjk-friendly-markdown feature switch ([#25689](https://github.com/vm0-ai/vm0/issues/25689)) ([0638de8](https://github.com/vm0-ai/vm0/commit/0638de803c03b1a8baa75a718db06ec5b6ef580d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.292.0
+    * @vm0/core bumped to 8.528.2
+
 ## [0.703.2](https://github.com/vm0-ai/vm0/compare/app-v0.703.1...app-v0.703.2) (2026-08-07)
 
 

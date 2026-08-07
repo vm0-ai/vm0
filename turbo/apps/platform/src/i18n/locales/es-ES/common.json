@@ -930,6 +930,10 @@
       "description": "Suscripciones, método de pago y facturas en Stripe.",
       "title": "Gestionar la facturación"
     },
+    "paymentMethods": {
+      "description": "Administra los métodos de pago utilizados para la facturación en Stripe.",
+      "title": "Métodos de pago"
+    },
     "plans": {
       "cancellationNotice": "Tu plan {{plan}} ha sido cancelado y terminará el {{date}}.",
       "changeAnytime": "Actualiza o baja cuando quieras.",
@@ -1622,7 +1626,6 @@
         "website": "Sitio web",
         "workflow": "Flujo de trabajo"
       },
-      "messageTemplate": "Plantilla de mensaje {{title}}",
       "previewTemplate": "Plantilla de vista previa {{title}}",
       "previewVideo": "Vista previa de la plantilla de vídeo {{title}}",
       "previewWebsite": "Vista previa de la plantilla de sitio web {{title}}",
@@ -5193,6 +5196,43 @@
         "localeSummary": "Configuración regional {{locale}}",
         "rule": "Cuando se publica una entrada coincidente de Strapi"
       },
+      "stripe": {
+        "addAction": "Añadir automatización de Stripe",
+        "addAria": "Añadir automatización de factura pagada de Stripe",
+        "addDescription": "Ejecuta este flujo de trabajo cuando se paga una factura coincidente en la cuenta Live de Stripe conectada.",
+        "addTitle": "Añadir automatización de Stripe",
+        "anyBillingReason": "Cualquier motivo de facturación",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "Partidas pendientes automáticas",
+          "manual": "Manual",
+          "quoteAccept": "Presupuesto aceptado",
+          "subscription": "Suscripción",
+          "subscriptionCreate": "Suscripción creada",
+          "subscriptionCycle": "Ciclo de suscripción",
+          "subscriptionThreshold": "Umbral de suscripción",
+          "subscriptionUpdate": "Suscripción actualizada",
+          "upcoming": "Próxima"
+        },
+        "billingReasons": "Motivos de facturación",
+        "billingReasonsHint": "No selecciones ninguno para aceptar cualquier motivo de facturación.",
+        "bindingSummary": "Cuenta de Stripe {{accountId}} · Modo Live · {{billingReasons}}",
+        "delivery": "Entrega",
+        "deliveryStatus": {
+          "delivered": "Entregada",
+          "failed": "Fallida",
+          "pending": "Pendiente",
+          "skipped": "Omitida"
+        },
+        "deliveryWarning": "La última entrega terminal falló. Revisa la actividad del flujo de trabajo antes de volver a intentarlo.",
+        "immutableHint": "La cuenta de Stripe y los motivos de facturación son fijos. Para cambiarlos, elimina esta automatización y vuelve a crearla.",
+        "invoicePaidDescription": "Ejecutar cuando se pague una factura coincidente de Stripe.",
+        "invoicePaidTitle": "Factura de Stripe pagada",
+        "lastEvent": "Último evento",
+        "manageConnection": "Gestionar conexión de Stripe",
+        "noDeliveries": "Aún no hay entregas",
+        "noMatchingEvents": "Aún no hay eventos coincidentes",
+        "rule": "Cuando se paga una factura de Stripe que coincide"
+      },
       "types": {
         "chat": "Chat",
         "github": "GitHub",
@@ -5202,6 +5242,7 @@
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {

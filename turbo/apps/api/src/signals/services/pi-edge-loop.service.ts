@@ -135,13 +135,10 @@ export const runPiEdgeTurn$ = command(
           messages: priorMessages,
           executionEnv: args.executionEnv,
           signal,
-          async onEvent(event) {
-            if (event.type !== "message_end") {
-              return;
-            }
-            await project(event.message);
-            modelFailure ??= failedAssistantMessage(event.message);
-            if (!piMessageRequiresSandbox(event.message)) {
+          async onMessage(message) {
+            await project(message);
+            modelFailure ??= failedAssistantMessage(message);
+            if (!piMessageRequiresSandbox(message)) {
               return;
             }
             await set(
