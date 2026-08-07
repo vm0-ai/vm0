@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   chatEventSearchDocs,
@@ -8,9 +9,13 @@ import {
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatSearchIndexText } from "../../lib/chat-search-bigram";
+import { executeRawRows } from "../../lib/db-raw-rows";
 import { optionalEnv } from "../../lib/env";
 import { writeDb$, type Db } from "../external/db";
-import { projectUserMessage } from "./zero-chat-user-message.service";
+import {
+  projectUserMessage,
+  requiredUserMessageForEvent,
+} from "./zero-chat-user-message.service";
 
 interface ChatEventSearchProjectionStats {
   readonly threads: number;
@@ -55,17 +60,20 @@ function searchDocRole(eventType: string): SearchableRole | null {
   return null;
 }
 
+const searchDocsReadyRowSchema = z.object({ ready: z.boolean() });
+
 function searchDocText(row: {
-  readonly eventType: string;
+  readonly eventType: (typeof chatEvents.$inferSelect)["eventType"];
   readonly content: string | null;
   readonly userMessage: (typeof chatEvents.$inferSelect)["userMessage"];
 }): string | null {
-  const text =
-    searchDocRole(row.eventType) === "user"
-      ? row.userMessage
-        ? projectUserMessage(row.userMessage).displayText
-        : null
-      : row.content;
+  const userMessage = requiredUserMessageForEvent(
+    row.eventType,
+    row.userMessage,
+  );
+  const text = userMessage
+    ? projectUserMessage(userMessage).displayText
+    : row.content;
   const trimmed = text?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
 }
@@ -104,8 +112,11 @@ async function projectThread(
 
     const docs = rows.flatMap((row) => {
       const role = searchDocRole(row.eventType);
+      if (role === null || revokedEventIds.has(row.id)) {
+        return [];
+      }
       const text = searchDocText(row);
-      if (role === null || text === null || revokedEventIds.has(row.id)) {
+      if (text === null) {
         return [];
       }
       return [
@@ -175,6 +186,19 @@ export const projectChatEventSearch$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventSearchProjectionStats> => {
     const db = get(writeDb$);
+    // New-code-before-migration guard: this cron starts ticking as soon as the
+    // new API is promoted, which can precede migration 0859 under promotion
+    // drift or rollback (DB/API skew, observed up to ~102 minutes). Remove
+    // after migration 0859 is outside the production rollback window.
+    const [relation] = await executeRawRows(
+      db,
+      sql`SELECT to_regclass('public.chat_event_search_docs') IS NOT NULL AS ready`,
+      searchDocsReadyRowSchema,
+    );
+    signal.throwIfAborted();
+    if (!relation?.ready) {
+      return { threads: 0, indexedEvents: 0, deletedDocs: 0 };
+    }
     const laggingThreads = await db
       .select({
         chatThreadId: chatThreads.id,
