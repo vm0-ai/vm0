@@ -2885,6 +2885,7 @@ function buildCreateZeroRunArgs(params: {
     generationTemplatePrompt: prepared.generationTemplatePrompt,
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
+    agentRunSource: prepared.agentRunSource,
   };
   return {
     auth: args.auth,

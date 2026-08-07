@@ -7196,6 +7196,27 @@ describe("CHAT-02: shared user message queue", () => {
     await expect(
       readRunAutonomyBudgetFixture(context, firstTargetRunId),
     ).resolves.toBe(9);
+    const firstTargetRun = await api.readRun(actor, firstTargetRunId);
+    const firstTargetSystemPrompt = firstTargetRun.appendSystemPrompt ?? "";
+    expect(firstTargetSystemPrompt).toContain("# This Run's Trigger");
+    expect(firstTargetSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
+    expect(firstTargetSystemPrompt).toContain(
+      `SOURCE_THREAD_ID: ${source.threadId}`,
+    );
+    expect(firstTargetSystemPrompt).toContain(`SOURCE_AGENT_ID: ${agentId}`);
+    expect(firstTargetSystemPrompt).toContain(
+      "SOURCE_THREAD_TITLE: New thread",
+    );
+    expect(firstTargetSystemPrompt).toContain(
+      `zero chat messages --thread-id ${source.threadId}`,
+    );
+    expect(firstTargetSystemPrompt).toContain(
+      `zero logs ${source.runId} --all`,
+    );
+    const sourceRun = await api.readRun(actor, source.runId);
+    expect(sourceRun.appendSystemPrompt ?? "").not.toContain(
+      "# This Run's Trigger",
+    );
     const firstMessages = await waitForThreadMessages(
       actor,
       firstTargetThread.id,
@@ -7512,6 +7533,11 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(rotatedState.zero_run).toMatchObject({ triggerSource: "agent" });
     expect(rotatedSystemPrompt).toContain("# Web Chat Run Context");
+    expect(rotatedSystemPrompt).toContain("# This Run's Trigger");
+    expect(rotatedSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
+    expect(rotatedSystemPrompt).toContain(
+      `SOURCE_THREAD_ID: ${source.threadId}`,
+    );
     expect(rotatedSystemPrompt).toContain(rotatedAnchorPrompt);
     expect(rotatedSystemPrompt).not.toContain("# Incomplete Rounds Context");
     expect(rotatedSystemPrompt).toContain("Web chat files: use");

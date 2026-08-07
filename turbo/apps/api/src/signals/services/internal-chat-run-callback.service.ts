@@ -132,9 +132,12 @@ import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
+  agentRunSourceAnnotation,
+  type ChatAgentRunSourceAnnotation,
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
+import { buildAgentRunSourceContext } from "./zero-web-chat-session-prompt.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   integrationCompletionFallbackEventIdForRun,
@@ -2757,6 +2760,7 @@ interface QueuedLaunchLoaderArgs {
   readonly chatThreadId: string;
   readonly orgId: string;
   readonly userId: string;
+  readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
   readonly userMessageProjection: ReturnType<typeof projectUserMessage>;
   readonly resolveSignedUrls: (keys: {
     readonly inputKey: string;
@@ -2778,7 +2782,12 @@ type LaunchLoader = (
 const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
   return Promise.resolve({
     prompt: args.userMessageProjection.agentPrompt,
-    appendSystemPrompt: buildWebChatPrompt(),
+    appendSystemPrompt: [
+      buildWebChatPrompt(),
+      ...(args.agentRunSource
+        ? [buildAgentRunSourceContext(args.agentRunSource)]
+        : []),
+    ].join("\n\n"),
     delivery: {},
   });
 };
@@ -2888,6 +2897,7 @@ async function resolveQueuedLaunchMaterial(
     orgId: args.agent.orgId,
     userId: args.userId,
     userMessageProjection: args.userMessageProjection,
+    agentRunSource: agentRunSourceAnnotation(args.queuedMessage.userMessage),
     resolveSignedUrls: (keys) => {
       return args.resolveMorningBriefSignedUrls(keys, args.signal);
     },
