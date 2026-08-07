@@ -606,13 +606,11 @@
   },
   "sidebar": {
     "clearSearch": "Hapus pencarian",
-    "description": "Pilih agen untuk memulai percakapan.",
     "descriptionWithChats": "Pilih agen atau langsung ke chat.",
     "leadDescription": "Asisten utama Anda, selalu siap membantu",
     "markAllRead": "Tandai semua sudah dibaca",
     "more": "Lainnya",
     "new": "Baru",
-    "noAgents": "Tidak ada agen ditemukan",
     "noResults": "Tidak ada hasil ditemukan",
     "noSubagents": "Belum ada subagen tersedia.",
     "openConversation": "Buka percakapan",

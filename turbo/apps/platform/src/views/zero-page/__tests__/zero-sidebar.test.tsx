@@ -1444,11 +1444,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const sidebar = await waitFor(() => {
       return screen.getByRole("navigation", { name: "Sidebar" });
@@ -1460,7 +1456,7 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
 
     await fill(
-      within(dialog).getByPlaceholderText("Search agents..."),
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
       "support",
     );
 
@@ -1471,10 +1467,13 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
     });
 
-    await fill(within(dialog).getByPlaceholderText("Search agents..."), "ops");
+    await fill(
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
+      "ops",
+    );
 
     await waitFor(() => {
-      expect(within(dialog).getByText("No agents found")).toBeInTheDocument();
+      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
       expect(
         within(dialog).queryByText("Support Agent"),
       ).not.toBeInTheDocument();
@@ -1627,7 +1626,7 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
-  it("shows chat thread title results in the picker behind the unified search switch", async () => {
+  it("shows chat thread title results in the conversation picker", async () => {
     prepareAgentTeam();
     const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
     const researchThread = createThread(
@@ -1660,13 +1659,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
-      },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -2008,11 +2001,7 @@ describe("zero sidebar", () => {
   it("selects an agent from the picker with arrow keys and enter", async () => {
     prepareAgentTeam();
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -2025,7 +2014,9 @@ describe("zero sidebar", () => {
     });
 
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-    const search = within(dialog).getByPlaceholderText("Search agents...");
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
 
     await fill(search, "support");
 
