@@ -1581,7 +1581,6 @@
         "website": "웹사이트",
         "workflow": "워크플로"
       },
-      "messageTemplate": "메시지 템플릿 {{title}}",
       "previewTemplate": "템플릿 미리보기 {{title}}",
       "previewVideo": "비디오 템플릿 미리보기 {{title}}",
       "previewWebsite": "웹사이트 템플릿 미리보기 {{title}}",

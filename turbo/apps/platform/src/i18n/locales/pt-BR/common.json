@@ -1622,7 +1622,6 @@
         "website": "Site",
         "workflow": "Fluxo de trabalho"
       },
-      "messageTemplate": "Template da mensagem: {{title}}",
       "previewTemplate": "Visualizar template {{title}}",
       "previewVideo": "Visualizar template de vídeo {{title}}",
       "previewWebsite": "Visualizar template de site {{title}}",
