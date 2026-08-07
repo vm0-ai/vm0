@@ -35,7 +35,6 @@ export enum FeatureSwitchKey {
   RampConnector = "rampConnector",
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
-  PexelsConnector = "pexelsConnector",
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   Banking = "banking",
@@ -67,9 +66,7 @@ export enum FeatureSwitchKey {
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
-  ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
-  CjkFriendlyMarkdown = "cjkFriendlyMarkdown",
   VideoTemplateOptions = "videoTemplateOptions",
 }

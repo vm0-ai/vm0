@@ -1582,7 +1582,6 @@
         "website": "Website",
         "workflow": "Workflow"
       },
-      "messageTemplate": "Message template {{title}}",
       "previewTemplate": "Preview template {{title}}",
       "previewVideo": "Preview video template {{title}}",
       "previewWebsite": "Preview website template {{title}}",
@@ -5111,6 +5110,43 @@
         "localeSummary": "Locale {{locale}}",
         "rule": "When a matching Strapi entry is published"
       },
+      "stripe": {
+        "addAction": "Add Stripe automation",
+        "addAria": "Add Stripe invoice paid automation",
+        "addDescription": "Run this workflow when a matching invoice is paid in the connected Stripe Live account.",
+        "addTitle": "Add Stripe automation",
+        "anyBillingReason": "Any billing reason",
+        "billingReason": {
+          "automaticPendingInvoiceItemInvoice": "Automatic pending invoice items",
+          "manual": "Manual",
+          "quoteAccept": "Quote accepted",
+          "subscription": "Subscription",
+          "subscriptionCreate": "Subscription created",
+          "subscriptionCycle": "Subscription cycle",
+          "subscriptionThreshold": "Subscription threshold",
+          "subscriptionUpdate": "Subscription updated",
+          "upcoming": "Upcoming"
+        },
+        "billingReasons": "Billing reasons",
+        "billingReasonsHint": "Select none to match any billing reason.",
+        "bindingSummary": "Stripe account {{accountId}} · Live mode · {{billingReasons}}",
+        "delivery": "Delivery",
+        "deliveryStatus": {
+          "delivered": "Delivered",
+          "failed": "Failed",
+          "pending": "Pending",
+          "skipped": "Skipped"
+        },
+        "deliveryWarning": "The latest terminal delivery failed. Check workflow activity before trying again.",
+        "immutableHint": "The Stripe account and billing reasons are fixed. To change them, delete this automation and recreate it.",
+        "invoicePaidDescription": "Run when a matching Stripe invoice is paid.",
+        "invoicePaidTitle": "Stripe invoice paid",
+        "lastEvent": "Last event",
+        "manageConnection": "Manage Stripe connection",
+        "noDeliveries": "No deliveries yet",
+        "noMatchingEvents": "No matching events yet",
+        "rule": "When a matching Stripe invoice is paid"
+      },
       "types": {
         "chat": "Chat",
         "github": "GitHub",
@@ -5120,6 +5156,7 @@
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {

@@ -26,7 +26,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit"
+    "check-types": "pnpm --filter @vm0/pi-agent-runtime run build && tsc --noEmit"
   },
   "devDependencies": {
     "@sentry/node": "^10.50.0",
