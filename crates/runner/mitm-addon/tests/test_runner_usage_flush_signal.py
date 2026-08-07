@@ -10,6 +10,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
+from typing import Self
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -198,6 +200,53 @@ class _InstrumentedFlushOwnerLock:
         self._lock.release()
 
 
+class _PhaseHandoffLock:
+    """Pause a non-blocking acquire and record which thread releases it."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.gated_acquire_started = threading.Event()
+        self.allow_gated_acquire = threading.Event()
+        self.gated_acquire_thread: tuple[int | None, str] | None = None
+        self.gated_release_thread: tuple[int | None, str] | None = None
+
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+        if not blocking:
+            self.gated_acquire_started.set()
+            if not self.allow_gated_acquire.wait(timeout=1):
+                raise AssertionError("gated runner flush acquisition was not released")
+
+            acquired = self._lock.acquire(blocking=False)
+            if acquired:
+                current_thread = threading.current_thread()
+                self.gated_acquire_thread = (current_thread.ident, current_thread.name)
+            return acquired
+
+        if timeout < 0:
+            return self._lock.acquire()
+        return self._lock.acquire(timeout=timeout)
+
+    def release(self) -> None:
+        if self.gated_acquire_thread is not None and self.gated_release_thread is None:
+            current_thread = threading.current_thread()
+            self.gated_release_thread = (current_thread.ident, current_thread.name)
+
+        self._lock.release()
+
+    def __enter__(self) -> Self:
+        self.acquire()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exc_type, exc, traceback
+        self.release()
+
+
 class TestRunnerUsageFlushSignal:
     """Tests for runner-triggered usage buffer flush requests."""
 
@@ -343,6 +392,52 @@ class TestRunnerUsageFlushSignal:
             assert snapshotted.wait(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
+        assert_pending(
+            runner_usage_flush_files.pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
+
+    def test_signal_worker_start_handoff_to_closed_shutdown_does_not_spawn_worker(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ) -> None:
+        handoff_lock = _PhaseHandoffLock()
+        runner_usage_flush_files.write_usage_flush_request()
+        signal_thread = ThreadUnderTest(
+            target=lambda: runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None),
+            name="runner-flush-signal-handoff",
+        )
+
+        with patch.object(
+            runner_flush_lifecycle,
+            "_usage_flush_signal_lock",
+            handoff_lock,
+        ):
+            signal_thread.start()
+            try:
+                wait_for_event(
+                    handoff_lock.gated_acquire_started,
+                    timeout=1,
+                    threads=(signal_thread,),
+                    message="signal path did not reach the worker owner lock",
+                )
+                runner_flush_lifecycle.drain_and_close()
+            finally:
+                handoff_lock.allow_gated_acquire.set()
+                signal_thread.join(timeout=1)
+                if not signal_thread.is_alive():
+                    wait_for_usage_flush_worker_to_stop()
+
+            signal_thread.join_and_raise(timeout=1)
+
+        assert handoff_lock.gated_acquire_thread is not None
+        assert handoff_lock.gated_release_thread is not None
+        assert handoff_lock.gated_acquire_thread == handoff_lock.gated_release_thread
+        assert handoff_lock.gated_release_thread[1] == "runner-flush-signal-handoff"
+        assert runner_flush_lifecycle._runner_flush_phase == "closed"
+        assert not runner_flush_lifecycle._usage_flush_requested
         assert_pending(
             runner_usage_flush_files.pending_path,
             flows=0,
