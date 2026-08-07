@@ -16,7 +16,7 @@ import { createPiExecutionTools } from "./tools";
 
 type PiAgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
-export interface PiUnresolvedToolBatch {
+interface PiUnresolvedToolBatch {
   readonly assistantIndex: number;
   readonly assistant: AssistantMessage;
   readonly pendingToolCalls: readonly AgentToolCall[];

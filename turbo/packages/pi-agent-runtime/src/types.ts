@@ -187,7 +187,7 @@ export interface Skill {
 }
 
 /** Stable diagnostic codes produced while loading skills. */
-export type SkillDiagnosticCode =
+type SkillDiagnosticCode =
   | "file_info_failed"
   | "list_failed"
   | "read_failed"
@@ -203,14 +203,14 @@ export interface SkillDiagnostic {
 }
 
 /** Text block of a Pi transcript message. */
-export interface PiTextContent {
+interface PiTextContent {
   type: "text";
   text: string;
   textSignature?: string;
 }
 
 /** Reasoning block of a Pi transcript message. */
-export interface PiThinkingContent {
+interface PiThinkingContent {
   type: "thinking";
   thinking: string;
   thinkingSignature?: string;
@@ -218,14 +218,14 @@ export interface PiThinkingContent {
 }
 
 /** Image block of a Pi transcript message. */
-export interface PiImageContent {
+interface PiImageContent {
   type: "image";
   data: string;
   mimeType: string;
 }
 
 /** Tool call requested by the model. */
-export interface PiToolCallContent {
+interface PiToolCallContent {
   type: "toolCall";
   id: string;
   name: string;
@@ -234,7 +234,7 @@ export interface PiToolCallContent {
 }
 
 /** Token accounting reported for one model turn. */
-export interface PiUsage {
+interface PiUsage {
   input: number;
   output: number;
   cacheRead: number;
@@ -252,7 +252,7 @@ export interface PiUsage {
 }
 
 /** Why a model turn stopped. */
-export type PiStopReason =
+type PiStopReason =
   | "pending"
   | "stop"
   | "length"

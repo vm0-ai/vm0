@@ -158,8 +158,7 @@ describe("internal Pi standby agent loop", () => {
     let resumed = false;
     const resume = (async () => {
       resumed = true;
-      return [];
-    }) as PiAgentResume;
+    }) satisfies PiAgentResume;
 
     try {
       await runPiStandbyAgentLoop({
@@ -208,8 +207,7 @@ describe("internal Pi standby agent loop", () => {
     let resumed = false;
     const resume = (async () => {
       resumed = true;
-      return [];
-    }) as PiAgentResume;
+    }) satisfies PiAgentResume;
 
     try {
       await runPiStandbyAgentLoop({
