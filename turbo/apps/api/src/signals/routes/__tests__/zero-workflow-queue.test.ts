@@ -1773,6 +1773,7 @@ describe("workflow queue", () => {
               },
             ],
           },
+          hasTextContent: true,
         },
       }),
       [201],
