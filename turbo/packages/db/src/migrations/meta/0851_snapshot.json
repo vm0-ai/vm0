@@ -1,6 +1,6 @@
 {
-  "id": "89820229-80c6-4746-999c-6cb927e97e83",
-  "prevId": "2422d922-e35f-444a-b21a-f3ae0a8f0687",
+  "id": "ac63abbe-29a3-4e9d-92bf-7095e9657955",
+  "prevId": "89820229-80c6-4746-999c-6cb927e97e83",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5895,12 +5895,6 @@
         "codex_service_tier": {
           "name": "codex_service_tier",
           "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "generation_template": {
-          "name": "generation_template",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -12557,12 +12551,6 @@
           "type": "uuid",
           "primaryKey": true,
           "notNull": true
-        },
-        "draft": {
-          "name": "draft",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "chat_thread_id": {
           "name": "chat_thread_id",

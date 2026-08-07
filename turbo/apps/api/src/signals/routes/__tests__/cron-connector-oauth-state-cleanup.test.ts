@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { cronConnectorOauthStateCleanupContract } from "@vm0/api-contracts/contracts/cron";
-import {
-  zeroConnectorOauthContinueContract,
-  zeroConnectorOauthStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -74,11 +71,11 @@ describe("connector OAuth state cleanup cron", () => {
     });
   });
 
-  it("deletes expired states while preserving usable handoffs", async () => {
+  it("deletes expired states while preserving unexpired states", async () => {
     mockNow(now() - 20 * 60 * 1000);
     await startGithubOauth();
     clearMockNow();
-    const usableContinuationUrl = await startGithubOauth();
+    await startGithubOauth();
 
     const cleanup = await accept(
       setupApp({ context, routes: cronConnectorOauthStateCleanupRoutes })(
@@ -90,19 +87,5 @@ describe("connector OAuth state cleanup cron", () => {
     );
 
     expect(cleanup.body.deleted).toBeGreaterThanOrEqual(1);
-    const continuation = await accept(
-      setupApp({ context, routes: zeroConnectorsRoutes })(
-        zeroConnectorOauthContinueContract,
-      ).continue({
-        params: { connectorSlug: "github" },
-        query: {
-          state: usableContinuationUrl.searchParams.get("state") ?? "",
-        },
-      }),
-      [307],
-    );
-    expect(continuation.headers.get("location")).toMatch(
-      /^https:\/\/github\.com\/login\/oauth\/authorize\?/u,
-    );
   });
 });

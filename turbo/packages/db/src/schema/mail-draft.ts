@@ -1,6 +1,5 @@
 import {
   index,
-  jsonb,
   pgTable,
   text,
   timestamp,
@@ -8,7 +7,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { ZeroMailDraftStatus } from "@vm0/api-contracts/contracts/zero-mail";
-import type { LegacyMailDraftData } from "@vm0/db/jsonb-contracts/mail-draft";
 import { chatThreads } from "./chat-thread";
 import { connectors } from "./connector";
 import { zeroWorkflowAutomations } from "./zero-workflow";
@@ -17,9 +15,6 @@ export const mailDrafts = pgTable(
   "mail_drafts",
   {
     id: uuid("id").primaryKey(),
-    // Rolling-deployment bridge for API pods built before Gmail-backed draft
-    // resources. New code never reads or writes this payload.
-    draft: jsonb("draft").$type<LegacyMailDraftData>(),
     chatThreadId: uuid("chat_thread_id").references(
       () => {
         return chatThreads.id;
@@ -36,9 +31,10 @@ export const mailDrafts = pgTable(
     gmailThreadId: text("gmail_thread_id"),
     gmailMessageId: text("gmail_message_id"),
     sentGmailMessageId: text("sent_gmail_message_id"),
-    // Compatibility declaration for Platform bundles loaded before Mail
-    // follow-up removal. Delete it with the legacy API bridge and physical
-    // column after those clients and the pre-cleanup API release have drained.
+    // Retired column kept only so the pre-cleanup API release, which still
+    // selects follow_up_automation_id explicitly, keeps working while it
+    // drains. No current code reads or writes it. Drop the declaration and the
+    // physical column together in a release after that API has drained.
     followUpAutomationId: uuid("follow_up_automation_id").references(
       () => {
         return zeroWorkflowAutomations.id;
