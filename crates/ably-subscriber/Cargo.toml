@@ -1,6 +1,6 @@
 [package]
 name = "ably-subscriber"
-version = "1.0.14"
+version = "1.0.15"
 edition.workspace = true
 
 [dependencies]

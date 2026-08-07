@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.528.0](https://github.com/vm0-ai/vm0/compare/core-v8.527.0...core-v8.528.0) (2026-08-07)
+
+
+### Features
+
+* **app:** let a video template chip set its generation parameters ([#25624](https://github.com/vm0-ai/vm0/issues/25624)) ([e670f1e](https://github.com/vm0-ai/vm0/commit/e670f1e45271154b726df0b3d84df1bb057b2d5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.290.1
+
 ## [8.527.0](https://github.com/vm0-ai/vm0/compare/core-v8.526.1...core-v8.527.0) (2026-08-07)
 
 
