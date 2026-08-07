@@ -11,7 +11,7 @@ use crate::paths::HomePaths;
 use super::drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use super::gate::read_runner_status;
 use super::reload::{SystemdReloadRequirement, coordinate_systemd_reload};
-use super::signal::{ServiceSignalOutcome, signal_service_main};
+use super::signal::{ServiceSignalOutcome, signal_service_main, signal_service_main_bounded};
 use super::systemctl::{
     CleanupUnitActiveState, SystemdUnitEnablement, cleanup_unit_active_state_bounded,
     get_service_restart_policy, is_unit_active_bounded, read_unit_enablement,
@@ -72,6 +72,11 @@ trait ServiceDrainOps {
     fn signal_drain<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome>;
+    fn signal_drain_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
     ) -> ServiceFuture<'a, ServiceSignalOutcome>;
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
     fn restore_enablement<'a>(
@@ -158,6 +163,16 @@ impl ServiceDrainOps for RealServiceDrainOps {
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, ServiceSignalOutcome> {
         Box::pin(async move { signal_service_main(unit, nix::sys::signal::Signal::SIGUSR1).await })
+    }
+
+    fn signal_drain_bounded<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        timeout: Duration,
+    ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+        Box::pin(async move {
+            signal_service_main_bounded(unit, nix::sys::signal::Signal::SIGUSR1, timeout).await
+        })
     }
 
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
@@ -502,9 +517,9 @@ async fn wait_for_drain_signal_convergence(
         if now >= deadline {
             continue;
         }
-        let signal_result = tokio::time::timeout(deadline - now, ops.signal_drain(unit))
+        let signal_result = ops
+            .signal_drain_bounded(unit, deadline - now)
             .await
-            .map_err(|_| drain_signal_convergence_timeout_error(unit, &last_active_state))?
             .map_err(|error| {
                 drain_signal_convergence_error(
                     unit,
@@ -952,6 +967,7 @@ mod tests {
         restart_policy_error: bool,
         restart_policy: String,
         signal_results: VecDeque<RunnerResult<ServiceSignalOutcome>>,
+        signal_timeouts: Vec<Duration>,
         disable_error: bool,
         restore_enablement_error: bool,
     }
@@ -986,6 +1002,7 @@ mod tests {
                 restart_policy_error: false,
                 restart_policy: "no".to_string(),
                 signal_results: signal_results(ServiceSignalOutcome::Sent, 1),
+                signal_timeouts: Vec::new(),
                 disable_error: false,
                 restore_enablement_error: false,
             }
@@ -1097,6 +1114,20 @@ mod tests {
                 self.signal_results
                     .pop_front()
                     .expect("missing fake drain signal result"),
+            ))
+        }
+
+        fn signal_drain_bounded<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            timeout: Duration,
+        ) -> ServiceFuture<'a, ServiceSignalOutcome> {
+            self.events.push("signal_drain_bounded");
+            self.signal_timeouts.push(timeout);
+            Box::pin(std::future::ready(
+                self.signal_results
+                    .pop_front()
+                    .expect("missing fake bounded drain signal result"),
             ))
         }
 
@@ -1723,9 +1754,9 @@ mod tests {
                 "restart_policy",
                 "signal_drain",
                 "lifecycle_state",
-                "signal_drain",
+                "signal_drain_bounded",
                 "lifecycle_state",
-                "signal_drain",
+                "signal_drain_bounded",
             ]
         );
         assert_eq!(
@@ -1736,6 +1767,13 @@ mod tests {
             ops.lifecycle_timeouts,
             [
                 DRAIN_SIGNAL_CONVERGENCE_TIMEOUT,
+                DRAIN_SIGNAL_CONVERGENCE_TIMEOUT,
+                DRAIN_SIGNAL_CONVERGENCE_TIMEOUT - DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL,
+            ]
+        );
+        assert_eq!(
+            ops.signal_timeouts,
+            [
                 DRAIN_SIGNAL_CONVERGENCE_TIMEOUT,
                 DRAIN_SIGNAL_CONVERGENCE_TIMEOUT - DRAIN_SIGNAL_CONVERGENCE_POLL_INTERVAL,
             ]
