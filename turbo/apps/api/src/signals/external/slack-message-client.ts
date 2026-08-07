@@ -175,11 +175,10 @@ export interface SlackClient {
   readonly fetchThreadMessages: (
     channel: string,
     threadTs: string,
-    limit?: number,
   ) => Promise<readonly SlackConversationMessage[]>;
   readonly fetchChannelMessages: (
     channel: string,
-    limit?: number,
+    limit: number,
     latest?: string,
   ) => Promise<readonly SlackConversationMessage[]>;
 }
@@ -328,195 +327,295 @@ function buildUserInfoResolver(client: WebClient): SlackUserInfoResolver {
   };
 }
 
+const THREAD_CONTEXT_MESSAGE_LIMIT = 100;
+
+async function openDMChannel(
+  web: WebClient,
+  userId: string,
+): Promise<OpenDmResult> {
+  const result = await settle(web.conversations.open({ users: userId }));
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    return { kind: "slack_error", error: "open_dm_failed" };
+  }
+  if (!result.value.channel?.id) {
+    return { kind: "slack_error", error: "missing_channel_id" };
+  }
+  return { kind: "ok", channelId: result.value.channel.id };
+}
+
+async function postMessage(
+  web: WebClient,
+  channel: string,
+  text: string,
+  options?: {
+    readonly threadTs?: string;
+    readonly blocks?: SlackAnyBlock[];
+  },
+): Promise<PostMessageResult> {
+  const result = await settle(
+    web.chat.postMessage({
+      channel,
+      text,
+      thread_ts: options?.threadTs,
+      blocks: options?.blocks,
+    }),
+  );
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    throw result.error;
+  }
+  return { kind: "ok", ts: result.value.ts, channel: result.value.channel };
+}
+
+async function getMessagePermalink(
+  web: WebClient,
+  channel: string,
+  messageTs: string,
+): Promise<GetMessagePermalinkResult> {
+  const result = await settle(
+    web.chat.getPermalink({ channel, message_ts: messageTs }),
+  );
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    return { kind: "slack_error", error: "get_permalink_failed" };
+  }
+  if (!result.value.permalink) {
+    return { kind: "slack_error", error: "missing_permalink" };
+  }
+  return { kind: "ok", permalink: result.value.permalink };
+}
+
+async function setThreadStatus(
+  web: WebClient,
+  channel: string,
+  threadTs: string,
+  status: string,
+): Promise<void> {
+  await web.assistant.threads.setStatus({
+    channel_id: channel,
+    thread_ts: threadTs,
+    status,
+  });
+}
+
+async function publishAppHome(
+  web: WebClient,
+  userId: string,
+  view: SlackView,
+): Promise<void> {
+  await web.views.publish({ user_id: userId, view });
+}
+
+async function openView(
+  web: WebClient,
+  triggerId: string,
+  view: SlackView,
+): Promise<{ readonly viewId: string | undefined }> {
+  const result = await web.views.open({ trigger_id: triggerId, view });
+  return { viewId: result.view?.id };
+}
+
+async function postEphemeral(
+  web: WebClient,
+  options: {
+    readonly channel: string;
+    readonly user: string;
+    readonly text: string;
+    readonly threadTs?: string;
+    readonly blocks?: SlackAnyBlock[];
+  },
+): Promise<PostEphemeralResult> {
+  const result = await settle(
+    web.chat.postEphemeral({
+      channel: options.channel,
+      user: options.user,
+      text: options.text,
+      thread_ts: options.threadTs,
+      blocks: options.blocks,
+    }),
+  );
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    return { kind: "slack_error", error: "post_ephemeral_failed" };
+  }
+  return { kind: "ok", ts: result.value.message_ts };
+}
+
+async function getUploadUrlExternal(
+  web: WebClient,
+  args: { readonly filename: string; readonly length: number },
+): Promise<GetUploadUrlResult> {
+  const result = await settle(
+    web.files.getUploadURLExternal({
+      filename: args.filename,
+      length: args.length,
+    }),
+  );
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    throw result.error;
+  }
+  if (!result.value.ok || !result.value.upload_url || !result.value.file_id) {
+    return {
+      kind: "slack_error",
+      error: result.value.error ?? "unknown error",
+    };
+  }
+  return {
+    kind: "ok",
+    uploadUrl: result.value.upload_url,
+    fileId: result.value.file_id,
+  };
+}
+
+async function completeUploadExternal(
+  web: WebClient,
+  args: {
+    readonly fileId: string;
+    readonly channel: string;
+    readonly threadTs?: string;
+    readonly title?: string;
+    readonly initialComment?: string;
+  },
+): Promise<CompleteUploadResult> {
+  const result = await settle(
+    web.files.completeUploadExternal({
+      files: [{ id: args.fileId, title: args.title }],
+      channel_id: args.channel,
+      thread_ts: args.threadTs,
+      initial_comment: args.initialComment,
+    }),
+  );
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    throw result.error;
+  }
+  return { kind: "ok" };
+}
+
+async function getFileInfo(
+  web: WebClient,
+  fileId: string,
+): Promise<GetFileInfoResult> {
+  const result = await settle(web.files.info({ file: fileId }));
+  if (!result.ok) {
+    if (isSlackPlatformError(result.error)) {
+      return { kind: "slack_error", error: result.error.data.error };
+    }
+    throw result.error;
+  }
+  const file = result.value.file as SlackFileInfo | undefined;
+  return { kind: "ok", file };
+}
+
+async function fetchUserInfoMap(
+  web: WebClient,
+  userIds: readonly string[],
+  resolver?: SlackUserInfoResolver,
+): Promise<Map<string, SlackUserInfo>> {
+  if (resolver) {
+    return await resolver.resolveMany(userIds);
+  }
+
+  const map = new Map<string, SlackUserInfo>();
+  const uniqueIds = [...new Set(userIds)];
+  await Promise.allSettled(
+    uniqueIds.map(async (id) => {
+      const info = await fetchSlackUserInfo(web, id);
+      if (info) {
+        map.set(id, info);
+      }
+    }),
+  );
+
+  return map;
+}
+
+async function fetchThreadMessages(
+  web: WebClient,
+  channel: string,
+  threadTs: string,
+): Promise<readonly SlackConversationMessage[]> {
+  const result = await web.conversations.replies({
+    channel,
+    ts: threadTs,
+    limit: THREAD_CONTEXT_MESSAGE_LIMIT,
+  });
+  return (result.messages ?? []) as SlackConversationMessage[];
+}
+
+async function fetchChannelMessages(
+  web: WebClient,
+  channel: string,
+  limit: number,
+  latest?: string,
+): Promise<readonly SlackConversationMessage[]> {
+  const result = await web.conversations.history({
+    channel,
+    limit,
+    ...(latest && { latest }),
+  });
+  return [...((result.messages ?? []) as SlackConversationMessage[])].reverse();
+}
+
 export function createSlackClient(token: string): SlackClient {
   const web = buildWebClient(token);
 
   return {
-    async openDMChannel(userId) {
-      const result = await settle(web.conversations.open({ users: userId }));
-      if (!result.ok) {
-        if (isSlackPlatformError(result.error)) {
-          return { kind: "slack_error", error: result.error.data.error };
-        }
-        return { kind: "slack_error", error: "open_dm_failed" };
-      }
-      if (!result.value.channel?.id) {
-        return { kind: "slack_error", error: "missing_channel_id" };
-      }
-      return { kind: "ok", channelId: result.value.channel.id };
+    openDMChannel: (userId) => {
+      return openDMChannel(web, userId);
     },
-
-    async postMessage(channel, text, options) {
-      const result = await settle(
-        web.chat.postMessage({
-          channel,
-          text,
-          thread_ts: options?.threadTs,
-          blocks: options?.blocks,
-        }),
-      );
-      if (!result.ok) {
-        if (isSlackPlatformError(result.error)) {
-          return { kind: "slack_error", error: result.error.data.error };
-        }
-        throw result.error;
-      }
-      return { kind: "ok", ts: result.value.ts, channel: result.value.channel };
+    postMessage: (channel, text, options) => {
+      return postMessage(web, channel, text, options);
     },
-
-    async getMessagePermalink(channel, messageTs) {
-      const result = await settle(
-        web.chat.getPermalink({ channel, message_ts: messageTs }),
-      );
-      if (!result.ok) {
-        if (isSlackPlatformError(result.error)) {
-          return { kind: "slack_error", error: result.error.data.error };
-        }
-        return { kind: "slack_error", error: "get_permalink_failed" };
-      }
-      if (!result.value.permalink) {
-        return { kind: "slack_error", error: "missing_permalink" };
-      }
-      return { kind: "ok", permalink: result.value.permalink };
+    getMessagePermalink: (channel, messageTs) => {
+      return getMessagePermalink(web, channel, messageTs);
     },
-
-    async setThreadStatus(channel, threadTs, status) {
-      await web.assistant.threads.setStatus({
-        channel_id: channel,
-        thread_ts: threadTs,
-        status,
-      });
+    setThreadStatus: (channel, threadTs, status) => {
+      return setThreadStatus(web, channel, threadTs, status);
     },
-
-    async publishAppHome(userId, view) {
-      await web.views.publish({ user_id: userId, view });
+    publishAppHome: (userId, view) => {
+      return publishAppHome(web, userId, view);
     },
-
-    async openView(triggerId, view) {
-      const result = await web.views.open({ trigger_id: triggerId, view });
-      return { viewId: result.view?.id };
+    openView: (triggerId, view) => {
+      return openView(web, triggerId, view);
     },
-
-    async postEphemeral(options) {
-      const result = await settle(
-        web.chat.postEphemeral({
-          channel: options.channel,
-          user: options.user,
-          text: options.text,
-          thread_ts: options.threadTs,
-          blocks: options.blocks,
-        }),
-      );
-      if (!result.ok) {
-        if (isSlackPlatformError(result.error)) {
-          return { kind: "slack_error", error: result.error.data.error };
-        }
-        return { kind: "slack_error", error: "post_ephemeral_failed" };
-      }
-      return { kind: "ok", ts: result.value.message_ts };
+    postEphemeral: (options) => {
+      return postEphemeral(web, options);
     },
-
-    async getUploadUrlExternal(args) {
-      const result = await settle(
-        web.files.getUploadURLExternal({
-          filename: args.filename,
-          length: args.length,
-        }),
-      );
-      if (!result.ok) {
-        if (isSlackPlatformError(result.error)) {
-          return { kind: "slack_error", error: result.error.data.error };
-        }
-        throw result.error;
-      }
-      if (
-        !result.value.ok ||
-        !result.value.upload_url ||
-        !result.value.file_id
-      ) {
-        return {
-          kind: "slack_error",
-          error: result.value.error ?? "unknown error",
-        };
-      }
-      return {
-        kind: "ok",
-        uploadUrl: result.value.upload_url,
-        fileId: result.value.file_id,
-      };
+    getUploadUrlExternal: (args) => {
+      return getUploadUrlExternal(web, args);
     },
-
-    async completeUploadExternal(args) {
-      const result = await settle(
-        web.files.completeUploadExternal({
-          files: [{ id: args.fileId, title: args.title }],
-          channel_id: args.channel,
-          thread_ts: args.threadTs,
-          initial_comment: args.initialComment,
-        }),
-      );
-      if (!result.ok) {
-        if (isSlackPlatformError(result.error)) {
-          return { kind: "slack_error", error: result.error.data.error };
-        }
-        throw result.error;
-      }
-      return { kind: "ok" };
+    completeUploadExternal: (args) => {
+      return completeUploadExternal(web, args);
     },
-
-    async getFileInfo(fileId) {
-      const result = await settle(web.files.info({ file: fileId }));
-      if (!result.ok) {
-        if (isSlackPlatformError(result.error)) {
-          return { kind: "slack_error", error: result.error.data.error };
-        }
-        throw result.error;
-      }
-      const file = result.value.file as SlackFileInfo | undefined;
-      return { kind: "ok", file };
+    getFileInfo: (fileId) => {
+      return getFileInfo(web, fileId);
     },
-
-    createUserInfoResolver() {
+    createUserInfoResolver: () => {
       return buildUserInfoResolver(web);
     },
-
-    async fetchUserInfoMap(userIds, resolver) {
-      if (resolver) {
-        return await resolver.resolveMany(userIds);
-      }
-
-      const map = new Map<string, SlackUserInfo>();
-      const uniqueIds = [...new Set(userIds)];
-      await Promise.allSettled(
-        uniqueIds.map(async (id) => {
-          const info = await fetchSlackUserInfo(web, id);
-          if (info) {
-            map.set(id, info);
-          }
-        }),
-      );
-
-      return map;
+    fetchUserInfoMap: (userIds, resolver) => {
+      return fetchUserInfoMap(web, userIds, resolver);
     },
-
-    async fetchThreadMessages(channel, threadTs, limit = 100) {
-      const result = await web.conversations.replies({
-        channel,
-        ts: threadTs,
-        limit,
-      });
-      return (result.messages ?? []) as SlackConversationMessage[];
+    fetchThreadMessages: (channel, threadTs) => {
+      return fetchThreadMessages(web, channel, threadTs);
     },
-
-    async fetchChannelMessages(channel, limit = 10, latest) {
-      const result = await web.conversations.history({
-        channel,
-        limit,
-        ...(latest && { latest }),
-      });
-      return [
-        ...((result.messages ?? []) as SlackConversationMessage[]),
-      ].reverse();
+    fetchChannelMessages: (channel, limit, latest) => {
+      return fetchChannelMessages(web, channel, limit, latest);
     },
   };
 }
