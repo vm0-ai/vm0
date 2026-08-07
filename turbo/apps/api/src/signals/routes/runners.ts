@@ -21,6 +21,7 @@ import {
   type HeldSandboxState,
   type HeldWorkspaceState,
   type RunnerPreferenceClaimState,
+  type RunnerPreferenceDecision,
   type RunnerPreferenceResolution,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
@@ -118,8 +119,10 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  runnerPreferenceDecisionTelemetryDimensions,
+  runnerPreferenceDeliveryFields,
   runnerReuseKeyTelemetryKind,
-  runnerReusePreferenceLookupError,
+  runnerReusePreferenceLookupErrorDecision,
   runnerReusePreferencePollPriority,
   resolveRunnerReusePreference,
 } from "../services/runner-reuse-preference";
@@ -551,7 +554,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolution;
+  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
   readonly reuseKeyKind: "thread" | "session" | "none";
   readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
@@ -564,8 +567,10 @@ function recordPollTimingMetrics(args: {
     runner_group: args.runnerGroup,
     profile: args.profile,
     auth_type: args.authType,
-    runner_preference_resolution: args.runnerPreferenceResolution,
     reuse_key_kind: args.reuseKeyKind,
+    ...runnerPreferenceDecisionTelemetryDimensions(
+      args.runnerPreferenceDecision,
+    ),
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
@@ -654,7 +659,7 @@ async function resolvePollRunnerReusePreference(
       });
     },
   );
-  return resolution ?? runnerReusePreferenceLookupError();
+  return resolution ?? runnerReusePreferenceLookupErrorDecision();
 }
 
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -732,7 +737,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-  const reusePreference = await resolvePollRunnerReusePreference(db, {
+  const runnerPreferenceDecision = await resolvePollRunnerReusePreference(db, {
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
@@ -742,13 +747,16 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     currentDate,
   });
   signal.throwIfAborted();
+  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
+    runnerPreferenceDecision,
+  );
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    runnerPreferenceResolution: reusePreference.outcome,
+    runnerPreferenceDecision,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
     historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
@@ -771,8 +779,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
-        runnerPreference: reusePreference.runnerPreference ?? undefined,
-        runnerPreferenceResolution: reusePreference.outcome,
+        ...runnerPreferenceFields,
       },
     },
   };

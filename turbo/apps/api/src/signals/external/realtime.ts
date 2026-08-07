@@ -6,6 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
   RunnerPreference,
+  RunnerPreferenceDecision,
   RunnerPreferenceResolution,
 } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
@@ -437,7 +438,8 @@ export async function publishRunnerJobNotification(
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
-    readonly runnerPreference: RunnerPreference | null;
+    readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+    readonly runnerPreference?: RunnerPreference;
     readonly runnerPreferenceResolution: RunnerPreferenceResolution;
   },
 ): Promise<boolean> {
@@ -459,6 +461,7 @@ export async function publishRunnerJobNotification(
           : {}),
         ...(metadata
           ? {
+              runnerPreferenceDecision: metadata.runnerPreferenceDecision,
               runnerPreferenceResolution: metadata.runnerPreferenceResolution,
             }
           : {}),
