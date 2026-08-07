@@ -429,6 +429,12 @@ const firewallAuthResponseSchema = z.object({
   refreshedSecrets: z.array(z.string()),
 });
 
+const matchedFirewallAuthContextSchema = z.object({
+  name: z.string().min(1),
+  apiId: z.string().min(1),
+  customConnectorId: z.uuid().optional(),
+});
+
 export const webhookFirewallAuthContract = c.router({
   /**
    * POST /api/webhooks/agent/firewall/auth
@@ -453,6 +459,9 @@ export const webhookFirewallAuthContract = c.router({
       // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
+      // Stable matched-firewall identity used to resolve custom connector auth.
+      // Older addons omit this field and retain run-scoped auth-reference behavior.
+      matchedFirewall: matchedFirewallAuthContextSchema.optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.
       firewallBillable: z.boolean().optional(),

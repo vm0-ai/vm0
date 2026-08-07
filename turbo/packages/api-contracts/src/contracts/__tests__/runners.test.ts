@@ -6,6 +6,8 @@ import { z } from "zod";
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  connectorRuntimeSyncResultSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
   heartbeatBodySchema,
@@ -21,6 +23,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
+  runnersConnectorRuntimeSyncContract,
   runnersJobClaimContract,
   runnersNetworkPolicyRefreshContract,
   runnersPollContract,
@@ -106,6 +109,132 @@ describe("runner claim response contract", () => {
     });
 
     expect(context).not.toHaveProperty("connectorPermissionBaseline");
+  });
+});
+
+describe("connector runtime synchronization contract", () => {
+  const customConnectorId = "00000000-0000-4000-8000-000000000001";
+
+  it("limits sync batches without limiting run targets", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const targets = Array.from(
+      { length: CONNECTOR_RUNTIME_SYNC_TARGETS_MAX + 1 },
+      (_, index) => {
+        return {
+          kind: "builtin" as const,
+          connectorSlug: `connector-${index}`,
+        };
+      },
+    );
+
+    expect(
+      executionContextSchema.safeParse({
+        ...fixture,
+        connectorRuntimeTargets: targets,
+      }).success,
+    ).toBe(true);
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires unique tagged targets", () => {
+    const target = {
+      kind: "custom" as const,
+      customConnectorId,
+    };
+
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets: [target, target],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires stable API identities on available custom firewalls", () => {
+    const result = {
+      target: { kind: "custom" as const, customConnectorId },
+      state: "available" as const,
+      firewall: {
+        kind: "inline" as const,
+        firewall: {
+          name: "custom_connector_fixture",
+          apis: [
+            {
+              id: "custom_connector_fixture:0",
+              base: "https://api.example.com",
+              auth: { headers: { Authorization: "Bearer token" } },
+            },
+          ],
+        },
+        customConnectorId,
+      },
+      networkPolicy: {
+        allow: [],
+        deny: [],
+        ask: [],
+        unknownPolicy: "allow" as const,
+      },
+    };
+
+    expect(connectorRuntimeSyncResultSchema.safeParse(result).success).toBe(
+      true,
+    );
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        ...result,
+        firewall: {
+          ...result.firewall,
+          firewall: {
+            ...result.firewall.firewall,
+            apis: result.firewall.firewall.apis.map((api) => {
+              return { base: api.base, auth: api.auth };
+            }),
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps builtin retry states distinct from custom authoritative absence", () => {
+    const builtinTarget = {
+      kind: "builtin" as const,
+      connectorSlug: "slack",
+    };
+    const customTarget = { kind: "custom" as const, customConnectorId };
+
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "absent",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
   });
 });
 
