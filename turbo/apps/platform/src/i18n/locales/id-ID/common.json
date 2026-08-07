@@ -1620,6 +1620,7 @@
       "icon": "Ikon thread chat",
       "loadingEarlier": "Memuat pesan sebelumnya",
       "noEmojiFound": "Emoji tidak ditemukan",
+      "notFound": "Utas chat tidak ditemukan",
       "openArtifacts": "Buka artefak",
       "openBrowser": "Buka browser",
       "openNamedAgent": "Buka agen {{name}}",

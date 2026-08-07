@@ -49,7 +49,7 @@ import {
 
 describe("chat lifecycle", () => {
   it("does not render a rejected goal continuation after an assistant response", async () => {
-    const threadId = "thread-rejected-goal-artifact";
+    const threadId = "e9000000-0000-4000-a000-000000000001";
     const objectiveBrief = "Keep the launch moving";
     const machineReason = "internal provider credential id abc123 is invalid";
     const assistantResponse = "The active goal has been stopped.";
@@ -90,7 +90,7 @@ describe("chat lifecycle", () => {
 
   it("opens run logs from assistant message actions", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "message-run-logs-thread";
+    const threadId = "e9000000-0000-4000-a000-000000000002";
     const runId = "a0000000-0000-4000-a000-000000000001";
     const assistantReply = "The launch summary is ready to share.";
 
@@ -131,7 +131,7 @@ describe("chat lifecycle", () => {
 
   it("copies an assistant response from chat history", async () => {
     const clipboard = context.mocks.browser.clipboardWriteText();
-    const threadId = "assistant-copy-thread";
+    const threadId = "e9000000-0000-4000-a000-000000000003";
     const assistantReply = "The launch summary is ready to share.";
 
     mockChatLifecycle(context, {
@@ -176,7 +176,7 @@ describe("chat lifecycle", () => {
 
   it("starts a workflow prompt from the composer when the composer is empty", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "assistant-message-create-workflow-empty";
+    const threadId = "e9000000-0000-4000-a000-000000000004";
     const assistantReply = "We can turn this into a workflow.";
     mockWorkflowComposerWorkflows();
     mockChatLifecycle(context, {
@@ -241,7 +241,7 @@ describe("chat lifecycle", () => {
   });
 
   it("confirms before replacing an existing composer draft with a workflow prompt", async () => {
-    const threadId = "assistant-message-create-workflow-draft";
+    const threadId = "e9000000-0000-4000-a000-000000000005";
     const assistantReply = "This is a good workflow candidate.";
     const draft = "Keep this draft";
     mockWorkflowComposerWorkflows();
@@ -725,7 +725,7 @@ describe("chat lifecycle", () => {
 
   it("opens an active goal objective dialog from the goal row", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-goal-dialog";
+    const threadId = "e9000000-0000-4000-a000-000000000006";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -785,7 +785,7 @@ describe("chat lifecycle", () => {
   });
 
   it("hides the goal row once a completion marker folds in", async () => {
-    const threadId = "thread-goal-complete";
+    const threadId = "e9000000-0000-4000-a000-000000000007";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -822,7 +822,7 @@ describe("chat lifecycle", () => {
   });
 
   it("folds non-goal runs that share a run group id", async () => {
-    const threadId = "thread-non-goal-run-group-folding";
+    const threadId = "e9000000-0000-4000-a000-000000000008";
     const runGroupId = "f0000001-0000-4000-a000-00000000071b";
 
     mockChatLifecycle(context, {
@@ -891,7 +891,7 @@ describe("chat lifecycle", () => {
   });
 
   it("surfaces archived goal history in the latest assistant row", async () => {
-    const threadId = "thread-goal-run-group-folding";
+    const threadId = "e9000000-0000-4000-a000-000000000009";
     const runGroupId = "f0000001-0000-4000-a000-00000000072b";
     const goalBrief = "Keep the release moving";
     const goalPrompt = `${goalBrief}
@@ -1007,7 +1007,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("keeps archived goal history below a running goal without assistant text", async () => {
-    const threadId = "thread-goal-run-group-folding-active";
+    const threadId = "e9000000-0000-4000-a000-000000000010";
     const runGroupId = "f0000001-0000-4000-a000-00000000082b";
     const goalBrief = "Migrate legacy automations";
     const goalPrompt = `${goalBrief}
@@ -1092,7 +1092,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("does not treat workflow run groups as goals", async () => {
-    const threadId = "thread-workflow-run-group-folding";
+    const threadId = "e9000000-0000-4000-a000-000000000011";
     const runGroupId = "f0000001-0000-4000-a000-00000000073b";
     const workflowPrompt = "/daily-workflow";
     const workflowUserMessage = {
@@ -1166,7 +1166,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("keeps a paused latest workflow run group collapsed by default", async () => {
-    const threadId = "thread-paused-workflow-run-group";
+    const threadId = "e9000000-0000-4000-a000-000000000012";
     const runGroupId = "f0000001-0000-4000-a000-00000000074b";
     const workflowPrompt = "/daily-workflow";
     const workflowUserMessage = {
@@ -1255,7 +1255,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("keeps rendering legacy workflow automation briefs without text", async () => {
-    const threadId = "thread-workflow-user-message-marker";
+    const threadId = "e9000000-0000-4000-a000-000000000013";
     const workflowPrompt = "/daily-workflow";
 
     mockChatLifecycle(context, {
@@ -1308,7 +1308,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("renders the persisted workflow prompt instead of its brief", async () => {
-    const threadId = "thread-workflow-user-message-prompt";
+    const threadId = "e9000000-0000-4000-a000-000000000014";
     const workflowPrompt =
       '/daily-workflow\nTrigger: Gmail applied label "todo" to message msg-123.';
 
@@ -1354,7 +1354,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("renders persisted workflow prompts without a trigger brief", async () => {
-    const threadId = "thread-workflow-user-message-no-brief";
+    const threadId = "e9000000-0000-4000-a000-000000000015";
     const workflowPrompt =
       '/turbo-flaky-test-repair\nTrigger: GitHub Actions workflow "Turbo" completed with conclusion "failure".';
 
@@ -1399,7 +1399,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("renders a pending automation only as an automation event", async () => {
-    const threadId = "thread-pending-automation-event";
+    const threadId = "e9000000-0000-4000-a000-000000000016";
 
     mockChatLifecycle(context, {
       threadId,
@@ -1458,7 +1458,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   });
 
   it("shows template labels on historical user messages", async () => {
-    const threadId = "template-message-history";
+    const threadId = "e9000000-0000-4000-a000-000000000017";
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const videoTemplate = VIDEO_TEMPLATE_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
@@ -1590,7 +1590,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("copies a canonical user message with rich attachments from chat history", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
-    const threadId = "rich-attachment-copy";
+    const threadId = "e9000000-0000-4000-a000-000000000018";
     const messageText = "Review the launch assets";
     const imageUrl = "/f/test-user/attachment-chart/chart.png";
     const videoUrl = "/f/test-user/attachment-demo/demo.mp4";
@@ -1707,14 +1707,14 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("copies text and links for a user message with image attachments from chat history", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
-    const threadId = "image-attachment-copy";
+    const threadId = "e9000000-0000-4000-a000-000000000019";
     const messageText = "Review this image";
     const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
         {
-          id: "msg-image-attachment-copy",
+          id: "msg-e9000000-0000-4000-a000-000000000019",
           role: "user",
           content: messageText,
           attachFiles: [
@@ -1783,7 +1783,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("copies the structured message snapshot instead of stale legacy fields", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
-    const threadId = "structured-message-copy";
+    const threadId = "e9000000-0000-4000-a000-000000000020";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000799";
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const firstAttachment = {
@@ -1887,7 +1887,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
   it("restores a copied structured template when pasting into the composer", async () => {
     const clipboard = context.mocks.browser.clipboardWrite();
-    const threadId = "structured-template-copy-paste";
+    const threadId = "e9000000-0000-4000-a000-000000000021";
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const generationTemplate = {
       type: "illustration" as const,
@@ -1918,7 +1918,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       threadId,
       chatEvents: [
         {
-          id: "msg-structured-template-copy-paste",
+          id: "msg-e9000000-0000-4000-a000-000000000021",
           role: "user",
           content: "invalidate",
           userMessage,
@@ -1971,7 +1971,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       new DOMException("Clipboard blocked", "NotAllowedError"),
     );
     const fallbackClipboard = context.mocks.browser.clipboardExecCommand();
-    const threadId = "structured-feedback-copy-fallback";
+    const threadId = "e9000000-0000-4000-a000-000000000022";
     const userMessage = {
       version: 1 as const,
       parts: [
@@ -1991,7 +1991,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       threadId,
       chatEvents: [
         {
-          id: "msg-structured-feedback-copy-fallback",
+          id: "msg-e9000000-0000-4000-a000-000000000022",
           role: "user",
           content: "stale legacy feedback",
           userMessage,

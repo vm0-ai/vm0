@@ -1661,6 +1661,7 @@
       "icon": "Ícone da conversa",
       "loadingEarlier": "Carregando mensagens anteriores",
       "noEmojiFound": "Nenhum emoji encontrado",
+      "notFound": "Conversa não encontrada",
       "openArtifacts": "Abrir artefatos",
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",

@@ -1240,7 +1240,7 @@ describe("chat scroll position", () => {
   });
 
   it("preserves the visible anchor when older in-memory groups are prepended", async () => {
-    const threadId = "scroll-prepend-anchor";
+    const threadId = "e8000000-0000-4000-a000-000000000001";
     const chatEvents: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
       return {
         id: `prepend-anchor-${index}`,
@@ -1606,7 +1606,7 @@ describe("chat scroll position", () => {
   });
 
   it("preserves its visible anchor when composer or viewport resize changes layout", async () => {
-    const threadId = "scroll-resize-preserve";
+    const threadId = "e8000000-0000-4000-a000-000000000002";
     const events = simpleUserEvents(threadId, "resize-preserve", 8);
     let clientHeight = 300;
     let scrollHeight = 1000;
@@ -1675,7 +1675,7 @@ describe("chat scroll position", () => {
   });
 
   it("keeps following the tail when composer or viewport resize shortens it", async () => {
-    const threadId = "scroll-resize-follow";
+    const threadId = "e8000000-0000-4000-a000-000000000003";
     const events = simpleUserEvents(threadId, "resize-follow", 8);
     let clientHeight = 300;
     const resizeObserver = installResizeObserver();
@@ -1724,7 +1724,7 @@ describe("chat scroll position", () => {
 
   it("restores the visible anchor after entering and exiting sharing", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "scroll-sharing-transition";
+    const threadId = "e8000000-0000-4000-a000-000000000004";
     const events = simpleUserEvents(threadId, "sharing-transition", 8);
     const sharingActive = () => {
       return (

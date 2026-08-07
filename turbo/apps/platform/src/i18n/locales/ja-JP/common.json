@@ -1620,6 +1620,7 @@
       "icon": "チャットスレッドアイコン",
       "loadingEarlier": "以前のメッセージを読み込んでいます",
       "noEmojiFound": "絵文字が見つかりませんでした",
+      "notFound": "チャットスレッドが見つかりません",
       "openArtifacts": "オープンアーティファクト",
       "openBrowser": "ブラウザを開く",
       "openNamedAgent": "エージェント {{name}} を開く",

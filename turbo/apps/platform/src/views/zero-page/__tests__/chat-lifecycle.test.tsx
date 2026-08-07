@@ -119,7 +119,7 @@ async function setupKeyboardGestureChat({
 
 describe("chat lifecycle", () => {
   it("links Slack-origin user messages back to the original message", async () => {
-    const threadId = "thread-slack-message-origin";
+    const threadId = "e6000000-0000-4000-a000-000000000001";
     const permalink =
       "https://vm0.slack.com/archives/C12345678/p1753257600000100";
     mockChatLifecycle(context, {
@@ -184,7 +184,7 @@ describe("chat lifecycle", () => {
   });
 
   it("links Feishu-origin user messages back to the original chat", async () => {
-    const threadId = "thread-feishu-message-origin";
+    const threadId = "e6000000-0000-4000-a000-000000000002";
     const chatOpenUrl =
       "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_chat";
     mockChatLifecycle(context, {
@@ -247,7 +247,7 @@ describe("chat lifecycle", () => {
   });
 
   it("renders generic source annotations with precise link behavior", async () => {
-    const threadId = "thread-generic-message-annotations";
+    const threadId = "e6000000-0000-4000-a000-000000000003";
     const teamsHref =
       "https://teams.microsoft.com/l/message/19%3Achannel%40thread.tacv2/activity-1?tenantId=tenant-1";
     const githubHref =
@@ -933,7 +933,7 @@ describe("chat lifecycle", () => {
   });
 
   it("renders user html-like text literally", async () => {
-    const threadId = "thread-user-html-like-text";
+    const threadId = "e6000000-0000-4000-a000-000000000004";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -961,7 +961,7 @@ describe("chat lifecycle", () => {
 
   it("ignores usage-only pages for rendering and thinking state", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-only",
+      threadId: "e6000000-0000-4000-a000-000000000005",
       chatEvents: [
         {
           id: "msg-usage-only",
@@ -987,7 +987,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-only",
+      path: "/chats/e6000000-0000-4000-a000-000000000005",
     });
 
     await waitFor(() => {
@@ -998,7 +998,7 @@ describe("chat lifecycle", () => {
 
   it("shows thinking for an assistant run even without active run ids", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-thinking",
+      threadId: "e6000000-0000-4000-a000-000000000006",
       activeRunIds: [],
       chatEvents: [
         {
@@ -1014,7 +1014,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-thinking",
+      path: "/chats/e6000000-0000-4000-a000-000000000006",
     });
 
     await waitFor(() => {
@@ -1028,7 +1028,7 @@ describe("chat lifecycle", () => {
   it("shows thinking from loaded messages before thread metadata resolves", async () => {
     const threadGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-thinking-pending-metadata",
+      threadId: "e6000000-0000-4000-a000-000000000007",
       activeRunIds: ["run-message-list-thinking-pending-metadata"],
       threadGate: threadGate.promise,
       chatEvents: [
@@ -1045,7 +1045,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-thinking-pending-metadata",
+      path: "/chats/e6000000-0000-4000-a000-000000000007",
     });
 
     await screen.findByText("I am still working on this.");
@@ -1060,7 +1060,7 @@ describe("chat lifecycle", () => {
 
   it("clears thinking when the same run completes even with stale active run ids", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-completed",
+      threadId: "e6000000-0000-4000-a000-000000000008",
       activeRunIds: ["run-message-list-completed"],
       chatEvents: [
         {
@@ -1083,7 +1083,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-completed",
+      path: "/chats/e6000000-0000-4000-a000-000000000008",
     });
 
     await waitFor(() => {
@@ -1095,7 +1095,7 @@ describe("chat lifecycle", () => {
 
   it("clears thinking for a completed latest run with an older terminated run", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-stale-run-before-completed-latest-run",
+      threadId: "e6000000-0000-4000-a000-000000000009",
       activeRunIds: [],
       chatEvents: [
         {
@@ -1149,7 +1149,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-stale-run-before-completed-latest-run",
+      path: "/chats/e6000000-0000-4000-a000-000000000009",
     });
 
     await waitFor(() => {
@@ -1163,7 +1163,7 @@ describe("chat lifecycle", () => {
 
   it("ignores active run ids when loaded messages end at a completed run", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-stale-lifecycle-thinking",
+      threadId: "e6000000-0000-4000-a000-000000000010",
       activeRunIds: ["run-r2"],
       chatEvents: [
         {
@@ -1220,7 +1220,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-stale-lifecycle-thinking",
+      path: "/chats/e6000000-0000-4000-a000-000000000010",
     });
 
     await waitFor(() => {
@@ -1233,7 +1233,7 @@ describe("chat lifecycle", () => {
 
   it("keeps thinking when the message stream shows later run activity", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-stale-lifecycle-thinking-active-later",
+      threadId: "e6000000-0000-4000-a000-000000000011",
       activeRunIds: ["run-r2"],
       chatEvents: [
         {
@@ -1298,7 +1298,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-stale-lifecycle-thinking-active-later",
+      path: "/chats/e6000000-0000-4000-a000-000000000011",
     });
 
     await waitFor(() => {
@@ -1365,7 +1365,7 @@ describe("chat lifecycle", () => {
   });
 
   it("keeps completion when the loaded window does not include either run start", async () => {
-    const threadId = "thread-run-starts-outside-loaded-window";
+    const threadId = "e6000000-0000-4000-a000-000000000012";
     mockChatLifecycle(context, {
       threadId,
       activeRunIds: ["run-window-older-active"],
@@ -1413,7 +1413,7 @@ describe("chat lifecycle", () => {
 
   it("does not use active run ids to revive an older run after a newer run completes", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-concurrent-run-completed-later",
+      threadId: "e6000000-0000-4000-a000-000000000013",
       activeRunIds: ["run-concurrent-active"],
       chatEvents: [
         {
@@ -1459,7 +1459,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-concurrent-run-completed-later",
+      path: "/chats/e6000000-0000-4000-a000-000000000013",
     });
 
     await waitFor(() => {
@@ -1473,7 +1473,7 @@ describe("chat lifecycle", () => {
 
   it("keeps thinking for an active run when the message stream shows later activity", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-concurrent-run-active-later",
+      threadId: "e6000000-0000-4000-a000-000000000014",
       activeRunIds: ["run-concurrent-active"],
       chatEvents: [
         {
@@ -1527,7 +1527,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-concurrent-run-active-later",
+      path: "/chats/e6000000-0000-4000-a000-000000000014",
     });
 
     await waitFor(() => {
@@ -1543,7 +1543,7 @@ describe("chat lifecycle", () => {
 
   it("does not use active run ids when active messages are outside the loaded window", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-active-run-outside-loaded-window",
+      threadId: "e6000000-0000-4000-a000-000000000015",
       activeRunIds: ["run-active-outside-window"],
       chatEvents: [
         {
@@ -1559,7 +1559,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-active-run-outside-loaded-window",
+      path: "/chats/e6000000-0000-4000-a000-000000000015",
     });
 
     await waitFor(() => {
@@ -1570,7 +1570,7 @@ describe("chat lifecycle", () => {
 
   it("keeps interleaved run messages grouped by run turn", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-interleaved-run-turns",
+      threadId: "e6000000-0000-4000-a000-000000000016",
       chatEvents: [
         {
           id: "msg-run-a-user",
@@ -1628,7 +1628,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-interleaved-run-turns",
+      path: "/chats/e6000000-0000-4000-a000-000000000016",
     });
 
     await waitFor(() => {
@@ -1646,7 +1646,7 @@ describe("chat lifecycle", () => {
 
   it("shows thinking when the latest message is a user message", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-latest-user",
+      threadId: "e6000000-0000-4000-a000-000000000017",
       activeRunIds: [],
       chatEvents: [
         {
@@ -1661,7 +1661,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-latest-user",
+      path: "/chats/e6000000-0000-4000-a000-000000000017",
     });
 
     await waitFor(() => {
@@ -1674,7 +1674,7 @@ describe("chat lifecycle", () => {
 
   it("clears thinking when a run is cancelled", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-message-list-cancelled",
+      threadId: "e6000000-0000-4000-a000-000000000018",
       activeRunIds: ["run-message-list-cancelled"],
       chatEvents: [
         {
@@ -1698,7 +1698,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-message-list-cancelled",
+      path: "/chats/e6000000-0000-4000-a000-000000000018",
     });
 
     await waitFor(() => {

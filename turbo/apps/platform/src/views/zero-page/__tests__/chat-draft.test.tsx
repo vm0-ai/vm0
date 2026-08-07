@@ -614,7 +614,7 @@ describe("chat drafts", () => {
       });
     });
 
-    detachedSetupPage({ context, path: "/chats/thread-server-draft" });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ONE_ID}` });
 
     await waitFor(() => {
       expect(textarea()).toHaveTextContent("Review the saved launch brief");
@@ -1448,15 +1448,16 @@ describe("chat drafts", () => {
 
   it("keeps pasted plain text inline at the caret", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-plain-text-paste";
+    const threadId = "e3000000-0000-4000-a000-000000000001";
 
     mockChatLifecycle(context, { threadId });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const editor = await findComposerEditor();
+    let editor = await findComposerEditor();
+    await fillComposer(editor, "Before after");
+    editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("Before after");
     await user.keyboard(
       "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
     );
@@ -1483,15 +1484,16 @@ describe("chat drafts", () => {
 
   it("joins multiline prompt items only at the paste boundaries", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-multiline-paste";
+    const threadId = "e3000000-0000-4000-a000-000000000002";
 
     mockChatLifecycle(context, { threadId });
 
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-    const editor = await findComposerEditor();
+    let editor = await findComposerEditor();
+    await fillComposer(editor, "Before after");
+    editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("Before after");
     await user.keyboard(
       "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
     );
@@ -1525,7 +1527,7 @@ describe("chat drafts", () => {
 
   it("restores copied chat text and attachments from the clipboard", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-copied-attachment";
+    const threadId = "e3000000-0000-4000-a000-000000000003";
     const pastedText = "Please use the copied brief";
     const filename = "product-brief.md";
 
@@ -1569,7 +1571,7 @@ describe("chat drafts", () => {
 
   it("falls back to plain text when copied chat html only carries attachments", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-copied-attachment-plain-fallback";
+    const threadId = "e3000000-0000-4000-a000-000000000004";
     const pastedText = "123";
     const filename = "image.png";
     const url =
@@ -1623,7 +1625,7 @@ describe("chat drafts", () => {
 
   it("preserves multiline copied chat text when attachments prevent default paste", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = "thread-copied-attachment-slash-composer";
+    const threadId = "e3000000-0000-4000-a000-000000000005";
     const pastedText = `first\n[Thread 1](/chats/${THREAD_ONE_ID})\nlast `;
     const filename = "image.png";
     const url =
@@ -1639,9 +1641,10 @@ describe("chat drafts", () => {
       path: `/chats/${threadId}`,
     });
 
-    const editor = await findComposerEditor();
+    let editor = await findComposerEditor();
+    await fillComposer(editor, "Before after");
+    editor = await findComposerEditor();
     await user.click(editor);
-    await user.keyboard("Before after");
     await user.keyboard(
       "{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}{ArrowLeft}",
     );
