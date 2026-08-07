@@ -12,7 +12,9 @@ import {
 } from "./crypto.utils";
 import {
   piEdgeModelConfigSchema,
+  piEdgeUsageConfigSchema,
   type PiEdgeModelConfig,
+  type PiEdgeUsageConfig,
 } from "./pi-edge-config";
 
 const QUEUED_RUNNER_JOB_PAYLOAD_KEY = "__api_runner_job_payload__";
@@ -32,6 +34,7 @@ const queuedRunnerJobPayloadWireSchema = z.object({
     .object({
       model: piEdgeModelConfigSchema,
       prompt: z.string().min(1),
+      usage: piEdgeUsageConfigSchema.optional(),
     })
     .readonly()
     .optional(),
@@ -40,6 +43,7 @@ const queuedRunnerJobPayloadWireSchema = z.object({
 interface QueuedPiEdgeLaunch {
   readonly model: PiEdgeModelConfig;
   readonly prompt: string;
+  readonly usage?: PiEdgeUsageConfig;
 }
 
 interface QueuedRunnerJobPayload {

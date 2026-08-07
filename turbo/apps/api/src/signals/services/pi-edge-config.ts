@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import {
   getModelProviderPiChatCompletionsUrl,
+  supportedRunModelSchema,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -33,6 +34,16 @@ export const piEdgeModelConfigSchema = z
   })
   .readonly();
 
+/** Canonical selected model used for observations and, when billable, pricing. */
+export const piEdgeUsageConfigSchema = z
+  .object({
+    model: supportedRunModelSchema,
+    billable: z.boolean(),
+  })
+  .readonly();
+
+export type PiEdgeUsageConfig = z.infer<typeof piEdgeUsageConfigSchema>;
+
 export interface PiEdgeTurnArgs {
   readonly runId: string;
   readonly userId: string;
@@ -40,6 +51,7 @@ export interface PiEdgeTurnArgs {
   readonly prompt: string;
   readonly systemPrompt: string;
   readonly model: PiEdgeModelConfig;
+  readonly usage?: PiEdgeUsageConfig;
   readonly executionEnv: ExecutionEnv;
   readonly skillSnapshot: RunSkillSnapshot;
   readonly runnerGroup: string;

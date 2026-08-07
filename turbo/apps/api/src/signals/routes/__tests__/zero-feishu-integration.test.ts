@@ -261,7 +261,10 @@ function encryptPayload(payload: unknown): string {
   });
 }
 
-function signedHeaders(body: string, timestamp: number): HeadersInit {
+function signedHeaders(
+  body: string,
+  timestamp: number,
+): Record<string, string> {
   const nonce = randomUUID();
   const signature = createHash("sha256")
     .update(`${String(timestamp)}${nonce}${ENCRYPT_KEY}${body}`)
@@ -840,7 +843,7 @@ describe("Feishu integration", () => {
     const connectBody = feishuConnectBody(connectUrl);
     const statusResponse = await connectApp.request(
       `/api/zero/feishu/connect/status?${new URLSearchParams(
-        Object.entries(connectBody).map(([key, value]) => {
+        Object.entries(connectBody).map(([key, value]): [string, string] => {
           return [key, String(value)];
         }),
       )}`,

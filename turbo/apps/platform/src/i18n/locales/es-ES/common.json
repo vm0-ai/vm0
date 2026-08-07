@@ -1640,7 +1640,9 @@
       "videoOptionsLabel": "Opciones de vídeo {{spec}}",
       "videoOptionsModel": "Modelo",
       "videoOptionsRatio": "Proporción",
-      "videoOptionsResolution": "Resolución"
+      "videoOptionsResolution": "Resolución",
+      "videoSpecAudioOff": "Sin audio",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Hilo de chat",

@@ -48,7 +48,7 @@ import {
   activatePendingRun$,
   type PendingRunActivation,
 } from "./agent-run-activation.service";
-import type { PiEdgeModelConfig } from "./pi-edge-config";
+import type { PiEdgeModelConfig, PiEdgeUsageConfig } from "./pi-edge-config";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 
 const L = logger("ZeroRunQueue");
@@ -98,6 +98,7 @@ interface PromotedRunnerJob {
 
 interface PreparedQueuedPiEdgeTurn {
   readonly model: PiEdgeModelConfig;
+  readonly usage?: PiEdgeUsageConfig;
   readonly prompt: string;
   readonly systemPrompt: string;
   readonly executionEnv: ExecutionEnv;
@@ -275,6 +276,9 @@ async function prepareQueuedPiEdgeTurn(
   });
   return {
     model: payload.piEdge.model,
+    ...(payload.piEdge.usage === undefined
+      ? {}
+      : { usage: payload.piEdge.usage }),
     prompt: payload.piEdge.prompt,
     systemPrompt,
     executionEnv: resources.env,

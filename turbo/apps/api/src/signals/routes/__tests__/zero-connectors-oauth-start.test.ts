@@ -45,7 +45,7 @@ function oauthStartUrl(connectorSlug: string, origin = BASE_URL): string {
   ).toString();
 }
 
-function authHeaders(): HeadersInit {
+function authHeaders(): Record<string, string> {
   return { authorization: "Bearer clerk-session" };
 }
 
@@ -104,7 +104,7 @@ async function requestOauthStart(
     readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
     readonly callbackTarget?: "app";
-    readonly headers?: HeadersInit;
+    readonly headers?: RequestInit["headers"];
     readonly origin?: string;
   } = {},
 ): Promise<Response> {

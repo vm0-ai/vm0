@@ -689,7 +689,7 @@ async function seedQueueEntryForAction(
           resumeSession: null,
           encryptedSecrets: null,
           cliAgentType: "claude-code",
-          apiStartTime: 0,
+          apiStartTime: run.createdAt.getTime(),
         },
       }),
     ));

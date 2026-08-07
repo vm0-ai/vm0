@@ -309,7 +309,7 @@ function expectedCredits(
 }
 
 function sttFile(
-  body: BlobPart = wavBytes(1),
+  body: Uint8Array = wavBytes(1),
   type = "audio/wav",
   name = "speech.wav",
 ): File {

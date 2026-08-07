@@ -15,6 +15,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { signSandboxJwtForTests, verifyZeroToken } from "../../auth/tokens";
@@ -997,8 +998,11 @@ describe("POST /api/zero/teams/bot", () => {
         idempotencyKey: "19:thread@thread.tacv2:message:activity-1",
       },
     });
-    expect(body.connectUrl).toContain(`${APP_ORIGIN}/settings/teams`);
-    const connectUrl = new URL(String(body.connectUrl));
+    const { connectUrl: connectUrlValue } = z
+      .object({ connectUrl: z.string() })
+      .parse(body);
+    expect(connectUrlValue).toContain(`${APP_ORIGIN}/settings/teams`);
+    const connectUrl = new URL(connectUrlValue);
     expect(connectUrl.searchParams.get("tenantId")).toBe("tenant-1");
     expect(connectUrl.searchParams.get("tenantName")).toBe("Tenant One");
     expect(connectUrl.searchParams.get("teamsUserId")).toBe("29:user-1");

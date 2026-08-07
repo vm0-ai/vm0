@@ -39,7 +39,7 @@ async function appRequest(
   path: string,
   options: {
     readonly origin?: string;
-    readonly headers?: HeadersInit;
+    readonly headers?: RequestInit["headers"];
   } = {},
 ): Promise<Response> {
   const app = createAppWithRoutes({

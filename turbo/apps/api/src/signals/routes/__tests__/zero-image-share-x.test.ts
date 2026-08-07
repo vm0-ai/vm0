@@ -53,7 +53,7 @@ function client() {
 
 function mockXImageShareProvider(options?: {
   readonly contentLength?: string | null;
-  readonly imageBody?: BodyInit;
+  readonly imageBody?: ReadableStream<Uint8Array> | Uint8Array;
   readonly imageBytes?: Uint8Array;
 }): {
   readonly mediaUploadBodies: unknown[];
