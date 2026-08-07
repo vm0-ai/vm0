@@ -778,7 +778,7 @@ async fn gc_storage_cache_delete_recheck_treats_symlink_candidate_as_removed() {
 }
 
 #[tokio::test]
-async fn gc_storage_cache_delete_recheck_reuses_unchanged_candidate_size() {
+async fn gc_storage_cache_delete_recheck_reuses_only_identified_candidate_size() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     std::fs::create_dir_all(home.locks_dir()).unwrap();
@@ -795,6 +795,13 @@ async fn gc_storage_cache_delete_recheck_reuses_unchanged_candidate_size() {
     assert!(!result.remaining_entry);
     assert!(result.evicted);
     assert!(entry.exists(), "dry-run must keep the unchanged candidate");
+
+    candidate.identity = None;
+    let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), true).await;
+    let fresh_size = dir_stats(&entry).await.0;
+
+    assert_eq!(result.freed, fresh_size);
+    assert_ne!(result.freed, scan_size);
 }
 
 #[tokio::test]

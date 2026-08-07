@@ -122,11 +122,20 @@ pub(super) async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
 pub(super) struct DirStats {
     pub(super) size: u64,
     pub(super) mtime: SystemTime,
+    /// Present only when the full directory walk completed.
     pub(super) root_metadata: Option<std::fs::Metadata>,
 }
 
 /// Compute directory stats while retaining the root metadata fetched for the walk.
 pub(super) async fn collect_dir_stats(dir: &Path) -> DirStats {
+    let mut entry_reader = GcDirEntryReader::new();
+    collect_dir_stats_with_reader(dir, &mut entry_reader).await
+}
+
+async fn collect_dir_stats_with_reader(
+    dir: &Path,
+    entry_reader: &mut GcDirEntryReader,
+) -> DirStats {
     const BYTES_PER_BLOCK: u64 = 512;
 
     let root_meta = match tokio::fs::symlink_metadata(dir).await {
@@ -149,13 +158,19 @@ pub(super) async fn collect_dir_stats(dir: &Path) -> DirStats {
     }
 
     let mut total_bytes = 0u64;
+    let mut complete = true;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
-        let Ok(current_meta) = tokio::fs::symlink_metadata(&current).await else {
-            tracing::debug!("dir_stats: cannot stat {}", current.display());
-            continue;
+        let current_meta = match tokio::fs::symlink_metadata(&current).await {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                tracing::debug!("dir_stats: cannot stat {}", current.display());
+                complete = false;
+                continue;
+            }
         };
         if !current_meta.file_type().is_dir() {
+            complete = false;
             continue;
         }
 
@@ -163,14 +178,30 @@ pub(super) async fn collect_dir_stats(dir: &Path) -> DirStats {
             Ok(rd) => rd,
             Err(e) => {
                 tracing::debug!("dir_stats: cannot read {}: {e}", current.display());
+                complete = false;
                 continue;
             }
         };
-        while let Some(entry) = next_entry_warn_or_stop(&mut entries, "dir_stats", &current).await {
+        loop {
+            let entry = match entry_reader
+                .next_entry_warn(&mut entries, "dir_stats", &current)
+                .await
+            {
+                Ok(Some(entry)) => entry,
+                Ok(None) => break,
+                Err(_) => {
+                    complete = false;
+                    break;
+                }
+            };
             let path = entry.path();
-            let Ok(meta) = tokio::fs::symlink_metadata(&path).await else {
-                tracing::debug!("dir_stats: cannot stat {}", entry.path().display());
-                continue;
+            let meta = match tokio::fs::symlink_metadata(&path).await {
+                Ok(metadata) => metadata,
+                Err(_) => {
+                    tracing::debug!("dir_stats: cannot stat {}", entry.path().display());
+                    complete = false;
+                    continue;
+                }
             };
             total_bytes += meta.blocks() * BYTES_PER_BLOCK;
             if meta.file_type().is_dir() {
@@ -182,7 +213,7 @@ pub(super) async fn collect_dir_stats(dir: &Path) -> DirStats {
     DirStats {
         size: total_bytes,
         mtime,
-        root_metadata: Some(root_meta),
+        root_metadata: complete.then_some(root_meta),
     }
 }
 
@@ -215,5 +246,18 @@ mod tests {
             without_symlink + symlink_bytes,
             "dir_stats should count the symlink itself but not recurse into its target"
         );
+    }
+
+    #[tokio::test]
+    async fn collect_dir_stats_withholds_root_metadata_after_incomplete_walk() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("archive.tar.gz"), vec![1u8; 4096]).unwrap();
+        let mut entry_reader = GcDirEntryReader::failing_after(0);
+
+        let stats = collect_dir_stats_with_reader(&root, &mut entry_reader).await;
+
+        assert!(stats.root_metadata.is_none());
     }
 }
