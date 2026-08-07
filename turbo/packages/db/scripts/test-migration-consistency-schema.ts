@@ -204,8 +204,8 @@ async function runMigrationsUpToTag(
   }
 }
 
-async function validateContractedBrowserSchema(dbUrl: string): Promise<void> {
-  console.log("=== Phase 2.4: Validate contracted browser schema ===\n");
+async function validateExpandedBrowserSchema(dbUrl: string): Promise<void> {
+  console.log("=== Phase 2.4: Validate expanded browser schema ===\n");
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
@@ -221,9 +221,11 @@ async function validateContractedBrowserSchema(dbUrl: string): Promise<void> {
             AS "tabSnapshots"
       `,
     );
+    // The retired browser table stays until the pre-cleanup API drains; the
+    // follow-up contraction release drops it together with its declaration.
     assert.deepEqual(tables.rows, [
       {
-        browserProfiles: null,
+        browserProfiles: "browser_profiles",
         tabSnapshots: "browser_session_tab_snapshots",
       },
     ]);
@@ -241,7 +243,9 @@ async function validateContractedBrowserSchema(dbUrl: string): Promise<void> {
           )
       `,
     );
-    assert.deepEqual(retiredColumns.rows, [{ count: 0 }]);
+    // Same two-release contract: the declarations and physical columns are
+    // dropped together only after this release has drained.
+    assert.deepEqual(retiredColumns.rows, [{ count: 4 }]);
 
     const primaryKeys = await client.query<{
       columnName: string;
@@ -264,9 +268,11 @@ async function validateContractedBrowserSchema(dbUrl: string): Promise<void> {
         ORDER BY "tc"."table_name", "kcu"."ordinal_position"
       `,
     );
+    // Current code keys every lookup by chat_thread_id, but the physical
+    // primary key stays on the retired identity column for this release.
     assert.deepEqual(primaryKeys.rows, [
-      { tableName: "browser_sessions", columnName: "chat_thread_id" },
-      { tableName: "browser_thread_profiles", columnName: "chat_thread_id" },
+      { tableName: "browser_sessions", columnName: "id" },
+      { tableName: "browser_thread_profiles", columnName: "id" },
     ]);
 
     const lifecycleConstraint = await client.query<{ definition: string }>(
@@ -278,13 +284,18 @@ async function validateContractedBrowserSchema(dbUrl: string): Promise<void> {
     );
     assert.equal(lifecycleConstraint.rows.length, 1);
     const lifecycleDefinition = lifecycleConstraint.rows[0]?.definition ?? "";
+    // Both generations must be accepted: the new API writes the canonical
+    // values while the draining pre-cleanup API still writes the retired ones.
     assert.match(lifecycleDefinition, /browser\.open/u);
     assert.match(lifecycleDefinition, /browser\.close/u);
-    assert.doesNotMatch(lifecycleDefinition, /browser\.started/u);
-    assert.doesNotMatch(lifecycleDefinition, /browser\.stopped/u);
-    console.log("   ✅ legacy browser tables and identity columns are absent");
-    console.log("   ✅ browser state is keyed directly by chat thread");
-    console.log("   ✅ only canonical browser lifecycle events remain\n");
+    assert.match(lifecycleDefinition, /browser\.started/u);
+    assert.match(lifecycleDefinition, /browser\.stopped/u);
+    console.log(
+      "   ✅ retired browser tables and identity columns still exist",
+    );
+    console.log(
+      "   ✅ both browser lifecycle event generations are accepted\n",
+    );
   } finally {
     await client.end();
   }
@@ -4142,7 +4153,7 @@ async function main(): Promise<void> {
 
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
-    await validateContractedBrowserSchema(dbUrl1);
+    await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);

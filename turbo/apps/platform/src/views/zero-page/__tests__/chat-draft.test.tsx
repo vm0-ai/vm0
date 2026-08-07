@@ -25,7 +25,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
@@ -294,13 +294,15 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftRequested).toBeTruthy();
     });
-    await fill(editor, "Local draft created while loading");
+    await fillComposer(editor, "Local draft created while loading");
     draftResponse.resolve();
 
     await screen.findByRole("heading", {
       name: "Your agent is waiting in line",
     });
-    expect(editor).toHaveTextContent("Local draft created while loading");
+    await expect(findComposerEditor()).resolves.toHaveTextContent(
+      "Local draft created while loading",
+    );
     expect(screen.queryByLabelText("Remove lightbox.svg")).toBeNull();
   });
 
