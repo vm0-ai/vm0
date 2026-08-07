@@ -13075,6 +13075,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             runner_startup_path: "workspace",
             sandbox_reuse_result: "poolMiss",
           },
+          {
+            ts: nowDate().toISOString(),
+            action_type: "session_history_prune",
+            duration_ms: 4,
+            success: true,
+            outcome: "ineligible",
+            reason: "source_within_guard",
+          },
         ],
       },
       sandboxHeaders,
@@ -13183,6 +13191,20 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
           success: true,
           runner_startup_path: "workspace",
           sandbox_reuse_result: "poolMiss",
+          source: "sandbox",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "session_history_prune",
+          run_id: created.runId,
+          duration_ms: 4,
+          success: true,
+          outcome: "ineligible",
+          reason: "source_within_guard",
           source: "sandbox",
         }),
       ],

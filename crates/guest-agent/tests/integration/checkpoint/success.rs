@@ -4,7 +4,7 @@ use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
 };
 use httpmock::prelude::*;
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 #[cfg(target_os = "linux")]
 use std::{
@@ -15,6 +15,42 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+
+fn assert_session_history_prune_operation(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    expected_outcome: &str,
+    expected_reason: Option<&str>,
+    expected_success: bool,
+) -> Result<(), String> {
+    let content = std::fs::read_to_string(runtime.paths.sandbox_ops_file())
+        .map_err(|error| format!("read checkpoint telemetry: {error}"))?;
+    let operations = content
+        .lines()
+        .map(serde_json::from_str::<Value>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("parse checkpoint telemetry: {error}"))?
+        .into_iter()
+        .filter(|operation| operation["action_type"] == "session_history_prune")
+        .collect::<Vec<_>>();
+    if operations.len() != 1 {
+        return Err(format!("unexpected prune operations: {operations:?}"));
+    }
+    let Some(operation) = operations.first() else {
+        return Err("missing prune operation".into());
+    };
+    assert_eq!(operation["outcome"], expected_outcome);
+    assert_eq!(operation["success"], expected_success);
+    match expected_reason {
+        Some(reason) => assert_eq!(operation["reason"], reason),
+        None => assert!(operation.get("reason").is_none()),
+    }
+    if expected_success {
+        assert!(operation.get("error").is_none());
+    } else {
+        assert_eq!(operation["error"], "selector_io");
+    }
+    Ok(())
+}
 
 #[cfg(target_os = "linux")]
 #[tokio::test(flavor = "current_thread")]
@@ -158,6 +194,37 @@ async fn success_checkpoint_preserves_small_codex_history() {
     prepare_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
     assert_eq!(std::fs::read(&history_path).unwrap(), history);
+    assert_session_history_prune_operation(
+        &runtime,
+        "ineligible",
+        Some("source_within_guard"),
+        true,
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn checkpoint_records_codex_prune_resolution_error() {
+    let _api = SharedApiMock::new().await;
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let sessions_dir = tempfile::tempdir().unwrap();
+    let sessions_dir = sessions_dir.path().join("missing-sessions");
+    let sessions_dir = sessions_dir.to_string_lossy();
+    let marker = format!(
+        "CODEX_SEARCH:{}:{sessions_dir}:{session_id}",
+        sessions_dir.len()
+    );
+    let (session_id_file, session_history_path_file) = session_file_paths();
+    guest_agent::paths::write_private(&session_id_file, session_id).unwrap();
+    guest_agent::paths::write_private(&session_history_path_file, marker).unwrap();
+
+    let error = create_bounded_checkpoint(&runtime).await.unwrap_err();
+
+    assert!(error.to_string().contains("Codex session file not found"));
+    assert_session_history_prune_operation(&runtime, "error", Some("selector_io"), false).unwrap();
 }
 
 #[tokio::test]
@@ -332,6 +399,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
         identity.history_marker_payload.contains(session_id),
         "Codex identity must retain the marker for the original thread"
     );
+    assert_session_history_prune_operation(&runtime, "selected", None, true).unwrap();
 }
 
 #[tokio::test]
