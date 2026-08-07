@@ -378,6 +378,26 @@ fn is_insufficient_credits_error(normalized: &str) -> bool {
         || (normalized.contains("api error: 402")
             && normalized.contains("requires more credits")
             && normalized.contains("can only afford"))
+        || has_insufficient_credits_response_envelope(normalized)
+}
+
+fn has_insufficient_credits_response_envelope(normalized: &str) -> bool {
+    const STATUS_MARKER: &str = "402 payment required";
+
+    let Some(status_index) = normalized.find(STATUS_MARKER) else {
+        return false;
+    };
+
+    let mut search_start = status_index + STATUS_MARKER.len();
+    while let Some((value, end_index)) = parse_next_json_object(normalized, search_start) {
+        if value.as_ref().is_some_and(|value| {
+            value.get("error").and_then(Value::as_str) == Some("insufficient_credits")
+        }) {
+            return true;
+        }
+        search_start = end_index;
+    }
+    false
 }
 
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
