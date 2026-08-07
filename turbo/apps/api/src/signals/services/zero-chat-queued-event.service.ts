@@ -68,6 +68,7 @@ import {
 import type { Tx } from "../../lib/db-types";
 import { withRunModelAnnotation } from "./zero-chat-user-message.service";
 import { manualTriggerSource } from "./workflow-automation-trigger-source";
+import { chatAgentRunContextSchemaAvailable } from "./chat-agent-run-context-schema.service";
 
 type DbTransaction = Tx;
 
@@ -92,8 +93,14 @@ function unreachableQueuedContextType(contextType: never): never {
 
 function requiredQueuedUserMessageContextType(
   contextType: QueuedUserMessageContextType | null,
+  agentRunContextAvailable: boolean,
 ): QueuedUserMessageContextType {
   if (contextType === null) {
+    // Before migration 0830, delegated agent prompts are the only queued input
+    // rows without a context type. Current schemas fail loudly on any NULL.
+    if (!agentRunContextAvailable) {
+      return "agent_run";
+    }
     throw new Error("Queued user message is missing its context type");
   }
   return contextType;
@@ -310,7 +317,10 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!head || head.eventType !== "input.prompt") {
     return null;
   }
-  const schemaAvailable = await autonomyBudgetSchemaAvailable(db);
+  const [schemaAvailable, agentRunContextAvailable] = await Promise.all([
+    autonomyBudgetSchemaAvailable(db),
+    chatAgentRunContextSchemaAvailable(db),
+  ]);
   const [event] = await db
     .select({
       id: chatEvents.id,
@@ -352,7 +362,10 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!event.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  const contextType = requiredQueuedUserMessageContextType(event.contextType);
+  const contextType = requiredQueuedUserMessageContextType(
+    event.contextType,
+    agentRunContextAvailable,
+  );
   const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
     !schemaAvailable || event.contextType !== "agent_run"
       ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
@@ -388,6 +401,7 @@ type QueueFirstClaimArgs = QueueFirstRunAssociation & {
 interface QueueFirstClaimSnapshot {
   readonly target: LoadedChatEventReplacementTarget;
   readonly replacement: NewChatEvent;
+  readonly routingContextType: QueuedUserMessageContextType;
 }
 
 function replacementTargetFromQueueHead(
@@ -434,9 +448,13 @@ async function resolveUserQueueFirstClaimSnapshot(
   if (!head.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  const contextType = requiredQueuedUserMessageContextType(head.contextType);
+  const contextType = requiredQueuedUserMessageContextType(
+    head.contextType,
+    await chatAgentRunContextSchemaAvailable(db),
+  );
   return {
     target: replacementTargetFromQueueHead(head),
+    routingContextType: contextType,
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
@@ -502,6 +520,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
   }
   return {
     target: replacementTargetFromQueueHead(head),
+    routingContextType: "automation",
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
@@ -567,6 +586,7 @@ async function resolveGoalQueueFirstClaimSnapshot(
   }
   return {
     target: replacementTargetFromQueueHead(head),
+    routingContextType: "goal",
     replacement: {
       chatThreadId: args.threadId,
       eventType: "input.prompt",
@@ -717,8 +737,7 @@ export async function claimQueueFirstRunAssociation(
       }
       if (
         args.kind === "user_message" &&
-        snapshot.target.contextType !== null &&
-        isWebChatContextType(snapshot.target.contextType) &&
+        isWebChatContextType(snapshot.routingContextType) &&
         args.attachFileMetadata
       ) {
         await attachCanonicalWebInputAssetsToEvent(db, {
