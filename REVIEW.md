@@ -231,14 +231,25 @@ Apply `docs/fallback.md`. The default is no fallback.
   rollback handling for it, and do not treat a transient error during its
   cutover as a blocker. Request removal when such a PR adds that fallback.
 - A new cross-version rollout fallback must carry a comment naming the
-  condition that makes it removable and a follow-up issue or PR. An
-  open-ended "tolerate the old shape" branch is a finding.
+  affected surface, its rollout window, the condition that makes it removable,
+  and a follow-up issue or PR. An open-ended "tolerate the old shape" branch is
+  a finding. Check the window against the production version-skew facts:
+  DB ahead of API for about 4 seconds, existing runner or sandbox instances old
+  for up to 2 hours, old web or app clients in use for about 2 days. A branch
+  sized to the wrong surface's window is a finding.
 - A PR that removes a fallback must state its evidence — type/schema,
   single-writer, production query, or closed rollback window — and must delete
   the branch, its contract entry, and its own tests together.
 - Flag negative tests that only assert deleted behavior is still deleted
   (retired route still 404s, legacy field still ignored). The exception is a
   fail-closed security boundary, where rejection is the product behavior.
+- The PR summary must contain a `Fallbacks` section listing every fallback the
+  PR introduces, keeps, or removes, or an explicit `Fallbacks: none`. A
+  fallback present in the diff but absent from the summary is a finding.
+- The review comment must itself list every fallback found in the diff, with
+  its surface, window, removal condition, and a justified / not-justified
+  verdict. A review that stays silent about fallbacks in a PR that has one is
+  incomplete.
 
 **Testing Coverage**
 
@@ -297,10 +308,18 @@ LGTM
 #### High Priority (P1)
 - <file path>: <issue description>
 
+### Fallbacks
+- <file path and symbol>: <old/new interaction it protects> — surface <DB/API ~4s | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, verdict <Justified / Not justified>
+- <or: None>
+
 ### Testing
 - Coverage: <Adequate / Insufficient - missing tests for: ...>
 - Conventions: <Compliant / Violations: ...>
 ```
+
+The `Fallbacks` section is mandatory in every review, including when the answer
+is `None`. List each fallback the diff introduces, keeps, or removes, and flag
+any that the PR summary failed to declare.
 
 Or if there are P0/P1 blockers:
 
@@ -317,6 +336,9 @@ Changes Requested
 
 #### High Priority (P1) - should fix before merge
 - <issue>
+
+### Fallbacks
+...
 
 ### Testing
 ...
@@ -335,7 +357,7 @@ If the caller asks for pr-auto marker-comment mode:
 - Include the caller-provided pr-auto marker lines near the top of the same
   comment.
 - Keep the rest of the body as the detailed pr-review result, including Summary,
-  Findings, and Testing.
+  Findings, Fallbacks, and Testing.
 
 ```bash
 gh pr comment <PR_NUMBER> --repo vm0-ai/vm0 --body-file "<REVIEW_BODY_FILE>"

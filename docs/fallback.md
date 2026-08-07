@@ -158,7 +158,7 @@ Keep a fallback only when it belongs to one of these:
 1. **Time-boxed cross-version rollout compatibility.** Frontend, backend, and
    runner deploy independently, so a briefly-mixed fleet is a real reachable
    state. See `docs/deployment-compatibility.md`. This fallback must be
-   time-boxed (see section 7).
+   time-boxed to a known rollout window (see sections 7 and 8).
 2. **Genuinely optional external data.** Third-party API fields that the
    provider documents as optional, or that runtime inspection proves absent
    despite the TypeScript declaration.
@@ -169,7 +169,44 @@ Keep a fallback only when it belongs to one of these:
 
 Everything else is slop.
 
-## 7. Writing a Time-Boxed Rollout Fallback
+## 7. Rolling Update Windows
+
+A rollout fallback is only justified for the duration that an old version can
+still be live. These are the production version-skew windows pr-auto uses when
+it audits a merged PR for retained version-migration fallbacks. Use the same
+numbers when you write, size, or remove a compatibility branch.
+
+| Surface                   | Maximum skew  | What resolves it                                            |
+| ------------------------- | ------------- | ----------------------------------------------------------- |
+| DB vs API                 | ~4 seconds    | DB deploys ahead of API; after that the API matches the DB. |
+| Existing runner / sandbox | up to 2 hours | Old instances drain; newly created ones match immediately.  |
+| Old web / app clients     | ~2 days       | A refresh loads the current version.                        |
+
+How to use them:
+
+- **DB ahead of API (~4s).** A migration is live while the previous API is
+  still serving or draining. This window is short but real, which is why
+  migrations must be additive and destructive steps split into a later PR. It
+  does not justify a permanent tolerant reader.
+- **Old runner or sandbox (up to 2h).** The backend must accept the old runner
+  protocol for the full drain. Runner-facing endpoints, payload variants, and
+  event shapes cannot be deleted in the same PR that stops emitting them; the
+  removal is a follow-up after the window closes. Newly created runners and
+  sandboxes are already on the new version, so no fallback is needed for them.
+- **Old web or app clients (~2 days).** Frontend-to-API compatibility branches
+  are sized by this window. It is the longest one, so a client-facing rollout
+  fallback is the one most worth writing — and the one most often left behind.
+
+State the applicable window in the code comment and in the PR summary, so the
+removal condition is a date-bounded fact rather than a judgment call. If a
+fallback protects more than one surface, state every relevant window; the
+removal waits for the longest one.
+
+These windows apply only to GA behavior. A feature still behind a non-GA
+feature switch has no old external client to protect, so none of these windows
+create an obligation (see section 2).
+
+## 8. Writing a Time-Boxed Rollout Fallback
 
 A legitimate rollout fallback is introduced with its removal already planned.
 
@@ -200,7 +237,9 @@ so it dies with the fallback rather than becoming a tombstone.
 
 Requirements for this pattern:
 
-- a comment naming the condition that makes the branch removable,
+- a comment naming the surface, its window from section 7, and the condition
+  that makes the branch removable,
+- an entry in the PR summary (see section 9),
 - a follow-up issue or PR that removes it,
 - the removal deletes the tolerant branch, the contract entry, the helper
   types, and the fallback's tests together.
@@ -208,7 +247,42 @@ Requirements for this pattern:
 An "old shape tolerated forever" branch with no removal condition is not a
 rollout fallback; it is section 5 slop.
 
-## 8. Evidence Required When Removing a Fallback
+## 9. Declare Every Fallback in the PR Summary and the Review
+
+A fallback that nobody records is a fallback that nobody removes. Declaring it
+is mandatory on both sides of the review.
+
+**Author — in the PR summary.** When a PR introduces, keeps, or removes any
+fallback, the summary must contain a `Fallbacks` section listing each one. Do
+not bury it in the diff. For each fallback give:
+
+- the file and symbol,
+- what old/new interaction it protects,
+- the surface and its window from section 7 (or `none — non-GA feature
+switch`),
+- the removal condition and the follow-up issue or PR,
+- for a removed fallback, the evidence from section 10.
+
+```md
+## Fallbacks
+
+- `sidebar-unread-threads.ts:allUnreadThreadIds$` — accepts `404` from an API
+  that predates the additive `unreadIds` route. Surface: old app clients,
+  ~2 days. Remove after the API is outside the rollback window; follow-up
+  #25694.
+```
+
+When a PR contains no fallback at all, say so explicitly: `Fallbacks: none`.
+That one line is what makes a later audit trustworthy, and it is what pr-auto
+reports as `none observed` after merge.
+
+**Reviewer — in the review comment.** The review must list every fallback the
+diff introduces or keeps, in the same shape, and state whether each one is
+justified under section 6 and correctly time-boxed under section 7. A fallback
+the author did not declare is itself a finding. A review that says nothing
+about fallbacks in a PR that adds one is not a completed review.
+
+## 10. Evidence Required When Removing a Fallback
 
 Removing a fallback is a behavior change until proven otherwise. A cleanup PR
 must show why the removed branch is unreachable:
@@ -235,7 +309,14 @@ throw so monitoring surfaces a violation if the assumption ever breaks.
   cutover is acceptable.
 - Does the PR add a test that asserts removed behavior stays removed? Request
   removal unless it is a fail-closed security boundary.
-- Does a new rollout fallback carry a removal condition and a follow-up?
+- Does a new rollout fallback name its surface, its window from section 7, a
+  removal condition, and a follow-up?
+- Is the window the right one? A runner-protocol branch sized to the ~4 second
+  DB window, or a client branch sized to the ~2 hour runner window, is wrong.
+- Does the PR summary contain a `Fallbacks` section, or an explicit
+  `Fallbacks: none`?
+- Does the review comment list every fallback the diff introduces or keeps,
+  with a justified/not-justified verdict for each?
 - Does a removal PR carry type, single-writer, production, or rollout evidence?
 - Does the removal delete the branch, the contract entry, and the branch's own
   tests together?
