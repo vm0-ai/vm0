@@ -2180,6 +2180,8 @@ async function loadStoredValuesForConnector(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
+  readonly authMode: CustomConnectorAuthMode;
+  readonly storageVersion: number;
 }): Promise<readonly StoredValueRow[]> {
   const [valueRows, legacyRows] = await Promise.all([
     args.db
@@ -2195,6 +2197,8 @@ async function loadStoredValuesForConnector(args: {
         and(
           eq(orgCustomConnectors.id, orgCustomConnectorValues.connectorId),
           eq(orgCustomConnectors.orgId, orgCustomConnectorValues.orgId),
+          eq(orgCustomConnectors.authMode, args.authMode),
+          eq(orgCustomConnectors.storageVersion, args.storageVersion),
         ),
       )
       .innerJoin(
@@ -2226,6 +2230,8 @@ async function loadStoredValuesForConnector(args: {
           eq(orgCustomConnectors.id, orgCustomConnectorSecrets.connectorId),
           eq(orgCustomConnectors.orgId, orgCustomConnectorSecrets.orgId),
           eq(orgCustomConnectors.authMode, "manual"),
+          eq(orgCustomConnectors.authMode, args.authMode),
+          eq(orgCustomConnectors.storageVersion, args.storageVersion),
         ),
       )
       .innerJoin(
@@ -2547,6 +2553,8 @@ export async function loadCustomConnectorRuntimeData(
                 orgId: args.orgId,
                 userId: args.userId,
                 connectorId: connector.id,
+                authMode: connector.authMode,
+                storageVersion: connector.storageVersion,
               })
             : [];
         return { connector, values, credentialAccess };

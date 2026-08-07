@@ -148,6 +148,9 @@ async function resolveCustomTarget(args: {
       expectedStorageVersion:
         custom.row.credentialAccess.expectedStorageVersion,
       storedStorageVersion: custom.row.credentialAccess.storedStorageVersion,
+      definitionAuthMethod: custom.row.credentialAccess.definitionAuthMethod,
+      definitionStorageVersion:
+        custom.row.credentialAccess.definitionStorageVersion,
     });
     return customAbsentResult(args.target, "connector-unavailable");
   }

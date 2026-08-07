@@ -838,13 +838,34 @@ async function loadConnection(args: {
   if (!connection) {
     return null;
   }
+  // Re-check the complete identity at the secret read boundary because the
+  // organization definition can change after the parent lookup.
   const tokenRows = await args.db
     .select({
       secretName: secrets.name,
       encryptedValue: secrets.encryptedValue,
     })
     .from(secrets)
-    .where(eq(secrets.connectorId, connection.id));
+    .innerJoin(connectors, eq(connectors.id, secrets.connectorId))
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, connectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, connectors.orgId),
+        eq(orgCustomConnectors.authMode, "oauth"),
+        eq(orgCustomConnectors.storageVersion, args.storageVersion),
+      ),
+    )
+    .where(
+      and(
+        eq(connectors.id, connection.id),
+        eq(connectors.customConnectorId, args.connectorId),
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.authMethod, "oauth"),
+        eq(connectors.storageVersion, args.storageVersion),
+      ),
+    );
   return {
     id: connection.id,
     tokenExpiresAt: connection.tokenExpiresAt,
