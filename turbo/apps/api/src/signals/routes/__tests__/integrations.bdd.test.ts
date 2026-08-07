@@ -1808,23 +1808,27 @@ describe("INT-01: Slack app deep webhook flows", () => {
         return ingress.eventId;
       }),
     ).toStrictEqual(expect.arrayContaining([eventId, stickyEventId]));
-    // Pending input events retain channel attribution alongside web messages.
-    expect(state.pending_chat_events).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          eventType: "input.prompt",
-          triggerSource: "web",
-        }),
-        expect.objectContaining({
-          eventType: "input.prompt",
-          triggerSource: "slack",
-        }),
-      ]),
+    const pendingInputEvents = state.pending_chat_events.filter((pending) => {
+      return pending.eventType === "input.prompt";
+    });
+    expect(pendingInputEvents.length).toBeGreaterThanOrEqual(2);
+    expect(
+      pendingInputEvents.every((pending) => {
+        return pending.triggerSource === null;
+      }),
+    ).toBeTruthy();
+    const pendingEventsWithContext = await Promise.all(
+      pendingInputEvents.map(async (pending) => {
+        return {
+          pending,
+          context: await readChatEventContextFixture(pending.id),
+        };
+      }),
     );
-    const queuedSlackEvents = state.pending_chat_events.filter((pending) => {
+    const queuedSlackEvents = pendingEventsWithContext.filter((candidate) => {
       return (
-        pending.chatThreadId === canonicalChatThreadId &&
-        pending.triggerSource === "slack"
+        candidate.pending.chatThreadId === canonicalChatThreadId &&
+        candidate.context?.contextType === "slack"
       );
     });
     expect(queuedSlackEvents).toHaveLength(1);
@@ -1832,9 +1836,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!queuedSlackEvent) {
       throw new Error("Expected the canonical thread's pending Slack event");
     }
-    await expect(
-      readChatEventContextFixture(queuedSlackEvent.id),
-    ).resolves.toMatchObject({
+    expect(queuedSlackEvent.context).toMatchObject({
       contextType: "slack",
       contextId: expect.any(String),
       slackChannelId: channelId,
@@ -1958,14 +1960,20 @@ describe("INT-01: Slack app deep webhook flows", () => {
     }));
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
-    expect(state.recent_runs).toContainEqual(
-      expect.objectContaining({
-        id: run2Id,
-        triggerSource: "slack",
-        promptPreview: expect.stringContaining(
-          "stay canonical on the same route",
-        ),
-      }),
+    expect(state.recent_runs).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: webRunId,
+          triggerSource: "web",
+        }),
+        expect.objectContaining({
+          id: run2Id,
+          triggerSource: "slack",
+          promptPreview: expect.stringContaining(
+            "stay canonical on the same route",
+          ),
+        }),
+      ]),
     );
     await completeSlackTriggeredRun({
       runId: run2Id,
@@ -2541,7 +2549,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.arrayContaining([
         expect.objectContaining({
           eventType: "input.prompt",
-          triggerSource: "slack",
+          triggerSource: null,
         }),
       ]),
     );

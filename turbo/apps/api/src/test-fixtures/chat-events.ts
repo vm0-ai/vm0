@@ -260,7 +260,6 @@ export async function readChatEventContextFixture(
 const annotationProjectionInputs = [
   {
     text: "slack linked",
-    triggerSource: "slack",
     messagePermalink: "https://vm0.slack.com/archives/C123/p1753257600000100",
     context: {
       slackContext: {
@@ -280,7 +279,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "feishu linked",
-    triggerSource: "feishu",
     context: {
       feishuContext: {
         conversationHistory: "",
@@ -300,7 +298,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "teams channel linked",
-    triggerSource: "teams",
     context: {
       teamsContext: {
         tenantId: "tenant-1",
@@ -326,7 +323,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "teams personal unlinked",
-    triggerSource: "teams",
     context: {
       teamsContext: {
         tenantId: "tenant-1",
@@ -352,7 +348,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "telegram supergroup linked",
-    triggerSource: "telegram",
     context: {
       telegramContext: {
         chatId: "-1001234567890",
@@ -374,7 +369,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "telegram dm unlinked",
-    triggerSource: "telegram",
     context: {
       telegramContext: {
         chatId: "123456789",
@@ -396,7 +390,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "telegram group unlinked",
-    triggerSource: "telegram",
     context: {
       telegramContext: {
         chatId: "-123456789",
@@ -418,7 +411,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "github issue comment linked",
-    triggerSource: "github",
     context: {
       githubContext: {
         repo: "vm0-ai/vm0",
@@ -434,7 +426,6 @@ const annotationProjectionInputs = [
   },
   {
     text: "github pull request linked",
-    triggerSource: "github",
     context: {
       githubContext: {
         repo: "vm0-ai/vm0",
@@ -508,7 +499,6 @@ export async function seedChatEventAnnotationProjectionFixture(
           nonContentPart: annotationProjectionSourcePart(input),
         }),
         runId: null,
-        triggerSource: input.triggerSource,
         ...input.context,
       });
     }
@@ -528,7 +518,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         }),
       }),
       runId: null,
-      triggerSource: "github",
       githubContext: {
         repo: "vm0-ai/vm0",
         subjectNumber: 24_218,
@@ -554,7 +543,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         }),
       }),
       runId: randomUUID(),
-      triggerSource: "github",
     });
 
     await insertChatEvent(tx, {
@@ -571,7 +559,6 @@ export async function seedChatEventAnnotationProjectionFixture(
         }),
       }),
       runId: null,
-      triggerSource: "teams",
       teamsContext: {
         tenantId: "tenant-2",
         teamId: "team-2",
@@ -607,7 +594,6 @@ export async function seedChatEventAnnotationProjectionFixture(
       }),
       runId: null,
       error: "rejected for annotation coverage",
-      triggerSource: "teams",
     });
   });
   return { claimedPendingId, rejectedPendingId };
@@ -630,7 +616,6 @@ async function pendingTelegramEventContext(eventId: string) {
       and(
         eq(chatEvents.id, eventId),
         eq(chatEvents.contextType, "telegram"),
-        eq(chatEvents.triggerSource, "telegram"),
         isNull(chatEvents.runId),
       ),
     )
@@ -672,7 +657,7 @@ export async function findTelegramChatEventByPromptFixture(
     .where(
       and(
         eq(chatEvents.eventType, "input.prompt"),
-        eq(chatEvents.triggerSource, "telegram"),
+        eq(chatEvents.contextType, "telegram"),
       ),
     );
   const row = rows.find((candidate) => {
@@ -695,7 +680,7 @@ export async function findAgentphoneChatEventByPromptFixture(
     .where(
       and(
         eq(chatEvents.eventType, "input.prompt"),
-        eq(chatEvents.triggerSource, "agentphone"),
+        eq(chatEvents.contextType, "agentphone"),
       ),
     );
   const row = rows.find((candidate) => {
@@ -735,7 +720,6 @@ export async function insertQueuedSlackMissingContextFixture(args: {
       eventType: "input.prompt",
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,
-      triggerSource: "slack",
       slackContext: {
         channelId: "C_MONITOR_FAILURE",
         messageTs: "1.000001",
@@ -769,7 +753,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
         generationTemplate: chatEvents.generationTemplate,
-        triggerSource: chatEvents.triggerSource,
       })
       .from(chatEvents)
       .where(
@@ -791,7 +774,6 @@ export async function replayPendingChatInputQueueEventFixture(args: {
       runId: null,
       attachFiles: event.attachFiles ? [...event.attachFiles] : null,
       generationTemplate: event.generationTemplate,
-      ...(event.triggerSource ? { triggerSource: event.triggerSource } : {}),
     });
     if (!replacement) {
       throw new Error("Expected the pending queue event replay to insert");
