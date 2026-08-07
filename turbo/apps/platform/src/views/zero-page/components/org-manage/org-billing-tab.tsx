@@ -33,7 +33,7 @@ import {
   startCheckout$,
   startConcurrencyCheckout$,
   startConcurrencyReduction$,
-  startDowngrade$,
+  openBillingPortal$,
   setConcurrencySubscriptionQuantity$,
   apiTierToBillingTier,
   openDowngradeDialog$,
@@ -305,6 +305,28 @@ function billingScheduledChange(
     };
   }
   return null;
+}
+
+type BillingManagementMode = "billing" | "payment_methods" | null;
+
+function billingManagementMode(
+  status: BillingStatusResponse | null,
+  paymentMethodManagementEnabled: boolean,
+): BillingManagementMode {
+  if (!status) {
+    return null;
+  }
+  // Keep the legacy subscriber UI while the rollout switch is disabled.
+  // Remove this branch with #25716 after the roughly two-day client window.
+  if (!paymentMethodManagementEnabled) {
+    return status.hasSubscription ? "billing" : null;
+  }
+  if (status.paymentMethodManagementAvailable === true) {
+    return "payment_methods";
+  }
+  // A new app can briefly reach an API version that predates this capability.
+  // Preserve its legacy UI until that API is outside the window; #25716 (~2d).
+  return status.hasSubscription ? "billing" : null;
 }
 
 type PlanCardAction =
@@ -2006,6 +2028,9 @@ function BillingPricingPage({
 
 export function OrgBillingTab() {
   const { t } = useTranslation();
+  const featureSwitches = useGet(featureSwitch$);
+  const paymentMethodManagementEnabled =
+    featureSwitches[FeatureSwitchKey.PaymentMethodManagement];
   const pricingOpen = useGet(billingSubPage$);
   const setBillingSubPage = useSet(setBillingSubPage$);
   const buyCreditsScrollRef = useSet(buyCreditsScrollRef$);
@@ -2017,7 +2042,7 @@ export function OrgBillingTab() {
   const openDowngrade = useSet(openDowngradeDialog$);
   const setLockedTarget = useSet(setLockedTarget$);
   const openRestore = useSet(openRestoreDialog$);
-  const [portalLoadable, portal] = useLoadableSet(startDowngrade$);
+  const [portalLoadable, portal] = useLoadableSet(openBillingPortal$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
   const loading = portalLoadable.state === "loading";
 
@@ -2055,9 +2080,17 @@ export function OrgBillingTab() {
   );
   const showBuyCredits = capabilities.canBuyCredits;
   const showConcurrency = capabilities.canBuyConcurrency;
-  const canManageBilling = status?.hasSubscription === true;
+  const managementMode = billingManagementMode(
+    status,
+    paymentMethodManagementEnabled,
+  );
+  const canManageBilling = managementMode !== null;
+  const paymentMethodsOnly = managementMode === "payment_methods";
   const openBillingPortal = () => {
-    return detach(portal(pageSignal), Reason.DomCallback);
+    if (!managementMode) {
+      return;
+    }
+    return detach(portal(managementMode, pageSignal), Reason.DomCallback);
   };
 
   if (pricingOpen) {
@@ -2169,12 +2202,16 @@ export function OrgBillingTab() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
                         {t(($) => {
-                          return $.billing.manage.title;
+                          return paymentMethodsOnly
+                            ? $.billing.paymentMethods.title
+                            : $.billing.manage.title;
                         })}
                       </p>
                       <p className="text-[13px] text-muted-foreground mt-0.5">
                         {t(($) => {
-                          return $.billing.manage.description;
+                          return paymentMethodsOnly
+                            ? $.billing.paymentMethods.description
+                            : $.billing.manage.description;
                         })}
                       </p>
                     </div>
