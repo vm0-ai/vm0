@@ -1016,8 +1016,8 @@ async def _try_firewall_request_stream_from_headers(
             flow,
             allow,
             vm_info,
-            revalidate_ordinary_upstream_credentials=lambda: (
-                _ordinary_upstream_credentials_are_current_for_requestheaders(
+            revalidate_current_firewall_authorization=lambda: (
+                _firewall_authorization_is_current_for_requestheaders(
                     flow,
                     allow,
                     expected_run_id=expected_run_id,
@@ -1087,7 +1087,7 @@ def _block_public_destination_denied(
     )
 
 
-def _revalidate_ordinary_upstream_credentials_for_request(
+def _revalidate_current_firewall_authorization_for_request(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     *,
@@ -1095,7 +1095,9 @@ def _revalidate_ordinary_upstream_credentials_for_request(
     admitted_server: connection.Server,
     require_connected: bool,
 ) -> bool:
-    if not _has_current_direct_connector_auth_binding(
+    if _firewall_allow_injects_ordinary_upstream_credentials(
+        allow
+    ) and not _has_current_direct_connector_auth_binding(
         flow,
         admitted_server=admitted_server,
         require_connected=require_connected,
@@ -1162,7 +1164,7 @@ def _equivalent_current_firewall_allow(
     return classification
 
 
-def _ordinary_upstream_credentials_are_current_for_requestheaders(
+def _firewall_authorization_is_current_for_requestheaders(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     *,
@@ -1256,7 +1258,7 @@ async def _prepare_codex_catalog_request_with_upstream_revalidation(
         and flow.response is None
         and _firewall_allow_injects_ordinary_upstream_credentials(allow)
     ):
-        _revalidate_ordinary_upstream_credentials_for_request(
+        _revalidate_current_firewall_authorization_for_request(
             flow,
             allow,
             expected_run_id=expected_run_id,
@@ -1405,8 +1407,8 @@ async def request(flow: http.HTTPFlow) -> None:
                 flow,
                 allow,
                 vm_info,
-                revalidate_ordinary_upstream_credentials=lambda: (
-                    _revalidate_ordinary_upstream_credentials_for_request(
+                revalidate_current_firewall_authorization=lambda: (
+                    _revalidate_current_firewall_authorization_for_request(
                         flow,
                         allow,
                         expected_run_id=expected_run_id,
