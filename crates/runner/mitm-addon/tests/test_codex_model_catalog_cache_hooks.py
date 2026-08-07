@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
+from unittest.mock import patch
 
 import pytest
 from mitmproxy import connection
@@ -21,6 +22,7 @@ from tests.codex_model_catalog_cache_helpers import (
     catalog_flow,
     catalog_response,
     finish_response,
+    install_catalog,
     prepare_miss,
     responses_flow,
 )
@@ -52,6 +54,30 @@ async def test_request_bypasses_do_not_touch_unrelated_traffic(real_flow):
     unrelated.response = catalog_response()
     mitm_addon.responseheaders(unrelated)
     assert callable(unrelated.response.stream)
+
+
+async def test_streaming_catalog_request_bypasses_fresh_cache(real_flow):
+    with patch.object(catalog_cache.time, "monotonic", return_value=100.0):
+        await install_catalog(catalog_flow(real_flow))
+        flow = catalog_flow(real_flow)
+
+        def external_stream(chunk: bytes) -> bytes:
+            return chunk
+
+        flow.request.stream = external_stream
+
+        await catalog_cache.prepare_request(flow, request_end_stream=True)
+
+    assert flow.response is None
+    assert flow.request.stream is external_stream
+    assert flow.request.headers["Accept-Encoding"] == "identity"
+    assert "_codex_model_catalog_cache_state" not in flow.metadata
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    assert telemetry == {
+        "model_catalog_cache_status": "model_catalog_bypass",
+        "model_catalog_cache_bypass_reason": "request_streaming",
+    }
 
 
 async def test_unbounded_request_content_length_is_rejected_without_parsing(real_flow):
