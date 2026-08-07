@@ -117,7 +117,7 @@ function CredentialFields({
   readonly apiSecret: string;
   readonly setField: (
     field: "authMethod" | "apiSecret",
-    value: CustomConnectorAuthMethod["type"] | string | null,
+    value: string | null,
   ) => void;
 }) {
   const { t } = useTranslation();
@@ -165,22 +165,22 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
   const submitSecret = async (
     args: { readonly id: string; readonly value: string },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     if (agentId) {
       await submitAgentApi({ ...args, agentId }, signal);
     } else {
       await submitApi(args, signal);
     }
+    return true;
   };
   const submitOAuth = async (
     connectorId: string,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     if (agentId) {
-      await submitAgentOAuth2({ id: connectorId, agentId }, signal);
-    } else {
-      await submitOAuth2(connectorId, signal);
+      return await submitAgentOAuth2({ id: connectorId, agentId }, signal);
     }
+    return await submitOAuth2(connectorId, signal);
   };
 
   return {
@@ -263,10 +263,12 @@ export function CustomConnectorConnectDialog({
   connector,
   agentId,
   onClose,
+  onSuccess,
 }: {
   readonly connector: CustomConnectorResponse;
   readonly agentId?: string;
   readonly onClose?: () => void;
+  readonly onSuccess?: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
@@ -305,14 +307,17 @@ export function CustomConnectorConnectDialog({
     }
     detach(
       (async () => {
-        if (selectedMethod.type === "api") {
-          await submitSecret(
-            { id: connector.id, value: form.apiSecret },
-            signal,
-          );
-        } else {
-          await submitOAuth(connector.id, signal);
+        const connected =
+          selectedMethod.type === "api"
+            ? await submitSecret(
+                { id: connector.id, value: form.apiSecret },
+                signal,
+              )
+            : await submitOAuth(connector.id, signal);
+        if (!connected) {
+          return;
         }
+        await onSuccess?.();
         close();
       })(),
       Reason.DomCallback,

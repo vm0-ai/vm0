@@ -1091,7 +1091,6 @@
     "actions": {
       "authorize": "Otorisasi",
       "cancel": "Batal",
-      "configure": "Konfigurasi",
       "confirm": "Konfirmasi",
       "continue": "Lanjutkan",
       "copied": "Disalin!",
@@ -1324,7 +1323,6 @@
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
-      "customConnectDescription": "Tinjau dan hubungkan konektor kustom ini.",
       "find": "Cari konektor...",
       "remove": "Hapus {{connectorName}}",
       "title": "Konektor"
@@ -1934,19 +1932,6 @@
         "description": "Perubahan OAuth ini akan memutus semua anggota yang saat ini terhubung dengan OAuth. Mereka perlu menghubungkan lagi konektor kustom ini.",
         "title": "Putuskan koneksi OAuth yang ada?"
       }
-    },
-    "customProposal": {
-      "configure": "Konfigurasikan {{connector}}",
-      "descriptionAgent": "Menyimpan akan menghubungkan nilai Anda dan memberi otorisasi untuk {{agent}}.",
-      "descriptionUser": "Menyimpan akan menghubungkan konektor kustom ini untuk akun Anda.",
-      "documentTitle": "Konfigurasikan konektor kustom",
-      "invalid": "Tautan proposal konektor kustom ini tidak valid atau sudah kedaluwarsa.",
-      "requestScope": "Minta scope",
-      "returnToChat": "Kembali ke chat dan balas ACK agar agen dapat memverifikasi konektornya.",
-      "saved": "Tersimpan",
-      "savedToast": "{{connector}} tersimpan",
-      "targetFallback": "agen ini",
-      "update": "Perbarui {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Otorisasi {{agent}}",

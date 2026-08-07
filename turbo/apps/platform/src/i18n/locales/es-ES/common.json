@@ -1114,7 +1114,6 @@
     "actions": {
       "authorize": "Autorizar",
       "cancel": "Cancelar",
-      "configure": "Configurar",
       "confirm": "Confirmar",
       "continue": "Continuar",
       "copied": "¡Copiado!",
@@ -1351,7 +1350,6 @@
       "available_other": "Conectores disponibles para conectar ({{count}})",
       "configurePermissions": "Configurar permisos de {{connectorName}}",
       "customAuthorizeDescription": "Revisa, conecta y autoriza este conector personalizado para el agente.",
-      "customConnectDescription": "Revisa y conecta este conector personalizado.",
       "find": "Buscar conectores...",
       "remove": "Eliminar {{connectorName}}",
       "title": "Conectores"
@@ -1976,19 +1974,6 @@
         "description": "Estos cambios en OAuth desconectarán a todos los miembros que estén conectados con OAuth. Tendrán que volver a conectar este conector personalizado.",
         "title": "¿Desconectar conexiones OAuth existentes?"
       }
-    },
-    "customProposal": {
-      "configure": "Configurar {{connector}}",
-      "descriptionAgent": "Al guardar, se conectarán tus valores y se autorizará a {{agent}}.",
-      "descriptionUser": "Al guardar, se conectará este conector personalizado a tu cuenta.",
-      "documentTitle": "Configurar conector personalizado",
-      "invalid": "Este enlace de propuesta de conector personalizado es inválido o está caducado.",
-      "requestScope": "Alcance de la solicitud",
-      "returnToChat": "Vuelve al chat y responde ACK para que el agente pueda verificar el conector.",
-      "saved": "Guardado",
-      "savedToast": "{{connector}} guardado",
-      "targetFallback": "este agente",
-      "update": "Actualizar {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Autoriza {{agent}}",

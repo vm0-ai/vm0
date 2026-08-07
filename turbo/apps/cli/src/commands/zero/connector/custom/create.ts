@@ -10,6 +10,11 @@ import { Command } from "commander";
 import { createZeroCustomConnector } from "../../../../lib/api/domains/zero-connectors";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import {
+  connectorActionUrl,
+  printCallbackActionUrlExample,
+} from "../action-url";
+import { getPlatformOrigin } from "../../doctor/platform-url";
 
 const customConnectorDefinitionSchema = updateCustomConnectorBodySchema
   .strict()
@@ -69,10 +74,10 @@ function requireCustomConnectorWriteCapability(): void {
   }
 }
 
-function printCreateResult(
+async function printCreateResult(
   connector: CustomConnectorResponse,
   json: boolean,
-): void {
+): Promise<void> {
   if (json) {
     console.log(JSON.stringify(connector, null, 2));
     return;
@@ -86,11 +91,15 @@ function printCreateResult(
   console.log(chalk.dim(`  Authentication: ${connector.authMode ?? "manual"}`));
   console.log(chalk.dim("  Status:         awaiting connection"));
   console.log();
-  console.log(
-    connector.authMode === "oauth"
-      ? "Open the Connectors page to complete OAuth authorization before using this connector."
-      : "Open the Connectors page to enter the credential before using this connector.",
-  );
+  const agentId = process.env.ZERO_AGENT_ID?.trim() || undefined;
+  const origin = await getPlatformOrigin();
+  const url = connectorActionUrl({
+    origin,
+    path: `/connectors/${connector.slug}/connect`,
+    ...(agentId ? { agentId } : {}),
+  });
+  console.log(`Connect it at: [Connect ${connector.displayName}](${url})`);
+  printCallbackActionUrlExample(url, agentId);
 }
 
 export const createCustomConnectorCommand = new Command()
@@ -118,7 +127,8 @@ Agent workflow:
      the Connectors page, including the client ID and client secret. Never ask
      for an end-user access token or refresh token.
   4. Write a temporary JSON definition, run this command, then remove the file.
-  5. Tell the user to finish the separate Connect flow when they are ready.
+  5. Share the emitted Connect link so the user can finish the separate
+     credential or OAuth flow when they are ready.
 
 Manual API connector example:
   {
@@ -189,6 +199,6 @@ Notes:
       const input: unknown = JSON.parse(raw);
       const definition = customConnectorDefinitionSchema.parse(input);
       const connector = await createZeroCustomConnector(definition);
-      printCreateResult(connector, options.json ?? false);
+      await printCreateResult(connector, options.json ?? false);
     }),
   );

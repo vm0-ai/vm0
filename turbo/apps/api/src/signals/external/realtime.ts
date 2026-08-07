@@ -112,6 +112,19 @@ export async function publishConnectorChangedForUserSafely(
   );
 }
 
+export async function publishCustomConnectorListChangedForUserSafely(
+  userId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "customConnectorListChanged"),
+    (error) => {
+      L.warn("Failed to publish custom connector list changed signal", {
+        error,
+      });
+    },
+  );
+}
+
 export async function publishRunChangedForUserSafely(
   userId: string,
   runId: string,

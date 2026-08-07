@@ -3,6 +3,10 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import {
+  customConnectorSlugSchema,
+  type CustomConnectorSlug,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
@@ -17,6 +21,17 @@ export const directedConnectSlug$ = computed((get): ConnectorSlug | null => {
   );
   return parsed.success ? parsed.data : null;
 });
+
+export const directedConnectCustomSlug$ = computed(
+  (get): CustomConnectorSlug | null => {
+    const params = get(pathParams$);
+    const connectorSlug = params?.connectorSlug;
+    const parsed = customConnectorSlugSchema.safeParse(
+      typeof connectorSlug === "string" ? connectorSlug.toLowerCase() : null,
+    );
+    return parsed.success ? parsed.data : null;
+  },
+);
 
 /**
  * Agent ID extracted from `?agentId=` query parameter on the connect page.
@@ -51,16 +66,27 @@ export type DirectedConnectModalKey = {
   readonly signal: AbortSignal;
 };
 
+export type DirectedConnectCustomDialogKey = {
+  readonly connectorSlug: CustomConnectorSlug;
+  readonly agentId: string | null;
+  readonly signal: AbortSignal;
+};
+
 const internalManualGrantDialogKey$ =
   state<DirectedConnectManualGrantDialogKey | null>(null);
 const internalDirectedConnectModalKey$ = state<DirectedConnectModalKey | null>(
   null,
 );
+const internalDirectedConnectCustomDialogKey$ =
+  state<DirectedConnectCustomDialogKey | null>(null);
 export const manualGrantDialogKey$ = computed((get) => {
   return get(internalManualGrantDialogKey$);
 });
 export const directedConnectModalKey$ = computed((get) => {
   return get(internalDirectedConnectModalKey$);
+});
+export const directedConnectCustomDialogKey$ = computed((get) => {
+  return get(internalDirectedConnectCustomDialogKey$);
 });
 export const setManualGrantDialogKey$ = command(
   ({ set }, key: DirectedConnectManualGrantDialogKey | null) => {
@@ -70,5 +96,10 @@ export const setManualGrantDialogKey$ = command(
 export const setDirectedConnectModalKey$ = command(
   ({ set }, key: DirectedConnectModalKey | null) => {
     set(internalDirectedConnectModalKey$, key);
+  },
+);
+export const setDirectedConnectCustomDialogKey$ = command(
+  ({ set }, key: DirectedConnectCustomDialogKey | null) => {
+    set(internalDirectedConnectCustomDialogKey$, key);
   },
 );

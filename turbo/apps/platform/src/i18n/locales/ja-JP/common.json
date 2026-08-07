@@ -1091,7 +1091,6 @@
     "actions": {
       "authorize": "承認する",
       "cancel": "キャンセル",
-      "configure": "設定する",
       "confirm": "確認する",
       "continue": "続ける",
       "copied": "コピーしました！",
@@ -1324,7 +1323,6 @@
       "available_other": "接続可能なコネクタ ({{count}})",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
-      "customConnectDescription": "このカスタム コネクタを確認して接続します。",
       "find": "コネクタを検索...",
       "remove": "{{connectorName}} を削除します",
       "title": "コネクター"
@@ -1934,19 +1932,6 @@
         "description": "これらの OAuth の変更により、現在 OAuth に接続しているすべてのメンバーが切断されます。このカスタム コネクタを再度接続する必要があります。",
         "title": "既存の OAuth 接続を切断しますか?"
       }
-    },
-    "customProposal": {
-      "configure": "{{connector}} を構成する",
-      "descriptionAgent": "保存すると、値が接続され、{{agent}} が承認されます。",
-      "descriptionUser": "保存すると、アカウントのこのカスタム コネクタが接続されます。",
-      "documentTitle": "カスタムコネクタの構成",
-      "invalid": "このカスタム コネクタ プロポーザル リンクは無効であるか、期限切れです。",
-      "requestScope": "リクエストの範囲",
-      "returnToChat": "チャットに戻り、エージェントがコネクタを確認できるように ACK を返信します。",
-      "saved": "保存されました",
-      "savedToast": "{{connector}} が保存されました",
-      "targetFallback": "このエージェント",
-      "update": "{{connector}} を更新します"
     },
     "directed": {
       "authorizeAgent": "{{agent}} を承認する",

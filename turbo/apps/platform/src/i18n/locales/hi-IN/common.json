@@ -1091,7 +1091,6 @@
     "actions": {
       "authorize": "अधिकृत करें",
       "cancel": "रद्द करें",
-      "configure": "कॉन्फ़िगर करें",
       "confirm": "पुष्टि करें",
       "continue": "जारी रखें",
       "copied": "नकल की गई!",
@@ -1324,7 +1323,6 @@
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
-      "customConnectDescription": "इस कस्टम कनेक्टर की समीक्षा करें और कनेक्ट करें.",
       "find": "कनेक्टर ढूंढें...",
       "remove": "{{connectorName}} हटाएँ",
       "title": "कनेक्टर्स"
@@ -1935,19 +1933,6 @@
         "description": "ये OAuth परिवर्तन वर्तमान में OAuth से जुड़े प्रत्येक सदस्य को डिस्कनेक्ट कर देंगे। उन्हें इस कस्टम कनेक्टर को फिर से कनेक्ट करना होगा.",
         "title": "मौजूदा OAuth कनेक्शन डिस्कनेक्ट करें?"
       }
-    },
-    "customProposal": {
-      "configure": "{{connector}} कॉन्फ़िगर करें",
-      "descriptionAgent": "बचत आपके मूल्यों को जोड़ेगी और {{agent}} को अधिकृत करेगी।",
-      "descriptionUser": "सेव करने पर यह कस्टम कनेक्टर आपके खाते से कनेक्ट हो जाएगा.",
-      "documentTitle": "कस्टम कनेक्टर कॉन्फ़िगर करें",
-      "invalid": "यह कस्टम कनेक्टर प्रस्ताव लिंक अमान्य है या समाप्त हो गया है।",
-      "requestScope": "स्कोप का अनुरोध करें",
-      "returnToChat": "चैट पर लौटें और ACK उत्तर दें ताकि एजेंट कनेक्टर को सत्यापित कर सके।",
-      "saved": "सहेजा गया",
-      "savedToast": "{{connector}} सहेजा गया",
-      "targetFallback": "यह एजेंट",
-      "update": "{{connector}} अपडेट करें"
     },
     "directed": {
       "authorizeAgent": "{{agent}} को अधिकृत करें",
