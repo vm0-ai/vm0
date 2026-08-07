@@ -22,6 +22,7 @@ import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-
 import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
 import { cronBrowserReconcileRoutes } from "./routes/cron-browser-reconcile";
+import { cronSteerRunTimeBudgetRoutes } from "./routes/cron-steer-run-time-budget";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
@@ -244,6 +245,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronBrowserReconcileRoutes,
+  ...cronSteerRunTimeBudgetRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...emailMorningBriefUnsubscribeRoutes,

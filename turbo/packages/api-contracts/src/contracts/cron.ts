@@ -108,6 +108,11 @@ const cronMonitorChatEventQueueResponseSchema = z.object({
   orphanedMessages: z.number().int().nonnegative(),
 });
 
+const cronSteerRunTimeBudgetResponseSchema = z.object({
+  scanned: z.number().int().nonnegative(),
+  steered: z.number().int().nonnegative(),
+});
+
 const cronReconcileBillingEntitlementsResponseSchema = z.object({
   success: z.literal(true),
   downgraded: z.number(),
@@ -294,6 +299,19 @@ export const cronMonitorChatEventQueueContract = c.router({
       500: z.object({ error: z.string() }),
     },
     summary: "Monitor for orphaned queued chat messages",
+  },
+});
+
+export const cronSteerRunTimeBudgetContract = c.router({
+  steer: {
+    method: "GET",
+    path: "/api/cron/steer-run-time-budget",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSteerRunTimeBudgetResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Steer chat runs that reached their time budget",
   },
 });
 
