@@ -5,6 +5,8 @@ import { NodeExecutionEnv, resolvePiAgentModel, runPiAgentPrompt } from "./node"
 const CODEX_ACCOUNT_ID_CLAIM_PATH = "https://api.openai.com/auth";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const CODEX_PLACEHOLDER_ACCOUNT_ID = "ws_VM0_PLACEHOLDER_DO_NOT_TRUST";
+type FetchInput = Parameters<typeof fetch>[0];
+type FetchInit = Parameters<typeof fetch>[1];
 
 function base64UrlEncode(input: string): string {
   return Buffer.from(input, "utf8").toString("base64url");
@@ -127,9 +129,14 @@ describe("Pi Codex subscription provider", () => {
 
   it("streams a Codex subscription turn with the real ChatGPT JWT", async () => {
     const accessToken = codexJwt("ws_acct_pi_edge_real");
-    const fetchMock = vi.fn(async () => {
-      return sseResponse(codexTextSse("edge answer"));
-    });
+    const fetchMock = vi.fn(
+      async (
+        _input: FetchInput,
+        _init?: FetchInit,
+      ): Promise<Response> => {
+        return sseResponse(codexTextSse("edge answer"));
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
     try {
@@ -146,7 +153,10 @@ describe("Pi Codex subscription provider", () => {
         signal: new AbortController().signal,
         onEvent() {},
       });
-      const [requestUrl, init] = fetchMock.mock.calls[0];
+      const firstCall = fetchMock.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const requestUrl = firstCall?.[0];
+      const init = firstCall?.[1];
       expect(requestUrl).toBe(`${CODEX_BASE_URL}/codex/responses`);
       expect(requestHeaders(init).get("authorization")).toBe(
         `Bearer ${accessToken}`,
@@ -175,9 +185,14 @@ describe("Pi Codex subscription provider", () => {
   });
 
   it("synthesizes a JWT-shaped key for the sandbox placeholder", async () => {
-    const fetchMock = vi.fn(async () => {
-      return sseResponse(codexTextSse("sandbox answer"));
-    });
+    const fetchMock = vi.fn(
+      async (
+        _input: FetchInput,
+        _init?: FetchInit,
+      ): Promise<Response> => {
+        return sseResponse(codexTextSse("sandbox answer"));
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
     try {
@@ -194,12 +209,13 @@ describe("Pi Codex subscription provider", () => {
         signal: new AbortController().signal,
         onEvent() {},
       });
-      const init = fetchMock.mock.calls[0][1];
+      const init = fetchMock.mock.calls[0]?.[1];
       const authorization = requestHeaders(init).get("authorization");
       expect(authorization).toBeDefined();
       const token = authorization?.slice("Bearer ".length) ?? "";
+      const payloadPart = token.split(".")[1] ?? "";
       const payload = JSON.parse(
-        Buffer.from(token.split(".")[1], "base64url").toString("utf8"),
+        Buffer.from(payloadPart, "base64url").toString("utf8"),
       ) as Record<string, unknown>;
       const auth = payload[CODEX_ACCOUNT_ID_CLAIM_PATH] as {
         chatgpt_account_id?: unknown;

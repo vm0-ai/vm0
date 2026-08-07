@@ -19,14 +19,18 @@ const PI_CAPABLE_PROVIDERS = [
   "moonshot-api-key",
   "codex-oauth-token",
 ] as const;
+type PiCapableProvider = (typeof PI_CAPABLE_PROVIDERS)[number];
 
 /**
  * Actual request URL the Pi runtime calls. Most providers hit the
  * chat-completions URL directly; the Codex subscription runtime appends
  * `/codex/responses` to its base URL.
  */
-function piRequestUrl(provider: string): string {
+function piRequestUrl(provider: PiCapableProvider): string | undefined {
   const url = getModelProviderPiChatCompletionsUrl(provider);
+  if (url === undefined) {
+    return undefined;
+  }
   return provider === "codex-oauth-token" ? `${url}/codex/responses` : url;
 }
 
