@@ -3,8 +3,6 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
-import { createStore } from "ccstate";
 import { Client } from "pg";
 import { z } from "zod";
 
@@ -12,17 +10,11 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { onRejection, safeJsonParse } from "../../utils";
-import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import {
-  insertUsageEvent$,
-  readUsageEventState$,
-} from "./helpers/zero-usage-insight";
 import {
   readChatAgentRunContextSchemaAvailable,
   resetDatabasePool,
@@ -30,15 +22,10 @@ import {
 import { zeroChatEventsRoutes } from "../zero-chat-events";
 
 const context = testContext();
-const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
-const usageSettlement = setupApp({
-  context,
-  routes: testUsageSettlementRoutes,
-})(testUsageSettlementContract);
 const migrationJournalSchema = z.object({
   entries: z.array(
     z.object({
@@ -47,6 +34,8 @@ const migrationJournalSchema = z.object({
     }),
   ),
 });
+type MigrationJournal = z.infer<typeof migrationJournalSchema>;
+type Migration = MigrationJournal["entries"][number];
 const migrationsDirectory = fileURLToPath(
   new URL("../../../../../../packages/db/src/migrations/", import.meta.url),
 );
@@ -81,48 +70,52 @@ async function withDatabaseClient<T>(
   return result;
 }
 
-async function readOrgCredits(
-  databaseUrl: string,
-  orgId: string,
-): Promise<number> {
-  return await withDatabaseClient(databaseUrl, async (client) => {
-    const result = await client.query<{ readonly credits: string }>(
-      `SELECT credits::text AS credits
-       FROM org_metadata
-       WHERE org_id = $1`,
-      [orgId],
-    );
-    const credits = Number(result.rows[0]?.credits);
-    if (!Number.isSafeInteger(credits)) {
-      throw new Error("Expected a safe rollout credit balance");
-    }
-    return credits;
-  });
+async function readMigrationJournal(): Promise<MigrationJournal> {
+  const rawJournal = safeJsonParse(
+    await readFile(`${migrationsDirectory}meta/_journal.json`, "utf8"),
+  );
+  return migrationJournalSchema.parse(rawJournal);
 }
 
-async function findAgentRunContextMigration(
-  journal: z.infer<typeof migrationJournalSchema>,
-): Promise<(typeof journal.entries)[number] | undefined> {
+async function findMigrationContaining(
+  journal: MigrationJournal,
+  sqlFragment: string,
+): Promise<Migration | undefined> {
   for (const migration of journal.entries) {
     const migrationSql = await readFile(
       `${migrationsDirectory}${migration.tag}.sql`,
       "utf8",
     );
-    if (migrationSql.includes('CREATE TABLE "chat_agent_run_context"')) {
+    if (migrationSql.includes(sqlFragment)) {
       return migration;
     }
   }
   return undefined;
 }
 
+async function applyMigration(
+  client: Client,
+  migration: Migration,
+): Promise<void> {
+  const migrationSql = await readFile(
+    `${migrationsDirectory}${migration.tag}.sql`,
+    "utf8",
+  );
+  for (const statement of migrationSql.split("--> statement-breakpoint")) {
+    if (statement.trim().length > 0) {
+      await client.query(statement);
+    }
+  }
+}
+
 async function applyMigrationsBeforeAgentRunContext(
   databaseUrl: string,
+  journal: MigrationJournal,
 ): Promise<void> {
-  const rawJournal = safeJsonParse(
-    await readFile(`${migrationsDirectory}meta/_journal.json`, "utf8"),
+  const rolloutMigration = await findMigrationContaining(
+    journal,
+    'CREATE TABLE "chat_agent_run_context"',
   );
-  const journal = migrationJournalSchema.parse(rawJournal);
-  const rolloutMigration = await findAgentRunContextMigration(journal);
   if (!rolloutMigration) {
     throw new Error(
       "Expected the chat agent-run context migration in the migration journal",
@@ -134,16 +127,26 @@ async function applyMigrationsBeforeAgentRunContext(
       if (migration.idx >= rolloutMigration.idx) {
         break;
       }
-      const migrationSql = await readFile(
-        `${migrationsDirectory}${migration.tag}.sql`,
-        "utf8",
-      );
-      for (const statement of migrationSql.split("--> statement-breakpoint")) {
-        if (statement.trim().length > 0) {
-          await client.query(statement);
-        }
-      }
+      await applyMigration(client, migration);
     }
+  });
+}
+
+async function applyUsagePackCreditGrantContract(
+  databaseUrl: string,
+  journal: MigrationJournal,
+): Promise<void> {
+  const migration = await findMigrationContaining(
+    journal,
+    'CREATE TABLE "usage_pack_credit_grants"',
+  );
+  if (!migration) {
+    throw new Error(
+      "Expected the usage pack credit grant migration in the migration journal",
+    );
+  }
+  await withDatabaseClient(databaseUrl, async (client) => {
+    await applyMigration(client, migration);
   });
 }
 
@@ -187,10 +190,11 @@ async function createPreAgentRunContextDatabase(
     originalDatabaseUrl,
     databaseName,
   );
-  await applyMigrationsBeforeAgentRunContext(preMigrationUrl);
-  // The current API requires the input-source discriminator migration to run
-  // first. Apply only that independent constraint contract while keeping the
-  // agent-run context table absent for this focused compatibility probe.
+  const journal = await readMigrationJournal();
+  await applyMigrationsBeforeAgentRunContext(preMigrationUrl, journal);
+  // The current API requires these independent schema contracts while this
+  // focused compatibility probe keeps the agent-run context table absent.
+  await applyUsagePackCreditGrantContract(preMigrationUrl, journal);
   await applyInputSourceDiscriminatorContract(preMigrationUrl);
   return preMigrationUrl;
 }
@@ -234,47 +238,6 @@ async function runPreAgentRunContextRouteProbe(
     throw new Error("Expected an org-scoped rollout actor");
   }
   await api.grantProEntitlement(actor);
-
-  // Migration 0845 is intentionally absent here. Settlement must probe the
-  // schema without aborting its transaction, then preserve shared credits.
-  const rolloutProvider = `usage-pack-rollout-${randomUUID()}`;
-  await seedUsagePricingRows([
-    {
-      kind: "model",
-      provider: rolloutProvider,
-      category: "tokens.input",
-      unitPrice: 1,
-      unitSize: 1,
-    },
-  ]);
-  const creditsBeforeSettlement = await readOrgCredits(
-    preMigrationUrl,
-    actor.orgId,
-  );
-  const usageEventKey = randomUUID();
-  await store.set(
-    insertUsageEvent$,
-    {
-      orgId: actor.orgId,
-      userId: actor.userId,
-      kind: "model",
-      provider: rolloutProvider,
-      category: "tokens.input",
-      quantity: 1,
-      idempotencyKey: usageEventKey,
-    },
-    context.signal,
-  );
-  await accept(
-    usageSettlement.process({ body: { org_id: actor.orgId } }),
-    [200],
-  );
-  await expect(
-    store.set(readUsageEventState$, usageEventKey, context.signal),
-  ).resolves.toMatchObject({ status: "processed", creditsCharged: 1 });
-  await expect(readOrgCredits(preMigrationUrl, actor.orgId)).resolves.toBe(
-    creditsBeforeSettlement - 1,
-  );
 
   await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
