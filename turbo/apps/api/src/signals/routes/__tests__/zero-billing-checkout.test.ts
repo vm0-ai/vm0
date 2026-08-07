@@ -426,6 +426,7 @@ async function createConcurrencySubscriptionOrg(args: {
     }),
     [200],
   );
+  context.mocks.stripe.subscriptions.retrieve.mockClear();
   const status = await readBillingStatus(fixture);
   expect(status.concurrencySubscriptions).toStrictEqual(
     expect.arrayContaining([
@@ -2301,7 +2302,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 
-  it("uses the positive proration line as the updated slot quantity", async () => {
+  it("uses the live Stripe quantity for proration invoices", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const periodEnd = new Date("2099-05-20T00:00:00Z");
     const fixture = await createConcurrencySubscriptionOrg({
@@ -2353,6 +2354,25 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         },
       },
     };
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+      id: subscriptionId,
+      status: "active",
+      customer: fixture.customerId,
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      trial_end: null,
+      metadata: { purpose: "concurrency_subscription" },
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_CONCURRENCY },
+            quantity: 4,
+            current_period_end: periodEndUnix,
+          },
+        ],
+      },
+    });
     context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
 
     await accept(
@@ -2367,7 +2387,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 
     const status = await readBillingStatus(fixture);
     expect(status.concurrencySubscriptions).toStrictEqual([
-      expect.objectContaining({ id: subscriptionId, quantity: 5 }),
+      expect.objectContaining({ id: subscriptionId, quantity: 4 }),
     ]);
   });
 

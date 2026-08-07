@@ -319,6 +319,16 @@ async function retrieveConcurrencySubscriptionState(
   return concurrencySubscriptionState(subscription);
 }
 
+async function lockConcurrencySubscriptionState(
+  tx: WriteTx,
+  subscriptionId: string,
+): Promise<void> {
+  const lockKey = `stripe_concurrency_subscription:${subscriptionId}`;
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+  );
+}
+
 function subscriptionCancelAt(subscription: SubscriptionInput): Date | null {
   return typeof subscription.cancel_at === "number"
     ? new Date(subscription.cancel_at * 1000)
@@ -2295,6 +2305,31 @@ async function upsertConcurrencySubscriptionState(
     });
 }
 
+function concurrencyInvoiceSubscriptionState(
+  values: readonly ConcurrencyInvoiceEntitlementValue[],
+): ConcurrencySubscriptionState | null {
+  const activeValues = values.filter((value) => {
+    return value.expiresAt > nowDate();
+  });
+  const currentValues = activeValues.length > 0 ? activeValues : values;
+  const firstValue = currentValues[0];
+  if (!firstValue) {
+    return null;
+  }
+
+  return {
+    stripePriceId: firstValue.stripePriceId,
+    slots: currentValues.reduce((sum, value) => {
+      return sum + value.slots;
+    }, 0),
+    subscriptionStatus: "active",
+    currentPeriodEnd: currentValues.reduce((latest, value) => {
+      return value.expiresAt > latest ? value.expiresAt : latest;
+    }, firstValue.expiresAt),
+    cancelAtPeriodEnd: false,
+  };
+}
+
 async function handleConcurrencyInvoicePaid(
   db: Db,
   getClerk: ClerkClientProvider,
@@ -2346,16 +2381,6 @@ async function handleConcurrencyInvoicePaid(
     return value ? [value] : [];
   });
 
-  const state = await retrieveConcurrencySubscriptionState(subscriptionId);
-  if (!state) {
-    L.warn("concurrency invoice.paid subscription has no concurrency item", {
-      invoiceId: invoice.id,
-      orgId: org.orgId,
-      subscriptionId,
-    });
-    return { handled: true, drainOrgId: org.orgId };
-  }
-
   if (values.length === 0) {
     L.warn("concurrency invoice.paid had no usable entitlement lines", {
       invoiceId: invoice.id,
@@ -2364,7 +2389,23 @@ async function handleConcurrencyInvoicePaid(
     });
   }
 
-  const inserted = await db.transaction(async (tx) => {
+  const persisted = await db.transaction(async (tx) => {
+    await lockConcurrencySubscriptionState(tx, subscriptionId);
+    const [existing] = await tx
+      .select({
+        subscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
+      )
+      .limit(1);
+    const state = existing
+      ? await retrieveConcurrencySubscriptionState(subscriptionId)
+      : concurrencyInvoiceSubscriptionState(values);
+    if (!state) {
+      return null;
+    }
     const insertedRows =
       values.length === 0
         ? []
@@ -2378,15 +2419,24 @@ async function handleConcurrencyInvoicePaid(
       subscriptionId,
       state,
     });
-    return insertedRows;
+    return { insertedLines: insertedRows.length, state };
   });
+
+  if (!persisted) {
+    L.warn("concurrency invoice.paid subscription has no concurrency item", {
+      invoiceId: invoice.id,
+      orgId: org.orgId,
+      subscriptionId,
+    });
+    return { handled: true, drainOrgId: org.orgId };
+  }
 
   L.debug("concurrency invoice.paid processed", {
     invoiceId: invoice.id,
     orgId: org.orgId,
     subscriptionId,
-    insertedLines: inserted.length,
-    slots: state.slots,
+    insertedLines: persisted.insertedLines,
+    slots: persisted.state.slots,
   });
 
   return { handled: true, drainOrgId: org.orgId };
@@ -3311,45 +3361,53 @@ async function handleConcurrencySubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<readonly string[]> {
-  const [existing] = await db
-    .select({ orgId: orgConcurrencySubscriptions.orgId })
-    .from(orgConcurrencySubscriptions)
-    .where(
-      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
-    )
-    .limit(1);
-  if (!existing) {
-    return [];
-  }
+  return await db.transaction(async (tx) => {
+    await lockConcurrencySubscriptionState(tx, subscription.id);
+    const [existing] = await tx
+      .select({
+        orgId: orgConcurrencySubscriptions.orgId,
+        slots: orgConcurrencySubscriptions.slots,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+      )
+      .limit(1);
+    if (!existing) {
+      return [];
+    }
 
-  const state = await retrieveConcurrencySubscriptionState(subscription.id);
-  if (!state) {
-    L.warn("updated subscription has no concurrency item", {
-      subscriptionId: subscription.id,
-      orgId: existing.orgId,
+    const eventState = concurrencySubscriptionState(subscription);
+    const state =
+      eventState?.slots === existing.slots
+        ? eventState
+        : await retrieveConcurrencySubscriptionState(subscription.id);
+    if (!state) {
+      L.warn("updated subscription has no concurrency item", {
+        subscriptionId: subscription.id,
+        orgId: existing.orgId,
+      });
+      return [];
+    }
+
+    const rows = await tx
+      .update(orgConcurrencySubscriptions)
+      .set({
+        stripePriceId: state.stripePriceId,
+        slots: state.slots,
+        subscriptionStatus: state.subscriptionStatus,
+        currentPeriodEnd: state.currentPeriodEnd,
+        cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+        updatedAt: nowDate(),
+      })
+      .where(
+        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+      )
+      .returning({ orgId: orgConcurrencySubscriptions.orgId });
+
+    return rows.map((row) => {
+      return row.orgId;
     });
-    return [];
-  }
-
-  const updates = {
-    stripePriceId: state.stripePriceId,
-    slots: state.slots,
-    subscriptionStatus: state.subscriptionStatus,
-    currentPeriodEnd: state.currentPeriodEnd,
-    cancelAtPeriodEnd: state.cancelAtPeriodEnd,
-    updatedAt: nowDate(),
-  };
-
-  const rows = await db
-    .update(orgConcurrencySubscriptions)
-    .set(updates)
-    .where(
-      eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
-    )
-    .returning({ orgId: orgConcurrencySubscriptions.orgId });
-
-  return rows.map((row) => {
-    return row.orgId;
   });
 }
 
