@@ -16,6 +16,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
+import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -1033,7 +1034,7 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("Review the source notes")).toBeInTheDocument();
   });
 
-  it("shows an explicit unavailable state for a failed Slack import", async () => {
+  it("resolves a file part without reading legacy materialization projection", async () => {
     const assetId = "a0000000-0000-4000-a000-000000000052";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -1089,16 +1090,10 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const unavailable = await screen.findByRole("alert");
-    expect(unavailable).toHaveTextContent("expired.pdf");
-    expect(unavailable).toHaveTextContent("Attachment unavailable");
-    expect(unavailable).toHaveAttribute(
-      "title",
-      "Slack no longer has this file",
-    );
-    expect(
-      screen.queryByLabelText("Open pdf preview for expired.pdf"),
-    ).toBeNull();
+    await expect(
+      screen.findByLabelText("Open pdf preview for expired.pdf"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Attachment unavailable")).toBeNull();
   });
 
   it("renders canonical user video attachments at the same size as image attachments", async () => {
@@ -1220,13 +1215,13 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical audio, video, and document attachments", async () => {
-    const audioUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-audio/briefing.mp3";
-    const videoUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-video/demo.mp4";
-    const jsonUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-json/status.json";
-    context.mocks.http.get(jsonUrl, () => {
+    const audioUrl = canonicalUserMessageFileUrl("attachment-audio");
+    const videoUrl = canonicalUserMessageFileUrl("attachment-video");
+    const jsonUrl = canonicalUserMessageFileUrl("attachment-json");
+    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(
+        "attachment-json",
+      );
       return new Response(JSON.stringify({ status: "ready" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -1325,13 +1320,13 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical csv, pdf, and html document previews", async () => {
-    const csvUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-csv/launch-metrics.csv";
-    const pdfUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-pdf/launch-plan.pdf";
-    const htmlUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-html/launch-site.html";
-    context.mocks.http.get(csvUrl, () => {
+    const csvUrl = canonicalUserMessageFileUrl("attachment-csv");
+    const pdfUrl = canonicalUserMessageFileUrl("attachment-pdf");
+    const htmlUrl = canonicalUserMessageFileUrl("attachment-html");
+    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(
+        "attachment-csv",
+      );
       return new Response("metric,value\nsignups,42\nactivation,87", {
         headers: { "Content-Type": "text/csv" },
       });
@@ -1439,12 +1434,9 @@ describe("zero attachment chips", () => {
 
   it("navigates modal image artifacts within the current run", async () => {
     const user = userEvent.setup({ delay: null });
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/image-navigation/first.png";
-    const notesUrl =
-      "https://cdn.vm7.io/artifacts/test/image-navigation/notes.md";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/image-navigation/second.png";
+    const firstImageUrl = canonicalUserMessageFileUrl("artifact-first-image");
+    const notesUrl = canonicalUserMessageFileUrl("artifact-notes");
+    const secondImageUrl = canonicalUserMessageFileUrl("artifact-second-image");
     // A generated image artifact that lives in the same run but was NOT attached
     // to the message. It must be excluded from message-scoped navigation.
     const generatedArtifactUrl =
@@ -1929,10 +1921,8 @@ describe("zero attachment chips", () => {
 
   it("waits for artifacts before showing user message image navigation", async () => {
     const user = userEvent.setup({ delay: null });
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/user-image-navigation/first.png";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/user-image-navigation/second.png";
+    const firstImageUrl = canonicalUserMessageFileUrl("user-first-image");
+    const secondImageUrl = canonicalUserMessageFileUrl("user-second-image");
     // The images the user attached are NOT part of the thread's run artifacts;
     // they resolve from the user artifacts bucket. Navigation must still work.
     const artifactsRequested = context.mocks.deferred<void>();
@@ -2018,10 +2008,12 @@ describe("zero attachment chips", () => {
 
   it("keeps the modal fullscreen state while navigating images", async () => {
     const user = userEvent.setup({ delay: null });
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/first.png";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/second.png";
+    const firstImageUrl = canonicalUserMessageFileUrl(
+      "artifact-fullscreen-first-image",
+    );
+    const secondImageUrl = canonicalUserMessageFileUrl(
+      "artifact-fullscreen-second-image",
+    );
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, {
         runs: [
@@ -2818,24 +2810,22 @@ describe("zero attachment chips", () => {
   });
 
   it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
-    const releaseNotesUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-markdown/release-notes.md";
-    const transcriptUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-text/transcript.txt";
-    const archiveUrl =
-      "https://cdn.vm7.io/artifacts/test/attachment-file/archive.bin";
+    const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
+    const transcriptUrl = canonicalUserMessageFileUrl("attachment-text");
+    const archiveUrl = canonicalUserMessageFileUrl("attachment-file");
     context.mocks.browser.clipboardWriteText();
-    context.mocks.http.get(releaseNotesUrl, () => {
-      return new Response("# Release notes\n\nThe rollout is ready.", {
-        headers: { "Content-Type": "text/markdown" },
-      });
-    });
-    context.mocks.http.get(transcriptUrl, () => {
-      return new Response("Meeting transcript\nDecision: ship", {
-        headers: { "Content-Type": "text/plain" },
-      });
-    });
-    context.mocks.http.get(archiveUrl, () => {
+    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
+      const fileId = new URL(request.url).searchParams.get("file_id");
+      if (fileId === "attachment-markdown") {
+        return new Response("# Release notes\n\nThe rollout is ready.", {
+          headers: { "Content-Type": "text/markdown" },
+        });
+      }
+      if (fileId === "attachment-text") {
+        return new Response("Meeting transcript\nDecision: ship", {
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
       return new Response(null, { status: 500 });
     });
     mockChatLifecycle(context, {

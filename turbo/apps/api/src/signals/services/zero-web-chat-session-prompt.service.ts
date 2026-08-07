@@ -39,7 +39,6 @@ interface WebChatPriorRunEvent {
   readonly role: "user" | "assistant";
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
-  readonly attachFiles: readonly string[] | null;
 }
 
 interface WebChatPriorRun {
@@ -135,19 +134,6 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
-}
-
 function formatPriorRunEvent(event: WebChatPriorRunEvent): string {
   const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
@@ -158,13 +144,11 @@ function formatPriorRunEvent(event: WebChatPriorRunEvent): string {
     const prompt = projectUserMessage(userMessage).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
-  const attach = formatAttachFileIds(event.attachFiles);
-  const body = `${roleLabel}: ${
+  return `${roleLabel}: ${
     event.content === null
       ? "[empty message]"
       : truncatePrior(event.content) || "[empty message]"
   }`;
-  return attach ? `${body}\n${attach}` : body;
 }
 
 function buildWebChatPriorRunsContext(
@@ -258,7 +242,6 @@ async function getLatestRunsByThreadId(
       eventType: chatEvents.eventType,
       content: chatEvents.content,
       userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
     })
     .from(chatEvents)
     .where(
@@ -292,7 +275,6 @@ async function getLatestRunsByThreadId(
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
     });
     eventsByRunId.set(row.runId, existing);
   }

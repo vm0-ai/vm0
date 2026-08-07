@@ -178,6 +178,8 @@ const eventColumns = {
   seqId: chatEvents.seqId,
   sequenceNumber: chatEvents.runEventSequenceNumber,
   createdAt: chatEvents.createdAt,
+  // Legacy response boundary only. Stage 5/7 removes these selections with
+  // the public projections after the client/deployment version-floor cutover.
   attachFiles: chatEvents.attachFiles,
   generationTemplate: chatEvents.generationTemplate,
   recommendedFollowups: chatEvents.recommendedFollowups,
@@ -450,6 +452,8 @@ function chatEventAttachFiles(
     if (canonicalAttachments.length > 0) {
       return canonicalAttachments;
     }
+    // Legacy response projection only. Stage 5/7 owns removing the public
+    // field and this old-column fallback after the client/deployment cutover.
     if (row.attachFiles && row.attachFiles.length > 0) {
       return await get(resolveAttachFileUrls(userId, row.attachFiles));
     }
@@ -532,6 +536,8 @@ const chatEventBuilders = {
         row.eventType,
         "userMessage",
       ),
+      // Legacy response projection only; canonical clients read `userMessage`.
+      // Stage 5/7 removes both public fields after the version-floor cutover.
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -582,6 +588,8 @@ const chatEventBuilders = {
         "userMessage",
       ),
       error: requiredChatEventField(row.error, row.eventType, "error"),
+      // Legacy response projection only; canonical clients read `userMessage`.
+      // Stage 5/7 removes both public fields after the version-floor cutover.
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };

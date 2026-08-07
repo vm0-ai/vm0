@@ -3,9 +3,8 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatThreadModelSelectionContract,
   chatThreadsContract,
-  type AttachFile,
   type GenerationTemplateRequest,
-  type ChatPromptEvent,
+  type ResolvedAttachFile,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -84,8 +83,7 @@ interface SendNewThreadMessageResult {
 
 interface PreparedNewThreadPayload {
   prompt: string;
-  attachFiles: AttachFile[] | undefined;
-  attachments: ChatPromptEvent["attachFiles"];
+  attachments: ResolvedAttachFile[] | undefined;
   hasTextContent: boolean;
 }
 
@@ -125,14 +123,10 @@ function userMessageForNewThread(
 function createNewThreadOptimisticEventEntry({
   threadId,
   clientEventId,
-  prepared,
-  generationTemplate,
   userMessage,
 }: {
   threadId: string;
   clientEventId: string;
-  prepared: PreparedNewThreadPayload;
-  generationTemplate: GenerationTemplateRequest | undefined;
   userMessage: UserMessageInputDocument;
 }): OptimisticChatEventInput {
   return {
@@ -143,8 +137,6 @@ function createNewThreadOptimisticEventEntry({
       threadId,
       eventType: "input.prompt",
       content: null,
-      attachFiles: prepared.attachments,
-      generationTemplate,
       userMessage,
       createdAt: nowDate().toISOString(),
     },
@@ -159,7 +151,6 @@ function newThreadSendBody({
   modelSelection,
   codexFastModeEnabled,
   realAgentInPreviewEnabled,
-  generationTemplate,
   userMessage,
   computerUseHostId,
   cloudBrowserEnabled,
@@ -171,7 +162,6 @@ function newThreadSendBody({
   modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
   realAgentInPreviewEnabled: boolean;
-  generationTemplate: GenerationTemplateRequest | undefined;
   userMessage: UserMessageInputDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
@@ -188,11 +178,9 @@ function newThreadSendBody({
     clientEventId: clientEventId,
     ...(runOptions ? { runOptions } : {}),
     ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
-    generationTemplate,
     userMessage,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
-    attachFiles: prepared.attachFiles,
   };
 }
 
@@ -491,7 +479,6 @@ const sendNewThreadMessage$ = command(
     readonly sendResult: Promise<SendNewThreadMessageResult>;
   } | null> => {
     const { agentId, prompt } = request;
-    const generationTemplate = request.generationTemplate;
     const { computerUseHostId, cloudBrowserEnabled } = request;
     const draft = request.draft ?? get(talkDraft$);
     const resolvedModelSelection = await set(
@@ -527,8 +514,6 @@ const sendNewThreadMessage$ = command(
         createNewThreadOptimisticEventEntry({
           threadId,
           clientEventId,
-          prepared,
-          generationTemplate,
           userMessage,
         }),
       ),
@@ -575,7 +560,6 @@ const sendNewThreadMessage$ = command(
       codexFastModeEnabled: codexFastModeSwitchEnabled(features),
       realAgentInPreviewEnabled:
         features[FeatureSwitchKey.RealAgentInPreview] ?? false,
-      generationTemplate,
       userMessage,
       computerUseHostId,
       cloudBrowserEnabled,

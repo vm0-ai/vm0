@@ -1,4 +1,5 @@
 import type {
+  AttachFile,
   FeedbackNotePart,
   GenerationTemplateRequest,
   UserMessageDocument,
@@ -24,6 +25,89 @@ interface UserMessageFile {
   readonly id: string;
   readonly filename: string;
   readonly contentType: string;
+}
+
+type UserMessageFilePart = Extract<UserMessagePart, { readonly type: "file" }>;
+
+export function userMessageFileParts(
+  document: UserMessageDocument,
+): readonly UserMessageFilePart[] {
+  return document.parts.filter((part): part is UserMessageFilePart => {
+    return part.type === "file";
+  });
+}
+
+export function legacyAttachFileIdsFromUserMessage(
+  document: UserMessageDocument,
+): string[] | null {
+  const ids = userMessageFileParts(document).map((part) => {
+    return part.fileId;
+  });
+  return ids.length > 0 ? ids : null;
+}
+
+export function legacyGenerationTemplateFromUserMessage(
+  document: UserMessageDocument,
+): GenerationTemplateRequest | null {
+  const part = document.parts.find((candidate) => {
+    return candidate.type === "template";
+  });
+  return part?.type === "template" ? part.template : null;
+}
+
+function legacyGenerationTemplateTitleSnapshot(
+  template: GenerationTemplateRequest,
+): string {
+  const label = generationTemplateTypeLabel(template);
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)} template`;
+}
+
+/**
+ * Convert the still-public legacy send fields at API ingress. Canonical parts
+ * win when a mixed-version client submits both representations. Stage 5/7
+ * owns removal after the client version floor makes these fields unreachable.
+ */
+export function normalizeLegacyUserMessageInput(args: {
+  readonly userMessage: UserMessageInputDocument;
+  readonly attachFiles?: readonly AttachFile[];
+  readonly generationTemplate?: GenerationTemplateRequest;
+}): UserMessageInputDocument {
+  const parts: UserMessageInputPart[] = [...args.userMessage.parts];
+  const fileIds = new Set(
+    parts.flatMap((part) => {
+      return part.type === "file" ? [part.fileId] : [];
+    }),
+  );
+  for (const file of args.attachFiles ?? []) {
+    if (fileIds.has(file.id)) {
+      continue;
+    }
+    parts.push({
+      type: "file",
+      fileId: file.id,
+      filenameSnapshot: file.filename,
+      contentType: file.contentType,
+    });
+    fileIds.add(file.id);
+  }
+  if (
+    args.generationTemplate !== undefined &&
+    !parts.some((part) => {
+      return part.type === "template";
+    })
+  ) {
+    if (parts.length > 0) {
+      parts.push({ type: "text", text: "\n\n" });
+    }
+    parts.push({
+      type: "template",
+      titleSnapshot: legacyGenerationTemplateTitleSnapshot(
+        args.generationTemplate,
+      ),
+      template: args.generationTemplate,
+    });
+  }
+  return { version: 1, parts };
 }
 
 type UserMessageNonContentPart = Extract<

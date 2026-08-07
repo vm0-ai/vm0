@@ -42,10 +42,9 @@ import type {
 } from "./chat-event-types.ts";
 import {
   chatThreadArtifactsContract,
-  type AttachFile,
   type GenerationTemplateRequest,
   type ChatEvent as PersistedChatEvent,
-  type ChatPromptEvent,
+  type ResolvedAttachFile,
   type ChatThreadArtifactRun,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -196,6 +195,7 @@ import type {
   SendChatEventResult,
 } from "./chat-event-signals.ts";
 import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
+import { userMessageFileAttachments } from "./user-message-files.ts";
 
 const L = logger("ChatThread");
 
@@ -212,8 +212,10 @@ function isInputChatEvent(
 
 function chatEventAttachFiles(
   event: ChatEvent,
-): ChatPromptEvent["attachFiles"] {
-  return isInputChatEvent(event) ? event.attachFiles : undefined;
+): ResolvedAttachFile[] | undefined {
+  return isInputChatEvent(event)
+    ? userMessageFileAttachments(event.userMessage)
+    : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -1043,7 +1045,9 @@ function createRenderedChatGroups(
           role: group.role,
           events: group.events.map((event) => {
             return {
-              attachFiles: chatEventAttachFiles(event),
+              userMessage: isInputChatEvent(event)
+                ? event.userMessage
+                : undefined,
               blocks: event.blocks,
             };
           }),
@@ -2387,8 +2391,7 @@ function createRunTracking({
 
 interface PreparedSendMessageResult {
   prompt: string;
-  attachFiles: AttachFile[] | undefined;
-  attachments: ChatPromptEvent["attachFiles"];
+  attachments: ResolvedAttachFile[] | undefined;
   hasTextContent: boolean;
 }
 
@@ -2401,7 +2404,6 @@ function prepareTextOnlyUserMessage(
   }
   return {
     prompt: trimmedPrompt,
-    attachFiles: undefined,
     attachments: undefined,
     hasTextContent: true,
   };
@@ -2416,7 +2418,7 @@ function userMessageForSend({
   readonly prompt: string;
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
-  readonly attachments: ChatPromptEvent["attachFiles"];
+  readonly attachments: ResolvedAttachFile[] | undefined;
 }): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
@@ -2534,9 +2536,6 @@ function createPerformSendMessage(deps: SendMessageDeps) {
             agentId: request.agentId,
             prompt: result.prompt,
             hasTextContent: result.hasTextContent,
-            attachFiles: result.attachFiles,
-            attachments: result.attachments,
-            generationTemplate,
             userMessage,
             ...(runOptions === undefined ? {} : { runOptions }),
             ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
@@ -2650,7 +2649,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return false;
       }
-      const generationTemplate = options.generationTemplate;
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
       const result = await set(
@@ -2689,9 +2687,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
             agentId,
             prompt: result.prompt,
             hasTextContent: result.hasTextContent,
-            attachFiles: result.attachments,
-            attachments: result.attachments,
-            generationTemplate,
             userMessage,
             ...(runOptions === undefined ? {} : { runOptions }),
             ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
@@ -2745,21 +2740,14 @@ function createRecallMessage(deps: RecallMessageDeps) {
     const templatePart = userMessage.parts.find((part) => {
       return part.type === "template";
     });
-    const fileIds = new Set(
-      userMessage.parts.flatMap((part) => {
-        return part.type === "file" ? [part.fileId] : [];
-      }),
-    );
     set(draft.seed$, {
       content: messageDocumentToPrompt(userMessage) ?? "",
       userMessage,
       generationTemplate:
         templatePart?.type === "template" ? templatePart.template : undefined,
-      attachments: (event.attachFiles ?? [])
-        .filter((attachment) => {
-          return fileIds.has(attachment.id);
-        })
-        .map(createRestoredAttachment),
+      attachments: userMessageFileAttachments(userMessage).map(
+        createRestoredAttachment,
+      ),
     });
 
     await set(

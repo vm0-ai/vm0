@@ -1177,11 +1177,9 @@
       "file": "Fichier {{filename}}",
       "fileTooLarge": "{{filename}} dépasse la limite de 1 Go",
       "imageUnavailable": "[Image non disponible : {{filename}}]",
-      "importing": "Importation de la pièce jointe",
       "loadingFile": "Chargement de {{filename}}",
       "previewFile": "Aperçu de {{filename}}",
       "title": "Pièces jointes",
-      "unavailable": "Pièce jointe non disponible",
       "uploadFailed": "Échec du téléchargement de {{filename}}",
       "uploadFailedRetry": "Échec du téléchargement de {{filename}}. Réessayez.",
       "uploadsFailed": "Certaines pièces jointes n'ont pas pu être téléchargées. Réessayez."

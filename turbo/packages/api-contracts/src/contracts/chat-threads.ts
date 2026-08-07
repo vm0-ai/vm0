@@ -531,6 +531,7 @@ const inputPromptEventSchema = chatEventBaseSchema
     eventType: z.literal("input.prompt"),
     content: z.null(),
     userMessage: userMessageDocumentSchema,
+    // Stage 5/7 removal owner: temporary response projections for old clients.
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -574,6 +575,7 @@ const inputRejectedEventSchema = chatEventBaseSchema
     content: z.null(),
     userMessage: userMessageDocumentSchema,
     error: z.string(),
+    // Stage 5/7 removal owner: temporary response projections for old clients.
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -802,10 +804,14 @@ const chatNormalSendBodyShape = {
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
   userMessage: userMessageInputDocumentSchema,
+  // Stage 5/7 removal owner: accepted only at ingress for old clients. New
+  // clients encode these values as file/template `userMessage` parts.
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
   hasTextContent: z.boolean(),
+  // Stage 5/7 removal owner: accepted only at ingress for old clients. New
+  // clients encode attachments as file `userMessage` parts.
   attachFiles: z.array(attachFileSchema).optional(),
   // Preview evaluation escape hatch: when enabled, the request asks the
   // runner to bypass preview mock CLIs and use the real agent runtime.

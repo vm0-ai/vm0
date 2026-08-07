@@ -254,6 +254,7 @@ import type {
 } from "../../signals/chat-page/chat-event-types.ts";
 import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
+import { userMessageFileAttachments } from "../../signals/chat-page/user-message-files.ts";
 import type {
   ChatPanelSignals,
   RecommendedFollowupSource,
@@ -378,8 +379,8 @@ function eventNonContentPart(
 }
 
 function chatEventAttachments(event: ChatEvent) {
-  return isInputChatEvent(event) && "attachFiles" in event
-    ? event.attachFiles
+  return isInputChatEvent(event)
+    ? userMessageFileAttachments(event.userMessage)
     : undefined;
 }
 
@@ -6539,11 +6540,12 @@ interface ResolvedMessageAttachment {
   readonly filename: string;
   readonly url: string;
   readonly contentType: string | undefined;
-  readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
   readonly text$?: TextPreviewComputed;
 }
+
+type OpenMessageImagePreview = (url: string, filename?: string) => void;
 
 function resolveAttachments(
   event: EnrichedChatEvent,
@@ -6554,7 +6556,6 @@ function resolveAttachments(
   const source =
     eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
-    const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
         ? f.contentType
@@ -6572,7 +6573,6 @@ function resolveAttachments(
       filename: f.filename,
       url: f.url,
       contentType,
-      ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
       ...(text$ ? { text$ } : {}),
@@ -6637,57 +6637,6 @@ function clipboardAttachmentsFromUserMessage(
   });
 }
 
-function AttachmentMaterializationState({
-  attachment,
-}: {
-  attachment: {
-    readonly filename: string;
-    readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
-  };
-}) {
-  const { t } = useTranslation();
-  const materialization = attachment.assetRef?.materialization;
-  if (!materialization || materialization.status === "ready") {
-    return null;
-  }
-  const pending = materialization.status === "pending";
-  const error =
-    materialization.status === "failed" ? materialization.error : undefined;
-  return (
-    <div
-      className="flex max-w-72 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-      role={pending ? "status" : "alert"}
-      title={error?.message}
-    >
-      {pending ? (
-        <IconLoader2
-          aria-hidden="true"
-          className="size-4 shrink-0 animate-spin text-muted-foreground"
-        />
-      ) : (
-        <IconAlertCircle
-          aria-hidden="true"
-          className="size-4 shrink-0 text-destructive"
-        />
-      )}
-      <span className="min-w-0">
-        <span className="block truncate font-medium">
-          {attachment.filename}
-        </span>
-        <span className="block text-xs text-muted-foreground">
-          {pending
-            ? t(($) => {
-                return $.chat.attachments.importing;
-              })
-            : t(($) => {
-                return $.chat.attachments.unavailable;
-              })}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 // Images and videos render as thumbnails, every other attachment as a chip.
 // The two shapes never share a row, so they are grouped before rendering.
 function isMediaAttachment(attachment: ResolvedMessageAttachment): boolean {
@@ -6699,14 +6648,11 @@ function MessageAttachment({
   onImageClick,
 }: {
   attachment: ResolvedMessageAttachment;
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
 }) {
   const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
-  if (a.assetRef && a.assetRef.materialization.status !== "ready") {
-    return <AttachmentMaterializationState attachment={a} />;
-  }
   if (a.isImage) {
     return (
       <ChatImagePreviewLink
@@ -6722,7 +6668,7 @@ function MessageAttachment({
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
-          onImageClick(a.url);
+          onImageClick(a.url, a.filename);
         }}
         placeholderClassName="h-full w-full"
         url={a.url}
@@ -6795,7 +6741,7 @@ function UserMessageAttachmentRow({
   testId,
 }: {
   attachments: ResolvedMessageAttachment[];
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
   testId: string;
 }) {
   if (attachments.length === 0) {
@@ -6822,7 +6768,7 @@ function UserMessageAttachments({
   onImageClick,
 }: {
   attachments: ReturnType<typeof resolveAttachments>;
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -7227,12 +7173,6 @@ function UserMessageFileReference({
   const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
-  if (
-    attachment?.assetRef &&
-    attachment.assetRef.materialization.status !== "ready"
-  ) {
-    return <AttachmentMaterializationState attachment={attachment} />;
-  }
   if (attachment) {
     const kind = classifyChatAttachment({
       filename: part.filenameSnapshot,
@@ -7702,7 +7642,7 @@ function UserMessageContent({
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
 }) {
   // Attachments read as their own object, so they all sit above the bubble
@@ -7857,10 +7797,9 @@ function resolvePagedUserMessageRendering({
     inputEvent ? "" : legacyContent,
   );
   const canonicalUserMessage = userMessage;
-  const attachFiles =
-    inputEvent && "attachFiles" in inputEvent
-      ? inputEvent.attachFiles
-      : undefined;
+  const attachFiles = canonicalUserMessage
+    ? userMessageFileAttachments(canonicalUserMessage)
+    : undefined;
   const copyText = canonicalUserMessage
     ? (messageDocumentToPrompt(canonicalUserMessage) ?? "")
     : cleanContent;
@@ -7899,6 +7838,14 @@ function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
     : undefined;
 }
 
+function messageImageLightboxTarget(
+  threadId: string,
+  url: string,
+  filename: string | undefined,
+) {
+  return { threadId, url, ...(filename ? { filename } : {}) };
+}
+
 function PagedUserMessage({
   event,
   thread,
@@ -7922,8 +7869,10 @@ function PagedUserMessage({
   const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox({ threadId: thread.threadId, url });
+  const openLightbox: OpenMessageImagePreview = (url, filename) => {
+    openImageLightbox(
+      messageImageLightboxTarget(thread.threadId, url, filename),
+    );
   };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;
@@ -8130,8 +8079,10 @@ function PagedAssistantEventItem({
   thread: ChatPanelSignals;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox({ threadId: thread.threadId, url });
+  const openLightbox: OpenMessageImagePreview = (url, filename) => {
+    openImageLightbox(
+      messageImageLightboxTarget(thread.threadId, url, filename),
+    );
   };
   const error = chatEventError(event);
   if (error) {

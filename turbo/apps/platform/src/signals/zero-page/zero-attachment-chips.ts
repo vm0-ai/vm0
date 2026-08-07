@@ -160,6 +160,8 @@ export const closeLightboxWithDialogExit$ = command(
 type AttachmentSidebarPreviewInput = {
   readonly url: string;
   readonly file?: File;
+  readonly filename?: string;
+  readonly contentType?: string;
   readonly shareAvailable?: boolean;
   readonly splitViewAvailable?: boolean;
 };
@@ -173,6 +175,14 @@ export function attachmentSidebarRef(
       : { shareAvailable: value.shareAvailable };
   if (value.file) {
     return { file: value.file, url: value.url, ...share };
+  }
+  if (value.filename) {
+    return {
+      url: value.url,
+      filename: value.filename,
+      ...(value.contentType ? { contentType: value.contentType } : {}),
+      ...share,
+    };
   }
   return value.url;
 }
