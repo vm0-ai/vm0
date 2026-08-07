@@ -429,7 +429,13 @@ def _classify_request(
         client_ip,
         frozenset(),
     )
-    if intent.status == "present" and intent.value in omitted_builtin_firewalls:
+    omitted_custom_connector_ids = registry_state.omitted_custom_connector_ids.get(
+        client_ip,
+        frozenset(),
+    )
+    if intent.status == "present" and intent.value in (
+        omitted_builtin_firewalls | omitted_custom_connector_ids
+    ):
         return Allow(
             vm_info=vm_info,
             builtin_firewall_catalog_snapshot=(registry_state.builtin_firewall_catalog_snapshot),

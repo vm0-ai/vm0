@@ -50,6 +50,7 @@ import {
   canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
   type ExecutionFirewallEntry,
+  type ExecutionFirewallInlineEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
   FirewallBaseUrlResolutionError,
@@ -57,6 +58,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicy,
   type NetworkPolicies,
+  type NetworkPolicy,
   normalizeFirewallFixedHost,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -522,7 +524,7 @@ const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
 type CustomConnectorAuthRefKind = "secret" | "variable";
 
-interface CustomConnectorAuthRef {
+export interface CustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
   readonly connectorRevision: number;
@@ -3482,7 +3484,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   );
 }
 
-type CustomConnectorRuntimeDataRows = Awaited<
+export type CustomConnectorRuntimeDataRows = Awaited<
   ReturnType<typeof loadCustomConnectorRuntimeData>
 >;
 
@@ -3716,7 +3718,7 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-async function loadEffectiveCustomConnectorPermissionBundle(args: {
+export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly snapshot: ConnectorRuntimeSnapshot;
 }): Promise<CustomConnectorPermissionBundle | null | undefined> {
@@ -3756,7 +3758,7 @@ function buildCustomConnectorPermissionPolicy(args: {
   };
 }
 
-async function buildCustomConnectorRuntimeContext(
+export async function buildCustomConnectorRuntimeContext(
   args: BuildCustomConnectorRuntimeContextArgs,
 ): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
@@ -3871,6 +3873,68 @@ async function buildCustomConnectorRuntimeContext(
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
   stats.flush(args.timing);
   return result;
+}
+
+interface CustomConnectorRuntimeExecutionState {
+  readonly firewall: Omit<ExecutionFirewallInlineEntry, "firewall"> & {
+    readonly firewall: Omit<Firewall, "apis"> & {
+      readonly apis: (Firewall["apis"][number] & {
+        readonly id: string;
+      })[];
+    };
+  };
+  readonly networkPolicy: NetworkPolicy;
+  readonly authRefs: readonly CustomConnectorAuthRef[];
+}
+
+export function customConnectorRuntimeExecutionState(args: {
+  readonly context: CustomConnectorRuntimeContext;
+  readonly connectorId: string;
+}): CustomConnectorRuntimeExecutionState | null {
+  const firewallName = customConnectorInternalName(args.connectorId);
+  const source = args.context.firewalls.find((firewall) => {
+    return firewall.name === firewallName;
+  });
+  if (!source) {
+    return null;
+  }
+
+  const permissionNames = collectPermissionNames(source.apis);
+  const defaultPolicy = allAllowPolicyForPermissions(permissionNames);
+  const policy = args.context.permissionPolicies?.[firewallName];
+  const networkPolicy = networkPolicyForFirewallPolicy(
+    permissionNames,
+    policy
+      ? {
+          ...policy,
+          unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+        }
+      : defaultPolicy,
+  );
+
+  return {
+    firewall: {
+      kind: "inline",
+      firewall: {
+        name: source.name,
+        apis: source.apis.map((api, index) => {
+          return {
+            id: `${firewallName}:${index}`,
+            base: api.base,
+            ...(api.hostPolicy !== undefined
+              ? { hostPolicy: api.hostPolicy }
+              : {}),
+            auth: api.auth,
+            permissions: api.permissions ?? [],
+          };
+        }),
+      },
+    },
+    networkPolicy,
+    authRefs: args.context.authRefs.filter((ref) => {
+      return ref.connectorId === args.connectorId;
+    }),
+  };
 }
 
 async function loadCustomConnectorContext(

@@ -1,6 +1,7 @@
 """Registry VM firewall entry resolution."""
 
 import copy
+import uuid
 from dataclasses import dataclass
 
 import builtin_base_url
@@ -20,6 +21,21 @@ BuiltinFirewallCoreCacheKey = tuple[
 
 class FirewallEntryResolutionError(ValueError):
     """Execution firewall entries could not be expanded into runtime configs."""
+
+
+def _custom_connector_id(entry: dict) -> str | None:
+    custom_connector_id = entry.get("customConnectorId")
+    if custom_connector_id is None:
+        return None
+    if not isinstance(custom_connector_id, str):
+        raise FirewallEntryResolutionError("inline firewall customConnectorId must be a UUID")
+    try:
+        uuid.UUID(custom_connector_id)
+    except ValueError as error:
+        raise FirewallEntryResolutionError(
+            "inline firewall customConnectorId must be a UUID"
+        ) from error
+    return custom_connector_id
 
 
 @dataclass(frozen=True)
@@ -286,7 +302,14 @@ def resolve_firewall_entries(
                 raise FirewallEntryResolutionError(
                     "inline firewall entry firewall must be an object"
                 )
-            resolved.append(copy.deepcopy(firewall))
+            resolved_firewall = copy.deepcopy(firewall)
+            custom_connector_id = _custom_connector_id(entry)
+            if custom_connector_id is not None:
+                resolved_firewall["customConnectorId"] = custom_connector_id
+                for api in resolved_firewall.get("apis", []):
+                    if isinstance(api, dict):
+                        api["customConnectorId"] = custom_connector_id
+            resolved.append(resolved_firewall)
             builtin_cache_keys.append(None)
             continue
         raise FirewallEntryResolutionError("firewall entries must use a supported kind")
