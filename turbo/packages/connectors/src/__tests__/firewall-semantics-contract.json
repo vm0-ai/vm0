@@ -434,6 +434,22 @@
       "expected": {
         "kind": "no-match"
       }
+    },
+    {
+      "name": "mixed greedy plus path parameter fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id+}",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy star path parameter fails closed",
+      "path": "/api/file-123",
+      "pattern": "/api/file-{id*}",
+      "expected": {
+        "kind": "no-match"
+      }
     }
   ],
   "hostMatchCases": [
@@ -539,9 +555,17 @@
       }
     },
     {
-      "name": "mixed greedy host parameter fails closed",
+      "name": "mixed greedy plus host parameter fails closed",
       "host": "api-us.example.com",
       "pattern": "api-{region+}.example.com",
+      "expected": {
+        "kind": "no-match"
+      }
+    },
+    {
+      "name": "mixed greedy star host parameter fails closed",
+      "host": "api-us.example.com",
+      "pattern": "api-{region*}.example.com",
       "expected": {
         "kind": "no-match"
       }

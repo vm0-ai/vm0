@@ -71,11 +71,6 @@ describe("matchFirewallPath", () => {
     expect(matchFirewallPath("/api/a/b/tail", "/api/{rest*}/tail")).toBeNull();
   });
 
-  it("rejects mixed greedy path params", () => {
-    expect(matchFirewallPath("/api/file-123", "/api/file-{id+}")).toBeNull();
-    expect(matchFirewallPath("/api/file-123", "/api/file-{id*}")).toBeNull();
-  });
-
   it("matches greedy * (zero or more) with segments", () => {
     expect(matchFirewallPath("/anything/here", "/{path*}")).toEqual({
       path: "anything/here",
@@ -180,15 +175,6 @@ describe("matchFirewallHost", () => {
     ).toBeNull();
     expect(
       matchFirewallHost("foo.bar.example.com", "foo.{deployment*}.com"),
-    ).toBeNull();
-  });
-
-  it("rejects mixed greedy host params", () => {
-    expect(
-      matchFirewallHost("api-us.example.com", "api-{region+}.example.com"),
-    ).toBeNull();
-    expect(
-      matchFirewallHost("api-us.example.com", "api-{region*}.example.com"),
     ).toBeNull();
   });
 
