@@ -1906,6 +1906,7 @@ async function multiAuthModelProviderEnvironment(
     readonly authMethod: string | null;
     readonly selectedModel: string | null;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly resolvePiEdgeCredentials: boolean;
   },
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.authMethod) {
@@ -1964,6 +1965,8 @@ async function multiAuthModelProviderEnvironment(
     }
   }
 
+  const piEdgeApiKey = await resolveMultiAuthPiEdgeApiKey(db, args);
+
   const selectedModelEnvBindings = getModelProviderEnvBindings(args.type);
   const selectedModel = resolveModelProviderModel({
     type: args.type,
@@ -1989,9 +1992,60 @@ async function multiAuthModelProviderEnvironment(
     ),
     secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
+    ...(piEdgeApiKey === undefined ? {} : { piEdgeApiKey }),
     secretConnectorMap: authMaps?.secretConnectorMap,
     secretConnectorMetadataMap: authMaps?.secretConnectorMetadataMap,
   };
+}
+
+/**
+ * Pi edge turns run inside the API with the real credential, but firewall
+ * providers above only expose lazy placeholders. Decrypt the Codex access
+ * token (a JWT the Pi runtime must be able to parse) when the run is Pi
+ * eligible; it is carried only on the API-side edge config, never into the
+ * Sandbox environment.
+ */
+async function resolveMultiAuthPiEdgeApiKey(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ModelProviderType;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly resolvePiEdgeCredentials: boolean;
+  },
+): Promise<string | undefined> {
+  if (
+    !args.resolvePiEdgeCredentials ||
+    !isPiEdgeCompatibleProviderType(args.type)
+  ) {
+    return undefined;
+  }
+  // The only multi-auth provider Pi can drive today is codex-oauth-token,
+  // whose derived access token (CHATGPT_ACCESS_TOKEN) is the JWT the Pi
+  // runtime parses. See the auth_json secret contract in model-providers.ts.
+  const [accessTokenRow] = await db
+    .select({ encryptedValue: secretsTable.encryptedValue })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.type, "model-provider"),
+        eq(secretsTable.name, "CHATGPT_ACCESS_TOKEN"),
+      ),
+    )
+    .limit(1);
+  if (!accessTokenRow?.encryptedValue) {
+    return undefined;
+  }
+  const accessToken = await decryptStoredSecretValue(
+    accessTokenRow.encryptedValue,
+    args.featureSwitchContext,
+  );
+  return hasUsableModelProviderSecretValue(accessToken)
+    ? accessToken
+    : undefined;
 }
 
 async function vm0ModelProviderEnvironment(
@@ -2206,6 +2260,7 @@ async function resolveCandidateModelProviderEnvironment(
       authMethod: row.authMethod,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
       featureSwitchContext: args.featureSwitchContext,
+      resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
     });
   }
 
