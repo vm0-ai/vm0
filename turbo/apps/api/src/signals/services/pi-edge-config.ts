@@ -13,6 +13,7 @@ import {
   type PiAgentModelConfig,
   type PiOpenAICompatibleProvider,
 } from "@vm0/pi-agent-runtime";
+import { z } from "zod";
 
 /**
  * Cycle-free Pi edge configuration shared between the launch pipeline
@@ -21,6 +22,21 @@ import {
  */
 
 export type PiEdgeModelConfig = PiAgentModelConfig;
+
+export const piEdgeModelConfigSchema = z
+  .object({
+    provider: z.enum([
+      "deepseek",
+      "moonshotai",
+      "openai",
+      "openrouter",
+      "vercel-ai-gateway",
+    ]),
+    baseUrl: z.url(),
+    apiKey: z.string().min(1),
+    model: z.string().min(1),
+  })
+  .readonly();
 
 export interface PiEdgeTurnArgs {
   readonly runId: string;

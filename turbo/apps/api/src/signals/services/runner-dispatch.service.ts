@@ -14,17 +14,19 @@ import { tapError } from "../utils";
 
 const L = logger("RunnerDispatch");
 
+export interface RunnerJobNotification {
+  readonly runnerGroup: string;
+  readonly runId: string;
+  readonly profile: string;
+  readonly reuseKey: string | null;
+  readonly cliAgentSessionId: string | null;
+  readonly historyGenerationRunId: string | undefined;
+  readonly createdAt: Date;
+}
+
 export async function notifyRunnerJob(
   db: Pick<Db, "select">,
-  args: {
-    readonly runnerGroup: string;
-    readonly runId: string;
-    readonly profile: string;
-    readonly reuseKey: string | null;
-    readonly cliAgentSessionId: string | null;
-    readonly historyGenerationRunId: string | undefined;
-    readonly createdAt: Date;
-  },
+  args: RunnerJobNotification,
 ): Promise<boolean> {
   const notificationEnteredAt = now();
   const currentDate = new Date(notificationEnteredAt);

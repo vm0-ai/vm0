@@ -13,7 +13,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -657,6 +657,76 @@ describe("PiLoop edge turn", () => {
       ],
     });
     expect((await api.readRun(fixture.actor, followUp.runId)).status).toBe(
+      "completed",
+    );
+  });
+
+  it("starts the Pi edge turn when a concurrency-queued run is promoted", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const fixture = await piEdgeFixture();
+    const occupyingRun = await sendChatRun(
+      fixture,
+      "occupy the only concurrency slot",
+    );
+    expect((await api.readRun(fixture.actor, occupyingRun.runId)).status).toBe(
+      "pending",
+    );
+
+    await enablePiLoop(fixture);
+    const modelStarted = createDeferredPromise<void>(context.signal);
+    const releaseModel = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseModel.settled()) {
+        releaseModel.resolve();
+      }
+    });
+    server.use(
+      http.post(COMPLETIONS_URL, async () => {
+        modelStarted.resolve();
+        await releaseModel.promise;
+        return assistantTextStream(
+          "promoted edge answer",
+          "promoted edge reasoning",
+        );
+      }),
+    );
+
+    const queuedRun = await sendChatRun(
+      fixture,
+      "start Pi after the queue picks this run",
+    );
+    expect((await api.readRun(fixture.actor, queuedRun.runId)).status).toBe(
+      "queued",
+    );
+    expect(modelStarted.settled()).toBeFalsy();
+
+    await api.requestCancelRun(fixture.actor, occupyingRun.runId, [200]);
+    await modelStarted.promise;
+
+    expect((await api.readRun(fixture.actor, queuedRun.runId)).status).toBe(
+      "pending",
+    );
+    const defaultPoll = await api.pollRunner(fixture.runnerGroup);
+    expect(defaultPoll.body.job).toBeNull();
+    const standbyPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: [PI_STANDBY_PROFILE],
+      },
+      [200],
+    );
+    if (standbyPoll.status !== 200) {
+      throw new Error("Expected promoted Pi standby poll to return 200");
+    }
+    expect(standbyPoll.body.job).toMatchObject({
+      runId: queuedRun.runId,
+      experimentalProfile: PI_STANDBY_PROFILE,
+    });
+
+    releaseModel.resolve();
+    await flushWaitUntilForTest();
+    expect((await api.readRun(fixture.actor, queuedRun.runId)).status).toBe(
       "completed",
     );
   });

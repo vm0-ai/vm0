@@ -1,8 +1,14 @@
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
+import {
+  PI_STANDBY_PROFILE,
+  type RunSkillSnapshot,
+} from "@vm0/api-contracts/contracts/runners";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type { PersistedStorageMount } from "@vm0/db/types";
+import type { ExecutionEnv } from "@vm0/pi-agent-runtime";
 import {
   and,
   count,
@@ -25,17 +31,12 @@ import {
 import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
-import { notifyRunnerJob } from "./runner-dispatch.service";
-import {
-  recordSameThreadRunnerJobPersisted,
-  runnerJobQueueTimestamps,
-} from "./runner-job-queue-lifecycle.service";
+import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
 } from "./zero-chat-queue-marker.service";
-import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
   cappedBaseConcurrencyLimit,
   loadOrgConcurrencyState,
@@ -43,6 +44,12 @@ import {
 } from "./org-concurrency-entitlements.service";
 import { tapError } from "../utils";
 import type { Tx } from "../../lib/db-types";
+import {
+  activatePendingRun$,
+  type PendingRunActivation,
+} from "./agent-run-activation.service";
+import type { PiEdgeModelConfig } from "./pi-edge-config";
+import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -80,38 +87,40 @@ interface QueueCandidate {
   readonly encryptedParams: string | null;
   readonly runStatus: string | null;
   readonly chatThreadId: string | null;
-}
-
-interface RunnerNotification {
-  readonly runId: string;
-  readonly runnerGroup: string;
-  readonly profile: string;
-  readonly reuseKey: string | null;
-  readonly cliAgentSessionId: string | null;
-  readonly historyGenerationRunId: string | undefined;
-  readonly createdAt: Date;
-}
-
-interface FirstAssistantEventEligibility {
-  readonly runId: string;
-  readonly apiStartedAt: number;
+  readonly storageMounts: PersistedStorageMount[] | null;
 }
 
 interface PromotedRunnerJob {
   readonly createdAt: Date;
   readonly apiStartedAt: number;
+  readonly profile: string;
+}
+
+interface PreparedQueuedPiEdgeTurn {
+  readonly model: PiEdgeModelConfig;
+  readonly prompt: string;
+  readonly systemPrompt: string;
+  readonly executionEnv: ExecutionEnv;
+  readonly skillSnapshot: RunSkillSnapshot;
 }
 
 type PromoteQueuedCandidateResult =
   | {
       readonly status: "promoted";
-      readonly runnerNotification: RunnerNotification | null;
+      readonly pendingActivation: PendingRunActivation | null;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
-      readonly firstAssistantEventEligibility: FirstAssistantEventEligibility | null;
     }
   | { readonly status: "full" }
   | { readonly status: "removed-stale" }
   | { readonly status: "lost" };
+
+type PromoteQueuedCandidateSideEffectResult =
+  | {
+      readonly status: "drained";
+      readonly pendingActivation: PendingRunActivation | null;
+    }
+  | { readonly status: "full" }
+  | { readonly status: "skipped" };
 
 interface TimedOutQueuedRunRow {
   readonly runId: string;
@@ -183,12 +192,16 @@ async function insertPromotedRunnerJob(
     .where(eq(zeroRuns.id, args.runId));
 
   const timestamps = runnerJobQueueTimestamps();
+  const profile =
+    args.payload.piEdge === undefined
+      ? args.payload.profile
+      : PI_STANDBY_PROFILE;
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
       runId: args.runId,
       runnerGroup: args.payload.runnerGroup,
-      profile: args.payload.profile,
+      profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
       reuseKey: args.payload.reuseKey,
       executionContext: {
@@ -204,6 +217,7 @@ async function insertPromotedRunnerJob(
   return {
     createdAt: runnerJob.createdAt,
     apiStartedAt: promotedAt,
+    profile,
   };
 }
 
@@ -226,6 +240,7 @@ async function loadDrainCandidates(
         createdAt: agentRunQueue.createdAt,
         encryptedParams: agentRunQueue.encryptedParams,
         runStatus: agentRuns.status,
+        storageMounts: agentRuns.storageMounts,
         chatThreadId: zeroRuns.chatThreadId,
       })
       .from(agentRunQueue)
@@ -236,12 +251,44 @@ async function loadDrainCandidates(
   });
 }
 
+async function prepareQueuedPiEdgeTurn(
+  get: <T>(computedValue: Computed<T>) => T,
+  db: Db,
+  row: QueueCandidate,
+  payload: QueuedRunnerJobPayload,
+): Promise<PreparedQueuedPiEdgeTurn | undefined> {
+  if (payload.piEdge === undefined) {
+    return undefined;
+  }
+  const systemPrompt = payload.executionContext.piSystemPrompt;
+  const skillSnapshot = payload.executionContext.runSkillSnapshot;
+  if (
+    row.storageMounts === null ||
+    systemPrompt === undefined ||
+    skillSnapshot === undefined
+  ) {
+    throw new Error(`Queued Pi run "${row.runId}" is missing launch context`);
+  }
+  const resources = await loadPiLaunchStorageResources(get, db, {
+    snapshot: skillSnapshot,
+    persistedStorageMounts: row.storageMounts,
+  });
+  return {
+    model: payload.piEdge.model,
+    prompt: payload.piEdge.prompt,
+    systemPrompt,
+    executionEnv: resources.env,
+    skillSnapshot,
+  };
+}
+
 async function promoteQueuedCandidate(
   db: Db,
   args: {
     readonly orgId: string;
     readonly row: QueueCandidate;
     readonly payload: QueuedRunnerJobPayload | null;
+    readonly piEdgeTurn: PreparedQueuedPiEdgeTurn | undefined;
   },
 ): Promise<PromoteQueuedCandidateResult> {
   return await db.transaction(async (tx) => {
@@ -322,9 +369,8 @@ async function promoteQueuedCandidate(
     if (!args.payload) {
       return {
         status: "promoted",
-        runnerNotification: null,
+        pendingActivation: null,
         queueMarkerNotification,
-        firstAssistantEventEligibility: null,
       };
     }
 
@@ -337,20 +383,29 @@ async function promoteQueuedCandidate(
     return {
       status: "promoted",
       queueMarkerNotification,
-      firstAssistantEventEligibility: args.row.chatThreadId
-        ? {
-            runId: args.row.runId,
-            apiStartedAt: runnerJob.apiStartedAt,
-          }
-        : null,
-      runnerNotification: {
-        runId: args.row.runId,
-        runnerGroup: args.payload.runnerGroup,
-        profile: args.payload.profile,
-        reuseKey: args.payload.reuseKey,
-        cliAgentSessionId: args.payload.cliAgentSessionId,
-        historyGenerationRunId: args.payload.historyGenerationRunId,
-        createdAt: runnerJob.createdAt,
+      pendingActivation: {
+        apiStartTime: runnerJob.apiStartedAt,
+        chatThreadId: args.row.chatThreadId ?? undefined,
+        piEdgeTurn:
+          args.piEdgeTurn === undefined
+            ? undefined
+            : {
+                ...args.piEdgeTurn,
+                runId: args.row.runId,
+                userId: args.row.userId,
+                orgId: args.orgId,
+                runnerGroup: args.payload.runnerGroup,
+                apiStartTime: runnerJob.apiStartedAt,
+              },
+        runnerNotification: {
+          runId: args.row.runId,
+          runnerGroup: args.payload.runnerGroup,
+          profile: runnerJob.profile,
+          reuseKey: args.payload.reuseKey,
+          cliAgentSessionId: args.payload.cliAgentSessionId,
+          historyGenerationRunId: args.payload.historyGenerationRunId,
+          createdAt: runnerJob.createdAt,
+        },
       },
     };
   });
@@ -367,14 +422,10 @@ async function publishRemovedStaleQueueSideEffects(
   });
 }
 
-async function publishPromotedQueueSideEffects(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
-    readonly runnerNotification: RunnerNotification | null;
-  },
-): Promise<void> {
+async function publishPromotedQueueSideEffects(args: {
+  readonly orgId: string;
+  readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+}): Promise<void> {
   await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
     L.error("Failed to publish queue changed after queued run promotion", {
       orgId: args.orgId,
@@ -406,16 +457,6 @@ async function publishPromotedQueueSideEffects(
       },
     );
   }
-
-  if (args.runnerNotification) {
-    await tapError(notifyRunnerJob(db, args.runnerNotification), (error) => {
-      L.error("Failed to notify runner after queued run promotion", {
-        runId: args.runnerNotification?.runId,
-        runnerGroup: args.runnerNotification?.runnerGroup,
-        error,
-      });
-    });
-  }
 }
 
 async function promoteQueuedCandidateWithSideEffects(
@@ -424,39 +465,32 @@ async function promoteQueuedCandidateWithSideEffects(
     readonly orgId: string;
     readonly row: QueueCandidate;
     readonly payload: QueuedRunnerJobPayload | null;
+    readonly piEdgeTurn: PreparedQueuedPiEdgeTurn | undefined;
   },
-): Promise<"drained" | "full" | "skipped"> {
+): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
   if (result.status === "removed-stale") {
     await publishRemovedStaleQueueSideEffects(args.orgId);
-    return "skipped";
+    return { status: "skipped" };
   }
   if (result.status === "full") {
-    return "full";
+    return { status: "full" };
   }
   if (result.status === "lost") {
     L.debug("drainOrgQueue: queued run already transitioned, skipping", {
       runId: args.row.runId,
     });
-    return "skipped";
+    return { status: "skipped" };
   }
 
-  if (result.firstAssistantEventEligibility) {
-    recordFirstAssistantEventEligibility(result.firstAssistantEventEligibility);
-  }
-  if (args.row.chatThreadId && result.runnerNotification) {
-    recordSameThreadRunnerJobPersisted({
-      runId: result.runnerNotification.runId,
-      createdAt: result.runnerNotification.createdAt,
-    });
-  }
-
-  await publishPromotedQueueSideEffects(db, {
+  await publishPromotedQueueSideEffects({
     orgId: args.orgId,
     queueMarkerNotification: result.queueMarkerNotification,
-    runnerNotification: result.runnerNotification,
   });
-  return "drained";
+  return {
+    status: "drained",
+    pendingActivation: result.pendingActivation,
+  };
 }
 
 /**
@@ -477,7 +511,7 @@ async function promoteQueuedCandidateWithSideEffects(
  */
 export const drainOrgQueue$ = command(
   async (
-    { set },
+    { get, set },
     args: { readonly orgId: string },
     signal: AbortSignal,
   ): Promise<number> => {
@@ -492,18 +526,37 @@ export const drainOrgQueue$ = command(
           ? await decryptQueuedRunnerJobPayload(row.encryptedParams)
           : null;
       signal.throwIfAborted();
+      const piEdgeTurn =
+        payload === null
+          ? undefined
+          : await prepareQueuedPiEdgeTurn(get, writeDb, row, payload);
+      signal.throwIfAborted();
 
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
         orgId: args.orgId,
         row,
         payload,
+        piEdgeTurn,
       });
       signal.throwIfAborted();
-      if (result === "full") {
+      if (result.status === "full") {
         return 0;
       }
-      if (result === "skipped") {
+      if (result.status === "skipped") {
         continue;
+      }
+      if (result.pendingActivation !== null) {
+        await tapError(
+          set(activatePendingRun$, result.pendingActivation, signal),
+          (error) => {
+            L.error("Failed to activate promoted queued run", {
+              runId: row.runId,
+              orgId: args.orgId,
+              error,
+            });
+          },
+        );
+        signal.throwIfAborted();
       }
       return 1;
     }

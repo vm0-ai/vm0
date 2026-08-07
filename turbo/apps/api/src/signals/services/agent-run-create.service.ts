@@ -214,7 +214,6 @@ import {
   queuedRunnerJobPayload,
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { notifyRunnerJob } from "./runner-dispatch.service";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   isPiEdgeCompatibleProviderType,
@@ -222,14 +221,10 @@ import {
   PI_STANDBY_PROFILE,
   resolvePiEdgeModelConfig,
   type PiEdgeModelConfig,
-  type PiEdgeTurnArgs,
 } from "./pi-edge-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
-import {
-  recordSameThreadRunnerJobPersisted,
-  runnerJobQueueTimestamps,
-} from "./runner-job-queue-lifecycle.service";
+import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import {
   connectorRuntimeCredentialStatusWithMethod,
   type ConnectorCredentialStatus,
@@ -299,6 +294,10 @@ import {
   type CompressedSessionHistoryBlobEncoding,
 } from "./session-history-blobs";
 import type { Tx } from "../../lib/db-types";
+import {
+  activatePendingRun$,
+  type PendingRunActivation,
+} from "./agent-run-activation.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -555,12 +554,16 @@ interface CustomConnectorAuthRef {
   readonly encryptedValue: string | null;
 }
 
+interface PreparedPiEdgeLaunch {
+  readonly model: PiEdgeModelConfig;
+  readonly executionEnv: ExecutionEnv;
+  readonly prompt: string;
+  readonly systemPrompt: string;
+  readonly skillSnapshot: RunSkillSnapshot;
+}
+
 interface PreparedRunnerLaunch {
-  readonly piEdge?: PiEdgeModelConfig;
-  readonly piExecutionEnv?: ExecutionEnv;
-  readonly piPrompt?: string;
-  readonly piSystemPrompt?: string;
-  readonly runSkillSnapshot?: RunSkillSnapshot;
+  readonly piEdge?: PreparedPiEdgeLaunch;
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
   readonly runStorageMounts: readonly PersistedStorageMount[];
@@ -655,6 +658,7 @@ type CreateRunSuccessResult = {
   readonly status: 201;
   readonly body: CreateRunResponse;
   readonly queueFirstClaim?: QueueFirstRunClaimed;
+  readonly pendingActivation?: PendingRunActivation;
 };
 
 type QueueFirstAgentRunResult =
@@ -804,7 +808,6 @@ export interface CreateAgentRunArgs {
   readonly orgId: string;
   readonly body: CreateRunBody;
   readonly apiStartTime: number;
-  readonly kickoffPiEdgeTurn?: (turnArgs: PiEdgeTurnArgs) => void;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
@@ -5929,35 +5932,37 @@ function preparedRunnerGroup(content: AgentComposeContent): string {
   return group;
 }
 
+function preparedRunnerJobBody(
+  args: BuildRunnerJobPayloadInput,
+): CreateRunBody {
+  if (!args.includeZeroTokenSecret) {
+    return args.body;
+  }
+  return withZeroTokenSecret(
+    args.body,
+    generateZeroToken(
+      args.userId,
+      args.run.id,
+      args.orgId,
+      args.featureSwitchContext.overrides,
+      {
+        ...(args.zeroTokenComputerUseHostId
+          ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+          : {}),
+        cloudBrowserEnabled: args.zeroTokenCloudBrowserEnabled === true,
+        imageRecognitionAvailable: args.imageRecognitionAvailable,
+      },
+    ),
+  );
+}
+
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group = preparedRunnerGroup(args.resolved.content);
-    const featureSwitchOverrides = args.includeZeroTokenSecret
-      ? args.featureSwitchContext.overrides
-      : undefined;
-    const body = args.includeZeroTokenSecret
-      ? withZeroTokenSecret(
-          args.body,
-          generateZeroToken(
-            args.userId,
-            args.run.id,
-            args.orgId,
-            featureSwitchOverrides,
-            {
-              ...(args.zeroTokenComputerUseHostId
-                ? {
-                    computerUseHostId: args.zeroTokenComputerUseHostId,
-                  }
-                : {}),
-              cloudBrowserEnabled: args.zeroTokenCloudBrowserEnabled === true,
-              imageRecognitionAvailable: args.imageRecognitionAvailable,
-            },
-          ),
-        )
-      : args.body;
+    const body = preparedRunnerJobBody(args);
     const storageManifestStats = args.timing
       ? new StorageManifestBuildStats()
       : undefined;
@@ -6020,6 +6025,16 @@ function buildRunnerJobPayload(
       builtContext.context,
       piResources,
     );
+    const piEdge =
+      args.piEdge === undefined || piResources === undefined
+        ? undefined
+        : {
+            model: args.piEdge,
+            executionEnv: piResources.executionEnv,
+            prompt: piResources.prompt,
+            systemPrompt: piResources.systemPrompt,
+            skillSnapshot: piResources.snapshot,
+          };
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,
@@ -6028,21 +6043,21 @@ function buildRunnerJobPayload(
     });
     const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
     return {
-      ...(args.piEdge === undefined ? {} : { piEdge: args.piEdge }),
-      ...(piResources === undefined
-        ? {}
-        : {
-            piExecutionEnv: piResources.executionEnv,
-            piPrompt: piResources.prompt,
-            piSystemPrompt: piResources.systemPrompt,
-            runSkillSnapshot: piResources.snapshot,
-          }),
+      ...(piEdge === undefined ? {} : { piEdge }),
       runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
         profile: runnerProfile(args.resolved.content),
         cliAgentSessionId,
         reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
+        ...(piEdge === undefined
+          ? {}
+          : {
+              piEdge: {
+                model: piEdge.model,
+                prompt: piEdge.prompt,
+              },
+            }),
       }),
       runContextSnapshot,
       runStorageMounts: builtContext.persistedStorageMounts,
@@ -7109,16 +7124,23 @@ interface PreparedRunContext {
   readonly imageRecognitionAvailable: boolean;
 }
 
+function isPiEdgeEnabledForRun(
+  createArgs: CreateAgentRunArgs,
+  featureSwitchContext: FeatureSwitchContext,
+): boolean {
+  return (
+    createArgs.chatThreadId !== undefined &&
+    isWebChatTriggerSource(createArgs.body.triggerSource) &&
+    isFeatureEnabled(FeatureSwitchKey.PiLoop, featureSwitchContext)
+  );
+}
+
 function resolvePreparedPiEdgeModelConfig(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
 }): PiEdgeModelConfig | undefined {
-  if (
-    args.createArgs.chatThreadId === undefined ||
-    args.createArgs.kickoffPiEdgeTurn === undefined ||
-    !isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
-  ) {
+  if (!isPiEdgeEnabledForRun(args.createArgs, args.featureSwitchContext)) {
     return undefined;
   }
   return resolvePiEdgeModelConfig(args.modelProvider) ?? undefined;
@@ -7153,13 +7175,10 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         featureSwitchContext: options.featureSwitchContext,
-        resolvePiEdgeCredentials:
-          args.chatThreadId !== undefined &&
-          args.kickoffPiEdgeTurn !== undefined &&
-          isFeatureEnabled(
-            FeatureSwitchKey.PiLoop,
-            options.featureSwitchContext,
-          ),
+        resolvePiEdgeCredentials: isPiEdgeEnabledForRun(
+          args,
+          options.featureSwitchContext,
+        ),
       })
     : null;
   options.signal.throwIfAborted();
@@ -8052,7 +8071,6 @@ function prepareRunContext(input: {
 }
 
 async function committedAtomicLaunchResponse(args: {
-  readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
@@ -8095,53 +8113,39 @@ async function committedAtomicLaunchResponse(args: {
       : response;
   }
 
-  if (args.createArgs.chatThreadId) {
-    recordSameThreadRunnerJobPersisted({
-      runId: args.committed.run.id,
-      createdAt: args.committed.runnerJobCreatedAt,
-    });
-    recordFirstAssistantEventEligibility({
-      runId: args.committed.run.id,
-      apiStartedAt: args.createArgs.apiStartTime,
-    });
-  }
-
   ingestRunContextSnapshot(args.committed.runContextSnapshot);
-  const kickoffPiEdgeTurn = args.createArgs.kickoffPiEdgeTurn;
-  if (
-    args.launch.piEdge &&
-    args.launch.piExecutionEnv &&
-    args.launch.piPrompt &&
-    args.launch.piSystemPrompt &&
-    args.launch.runSkillSnapshot &&
-    kickoffPiEdgeTurn
-  ) {
-    kickoffPiEdgeTurn({
-      runId: args.committed.run.id,
-      userId: args.createArgs.userId,
-      orgId: args.createArgs.orgId,
-      prompt: args.launch.piPrompt,
-      systemPrompt: args.launch.piSystemPrompt,
-      model: args.launch.piEdge,
-      executionEnv: args.launch.piExecutionEnv,
-      skillSnapshot: args.launch.runSkillSnapshot,
-      runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-      apiStartTime: args.createArgs.apiStartTime,
-    });
-  }
   const dispatchedProfile = args.launch.piEdge
     ? PI_STANDBY_PROFILE
     : args.committed.runnerJobPayload.profile;
-  await notifyRunnerJob(args.db, {
-    runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-    runId: args.committed.run.id,
-    profile: dispatchedProfile,
-    reuseKey: args.committed.runnerJobPayload.reuseKey,
-    cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
-    historyGenerationRunId:
-      args.committed.runnerJobPayload.historyGenerationRunId,
-    createdAt: args.committed.runnerJobCreatedAt,
-  });
+  const pendingActivation: PendingRunActivation = {
+    apiStartTime: args.createArgs.apiStartTime,
+    chatThreadId: args.createArgs.chatThreadId,
+    piEdgeTurn:
+      args.launch.piEdge === undefined
+        ? undefined
+        : {
+            runId: args.committed.run.id,
+            userId: args.createArgs.userId,
+            orgId: args.createArgs.orgId,
+            prompt: args.launch.piEdge.prompt,
+            systemPrompt: args.launch.piEdge.systemPrompt,
+            model: args.launch.piEdge.model,
+            executionEnv: args.launch.piEdge.executionEnv,
+            skillSnapshot: args.launch.piEdge.skillSnapshot,
+            runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+            apiStartTime: args.createArgs.apiStartTime,
+          },
+    runnerNotification: {
+      runnerGroup: args.committed.runnerJobPayload.runnerGroup,
+      runId: args.committed.run.id,
+      profile: dispatchedProfile,
+      reuseKey: args.committed.runnerJobPayload.reuseKey,
+      cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+      historyGenerationRunId:
+        args.committed.runnerJobPayload.historyGenerationRunId,
+      createdAt: args.committed.runnerJobCreatedAt,
+    },
+  };
   args.timing.flush({
     runId: args.committed.run.id,
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
@@ -8158,8 +8162,12 @@ async function committedAtomicLaunchResponse(args: {
     status: "pending",
   });
   return args.committed.queueFirstClaim
-    ? { ...response, queueFirstClaim: args.committed.queueFirstClaim }
-    : response;
+    ? {
+        ...response,
+        queueFirstClaim: args.committed.queueFirstClaim,
+        pendingActivation,
+      }
+    : { ...response, pendingActivation };
 }
 
 function flushQueueFirstClaimLostTiming(args: {
@@ -8227,7 +8235,6 @@ async function finalizeAtomicLaunchCommit(args: {
     return args.committed;
   }
   return await committedAtomicLaunchResponse({
-    db: args.input.db,
     createArgs: args.input.args,
     committed: args.committed,
     timing: args.input.timing,
@@ -8533,7 +8540,7 @@ export const completeAgentRun$ = command(
       return admissionGate;
     }
 
-    return await get(
+    const result = await get(
       createAtomicLaunchRun({
         db,
         args,
@@ -8542,6 +8549,19 @@ export const completeAgentRun$ = command(
         timing,
       }),
     );
+    signal.throwIfAborted();
+    if (
+      !("status" in result) ||
+      result.status !== 201 ||
+      result.pendingActivation === undefined
+    ) {
+      return result;
+    }
+
+    await set(activatePendingRun$, result.pendingActivation, signal);
+    const { pendingActivation: _pendingActivation, ...activatedResult } =
+      result;
+    return activatedResult;
   },
 );
 
