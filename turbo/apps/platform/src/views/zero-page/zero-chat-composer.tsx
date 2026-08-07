@@ -1246,7 +1246,7 @@ function WebsiteTemplateCard({
         />
         <div className={TEMPLATE_TILE_SCRIM} />
         {selected ? (
-          <span className="absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <IconCheck size={14} stroke={2.6} />
           </span>
         ) : null}
@@ -3826,7 +3826,7 @@ function PptCard({
         />
         <div className={TEMPLATE_TILE_SCRIM} />
         {selected ? (
-          <span className="absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <IconCheck size={14} stroke={2.6} />
           </span>
         ) : null}
@@ -4915,6 +4915,9 @@ function TemplatePickerDialog({
     hasAvatarTab,
     hasWorkflowTab,
   });
+  const showTemplatePickerSearch =
+    selectedCategory === "workflow" ||
+    (templatePickerGlobalSearchEnabled && selectedCategory !== "avatar");
 
   const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
@@ -5168,10 +5171,13 @@ function TemplatePickerDialog({
                 onChange={handleCategoryChange}
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                <div className="relative flex h-[68px] shrink-0 items-center px-6 pr-14">
-                  {selectedCategory === "workflow" ||
-                  (templatePickerGlobalSearchEnabled &&
-                    selectedCategory !== "avatar") ? (
+                <div
+                  className={cn(
+                    "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                    showTemplatePickerSearch ? "flex" : "hidden sm:flex",
+                  )}
+                >
+                  {showTemplatePickerSearch ? (
                     <TemplatePickerSearch
                       search={search}
                       onSearchChange={handleSearchChange}
