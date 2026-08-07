@@ -184,8 +184,10 @@ const mockChatEventOverrides = {
   },
   "output.followups": (message) => {
     return {
-      content: null,
-      recommendedFollowups: message.recommendedFollowups ?? [],
+      content: message.content,
+      ...(message.recommendedFollowups === undefined
+        ? {}
+        : { recommendedFollowups: message.recommendedFollowups }),
     };
   },
   "run.queued": (message, id) => {
@@ -239,6 +241,12 @@ const mockChatEventOverrides = {
     return { content: null };
   },
   "browser.close": () => {
+    return { content: null };
+  },
+  "goal.open": (message) => {
+    return { content: message.content ?? "Mock active goal" };
+  },
+  "goal.close": () => {
     return { content: null };
   },
   "goal.changed": (message) => {

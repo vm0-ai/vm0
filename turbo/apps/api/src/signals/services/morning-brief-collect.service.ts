@@ -8,26 +8,11 @@
  * failed source is annotated in the input JSON instead of blocking the brief.
  */
 import { z } from "zod";
-import {
-  CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import {
-  and,
-  desc,
-  eq,
-  gt,
-  gte,
-  isNotNull,
-  isNull,
-  lte,
-  ne,
-  not,
-  or,
-} from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, lte, ne, or } from "drizzle-orm";
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
@@ -43,7 +28,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./zero-chat-event-type.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -621,22 +606,7 @@ async function collectUnreadChatThreads(args: {
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.chatThreadId, row.id),
-          or(
-            and(
-              chatEventTypeIn(["input.prompt", "input.rejected"]),
-              isNotNull(chatEvents.userMessage),
-            ),
-            and(
-              not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-              isNotNull(chatEvents.content),
-            ),
-          ),
-          chatEventTypeIn(CHAT_EVENT_TYPES),
-        ),
-      )
+      .where(and(eq(chatEvents.chatThreadId, row.id), chatEventTextCondition()))
       .orderBy(desc(chatEvents.createdAt))
       .limit(MAX_THREAD_MESSAGES);
     threads.push({

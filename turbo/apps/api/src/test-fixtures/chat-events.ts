@@ -859,6 +859,56 @@ export async function clearLegacyChatEventInputColumnsFixture(
 }
 
 /**
+ * Rewrite one persisted legacy follow-up event into the future Stage 5 wire
+ * shape so readiness tests can exercise content readers without enabling a
+ * production writer.
+ */
+export async function rewriteRecommendedFollowupsAsContentFixture(args: {
+  readonly eventId: string;
+  readonly content: string;
+}): Promise<void> {
+  const updated = await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    return await tx
+      .update(chatEvents)
+      .set({ content: args.content, recommendedFollowups: null })
+      .where(
+        and(
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.eventType, "output.followups"),
+        ),
+      )
+      .returning({ id: chatEvents.id });
+  });
+  if (updated.length !== 1) {
+    throw new Error("Expected one recommended follow-up event");
+  }
+}
+
+/**
+ * Append one future Stage 5 follow-up wire shape for reader-only BDD coverage.
+ * Production writers intentionally keep emitting recommended_followups until
+ * the Stage 5 cutover.
+ */
+export async function insertContentFollowupsEventFixture(args: {
+  readonly threadId: string;
+  readonly content: string;
+}): Promise<{ readonly id: string; readonly seqId: number }> {
+  const event = await db().transaction(async (tx) => {
+    return await insertChatEvent(tx, {
+      chatThreadId: args.threadId,
+      eventType: "output.followups",
+      content: args.content,
+      runId: null,
+    });
+  });
+  if (!event) {
+    throw new Error("Expected the content follow-up event insert");
+  }
+  return event;
+}
+
+/**
  * Complete one claimed run without dispatching its terminal callbacks. This
  * reproduces the missed-callback state that the stale queue sweep recovers.
  */

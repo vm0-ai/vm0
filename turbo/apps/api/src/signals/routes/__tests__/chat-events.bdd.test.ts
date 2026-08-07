@@ -97,6 +97,7 @@ import {
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
+  rewriteRecommendedFollowupsAsContentFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
@@ -808,7 +809,7 @@ function recommendedFollowupEvents(
     return (
       message.eventType === "output.followups" &&
       message.runId === runId &&
-      message.recommendedFollowups.length > 0
+      (message.recommendedFollowups?.length ?? 0) > 0
     );
   });
 }
@@ -5300,6 +5301,32 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       throw new Error("Expected a recommended follow-ups message");
     }
     expect(recommender.eventType).toBe("output.followups");
+    const futureFollowups = recommender.recommendedFollowups;
+    if (!futureFollowups) {
+      throw new Error("Expected legacy follow-ups before fixture rewrite");
+    }
+    const futureFollowupContent = JSON.stringify({
+      version: 1,
+      followups: futureFollowups,
+    });
+    await rewriteRecommendedFollowupsAsContentFixture({
+      eventId: recommender.id,
+      content: futureFollowupContent,
+    });
+
+    const futureEvents = await chat.listThreadEvents(actor, first.threadId);
+    expect(futureEvents.events).toContainEqual(
+      expect.objectContaining({
+        id: recommender.id,
+        eventType: "output.followups",
+        content: futureFollowupContent,
+      }),
+    );
+    expect(
+      futureEvents.events.find((event) => {
+        return event.id === recommender.id;
+      }),
+    ).not.toHaveProperty("recommendedFollowups");
 
     const second = await sendChatRun(actor, {
       agentId,
@@ -5319,6 +5346,10 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(appended).toContain("Assistant: Assistant migration answer");
     expect(appended).toContain("- RELATIVE_INDEX: 0");
     expect(appended).not.toContain("follow-up question");
+    expect(appended).not.toContain(futureFollowupContent);
+    for (const followup of futureFollowups) {
+      expect(appended).not.toContain(followup.prompt);
+    }
 
     await cancelChatRun(actor, second.runId);
 
@@ -5429,7 +5460,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       (events) => {
         return recommendedFollowupEvents(events, completed.runId).some(
           (event) => {
-            return event.recommendedFollowups.length > 0;
+            return (event.recommendedFollowups?.length ?? 0) > 0;
           },
         );
       },
@@ -5438,7 +5469,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       completedEvents.events,
       completed.runId,
     ).find((event) => {
-      return event.recommendedFollowups.length > 0;
+      return (event.recommendedFollowups?.length ?? 0) > 0;
     });
     if (!recommender) {
       throw new Error("Expected a recommended follow-ups event");

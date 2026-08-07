@@ -2,10 +2,7 @@ import { createHash } from "node:crypto";
 import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
-import {
-  CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import type {
@@ -71,7 +68,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./zero-chat-event-type.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -754,10 +751,7 @@ async function collectConversationMessages(
       })
       .from(chatEvents)
       .where(
-        and(
-          eq(chatEvents.chatThreadId, thread.id),
-          chatEventTypeIn(CHAT_EVENT_TYPES),
-        ),
+        and(eq(chatEvents.chatThreadId, thread.id), chatEventTextCondition()),
       )
       .orderBy(asc(chatEvents.seqId));
     runtime.signal.throwIfAborted();

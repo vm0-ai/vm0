@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 
 import { command, createStore } from "ccstate";
 import {
-  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -173,7 +172,10 @@ import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTextCondition,
+  chatEventTypeIn,
+} from "./zero-chat-event-type.service";
 import {
   loadSlackQueuedLaunchMaterial,
   type SlackQueuedLaunchMaterial,
@@ -2385,18 +2387,8 @@ async function getLatestRunsByThreadId(
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
-        or(
-          and(
-            chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatEvents.userMessage),
-          ),
-          and(
-            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatEvents.content),
-          ),
-        ),
+        chatEventTextCondition(),
         inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
       ),
     )

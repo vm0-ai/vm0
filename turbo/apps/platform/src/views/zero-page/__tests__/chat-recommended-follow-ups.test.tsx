@@ -243,6 +243,95 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it.each([
+    {
+      wireShape: "legacy recommendedFollowups",
+      eventPayload: {
+        content: null,
+        recommendedFollowups: [
+          {
+            prompt: "Prepare the launch checklist",
+            kind: "talk" as const,
+          },
+        ],
+      },
+    },
+    {
+      wireShape: "version-1 content",
+      eventPayload: {
+        content: JSON.stringify({
+          version: 1,
+          followups: [
+            {
+              prompt: "Prepare the launch checklist",
+              kind: "talk",
+            },
+          ],
+        }),
+      },
+    },
+  ])("renders $wireShape follow-ups identically", async ({ eventPayload }) => {
+    const threadId = "b0000000-0000-4000-a000-000000000732";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-followup-wire-assistant",
+          eventType: "output.message",
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId: "run-followup-wire",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-wire-shape",
+          eventType: "output.followups",
+          role: "assistant",
+          runId: "run-followup-wire",
+          seqId: 2,
+          createdAt: "2026-06-09T10:00:01Z",
+          ...eventPayload,
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(buttonByText("Prepare the launch checklist")).toBeInTheDocument();
+    });
+  });
+
+  it("ignores invalid follow-up content without rendering its JSON", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000733";
+    const invalidContent = JSON.stringify({
+      version: 2,
+      followups: [{ prompt: "Unsafe raw follow-up", kind: "talk" }],
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-invalid-followup-content",
+          eventType: "output.followups",
+          role: "assistant",
+          content: invalidContent,
+          runId: "run-invalid-followup-content",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+    expect(queryButtonByText("Unsafe raw follow-up")).not.toBeInTheDocument();
+    expect(screen.queryByText(invalidContent)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unsafe raw follow-up/u)).not.toBeInTheDocument();
+  });
+
   it("catches recommended follow-ups written before realtime subscription is ready", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";

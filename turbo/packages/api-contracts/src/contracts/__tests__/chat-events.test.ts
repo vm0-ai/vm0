@@ -7,6 +7,8 @@ import {
   foldLatestChatUsageByRunId,
   foldPendingChatQueueEvents,
   foldRunnableChatQueueEvents,
+  isChatEventContentTextType,
+  isChatEventUserMessageTextType,
   isPendingChatQueueEvent,
   isValidChatEventRevocation,
   revokedChatEventIds,
@@ -17,6 +19,8 @@ import {
   chatEventSchema,
   chatEventsContract,
   chatThreadEventsContract,
+  parseChatFollowupsContent,
+  resolveChatEventRecommendedFollowups,
   type ChatEvent,
 } from "../chat-threads";
 
@@ -219,8 +223,24 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "goal-changed",
+    id: "goal-open",
     seqId: 19,
+    threadId: THREAD_ID,
+    eventType: "goal.open",
+    content: "Ship the refactor",
+    createdAt: CREATED_AT,
+  },
+  {
+    id: "goal-close",
+    seqId: 20,
+    threadId: THREAD_ID,
+    eventType: "goal.close",
+    content: null,
+    createdAt: CREATED_AT,
+  },
+  {
+    id: "goal-changed",
+    seqId: 21,
     threadId: THREAD_ID,
     eventType: "goal.changed",
     content: null,
@@ -233,7 +253,7 @@ const chatEvents = [
   },
   {
     id: "usage-recorded",
-    seqId: 20,
+    seqId: 22,
     threadId: THREAD_ID,
     eventType: "usage.recorded",
     runId: "run-1",
@@ -356,6 +376,48 @@ describe("ChatEvent catalog", () => {
     ).toBe(false);
   });
 
+  it("enforces payload-free goal markers with canonical titles", () => {
+    const open = chatEvents.find((event) => {
+      return event.eventType === "goal.open";
+    });
+    const close = chatEvents.find((event) => {
+      return event.eventType === "goal.close";
+    });
+    if (!open || !close) {
+      throw new Error("Missing goal marker fixtures");
+    }
+
+    expect(chatEventSchema.safeParse({ ...open, content: "" }).success).toBe(
+      false,
+    );
+    expect(
+      chatEventSchema.safeParse({ ...open, content: " untrimmed " }).success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({ ...open, goalEvent: { type: "cleared" } })
+        .success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({ ...close, content: "closed" }).success,
+    ).toBe(false);
+  });
+
+  it("classifies only conversation-bearing fields as text", () => {
+    expect(
+      CHAT_EVENT_TYPES.filter(isChatEventUserMessageTextType),
+    ).toStrictEqual(["input.prompt", "input.rejected"]);
+    expect(CHAT_EVENT_TYPES.filter(isChatEventContentTextType)).toStrictEqual([
+      "output.message",
+      "output.error",
+      "run.queued",
+      "run.completed",
+      "run.failed",
+      "run.cancelled",
+    ]);
+    expect(isChatEventContentTextType("output.followups")).toBe(false);
+    expect(isChatEventContentTextType("goal.open")).toBe(false);
+  });
+
   it("accepts attachments only on input events", () => {
     const attachment = {
       id: "attachment-1",
@@ -441,6 +503,73 @@ describe("ChatEvent revocation rules", () => {
   });
 });
 
+describe("output.followups content", () => {
+  const legacyFollowups = [
+    {
+      prompt: "Generate a launch page",
+      kind: "generate" as const,
+      generationType: "website" as const,
+    },
+  ];
+  const content = JSON.stringify({ version: 1, followups: legacyFollowups });
+
+  it("strictly parses the version-1 document without losing item fields", () => {
+    const legacyEvent = chatEvents.find((event) => {
+      return event.eventType === "output.followups";
+    });
+    if (!legacyEvent) {
+      throw new Error("Missing followups fixture");
+    }
+    const { recommendedFollowups: _legacyFollowups, ...futureEvent } =
+      legacyEvent;
+    expect(
+      chatEventSchema.parse({
+        ...futureEvent,
+        content,
+      }),
+    ).toStrictEqual({
+      ...futureEvent,
+      content,
+    });
+    expect(parseChatFollowupsContent(content)).toStrictEqual({
+      version: 1,
+      followups: legacyFollowups,
+    });
+    expect(
+      parseChatFollowupsContent(
+        JSON.stringify({ version: 2, followups: legacyFollowups }),
+      ),
+    ).toBeNull();
+    expect(
+      parseChatFollowupsContent(
+        JSON.stringify({
+          version: 1,
+          followups: [{ ...legacyFollowups[0], unsupported: true }],
+        }),
+      ),
+    ).toBeNull();
+    expect(parseChatFollowupsContent("not json")).toBeNull();
+  });
+
+  it("prefers valid content and safely falls back to the legacy field", () => {
+    expect(
+      resolveChatEventRecommendedFollowups({
+        content,
+        recommendedFollowups: [{ prompt: "Legacy", kind: "talk" }],
+      }),
+    ).toStrictEqual(legacyFollowups);
+    expect(
+      resolveChatEventRecommendedFollowups({
+        content: "not json",
+        recommendedFollowups: legacyFollowups,
+      }),
+    ).toStrictEqual(legacyFollowups);
+    expect(
+      resolveChatEventRecommendedFollowups({ content: "not json" }),
+    ).toStrictEqual([]);
+  });
+});
+
 describe("ChatEvent folds", () => {
   it("lets a terminal event end queued state without a revoke edge", () => {
     const queued = chatEvents.find((event) => {
@@ -461,14 +590,20 @@ describe("ChatEvent folds", () => {
     );
   });
 
-  it("folds only goal lifecycle events into active goal state", () => {
+  it("folds legacy and content goal markers into identical active state", () => {
     const queued = chatEvents.find((event) => {
       return event.eventType === "input.goal";
     });
     const active = chatEvents.find((event) => {
       return event.eventType === "goal.changed";
     });
-    if (!queued || !active) {
+    const open = chatEvents.find((event) => {
+      return event.eventType === "goal.open";
+    });
+    const close = chatEvents.find((event) => {
+      return event.eventType === "goal.close";
+    });
+    if (!queued || !active || !open || !close) {
       throw new Error("Missing goal fold fixture");
     }
     const paused = {
@@ -479,10 +614,39 @@ describe("ChatEvent folds", () => {
 
     expect(foldActiveChatGoalObjective([queued])).toBeNull();
     expect(foldActiveChatGoalObjective([active])).toBe("Ship the refactor");
+    expect(foldActiveChatGoalObjective([open])).toBe("Ship the refactor");
+    expect(foldActiveChatGoalObjective([active, paused])).toBe(
+      foldActiveChatGoalObjective([open, close]),
+    );
     expect(foldActiveChatGoalObjective([active, queued])).toBe(
       "Ship the refactor",
     );
     expect(foldActiveChatGoalObjective([active, queued, paused])).toBeNull();
+  });
+
+  it("uses sequence order when a close is followed by a reopen", () => {
+    const close = {
+      id: "goal-close-later",
+      eventType: "goal.close" as const,
+      content: null,
+      seqId: 30,
+    };
+    const reopened = {
+      id: "goal-reopened",
+      eventType: "goal.open" as const,
+      content: "Reopened objective",
+      seqId: 31,
+    };
+
+    expect(foldActiveChatGoalObjective([reopened, close])).toBe(
+      "Reopened objective",
+    );
+    expect(
+      foldActiveChatGoalObjective([
+        reopened,
+        { ...close, id: "goal-final-close", seqId: 32 },
+      ]),
+    ).toBeNull();
   });
 
   it("keeps the latest settled usage snapshot for each run", () => {

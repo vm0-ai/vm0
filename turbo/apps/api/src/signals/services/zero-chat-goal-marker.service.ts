@@ -1,4 +1,5 @@
 import type { ChatEventGoalEvent } from "@vm0/db/schema/chat-event";
+import { CHAT_GOAL_MARKER_EVENT_TYPES } from "@vm0/api-contracts/contracts/chat-events";
 import { not, type SQL } from "drizzle-orm";
 
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
@@ -9,11 +10,10 @@ import type { Tx } from "../../lib/db-types";
 type DbTransaction = Tx;
 
 /**
- * Goal state is published into the chat thread as assistant control messages so
- * the web client can fold the current goal state from the message stream
- * without calling the goal API for display. Marker rows are not conversation:
- * they carry only goal_event, and transcript/search/unread queries exclude
- * them.
+ * Goal state is published into the chat thread as an assistant UI projection.
+ * thread_goals remains authoritative for runtime state and mutations. This
+ * Stage 3 writer intentionally keeps the legacy goal.changed + goal_event wire
+ * shape until the Stage 5 content-marker cutover.
  */
 export async function appendGoalEventMarker(
   tx: DbTransaction,
@@ -56,5 +56,5 @@ export function clearedGoalEvent(): ChatEventGoalEvent {
  * because the client needs markers to fold active-goal display state.
  */
 export function excludeGoalMarkerCondition() {
-  return not(chatEventTypeIn(["goal.changed"]) as SQL);
+  return not(chatEventTypeIn(CHAT_GOAL_MARKER_EVENT_TYPES) as SQL);
 }

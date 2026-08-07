@@ -365,6 +365,13 @@
       "when": 1786115651214,
       "tag": "0859_messy_senator_kelly",
       "breakpoints": true
+    },
+    {
+      "idx": 860,
+      "version": "7",
+      "when": 1786119747451,
+      "tag": "0860_striped_shadow_king",
+      "breakpoints": true
     }
   ]
 }

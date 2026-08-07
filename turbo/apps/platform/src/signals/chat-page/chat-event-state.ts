@@ -1,6 +1,7 @@
 import {
   chatEventCompatibilityRole,
   isBrowserLifecycleEventType,
+  isChatGoalMarkerEventType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
   terminatedChatRunIds,
@@ -29,8 +30,17 @@ export function isQueueMarkerEvent(
 
 export function isGoalMarkerEvent(
   event: ChatEvent,
-): event is Extract<ChatEvent, { eventType: "goal.changed" }> {
-  return event.eventType === "goal.changed";
+): event is Extract<
+  ChatEvent,
+  { eventType: "goal.open" | "goal.close" | "goal.changed" }
+> {
+  return isChatGoalMarkerEventType(event.eventType);
+}
+
+export function isFollowupsEvent(
+  event: ChatEvent,
+): event is Extract<ChatEvent, { eventType: "output.followups" }> {
+  return event.eventType === "output.followups";
 }
 
 export function isGoalQueueEvent(

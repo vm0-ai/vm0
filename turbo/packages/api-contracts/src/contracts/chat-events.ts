@@ -20,6 +20,8 @@ export const CHAT_EVENT_TYPES = [
   "control.revoke",
   "browser.open",
   "browser.close",
+  "goal.open",
+  "goal.close",
   "goal.changed",
   "usage.recorded",
 ] as const;
@@ -30,6 +32,26 @@ export type ChatEventType = z.infer<typeof chatEventTypeSchema>;
 export type ChatEventCompatibilityRole = "user" | "assistant";
 export type ChatEventRunLifecycle = "completed" | "failed" | "cancelled";
 export type ChatRunFoldState = "queued" | "dequeued" | ChatEventRunLifecycle;
+
+export const CHAT_EVENT_USER_MESSAGE_TEXT_TYPES = [
+  "input.prompt",
+  "input.rejected",
+] as const satisfies readonly ChatEventType[];
+
+export const CHAT_EVENT_CONTENT_TEXT_TYPES = [
+  "output.message",
+  "output.error",
+  "run.queued",
+  "run.completed",
+  "run.failed",
+  "run.cancelled",
+] as const satisfies readonly ChatEventType[];
+
+export const CHAT_GOAL_MARKER_EVENT_TYPES = [
+  "goal.open",
+  "goal.close",
+  "goal.changed",
+] as const satisfies readonly ChatEventType[];
 
 const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   "input.prompt": [
@@ -66,6 +88,8 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   ],
   "browser.open": [],
   "browser.close": [],
+  "goal.open": [],
+  "goal.close": [],
   "goal.changed": [],
   "usage.recorded": [],
 } satisfies Record<ChatEventType, readonly ChatEventType[]>;
@@ -89,6 +113,8 @@ const CHAT_RUN_FOLD_STATES = {
   "control.revoke": null,
   "browser.open": null,
   "browser.close": null,
+  "goal.open": null,
+  "goal.close": null,
   "goal.changed": null,
   "usage.recorded": null,
 } satisfies Record<ChatEventType, ChatRunFoldState | null>;
@@ -99,6 +125,8 @@ interface ChatEventFoldInput {
   readonly runId?: string | null;
   readonly interruptsRunId?: string;
   readonly revokesEventId?: string | null;
+  readonly seqId?: number;
+  readonly content?: string | null;
   readonly goalEvent?: ZeroGoalEvent;
 }
 
@@ -132,6 +160,8 @@ const CHAT_EVENT_COMPATIBILITY_ROLES = {
   "control.revoke": "user",
   "browser.open": "assistant",
   "browser.close": "assistant",
+  "goal.open": "assistant",
+  "goal.close": "assistant",
   "goal.changed": "assistant",
   "usage.recorded": "assistant",
 } satisfies Record<ChatEventType, ChatEventCompatibilityRole>;
@@ -193,6 +223,30 @@ export function isBrowserLifecycleEventType(
   eventType: ChatEventType,
 ): eventType is "browser.open" | "browser.close" {
   return eventType === "browser.open" || eventType === "browser.close";
+}
+
+export function isChatEventUserMessageTextType(
+  eventType: ChatEventType,
+): eventType is (typeof CHAT_EVENT_USER_MESSAGE_TEXT_TYPES)[number] {
+  return (
+    CHAT_EVENT_USER_MESSAGE_TEXT_TYPES as readonly ChatEventType[]
+  ).includes(eventType);
+}
+
+export function isChatEventContentTextType(
+  eventType: ChatEventType,
+): eventType is (typeof CHAT_EVENT_CONTENT_TEXT_TYPES)[number] {
+  return (CHAT_EVENT_CONTENT_TEXT_TYPES as readonly ChatEventType[]).includes(
+    eventType,
+  );
+}
+
+export function isChatGoalMarkerEventType(
+  eventType: ChatEventType,
+): eventType is (typeof CHAT_GOAL_MARKER_EVENT_TYPES)[number] {
+  return (CHAT_GOAL_MARKER_EVENT_TYPES as readonly ChatEventType[]).includes(
+    eventType,
+  );
 }
 
 export function isValidChatEventRevocation(
@@ -315,20 +369,53 @@ export function foldActiveChatGoalObjective(
   events: readonly ChatEventFoldInput[],
 ): string | null {
   let objective: string | null = null;
-  for (const event of events) {
-    if (event.eventType !== "goal.changed" || event.goalEvent === undefined) {
+
+  const goalEvents = events.filter((event) => {
+    return isChatGoalMarkerEventType(event.eventType);
+  });
+  const orderedEvents = goalEvents.every((event) => {
+    return event.seqId !== undefined;
+  })
+    ? [...goalEvents].sort((left, right) => {
+        return (left.seqId ?? 0) - (right.seqId ?? 0);
+      })
+    : goalEvents;
+
+  for (const event of orderedEvents) {
+    if (event.eventType === "goal.open") {
+      objective = event.content?.trim() || null;
       continue;
     }
-    if (event.goalEvent.type === "cleared") {
+    if (event.eventType === "goal.close") {
       objective = null;
-    } else if (event.goalEvent.status === "active") {
-      objective = event.goalEvent.objectiveBrief;
-    } else {
-      objective = null;
+      continue;
+    }
+
+    const legacyObjective = legacyGoalChangedObjective(event);
+    if (legacyObjective !== undefined) {
+      objective = legacyObjective;
     }
   }
   const trimmed = objective?.trim();
   return trimmed || null;
+}
+
+function legacyGoalChangedObjective(
+  event: ChatEventFoldInput,
+): string | null | undefined {
+  if (event.eventType !== "goal.changed" || event.goalEvent === undefined) {
+    return undefined;
+  }
+
+  // Stage 3 rollout compatibility: current writers, persisted rows, and old
+  // web/app clients still use goal.changed + goalEvent. Delete this reader in
+  // Stage 5 after the Stage 4 client floor and content-marker writer cutover.
+  if (event.goalEvent.type === "cleared") {
+    return null;
+  }
+  return event.goalEvent.status === "active"
+    ? event.goalEvent.objectiveBrief
+    : null;
 }
 
 export function foldLatestChatUsageByRunId<

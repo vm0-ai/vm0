@@ -32,6 +32,7 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
+  insertContentFollowupsEventFixture,
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
@@ -2948,6 +2949,48 @@ describe("CHAT-01 chat search index", () => {
     expect(stable.results).toHaveLength(1);
   }, 60_000);
 
+  it("excludes future follow-up content from indexed matches and context", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = bdd.user({ orgId });
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Follow-up search exclusion agent",
+    });
+    await enableChatSearchIndex(owner);
+
+    const visibleNeedle = `visiblemessage${randomUUID().replaceAll("-", "")}`;
+    const followupOnlyNeedle = `futurefollowup${randomUUID().replaceAll("-", "")}`;
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: visibleNeedle,
+    });
+    await insertContentFollowupsEventFixture({
+      threadId,
+      content: JSON.stringify({
+        version: 1,
+        followups: [{ prompt: followupOnlyNeedle }],
+      }),
+    });
+
+    const tick = await projectChatEventSearch();
+    expect(tick.success).toBeTruthy();
+
+    const visibleHit = await chat.searchChat(owner, visibleNeedle);
+    expect(visibleHit.results).toHaveLength(1);
+    const context = [
+      ...(visibleHit.results[0]?.contextBefore ?? []),
+      ...(visibleHit.results[0]?.contextAfter ?? []),
+    ];
+    expect(
+      context.some((message) => {
+        return message.content.includes(followupOnlyNeedle);
+      }),
+    ).toBeFalsy();
+
+    const followupHit = await chat.searchChat(owner, followupOnlyNeedle);
+    expect(followupHit.results).toStrictEqual([]);
+  }, 60_000);
+
   it("indexes assistant output through the projection", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Search index assistant agent",
@@ -2981,7 +3024,6 @@ describe("CHAT-01 chat search index", () => {
     expect(assistantHit.results[0]?.matchedMessage.content).toBe(
       "axolotl 部署一切正常",
     );
-
     // The prompt and the assistant reply share the 部署 bigram; run
     // lifecycle rows around them stay out of the index.
     const both = await chat.searchChat(actor, "部署");

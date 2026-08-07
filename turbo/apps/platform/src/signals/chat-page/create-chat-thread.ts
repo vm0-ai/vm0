@@ -42,6 +42,7 @@ import type {
 } from "./chat-event-types.ts";
 import {
   chatThreadArtifactsContract,
+  resolveChatEventRecommendedFollowups,
   type GenerationTemplateRequest,
   type ChatEvent as PersistedChatEvent,
   type ResolvedAttachFile,
@@ -52,6 +53,7 @@ import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
+  isChatEventContentTextType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -77,6 +79,7 @@ import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 import {
   deriveRunIndicatorStateFromChatEvents,
   groupSemanticChatEvents,
+  isFollowupsEvent,
   isGoalMarkerEvent,
   isGoalQueueEvent,
   isInterruptControlEvent,
@@ -1099,6 +1102,7 @@ function skipsEventBodyRendering(event: ChatEvent): boolean {
     isRecallControlEvent(event) ||
     isQueueMarkerEvent(event) ||
     isGoalQueueEvent(event) ||
+    isFollowupsEvent(event) ||
     isGoalMarkerEvent(event)
   );
 }
@@ -1427,15 +1431,18 @@ function latestRecommendedFollowupsFromGroups(
       ) {
         continue;
       }
-      if (event.content?.trim()) {
+      if (event.eventType === "output.followups") {
+        const followups = resolveChatEventRecommendedFollowups(event);
+        if (followups.length > 0) {
+          return { eventId: event.id, followups };
+        }
         return null;
       }
-      if (event.eventType !== "output.followups") {
-        continue;
-      }
-      const followups = event.recommendedFollowups;
-      if (followups.length > 0) {
-        return { eventId: event.id, followups };
+      if (
+        isChatEventContentTextType(event.eventType) &&
+        event.content?.trim()
+      ) {
+        return null;
       }
     }
   }
@@ -1547,6 +1554,7 @@ function latestAssistantTextCreatedAtFromRaw(
     }
     if (
       chatEventCompatibilityRole(event.eventType) === "assistant" &&
+      isChatEventContentTextType(event.eventType) &&
       !isUsageEvent(event) &&
       !isQueueMarkerEvent(event) &&
       !isGoalMarkerEvent(event) &&
