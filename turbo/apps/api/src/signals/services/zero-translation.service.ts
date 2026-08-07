@@ -148,7 +148,8 @@ export const zeroTranslation$ = command(
           { role: "user", content: translationInput(args.body) },
         ],
         ZERO_TRANSLATION_MAX_TOKENS,
-        { signal: requestSignal, temperature: 0 },
+        { temperature: 0 },
+        requestSignal,
       ),
     );
     signal.throwIfAborted();

@@ -697,7 +697,6 @@ const transcribeAudioBlob$ = command(
 interface VoiceSegmentSessionOptions {
   readonly initialRecorder: MediaRecorder;
   readonly stream: MediaStream;
-  readonly signal: AbortSignal;
   readonly autoSegment: boolean;
   readonly onSegmentTranscribed: VoiceSegmentTranscribedCallback;
   readonly transcribeBlob: (
@@ -713,18 +712,18 @@ interface VoiceSegmentSessionOptions {
 
 async function uploadCapturedBlob(
   options: VoiceSegmentSessionOptions,
-  blob: Blob | null,
-  mimeType: string,
+  segment: RecordedVoiceSegment,
   captureReason: VoiceSegmentReason,
   upload: boolean,
+  signal: AbortSignal,
 ): Promise<string> {
-  if (!blob || !upload) {
+  if (!segment.blob || !upload) {
     return "";
   }
 
   const result = await options.transcribeBlob(
-    { blob, mimeType, captureReason },
-    options.signal,
+    { blob: segment.blob, mimeType: segment.mimeType, captureReason },
+    signal,
   );
   if (!result.ok) {
     if (result.quotaExceeded) {
@@ -740,12 +739,13 @@ function createVoiceSegmentCapture(
     readonly activeRecorder: () => MediaRecorder;
     readonly startNextRecorder: () => void;
   },
+  signal: AbortSignal,
 ): CaptureVoiceSegment {
   let captureQueue: Promise<void> = Promise.resolve();
 
   return async (reason, upload): Promise<RecordedVoiceSegment> => {
     const previousCapture = captureQueue;
-    const nextCapture = createDeferredPromise<void>(options.signal);
+    const nextCapture = createDeferredPromise<void>(signal);
     captureQueue = nextCapture.promise;
 
     await previousCapture;
@@ -756,13 +756,13 @@ function createVoiceSegmentCapture(
         const recorder = options.activeRecorder();
         mimeType = recorder.mimeType;
         if (reason === "stop") {
-          blob = await stopRecorderAndCaptureData(recorder, options.signal);
+          blob = await stopRecorderAndCaptureData(recorder, signal);
         } else if (upload && recorder.state !== "inactive") {
-          blob = await stopRecorderAndCaptureData(recorder, options.signal);
-          options.signal.throwIfAborted();
+          blob = await stopRecorderAndCaptureData(recorder, signal);
+          signal.throwIfAborted();
           options.startNextRecorder();
         }
-        options.signal.throwIfAborted();
+        signal.throwIfAborted();
       })(),
       () => {
         nextCapture.resolve(undefined);
@@ -777,6 +777,7 @@ function createVoiceSegmentTranscriber(
   options: VoiceSegmentSessionOptions,
   captureSegment: CaptureVoiceSegment,
   clearCurrentSegmentVoice: () => void,
+  signal: AbortSignal,
 ): VoiceSegmentTranscriber {
   const pendingTranscriptions: Promise<string>[] = [];
   let uploadQueue: Promise<void> = Promise.resolve();
@@ -787,18 +788,12 @@ function createVoiceSegmentTranscriber(
     upload: boolean,
   ): Promise<string> => {
     const previousUpload = uploadQueue;
-    const nextUpload = createDeferredPromise<void>(options.signal);
+    const nextUpload = createDeferredPromise<void>(signal);
     uploadQueue = nextUpload.promise;
 
     await previousUpload;
     return await withCleanup(
-      uploadCapturedBlob(
-        options,
-        segment.blob,
-        segment.mimeType,
-        reason,
-        upload,
-      ),
+      uploadCapturedBlob(options, segment, reason, upload, signal),
       () => {
         if (!nextUpload.settled()) {
           nextUpload.resolve(undefined);
@@ -847,7 +842,7 @@ function createVoiceSegmentTranscriber(
         captureAndUploadSegment(reason, upload),
       ]);
       if (result.status === "rejected") {
-        if (!options.signal.aborted) {
+        if (!signal.aborted) {
           L.error("Voice segment transcription failed", result.reason);
           toast.error(transcriptionFailedMessage());
         }
@@ -909,28 +904,33 @@ function createVoiceSilenceTimer(
 
 function createVoiceSegmentSession(
   options: VoiceSegmentSessionOptions,
+  signal: AbortSignal,
 ): VoiceRecordingSession {
   let currentSegmentHasVoice = false;
   let stopped = false;
   let activeRecorder = options.initialRecorder;
-  const captureSegment = createVoiceSegmentCapture({
-    ...options,
-    activeRecorder: () => {
-      return activeRecorder;
+  const captureSegment = createVoiceSegmentCapture(
+    {
+      ...options,
+      activeRecorder: () => {
+        return activeRecorder;
+      },
+      startNextRecorder: () => {
+        const recorder = createMediaRecorder(options.stream);
+        recorder.start();
+        activeRecorder = recorder;
+        options.onRecorderChanged(recorder);
+      },
     },
-    startNextRecorder: () => {
-      const recorder = createMediaRecorder(options.stream);
-      recorder.start();
-      activeRecorder = recorder;
-      options.onRecorderChanged(recorder);
-    },
-  });
+    signal,
+  );
   const transcriber = createVoiceSegmentTranscriber(
     options,
     captureSegment,
     () => {
       currentSegmentHasVoice = false;
     },
+    signal,
   );
 
   const shouldUploadStopSegment = () => {
@@ -1008,7 +1008,6 @@ export const startRecording$ = command(
       { once: true },
     );
     set(prepareRecordingStart$);
-
     let audioActivityMonitor: AudioActivityMonitor | null = null;
     let voiceActivityReliable = false;
     let silenceStop: ReturnType<typeof createDeferredPromise<void>> | null =
@@ -1024,10 +1023,9 @@ export const startRecording$ = command(
         }
 
         const recorder = createMediaRecorder(stream);
-        const recordingSession = createVoiceSegmentSession({
+        const sessionOptions: VoiceSegmentSessionOptions = {
           initialRecorder: recorder,
           stream,
-          signal,
           autoSegment,
           onSegmentTranscribed,
           transcribeBlob: (input, uploadSignal) => {
@@ -1050,10 +1048,11 @@ export const startRecording$ = command(
           onRecorderChanged: (nextRecorder) => {
             set(internalRecorder$, nextRecorder);
           },
-        });
+        };
+        const session = createVoiceSegmentSession(sessionOptions, signal);
 
         signal.addEventListener("abort", () => {
-          recordingSession.cancel();
+          session.cancel();
           if (audioActivityMonitor) {
             stopAudioActivityMonitor(audioActivityMonitor);
           }
@@ -1064,8 +1063,8 @@ export const startRecording$ = command(
         const recordingStartedAt = set(startMediaRecorder$, recorder);
         set(internalStream$, stream);
         set(internalRecorder$, recorder);
-        set(internalRecordingSession$, recordingSession);
-        return { stream, session: recordingSession, recordingStartedAt };
+        set(internalRecordingSession$, session);
+        return { stream, session, recordingStartedAt };
       })(),
       () => {
         if (get(internalStartingPromise$) === starting) {

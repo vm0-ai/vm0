@@ -100,23 +100,27 @@ const sendMessage$ = command(async ({ get, set }, signal: AbortSignal) => {
   const receiveId = userOpenId ?? body.chat;
   let delivery: ReturnType<typeof sendFeishuMessage>;
   if (body.replyToMessageId) {
-    delivery = replyWithFeishuMessage({
-      db,
-      installationId: installation.id,
-      messageId: body.replyToMessageId,
-      message,
-      replyInThread: body.replyInThread,
+    delivery = replyWithFeishuMessage(
+      {
+        db,
+        installationId: installation.id,
+        messageId: body.replyToMessageId,
+        message,
+        replyInThread: body.replyInThread,
+      },
       signal,
-    });
+    );
   } else if (receiveId) {
-    delivery = sendFeishuMessage({
-      db,
-      installationId: installation.id,
-      receiveIdType: userOpenId ? "open_id" : "chat_id",
-      receiveId,
-      message,
+    delivery = sendFeishuMessage(
+      {
+        db,
+        installationId: installation.id,
+        receiveIdType: userOpenId ? "open_id" : "chat_id",
+        receiveId,
+        message,
+      },
       signal,
-    });
+    );
   } else {
     return apiError(400, "BAD_REQUEST", "A Feishu message target is required");
   }

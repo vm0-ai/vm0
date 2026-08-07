@@ -93,11 +93,13 @@ async function claimTeamsChatDelivery(
   return callback;
 }
 
-async function loadTeamsChatDeliveryContext(args: {
-  readonly db: Db;
-  readonly callback: ClaimedTeamsChatDelivery;
-  readonly signal: AbortSignal;
-}) {
+async function loadTeamsChatDeliveryContext(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedTeamsChatDelivery;
+  },
+  signal: AbortSignal,
+) {
   const payload = teamsChatCallbackPayloadSchema.parse(args.callback.payload);
   const [run] = await args.db
     .select({
@@ -116,7 +118,7 @@ async function loadTeamsChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!run?.chatThreadId) {
     throw new Error("Teams chat delivery run context is unavailable");
   }
@@ -139,7 +141,7 @@ async function loadTeamsChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content) {
     throw new Error("Teams chat delivery message is unavailable");
   }
@@ -172,7 +174,7 @@ async function loadTeamsChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { payload, run, messageContent: event.content, binding };
 }
 
@@ -215,11 +217,13 @@ function buildTeamsResponseText(args: {
     .join("\n\n");
 }
 
-async function clearTeamsThinkingReaction(args: {
-  readonly payload: TeamsDeliveryTarget;
-  readonly serviceUrl: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function clearTeamsThinkingReaction(
+  args: {
+    readonly payload: TeamsDeliveryTarget;
+    readonly serviceUrl: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (
     args.payload.conversationType === "personal" ||
     !args.payload.activityId
@@ -228,16 +232,18 @@ async function clearTeamsThinkingReaction(args: {
   }
 
   const cleared = await settleIncludingAbort(
-    deleteTeamsReaction({
-      serviceUrl: args.serviceUrl,
-      conversationId: args.payload.conversationId,
-      activityId: args.payload.activityId,
-      tenantId: args.payload.tenantId,
-      reactionType: TEAMS_THINKING_REACTION_TYPE,
-      signal: args.signal,
-    }),
+    deleteTeamsReaction(
+      {
+        serviceUrl: args.serviceUrl,
+        conversationId: args.payload.conversationId,
+        activityId: args.payload.activityId,
+        tenantId: args.payload.tenantId,
+        reactionType: TEAMS_THINKING_REACTION_TYPE,
+      },
+      signal,
+    ),
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!cleared.ok) {
     L.warn("Failed to clear canonical Teams thinking reaction", {
       conversationId: args.payload.conversationId,
@@ -255,13 +261,15 @@ async function clearTeamsThinkingReaction(args: {
   }
 }
 
-async function deliverClaimedTeamsChatCallback(args: {
-  readonly db: Db;
-  readonly callback: ClaimedTeamsChatDelivery;
-  readonly signal: AbortSignal;
-}): Promise<"delivered" | "skipped_revoked"> {
+async function deliverClaimedTeamsChatCallback(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedTeamsChatDelivery;
+  },
+  signal: AbortSignal,
+): Promise<"delivered" | "skipped_revoked"> {
   const { payload, run, messageContent, binding } =
-    await loadTeamsChatDeliveryContext(args);
+    await loadTeamsChatDeliveryContext(args, signal);
   if (!binding) {
     return "skipped_revoked";
   }
@@ -275,50 +283,56 @@ async function deliverClaimedTeamsChatCallback(args: {
     }),
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const replyTo =
     payload.teamsUserDisplayName ??
     payload.teamsUserPrincipalName ??
     payload.teamsUserId;
-  const presentation = await resolveIntegrationAgentResponsePresentation({
-    db: args.db,
-    orgId: run.orgId,
-    userId: run.userId,
-    runId: args.callback.runId,
-    agentId: run.agentId,
-    replyToMention:
-      payload.conversationType !== "personal" && mentionerCount > 1
-        ? replyTo
-        : undefined,
-    getFeatureOverrides: () => {
-      return Promise.resolve(featureContext.overrides ?? {});
+  const presentation = await resolveIntegrationAgentResponsePresentation(
+    {
+      db: args.db,
+      orgId: run.orgId,
+      userId: run.userId,
+      runId: args.callback.runId,
+      agentId: run.agentId,
+      replyToMention:
+        payload.conversationType !== "personal" && mentionerCount > 1
+          ? replyTo
+          : undefined,
+      getFeatureOverrides: () => {
+        return Promise.resolve(featureContext.overrides ?? {});
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
 
   const serviceUrl = payload.serviceUrl.trim() || binding.serviceUrl || "";
   if (!serviceUrl) {
     throw new Error("Microsoft Teams serviceUrl is missing");
   }
-  const result = await sendTeamsMessageReply({
-    serviceUrl,
-    conversationId: payload.conversationId,
-    activityId: payload.activityId ?? undefined,
-    tenantId: payload.tenantId,
-    text: buildTeamsResponseText({
-      mainText: messageContent,
-      logsUrl: presentation.logsUrl,
-      footerText: presentation.footerText,
-    }),
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  await clearTeamsThinkingReaction({
-    payload,
-    serviceUrl,
-    signal: args.signal,
-  });
+  const result = await sendTeamsMessageReply(
+    {
+      serviceUrl,
+      conversationId: payload.conversationId,
+      activityId: payload.activityId ?? undefined,
+      tenantId: payload.tenantId,
+      text: buildTeamsResponseText({
+        mainText: messageContent,
+        logsUrl: presentation.logsUrl,
+        footerText: presentation.footerText,
+      }),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  await clearTeamsThinkingReaction(
+    {
+      payload,
+      serviceUrl,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     throw new Error(`Microsoft Teams API error: ${result.error}`);
   }
@@ -338,11 +352,13 @@ export async function dispatchTeamsChatDeliveryOnce(
   }
 
   const delivery = await settleIncludingAbort(
-    deliverClaimedTeamsChatCallback({
-      db,
-      callback,
+    deliverClaimedTeamsChatCallback(
+      {
+        db,
+        callback,
+      },
       signal,
-    }),
+    ),
   );
   if (!delivery.ok) {
     const message =
@@ -396,7 +412,8 @@ interface TeamsAdmissionFailureContext {
 }
 
 async function loadTeamsAdmissionFailureContext(
-  args: TeamsChatAdmissionFailureArgs,
+  args: Omit<TeamsChatAdmissionFailureArgs, "signal">,
+  signal: AbortSignal,
 ): Promise<TeamsAdmissionFailureContext | undefined> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
@@ -438,7 +455,7 @@ async function loadTeamsAdmissionFailureContext(
       )
       .limit(1),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const event = eventRows[0];
   const binding = bindingRows[0];
   if (!event?.content || !binding) {
@@ -456,7 +473,8 @@ interface TeamsAdmissionFailurePresentation {
 }
 
 async function resolveTeamsAdmissionFailurePresentation(
-  args: TeamsChatAdmissionFailureArgs,
+  args: Omit<TeamsChatAdmissionFailureArgs, "signal">,
+  signal: AbortSignal,
 ): Promise<TeamsAdmissionFailurePresentation> {
   const [mentionerCount, featureContext, orgRows, agentRows] =
     await Promise.all([
@@ -478,7 +496,7 @@ async function resolveTeamsAdmissionFailurePresentation(
         .where(eq(zeroAgents.id, args.agentId))
         .limit(1),
     ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const footerParts: string[] = [];
   const agentLabel = agentRows[0]?.displayName ?? agentRows[0]?.name;
@@ -503,23 +521,27 @@ async function resolveTeamsAdmissionFailurePresentation(
   };
 }
 
-async function clearTeamsAdmissionThinkingReaction(args: {
-  readonly target: TeamsDeliveryTarget;
-  readonly serviceUrl: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function clearTeamsAdmissionThinkingReaction(
+  args: {
+    readonly target: TeamsDeliveryTarget;
+    readonly serviceUrl: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (args.target.conversationType === "personal" || !args.target.activityId) {
     return;
   }
-  const clearResult = await deleteTeamsReaction({
-    serviceUrl: args.serviceUrl,
-    conversationId: args.target.conversationId,
-    activityId: args.target.activityId,
-    tenantId: args.target.tenantId,
-    reactionType: TEAMS_THINKING_REACTION_TYPE,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const clearResult = await deleteTeamsReaction(
+    {
+      serviceUrl: args.serviceUrl,
+      conversationId: args.target.conversationId,
+      activityId: args.target.activityId,
+      tenantId: args.target.tenantId,
+      reactionType: TEAMS_THINKING_REACTION_TYPE,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (clearResult.kind === "teams-error") {
     L.warn("Failed to clear Teams admission thinking reaction", {
       conversationId: args.target.conversationId,
@@ -530,36 +552,44 @@ async function clearTeamsAdmissionThinkingReaction(args: {
 }
 
 export async function deliverTeamsChatAdmissionFailure(
-  args: TeamsChatAdmissionFailureArgs,
+  args: Omit<TeamsChatAdmissionFailureArgs, "signal">,
+  signal: AbortSignal,
 ): Promise<void> {
-  const context = await loadTeamsAdmissionFailureContext(args);
+  const context = await loadTeamsAdmissionFailureContext(args, signal);
   if (!context) {
     return;
   }
-  const presentation = await resolveTeamsAdmissionFailurePresentation(args);
+  const presentation = await resolveTeamsAdmissionFailurePresentation(
+    args,
+    signal,
+  );
   const serviceUrl =
     args.target.serviceUrl.trim() || context.installationServiceUrl || "";
   if (!serviceUrl) {
     throw new Error("Microsoft Teams serviceUrl is missing");
   }
-  const result = await sendTeamsMessageReply({
-    serviceUrl,
-    conversationId: args.target.conversationId,
-    activityId: args.target.activityId ?? undefined,
-    tenantId: args.target.tenantId,
-    text: buildTeamsResponseText({
-      mainText: context.messageContent,
-      logsUrl: presentation.logsUrl,
-      footerText: presentation.footerText,
-    }),
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  await clearTeamsAdmissionThinkingReaction({
-    target: args.target,
-    serviceUrl,
-    signal: args.signal,
-  });
+  const result = await sendTeamsMessageReply(
+    {
+      serviceUrl,
+      conversationId: args.target.conversationId,
+      activityId: args.target.activityId ?? undefined,
+      tenantId: args.target.tenantId,
+      text: buildTeamsResponseText({
+        mainText: context.messageContent,
+        logsUrl: presentation.logsUrl,
+        footerText: presentation.footerText,
+      }),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  await clearTeamsAdmissionThinkingReaction(
+    {
+      target: args.target,
+      serviceUrl,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     throw new Error(`Microsoft Teams API error: ${result.error}`);
   }

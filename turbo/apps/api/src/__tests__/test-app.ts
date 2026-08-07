@@ -57,7 +57,10 @@ function createAppFetcher(
   routes: readonly RouteEntry[],
   signal?: AbortSignal,
 ): ApiFetcher {
-  const app = createAppWithRoutes({ signal: signal ?? context.signal, routes });
+  const app = createAppWithRoutes({
+    signal: signal ?? context.signal,
+    routes,
+  });
 
   return (args) => {
     return requestApp(app, args);

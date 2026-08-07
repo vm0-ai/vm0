@@ -85,7 +85,8 @@ async function queryAgentRunsDaily(
 }
 
 async function appendAgentRunsDaily(
-  args: AppendAgentRunsDailyArgs,
+  args: Omit<AppendAgentRunsDailyArgs, "signal">,
+  signal: AbortSignal,
 ): Promise<void> {
   args.daily.push(
     ...(await queryAgentRunsDaily(
@@ -96,7 +97,7 @@ async function appendAgentRunsDaily(
       args.to,
     )),
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 async function cacheUsageRows(
@@ -128,7 +129,8 @@ async function cacheUsageRows(
 }
 
 async function appendHistoricalUsage(
-  args: AppendHistoricalUsageArgs,
+  args: Omit<AppendHistoricalUsageArgs, "signal">,
+  signal: AbortSignal,
 ): Promise<void> {
   const fromStr = args.historicalFrom.toISOString().split("T")[0]!;
   const toStr = args.historicalTo.toISOString().split("T")[0]!;
@@ -148,7 +150,7 @@ async function appendHistoricalUsage(
         lt(usageDaily.date, toStr),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const cachedDates = new Set(
     cachedRows.map((row) => {
@@ -177,7 +179,7 @@ async function appendHistoricalUsage(
     args.historicalFrom,
     args.historicalTo,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const uncachedRows = computedRows.filter((row) => {
     return !cachedDates.has(row.date);
@@ -186,7 +188,7 @@ async function appendHistoricalUsage(
 
   if (uncachedRows.length > 0) {
     await cacheUsageRows(args.db, args.summary, uncachedRows);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 }
 
@@ -239,39 +241,47 @@ export const usageSummary$ = command(
     const daily: DailyUsage[] = [];
 
     if (historicalFrom >= historicalTo) {
-      await appendAgentRunsDaily({
-        daily,
-        db,
-        summary: args,
-        from: args.startDate,
-        to: args.endDate,
+      await appendAgentRunsDaily(
+        {
+          daily,
+          db,
+          summary: args,
+          from: args.startDate,
+          to: args.endDate,
+        },
         signal,
-      });
+      );
     } else {
-      await appendAgentRunsDaily({
-        daily,
-        db,
-        summary: args,
-        from: args.startDate,
-        to: historicalFrom,
+      await appendAgentRunsDaily(
+        {
+          daily,
+          db,
+          summary: args,
+          from: args.startDate,
+          to: historicalFrom,
+        },
         signal,
-      });
-      await appendHistoricalUsage({
-        daily,
-        db,
-        summary: args,
-        historicalFrom,
-        historicalTo,
+      );
+      await appendHistoricalUsage(
+        {
+          daily,
+          db,
+          summary: args,
+          historicalFrom,
+          historicalTo,
+        },
         signal,
-      });
-      await appendAgentRunsDaily({
-        daily,
-        db,
-        summary: args,
-        from: historicalTo,
-        to: args.endDate,
+      );
+      await appendAgentRunsDaily(
+        {
+          daily,
+          db,
+          summary: args,
+          from: historicalTo,
+          to: args.endDate,
+        },
         signal,
-      });
+      );
     }
 
     return summarizeUsage(args, daily);

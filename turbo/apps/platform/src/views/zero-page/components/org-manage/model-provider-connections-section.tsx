@@ -55,13 +55,10 @@ const ZERO_BORDER = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-function AddConnectionMenu({
-  settingsDialogSignal,
-}: {
-  settingsDialogSignal: AbortSignal;
-}) {
+function AddConnectionMenu() {
   const { t } = useTranslation();
   const openCreate = useSet(openCreateModelProviderConnection$);
+  const settingsDialogSignal = useGet(settingsDialogSignal$);
   const templateLabels: Record<ModelProviderConnectionTemplate, string> = {
     custom: t(($) => {
       return $.settings.models.gateways.presets.custom;
@@ -82,6 +79,9 @@ function AddConnectionMenu({
     "openrouter",
     "fireworks",
   ];
+  if (!settingsDialogSignal) {
+    return null;
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -117,14 +117,16 @@ function AddConnectionMenu({
 
 function ConnectionCard({
   connection,
-  settingsDialogSignal,
 }: {
   connection: ModelProviderConnectionResponse;
-  settingsDialogSignal: AbortSignal;
 }) {
   const { t } = useTranslation();
   const openEdit = useSet(openEditModelProviderConnection$);
   const openDelete = useSet(openDeleteModelProviderConnection$);
+  const settingsDialogSignal = useGet(settingsDialogSignal$);
+  if (!settingsDialogSignal) {
+    return null;
+  }
   return (
     <div
       className="flex items-center gap-3 rounded-xl bg-card px-4 py-3"
@@ -517,9 +519,7 @@ export function ModelProviderConnectionsSection() {
         description={t(($) => {
           return $.settings.models.gateways.description;
         })}
-        action={
-          <AddConnectionMenu settingsDialogSignal={settingsDialogSignal} />
-        }
+        action={<AddConnectionMenu />}
       />
       {connections.length === 0 ? (
         <p className="rounded-xl bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
@@ -531,11 +531,7 @@ export function ModelProviderConnectionsSection() {
         <div className="grid gap-2">
           {connections.map((connection) => {
             return (
-              <ConnectionCard
-                key={connection.id}
-                connection={connection}
-                settingsDialogSignal={settingsDialogSignal}
-              />
+              <ConnectionCard key={connection.id} connection={connection} />
             );
           })}
         </div>

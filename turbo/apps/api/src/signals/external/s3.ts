@@ -262,10 +262,15 @@ export function downloadS3BufferWithMaxBytes(
   maxBytes: number,
   signal?: AbortSignal,
 ): Computed<Promise<Buffer>> {
-  return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key, {
-    maxBytes,
+  return downloadS3BufferWithClient(
+    s3ClientForBucket(bucket),
+    bucket,
+    key,
+    {
+      maxBytes,
+    },
     signal,
-  });
+  );
 }
 
 export function downloadS3BufferWithMaxBytesIfChanged(
@@ -296,7 +301,7 @@ export function downloadS3BufferWithMaxBytesIfChanged(
     const response: GetObjectCommandOutput = downloaded.value;
     return {
       kind: "downloaded",
-      buffer: await readS3ObjectBody(response, key, { maxBytes, signal }),
+      buffer: await readS3ObjectBody(response, key, { maxBytes }, signal),
       etag: response.ETag ?? null,
     };
   });
@@ -363,15 +368,16 @@ function downloadS3BufferWithClient(
   client$: Computed<S3Client>,
   bucket: string,
   key: string,
-  options: DownloadS3BufferOptions = {},
+  options: Omit<DownloadS3BufferOptions, "signal"> = {},
+  signal?: AbortSignal,
 ): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
     const client = get(client$);
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
-      { abortSignal: options.signal },
+      { abortSignal: signal },
     );
-    return await readS3ObjectBody(response, key, options);
+    return await readS3ObjectBody(response, key, options, signal);
   });
 }
 
@@ -382,7 +388,8 @@ async function readS3ObjectBody(
     readonly ETag?: string;
   },
   key: string,
-  options: DownloadS3BufferOptions,
+  options: Omit<DownloadS3BufferOptions, "signal">,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
   if (!response.Body) {
     throw new Error("S3 object body is empty");
@@ -391,9 +398,9 @@ async function readS3ObjectBody(
     closeS3Body(response.Body);
     throw new Error("S3 object body is not an async byte stream");
   }
-  if (options.signal?.aborted) {
+  if (signal?.aborted) {
     closeS3Body(response.Body);
-    options.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
   if (
     options.maxBytes !== undefined &&
@@ -411,9 +418,9 @@ async function readS3ObjectBody(
   const chunks: Uint8Array[] = [];
   let totalLength = 0;
   for await (const chunk of response.Body) {
-    if (options.signal?.aborted) {
+    if (signal?.aborted) {
       closeS3Body(response.Body);
-      options.signal.throwIfAborted();
+      signal.throwIfAborted();
     }
     if (!(chunk instanceof Uint8Array)) {
       closeS3Body(response.Body);
@@ -716,14 +723,17 @@ export function putS3Object(
       },
 ): Computed<Promise<void>> {
   const writeOptions = isAbortSignal(options) ? { signal: options } : options;
-  return putS3ObjectWithClient(s3ClientForBucket(bucket), {
-    bucket,
-    key,
-    body,
-    contentType,
-    signal: writeOptions?.signal,
-    metadata: writeOptions?.metadata,
-  });
+  return putS3ObjectWithClient(
+    s3ClientForBucket(bucket),
+    {
+      bucket,
+      key,
+      body,
+      contentType,
+      metadata: writeOptions?.metadata,
+    },
+    writeOptions?.signal,
+  );
 }
 
 interface PutS3ObjectArgs {
@@ -746,7 +756,8 @@ function isAbortSignal(value: unknown): value is AbortSignal {
 
 function putS3ObjectWithClient(
   client$: Computed<S3Client>,
-  args: PutS3ObjectArgs,
+  args: Omit<PutS3ObjectArgs, "signal">,
+  signal?: AbortSignal,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     const client = get(client$);
@@ -758,7 +769,7 @@ function putS3ObjectWithClient(
         ContentType: args.contentType,
         Metadata: args.metadata,
       }),
-      args.signal ? { abortSignal: args.signal } : undefined,
+      signal ? { abortSignal: signal } : undefined,
     );
   });
 }

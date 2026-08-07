@@ -237,14 +237,16 @@ async function acknowledgeMessage(
   tail.lastAcknowledgedSequence = sequenceNumber;
 }
 
-async function resumeFromTranscript(args: {
-  readonly io: PiAgentLoopIo;
-  readonly config: PiStandbyAgentConfig;
-  readonly transcript: PiTranscript;
-  readonly executionEnv: ExecutionEnv;
-  readonly signal: AbortSignal;
-  readonly resume: PiAgentResume;
-}): Promise<{
+async function resumeFromTranscript(
+  args: {
+    readonly io: PiAgentLoopIo;
+    readonly config: PiStandbyAgentConfig;
+    readonly transcript: PiTranscript;
+    readonly executionEnv: ExecutionEnv;
+    readonly resume: PiAgentResume;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly failure: string | undefined;
   readonly lastAcknowledgedSequence: number | undefined;
 }> {
@@ -255,17 +257,19 @@ async function resumeFromTranscript(args: {
   );
   const tail = transcriptTail(args.transcript, args.config.runId);
   let failure: string | undefined;
-  await args.resume({
-    model: args.config.model,
-    systemPrompt: args.config.systemPrompt,
-    messages,
-    executionEnv: args.executionEnv,
-    signal: args.signal,
-    async onMessage(message: PiAgentMessage) {
-      await acknowledgeMessage(args.io, args.config, tail, message);
-      failure ??= messageFailure(message);
+  await args.resume(
+    {
+      model: args.config.model,
+      systemPrompt: args.config.systemPrompt,
+      messages,
+      executionEnv: args.executionEnv,
+      async onMessage(message: PiAgentMessage) {
+        await acknowledgeMessage(args.io, args.config, tail, message);
+        failure ??= messageFailure(message);
+      },
     },
-  });
+    signal,
+  );
   return {
     failure,
     lastAcknowledgedSequence: tail.lastAcknowledgedSequence,
@@ -273,14 +277,16 @@ async function resumeFromTranscript(args: {
 }
 
 /** Run the internal one-shot Pi standby protocol used by guest-agent. */
-export async function runPiStandbyAgentLoop(args: {
-  readonly io: PiAgentLoopIo;
-  readonly config: PiStandbyAgentConfig;
-  readonly executionEnv: ExecutionEnv;
-  readonly signal: AbortSignal;
-  readonly standbyTtlSeconds?: number;
-  readonly resume?: PiAgentResume;
-}): Promise<void> {
+export async function runPiStandbyAgentLoop(
+  args: {
+    readonly io: PiAgentLoopIo;
+    readonly config: PiStandbyAgentConfig;
+    readonly executionEnv: ExecutionEnv;
+    readonly standbyTtlSeconds?: number;
+    readonly resume?: PiAgentResume;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const promptDigest = systemPromptDigest(args.config.systemPrompt);
   await args.io.write({
     type: "pi-ready",
@@ -308,18 +314,20 @@ export async function runPiStandbyAgentLoop(args: {
   }
 
   let requestNumber = 0;
-  while (!args.signal.aborted) {
+  while (!signal.aborted) {
     requestNumber += 1;
     const transcript = await requestTranscript(args.io, requestNumber);
     try {
-      const result = await resumeFromTranscript({
-        io: args.io,
-        config: args.config,
-        transcript,
-        executionEnv: args.executionEnv,
-        signal: args.signal,
-        resume: args.resume ?? runPiAgentResume,
-      });
+      const result = await resumeFromTranscript(
+        {
+          io: args.io,
+          config: args.config,
+          transcript,
+          executionEnv: args.executionEnv,
+          resume: args.resume ?? runPiAgentResume,
+        },
+        signal,
+      );
       await args.io.write({
         type: "pi-complete",
         exitCode: result.failure === undefined ? 0 : 1,
@@ -343,7 +351,7 @@ export async function runPiStandbyAgentLoop(args: {
       throw error;
     }
   }
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 export class StdioPiAgentLoopIo implements PiAgentLoopIo {

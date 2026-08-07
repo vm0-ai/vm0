@@ -5410,23 +5410,29 @@ function runPermissionAction(params: {
   params.runUserGrant();
 }
 
-function createPermissionActionHandler(params: {
-  block: PermissionSignals;
-  pageSignal: AbortSignal;
-  focusedPermission: { name: string } | undefined;
-  status: PermissionActionCardStatus;
-  expirationAvailable: boolean;
-  expiresIn: UserPermissionGrantExpiresIn;
-  applyGrant: ApplyUserPermissionGrantFn;
-  runCallback: (
-    args: {
-      readonly threadId: string;
-      readonly agentId: string;
-      readonly callbackPrompt: string;
-    },
-    signal: AbortSignal,
-  ) => Promise<void>;
-}): () => void {
+function createPermissionActionHandler(
+  params: {
+    block: PermissionSignals;
+    focusedPermission:
+      | {
+          name: string;
+        }
+      | undefined;
+    status: PermissionActionCardStatus;
+    expirationAvailable: boolean;
+    expiresIn: UserPermissionGrantExpiresIn;
+    applyGrant: ApplyUserPermissionGrantFn;
+    runCallback: (
+      args: {
+        readonly threadId: string;
+        readonly agentId: string;
+        readonly callbackPrompt: string;
+      },
+      signal: AbortSignal,
+    ) => Promise<void>;
+  },
+  pageSignal: AbortSignal,
+): () => void {
   return () => {
     const permissionName =
       params.focusedPermission?.name ?? params.block.permission;
@@ -5445,7 +5451,7 @@ function createPermissionActionHandler(params: {
                   ? { expiresIn: params.expiresIn }
                   : {}),
               },
-              params.pageSignal,
+              pageSignal,
             );
             if (params.block.callbackPrompt && params.block.threadId) {
               await params.runCallback(
@@ -5454,7 +5460,7 @@ function createPermissionActionHandler(params: {
                   agentId: params.block.agentId,
                   callbackPrompt: params.block.callbackPrompt,
                 },
-                params.pageSignal,
+                pageSignal,
               );
             }
           })(),
@@ -5661,16 +5667,18 @@ function PermissionActionCardForTarget({
         setExpiresInForScope(durationScope, value);
       }}
       expiresAt={grantExpiresAt}
-      onClick={createPermissionActionHandler({
-        block: signals,
+      onClick={createPermissionActionHandler(
+        {
+          block: signals,
+          focusedPermission: actionState.focusedPermission,
+          status: actionState.status,
+          expirationAvailable,
+          expiresIn,
+          applyGrant,
+          runCallback,
+        },
         pageSignal,
-        focusedPermission: actionState.focusedPermission,
-        status: actionState.status,
-        expirationAvailable,
-        expiresIn,
-        applyGrant,
-        runCallback,
-      })}
+      )}
     />
   );
 }

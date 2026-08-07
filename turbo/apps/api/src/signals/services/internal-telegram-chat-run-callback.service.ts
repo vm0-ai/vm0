@@ -124,13 +124,15 @@ function telegramOwnerWhere(ownerLink: TelegramOwnerLink) {
     : eq(telegramChatThreadRoutes.telegramOfficialUserLinkId, ownerLink.id);
 }
 
-async function loadTelegramOwnerBinding(args: {
-  readonly db: Db;
-  readonly target: TelegramDeliveryTarget;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-}): Promise<TelegramOwnerBinding | undefined> {
+async function loadTelegramOwnerBinding(
+  args: {
+    readonly db: Db;
+    readonly target: TelegramDeliveryTarget;
+    readonly userId: string;
+    readonly orgId: string;
+  },
+  signal: AbortSignal,
+): Promise<TelegramOwnerBinding | undefined> {
   if (args.target.userLinkKind === "official") {
     if (!isOfficialTelegramBotId(args.target.installationId)) {
       return undefined;
@@ -146,7 +148,7 @@ async function loadTelegramOwnerBinding(args: {
         ),
       )
       .limit(1);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     const botToken = getOfficialTelegramBotConfig().botToken;
     return link && botToken
       ? {
@@ -179,7 +181,7 @@ async function loadTelegramOwnerBinding(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!binding) {
     return undefined;
   }
@@ -220,11 +222,13 @@ async function routeStillBindsRun(args: {
   return route !== undefined;
 }
 
-async function loadTelegramChatDeliveryContext(args: {
-  readonly db: Db;
-  readonly callback: ClaimedTelegramChatDelivery;
-  readonly signal: AbortSignal;
-}) {
+async function loadTelegramChatDeliveryContext(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedTelegramChatDelivery;
+  },
+  signal: AbortSignal,
+) {
   const payload = telegramChatCallbackPayloadSchema.parse(
     args.callback.payload,
   );
@@ -245,7 +249,7 @@ async function loadTelegramChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!run?.chatThreadId) {
     throw new Error("Telegram chat delivery run context is unavailable");
   }
@@ -274,19 +278,21 @@ async function loadTelegramChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content) {
     throw new Error("Telegram chat delivery message is unavailable");
   }
 
-  const binding = await loadTelegramOwnerBinding({
-    db: args.db,
-    target: payload,
-    userId: runContext.userId,
-    orgId: runContext.orgId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const binding = await loadTelegramOwnerBinding(
+    {
+      db: args.db,
+      target: payload,
+      userId: runContext.userId,
+      orgId: runContext.orgId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (
     binding &&
     !(await routeStillBindsRun({
@@ -338,14 +344,16 @@ function telegramSendRetryDelayMs(attempt: number): number | undefined {
   }
 }
 
-async function sendMessageWithTelegramRateLimitRetry(args: {
-  readonly botToken: string;
-  readonly chatId: string;
-  readonly text: string;
-  readonly replyToMessageId: number | undefined;
-  readonly messageThreadId: number | undefined;
-  readonly signal: AbortSignal;
-}): Promise<SendTelegramMessageResult> {
+async function sendMessageWithTelegramRateLimitRetry(
+  args: {
+    readonly botToken: string;
+    readonly chatId: string;
+    readonly text: string;
+    readonly replyToMessageId: number | undefined;
+    readonly messageThreadId: number | undefined;
+  },
+  signal: AbortSignal,
+): Promise<SendTelegramMessageResult> {
   for (let attempt = 0; ; attempt++) {
     const result = await sendMessage(args.botToken, args.chatId, args.text, {
       ...(args.replyToMessageId !== undefined
@@ -355,7 +363,7 @@ async function sendMessageWithTelegramRateLimitRetry(args: {
         ? { messageThreadId: args.messageThreadId }
         : {}),
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (result.kind !== "telegram-error" || result.status !== 429) {
       return result;
     }
@@ -367,16 +375,18 @@ async function sendMessageWithTelegramRateLimitRetry(args: {
       attempt: attempt + 1,
       retryDelayMs,
     });
-    await waitForTelegramSendDelay(retryDelayMs, args.signal);
+    await waitForTelegramSendDelay(retryDelayMs, signal);
   }
 }
 
-async function sendTelegramCompletionMessages(args: {
-  readonly botToken: string;
-  readonly target: TelegramDeliveryTarget;
-  readonly htmlOutput: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function sendTelegramCompletionMessages(
+  args: {
+    readonly botToken: string;
+    readonly target: TelegramDeliveryTarget;
+    readonly htmlOutput: string;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "ok"; readonly firstMessageId: number | undefined }
   | Extract<SendTelegramMessageResult, { kind: "telegram-error" }>
 > {
@@ -386,19 +396,21 @@ async function sendTelegramCompletionMessages(args: {
     if (index > 0) {
       await waitForTelegramSendDelay(
         TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS,
-        args.signal,
+        signal,
       );
     }
-    const sent = await sendMessageWithTelegramRateLimitRetry({
-      botToken: args.botToken,
-      chatId: args.target.chatId,
-      text: chunk,
-      replyToMessageId: args.target.isDM
-        ? undefined
-        : Number(args.target.messageId),
-      messageThreadId: args.target.messageThreadId,
-      signal: args.signal,
-    });
+    const sent = await sendMessageWithTelegramRateLimitRetry(
+      {
+        botToken: args.botToken,
+        chatId: args.target.chatId,
+        text: chunk,
+        replyToMessageId: args.target.isDM
+          ? undefined
+          : Number(args.target.messageId),
+        messageThreadId: args.target.messageThreadId,
+      },
+      signal,
+    );
     if (sent.kind === "telegram-error") {
       return sent;
     }
@@ -407,13 +419,15 @@ async function sendTelegramCompletionMessages(args: {
   return { kind: "ok", firstMessageId };
 }
 
-async function resolveTelegramPresentation(args: {
-  readonly db: Db;
-  readonly run: TelegramChatRunContext;
-  readonly runId: string;
-  readonly installationId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
+async function resolveTelegramPresentation(
+  args: {
+    readonly db: Db;
+    readonly run: TelegramChatRunContext;
+    readonly runId: string;
+    readonly installationId: string;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly logsUrl: string | undefined;
   readonly footerText: string | undefined;
 }> {
@@ -427,7 +441,7 @@ async function resolveTelegramPresentation(args: {
       agentId: args.run.agentId,
     }),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return {
     logsUrl: isFeatureEnabled(FeatureSwitchKey.ZeroDebug, featureContext)
       ? `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`
@@ -490,14 +504,16 @@ async function persistTelegramChatDelivery(args: {
   });
 }
 
-async function deliverClaimedTelegramChatCallback(args: {
-  readonly db: Db;
-  readonly callback: ClaimedTelegramChatDelivery;
-  readonly status: "completed" | "failed";
-  readonly signal: AbortSignal;
-}): Promise<"delivered" | "skipped_revoked"> {
+async function deliverClaimedTelegramChatCallback(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedTelegramChatDelivery;
+    readonly status: "completed" | "failed";
+  },
+  signal: AbortSignal,
+): Promise<"delivered" | "skipped_revoked"> {
   const { payload, run, messageContent, binding } =
-    await loadTelegramChatDeliveryContext(args);
+    await loadTelegramChatDeliveryContext(args, signal);
   if (!binding) {
     return "skipped_revoked";
   }
@@ -506,29 +522,33 @@ async function deliverClaimedTelegramChatCallback(args: {
     botToken: binding.botToken,
     target: payload,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   await bestEffort(
     sendChatAction(binding.botToken, payload.chatId, "typing"),
-    args.signal,
+    signal,
   );
-  const presentation = await resolveTelegramPresentation({
-    db: args.db,
-    run,
-    runId: args.callback.runId,
-    installationId: payload.installationId,
-    signal: args.signal,
-  });
+  const presentation = await resolveTelegramPresentation(
+    {
+      db: args.db,
+      run,
+      runId: args.callback.runId,
+      installationId: payload.installationId,
+    },
+    signal,
+  );
   const responseText = args.status === "completed" ? messageContent : undefined;
-  const sent = await sendTelegramCompletionMessages({
-    botToken: binding.botToken,
-    target: payload,
-    htmlOutput: buildTelegramResponse(
-      messageContent,
-      presentation.logsUrl,
-      presentation.footerText,
-    ),
-    signal: args.signal,
-  });
+  const sent = await sendTelegramCompletionMessages(
+    {
+      botToken: binding.botToken,
+      target: payload,
+      htmlOutput: buildTelegramResponse(
+        messageContent,
+        presentation.logsUrl,
+        presentation.footerText,
+      ),
+    },
+    signal,
+  );
   if (sent.kind === "telegram-error") {
     throw new Error(
       `Telegram API error: ${sent.description ?? `HTTP ${sent.status}`}`,
@@ -561,12 +581,14 @@ export async function dispatchTelegramChatDeliveryOnce(
     return;
   }
   const delivery = await settleIncludingAbort(
-    deliverClaimedTelegramChatCallback({
-      db,
-      callback,
-      status,
+    deliverClaimedTelegramChatCallback(
+      {
+        db,
+        callback,
+        status,
+      },
       signal,
-    }),
+    ),
   );
   if (!delivery.ok) {
     const message =
@@ -607,7 +629,8 @@ interface TelegramChatAdmissionFailureArgs {
 }
 
 export async function deliverTelegramChatAdmissionFailure(
-  args: TelegramChatAdmissionFailureArgs,
+  args: Omit<TelegramChatAdmissionFailureArgs, "signal">,
+  signal: AbortSignal,
 ): Promise<void> {
   const [event] = await args.db
     .select({ content: chatEvents.content })
@@ -621,17 +644,19 @@ export async function deliverTelegramChatAdmissionFailure(
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content) {
     return;
   }
-  const binding = await loadTelegramOwnerBinding({
-    db: args.db,
-    target: args.target,
-    userId: args.userId,
-    orgId: args.orgId,
-    signal: args.signal,
-  });
+  const binding = await loadTelegramOwnerBinding(
+    {
+      db: args.db,
+      target: args.target,
+      userId: args.userId,
+      orgId: args.orgId,
+    },
+    signal,
+  );
   if (!binding) {
     return;
   }
@@ -645,12 +670,14 @@ export async function deliverTelegramChatAdmissionFailure(
   ) {
     return;
   }
-  const sent = await sendTelegramCompletionMessages({
-    botToken: binding.botToken,
-    target: args.target,
-    htmlOutput: buildTelegramResponse(event.content),
-    signal: args.signal,
-  });
+  const sent = await sendTelegramCompletionMessages(
+    {
+      botToken: binding.botToken,
+      target: args.target,
+      htmlOutput: buildTelegramResponse(event.content),
+    },
+    signal,
+  );
   if (sent.kind === "telegram-error") {
     throw new Error(
       `Telegram API error: ${sent.description ?? `HTTP ${sent.status}`}`,

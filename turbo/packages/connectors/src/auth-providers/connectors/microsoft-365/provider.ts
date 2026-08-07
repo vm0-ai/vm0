@@ -47,7 +47,7 @@ export const microsoft365Provider: AuthCodeConnectorAuthProvider<"microsoft-365"
     },
     access: {
       kind: "refresh-token",
-      refresh: async (args) => {
+      refresh: async (args, signal: AbortSignal) => {
         const { clientId, clientSecret } = args.authClient;
         return oauthRefreshResultToProviderResult(
           await refreshMicrosoftToken(
@@ -55,7 +55,7 @@ export const microsoft365Provider: AuthCodeConnectorAuthProvider<"microsoft-365"
             clientId,
             clientSecret,
             args.inputs.refreshToken,
-            args.signal,
+            signal,
           ),
         );
       },

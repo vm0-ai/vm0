@@ -186,13 +186,15 @@ export async function generateText(
   model: string,
   messages: readonly OpenRouterMessage[],
   maxTokens?: number,
-  options?: OpenRouterGenerateTextOptions,
+  options?: Omit<OpenRouterGenerateTextOptions, "signal">,
+  signal?: AbortSignal,
 ): Promise<string | null> {
   const generation = await generateTextWithUsage(
     model,
     messages,
     maxTokens,
     options,
+    signal,
   );
   return generation?.text ?? null;
 }
@@ -206,7 +208,8 @@ export async function generateTextWithUsage(
   model: string,
   messages: readonly OpenRouterMessage[],
   maxTokens?: number,
-  options?: OpenRouterGenerateTextOptions,
+  options?: Omit<OpenRouterGenerateTextOptions, "signal">,
+  signal?: AbortSignal,
 ): Promise<OpenRouterTextGeneration | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
   if (!apiKey) {
@@ -228,7 +231,7 @@ export async function generateTextWithUsage(
         : { response_format: options.responseFormat }),
       temperature: options?.temperature ?? 0.3,
     }),
-    signal: options?.signal,
+    signal,
   });
   await ensureOpenRouterResponseOk(response);
   const data = (await response.json()) as OpenRouterResponse;

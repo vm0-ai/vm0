@@ -948,7 +948,6 @@ interface AddTelegramBotDialogInnerProps {
     input: { botToken: string; defaultAgentId?: string },
     signal: AbortSignal,
   ) => Promise<TelegramBotStatus>;
-  pageSignal: AbortSignal;
   adding: boolean;
 }
 
@@ -1061,9 +1060,9 @@ function AddTelegramBotDialogInner({
   setOpen,
   navigate,
   registerBot,
-  pageSignal,
   adding,
 }: AddTelegramBotDialogInnerProps) {
+  const pageSignal = useGet(pageSignal$);
   const setupState = useGet(telegramAddSetupState$);
   const [checkSetupLoadable, checkSetup] = useLoadableSet(
     checkTelegramAddSetupStatus$,
@@ -1370,7 +1369,6 @@ function AddTelegramBotDialog({
   const setAgentId = useSet(setTelegramBotAgentForm$);
   const setOpen = useSet(setTelegramAddDialogOpen$);
   const navigate = useSet(detachedNavigateTo$);
-  const pageSignal = useGet(pageSignal$);
   const [registerLoadable, registerBot] = useLoadableSet(registerTelegramBot$);
   const adding = registerLoadable.state === "loading";
 
@@ -1396,7 +1394,6 @@ function AddTelegramBotDialog({
       setOpen={setOpen}
       navigate={wrappedNavigate}
       registerBot={registerBot}
-      pageSignal={pageSignal}
       adding={adding}
     />
   );

@@ -170,13 +170,15 @@ async function loadSessionHistoryBlobMetadata(
   return blob;
 }
 
-async function ensureSessionHistoryBlobMetadata(args: {
-  readonly db: Db;
-  readonly body: PrepareHistoryBody;
-  readonly requestedEncoding: string;
-  readonly signal: AbortSignal;
-}): Promise<PreparedSessionHistoryBlob> {
-  const { db, body, requestedEncoding, signal } = args;
+async function ensureSessionHistoryBlobMetadata(
+  args: {
+    readonly db: Db;
+    readonly body: PrepareHistoryBody;
+    readonly requestedEncoding: string;
+  },
+  signal: AbortSignal,
+): Promise<PreparedSessionHistoryBlob> {
+  const { db, body, requestedEncoding } = args;
   const [insertedBlob] = await db
     .insert(blobs)
     .values({
@@ -265,12 +267,14 @@ export const prepareCheckpointHistoryUpload$ = command(
         "Identity session history encodedSize must match rawSize",
       );
     }
-    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata({
-      db,
-      body: input.body,
-      requestedEncoding,
+    const { blob, insertedNewBlob } = await ensureSessionHistoryBlobMetadata(
+      {
+        db,
+        body: input.body,
+        requestedEncoding,
+      },
       signal,
-    });
+    );
 
     if (blob.rawSize !== input.body.rawSize) {
       return badRequestMessage(

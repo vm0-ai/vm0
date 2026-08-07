@@ -42,14 +42,14 @@ export const tiktokAdsProvider: AuthCodeConnectorAuthProvider<"tiktok-ads"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId, clientSecret } = args.authClient;
       const currentRefreshToken = args.inputs.refreshToken;
       const result = await refreshTikTokAdsToken(
         clientId,
         clientSecret,
         currentRefreshToken,
-        args.signal,
+        signal,
       );
       return {
         outputs: {

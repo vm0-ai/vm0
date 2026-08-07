@@ -281,12 +281,14 @@ async function executePendingToolCalls(
  * Execute only the missing calls from the latest unresolved assistant batch.
  * Tool selection and ExecutionEnv adapters are shared with the ordinary Pi loop.
  */
-export async function executePiUnresolvedToolBatch(args: {
-  readonly messages: readonly AgentMessage[];
-  readonly executionEnv: ExecutionEnv;
-  readonly signal: AbortSignal;
-  readonly onEvent: PiAgentEventSink;
-}): Promise<readonly ToolResultMessage[]> {
+export async function executePiUnresolvedToolBatch(
+  args: {
+    readonly messages: readonly AgentMessage[];
+    readonly executionEnv: ExecutionEnv;
+    readonly onEvent: PiAgentEventSink;
+  },
+  signal: AbortSignal,
+): Promise<readonly ToolResultMessage[]> {
   const batch = findPiUnresolvedToolBatch(args.messages);
   if (!batch) {
     return [];
@@ -294,5 +296,5 @@ export async function executePiUnresolvedToolBatch(args: {
   const tools = createPiExecutionTools(args.executionEnv).map((tool) => {
     return tool as unknown as AgentTool;
   });
-  return await executePendingToolCalls(batch, tools, args.signal, args.onEvent);
+  return await executePendingToolCalls(batch, tools, signal, args.onEvent);
 }

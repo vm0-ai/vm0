@@ -92,8 +92,10 @@ interface BrowserUseCdpSocketEvent {
   readonly event: unknown;
 }
 
-interface BrowserUseCdpCommandOptions {
-  readonly signal: AbortSignal;
+interface BrowserUseCdpCommand {
+  readonly id: number;
+  readonly method: string;
+  readonly params: Readonly<Record<string, unknown>>;
   readonly sessionId?: string;
   readonly maxResponseBytes?: number;
 }
@@ -218,12 +220,10 @@ async function waitForBrowserUseCdpSocket(
 
 async function sendBrowserUseCdpCommand(
   socket: WebSocket,
-  id: number,
-  method: string,
-  params: Readonly<Record<string, unknown>>,
-  options: BrowserUseCdpCommandOptions,
+  command: BrowserUseCdpCommand,
+  signal: AbortSignal,
 ): Promise<unknown> {
-  const { signal } = options;
+  const { id, method, params, sessionId, maxResponseBytes } = command;
   signal.throwIfAborted();
   const sent = safeSync(() => {
     socket.send(
@@ -231,7 +231,7 @@ async function sendBrowserUseCdpCommand(
         id,
         method,
         params,
-        ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+        ...(sessionId ? { sessionId } : {}),
       }),
     );
   });
@@ -253,7 +253,7 @@ async function sendBrowserUseCdpCommand(
     if (
       typeof received.event.data !== "string" ||
       received.event.data.length >
-        (options.maxResponseBytes ?? MAX_BROWSER_USE_CDP_RESPONSE_BYTES)
+        (maxResponseBytes ?? MAX_BROWSER_USE_CDP_RESPONSE_BYTES)
     ) {
       continue;
     }
@@ -307,10 +307,8 @@ async function resizeBrowserUseCdp(
     const targets = browserUseCdpTargetsSchema.parse(
       await sendBrowserUseCdpCommand(
         socket,
-        1,
-        "Target.getTargets",
-        {},
-        { signal },
+        { id: 1, method: "Target.getTargets", params: {} },
+        signal,
       ),
       { reportInput: true },
     );
@@ -323,19 +321,23 @@ async function resizeBrowserUseCdp(
     const window = browserUseCdpWindowSchema.parse(
       await sendBrowserUseCdpCommand(
         socket,
-        2,
-        "Browser.getWindowForTarget",
-        { targetId: target.targetId },
-        { signal },
+        {
+          id: 2,
+          method: "Browser.getWindowForTarget",
+          params: { targetId: target.targetId },
+        },
+        signal,
       ),
       { reportInput: true },
     );
     await sendBrowserUseCdpCommand(
       socket,
-      3,
-      "Browser.setContentsSize",
-      { windowId: window.windowId, width, height },
-      { signal },
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: window.windowId, width, height },
+      },
+      signal,
     );
   });
 }
@@ -382,10 +384,8 @@ export async function listBrowserUseTabUrls(
     const targets = browserUseCdpTargetsSchema.parse(
       await sendBrowserUseCdpCommand(
         socket,
-        1,
-        "Target.getTargets",
-        {},
-        { signal: cdpSignal },
+        { id: 1, method: "Target.getTargets", params: {} },
+        cdpSignal,
       ),
       { reportInput: true },
     );
@@ -410,10 +410,8 @@ export async function captureBrowserUseScreenshot(
     const targets = browserUseCdpTargetsSchema.parse(
       await sendBrowserUseCdpCommand(
         socket,
-        1,
-        "Target.getTargets",
-        {},
-        { signal: cdpSignal },
+        { id: 1, method: "Target.getTargets", params: {} },
+        cdpSignal,
       ),
       { reportInput: true },
     );
@@ -431,10 +429,12 @@ export async function captureBrowserUseScreenshot(
       const attached = browserUseCdpAttachedTargetSchema.parse(
         await sendBrowserUseCdpCommand(
           socket,
-          commandId,
-          "Target.attachToTarget",
-          { targetId: target.targetId, flatten: true },
-          { signal: cdpSignal },
+          {
+            id: commandId,
+            method: "Target.attachToTarget",
+            params: { targetId: target.targetId, flatten: true },
+          },
+          cdpSignal,
         ),
         { reportInput: true },
       );
@@ -443,10 +443,16 @@ export async function captureBrowserUseScreenshot(
       const focus = browserUseCdpFocusSchema.parse(
         await sendBrowserUseCdpCommand(
           socket,
-          commandId,
-          "Runtime.evaluate",
-          { expression: "document.hasFocus()", returnByValue: true },
-          { signal: cdpSignal, sessionId: attached.sessionId },
+          {
+            id: commandId,
+            method: "Runtime.evaluate",
+            params: {
+              expression: "document.hasFocus()",
+              returnByValue: true,
+            },
+            sessionId: attached.sessionId,
+          },
+          cdpSignal,
         ),
         { reportInput: true },
       );
@@ -464,10 +470,13 @@ export async function captureBrowserUseScreenshot(
     const layout = browserUseCdpLayoutMetricsSchema.parse(
       await sendBrowserUseCdpCommand(
         socket,
-        commandId,
-        "Page.getLayoutMetrics",
-        {},
-        { signal: cdpSignal, sessionId },
+        {
+          id: commandId,
+          method: "Page.getLayoutMetrics",
+          params: {},
+          sessionId,
+        },
+        cdpSignal,
       ),
       { reportInput: true },
     );
@@ -476,26 +485,26 @@ export async function captureBrowserUseScreenshot(
     const screenshot = browserUseCdpScreenshotSchema.parse(
       await sendBrowserUseCdpCommand(
         socket,
-        commandId,
-        "Page.captureScreenshot",
         {
-          format: "webp",
-          quality: BROWSER_USE_SCREENSHOT_QUALITY,
-          fromSurface: true,
-          captureBeyondViewport: false,
-          clip: {
-            x: viewport.pageX,
-            y: viewport.pageY,
-            width: viewport.clientWidth,
-            height: viewport.clientHeight,
-            scale: BROWSER_USE_SCREENSHOT_WIDTH / viewport.clientWidth,
+          id: commandId,
+          method: "Page.captureScreenshot",
+          params: {
+            format: "webp",
+            quality: BROWSER_USE_SCREENSHOT_QUALITY,
+            fromSurface: true,
+            captureBeyondViewport: false,
+            clip: {
+              x: viewport.pageX,
+              y: viewport.pageY,
+              width: viewport.clientWidth,
+              height: viewport.clientHeight,
+              scale: BROWSER_USE_SCREENSHOT_WIDTH / viewport.clientWidth,
+            },
           },
-        },
-        {
-          signal: cdpSignal,
           sessionId,
           maxResponseBytes: MAX_BROWSER_USE_SCREENSHOT_RESPONSE_BYTES,
         },
+        cdpSignal,
       ),
       { reportInput: true },
     );
@@ -524,10 +533,8 @@ export async function restoreBrowserUseTabUrls(
     const targets = browserUseCdpTargetsSchema.parse(
       await sendBrowserUseCdpCommand(
         socket,
-        1,
-        "Target.getTargets",
-        {},
-        { signal: cdpSignal },
+        { id: 1, method: "Target.getTargets", params: {} },
+        cdpSignal,
       ),
       { reportInput: true },
     );
@@ -537,10 +544,8 @@ export async function restoreBrowserUseTabUrls(
       const result = await settle(
         sendBrowserUseCdpCommand(
           socket,
-          commandId,
-          "Target.createTarget",
-          { url },
-          { signal: cdpSignal },
+          { id: commandId, method: "Target.createTarget", params: { url } },
+          cdpSignal,
         ),
       );
       commandId += 1;
@@ -559,10 +564,12 @@ export async function restoreBrowserUseTabUrls(
       await settle(
         sendBrowserUseCdpCommand(
           socket,
-          commandId,
-          "Target.closeTarget",
-          { targetId: target.targetId },
-          { signal: cdpSignal },
+          {
+            id: commandId,
+            method: "Target.closeTarget",
+            params: { targetId: target.targetId },
+          },
+          cdpSignal,
         ),
       );
       commandId += 1;

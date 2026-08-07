@@ -133,7 +133,6 @@ function CodexDeviceAuthDialogView({
           mode={dialog.mode}
           onStart={handleStart}
           openApprovalPage={openApprovalPage}
-          pageSignal={pageSignal}
         />
       </DialogContent>
     </Dialog>
@@ -145,15 +144,14 @@ function CodexDeviceAuthBody({
   mode,
   onStart,
   openApprovalPage,
-  pageSignal,
 }: {
   flow: CodexDeviceAuthFlowState;
   mode: "connect" | "reconnect";
   onStart: () => void;
   openApprovalPage: (signal: AbortSignal) => Promise<boolean>;
-  pageSignal: AbortSignal;
 }) {
   const brandName = useGet(brandName$);
+  const pageSignal = useGet(pageSignal$);
   const { t } = useTranslation();
   switch (flow.status) {
     case "idle": {

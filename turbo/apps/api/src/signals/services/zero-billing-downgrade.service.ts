@@ -222,12 +222,13 @@ function shouldReplacePendingDowngradeSchedule(
 }
 
 async function scheduleCancellationAtPeriodEnd(
-  context: DowngradeContext,
+  context: Omit<DowngradeContext, "signal">,
+  signal?: AbortSignal,
 ): Promise<string> {
   const subscription = await context.stripe.subscriptions.retrieve(
     context.org.stripeSubscriptionId,
   );
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const scheduleId =
     context.org.pendingSubscriptionScheduleId ??
@@ -291,7 +292,7 @@ async function scheduleCancellationAtPeriodEnd(
       );
     }
   }
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   await context.db
     .update(orgMetadata)
@@ -304,7 +305,7 @@ async function scheduleCancellationAtPeriodEnd(
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, context.orgId));
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const effectiveDateIso = effectiveDate.toISOString();
   L.debug("subscription cancellation initiated", {
@@ -316,9 +317,10 @@ async function scheduleCancellationAtPeriodEnd(
 }
 
 async function scheduleDowngradeToPro(
-  context: DowngradeContext,
+  context: Omit<DowngradeContext, "signal">,
   currentTier: OrgTier,
   subscription: Stripe.Subscription,
+  signal?: AbortSignal,
 ): Promise<string> {
   const currentItem = subscriptionCurrentItem(subscription);
   const proPriceId = isUsagePackPlanPriceId(currentItem.price.id)
@@ -336,7 +338,7 @@ async function scheduleDowngradeToPro(
     : await context.stripe.subscriptionSchedules.create({
         from_subscription: context.org.stripeSubscriptionId,
       });
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const scheduleId = existingScheduleId ?? createdSchedule?.id;
   if (!scheduleId) {
@@ -379,7 +381,7 @@ async function scheduleDowngradeToPro(
       ),
     ],
   });
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const effectiveDate = new Date(endDate * 1000);
   await context.db
@@ -393,7 +395,7 @@ async function scheduleDowngradeToPro(
       updatedAt: nowDate(),
     })
     .where(eq(orgMetadata.orgId, context.orgId));
-  context.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const effectiveDateIso = effectiveDate.toISOString();
   L.debug("subscription downgrade scheduled", {
@@ -467,7 +469,10 @@ export async function downgradeSubscriptionForOrg(
     args.targetTier === CANCELED_SUBSCRIPTION_TARGET_TIER ||
     args.targetTier === "pro-suspend"
   ) {
-    const effectiveDate = await scheduleCancellationAtPeriodEnd(context);
+    const effectiveDate = await scheduleCancellationAtPeriodEnd(
+      context,
+      context?.signal,
+    );
     return { ok: true, status: "scheduled", effectiveDate };
   }
 
@@ -507,6 +512,7 @@ export async function downgradeSubscriptionForOrg(
     context,
     currentTier,
     subscription,
+    context?.signal,
   );
   return { ok: true, status: "scheduled", effectiveDate };
 }

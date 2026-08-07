@@ -3122,10 +3122,12 @@ function TemplatePreview({
 
     let pendingLoad = cache.pendingLoads.get(item.embedUrl);
     if (pendingLoad === undefined) {
-      pendingLoad = signals.template.loadPresentationTemplateHtmlPreview({
-        item,
-        signal: pageSignal,
-      });
+      pendingLoad = signals.template.loadPresentationTemplateHtmlPreview(
+        {
+          item,
+        },
+        pageSignal,
+      );
       cache.pendingLoads.set(item.embedUrl, pendingLoad);
     }
 
@@ -6338,16 +6340,18 @@ function ComposerConnectorPermissionDialog({
       resetEnabled
       readOnly={false}
       onApply={async (intent, { metadata: appliedMetadata }) => {
-        await savePermissionDraftPolicies({
-          scope: { agentId },
-          connectorSlug: connector.slug,
-          metadata: appliedMetadata,
-          initialPolicies,
-          initialGrants: activeSnapshot.grants,
-          intent,
+        await savePermissionDraftPolicies(
+          {
+            scope: { agentId },
+            connectorSlug: connector.slug,
+            metadata: appliedMetadata,
+            initialPolicies,
+            initialGrants: activeSnapshot.grants,
+            intent,
+            applyGrantPolicies,
+          },
           pageSignal,
-          applyGrantPolicies,
-        });
+        );
         toast.success(
           t(($) => {
             return $.chat.permissions.updated;
@@ -7131,19 +7135,20 @@ function useComposerPrimaryAction(
   return selectedModelOauthAvailable ? action : "disabled";
 }
 
-function startComposerSubmission({
-  action,
-  activate,
-  completeVoiceInput,
-  ensurePushSubscription,
-  signal,
-}: {
-  action: ComposerPrimaryAction;
-  activate: (signal: AbortSignal) => Promise<boolean>;
-  completeVoiceInput: (signal: AbortSignal) => Promise<void>;
-  ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
-  signal: AbortSignal;
-}): void {
+function startComposerSubmission(
+  {
+    action,
+    activate,
+    completeVoiceInput,
+    ensurePushSubscription,
+  }: {
+    action: ComposerPrimaryAction;
+    activate: (signal: AbortSignal) => Promise<boolean>;
+    completeVoiceInput: (signal: AbortSignal) => Promise<void>;
+    ensurePushSubscription: (signal: AbortSignal) => Promise<void>;
+  },
+  signal: AbortSignal,
+): void {
   if (action === "disabled" || action === "stop") {
     return;
   }
@@ -7251,15 +7256,17 @@ function ComposerInputSlot({ signals }: { signals: ComposerSignals }) {
   };
 
   const submit = () => {
-    startComposerSubmission({
-      action: primaryAction,
-      activate: (signal) => {
-        return submitCurrentInput(primaryAction, signal);
+    startComposerSubmission(
+      {
+        action: primaryAction,
+        activate: (signal) => {
+          return submitCurrentInput(primaryAction, signal);
+        },
+        completeVoiceInput,
+        ensurePushSubscription,
       },
-      completeVoiceInput,
-      ensurePushSubscription,
-      signal: rootSignal,
-    });
+      rootSignal,
+    );
   };
 
   const handleKeyDown = (event: KeyboardEventLike) => {
@@ -7345,15 +7352,17 @@ function ComposerSendControl({ signals }: { signals: ComposerSignals }) {
       detach(activatePrimaryAction(action, rootSignal), Reason.DomCallback);
       return;
     }
-    startComposerSubmission({
-      action,
-      activate: (signal) => {
-        return activatePrimaryAction(action, signal);
+    startComposerSubmission(
+      {
+        action,
+        activate: (signal) => {
+          return activatePrimaryAction(action, signal);
+        },
+        completeVoiceInput,
+        ensurePushSubscription,
       },
-      completeVoiceInput,
-      ensurePushSubscription,
-      signal: rootSignal,
-    });
+      rootSignal,
+    );
   };
   return <ComposerSendButton action={action} onActivate={activate} />;
 }

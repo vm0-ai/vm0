@@ -674,12 +674,13 @@ function successBody(
 }
 
 async function completePeopleSearch(
-  args: CompletePeopleSearchArgs,
+  args: Omit<CompletePeopleSearchArgs, "providerSignal">,
+  providerSignal: AbortSignal,
 ): Promise<ZeroPeopleSearchCommandResponse> {
   const providerResult = await fetchPerplexityPeopleSearch(
     args.apiKey,
     args.request,
-    args.providerSignal,
+    providerSignal,
   );
   if (providerResult.kind === "error") {
     return providerResult.error;
@@ -732,30 +733,32 @@ export const zeroPeopleSearch$ = command(
     }
 
     const runId = runIdForUsage(args.auth);
-    return completePeopleSearch({
-      apiKey,
-      request: args.body,
-      providerSignal: requestSignal,
-      recordUsage: () => {
-        // Provider work has completed, so client disconnect must not skip billing.
-        return set(
-          recordManagedUsage$,
-          {
-            actor: {
-              orgId: args.auth.orgId,
-              userId: args.auth.userId,
-              ...(runId ? { runId } : {}),
+    return completePeopleSearch(
+      {
+        apiKey,
+        request: args.body,
+        recordUsage: () => {
+          // Provider work has completed, so client disconnect must not skip billing.
+          return set(
+            recordManagedUsage$,
+            {
+              actor: {
+                orgId: args.auth.orgId,
+                userId: args.auth.userId,
+                ...(runId ? { runId } : {}),
+              },
+              resource: {
+                kind: USAGE_KIND,
+                provider: PROVIDER,
+                category: BILLING_CATEGORY,
+              },
+              label: "people search",
             },
-            resource: {
-              kind: USAGE_KIND,
-              provider: PROVIDER,
-              category: BILLING_CATEGORY,
-            },
-            label: "people search",
-          },
-          signal,
-        );
+            signal,
+          );
+        },
       },
-    });
+      requestSignal,
+    );
   },
 );

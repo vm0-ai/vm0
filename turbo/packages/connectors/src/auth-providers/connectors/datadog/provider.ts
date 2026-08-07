@@ -44,15 +44,17 @@ export const datadogProvider: AuthCodeConnectorAuthProvider<
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       return oauthRefreshResultToProviderResult(
-        await refreshDatadogToken({
-          clientId: args.authClient.clientId,
-          clientSecret: args.authClient.clientSecret,
-          refreshToken: args.inputs.refreshToken,
-          domain: args.inputs.domain,
-          signal: args.signal,
-        }),
+        await refreshDatadogToken(
+          {
+            clientId: args.authClient.clientId,
+            clientSecret: args.authClient.clientSecret,
+            refreshToken: args.inputs.refreshToken,
+            domain: args.inputs.domain,
+          },
+          signal,
+        ),
       );
     },
   },

@@ -133,14 +133,16 @@ function isPlainPrimaryLinkClick(
   );
 }
 
-function runWhenGoogleDriveReady(params: {
-  agentId: string | null | undefined;
-  authorizeConnected: boolean;
-  pageSignal: AbortSignal;
-  run: GoogleDriveReadyRun;
-  waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-  operation: string;
-}): void {
+function runWhenGoogleDriveReady(
+  params: {
+    agentId: string | null | undefined;
+    authorizeConnected: boolean;
+    run: GoogleDriveReadyRun;
+    waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
+    operation: string;
+  },
+  pageSignal: AbortSignal,
+): void {
   if (!params.agentId) {
     toast.error(
       i18n.t(($) => {
@@ -154,7 +156,7 @@ function runWhenGoogleDriveReady(params: {
     (async () => {
       await params.waitForGoogleDriveAuthorization(
         { agentId, authorizeConnected: params.authorizeConnected },
-        params.pageSignal,
+        pageSignal,
       );
       await params.run();
     })(),
@@ -163,16 +165,18 @@ function runWhenGoogleDriveReady(params: {
   );
 }
 
-function startGoogleDriveConnectAndRun(params: {
-  agentId: string | null | undefined;
-  authMethod: ConnectorCatalogBrowserAuthMethodDetail;
-  connector: PlatformConnectorCatalogStatusItem;
-  createClient: ZeroClientFactory;
-  pageSignal: AbortSignal;
-  run: GoogleDriveReadyRun;
-  waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-  operation: string;
-}): void {
+function startGoogleDriveConnectAndRun(
+  params: {
+    agentId: string | null | undefined;
+    authMethod: ConnectorCatalogBrowserAuthMethodDetail;
+    connector: PlatformConnectorCatalogStatusItem;
+    createClient: ZeroClientFactory;
+    run: GoogleDriveReadyRun;
+    waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
+    operation: string;
+  },
+  pageSignal: AbortSignal,
+): void {
   if (!params.agentId) {
     toast.error(
       i18n.t(($) => {
@@ -204,7 +208,7 @@ function startGoogleDriveConnectAndRun(params: {
           agentId,
           authorizeAgent: true as const,
         },
-        fetchOptions: { signal: params.pageSignal },
+        fetchOptions: { signal: pageSignal },
       };
       const result =
         params.authMethod.grantKind === "openid-auth"
@@ -234,30 +238,34 @@ function startGoogleDriveConnectAndRun(params: {
                 }),
               [200],
             );
-      params.pageSignal.throwIfAborted();
+      pageSignal.throwIfAborted();
       authWindow.location.href = result.body.authorizationUrl;
     })(),
     Reason.DomCallback,
     "artifact google drive oauth start",
   );
-  runWhenGoogleDriveReady({
-    agentId,
-    authorizeConnected: false,
-    pageSignal: params.pageSignal,
-    run: params.run,
-    waitForGoogleDriveAuthorization: params.waitForGoogleDriveAuthorization,
-    operation: params.operation,
-  });
+  runWhenGoogleDriveReady(
+    {
+      agentId,
+      authorizeConnected: false,
+      run: params.run,
+      waitForGoogleDriveAuthorization: params.waitForGoogleDriveAuthorization,
+      operation: params.operation,
+    },
+    pageSignal,
+  );
 }
 
-function authorizeGoogleDriveAndRun(params: {
-  agentId: string | null | undefined;
-  pageSignal: AbortSignal;
-  run: GoogleDriveReadyRun;
-  waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-  operation: string;
-}): void {
-  runWhenGoogleDriveReady({ ...params, authorizeConnected: true });
+function authorizeGoogleDriveAndRun(
+  params: {
+    agentId: string | null | undefined;
+    run: GoogleDriveReadyRun;
+    waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
+    operation: string;
+  },
+  pageSignal: AbortSignal,
+): void {
+  runWhenGoogleDriveReady({ ...params, authorizeConnected: true }, pageSignal);
 }
 
 function iconButtonClassName(className?: string): string {
@@ -477,14 +485,16 @@ function GoogleDriveMenuItem({
   const syncOrConnect = () => {
     closeMenu();
     const run = async () => {
-      const success = await syncArtifactFileToGoogleDrive({
-        createClient,
-        threadId: syncTarget.threadId,
-        runId: syncTarget.runId,
-        fileId: syncTarget.fileId,
-        filename: syncTarget.filename,
-        signal: pageSignal,
-      });
+      const success = await syncArtifactFileToGoogleDrive(
+        {
+          createClient,
+          threadId: syncTarget.threadId,
+          runId: syncTarget.runId,
+          fileId: syncTarget.fileId,
+          filename: syncTarget.filename,
+        },
+        pageSignal,
+      );
       if (success) {
         syncTarget.onSyncSuccess();
       }
@@ -494,28 +504,32 @@ function GoogleDriveMenuItem({
       return;
     }
     if (googleDriveConnected) {
-      authorizeGoogleDriveAndRun({
-        agentId: syncTarget.agentId,
+      authorizeGoogleDriveAndRun(
+        {
+          agentId: syncTarget.agentId,
+          run,
+          waitForGoogleDriveAuthorization,
+          operation: "artifact google drive authorize sync",
+        },
         pageSignal,
-        run,
-        waitForGoogleDriveAuthorization,
-        operation: "artifact google drive authorize sync",
-      });
+      );
       return;
     }
     if (!googleDriveConnector || !googleDriveAuthMethod) {
       return;
     }
-    startGoogleDriveConnectAndRun({
-      agentId: syncTarget.agentId,
-      authMethod: googleDriveAuthMethod,
-      connector: googleDriveConnector,
-      createClient,
+    startGoogleDriveConnectAndRun(
+      {
+        agentId: syncTarget.agentId,
+        authMethod: googleDriveAuthMethod,
+        connector: googleDriveConnector,
+        createClient,
+        run,
+        waitForGoogleDriveAuthorization,
+        operation: "artifact google drive connect sync",
+      },
       pageSignal,
-      run,
-      waitForGoogleDriveAuthorization,
-      operation: "artifact google drive connect sync",
-    });
+    );
   };
 
   if (googleDriveReady) {

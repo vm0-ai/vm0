@@ -26,14 +26,16 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
   },
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const { clientId } = args.authClient;
       return oauthRefreshResultToProviderResult(
-        await refreshBase44Token({
-          clientId,
-          refreshToken: args.inputs.refreshToken,
-          signal: args.signal,
-        }),
+        await refreshBase44Token(
+          {
+            clientId,
+            refreshToken: args.inputs.refreshToken,
+          },
+          signal,
+        ),
       );
     },
   },

@@ -132,17 +132,19 @@ describe("connector/providers/google-cloud", () => {
       });
       server.use(handler);
 
-      const result = await googleCloudProvider.access.refresh({
-        authClient: {
-          ...testAuthClient,
-          clientId: "client-id",
-          clientSecret: "client-secret",
+      const result = await googleCloudProvider.access.refresh(
+        {
+          authClient: {
+            ...testAuthClient,
+            clientId: "client-id",
+            clientSecret: "client-secret",
+          },
+          inputs: {
+            refreshToken: "refresh-token",
+          },
         },
-        inputs: {
-          refreshToken: "refresh-token",
-        },
-        signal: testRefreshSignal(),
-      });
+        testRefreshSignal(),
+      );
 
       expect(result).toEqual({
         outputs: {

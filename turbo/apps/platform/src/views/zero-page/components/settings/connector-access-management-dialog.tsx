@@ -383,7 +383,6 @@ function AgentPermissionDialog({
   metadata,
   connectorSlug,
   connectorLabel,
-  pageSignal,
   applyGrantPolicies,
   onClose,
 }: {
@@ -391,11 +390,11 @@ function AgentPermissionDialog({
   readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
-  readonly pageSignal: AbortSignal;
   readonly applyGrantPolicies: ApplyUserPermissionGrants;
   readonly onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
   const grants = row?.grants ?? [];
   if (!row || !metadata) {
     return null;
@@ -415,16 +414,18 @@ function AgentPermissionDialog({
       resetEnabled
       readOnly={false}
       onApply={async (intent, { metadata: appliedMetadata }) => {
-        await savePermissionDraftPolicies({
-          scope: { agentId: row.agent.id },
-          connectorSlug,
-          metadata: appliedMetadata,
-          initialPolicies,
-          initialGrants: activeSnapshot.grants,
-          intent,
+        await savePermissionDraftPolicies(
+          {
+            scope: { agentId: row.agent.id },
+            connectorSlug,
+            metadata: appliedMetadata,
+            initialPolicies,
+            initialGrants: activeSnapshot.grants,
+            intent,
+            applyGrantPolicies,
+          },
           pageSignal,
-          applyGrantPolicies,
-        });
+        );
         toast.success(
           t(($) => {
             return $.connectors.access.permissionsUpdated;
@@ -521,7 +522,6 @@ export function ConnectorAccessManagementDialog({
         metadata={metadata}
         connectorSlug={connectorSlug}
         connectorLabel={connectorLabel}
-        pageSignal={pageSignal}
         applyGrantPolicies={applyGrantPolicies}
         onClose={() => {
           setPermissionAgentId(null);
