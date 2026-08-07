@@ -102,8 +102,8 @@ const runnerProcessIdentitySchema = z
   .strict();
 
 /**
- * Advisory cross-runner coordination, not an exclusive assignment. A runner
- * with an equivalent compatible local resource remains eligible to claim.
+ * Legacy advisory preference retained while deployed runners migrate to the
+ * atomic decision contract.
  */
 export const runnerPreferenceSchema = z
   .object({
@@ -117,6 +117,11 @@ export const runnerPreferenceSchema = z
   })
   .strict();
 
+/**
+ * Atomic advisory decision for cross-runner reuse coordination. A preferred
+ * runner is not an exclusive assignee; another runner with a better compatible
+ * local resource remains eligible to claim.
+ */
 export const runnerPreferenceDecisionSchema = z.discriminatedUnion("kind", [
   z
     .object({

@@ -286,6 +286,7 @@ interface RunnerPreferenceDeliveryFields {
   readonly runnerPreferenceResolution: RunnerPreferenceResolution;
 }
 
+// Remove this legacy projection in #25577 after old runners have drained.
 const legacyPreferenceByTier = {
   exactSandbox: {
     reason: "exactHistoryGeneration",
