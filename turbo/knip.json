@@ -143,7 +143,6 @@
   },
   "ignore": [
     "**/*.d.ts",
-    ".next/**",
     "dist/**",
     "build/**",
     "coverage/**",

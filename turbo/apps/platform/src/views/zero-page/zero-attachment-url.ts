@@ -247,7 +247,6 @@ async function fetchBlobForDownload(
     return await res.blob();
   } catch (error) {
     throwIfAbort(error);
-    signal.throwIfAborted();
     log.warn("downloadUrl: fetch failed", error);
     toast.error(
       i18n.t(($) => {

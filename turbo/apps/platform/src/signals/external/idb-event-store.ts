@@ -4,7 +4,7 @@ import {
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
-import { throwIfAbort } from "../utils.ts";
+import { onRejection } from "../utils.ts";
 import {
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
@@ -141,14 +141,7 @@ function createIdbEventStores(getChatIdb: GetDb) {
     }
 
     // IDB open is a cache fast path; rejection disables it for this tab.
-    // eslint-disable-next-line no-restricted-syntax
-    try {
-      return await getChatIdb();
-    } catch (error) {
-      throwIfAbort(error);
-      disableForSession(error);
-      throw error;
-    }
+    return await onRejection(getChatIdb(), disableForSession);
   }
 
   return Object.freeze({

@@ -282,11 +282,13 @@ export default [
   },
   // Every catch in production source must re-throw cancellation before it does
   // anything else, so an aborted page never reports a failure or persists a
-  // fallback. Test and mock code carries no abort contract, matching the
-  // try-statement ban above.
+  // fallback. The ignore list matches the try-statement ban above: test and
+  // mock code carries no abort contract, and utils.ts implements the
+  // centralized helpers (onRejection, settle, tapError) whose whole purpose is
+  // to observe a rejection — including an abort — before re-throwing it.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/**/__tests__/**", "src/mocks/**"],
+    ignores: ["src/**/__tests__/**", "src/mocks/**", "src/signals/utils.ts"],
     rules: {
       "ccstate/no-catch-abort": "error",
     },
