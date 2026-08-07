@@ -311,9 +311,10 @@ describe("GitHub zero file integration routes", () => {
       size: 1234,
     });
     expect(response.body.uploadId).toMatch(/^[0-9a-f-]{36}$/u);
-    expect(response.body.fileUrl).toBe(
-      `https://cdn.vm7.io/artifacts/${fixture.userId}/${response.body.uploadId}/daily_report.pdf`,
+    expect(response.body.fileUrl).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.pdf$/u,
     );
+    expect(response.body.fileUrl).not.toContain(fixture.userId);
 
     const calls = context.mocks.s3.getSignedUrl.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
@@ -321,7 +322,7 @@ describe("GitHub zero file integration routes", () => {
     expect(command).toHaveProperty("input.Bucket", "test-user-artifacts");
     expect(command).toHaveProperty(
       "input.Key",
-      `artifacts/${fixture.userId}/${response.body.uploadId}/daily_report.pdf`,
+      response.body.fileUrl.replace("https://cdn.vm7.io/", ""),
     );
   });
 

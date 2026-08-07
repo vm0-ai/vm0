@@ -352,6 +352,12 @@ export function createChatFilesBddApi(context: TestContext) {
 
     mockCompletedUploadObjects,
 
+    // Allocating an artifact key lists the bucket first, so a prepare-only
+    // test still has to answer that call.
+    mockEmptyObjectStorage(): void {
+      mocks.s3.listObjects([]);
+    },
+
     mockObjectStorageObjectsExist(): void {
       mockObjectStorageObjectsExist(context);
     },

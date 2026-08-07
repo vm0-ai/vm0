@@ -747,6 +747,7 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
   it("prepares and completes an upload through S3 boundary state", async () => {
     const actor = bdd.user();
 
+    api.mockEmptyObjectStorage();
     const prepared = await api.prepareUpload(actor, {
       filename: "notes.txt",
       contentType: "Text/Plain; Charset=UTF-8",
@@ -760,7 +761,8 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     expect("uploadUrl" in prepared ? prepared.uploadUrl : "").toMatch(
       /^https?:\/\//,
     );
-    expect(prepared.url).toContain(`/artifacts/${actor.userId}/`);
+    expect(prepared.url).toMatch(/\/artifacts\/[0-9a-z]{10}\.txt$/u);
+    expect(prepared.url).not.toContain(actor.userId);
 
     api.mockCompletedUploadObject(actor, prepared.id, "notes.txt", 12);
     const completed = await api.completeUpload(actor, { id: prepared.id });

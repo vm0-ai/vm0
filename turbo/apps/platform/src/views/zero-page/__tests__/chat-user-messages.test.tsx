@@ -325,6 +325,9 @@ describe("user messages", () => {
     });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${threadId}`,
     });
