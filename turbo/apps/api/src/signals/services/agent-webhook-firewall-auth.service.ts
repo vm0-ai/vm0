@@ -4169,26 +4169,28 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       return [secretName, field] as const;
     }),
   );
-  const refs = new Map<string, CurrentCustomConnectorAuthRef>(
-    runtime.values.map((value) => {
-      const secretName = customConnectorSecretKey({
-        connectorId: runtime.connector.id,
-        kind: value.kind,
-        key: value.key,
-      });
-      return [
-        secretName,
-        {
-          secretName,
-          connectorId: runtime.connector.id,
-          connectorRevision: runtime.connector.revision,
-          key: value.key,
-          encryptedValue: value.encryptedValue,
-          required: declaredFields.get(secretName)?.required ?? true,
-        } satisfies CurrentCustomConnectorAuthRef,
-      ] as const;
-    }),
-  );
+  const refs = new Map<string, CurrentCustomConnectorAuthRef>();
+  for (const value of runtime.values) {
+    const secretName = customConnectorSecretKey({
+      connectorId: runtime.connector.id,
+      kind: value.kind,
+      key: value.key,
+    });
+    const field = declaredFields.get(secretName);
+    if (!field) {
+      // Stored values survive definition edits, but removed fields are no
+      // longer part of the executable credential contract.
+      continue;
+    }
+    refs.set(secretName, {
+      secretName,
+      connectorId: runtime.connector.id,
+      connectorRevision: runtime.connector.revision,
+      key: value.key,
+      encryptedValue: value.encryptedValue,
+      required: field.required,
+    });
+  }
   for (const [secretName, field] of declaredFields) {
     if (refs.has(secretName)) {
       continue;

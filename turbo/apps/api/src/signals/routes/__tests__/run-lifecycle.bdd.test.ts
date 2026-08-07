@@ -8440,6 +8440,38 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
+    await connectors.updateCustomConnector(actor, custom.id, {
+      displayName: "BDD Internal API Replaced Auth",
+      prefixTemplates: ["https://*.internal.example.com/v3/"],
+      fields: [
+        {
+          key: "replacement",
+          label: "Replacement token",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "X-Replacement",
+          valueTemplate: "Token {{secrets.replacement}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    const orphanedFieldAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (orphanedFieldAuth.status !== 424) {
+      throw new Error("Expected removed custom connector field to be rejected");
+    }
+    expect(orphanedFieldAuth.body.error).toMatchObject({
+      code: "CONNECTOR_NOT_CONFIGURED",
+    });
+
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
