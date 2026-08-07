@@ -20,6 +20,28 @@ fi
 
 cd apps/api
 
+echo "--- resolution probe: which files back @vm0/pi-agent-runtime"
+mkdir -p .rss-probe
+cat >.rss-probe/probe.ts <<'TS'
+import type { PiAgentMessage } from "@vm0/pi-agent-runtime";
+import { parsePiAgentMessages } from "@vm0/pi-agent-runtime";
+
+export const probe: PiAgentMessage[] = parsePiAgentMessages([]);
+TS
+cat >.rss-probe/tsconfig.json <<'JSON'
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": ["probe.ts"]
+}
+JSON
+pnpm exec tsc -p .rss-probe/tsconfig.json --listFiles >"$out_dir/probe.txt" 2>&1 || true
+echo "pi-agent-runtime files in probe program:"
+grep -E "pi-agent-runtime/(src|dist)" "$out_dir/probe.txt" || true
+echo "earendil files in probe program: $(grep -c earendil "$out_dir/probe.txt" || true)"
+rm -rf .rss-probe
+
+
 measure() {
   local label="$1"
   shift
