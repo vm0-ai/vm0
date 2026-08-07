@@ -1,5 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -32,6 +34,8 @@ const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
 const PI_EDGE_USAGE_IDEMPOTENCY_NAMESPACE =
   "b760944c-e497-4d12-8997-7e5485a590db";
+const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
+  "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
 
 export interface PiEdgeModelUsageEntry {
   readonly category:
@@ -48,8 +52,12 @@ export interface PiEdgeModelUsageEntry {
 
 export interface PiEdgeModelUsage {
   readonly messageId: string;
-  readonly provider: string;
-  readonly entries: readonly PiEdgeModelUsageEntry[];
+  readonly model: SupportedRunModel;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadInputTokens: number;
+  readonly cacheCreationInputTokens: number;
+  readonly billingEntries: readonly PiEdgeModelUsageEntry[];
 }
 
 interface OutputCandidate {
@@ -277,26 +285,46 @@ async function insertPiEdgeModelUsageInTransaction(
     return;
   }
   await tx
-    .insert(usageEvent)
-    .values(
-      modelUsage.entries.map((entry) => {
-        return {
-          runId: payload.runId,
-          idempotencyKey: uuidv5(
-            `${payload.runId}:${modelUsage.messageId}:${entry.category}`,
-            PI_EDGE_USAGE_IDEMPOTENCY_NAMESPACE,
-          ),
-          orgId: payload.context.orgId,
-          userId: payload.context.userId,
-          kind: "model",
-          provider: modelUsage.provider,
-          category: entry.category,
-          quantity: entry.quantity,
-        };
-      }),
-    )
-    .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+    .insert(modelUsageObservation)
+    .values({
+      idempotencyKey: uuidv5(
+        `${payload.runId}:${modelUsage.messageId}`,
+        PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE,
+      ),
+      model: modelUsage.model,
+      inputTokens: modelUsage.inputTokens,
+      outputTokens: modelUsage.outputTokens,
+      cacheReadInputTokens: modelUsage.cacheReadInputTokens,
+      cacheCreationInputTokens: modelUsage.cacheCreationInputTokens,
+    })
+    .onConflictDoNothing({
+      target: [modelUsageObservation.idempotencyKey],
+    });
   signal.throwIfAborted();
+
+  if (modelUsage.billingEntries.length > 0) {
+    await tx
+      .insert(usageEvent)
+      .values(
+        modelUsage.billingEntries.map((entry) => {
+          return {
+            runId: payload.runId,
+            idempotencyKey: uuidv5(
+              `${payload.runId}:${modelUsage.messageId}:${entry.category}`,
+              PI_EDGE_USAGE_IDEMPOTENCY_NAMESPACE,
+            ),
+            orgId: payload.context.orgId,
+            userId: payload.context.userId,
+            kind: "model",
+            provider: modelUsage.model,
+            category: entry.category,
+            quantity: entry.quantity,
+          };
+        }),
+      )
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+    signal.throwIfAborted();
+  }
 }
 
 async function lockRunOutputProjection(

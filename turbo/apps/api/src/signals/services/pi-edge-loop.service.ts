@@ -1,5 +1,9 @@
 import { command } from "ccstate";
 import {
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   parsePiAgentMessages,
   piMessageRequiresSandbox,
   runPiAgentPrompt,
@@ -36,13 +40,12 @@ const L = logger("pi:edge");
 
 class PiHandoffRequested extends Error {}
 
-const LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS: Readonly<Record<string, number>> = {
-  "gpt-5.5": 272_001,
-  "gpt-5.6-sol": 272_001,
-  "gpt-5.6-terra": 272_001,
-  "gpt-5.6-luna": 272_001,
-  "MiniMax-M3": 512_001,
-};
+interface PiEdgeUsageQuantities {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheCreation: number;
+}
 
 function modelUsageQuantity(value: number, category: string): number {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -51,34 +54,13 @@ function modelUsageQuantity(value: number, category: string): number {
   return value;
 }
 
-function piEdgeModelUsage(args: {
-  readonly messageId: string;
-  readonly billingModel: string | undefined;
-  readonly message: PiAgentMessage;
-}): PiEdgeModelUsage | undefined {
-  if (args.billingModel === undefined || args.message.role !== "assistant") {
-    return undefined;
-  }
-  if (
-    args.message.stopReason === "error" ||
-    args.message.stopReason === "aborted"
-  ) {
-    return undefined;
-  }
-
-  const quantities = {
-    input: modelUsageQuantity(args.message.usage.input, "input"),
-    output: modelUsageQuantity(args.message.usage.output, "output"),
-    cacheRead: modelUsageQuantity(args.message.usage.cacheRead, "cache read"),
-    cacheCreation: modelUsageQuantity(
-      args.message.usage.cacheWrite,
-      "cache creation",
-    ),
-  };
+function piEdgeBillingEntries(
+  model: SupportedRunModel,
+  quantities: PiEdgeUsageQuantities,
+): PiEdgeModelUsageEntry[] {
   const totalInput =
     quantities.input + quantities.cacheRead + quantities.cacheCreation;
-  const longContextMinimum =
-    LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[args.billingModel];
+  const longContextMinimum = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[model];
   const tier =
     longContextMinimum !== undefined && totalInput >= longContextMinimum
       ? "long-context"
@@ -116,13 +98,50 @@ function piEdgeModelUsage(args: {
   ].filter((entry) => {
     return entry.quantity > 0;
   });
-  if (entries.length === 0) {
-    throw new Error("Pi edge model returned no billable usage");
+  return entries;
+}
+
+function piEdgeModelUsage(args: {
+  readonly messageId: string;
+  readonly usage: PiEdgeTurnArgs["usage"];
+  readonly message: PiAgentMessage;
+}): PiEdgeModelUsage | undefined {
+  if (args.usage === undefined || args.message.role !== "assistant") {
+    return undefined;
   }
+
+  const quantities: PiEdgeUsageQuantities = {
+    input: modelUsageQuantity(args.message.usage.input, "input"),
+    output: modelUsageQuantity(args.message.usage.output, "output"),
+    cacheRead: modelUsageQuantity(args.message.usage.cacheRead, "cache read"),
+    cacheCreation: modelUsageQuantity(
+      args.message.usage.cacheWrite,
+      "cache creation",
+    ),
+  };
+  const hasPositiveUsage = Object.values(quantities).some((quantity) => {
+    return quantity > 0;
+  });
+  if (!hasPositiveUsage) {
+    const failed =
+      args.message.stopReason === "error" ||
+      args.message.stopReason === "aborted";
+    if (args.usage.billable && !failed) {
+      throw new Error("Pi edge model returned no billable usage");
+    }
+    return undefined;
+  }
+
   return {
     messageId: args.messageId,
-    provider: args.billingModel,
-    entries,
+    model: args.usage.model,
+    inputTokens: quantities.input,
+    outputTokens: quantities.output,
+    cacheReadInputTokens: quantities.cacheRead,
+    cacheCreationInputTokens: quantities.cacheCreation,
+    billingEntries: args.usage.billable
+      ? piEdgeBillingEntries(args.usage.model, quantities)
+      : [],
   };
 }
 
@@ -207,7 +226,7 @@ export const runPiEdgeTurn$ = command(
           };
           const modelUsage = piEdgeModelUsage({
             messageId: `${args.runId}/${sequenceNumber}`,
-            billingModel: args.billingModel,
+            usage: args.usage,
             message,
           });
           const projection = await set(

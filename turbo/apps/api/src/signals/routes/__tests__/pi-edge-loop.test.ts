@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
@@ -9,10 +10,10 @@ import {
   PI_STANDBY_PROFILE,
   PI_STANDBY_TTL_RELEASE_EXIT_CODE,
 } from "@vm0/api-contracts/contracts/runners";
-import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
+import { v5 as uuidv5 } from "uuid";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -35,6 +36,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { readModelStatsObservations } from "./helpers/model-stats-state";
 import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { commitMemoryVersion } from "./helpers/zero-memory";
@@ -64,6 +66,8 @@ const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const OPENAI_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
+const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
+  "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
 
 interface CompletionStreamOptions {
   readonly usage?: Readonly<Record<string, unknown>>;
@@ -78,7 +82,7 @@ function recordOf(value: unknown): Record<string, unknown> | null {
 
 function completionStream(
   deltas: readonly Record<string, unknown>[],
-  finishReason: "stop" | "tool_calls",
+  finishReason: "stop" | "tool_calls" | "content_filter",
   options: CompletionStreamOptions = {},
 ): HttpResponse<string> {
   const responseModel = options.responseModel ?? MODEL;
@@ -120,6 +124,17 @@ function assistantTextStream(
     [{ role: "assistant", reasoning_content: thinking }, { content: text }],
     "stop",
     options,
+  );
+}
+
+function assistantErrorAfterUsageStream(args: {
+  readonly text: string;
+  readonly usage: Readonly<Record<string, unknown>>;
+}): HttpResponse<string> {
+  return completionStream(
+    [{ role: "assistant", content: args.text }],
+    "content_filter",
+    { usage: args.usage },
   );
 }
 
@@ -614,11 +629,11 @@ async function sendChatRun(
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const sent = await chat.requestSendEvent(
     fixture.actor,
-      {
-        agentId: fixture.agentId,
-        prompt,
-        model,
-        clientEventId,
+    {
+      agentId: fixture.agentId,
+      prompt,
+      model,
+      clientEventId,
       ...(threadId === undefined ? {} : { threadId }),
     },
     [201],
@@ -678,6 +693,16 @@ async function usageRun(actor: ApiTestUser, runId: string) {
   return response.body.runs.find((run) => {
     return run.runId === runId;
   });
+}
+
+function piEdgeUsageObservationKey(
+  runId: string,
+  sequenceNumber: number,
+): string {
+  return uuidv5(
+    `${runId}:${runId}/${String(sequenceNumber)}`,
+    PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE,
+  );
 }
 
 async function readTranscript(runId: string) {
@@ -1577,9 +1602,9 @@ describe("PiLoop edge turn", () => {
     );
     await flushWaitUntilForTest();
 
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
-      "completed",
-    );
+    const runState = await api.readRun(fixture.actor, run.runId);
+    expect(runState.error).toBeUndefined();
+    expect(runState.status).toBe("completed");
     expect(completionRequests).toHaveLength(2);
     for (const request of completionRequests) {
       expect(request).toMatchObject({
@@ -1598,6 +1623,22 @@ describe("PiLoop edge turn", () => {
     });
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore - 198,
+    );
+    const observationKeys = [
+      piEdgeUsageObservationKey(run.runId, 2),
+      piEdgeUsageObservationKey(run.runId, 4),
+    ];
+    const observations = await readModelStatsObservations(
+      context,
+      observationKeys,
+    );
+    expect(observations).toHaveLength(2);
+    expect(observations).toStrictEqual(
+      expect.arrayContaining(
+        observationKeys.map((idempotencyKey) => {
+          return { idempotencyKey, aggregatedAt: null };
+        }),
+      ),
     );
 
     const replay = await sendChatRun(
@@ -1635,13 +1676,56 @@ describe("PiLoop edge turn", () => {
     const run = await sendChatRun(fixture, "do not charge vm0 for BYOK");
     await flushWaitUntilForTest();
 
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
-      "completed",
-    );
+    const runState = await api.readRun(fixture.actor, run.runId);
+    expect(runState.error).toBeUndefined();
+    expect(runState.status).toBe("completed");
     await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore,
     );
+    const idempotencyKey = piEdgeUsageObservationKey(run.runId, 2);
+    await expect(
+      readModelStatsObservations(context, [idempotencyKey]),
+    ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
+  });
+
+  it("bills known managed usage when the same model response ends in error", async () => {
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    server.use(
+      http.post(OPENAI_COMPLETIONS_URL, () => {
+        return assistantErrorAfterUsageStream({
+          text: "partial response before stream failure",
+          usage: {
+            prompt_tokens: 23,
+            completion_tokens: 5,
+            prompt_tokens_details: { cached_tokens: 3 },
+          },
+        });
+      }),
+    );
+
+    const run = await sendChatRun(fixture, "bill usage received before error");
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      model: MANAGED_MODEL,
+      inputTokens: 20,
+      outputTokens: 5,
+      cacheTokens: 3,
+      creditsCharged: 28,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 28,
+    );
+    const idempotencyKey = piEdgeUsageObservationKey(run.runId, 2);
+    await expect(
+      readModelStatsObservations(context, [idempotencyKey]),
+    ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
   });
 
   it("settles successful managed usage when a later edge model call fails", async () => {
