@@ -56,6 +56,7 @@ type AgentUsageEventBody = Parameters<
 >[0];
 
 const MODEL = "deepseek-v4-flash";
+const MANAGED_MODEL = "gpt-5.6-luna";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 const CODEX_MODEL = "gpt-5.5";
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
@@ -165,7 +166,8 @@ function systemPromptFromRequest(request: unknown): string | undefined {
     return undefined;
   }
   const systemMessage = recordOf(messages[0]);
-  return systemMessage?.role === "system" &&
+  return (systemMessage?.role === "system" ||
+    systemMessage?.role === "developer") &&
     typeof systemMessage.content === "string"
     ? systemMessage.content
     : undefined;
@@ -440,7 +442,8 @@ async function piEdgeFixture(
   } = {},
 ): Promise<PiEdgeFixture> {
   const providerType = options.provider ?? "byok";
-  const model = options.model ?? MODEL;
+  const model =
+    options.model ?? (providerType === "vm0" ? MANAGED_MODEL : MODEL);
   const orgId = `org_pi_edge_${randomUUID()}`;
   const actor = bdd.user({ orgId });
   const switchOwner = bdd.user({ orgId });
@@ -1520,7 +1523,7 @@ describe("PiLoop edge turn", () => {
   });
 
   it("bills every vm0-managed API response once using normalized canonical-model usage", async () => {
-    await unitPriceModelTokens(MODEL);
+    await unitPriceModelTokens(MANAGED_MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
@@ -1528,7 +1531,7 @@ describe("PiLoop edge turn", () => {
     const completionRequests: unknown[] = [];
     let modelCall = 0;
     server.use(
-      http.post(COMPLETIONS_URL, async ({ request }) => {
+      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
         completionRequests.push(await request.json());
         const currentCall = modelCall;
         modelCall += 1;
@@ -1580,14 +1583,14 @@ describe("PiLoop edge turn", () => {
     expect(completionRequests).toHaveLength(2);
     for (const request of completionRequests) {
       expect(request).toMatchObject({
-        model: MODEL,
+        model: MANAGED_MODEL,
         stream: true,
         stream_options: { include_usage: true },
       });
     }
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
       runId: run.runId,
-      model: MODEL,
+      model: MANAGED_MODEL,
       inputTokens: 145,
       outputTokens: 18,
       cacheTokens: 35,
@@ -1642,14 +1645,14 @@ describe("PiLoop edge turn", () => {
   });
 
   it("settles successful managed usage when a later edge model call fails", async () => {
-    await unitPriceModelTokens(MODEL);
+    await unitPriceModelTokens(MANAGED_MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
     let modelCall = 0;
     server.use(
-      http.post(COMPLETIONS_URL, () => {
+      http.post(OPENAI_COMPLETIONS_URL, () => {
         const currentCall = modelCall;
         modelCall += 1;
         if (currentCall === 0) {
@@ -1679,7 +1682,7 @@ describe("PiLoop edge turn", () => {
     expect(modelCall).toBe(2);
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      model: MODEL,
+      model: MANAGED_MODEL,
       inputTokens: 20,
       outputTokens: 3,
       cacheTokens: 0,
@@ -1691,13 +1694,13 @@ describe("PiLoop edge turn", () => {
   });
 
   it("fails closed without projecting a managed response that has no usage", async () => {
-    await unitPriceModelTokens(MODEL);
+    await unitPriceModelTokens(MANAGED_MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
     server.use(
-      http.post(COMPLETIONS_URL, () => {
+      http.post(OPENAI_COMPLETIONS_URL, () => {
         return assistantTextStream(
           "this answer must not be projected",
           "usage is missing",
@@ -1939,14 +1942,14 @@ describe("PiLoop edge turn", () => {
   });
 
   it("bills edge and runner usage once across a replayed sandbox handoff", async () => {
-    await unitPriceModelTokens(MODEL);
+    await unitPriceModelTokens(MANAGED_MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
     const completionRequests: unknown[] = [];
     server.use(
-      http.post(COMPLETIONS_URL, async ({ request }) => {
+      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
         completionRequests.push(await request.json());
         return assistantToolStream({
           id: "bash_handoff_1",
@@ -2101,7 +2104,7 @@ describe("PiLoop edge turn", () => {
         {
           idempotencyKey: randomUUID(),
           kind: "model",
-          provider: MODEL,
+          provider: MANAGED_MODEL,
           category: "tokens.output",
           quantity: 5,
         },
@@ -2143,7 +2146,7 @@ describe("PiLoop edge turn", () => {
       ],
     });
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      model: MODEL,
+      model: MANAGED_MODEL,
       inputTokens: 10,
       outputTokens: 8,
       cacheTokens: 2,
