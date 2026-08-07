@@ -1645,7 +1645,6 @@
       "videoOptionsLabel": "Opciones de vídeo {{spec}}",
       "videoOptionsModel": "Modelo",
       "videoOptionsRatio": "Proporción",
-      "videoOptionsReset": "Restablecer valores predeterminados",
       "videoOptionsResolution": "Resolución"
     },
     "thread": {

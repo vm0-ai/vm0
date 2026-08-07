@@ -1604,7 +1604,6 @@
       "videoOptionsLabel": "동영상 옵션 {{spec}}",
       "videoOptionsModel": "모델",
       "videoOptionsRatio": "비율",
-      "videoOptionsReset": "기본값으로 재설정",
       "videoOptionsResolution": "해상도"
     },
     "thread": {

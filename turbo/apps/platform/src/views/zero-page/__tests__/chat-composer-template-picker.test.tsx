@@ -209,6 +209,22 @@ describe("chat composer templates", () => {
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
     await user.click(spec);
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.textContent === "Reset to default";
+      }),
+    ).toBeFalsy();
+    await user.click(await screen.findByRole("combobox", { name: "Model" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Seedance 2.0" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(
+        /^Seedance 2\.0$/,
+      );
+    });
+
     await user.click(await screen.findByRole("combobox", { name: "Ratio" }));
     await user.click(await screen.findByRole("option", { name: "9:16" }));
 
@@ -241,7 +257,11 @@ describe("chat composer templates", () => {
           selection: {
             stylePresetId: template.id,
             // Only the changed values are persisted.
-            videoOptions: { aspectRatio: "9:16", duration: "6s" },
+            videoOptions: {
+              model: "dreamina-seedance-2-0-260128",
+              aspectRatio: "9:16",
+              duration: "6s",
+            },
           },
         },
       });

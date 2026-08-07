@@ -1604,7 +1604,6 @@
       "videoOptionsLabel": "動画オプション {{spec}}",
       "videoOptionsModel": "モデル",
       "videoOptionsRatio": "比率",
-      "videoOptionsReset": "既定値に戻す",
       "videoOptionsResolution": "解像度"
     },
     "thread": {

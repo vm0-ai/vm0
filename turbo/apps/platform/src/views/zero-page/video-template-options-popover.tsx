@@ -17,6 +17,7 @@ import type {
   VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  DEFAULT_VIDEO_MODEL,
   VIDEO_MODEL_CONFIGS,
   VIDEO_MODELS,
   resolveVideoGenerationOptions,
@@ -33,18 +34,20 @@ import type { ComposerSignals } from "../../signals/zero-page/composer-signals.t
  */
 function toVideoOptionsPatch(
   next: ResolvedVideoGenerationOptions,
-  defaults: ResolvedVideoGenerationOptions,
+  modelDefaults: ResolvedVideoGenerationOptions,
 ): VideoGenerationOptions {
   return {
-    ...(next.model === defaults.model ? {} : { model: next.model }),
-    ...(next.aspectRatio === defaults.aspectRatio
+    ...(next.model === DEFAULT_VIDEO_MODEL ? {} : { model: next.model }),
+    ...(next.aspectRatio === modelDefaults.aspectRatio
       ? {}
       : { aspectRatio: next.aspectRatio }),
-    ...(next.duration === defaults.duration ? {} : { duration: next.duration }),
-    ...(next.resolution === defaults.resolution
+    ...(next.duration === modelDefaults.duration
+      ? {}
+      : { duration: next.duration }),
+    ...(next.resolution === modelDefaults.resolution
       ? {}
       : { resolution: next.resolution }),
-    ...(next.generateAudio === defaults.generateAudio
+    ...(next.generateAudio === modelDefaults.generateAudio
       ? {}
       : { generateAudio: next.generateAudio }),
   };
@@ -142,12 +145,14 @@ function VideoTemplateOptionsForm({
     // Re-resolve so a value the newly chosen model rejects falls back the same
     // way the generation service would.
     const settled = resolveVideoGenerationOptions(next);
-    const defaults = resolveVideoGenerationOptions({ model: settled.model });
+    const modelDefaults = resolveVideoGenerationOptions({
+      model: settled.model,
+    });
     onChange({
       ...value,
       selection: {
         ...value.selection,
-        videoOptions: toVideoOptionsPatch(settled, defaults),
+        videoOptions: toVideoOptionsPatch(settled, modelDefaults),
       },
     });
   };
@@ -223,22 +228,6 @@ function VideoTemplateOptionsForm({
           />
         </div>
       )}
-      <div className="mt-2 flex items-center justify-end border-t border-border pt-2">
-        <button
-          type="button"
-          className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          onClick={() => {
-            onChange({
-              ...value,
-              selection: { ...value.selection, videoOptions: {} },
-            });
-          }}
-        >
-          {t(($) => {
-            return $.chat.templates.videoOptionsReset;
-          })}
-        </button>
-      </div>
     </div>
   );
 }
