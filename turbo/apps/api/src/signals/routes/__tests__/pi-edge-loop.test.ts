@@ -9,6 +9,7 @@ import {
   PI_STANDBY_PROFILE,
   PI_STANDBY_TTL_RELEASE_EXIT_CODE,
 } from "@vm0/api-contracts/contracts/runners";
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -18,9 +19,11 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -32,6 +35,7 @@ import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript
 
 const context = testContext();
 const bdd = createBddApi(context);
+const misc = createMiscRoutesApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -40,6 +44,10 @@ const workflows = createWorkflowsBddApi(context);
 
 const MODEL = "deepseek-v4-flash";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
+const CODEX_MODEL = "gpt-5.5";
+const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
+const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
 
 function recordOf(value: unknown): Record<string, unknown> | null {
@@ -129,6 +137,126 @@ function systemPromptFromRequest(request: unknown): string | undefined {
     typeof systemMessage.content === "string"
     ? systemMessage.content
     : undefined;
+}
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function codexJwt(accountId: string, expiresInSeconds = 3600): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      exp: Math.floor(now() / 1000) + expiresInSeconds,
+      "https://api.openai.com/auth": {
+        chatgpt_account_id: accountId,
+        chatgpt_plan_type: "pro",
+      },
+    }),
+  );
+  return `${header}.${payload}.fake-signature`;
+}
+
+function codexAuthJson(accessToken: string): string {
+  const accountId = "ws_acct_from_id_token_pi_edge";
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: accessToken,
+      refresh_token: "rt_pi_edge_synthetic_high_entropy",
+      account_id: "ws_acct_pi_edge_plain",
+      id_token: codexJwt(accountId),
+    },
+  });
+}
+
+function codexTextSsePayload(text: string): string {
+  const events = [
+    {
+      type: "response.created",
+      response: {
+        id: "resp_pi_codex",
+        object: "response",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: {
+        type: "message",
+        id: "msg_pi_codex",
+        role: "assistant",
+        status: "in_progress",
+        content: [],
+      },
+    },
+    {
+      type: "response.output_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: text,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: {
+        type: "message",
+        id: "msg_pi_codex",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    },
+    {
+      type: "response.completed",
+      response: {
+        id: "resp_pi_codex",
+        object: "response",
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            id: "msg_pi_codex",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        ],
+        usage: {
+          input_tokens: 5,
+          output_tokens: 3,
+          total_tokens: 8,
+        },
+      },
+    },
+  ];
+  return events
+    .map((event) => {
+      return `data: ${JSON.stringify(event)}\n\n`;
+    })
+    .join("");
+}
+
+function codexTextSseStream(text: string): Response {
+  // MSW's HttpResponse.text body does not close for the Codex stream reader in
+  // this environment; a raw Response with a ReadableStream does (same shape as
+  // the pi-agent-runtime unit coverage).
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(codexTextSsePayload(text)));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { "content-type": "text/event-stream" },
+  });
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -323,6 +451,85 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
   };
 }
 
+async function codexPiEdgeFixture(args?: {
+  readonly accessToken?: string;
+}): Promise<PiEdgeFixture> {
+  const orgId = `org_pi_codex_${randomUUID()}`;
+  const actor = bdd.user({ orgId });
+  const switchOwner = bdd.user({ orgId });
+  chatCallbacks.acceptChatObjectStorage();
+  chatCallbacks.disableVapid();
+  api.acceptStorageDownloads();
+  const storageObjects = acceptPiStorageObjects();
+  api.acceptTelemetryIngest();
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+  const runnerGroup = api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  server.use(
+    http.get(CODEX_WHAM_USAGE_URL, () => {
+      return HttpResponse.json({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            limit_window_seconds: 18_000,
+            reset_at: 1_893_441_600,
+          },
+          secondary_window: {
+            limit_window_seconds: 604_800,
+            reset_at: 1_893_456_000,
+          },
+        },
+      });
+    }),
+  );
+  await misc.upsertPersonalModelProvider(
+    actor,
+    {
+      type: "codex-oauth-token",
+      authMethod: "auth_json",
+      secrets: {
+        CODEX_AUTH_JSON: codexAuthJson(
+          args?.accessToken ?? codexJwt("ws_acct_pi_edge_access"),
+        ),
+      },
+    },
+    [200, 201],
+  );
+  await api.updateOrgModelPolicies(actor, [
+    {
+      model: CODEX_MODEL,
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
+    },
+  ]);
+  const agent = await bdd.createAgent(actor, {
+    displayName: AGENT_DISPLAY_NAME,
+    description: "Exercises the in-API Pi edge turn with a Codex subscription.",
+    visibility: "private",
+  });
+  const agentInstructions =
+    "# Pinned Pi instructions\nAlways preserve the run snapshot.";
+  await bdd.updateAgentInstructions(actor, agent.agentId, agentInstructions);
+  const workflowSkillName = `pi-snapshot-${randomUUID().slice(0, 8)}`;
+  await workflows.createWorkflow(actor, {
+    agentId: agent.agentId,
+    name: workflowSkillName,
+  });
+  return {
+    actor,
+    switchOwner,
+    agentId: agent.agentId,
+    orgId,
+    runnerGroup,
+    agentDisplayName: AGENT_DISPLAY_NAME,
+    agentInstructions,
+    workflowSkillName,
+    storageObjects,
+  };
+}
+
 async function enablePiLoop(fixture: PiEdgeFixture): Promise<void> {
   await updateFeatureSwitchesForUser(
     context,
@@ -351,13 +558,14 @@ async function sendChatRun(
   fixture: PiEdgeFixture,
   prompt: string,
   threadId?: string,
+  model: SupportedRunModel = MODEL,
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const sent = await chat.requestSendEvent(
     fixture.actor,
     {
       agentId: fixture.agentId,
       prompt,
-      model: MODEL,
+      model,
       clientEventId: randomUUID(),
       ...(threadId === undefined ? {} : { threadId }),
     },
@@ -904,6 +1112,178 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "completed",
     );
+  });
+
+  it("refreshes an expired Codex subscription before the Pi edge turn", async () => {
+    const fixture = await codexPiEdgeFixture({
+      accessToken: codexJwt("ws_acct_pi_edge_expired", -60),
+    });
+    await enablePiLoop(fixture);
+    const refreshedAccessToken = codexJwt("ws_acct_pi_edge_refreshed");
+    const refreshBodies: unknown[] = [];
+    let codexAuthorization: string | null = null;
+    let codexAccountId: string | null = null;
+    const modelStarted = createDeferredPromise<void>(context.signal);
+    const releaseModel = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseModel.settled()) {
+        releaseModel.resolve();
+      }
+    });
+    server.use(
+      http.post(CODEX_OAUTH_TOKEN_URL, async ({ request }) => {
+        refreshBodies.push(await request.json());
+        return HttpResponse.json({
+          access_token: refreshedAccessToken,
+          refresh_token: "rt_pi_edge_rotated_high_entropy",
+          expires_in: 3600,
+        });
+      }),
+      http.post(CODEX_RESPONSES_URL, async ({ request }) => {
+        codexAuthorization = request.headers.get("authorization");
+        codexAccountId = request.headers.get("chatgpt-account-id");
+        modelStarted.resolve();
+        await releaseModel.promise;
+        return codexTextSseStream("codex edge answer");
+      }),
+    );
+
+    const prompt = "answer with the Codex subscription";
+    const run = await sendChatRun(fixture, prompt, undefined, CODEX_MODEL);
+    await modelStarted.promise;
+
+    const standbyPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: [PI_STANDBY_PROFILE],
+      },
+      [200],
+    );
+    if (standbyPoll.status !== 200) {
+      throw new Error("Expected Pi standby poll to return 200");
+    }
+    expect(standbyPoll.body.job).toMatchObject({
+      runId: run.runId,
+      experimentalProfile: PI_STANDBY_PROFILE,
+    });
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    expect(standbyContext.piModelConfig).toStrictEqual({
+      provider: "codex",
+      baseUrl: "https://chatgpt.com/backend-api",
+      model: CODEX_MODEL,
+      apiKeyEnv: "CHATGPT_ACCESS_TOKEN",
+    });
+
+    releaseModel.resolve();
+    await flushWaitUntilForTest();
+
+    expect(refreshBodies).toStrictEqual([
+      {
+        client_id: expect.any(String),
+        grant_type: "refresh_token",
+        refresh_token: "rt_pi_edge_synthetic_high_entropy",
+      },
+    ]);
+    expect(codexAuthorization).toBe(`Bearer ${refreshedAccessToken}`);
+    expect(codexAccountId).toBe("ws_acct_pi_edge_refreshed");
+
+    const transcript = await readTranscript(run.runId);
+    expect(transcript).toMatchObject({
+      version: 1,
+      lastOrdinal: 2,
+      messages: [
+        {
+          ordinal: 1,
+          messageId: `${run.runId}/1`,
+          runId: run.runId,
+          runEventSequenceNumber: 1,
+          role: "user",
+          payload: {
+            role: "user",
+            content: [{ type: "text", text: prompt }],
+          },
+        },
+        {
+          ordinal: 2,
+          messageId: `${run.runId}/2`,
+          runId: run.runId,
+          runEventSequenceNumber: 2,
+          role: "assistant",
+          payload: {
+            role: "assistant",
+            content: [{ type: "text", text: "codex edge answer" }],
+            stopReason: "stop",
+          },
+        },
+      ],
+    });
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "completed",
+    );
+  });
+
+  it("uses the Sandbox lane when an expired Codex subscription cannot refresh", async () => {
+    const fixture = await codexPiEdgeFixture({
+      accessToken: codexJwt("ws_acct_pi_edge_expired", -60),
+    });
+    await enablePiLoop(fixture);
+    const refreshBodies: unknown[] = [];
+    let codexRequests = 0;
+    server.use(
+      http.post(CODEX_OAUTH_TOKEN_URL, async ({ request }) => {
+        refreshBodies.push(await request.json());
+        return HttpResponse.json(
+          {
+            error: {
+              code: "refresh_token_expired",
+              message: "expired refresh token",
+            },
+          },
+          { status: 401 },
+        );
+      }),
+      http.post(CODEX_RESPONSES_URL, () => {
+        codexRequests += 1;
+        return codexTextSseStream("unexpected edge answer");
+      }),
+    );
+
+    const run = await sendChatRun(
+      fixture,
+      "fall back after Codex reconnect is required",
+      undefined,
+      CODEX_MODEL,
+    );
+    const defaultPoll = await api.pollRunner(fixture.runnerGroup);
+
+    expect(defaultPoll.body.job?.runId).toBe(run.runId);
+    expect(codexRequests).toBe(0);
+    expect(refreshBodies).toStrictEqual([
+      {
+        client_id: expect.any(String),
+        grant_type: "refresh_token",
+        refresh_token: "rt_pi_edge_synthetic_high_entropy",
+      },
+    ]);
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "pending",
+    );
+    const providers = await misc.listPersonalModelProviders(
+      fixture.actor,
+      [200],
+    );
+    if (providers.status !== 200) {
+      throw new Error("Expected personal model providers to load");
+    }
+    expect(
+      providers.body.modelProviders.find((provider) => {
+        return provider.type === "codex-oauth-token";
+      }),
+    ).toMatchObject({
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_expired",
+    });
   });
 
   it("requeues an expired standby onto the cold-start lane without settling the run", async () => {

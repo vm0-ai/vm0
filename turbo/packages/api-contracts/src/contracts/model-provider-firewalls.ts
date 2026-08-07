@@ -310,7 +310,18 @@ export function getModelProviderPiChatCompletionsUrl(
       Record<ModelProviderType, SingleSecretFirewallProviderConfig>
     >
   )[type];
-  return config?.piChatCompletionsUrl;
+  if (config?.piChatCompletionsUrl !== undefined) {
+    return config.piChatCompletionsUrl;
+  }
+  // Codex subscription (codex-oauth-token) is a multi-secret provider, so it
+  // lives outside the single-secret table above. The Pi runtime calls
+  // `${base}/codex/responses`, which is prefix-covered by the firewall base
+  // `https://chatgpt.com/backend-api/codex` (see MODEL_PROVIDER_FIREWALL_CONFIGS),
+  // so this base and that rule cannot drift apart.
+  if (type === "codex-oauth-token") {
+    return "https://chatgpt.com/backend-api";
+  }
+  return undefined;
 }
 
 export function getModelProviderFirewall(

@@ -751,10 +751,15 @@ export const piModelConfigSchema = z
       "openai",
       "openrouter",
       "vercel-ai-gateway",
+      "codex",
     ]),
     baseUrl: z.url(),
     model: z.string().min(1),
-    apiKeyEnv: z.enum(["ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]),
+    apiKeyEnv: z.enum([
+      "ANTHROPIC_AUTH_TOKEN",
+      "OPENAI_API_KEY",
+      "CHATGPT_ACCESS_TOKEN",
+    ]),
   })
   .readonly();
 
