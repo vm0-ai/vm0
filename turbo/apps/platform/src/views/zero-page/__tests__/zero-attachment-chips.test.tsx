@@ -1691,10 +1691,32 @@ describe("zero attachment chips", () => {
         return respond(200, { runs: [] });
       },
     );
-    mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycle(context, {
       threadId: leftThreadId,
       threadTitle: "Left image thread",
     });
+    lifecycle.setThreadList([
+      {
+        id: leftThreadId,
+        title: "Left image thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: rightThreadId,
+        title: "Right image thread",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
@@ -1734,8 +1756,11 @@ describe("zero attachment chips", () => {
       path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
     });
 
-    const threadRegions = await screen.findAllByLabelText("Chat thread");
-    expect(threadRegions).toHaveLength(2);
+    const threadRegions = await waitFor(() => {
+      const regions = screen.getAllByLabelText("Chat thread");
+      expect(regions).toHaveLength(2);
+      return regions;
+    });
     const leftThread = threadRegions[0];
     const rightThread = threadRegions[1];
     if (!leftThread || !rightThread) {
