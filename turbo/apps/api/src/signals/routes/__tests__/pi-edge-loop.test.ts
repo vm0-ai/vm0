@@ -411,10 +411,10 @@ function acceptPiStorageObjects(): PiStorageObjects {
   const objects = new Map<string, Buffer>();
   const seededObjects = new Map<string, Buffer>();
   const systemSkillNameByStorageName = new Map(
-    [...SEED_SKILLS, GOAL_SKILL_NAME].flatMap((skillName) => {
-      const parsed = parseGitHubTreeUrl(resolveSkillRef(skillName));
+    [...SEED_SKILLS, GOAL_SKILL_NAME].flatMap((skillRef) => {
+      const parsed = parseGitHubTreeUrl(resolveSkillRef(skillRef));
       return parsed
-        ? [[getSkillStorageName(parsed.fullPath), skillName] as const]
+        ? [[getSkillStorageName(parsed.fullPath), parsed.skillName] as const]
         : [];
     }),
   );
