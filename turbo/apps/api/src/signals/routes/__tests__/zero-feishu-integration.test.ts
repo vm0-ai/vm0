@@ -3234,7 +3234,10 @@ describe("Feishu integration", () => {
     });
     await postEvent(callbackUrl, queuedPayload, { encrypted: true });
     await flushWaitUntilForTest();
-    const queuedEvent = await findPendingChatEventByPromptFixture(queuedPrompt);
+    const queuedEvent = await findPendingChatEventByPromptFixture({
+      userId: fixture.actor.userId,
+      prompt: queuedPrompt,
+    });
     if (!queuedEvent) {
       throw new Error("Expected the queued Feishu input event");
     }
@@ -3425,8 +3428,10 @@ describe("Feishu integration", () => {
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const failedDeliveryEvent =
-      await findPendingChatEventByPromptFixture(failedDeliveryPrompt);
+    const failedDeliveryEvent = await findPendingChatEventByPromptFixture({
+      userId: fixture.actor.userId,
+      prompt: failedDeliveryPrompt,
+    });
     if (!failedDeliveryEvent) {
       throw new Error("Expected the failed-delivery Feishu input event");
     }
@@ -3601,8 +3606,10 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-    const queuedFeishuParams =
-      await findPendingChatEventByPromptFixture(secondPrompt);
+    const queuedFeishuParams = await findPendingChatEventByPromptFixture({
+      userId: secondActor.userId,
+      prompt: secondPrompt,
+    });
     expect(queuedFeishuParams).toMatchObject({
       eventId: expect.any(String),
     });
