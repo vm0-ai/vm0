@@ -44,9 +44,10 @@ function firewallAuthBases(provider: string): readonly string[] {
       }[];
     }
   > = MODEL_PROVIDER_FIREWALL_CONFIGS;
-  return (configs[provider]?.apis ?? []).map((api) => {
-    return api;
-  })
+  return (configs[provider]?.apis ?? [])
+    .map((api) => {
+      return api;
+    })
     .filter((api) => {
       return Object.keys(api.auth?.headers ?? {}).length > 0;
     })

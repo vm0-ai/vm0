@@ -6,6 +6,7 @@ import {
   PI_STANDBY_PROFILE,
   PI_STANDBY_TTL_RELEASE_EXIT_CODE,
 } from "@vm0/api-contracts/contracts/runners";
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -479,7 +480,7 @@ async function sendChatRun(
   fixture: PiEdgeFixture,
   prompt: string,
   threadId?: string,
-  model: string = MODEL,
+  model: SupportedRunModel = MODEL,
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const sent = await chat.requestSendEvent(
     fixture.actor,

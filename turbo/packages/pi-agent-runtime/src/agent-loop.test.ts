@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NodeExecutionEnv, resolvePiAgentModel, runPiAgentPrompt } from "./node";
+import {
+  NodeExecutionEnv,
+  resolvePiAgentModel,
+  runPiAgentPrompt,
+} from "./node";
 
 const CODEX_ACCOUNT_ID_CLAIM_PATH = "https://api.openai.com/auth";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
@@ -130,10 +134,7 @@ describe("Pi Codex subscription provider", () => {
   it("streams a Codex subscription turn with the real ChatGPT JWT", async () => {
     const accessToken = codexJwt("ws_acct_pi_edge_real");
     const fetchMock = vi.fn(
-      async (
-        _input: FetchInput,
-        _init?: FetchInit,
-      ): Promise<Response> => {
+      async (_input: FetchInput, _init?: FetchInit): Promise<Response> => {
         return sseResponse(codexTextSse("edge answer"));
       },
     );
@@ -186,10 +187,7 @@ describe("Pi Codex subscription provider", () => {
 
   it("synthesizes a JWT-shaped key for the sandbox placeholder", async () => {
     const fetchMock = vi.fn(
-      async (
-        _input: FetchInput,
-        _init?: FetchInit,
-      ): Promise<Response> => {
+      async (_input: FetchInput, _init?: FetchInit): Promise<Response> => {
         return sseResponse(codexTextSse("sandbox answer"));
       },
     );
