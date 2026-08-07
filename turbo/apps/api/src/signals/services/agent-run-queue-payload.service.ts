@@ -10,6 +10,12 @@ import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
+import {
+  piEdgeModelConfigSchema,
+  piEdgeUsageConfigSchema,
+  type PiEdgeModelConfig,
+  type PiEdgeUsageConfig,
+} from "./pi-edge-config";
 
 const QUEUED_RUNNER_JOB_PAYLOAD_KEY = "__api_runner_job_payload__";
 
@@ -22,7 +28,23 @@ const queuedRunnerJobPayloadWireSchema = z.object({
   sessionId: z.string().nullable(),
   reuseKey: z.string().nullable().optional(),
   executionContext: compatibleStoredExecutionContextSchema,
+  // Optional and encrypted with the rest of the queue payload. Previous API
+  // readers ignore this additive field and safely dispatch the normal profile.
+  piEdge: z
+    .object({
+      model: piEdgeModelConfigSchema,
+      prompt: z.string().min(1),
+      usage: piEdgeUsageConfigSchema.optional(),
+    })
+    .readonly()
+    .optional(),
 });
+
+interface QueuedPiEdgeLaunch {
+  readonly model: PiEdgeModelConfig;
+  readonly prompt: string;
+  readonly usage?: PiEdgeUsageConfig;
+}
 
 interface QueuedRunnerJobPayload {
   readonly version: 1;
@@ -32,6 +54,7 @@ interface QueuedRunnerJobPayload {
   readonly reuseKey: string | null;
   readonly historyGenerationRunId: string | undefined;
   readonly executionContext: StoredExecutionContext;
+  readonly piEdge: QueuedPiEdgeLaunch | undefined;
 }
 
 interface CompatibleQueuedRunnerJobPayload extends Omit<
@@ -63,6 +86,7 @@ export async function encryptQueuedRunnerJobPayload(
         sessionId: payload.cliAgentSessionId,
         reuseKey: payload.reuseKey,
         executionContext: payload.executionContext,
+        ...(payload.piEdge === undefined ? {} : { piEdge: payload.piEdge }),
       }),
     },
     ctx,
@@ -99,6 +123,7 @@ export async function decryptQueuedRunnerJobPayload(
       wirePayload.executionContext,
     ),
     executionContext: wirePayload.executionContext,
+    piEdge: wirePayload.piEdge,
   };
 }
 
@@ -108,6 +133,7 @@ export function queuedRunnerJobPayload(args: {
   readonly cliAgentSessionId: string | null;
   readonly reuseKey: string | null;
   readonly executionContext: StoredExecutionContext;
+  readonly piEdge?: QueuedPiEdgeLaunch;
 }): QueuedRunnerJobPayload {
   return {
     version: 1,
@@ -119,5 +145,6 @@ export function queuedRunnerJobPayload(args: {
       args.executionContext,
     ),
     executionContext: args.executionContext,
+    piEdge: args.piEdge,
   };
 }

@@ -187,6 +187,7 @@ export type FileError = NativeFileErrorShape;
 /** Error returned by {@link ExecutionEnv.exec}. */
 export type ExecutionError = NativeExecutionErrorShape;
 
+export { PI_OPENAI_COMPATIBLE_PROVIDERS } from "./types";
 export type {
   ExecutionEnv,
   FileInfo,
