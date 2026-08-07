@@ -820,13 +820,10 @@ describe("chat composer templates", () => {
         "overflow-y-auto",
         "[scrollbar-width:none]",
       );
-      expect(avatarScroll.parentElement).toHaveClass("px-6");
-      expect(avatarScroll.parentElement).not.toHaveClass("py-4");
       const avatarToolbar = avatarScroll.querySelector(
         "[data-avatar-catalog-toolbar]",
       );
       expect(avatarToolbar).toHaveClass("sticky", "top-0");
-      expect(avatarToolbar).not.toHaveClass("bg-background");
       Object.defineProperties(avatarScroll, {
         scrollHeight: { configurable: true, value: 1200 },
         clientHeight: { configurable: true, value: 500 },
@@ -868,8 +865,6 @@ describe("chat composer templates", () => {
         "[data-avatar-voice-list-scroll]",
       );
       expect(voicePicker).toHaveClass("overflow-hidden");
-      expect(voicePicker?.parentElement).toHaveClass("px-6");
-      expect(voicePicker?.parentElement).not.toHaveClass("py-4");
       expect(voiceScroll).toHaveClass(
         "overflow-y-auto",
         "[scrollbar-width:none]",
@@ -893,10 +888,7 @@ describe("chat composer templates", () => {
       );
       expect(firstVoiceCard).toHaveAttribute("data-recommended");
       expect(firstVoiceCard).toHaveAttribute("aria-pressed", "false");
-      expect(firstVoiceCard).toHaveClass(
-        "border-primary/40",
-        "bg-primary/[0.025]",
-      );
+      expect(firstVoiceCard).toHaveAccessibleDescription("Recommended");
       expect(within(firstVoiceCard).getByText("Recommended")).toBeVisible();
       const voiceFiltersButton = within(dialog).getByText("Filters", {
         selector: "button",

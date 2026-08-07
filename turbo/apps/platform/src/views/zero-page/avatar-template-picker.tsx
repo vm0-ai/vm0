@@ -854,6 +854,7 @@ function AvatarVoiceCard({
   readonly onSelect: (voice: ZeroAvatarVideoVoice) => void;
 }) {
   const { t } = useTranslation();
+  const recommendedDescriptionId = `avatar-voice-recommendation-${encodeURIComponent(voice.id)}`;
   const metadata = Array.from(
     new Set(
       [voice.language, voice.gender, voice.age, voice.accent]
@@ -883,6 +884,7 @@ function AvatarVoiceCard({
         { title: voice.name },
       )}
       aria-pressed={selected}
+      aria-describedby={recommended ? recommendedDescriptionId : undefined}
       onClick={selectVoice}
       onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
         if (event.target !== event.currentTarget) {
@@ -918,7 +920,10 @@ function AvatarVoiceCard({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {recommended && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              <span
+                id={recommendedDescriptionId}
+                className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary"
+              >
                 {t(($) => {
                   return $.artifacts.templates.recommended;
                 })}
