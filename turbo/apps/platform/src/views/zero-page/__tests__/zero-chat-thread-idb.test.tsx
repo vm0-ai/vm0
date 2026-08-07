@@ -576,7 +576,9 @@ describe("zero chat thread IndexedDB fallback", () => {
       createdAt: "2026-03-10T00:00:01Z",
     });
 
+    const messageListRequested = context.mocks.deferred<void>();
     context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      messageListRequested.resolve();
       return respond(200, {
         events: [
           {
@@ -605,6 +607,7 @@ describe("zero chat thread IndexedDB fallback", () => {
 
     try {
       setupChatPage();
+      await messageListRequested.promise;
 
       await expect(
         screen.findByText(USER_MESSAGE),
