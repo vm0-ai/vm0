@@ -930,6 +930,10 @@
       "description": "Abonnement, méthode de paiement et factures dans Stripe.",
       "title": "Gérer la facturation"
     },
+    "paymentMethods": {
+      "description": "Gérez les moyens de paiement utilisés pour la facturation dans Stripe.",
+      "title": "Moyens de paiement"
+    },
     "plans": {
       "cancellationNotice": "Votre abonnement {{plan}} a été annulé et prendra fin le {{date}}.",
       "changeAnytime": "Passez à un niveau supérieur ou inférieur à tout moment.",

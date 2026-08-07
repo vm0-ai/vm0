@@ -360,7 +360,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
     expect(text).toContain(
-      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
+      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
     );
     expect(text).toContain("Use: zero generate video --provider built-in -h");
     expect(text).toContain(

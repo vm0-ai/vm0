@@ -909,6 +909,10 @@
       "description": "Abonnement, Zahlungsmethode und Rechnungen in Stripe.",
       "title": "Abrechnung verwalten"
     },
+    "paymentMethods": {
+      "description": "Verwalte die in Stripe für die Abrechnung verwendeten Zahlungsmethoden.",
+      "title": "Zahlungsmethoden"
+    },
     "plans": {
       "cancellationNotice": "Ihr {{plan}}-Plan wurde gekündigt und endet am {{date}}.",
       "changeAnytime": "Upgrade oder Downgrade jederzeit möglich.",

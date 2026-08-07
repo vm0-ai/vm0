@@ -1,13 +1,9 @@
 import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
-
-import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
+  type SecretKmsDataKey,
+  type SecretKmsDecryptRequest,
+  type SecretKmsGenerateDataKeyRequest,
 } from "../../../../lib/secret-kms-client";
 
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -18,58 +14,49 @@ interface SecretKmsProbe {
 }
 
 export function generateDataKeyOutput(
-  command: GenerateDataKeyCommand,
-): GenerateDataKeyCommandOutput {
+  request: SecretKmsGenerateDataKeyRequest,
+): SecretKmsDataKey {
   return {
-    $metadata: {},
-    KeyId: command.input.KeyId,
-    CiphertextBlob: Buffer.from(
-      `encrypted-data-key:${command.input.KeyId}`,
+    keyId: request.keyId,
+    plaintext: TEST_DATA_KEY,
+    encryptedDataKey: Buffer.from(
+      `encrypted-data-key:${request.keyId}`,
       "utf8",
     ),
-    Plaintext: TEST_DATA_KEY,
   };
-}
-
-function decryptDataKeyOutput(): DecryptCommandOutput {
-  return { $metadata: {}, Plaintext: TEST_DATA_KEY };
 }
 
 export function useSecretKmsProbe(
   overrideGenerateDataKey?: (
-    command: GenerateDataKeyCommand,
+    request: SecretKmsGenerateDataKeyRequest,
     callNumber: number,
-  ) => Promise<GenerateDataKeyCommandOutput> | undefined,
+  ) => Promise<SecretKmsDataKey> | undefined,
   overrideDecrypt?: (
-    command: DecryptCommand,
+    request: SecretKmsDecryptRequest,
     callNumber: number,
-  ) => Promise<DecryptCommandOutput> | undefined,
+  ) => Promise<Uint8Array> | undefined,
 ): SecretKmsProbe {
   let generateDataKeyCalls = 0;
   let decryptCalls = 0;
 
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
+  const client: SecretKmsClient = {
+    generateDataKey(
+      request: SecretKmsGenerateDataKeyRequest,
+    ): Promise<SecretKmsDataKey> {
       generateDataKeyCalls += 1;
       const overridden = overrideGenerateDataKey?.(
-        command,
+        request,
         generateDataKeyCalls,
       );
-      return overridden ?? Promise.resolve(generateDataKeyOutput(command));
-    }
+      return overridden ?? Promise.resolve(generateDataKeyOutput(request));
+    },
+    decrypt(request: SecretKmsDecryptRequest): Promise<Uint8Array> {
+      decryptCalls += 1;
+      const overridden = overrideDecrypt?.(request, decryptCalls);
+      return overridden ?? Promise.resolve(TEST_DATA_KEY);
+    },
+  };
 
-    decryptCalls += 1;
-    const overridden = overrideDecrypt?.(command, decryptCalls);
-    return overridden ?? Promise.resolve(decryptDataKeyOutput());
-  }
-
-  const client: SecretKmsClient = { send };
   setSecretKmsClientForTests(client);
   return {
     get generateDataKeyCalls() {

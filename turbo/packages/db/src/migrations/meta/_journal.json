@@ -351,6 +351,13 @@
       "when": 1786093185848,
       "tag": "0857_modern_firebrand",
       "breakpoints": true
+    },
+    {
+      "idx": 858,
+      "version": "7",
+      "when": 1786099005958,
+      "tag": "0858_add_seedance_2_5_and_normalize_video_pricing",
+      "breakpoints": true
     }
   ]
 }

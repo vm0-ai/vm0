@@ -84,6 +84,7 @@ function activeProBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 2,
     concurrencySubscriptions: [],
+    paymentMethodManagementAvailable: true,
   };
 }
 
@@ -142,6 +143,16 @@ function noActiveBillingStatus(): BillingStatusResponse {
     creditGrants: [],
     concurrencyLimit: 0,
     concurrencySubscriptions: [],
+    paymentMethodManagementAvailable: true,
+  };
+}
+
+function previousApiBillingStatus(
+  status: BillingStatusResponse,
+): BillingStatusResponse {
+  return {
+    ...status,
+    paymentMethodManagementAvailable: undefined,
   };
 }
 
@@ -235,8 +246,11 @@ function mockBillingStory(): void {
   });
 }
 
-async function openBillingTab(path = "/?settings=billing"): Promise<void> {
-  detachedSetupPage({ context, path });
+async function openBillingTab(
+  path = "/?settings=billing",
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
+  detachedSetupPage({ context, path, featureSwitches });
   await waitFor(() => {
     expect(
       screen.getByRole("dialog", { name: "Settings" }),
@@ -313,7 +327,7 @@ describe("organization billing settings", () => {
         screen.getByRole("heading", { name: "Plano" }),
       ).toBeInTheDocument();
       expect(screen.getByText("Plano Pro")).toBeInTheDocument();
-      expect(screen.getByText("Gerenciar cobrança")).toBeInTheDocument();
+      expect(screen.getByText("Métodos de pagamento")).toBeInTheDocument();
       expect(
         screen.getByRole("heading", { name: "Comprar créditos" }),
       ).toBeInTheDocument();
@@ -644,7 +658,7 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Subscription, payment method, and invoices in Stripe.",
+          "Manage the payment methods used for billing in Stripe.",
         ),
       ).toBeInTheDocument();
     });
@@ -763,6 +777,7 @@ describe("organization billing settings", () => {
   });
 
   it("opens the Stripe customer portal from an active paid plan", async () => {
+    let portalRequestBody: unknown;
     context.mocks.data.org({
       id: "org_1",
       name: "Paid Org",
@@ -771,16 +786,24 @@ describe("organization billing settings", () => {
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
       return respond(200, activeProBillingStatus());
     });
-    context.mocks.api(zeroBillingPortalContract.create, ({ respond }) => {
+    context.mocks.api(zeroBillingPortalContract.create, ({ body, respond }) => {
+      portalRequestBody = body;
       return respond(200, {
         url: "https://billing.stripe.com/customer-portal/test-org",
       });
     });
 
-    await openBillingTab();
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.PaymentMethodManagement]: false,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Manage billing")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Subscription, payment method, and invoices in Stripe.",
+        ),
+      ).toBeInTheDocument();
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
@@ -791,38 +814,30 @@ describe("organization billing settings", () => {
         "https://billing.stripe.com/customer-portal/test-org",
       );
     });
+    expect(portalRequestBody).not.toHaveProperty("mode");
   });
 
-  it("opens the Stripe customer portal for an add-on subscription", async () => {
+  it("opens the Stripe payment method portal without a subscription", async () => {
+    let portalRequestBody: unknown;
     context.mocks.data.org({
       id: "org_1",
-      name: "Add-on Org",
+      name: "No Subscription Org",
       role: "admin",
     });
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, {
-        ...noActiveBillingStatus(),
-        hasSubscription: true,
-        concurrencySubscriptions: [
-          {
-            id: "sub_concurrency_12345678",
-            quantity: 2,
-            currentPeriodEnd: "2026-06-01T00:00:00Z",
-            cancelAtPeriodEnd: false,
-          },
-        ],
-      });
+      return respond(200, noActiveBillingStatus());
     });
-    context.mocks.api(zeroBillingPortalContract.create, ({ respond }) => {
+    context.mocks.api(zeroBillingPortalContract.create, ({ body, respond }) => {
+      portalRequestBody = body;
       return respond(200, {
-        url: "https://billing.stripe.com/customer-portal/add-on-org",
+        url: "https://billing.stripe.com/customer-portal/no-subscription",
       });
     });
 
     await openBillingTab();
 
     await waitFor(() => {
-      expect(screen.getByText("Manage billing")).toBeInTheDocument();
+      expect(screen.getByText("Payment methods")).toBeInTheDocument();
       expect(screen.getByText("No active plan")).toBeInTheDocument();
     });
 
@@ -830,9 +845,84 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(window.location.href).toBe(
-        "https://billing.stripe.com/customer-portal/add-on-org",
+        "https://billing.stripe.com/customer-portal/no-subscription",
       );
     });
+    expect(portalRequestBody).toMatchObject({ mode: "payment_methods" });
+  });
+
+  it("uses the legacy billing portal for a subscriber on a previous API", async () => {
+    let portalRequestBody: unknown;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Previous API Paid Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, previousApiBillingStatus(activeProBillingStatus()));
+    });
+    context.mocks.api(zeroBillingPortalContract.create, ({ body, respond }) => {
+      portalRequestBody = body;
+      return respond(200, {
+        url: "https://billing.stripe.com/customer-portal/previous-api",
+      });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Manage billing")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Payment methods")).not.toBeInTheDocument();
+
+    click(buttonByText("Manage"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://billing.stripe.com/customer-portal/previous-api",
+      );
+    });
+    expect(portalRequestBody).not.toHaveProperty("mode");
+  });
+
+  it("hides payment methods without a subscription on a previous API", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Previous API No Subscription Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, previousApiBillingStatus(noActiveBillingStatus()));
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Payment methods")).not.toBeInTheDocument();
+    expect(screen.queryByText("Manage billing")).not.toBeInTheDocument();
+  });
+
+  it("hides payment method management without a subscription when disabled", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Disabled Payment Methods Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, noActiveBillingStatus());
+    });
+
+    await openBillingTab("/?settings=billing", {
+      [FeatureSwitchKey.PaymentMethodManagement]: false,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Payment methods")).not.toBeInTheDocument();
+    expect(screen.queryByText("Manage billing")).not.toBeInTheDocument();
   });
 
   it("shows custom tier access and disables Pro and Team checkout", async () => {
@@ -853,8 +943,8 @@ describe("organization billing settings", () => {
         screen.getByText("Custom access with 10 concurrent runs"),
       ).toBeInTheDocument();
       expect(screen.getByText("10 concurrent runs")).toBeInTheDocument();
+      expect(screen.getByText("Payment methods")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Manage billing")).not.toBeInTheDocument();
     expect(screen.queryByText("Upgrade")).not.toBeInTheDocument();
     expect(screen.queryByText("Downgrade")).not.toBeInTheDocument();
 

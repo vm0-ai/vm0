@@ -331,6 +331,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
   },
+  [FeatureSwitchKey.PaymentMethodManagement]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Show payment method management without requiring an active subscription.",
+    // Remove the switch and disabled paths with #25716 after the app/API
+    // rollout and the roughly two-day stale-client window are complete.
+    enabled: true,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:

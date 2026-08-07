@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingPortalContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -21,6 +22,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroBillingPortalRoutes } from "../zero-billing-portal";
 
 const context = testContext();
@@ -28,10 +30,33 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const APP_ORIGIN = "http://app.localhost:3002";
+const PORTAL_CONFIGURATION_ID = "bpc_payment_methods";
+const RESTRICTED_PORTAL_CONFIGURATION = {
+  id: PORTAL_CONFIGURATION_ID,
+  active: true,
+  features: {
+    customer_update: { enabled: false },
+    invoice_history: { enabled: false },
+    payment_method_update: { enabled: true },
+    subscription_cancel: { enabled: false },
+    subscription_update: { enabled: false },
+  },
+  login_page: { enabled: false },
+  metadata: {
+    managed_by: "vm0",
+    purpose: "payment_method_management",
+  },
+} as const;
 
 describe("POST /api/zero/billing/portal", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {
     return store.set(deleteInvoicesOrg$, fixture, context.signal);
+  });
+
+  beforeEach(() => {
+    context.mocks.stripe.billingPortal.configurations.list.mockResolvedValue({
+      data: [RESTRICTED_PORTAL_CONFIGURATION],
+    });
   });
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
@@ -183,6 +208,234 @@ describe("POST /api/zero/billing/portal", () => {
       customer: fixture.stripeCustomerId,
       return_url: returnUrl,
     });
+    expect(
+      context.mocks.stripe.billingPortal.configurations.list,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("opens the restricted payment method portal for an existing customer", async () => {
+    const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: `sub-portal-${randomUUID().slice(0, 8)}`,
+          subscriptionStatus: "active",
+          tier: "pro",
+        },
+        context.signal,
+      ),
+    );
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
+      url: "https://billing.stripe.com/session/manage-billing",
+    });
+
+    const returnUrl = `${APP_ORIGIN}/settings/billing`;
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: { returnUrl, mode: "payment_methods" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.com/session/manage-billing",
+    });
+    expect(
+      context.mocks.stripe.billingPortal.configurations.list,
+    ).toHaveBeenCalledWith({ limit: 100 });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: customerId,
+      configuration: PORTAL_CONFIGURATION_ID,
+      return_url: returnUrl,
+    });
+  });
+
+  it("creates a customer for payment method management without a subscription", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
+    const returnUrl = `${APP_ORIGIN}/settings/billing`;
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(userId, orgId, "org:admin");
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.billingPortal.configurations.list.mockResolvedValue({
+      data: [],
+    });
+    context.mocks.stripe.billingPortal.configurations.create.mockResolvedValue({
+      id: PORTAL_CONFIGURATION_ID,
+    });
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
+      url: "https://billing.stripe.com/session/payment-method",
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: { returnUrl, mode: "payment_methods" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.com/session/payment-method",
+    });
+    expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
+      metadata: { orgId },
+    });
+    expect(
+      context.mocks.stripe.billingPortal.configurations.create,
+    ).toHaveBeenCalledWith(
+      {
+        name: "VM0 payment methods",
+        features: {
+          customer_update: { enabled: false },
+          invoice_history: { enabled: false },
+          payment_method_update: { enabled: true },
+          subscription_cancel: { enabled: false },
+          subscription_update: { enabled: false },
+        },
+        login_page: { enabled: false },
+        metadata: {
+          managed_by: "vm0",
+          purpose: "payment_method_management",
+        },
+      },
+      { idempotencyKey: "vm0-payment-method-portal-v1" },
+    );
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: customerId,
+      configuration: PORTAL_CONFIGURATION_ID,
+      return_url: returnUrl,
+    });
+  });
+
+  it("does not create a customer without a subscription when payment methods are disabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId, orgId, orgRole: "org:admin" },
+      { [FeatureSwitchKey.PaymentMethodManagement]: false },
+    );
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: {
+          returnUrl: `${APP_ORIGIN}/settings/billing`,
+          mode: "payment_methods",
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Payment method management is not available",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.billingPortal.configurations.list,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("repairs a managed portal configuration before creating a session", async () => {
+    const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
+    const fixture = await track(
+      store.set(
+        seedInvoicesOrg$,
+        {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: `sub-portal-${randomUUID().slice(0, 8)}`,
+          subscriptionStatus: "active",
+          tier: "pro",
+        },
+        context.signal,
+      ),
+    );
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.billingPortal.configurations.list.mockResolvedValue({
+      data: [
+        {
+          ...RESTRICTED_PORTAL_CONFIGURATION,
+          features: {
+            ...RESTRICTED_PORTAL_CONFIGURATION.features,
+            subscription_cancel: { enabled: true },
+          },
+        },
+      ],
+    });
+    context.mocks.stripe.billingPortal.configurations.update.mockResolvedValue({
+      id: PORTAL_CONFIGURATION_ID,
+    });
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
+      url: "https://billing.stripe.com/session/restricted",
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: {
+          returnUrl: `${APP_ORIGIN}/settings/billing`,
+          mode: "payment_methods",
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.com/session/restricted",
+    });
+    expect(
+      context.mocks.stripe.billingPortal.configurations.update,
+    ).toHaveBeenCalledWith(PORTAL_CONFIGURATION_ID, {
+      active: true,
+      name: "VM0 payment methods",
+      features: {
+        customer_update: { enabled: false },
+        invoice_history: { enabled: false },
+        payment_method_update: { enabled: true },
+        subscription_cancel: { enabled: false },
+        subscription_update: { enabled: false },
+      },
+      login_page: { enabled: false },
+      metadata: {
+        managed_by: "vm0",
+        purpose: "payment_method_management",
+      },
+    });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: customerId,
+      configuration: PORTAL_CONFIGURATION_ID,
+      return_url: `${APP_ORIGIN}/settings/billing`,
+    });
   });
 
   it("returns a portal URL for an allowance-only org", async () => {
@@ -209,7 +462,10 @@ describe("POST /api/zero/billing/portal", () => {
       setupApp({ context, routes: zeroBillingPortalRoutes })(
         zeroBillingPortalContract,
       ).create({
-        body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
+        body: {
+          returnUrl: `${APP_ORIGIN}/settings/billing`,
+          mode: "payment_methods",
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -222,6 +478,7 @@ describe("POST /api/zero/billing/portal", () => {
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: customerId,
+      configuration: PORTAL_CONFIGURATION_ID,
       return_url: `${APP_ORIGIN}/settings/billing`,
     });
   });

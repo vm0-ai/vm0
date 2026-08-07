@@ -930,6 +930,10 @@
       "description": "Assinatura, forma de pagamento e faturas no Stripe.",
       "title": "Gerenciar cobrança"
     },
+    "paymentMethods": {
+      "description": "Gerencie os métodos de pagamento usados para cobrança no Stripe.",
+      "title": "Métodos de pagamento"
+    },
     "plans": {
       "cancellationNotice": "Seu plano {{plan}} foi cancelado e terminará em {{date}}.",
       "changeAnytime": "Faça upgrade ou downgrade a qualquer momento.",

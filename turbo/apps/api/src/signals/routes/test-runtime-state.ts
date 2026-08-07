@@ -2,12 +2,6 @@ import {
   getVm0Vendor,
   MODEL_PROVIDER_TYPES,
 } from "@vm0/api-contracts/contracts/model-providers";
-import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
 import { command } from "ccstate";
 import {
   testRuntimeStateContract,
@@ -44,6 +38,8 @@ import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
   type SecretKmsClient,
+  type SecretKmsDataKey,
+  type SecretKmsGenerateDataKeyRequest,
 } from "../../lib/secret-kms-client";
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
@@ -191,28 +187,24 @@ async function readOrgAdmissionLockState(
 }
 
 function fakeSecretKmsClient(): SecretKmsClient {
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
+  return {
+    generateDataKey(
+      request: SecretKmsGenerateDataKeyRequest,
+    ): Promise<SecretKmsDataKey> {
       return Promise.resolve({
-        $metadata: {},
-        KeyId: command.input.KeyId,
-        CiphertextBlob: Buffer.from(
-          `encrypted-data-key:${command.input.KeyId}`,
+        keyId: request.keyId,
+        plaintext: fakeKmsDataKey,
+        encryptedDataKey: Buffer.from(
+          `encrypted-data-key:${request.keyId}`,
           "utf8",
         ),
-        Plaintext: fakeKmsDataKey,
       });
-    }
-    fakeKmsDecryptCallCount.set(fakeKmsDecryptCallCount.get() + 1);
-    return Promise.resolve({ $metadata: {}, Plaintext: fakeKmsDataKey });
-  }
-  return { send };
+    },
+    decrypt(): Promise<Uint8Array> {
+      fakeKmsDecryptCallCount.set(fakeKmsDecryptCallCount.get() + 1);
+      return Promise.resolve(fakeKmsDataKey);
+    },
+  };
 }
 
 async function seedVm0ManagedDefaultModelKey(

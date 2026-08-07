@@ -1,12 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-} from "@aws-sdk/client-kms";
-import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
@@ -118,6 +112,8 @@ import {
 import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
+  type SecretKmsDataKey,
+  type SecretKmsGenerateDataKeyRequest,
 } from "../../../lib/secret-kms-client";
 
 /**
@@ -516,14 +512,10 @@ function useSecretKmsClientForTests(args: {
   readonly onGenerateDataKey?: (callNumber: number) => void;
 }): void {
   let generateDataKeyCalls = 0;
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
+  const client: SecretKmsClient = {
+    generateDataKey(
+      request: SecretKmsGenerateDataKeyRequest,
+    ): Promise<SecretKmsDataKey> {
       generateDataKeyCalls += 1;
       args.onGenerateDataKey?.(generateDataKeyCalls);
       if (
@@ -535,20 +527,18 @@ function useSecretKmsClientForTests(args: {
         );
       }
       return Promise.resolve({
-        $metadata: {},
-        KeyId: command.input.KeyId,
-        CiphertextBlob: Buffer.from(
-          `encrypted-data-key:${command.input.KeyId}`,
+        keyId: request.keyId,
+        plaintext: TEST_DATA_KEY,
+        encryptedDataKey: Buffer.from(
+          `encrypted-data-key:${request.keyId}`,
           "utf8",
         ),
-        Plaintext: TEST_DATA_KEY,
       });
-    }
-
-    return Promise.resolve({ $metadata: {}, Plaintext: TEST_DATA_KEY });
-  }
-
-  const client: SecretKmsClient = { send };
+    },
+    decrypt(): Promise<Uint8Array> {
+      return Promise.resolve(TEST_DATA_KEY);
+    },
+  };
   setSecretKmsClientForTests(client);
 }
 

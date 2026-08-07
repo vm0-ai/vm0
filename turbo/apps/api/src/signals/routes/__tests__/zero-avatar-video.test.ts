@@ -108,7 +108,7 @@ async function seedAvatarVideoFixture(options?: {
         kind: "video",
         provider: "joggai-talking-avatar",
         category: "output_video_joggai_credits",
-        unitPrice: 599,
+        unitPrice: 623,
         unitSize: 1,
       },
     ]);
@@ -539,7 +539,7 @@ describe("JoggAI built-in avatar video routes", () => {
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
       durationSeconds: 121,
-      creditsCharged: 1198,
+      creditsCharged: 1246,
       provider: "joggai",
       model: "joggai-talking-avatar",
       providerVideoId: "jogg-video-123",
@@ -608,7 +608,7 @@ describe("JoggAI built-in avatar video routes", () => {
     expect(asRecord(await fileCatalogResponse.json()).artifacts).toStrictEqual(
       [],
     );
-    await expect(orgCredits(fixture)).resolves.toBe(8802);
+    await expect(orgCredits(fixture)).resolves.toBe(8754);
   });
 
   it("maps audio input without exposing private JoggAI resources", async () => {

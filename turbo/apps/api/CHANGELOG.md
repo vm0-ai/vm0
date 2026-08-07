@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.400.0](https://github.com/vm0-ai/vm0/compare/api-v1.399.0...api-v1.400.0) (2026-08-07)
+
+
+### Features
+
+* **pi:** support codex subscription model providers ([#25703](https://github.com/vm0-ai/vm0/issues/25703)) ([0c35f8f](https://github.com/vm0-ai/vm0/commit/0c35f8f533d8f85a3a16a9bc6751bef5d2b1a9ea))
+
+
+### Bug Fixes
+
+* **api:** reject saturated pi edge launches ([#25678](https://github.com/vm0-ai/vm0/issues/25678)) ([a74438d](https://github.com/vm0-ai/vm0/commit/a74438d4a6e5f736d7fcd74d4a82273b253455a7))
+
+
+### Refactoring
+
+* remove pexels connector and image provider ([#23668](https://github.com/vm0-ai/vm0/issues/23668)) ([6344d47](https://github.com/vm0-ai/vm0/commit/6344d47abc26e22f09d5ece2941e7c5f3cf4dda9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.292.0
+    * @vm0/core bumped to 8.528.2
+    * @vm0/db bumped to 1.177.3
+    * @vm0/pi-agent-runtime bumped to 1.3.0
+
 ## [1.399.0](https://github.com/vm0-ai/vm0/compare/api-v1.398.2...api-v1.399.0) (2026-08-07)
 
 
