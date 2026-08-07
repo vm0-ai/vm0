@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
   clearMockedAuth,
@@ -373,8 +374,9 @@ describe("api client headers", () => {
     expect(observedBypassHeader).toBeNull();
   });
 
-  it("opens the force upgrade dialog for contract client responses", async () => {
+  it("opens the force upgrade dialog without an error toast for contract client responses", async () => {
     context.store.set(listenForceUpgradeDialog$, context.signal);
+    const toastError = vi.spyOn(toast, "error");
     const agentId = "c0000000-0000-4000-a000-000000000001";
     context.mocks.http.get("*/api/zero/agents/:id/user-connectors", () => {
       return Response.json(
@@ -384,10 +386,12 @@ describe("api client headers", () => {
     });
 
     const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
-    const response = await client.get({ params: { id: agentId } });
+    await expect(
+      accept(client.get({ params: { id: agentId } }), [200]),
+    ).rejects.toMatchObject({ status: CLIENT_FORCE_UPGRADE_STATUS });
 
-    expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
     expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("opens the force upgrade dialog for fetch$ responses", async () => {
