@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.17](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.16...guest-mock-codex-v0.6.17) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
 ## [0.6.16](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.15...guest-mock-codex-v0.6.16) (2026-08-04)
 
 

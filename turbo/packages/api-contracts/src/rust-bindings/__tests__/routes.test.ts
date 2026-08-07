@@ -34,6 +34,18 @@ const expectedBindings = [
   },
   {
     method: "POST",
+    path: "/api/runners/runs/:runId/connector-runtime/sync",
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "connector_runtime",
+      "sync",
+    ],
+    rustConstName: "SYNC",
+  },
+  {
+    method: "POST",
     path: "/api/runners/builtin-firewalls/resolve",
     rustModulePath: ["runners", "builtin_firewalls", "resolve"],
     rustConstName: "RESOLVE",

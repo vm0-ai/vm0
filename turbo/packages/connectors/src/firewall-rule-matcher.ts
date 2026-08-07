@@ -143,6 +143,7 @@ interface DecisionApi {
 
 interface DecisionFirewall {
   readonly name: string;
+  readonly intentIdentity: string;
   readonly nameMalformed: boolean;
   readonly apis: readonly DecisionApi[];
 }
@@ -667,6 +668,11 @@ function compileDecisionFirewall(
   const rawName = rawFirewall.name;
   const nameMalformed = typeof rawName !== "string" || rawName === "";
   const name = typeof rawName === "string" ? rawName : "";
+  const rawCustomConnectorId = rawFirewall.customConnectorId;
+  const intentIdentity =
+    typeof rawCustomConnectorId === "string" && rawCustomConnectorId !== ""
+      ? rawCustomConnectorId
+      : name;
   const rawApis = rawFirewall.apis;
   if (!Array.isArray(rawApis)) return null;
 
@@ -680,7 +686,7 @@ function compileDecisionFirewall(
   }
 
   if (apis.length === 0) return null;
-  return { name, nameMalformed, apis };
+  return { name, intentIdentity, nameMalformed, apis };
 }
 
 function compileDecisionFirewalls(rawFirewalls: unknown): DecisionFirewall[] {
@@ -1625,6 +1631,23 @@ function winningOwnerNames(
   return [...names].sort();
 }
 
+function ownerNameForIntent(
+  collection: FirewallMatchCollection,
+  intentValue: string,
+): string | null {
+  const names = new Set<string>();
+  for (const apiMatch of winningApiMatches(collection)) {
+    if (
+      !apiMatch.firewall.nameMalformed &&
+      apiMatch.firewall.intentIdentity === intentValue
+    ) {
+      names.add(apiMatch.firewall.name);
+    }
+  }
+  if (names.size !== 1) return null;
+  return names.values().next().value ?? null;
+}
+
 function selectedOwnerApiMatches(
   collection: FirewallMatchCollection,
   selectedName: string,
@@ -1704,8 +1727,11 @@ function selectOwner(
     return { kind: "selected", name: owner };
   }
   const owners = [owner, ...otherOwners];
-  if (intent.status === "present" && owners.includes(intent.value)) {
-    return { kind: "selected", name: intent.value };
+  if (intent.status === "present") {
+    const selectedName = ownerNameForIntent(collection, intent.value);
+    if (selectedName !== null) {
+      return { kind: "selected", name: selectedName };
+    }
   }
   return {
     kind: "ambiguous",

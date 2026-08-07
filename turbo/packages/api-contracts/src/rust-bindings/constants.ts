@@ -19,6 +19,8 @@ import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -287,11 +289,28 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_TARGETS_MAX",
+    value: rustU64(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX),
+    rustDoc: [
+      "Maximum connector runtime targets accepted by the sync endpoint.",
+      "Rust runners use this shared contract value to split target batches before calling the API.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE",
+    value: rustString(CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE),
+    rustDoc: [
+      "API error code returned when connector runtime synchronization targets a terminal run.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
     rustConstName: "NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE",
     value: rustString(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
     rustDoc: [
       "API error code returned when network policy refresh targets a terminal run.",
-      "Rust runners use this shared contract value to distinguish terminal reconciliation from ambiguous refresh failures.",
+      "Rust runners use this shared contract value to distinguish terminal sync from ambiguous refresh failures.",
     ],
   },
   {
