@@ -50,4 +50,30 @@ describe("shared thread page", () => {
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
     expect(screen.queryByText("Owner")).not.toBeInTheDocument();
   });
+
+  it("owns its scrolling because the app shell clips overflow", async () => {
+    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+      return respond(200, {
+        id: SHARED_THREAD_ID,
+        title: "Long thread",
+        messages: [
+          {
+            messageIndex: 0,
+            role: "user",
+            content: "First question",
+            runIndex: 0,
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/share/threads/${SHARED_THREAD_ID}`,
+      user: null,
+    });
+
+    const scroller = await screen.findByTestId("shared-thread-scroll");
+    expect(scroller).toHaveClass("h-full", "overflow-y-auto");
+  });
 });

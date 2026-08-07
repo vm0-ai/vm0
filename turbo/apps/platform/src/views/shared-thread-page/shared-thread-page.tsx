@@ -125,7 +125,10 @@ export function SharedThreadPage({
   const { t } = useTranslation();
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];
   return (
-    <main className="flex min-h-full flex-col bg-background text-foreground">
+    <main
+      className="flex h-full flex-col overflow-y-auto bg-background text-foreground"
+      data-testid="shared-thread-scroll"
+    >
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[948px] items-center justify-between px-4 sm:px-6">
           <a
