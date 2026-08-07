@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.393.1](https://github.com/vm0-ai/vm0/compare/api-v1.393.0...api-v1.393.1) (2026-08-07)
+
+
+### CI
+
+* wire Google Forms Pub/Sub env into API deployment ([#25556](https://github.com/vm0-ai/vm0/issues/25556)) ([34ead0d](https://github.com/vm0-ai/vm0/commit/34ead0d1a5c7499c9160afeab97c365c110d095b))
+
 ## [1.393.0](https://github.com/vm0-ai/vm0/compare/api-v1.392.0...api-v1.393.0) (2026-08-07)
 
 
