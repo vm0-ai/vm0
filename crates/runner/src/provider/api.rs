@@ -10,6 +10,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
+        CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
         NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
@@ -42,8 +43,8 @@ use crate::ids::RunId;
 use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
-    PollResponse, SandboxReuseResult,
+    CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTarget, ExecutionContext,
+    HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -109,6 +110,12 @@ struct PollRequestBody<'a> {
 pub(super) enum NetworkPolicyRefreshOutcome {
     Refreshed(NetworkPolicyRefreshBatchResponse),
     RunTerminal,
+}
+
+pub(super) enum ConnectorRuntimeSyncOutcome {
+    Synced(ConnectorRuntimeSyncBatchResponse),
+    RunTerminal,
+    RouteUnavailable,
 }
 
 #[derive(Deserialize)]
@@ -1230,6 +1237,53 @@ impl ApiClient {
             )
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
             .json(&serde_json::json!({ "connectorSlugs": connector_slugs }))
+    }
+
+    pub(super) async fn sync_connector_runtime(
+        &self,
+        run_id: RunId,
+        targets: &[ConnectorRuntimeTarget],
+    ) -> RunnerResult<ConnectorRuntimeSyncOutcome> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.connector_runtime_sync_request(&run_id, targets),
+            "connector runtime sync",
+        )
+        .await?;
+
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Ok(ConnectorRuntimeSyncOutcome::RouteUnavailable);
+        }
+        if resp.status() == StatusCode::CONFLICT {
+            let (status, body) = read_api_error(resp).await;
+            if serde_json::from_str::<ApiErrorEnvelope>(&body).is_ok_and(|response| {
+                response.error.code == CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE
+            }) {
+                return Ok(ConnectorRuntimeSyncOutcome::RunTerminal);
+            }
+            return Err(api_status_error("connector runtime sync", status, &body));
+        }
+
+        let resp = check_api_status(resp, "connector runtime sync").await?;
+        decode_api_json(resp, "connector runtime sync")
+            .await
+            .map(ConnectorRuntimeSyncOutcome::Synced)
+    }
+
+    fn connector_runtime_sync_request(
+        &self,
+        run_id: &str,
+        targets: &[ConnectorRuntimeTarget],
+    ) -> ApiRequestBuilder {
+        self.http
+            .request_resolved_route(
+                routes::runners::runs::by_run_id::connector_runtime::sync::route(
+                    routes::runners::runs::by_run_id::connector_runtime::sync::Params { run_id },
+                ),
+                &self.token,
+            )
+            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
+            .json(&serde_json::json!({ "targets": targets }))
     }
 
     pub(super) async fn resolve_builtin_firewall_catalog(

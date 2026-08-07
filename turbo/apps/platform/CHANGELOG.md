@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.697.1](https://github.com/vm0-ai/vm0/compare/app-v0.697.0...app-v0.697.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **deps:** patch js-yaml and mermaid vulnerabilities ([#25544](https://github.com/vm0-ai/vm0/issues/25544)) ([82952be](https://github.com/vm0-ai/vm0/commit/82952beef8d949ea9707b0b57d72a0180da7a932))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.285.0
+    * @vm0/connectors bumped to 1.204.0
+    * @vm0/core bumped to 8.524.5
+
+## [0.697.0](https://github.com/vm0-ai/vm0/compare/app-v0.696.0...app-v0.697.0) (2026-08-06)
+
+
+### Features
+
+* **billing:** fulfill usage pack subscriptions ([#25493](https://github.com/vm0-ai/vm0/issues/25493)) ([10231ca](https://github.com/vm0-ai/vm0/commit/10231ca9eafbf86f01c81c8d58a62496ed7662e5))
+
+
+### Bug Fixes
+
+* **auth:** wait for Clerk session to settle ([#25496](https://github.com/vm0-ai/vm0/issues/25496)) ([b5fd894](https://github.com/vm0-ai/vm0/commit/b5fd894bacd6e2e5bb573375c3d177949aefe380))
+* **chat:** preserve scroll across sharing transitions ([#25488](https://github.com/vm0-ai/vm0/issues/25488)) ([6074f15](https://github.com/vm0-ai/vm0/commit/6074f15ae400af62834bbe854b2634c28fa3df06))
+* **platform:** render markdown emphasis that touches cjk punctuation ([#25503](https://github.com/vm0-ai/vm0/issues/25503)) ([e8d8a55](https://github.com/vm0-ai/vm0/commit/e8d8a550b4c801567369c764010ae62c5b372f75))
+
+
+### Refactoring
+
+* **artifacts:** remove catalog kind capability negotiation ([#25486](https://github.com/vm0-ai/vm0/issues/25486)) ([d244b68](https://github.com/vm0-ai/vm0/commit/d244b6862b82bbf56ff38a9462f4c6455c005fcd))
+* **chat:** remove run model compatibility ([#25504](https://github.com/vm0-ai/vm0/issues/25504)) ([f49b915](https://github.com/vm0-ai/vm0/commit/f49b915ee8ed74693d6d81d3d277538331f5395e))
+* remove chat thread sidebar auto-open feature switch ([#25495](https://github.com/vm0-ai/vm0/issues/25495)) ([f77001b](https://github.com/vm0-ai/vm0/commit/f77001be77e0361dce8f7506d24f0ad84b843996))
+* remove customModelGateways feature switch ([#25492](https://github.com/vm0-ai/vm0/issues/25492)) ([89b8fdf](https://github.com/vm0-ai/vm0/commit/89b8fdf668d3fae06cac9fb2eb56924c7cffb78b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.284.0
+    * @vm0/core bumped to 8.524.4
+
 ## [0.696.0](https://github.com/vm0-ai/vm0/compare/app-v0.695.0...app-v0.696.0) (2026-08-06)
 
 

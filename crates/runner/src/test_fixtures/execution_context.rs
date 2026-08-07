@@ -25,6 +25,7 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
         firewalls: None,
         network_policies: None,
         network_policy_refreshes: None,
+        connector_runtime_targets: None,
         disallowed_tools: None,
         tools: None,
         settings: None,

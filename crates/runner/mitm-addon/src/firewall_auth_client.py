@@ -132,6 +132,7 @@ class FirewallAuthRequest:
     secret_connector_metadata_map: dict | None = None
     vars_map: dict | None = None
     firewall_billable: bool = False
+    matched_firewall: dict | None = None
 
     def to_body(self, *, force_refresh: bool = False) -> dict:
         """Build the webhook JSON body while preserving omission semantics."""
@@ -153,6 +154,8 @@ class FirewallAuthRequest:
             body["vars"] = self.vars_map
         if self.firewall_billable:
             body["firewallBillable"] = True
+        if self.matched_firewall is not None:
+            body["matchedFirewall"] = self.matched_firewall
         if force_refresh:
             body["forceRefresh"] = True
         return body

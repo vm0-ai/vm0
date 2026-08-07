@@ -2,11 +2,13 @@ import { command } from "ccstate";
 import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   PI_STANDBY_PROFILE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -14,6 +16,7 @@ import {
   runnersPollContract,
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
+  type ConnectorRuntimeTarget,
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
@@ -98,6 +101,7 @@ import {
 } from "../services/chat-event-queue.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
+import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
 import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
 import { withRunModelAnnotation } from "../services/zero-chat-user-message.service";
 import {
@@ -779,6 +783,9 @@ const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const networkPolicyRefreshBody$ = bodyResultOf(
   runnersNetworkPolicyRefreshContract.refresh,
 );
+const connectorRuntimeSyncBody$ = bodyResultOf(
+  runnersConnectorRuntimeSyncContract.sync,
+);
 const builtinFirewallsResolveBody$ = bodyResultOf(
   runnersBuiltinFirewallsResolveContract.resolve,
 );
@@ -1346,6 +1353,36 @@ function connectorPermissionBaselineMatchesStoredContext(
   );
 }
 
+function connectorRuntimeTargetsForClaim(
+  storedContext: StoredExecutionContext,
+): ConnectorRuntimeTarget[] | undefined {
+  if (storedContext.connectorRuntimeTargets !== undefined) {
+    return storedContext.connectorRuntimeTargets;
+  }
+  const networkPolicies = storedContext.networkPolicies ?? {};
+  const seenConnectorSlugs = new Set<string>();
+  const targets = (storedContext.firewalls ?? []).flatMap((firewall) => {
+    if (
+      firewall.kind !== "builtin" ||
+      !Object.hasOwn(networkPolicies, firewall.name)
+    ) {
+      return [];
+    }
+    const connectorSlug = connectorSlugSchema.safeParse(firewall.name);
+    if (!connectorSlug.success || seenConnectorSlugs.has(connectorSlug.data)) {
+      return [];
+    }
+    seenConnectorSlugs.add(connectorSlug.data);
+    return [
+      {
+        kind: "builtin" as const,
+        connectorSlug: connectorSlug.data,
+      },
+    ];
+  });
+  return targets.length > 0 ? targets : undefined;
+}
+
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
@@ -1852,6 +1889,9 @@ async function buildClaimResponseBody(args: {
         resumeSession,
         sandboxToken,
         secretValues,
+        connectorRuntimeTargets: connectorRuntimeTargetsForClaim(
+          args.storedContext,
+        ),
         networkPolicies: refreshedPolicies.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
@@ -2587,6 +2627,69 @@ const networkPolicyRefreshInner$ = command(
   },
 );
 
+const connectorRuntimeSyncInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+
+    const body = await get(connectorRuntimeSyncBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const runId = get(
+      pathParamsOf(runnersConnectorRuntimeSyncContract.sync),
+    ).runId;
+    const db = set(writeDb$);
+    const run = await getRunNetworkPolicyScope(db, runId, signal);
+    if (!run) {
+      return notFound("Run not found");
+    }
+
+    const authError = runnerRunAuthorizationError(auth, run);
+    if (run.status !== "running") {
+      if (authError || !isTerminalRunStatus(run.status)) {
+        return notFound("Run not found");
+      }
+      return {
+        status: 409 as const,
+        body: {
+          error: {
+            code: CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+            message: "Run is terminal",
+          },
+        },
+      };
+    }
+    if (authError) {
+      return authError;
+    }
+
+    const resolutions = await resolveConnectorRuntimeTargets({
+      db,
+      scope: {
+        orgId: run.orgId,
+        userId: run.userId,
+        agentId: run.agentId,
+      },
+      targets: body.data.targets,
+    });
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        results: resolutions.map((resolution) => {
+          return resolution.result;
+        }),
+      },
+    };
+  },
+);
+
 const runnerRealtimeTokenInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -2983,6 +3086,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersNetworkPolicyRefreshContract.refresh,
     handler: networkPolicyRefreshInner$,
+  },
+  {
+    route: runnersConnectorRuntimeSyncContract.sync,
+    handler: connectorRuntimeSyncInner$,
   },
   {
     route: runnersBuiltinFirewallsResolveContract.resolve,
