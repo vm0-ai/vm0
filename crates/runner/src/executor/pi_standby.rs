@@ -24,7 +24,7 @@ impl PiStandbyForwarder {
         control: Option<GuestProcessControlHandle>,
         job_cancel: CancellationToken,
     ) -> Option<Self> {
-        let (Some(mut source), Some(control)) = (source, control) else {
+        let (Some(source), Some(control)) = (source, control) else {
             return None;
         };
         let stop = CancellationToken::new();
@@ -35,6 +35,9 @@ impl PiStandbyForwarder {
                 () = task_stop.cancelled() => return,
                 () = job_cancel.cancelled() => return,
                 signal = source.wait() => signal,
+            };
+            let Some(signal) = signal else {
+                return;
             };
             let payload = match signal {
                 PiStandbySignal::Handoff => br#"{"type":"pi-handoff"}"#.as_slice(),
