@@ -138,12 +138,11 @@ test("send a message through the deployed runner", async ({ page }) => {
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
-  const chatComposer = page.locator("[data-chat-composer]");
-  const composer = chatComposer.locator(
-    '.zero-composer [contenteditable="true"]',
-  );
-  await composer.fill(`printf ${marker}`);
-  await chatComposer.getByRole("button", { name: "Send" }).click();
+  const composer = page.locator(".zero-composer");
+  const editor = composer.getByRole("textbox", { name: "Message" });
+  await expect(editor).toBeVisible();
+  await editor.fill(`printf ${marker}`);
+  await composer.getByRole("button", { name: "Send" }).click();
 
   await expect(
     page.locator('[data-role="assistant"]').getByText(marker, { exact: true }),
