@@ -1397,13 +1397,16 @@ async function postSlackUserNotice(args: {
     return;
   }
 
-  await args.client.postEphemeral({
+  const result = await args.client.postEphemeral({
     channel: args.channelId,
     user: args.slackUserId,
     threadTs: args.ephemeralThreadTs,
     text: args.text,
     blocks: args.blocks,
   });
+  if (result.kind === "slack_error") {
+    L.error("Failed to post Slack admission notice", { error: result.error });
+  }
 }
 
 const handleAppHomeOpened$ = command(
