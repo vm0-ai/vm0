@@ -563,6 +563,33 @@ fn decode_msg_preserves_nested_data_maps_and_arrays() -> TestResult {
 }
 
 #[test]
+fn decode_msg_stringifies_non_string_data_map_keys_before_last_wins() -> TestResult {
+    let payload = rmpv::Value::Map(vec![
+        field("action", rmpv::Value::from(action::MESSAGE)),
+        field(
+            "messages",
+            rmpv::Value::Array(vec![rmpv::Value::Map(vec![field(
+                "data",
+                rmpv::Value::Map(vec![
+                    (rmpv::Value::from(7), str_value("integer key")),
+                    field("7", str_value("string key")),
+                ]),
+            )])]),
+        ),
+    ]);
+
+    let encoded = encode_value(payload)?;
+    let decoded = decode_msg(&encoded)?;
+
+    let message = single_message(&decoded)?;
+    assert_eq!(
+        message.data.as_ref(),
+        Some(&serde_json::json!({"7": "string key"}))
+    );
+    Ok(())
+}
+
+#[test]
 fn decode_msg_converts_msgpack_binary_data_to_base64_string() -> TestResult {
     let payload = rmpv::Value::Map(vec![
         field("action", rmpv::Value::from(action::MESSAGE)),
