@@ -36,9 +36,6 @@ impl PiStandbyForwarder {
                 () = job_cancel.cancelled() => return,
                 signal = source.wait() => signal,
             };
-            let Some(signal) = signal else {
-                return;
-            };
             let payload = match signal {
                 PiStandbySignal::Handoff => br#"{"type":"pi-handoff"}"#.as_slice(),
                 PiStandbySignal::Release => br#"{"type":"pi-standby-release"}"#.as_slice(),
@@ -68,43 +65,5 @@ impl PiStandbyForwarder {
                 let _ = task.await;
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    use sandbox::ProcessControlAck;
-
-    use super::*;
-    use crate::pi_standby::PiStandbyNotifications;
-
-    #[tokio::test]
-    async fn superseded_source_does_not_send_guest_control() {
-        let notifications = PiStandbyNotifications::new();
-        let run_id = RunId::new_v4();
-        let source = notifications.subscribe(run_id);
-        let _replacement = notifications.subscribe(run_id);
-        let control_called = Arc::new(AtomicBool::new(false));
-        let task_control_called = Arc::clone(&control_called);
-        let control = GuestProcessControlHandle::new(move |message_id, _, _| {
-            task_control_called.store(true, Ordering::SeqCst);
-            Box::pin(async move { Ok(ProcessControlAck { message_id }) })
-        });
-        let forwarder = PiStandbyForwarder::start(
-            run_id,
-            Some(source),
-            Some(control),
-            CancellationToken::new(),
-        )
-        .expect("complete Pi standby controls should start a forwarder");
-        let PiStandbyForwarder { task, .. } = forwarder;
-
-        task.await
-            .expect("Pi standby forwarder should exit cleanly");
-
-        assert!(!control_called.load(Ordering::SeqCst));
     }
 }
