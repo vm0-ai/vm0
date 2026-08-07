@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { timeout } from "signal-timers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PresentationTemplateItem } from "@vm0/core/presentation-template-items";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -272,128 +271,6 @@ export interface VideoTemplateOptionsAnchor {
   readonly height: number;
 }
 
-/**
- * How the video options popover was opened. Only a popover the pointer opened
- * closes itself again when the pointer leaves; clicking the chip pins it.
- */
-export type TemplateOptionsSource = "hover" | "click";
-
-/** The two surfaces whose hover keeps a pointer-opened popover alive. */
-type TemplateOptionsHoverTarget = "chip" | "popover";
-
-/**
- * Grace period for the pointer to cross the gap between the chip and the
- * popover anchored under it.
- */
-const VIDEO_OPTIONS_HOVER_CLOSE_DELAY_MS = 160;
-
-function createVideoTemplateOptionsSignals() {
-  const internalAnchor$ = state<VideoTemplateOptionsAnchor | null>(null);
-  const internalValue$ = state<GenerationTemplateRequest | null>(null);
-  const internalPosition$ = state<number | null>(null);
-  const internalSource$ = state<TemplateOptionsSource | null>(null);
-  const internalChipHovered$ = state(false);
-  const internalPopoverHovered$ = state(false);
-  // Nothing renders the countdown, so it stays a plain handle.
-  let closeCountdown: AbortController | null = null;
-  const stopCloseCountdown = (): void => {
-    closeCountdown?.abort();
-    closeCountdown = null;
-  };
-
-  const videoTemplateOptionsAnchor$ = computed((get) => {
-    return get(internalAnchor$);
-  });
-  const videoTemplateOptionsValue$ = computed((get) => {
-    return get(internalValue$);
-  });
-  const videoTemplateOptionsPosition$ = computed((get) => {
-    return get(internalPosition$);
-  });
-  const videoTemplateOptionsSource$ = computed((get) => {
-    return get(internalSource$);
-  });
-  const openVideoTemplateOptions$ = command(
-    (
-      { set },
-      anchor: VideoTemplateOptionsAnchor,
-      value: GenerationTemplateRequest,
-      position: number,
-      source: TemplateOptionsSource,
-    ) => {
-      stopCloseCountdown();
-      set(internalValue$, value);
-      set(internalPosition$, position);
-      set(internalSource$, source);
-      set(internalChipHovered$, true);
-      set(internalAnchor$, anchor);
-    },
-  );
-  /** Keeps the open popover in step with the node it just rewrote. */
-  const setVideoTemplateOptionsValue$ = command(
-    ({ set }, value: GenerationTemplateRequest) => {
-      set(internalValue$, value);
-    },
-  );
-  const closeVideoTemplateOptions$ = command(({ set }) => {
-    stopCloseCountdown();
-    set(internalAnchor$, null);
-    set(internalValue$, null);
-    set(internalPosition$, null);
-    set(internalSource$, null);
-    set(internalChipHovered$, false);
-    set(internalPopoverHovered$, false);
-  });
-  const setVideoTemplateOptionsHover$ = command(
-    ({ get, set }, target: TemplateOptionsHoverTarget, hovered: boolean) => {
-      set(
-        target === "chip" ? internalChipHovered$ : internalPopoverHovered$,
-        hovered,
-      );
-      stopCloseCountdown();
-      if (
-        get(internalSource$) !== "hover" ||
-        get(internalChipHovered$) ||
-        get(internalPopoverHovered$)
-      ) {
-        return;
-      }
-      const countdown = new AbortController();
-      closeCountdown = countdown;
-      timeout(
-        () => {
-          closeCountdown = null;
-          set(closeVideoTemplateOptions$);
-        },
-        VIDEO_OPTIONS_HOVER_CLOSE_DELAY_MS,
-        { signal: countdown.signal },
-      );
-    },
-  );
-  /**
-   * A dropdown inside the popover renders in its own portal, so reaching an
-   * option takes the pointer out of the popover. Opening or closing one counts
-   * as the pointer being on the popover instead: it stays open until the
-   * pointer leaves the popover again.
-   */
-  const pinVideoTemplateOptions$ = command(({ set }) => {
-    stopCloseCountdown();
-    set(internalPopoverHovered$, true);
-  });
-
-  return {
-    videoTemplateOptionsAnchor$,
-    videoTemplateOptionsValue$,
-    videoTemplateOptionsPosition$,
-    videoTemplateOptionsSource$,
-    openVideoTemplateOptions$,
-    setVideoTemplateOptionsValue$,
-    setVideoTemplateOptionsHover$,
-    pinVideoTemplateOptions$,
-    closeVideoTemplateOptions$,
-  };
-}
-
 function createTemplatePickerDialogSignals() {
   const internalWebsiteTemplatePreviewId$ = state<string | null>(null);
   const internalWebsiteTemplatePreviewLoaded$ = state(false);
@@ -424,6 +301,46 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  const internalVideoOptionsAnchor$ = state<VideoTemplateOptionsAnchor | null>(
+    null,
+  );
+  const internalVideoOptionsValue$ = state<GenerationTemplateRequest | null>(
+    null,
+  );
+  const internalVideoOptionsPosition$ = state<number | null>(null);
+  const videoTemplateOptionsAnchor$ = computed((get) => {
+    return get(internalVideoOptionsAnchor$);
+  });
+  const videoTemplateOptionsValue$ = computed((get) => {
+    return get(internalVideoOptionsValue$);
+  });
+  const videoTemplateOptionsPosition$ = computed((get) => {
+    return get(internalVideoOptionsPosition$);
+  });
+  const openVideoTemplateOptions$ = command(
+    (
+      { set },
+      anchor: VideoTemplateOptionsAnchor,
+      value: GenerationTemplateRequest,
+      position: number,
+    ) => {
+      set(internalVideoOptionsValue$, value);
+      set(internalVideoOptionsPosition$, position);
+      set(internalVideoOptionsAnchor$, anchor);
+    },
+  );
+  /** Keeps the open popover in step with the node it just rewrote. */
+  const setVideoTemplateOptionsValue$ = command(
+    ({ set }, value: GenerationTemplateRequest) => {
+      set(internalVideoOptionsValue$, value);
+    },
+  );
+  const closeVideoTemplateOptions$ = command(({ set }) => {
+    set(internalVideoOptionsAnchor$, null);
+    set(internalVideoOptionsValue$, null);
+    set(internalVideoOptionsPosition$, null);
+  });
+
   const websiteTemplatePreviewId$ = computed((get) => {
     return get(internalWebsiteTemplatePreviewId$);
   });
@@ -450,7 +367,12 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerOpen$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
-    ...createVideoTemplateOptionsSignals(),
+    videoTemplateOptionsAnchor$,
+    videoTemplateOptionsValue$,
+    videoTemplateOptionsPosition$,
+    openVideoTemplateOptions$,
+    setVideoTemplateOptionsValue$,
+    closeVideoTemplateOptions$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,
     markWebsiteTemplatePreviewLoaded$,

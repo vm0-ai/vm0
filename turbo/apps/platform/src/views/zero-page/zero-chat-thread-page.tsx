@@ -123,8 +123,10 @@ import {
   featureSwitch$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
-import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
-import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
+import {
+  videoTemplateSpec,
+  type VideoTemplateSpec,
+} from "../../signals/zero-page/video-template-spec.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -7170,22 +7172,24 @@ const STRUCTURED_INLINE_REFERENCE_CLASS =
   "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
 /**
- * Read-only echo of the parameters a sent video used, resolved the same way the
- * composer chip resolves them. Talking-avatar templates share the "video"
- * envelope but take none of these parameters.
+ * Read-only echo of the parameters a sent video used. Like the composer chip,
+ * it drops the model name and the trailing parameters on narrow viewports so
+ * the template title keeps the room it needs.
  */
-function sentVideoTemplateSpec(
-  template: GenerationTemplateRequest,
-): string | undefined {
-  if (template.type !== "video") {
-    return undefined;
-  }
-  const { selection } = template;
-  if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
-    return undefined;
-  }
-  const resolved = resolveVideoGenerationOptions(selection.videoOptions);
-  return `${resolved.aspectRatio} \u00b7 ${resolved.duration}`;
+function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
+  return (
+    <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
+      <span className="hidden sm:inline">{`${spec.model} · `}</span>
+      {spec.core.join(" · ")}
+      <span className="hidden sm:inline">
+        {spec.rest
+          .map((segment) => {
+            return ` · ${segment}`;
+          })
+          .join("")}
+      </span>
+    </span>
+  );
 }
 
 function templatePickerCategoryForReference(
@@ -7220,9 +7224,7 @@ function UserMessageTemplateReference({
   const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
-  const spec = videoOptionsEnabled
-    ? sentVideoTemplateSpec(part.template)
-    : undefined;
+  const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
   const setTemplatePickerCategory = useSet(
     signals.template.setTemplatePickerCategory$,
   );
@@ -7288,11 +7290,7 @@ function UserMessageTemplateReference({
     >
       <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-      {spec !== undefined && (
-        <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
-          {spec}
-        </span>
-      )}
+      {spec !== null && <SentVideoTemplateSpec spec={spec} />}
     </button>
   );
 }

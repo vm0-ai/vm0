@@ -68,22 +68,16 @@ function VideoOptionRow({
   value,
   values,
   onChange,
-  onMenuToggle,
 }: {
   readonly label: string;
   readonly value: string;
   readonly values: readonly string[];
   readonly onChange: (next: string) => void;
-  readonly onMenuToggle: () => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <Select
-        value={value}
-        onValueChange={onChange}
-        onOpenChange={onMenuToggle}
-      >
+      <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-8 w-[9.5rem]" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
@@ -105,12 +99,10 @@ function VideoModelRow({
   label,
   model,
   onChange,
-  onMenuToggle,
 }: {
   readonly label: string;
   readonly model: VideoModel;
   readonly onChange: (next: string) => void;
-  readonly onMenuToggle: () => void;
 }) {
   const models = VIDEO_MODELS.filter((candidate) => {
     return VIDEO_MODEL_CONFIGS[candidate].public;
@@ -118,11 +110,7 @@ function VideoModelRow({
   return (
     <div className="flex items-center justify-between gap-3 py-1.5">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <Select
-        value={model}
-        onValueChange={onChange}
-        onOpenChange={onMenuToggle}
-      >
+      <Select value={model} onValueChange={onChange}>
         <SelectTrigger className="h-8 w-[9.5rem]" aria-label={label}>
           <SelectValue />
         </SelectTrigger>
@@ -143,11 +131,9 @@ function VideoModelRow({
 function VideoTemplateOptionsForm({
   value,
   onChange,
-  onMenuToggle,
 }: {
   readonly value: GenerationTemplateRequest;
   readonly onChange: (next: GenerationTemplateRequest) => void;
-  readonly onMenuToggle: () => void;
 }) {
   const { t } = useTranslation();
   if (value.type !== "video") {
@@ -178,7 +164,6 @@ function VideoTemplateOptionsForm({
           return $.chat.templates.videoOptionsModel;
         })}
         model={resolved.model}
-        onMenuToggle={onMenuToggle}
         onChange={(next) => {
           const model = pickValue(VIDEO_MODELS, next);
           if (model !== undefined) {
@@ -191,7 +176,6 @@ function VideoTemplateOptionsForm({
           return $.chat.templates.videoOptionsRatio;
         })}
         value={resolved.aspectRatio}
-        onMenuToggle={onMenuToggle}
         values={config.aspectRatios}
         onChange={(next) => {
           const aspectRatio = pickValue(config.aspectRatios, next);
@@ -205,7 +189,6 @@ function VideoTemplateOptionsForm({
           return $.chat.templates.videoOptionsDuration;
         })}
         value={resolved.duration}
-        onMenuToggle={onMenuToggle}
         values={config.durations}
         onChange={(next) => {
           const duration = pickValue(config.durations, next);
@@ -219,7 +202,6 @@ function VideoTemplateOptionsForm({
           return $.chat.templates.videoOptionsResolution;
         })}
         value={resolved.resolution}
-        onMenuToggle={onMenuToggle}
         values={config.resolutions}
         onChange={(next) => {
           const resolution = pickValue(config.resolutions, next);
@@ -260,10 +242,7 @@ export function VideoTemplateOptionsPopover({
   const { t } = useTranslation();
   const anchor = useGet(signals.template.videoTemplateOptionsAnchor$);
   const value = useGet(signals.template.videoTemplateOptionsValue$);
-  const source = useGet(signals.template.videoTemplateOptionsSource$);
   const close = useSet(signals.template.closeVideoTemplateOptions$);
-  const setHover = useSet(signals.template.setVideoTemplateOptionsHover$);
-  const pin = useSet(signals.template.pinVideoTemplateOptions$);
 
   if (!anchor || !value) {
     return null;
@@ -298,24 +277,8 @@ export function VideoTemplateOptionsPopover({
         aria-label={t(($) => {
           return $.chat.templates.videoOptions;
         })}
-        // Merely pointing at a chip must not pull focus out of the composer.
-        onOpenAutoFocus={(event) => {
-          if (source === "hover") {
-            event.preventDefault();
-          }
-        }}
-        onMouseEnter={() => {
-          setHover("popover", true);
-        }}
-        onMouseLeave={() => {
-          setHover("popover", false);
-        }}
       >
-        <VideoTemplateOptionsForm
-          value={value}
-          onChange={onChange}
-          onMenuToggle={pin}
-        />
+        <VideoTemplateOptionsForm value={value} onChange={onChange} />
       </PopoverContent>
     </Popover>
   );

@@ -161,7 +161,10 @@ describe("user messages", () => {
     const reference = await screen.findByLabelText(
       `Message template ${templateItem.title}`,
     );
-    expect(reference).toHaveTextContent("9:16 \u00b7 8s");
+    // Every parameter is echoed, not only the one the user changed.
+    expect(reference).toHaveTextContent(
+      "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
+    );
   });
 
   it("opens avatar message templates at the voice picker", async () => {
