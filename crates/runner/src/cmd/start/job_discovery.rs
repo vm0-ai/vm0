@@ -206,8 +206,10 @@ pub(super) async fn handle_discovered_job(
     let job_memory = profile_config.memory_mb;
     let job_workspace_disk_mb = profile_config.workspace_disk_mb;
     let device_rate_limits = ctx.spawn_ctx.device_rate_limits.clone();
-    // Look up factory for this profile.
-    let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
+    // Look up factory for this profile. Alias profiles share the factory of
+    // the profile they are backed by.
+    let factory_profile = crate::profile::canonical_factory_profile(&profile_name);
+    let Some((factory, restore_guest_state)) = ctx.factories.get(factory_profile) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
         return DiscoveredJobResult::completed(false);
     };

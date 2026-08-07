@@ -32,6 +32,19 @@ pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
     }
 }
 
+/// Return the profile whose sandbox factory backs `name`.
+///
+/// Pi standby reuses the default image and resource shape, so it must not
+/// start a second factory: a factory owns a CoW pool that warms up from the
+/// same base image, and duplicating it would double runner startup work and
+/// idle-pool footprint for no behavioral gain.
+pub fn canonical_factory_profile(name: &str) -> &str {
+    match name {
+        PI_STANDBY_PROFILE => DEFAULT_PROFILE,
+        _ => name,
+    }
+}
+
 /// Validate that a profile name follows the `org/name` format.
 /// Each part must be non-empty lowercase alphanumeric + hyphens.
 ///

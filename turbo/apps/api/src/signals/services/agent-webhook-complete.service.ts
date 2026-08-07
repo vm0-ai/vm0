@@ -309,7 +309,7 @@ async function tryReleasePiStandbyForColdStart(
   return true;
 }
 
-export const activatePiColdStartForHandoff$ = command(
+const activatePiColdStartForHandoff$ = command(
   async (
     { set },
     input: { readonly runId: string; readonly userId: string },
