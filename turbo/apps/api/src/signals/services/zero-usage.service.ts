@@ -12,8 +12,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import type { User } from "@clerk/backend";
-import { clerk$ } from "../external/clerk";
+import { clerk$, type ClerkUser } from "../external/clerk";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
@@ -242,7 +241,7 @@ export const zeroUsageRuns$ = command(
 type UsageClerkClient = ReturnType<typeof clerk$.read>;
 type UsageWriteDb = ReturnType<typeof writeDb$.write>;
 
-function primaryEmail(user: User): string {
+function primaryEmail(user: ClerkUser): string {
   const primary = user.emailAddresses.find((email) => {
     return email.id === user.primaryEmailAddressId;
   });

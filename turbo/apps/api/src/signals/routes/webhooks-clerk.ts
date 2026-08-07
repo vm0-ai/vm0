@@ -1,10 +1,10 @@
-import { verifyWebhook } from "@clerk/backend/webhooks";
 import { webhookClerkContract } from "@vm0/api-contracts/contracts/webhooks";
 import { command } from "ccstate";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
+import { verifyClerkWebhook } from "../external/clerk";
 import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route-entry";
 import { tapError } from "../utils";
@@ -111,7 +111,7 @@ const postClerkWebhook$ = command(
     const signingSecret = optionalEnv("CLERK_WEBHOOK_SIGNING_SECRET");
 
     const event = await tapError(
-      verifyWebhook(request.clone(), { signingSecret }),
+      verifyClerkWebhook(request.clone(), { signingSecret }),
     );
     signal.throwIfAborted();
     if (!event) {
@@ -119,7 +119,7 @@ const postClerkWebhook$ = command(
     }
     L.debug("clerk webhook received", { type: event.type });
 
-    if ((event.type as string) === "organization.created") {
+    if (event.type === "organization.created") {
       const identity = organizationCreatedIdentity(event.data);
       if (!identity) {
         L.error("organization.created event missing org/creator user ID", {
@@ -141,7 +141,7 @@ const postClerkWebhook$ = command(
       return new Response("OK", { status: 200 });
     }
 
-    if ((event.type as string) === "organizationMembership.created") {
+    if (event.type === "organizationMembership.created") {
       const identity = organizationMembershipIdentity(event.data);
       if (!identity) {
         L.error("organizationMembership.created event missing org/user ID", {
@@ -204,8 +204,7 @@ const postClerkWebhook$ = command(
       return new Response("OK", { status: 200 });
     }
 
-    // "user.banned" is not yet in the Clerk SDK WebhookEvent type union
-    if ((event.type as string) === "user.banned") {
+    if (event.type === "user.banned") {
       const data = propertyOf(event, "data");
       const userId = eventDataId(data);
       if (!userId) {
