@@ -66,6 +66,17 @@ describe("Pi run Skill runtime", () => {
     expect(piMessageRequiresSandbox(assistantToolCall("bash"))).toBe(true);
   });
 
+  it("falls back to Okou when the agent name is blank", () => {
+    const systemPrompt = renderPiSystemPrompt({
+      agentName: " \n ",
+      skills: [],
+    });
+    expect(systemPrompt).toContain("You are Okou, an AI agent.");
+    expect(systemPrompt).toContain(
+      "As Okou, you are an excellent communicator",
+    );
+  });
+
   it("loads only snapshot Skills and preserves prompt and read semantics", async () => {
     await mkdir(PI_SKILLS_ROOT, { recursive: true });
     const testRoot = await mkdtemp(join(PI_SKILLS_ROOT, "vm0-runtime-test-"));

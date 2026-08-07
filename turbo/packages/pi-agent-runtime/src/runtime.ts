@@ -55,7 +55,7 @@ Continue until the requested outcome is genuinely complete or you are blocked by
 Lead with the result. Be concise, mention changed files or checks when useful, and explain blockers plainly.`;
 
 function renderPiBaseSystemPrompt(agentName: string): string {
-  const normalizedAgentName = agentName.replace(/\s+/g, " ").trim() || "Pi";
+  const normalizedAgentName = agentName.replace(/\s+/g, " ").trim() || "Okou";
   return PI_BASE_SYSTEM_PROMPT_TEMPLATE.replaceAll(
     PI_AGENT_NAME_PLACEHOLDER,
     () => {
@@ -65,7 +65,7 @@ function renderPiBaseSystemPrompt(agentName: string): string {
 }
 
 /** Default base prompt used when no user-facing agent identity is available. */
-export const PI_BASE_SYSTEM_PROMPT = renderPiBaseSystemPrompt("Pi");
+export const PI_BASE_SYSTEM_PROMPT = renderPiBaseSystemPrompt("Okou");
 
 export interface PiRunSkills {
   readonly skills: readonly Skill[];

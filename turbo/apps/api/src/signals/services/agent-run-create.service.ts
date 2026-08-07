@@ -5851,17 +5851,14 @@ function storedExecutionContextWithPiResources(
   };
 }
 
-async function resolvePiAgentName(
-  db: Db,
-  resolved: Pick<ResolvedCompose, "composeId" | "agentName">,
-): Promise<string> {
+async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
   const [agent] = await db
     .select({
       displayName: zeroAgents.displayName,
       name: zeroAgents.name,
     })
     .from(zeroAgents)
-    .where(eq(zeroAgents.id, resolved.composeId))
+    .where(eq(zeroAgents.id, composeId))
     .limit(1);
 
   if (agent?.displayName?.trim()) {
@@ -5870,7 +5867,7 @@ async function resolvePiAgentName(
   if (agent?.name.trim()) {
     return agent.name;
   }
-  return resolved.agentName?.trim() || "Pi";
+  return "Okou";
 }
 
 async function preparePiLaunchResources(args: {
@@ -5878,7 +5875,7 @@ async function preparePiLaunchResources(args: {
   readonly db: Db;
   readonly runId: string;
   readonly body: CreateRunBody;
-  readonly resolved: Pick<ResolvedCompose, "composeId" | "agentName">;
+  readonly composeId: string;
   readonly piEdge: PiEdgeModelConfig | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
@@ -5897,7 +5894,7 @@ async function preparePiLaunchResources(args: {
       snapshot,
       persistedStorageMounts: args.persistedStorageMounts,
     }),
-    resolvePiAgentName(args.db, args.resolved),
+    resolvePiAgentName(args.db, args.composeId),
   ]);
   const skills = await loadPiRunSkills(resources.env, snapshot);
   if (skills.diagnostics.length > 0) {
@@ -6012,7 +6009,7 @@ function buildRunnerJobPayload(
       db,
       runId: args.run.id,
       body,
-      resolved: args.resolved,
+      composeId: args.resolved.composeId,
       piEdge: args.piEdge,
       additionalVolumes: args.additionalVolumes,
       additionalVolumeSources: args.additionalVolumeSources,
