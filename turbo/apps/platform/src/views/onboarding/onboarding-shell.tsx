@@ -137,10 +137,7 @@ export function OnboardingDialog({
         }
       }}
     >
-      <DialogContent
-        overlayClassName="bg-black/45 backdrop-blur-sm dark:bg-black/45"
-        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-4xl flex-col gap-0 overflow-hidden rounded-lg border-border bg-background p-5 sm:p-6"
-      >
+      <DialogContent className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-4xl flex-col gap-0 overflow-hidden rounded-lg border-border bg-background p-5 sm:p-6">
         <header className="shrink-0 pr-9">
           <div className="min-w-0">
             <DialogTitle className="text-lg font-semibold leading-6">

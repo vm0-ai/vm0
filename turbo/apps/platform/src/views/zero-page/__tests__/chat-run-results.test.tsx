@@ -37,7 +37,7 @@ afterEach(async () => {
 describe("chat lifecycle", () => {
   it("keeps budget inputs out of the visible transcript", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-budget-input-visibility",
+      threadId: "e7000000-0000-4000-a000-000000000001",
       chatEvents: [
         {
           id: "msg-budget-input-user",
@@ -68,7 +68,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-budget-input-visibility",
+      path: "/chats/e7000000-0000-4000-a000-000000000001",
     });
 
     await expect(
@@ -84,7 +84,7 @@ describe("chat lifecycle", () => {
 
   it("shows run credit usage with friendly popover details", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip",
+      threadId: "e7000000-0000-4000-a000-000000000002",
       chatEvents: [
         {
           id: "msg-usage-chip-user",
@@ -134,7 +134,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip",
+      path: "/chats/e7000000-0000-4000-a000-000000000002",
     });
 
     const credit = await waitFor(() => {
@@ -194,7 +194,7 @@ describe("chat lifecycle", () => {
       );
     });
     mockChatLifecycle(context, {
-      threadId: "thread-limited-free-usage-chip",
+      threadId: "e7000000-0000-4000-a000-000000000003",
       chatEvents: [
         {
           id: "msg-limited-free-usage-user",
@@ -239,7 +239,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-limited-free-usage-chip",
+      path: "/chats/e7000000-0000-4000-a000-000000000003",
     });
 
     click(await screen.findByLabelText("Credit usage 330"));
@@ -256,7 +256,7 @@ describe("chat lifecycle", () => {
 
   it("shows generation usage with model names only", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-generation-usage-model-names",
+      threadId: "e7000000-0000-4000-a000-000000000004",
       chatEvents: [
         {
           id: "msg-generation-usage-user",
@@ -306,7 +306,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-generation-usage-model-names",
+      path: "/chats/e7000000-0000-4000-a000-000000000004",
     });
 
     const credit = await screen.findByLabelText("Credit usage 1,976");
@@ -331,7 +331,7 @@ describe("chat lifecycle", () => {
 
   it("shows the latest immutable run usage settlement", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-settlements",
+      threadId: "e7000000-0000-4000-a000-000000000005",
       chatEvents: [
         {
           id: "msg-usage-settlement-user",
@@ -395,7 +395,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-settlements",
+      path: "/chats/e7000000-0000-4000-a000-000000000005",
     });
 
     await expect(
@@ -408,7 +408,7 @@ describe("chat lifecycle", () => {
     document.documentElement.lang = "pt-BR";
     await initializeI18n("pt-BR");
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-folded-managed-api",
+      threadId: "e7000000-0000-4000-a000-000000000006",
       chatEvents: [
         {
           id: "msg-usage-folded-user",
@@ -488,7 +488,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-folded-managed-api",
+      path: "/chats/e7000000-0000-4000-a000-000000000006",
     });
 
     await expect(
@@ -521,7 +521,7 @@ describe("chat lifecycle", () => {
 
   it("keeps connector usage attached to consecutive assistant runs", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-usage-chip-consecutive-runs",
+      threadId: "e7000000-0000-4000-a000-000000000007",
       chatEvents: [
         {
           id: "msg-usage-consecutive-user",
@@ -603,7 +603,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-usage-chip-consecutive-runs",
+      path: "/chats/e7000000-0000-4000-a000-000000000007",
     });
 
     await expect(
@@ -721,7 +721,7 @@ describe("chat lifecycle", () => {
 
   it("keeps chat work visible while the run is active", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-running",
+      threadId: "e7000000-0000-4000-a000-000000000008",
       activeRunIds: ["run-work-folding-running"],
       chatEvents: [
         {
@@ -741,7 +741,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-running",
+      path: "/chats/e7000000-0000-4000-a000-000000000008",
     });
 
     await waitFor(() => {
@@ -757,7 +757,7 @@ describe("chat lifecycle", () => {
 
   it("keeps completed chat work folded while a later run is active", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-completed-before-active",
+      threadId: "e7000000-0000-4000-a000-000000000009",
       activeRunIds: ["run-work-folding-active-later"],
       chatEvents: [
         {
@@ -796,7 +796,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-completed-before-active",
+      path: "/chats/e7000000-0000-4000-a000-000000000009",
     });
 
     const expandButtons = await screen.findAllByLabelText(
@@ -821,7 +821,7 @@ describe("chat lifecycle", () => {
 
   it("folds completed chat work and toggles the hidden history", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-completed",
+      threadId: "e7000000-0000-4000-a000-000000000010",
       chatEvents: [
         {
           role: "user",
@@ -847,7 +847,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-completed",
+      path: "/chats/e7000000-0000-4000-a000-000000000010",
     });
 
     const expandButton = await screen.findByLabelText("Expand work history");
@@ -912,6 +912,7 @@ describe("chat lifecycle", () => {
     {
       name: "splits one completed run into folds at user boundaries",
       caseId: "two-folds",
+      threadId: "e7000000-0000-4000-a000-000000000023",
       sequence: ["U1", "A2", "A3", "A4", "U2", "A5", "A6", "A7", "A8"],
       visibleOrder: [
         "U1",
@@ -938,6 +939,7 @@ describe("chat lifecycle", () => {
     {
       name: "keeps one assistant before a trailing user unfolded",
       caseId: "single-assistant-before-user",
+      threadId: "e7000000-0000-4000-a000-000000000024",
       sequence: ["U1", "A2", "U2"],
       visibleOrder: ["U1", "A2", "U2"],
       usageAssistant: "A2",
@@ -946,6 +948,7 @@ describe("chat lifecycle", () => {
     {
       name: "folds earlier assistant work before a trailing user",
       caseId: "fold-before-user",
+      threadId: "e7000000-0000-4000-a000-000000000025",
       sequence: ["U1", "A2", "A3", "U2"],
       visibleOrder: ["U1", "Worked for 20s", "A3", "U2"],
       usageAssistant: "A3",
@@ -960,6 +963,7 @@ describe("chat lifecycle", () => {
     {
       name: "keeps one assistant in each user phase unfolded",
       caseId: "single-assistant-per-phase",
+      threadId: "e7000000-0000-4000-a000-000000000026",
       sequence: ["U1", "A2", "U2", "A3"],
       visibleOrder: ["U1", "A2", "U2", "A3"],
       usageAssistant: "A3",
@@ -967,8 +971,14 @@ describe("chat lifecycle", () => {
     },
   ])(
     "$name",
-    async ({ caseId, sequence, visibleOrder, usageAssistant, folds }) => {
-      const threadId = `thread-work-folding-${caseId}`;
+    async ({
+      caseId,
+      threadId,
+      sequence,
+      visibleOrder,
+      usageAssistant,
+      folds,
+    }) => {
       const runId = `run-work-folding-${caseId}`;
       const chatEvents: MockChatEventInput[] = sequence.map(
         (content, index) => {
@@ -1086,7 +1096,7 @@ describe("chat lifecycle", () => {
     });
 
     mockChatLifecycle(context, {
-      threadId: "thread-completed-run-layout",
+      threadId: "e7000000-0000-4000-a000-000000000011",
       chatEvents: [
         {
           role: "user",
@@ -1131,7 +1141,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-completed-run-layout",
+      path: "/chats/e7000000-0000-4000-a000-000000000011",
     });
 
     const expandButton = await screen.findByLabelText("Expand work history");
@@ -1232,7 +1242,7 @@ describe("chat lifecycle", () => {
       });
       context.mocks.data.userPreferences({ locale });
       mockChatLifecycle(context, {
-        threadId: "thread-localized-completed-run",
+        threadId: "e7000000-0000-4000-a000-000000000012",
         chatEvents: [
           {
             role: "user",
@@ -1271,7 +1281,7 @@ describe("chat lifecycle", () => {
 
       detachedSetupPage({
         context,
-        path: "/chats/thread-localized-completed-run",
+        path: "/chats/e7000000-0000-4000-a000-000000000012",
       });
 
       await expect(
@@ -1294,7 +1304,7 @@ describe("chat lifecycle", () => {
       supportedLocales: ["en-US", "ja-JP"],
     });
     mockChatLifecycle(context, {
-      threadId: "thread-japanese-completed-run",
+      threadId: "e7000000-0000-4000-a000-000000000013",
       chatEvents: [
         {
           role: "user",
@@ -1333,7 +1343,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-japanese-completed-run",
+      path: "/chats/e7000000-0000-4000-a000-000000000013",
     });
 
     await expect(
@@ -1352,7 +1362,7 @@ describe("chat lifecycle", () => {
     });
     context.mocks.data.userPreferences({ locale: "es-ES" });
     mockChatLifecycle(context, {
-      threadId: "thread-spanish-completed-run",
+      threadId: "e7000000-0000-4000-a000-000000000014",
       chatEvents: [
         {
           role: "user",
@@ -1391,7 +1401,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-spanish-completed-run",
+      path: "/chats/e7000000-0000-4000-a000-000000000014",
     });
 
     await expect(
@@ -1402,7 +1412,7 @@ describe("chat lifecycle", () => {
 
   it("folds each completed run independently", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-each-run",
+      threadId: "e7000000-0000-4000-a000-000000000015",
       chatEvents: [
         {
           role: "user",
@@ -1447,7 +1457,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-each-run",
+      path: "/chats/e7000000-0000-4000-a000-000000000015",
     });
 
     const expandButtons = await screen.findAllByLabelText(
@@ -1508,7 +1518,7 @@ describe("chat lifecycle", () => {
 
   it("keeps chat work visible when the run was cancelled", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-cancelled",
+      threadId: "e7000000-0000-4000-a000-000000000016",
       chatEvents: [
         {
           role: "user",
@@ -1535,7 +1545,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-cancelled",
+      path: "/chats/e7000000-0000-4000-a000-000000000016",
     });
 
     await waitFor(() => {
@@ -1549,7 +1559,7 @@ describe("chat lifecycle", () => {
 
   it("does not fold a completed run with only a user message and final reply", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-user-final-only",
+      threadId: "e7000000-0000-4000-a000-000000000017",
       chatEvents: [
         {
           role: "user",
@@ -1569,7 +1579,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-user-final-only",
+      path: "/chats/e7000000-0000-4000-a000-000000000017",
     });
 
     await waitFor(() => {
@@ -1581,7 +1591,7 @@ describe("chat lifecycle", () => {
 
   it("does not fold a completed run when the only prior assistant message is thinking", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-thinking-only",
+      threadId: "e7000000-0000-4000-a000-000000000018",
       chatEvents: [
         {
           role: "user",
@@ -1608,7 +1618,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-thinking-only",
+      path: "/chats/e7000000-0000-4000-a000-000000000018",
     });
 
     await waitFor(() => {
@@ -1623,7 +1633,7 @@ describe("chat lifecycle", () => {
 
   it("does not fold a completed run with a single message", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-work-folding-single-message",
+      threadId: "e7000000-0000-4000-a000-000000000019",
       chatEvents: [
         {
           role: "assistant",
@@ -1637,7 +1647,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-work-folding-single-message",
+      path: "/chats/e7000000-0000-4000-a000-000000000019",
     });
 
     await waitFor(() => {
@@ -1648,7 +1658,7 @@ describe("chat lifecycle", () => {
 
   it("renders a server-corrected assistant message without the stale answer", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-corrected-answer",
+      threadId: "e7000000-0000-4000-a000-000000000020",
       threadTitle: "Corrected answer",
       chatEvents: [
         {
@@ -1678,7 +1688,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-corrected-answer",
+      path: "/chats/e7000000-0000-4000-a000-000000000020",
     });
 
     await waitFor(() => {
@@ -1693,7 +1703,7 @@ describe("chat lifecycle", () => {
 
   it("restores an interrupted run without duplicate cancellation rows", async () => {
     mockChatLifecycle(context, {
-      threadId: "thread-restored-interrupt",
+      threadId: "e7000000-0000-4000-a000-000000000021",
       threadTitle: "Restored interrupt",
       chatEvents: [
         {
@@ -1731,7 +1741,7 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-restored-interrupt",
+      path: "/chats/e7000000-0000-4000-a000-000000000021",
     });
 
     await waitFor(() => {
@@ -1841,66 +1851,75 @@ describe("chat lifecycle", () => {
   it.each([
     {
       name: "Codex usage limit",
+      threadId: "e7000000-0000-4000-a000-000000000027",
       error:
         "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).",
       title: "Codex limit reached",
     },
     {
       name: "Claude Code session limit",
+      threadId: "e7000000-0000-4000-a000-000000000028",
       error: "You've hit your session limit · resets 5:00 PM (Asia/Shanghai)",
       title: "Claude Code limit reached",
     },
     {
       name: "Claude usage limit",
+      threadId: "e7000000-0000-4000-a000-000000000029",
       error:
         "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.",
       title: "Claude Code limit reached",
     },
     {
       name: "Codex model capacity",
+      threadId: "e7000000-0000-4000-a000-000000000030",
       error: "Selected model is at capacity. Please try a different model.",
       title: "Codex model is busy",
     },
     {
       name: "Claude Code model capacity",
+      threadId: "e7000000-0000-4000-a000-000000000031",
       error:
         "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
       title: "Claude Code model is busy",
     },
-  ])("recognizes the latest $name error", async ({ name, error, title }) => {
-    const threadId = `thread-recovery-${name.replaceAll(" ", "-")}`;
-    mockChatLifecycle(context, {
-      threadId,
-      chatEvents: [
-        {
-          id: `${threadId}-user`,
-          role: "user",
-          content: "Continue",
-          runId: `${threadId}-run`,
-          createdAt: "2026-07-30T09:00:00Z",
-        },
-        {
-          id: `${threadId}-failure`,
-          role: "assistant",
-          content: null,
-          error,
-          runId: `${threadId}-run`,
-          runLifecycleEvent: "failed",
-          createdAt: "2026-07-30T09:00:01Z",
-        },
-      ],
-    });
+  ])(
+    "recognizes the latest $name error",
+    async ({ threadId, error, title }) => {
+      mockChatLifecycle(context, {
+        threadId,
+        chatEvents: [
+          {
+            id: `${threadId}-user`,
+            role: "user",
+            content: "Continue",
+            runId: `${threadId}-run`,
+            createdAt: "2026-07-30T09:00:00Z",
+          },
+          {
+            id: `${threadId}-failure`,
+            role: "assistant",
+            content: null,
+            error,
+            runId: `${threadId}-run`,
+            runLifecycleEvent: "failed",
+            createdAt: "2026-07-30T09:00:01Z",
+          },
+        ],
+      });
 
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
-      path: `/chats/${threadId}`,
-    });
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+        path: `/chats/${threadId}`,
+      });
 
-    const recoveryTitle = await screen.findByText(title);
-    expect(recoveryTitle).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-error-recovery")).toBeInTheDocument();
-  });
+      const recoveryTitle = await screen.findByText(title);
+      expect(recoveryTitle).toBeInTheDocument();
+      expect(
+        screen.getByTestId("assistant-error-recovery"),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("shows limited-free recovery models with Pro gating", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000789";
@@ -2142,6 +2161,9 @@ describe("chat lifecycle", () => {
   it("keeps the current model and alternatives for model capacity and retries", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000792";
     let retriedPrompt: string | undefined;
+    let retriedLegacyAttachFiles: unknown;
+    let retriedLegacyGenerationTemplate: unknown;
+    let retriedUserMessage: unknown;
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000976",
@@ -2185,6 +2207,9 @@ describe("chat lifecycle", () => {
       ],
       onRunCreate: (body) => {
         retriedPrompt = body.prompt;
+        retriedLegacyAttachFiles = body.attachFiles;
+        retriedLegacyGenerationTemplate = body.generationTemplate;
+        retriedUserMessage = body.userMessage;
       },
     });
 
@@ -2211,11 +2236,17 @@ describe("chat lifecycle", () => {
     click(buttonByText("Try again", card));
     await waitFor(() => {
       expect(retriedPrompt).toBe("try again");
+      expect(retriedLegacyAttachFiles).toBeUndefined();
+      expect(retriedLegacyGenerationTemplate).toBeUndefined();
+      expect(retriedUserMessage).toMatchObject({
+        version: 1,
+        parts: [{ type: "text", text: "try again" }],
+      });
     });
   });
 
   it("keeps the provider error unchanged when recovery is disabled", async () => {
-    const threadId = "thread-recovery-disabled";
+    const threadId = "e7000000-0000-4000-a000-000000000022";
     const error =
       "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).";
     mockChatLifecycle(context, {

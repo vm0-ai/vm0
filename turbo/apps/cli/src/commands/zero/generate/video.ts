@@ -7,6 +7,7 @@ export const videoCommand = createVideoGenerateCommand({
   examples: `  Generate video:        zero generate video --prompt "A tracking shot through a neon market"
   Use a template:        zero generate video --template video-template:epic-grandeur --prompt "A cinematic mountain reveal"
   Pipe prompt:           cat prompt.txt | zero generate video
+  Use Dreamina 2.5:      zero generate video --model dreamina-seedance-2.5 --prompt "A 30-second cinematic story" --duration 30s --resolution 720p
   Use Dreamina 2.0:      zero generate video --model dreamina-seedance-2.0 --prompt "A cinematic product reveal" --duration 6s --resolution 1080p
   Use Seedance 1.5 Pro:  zero generate video --model seedance-1.5-pro --prompt "A multi-shot chase scene" --duration 8s --resolution 720p
   Use MiniMax H3:         zero generate video --model minimax-h3 --prompt "A cinematic product reveal" --duration 5s --resolution 2k

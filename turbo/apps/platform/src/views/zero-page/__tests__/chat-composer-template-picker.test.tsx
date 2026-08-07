@@ -202,8 +202,11 @@ describe("chat composer templates", () => {
       await screen.findByLabelText(`Select video template ${template.title}`),
     );
 
-    // Catalog defaults are shown even though nothing is stored yet.
-    const spec = await screen.findByLabelText("Video options 16:9 \u00b7 8s");
+    // Every parameter is shown, with catalog defaults filled in even though
+    // nothing is stored yet.
+    const spec = await screen.findByLabelText(
+      "Video options Seedance 2.0 fast \u00b7 16:9 \u00b7 8s \u00b7 720p \u00b7 Audio",
+    );
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
@@ -229,7 +232,9 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 8s"),
+        screen.getByLabelText(
+          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -240,7 +245,9 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 6s"),
+        screen.getByLabelText(
+          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 6s \u00b7 720p \u00b7 Audio",
+        ),
       ).toBeInTheDocument();
     });
     expect(
@@ -2964,6 +2971,19 @@ describe("chat composer templates", () => {
           role: "user",
           content: "invalidate",
           runId: undefined,
+          attachFiles: [
+            {
+              id: "legacy-recalled-file",
+              filename: "legacy-note.txt",
+              contentType: "text/plain",
+              size: 12,
+              url: "https://example.test/legacy-note.txt",
+            },
+          ],
+          generationTemplate: {
+            type: "presentation",
+            selection: { templateId: "legacy-presentation" },
+          },
           userMessage: {
             version: 1,
             parts: [
@@ -2971,6 +2991,12 @@ describe("chat composer templates", () => {
                 type: "template",
                 titleSnapshot: template.title,
                 template: generationTemplate,
+              },
+              {
+                type: "file",
+                fileId: "canonical-recalled-file",
+                filenameSnapshot: "canonical-note.txt",
+                contentType: "text/plain",
               },
               { type: "text", text: "Queue a recalled illustration" },
               { type: "morning_brief", briefDate: "2026-06-09" },
@@ -3001,11 +3027,15 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(composer).toHaveTextContent("Queue a recalled illustration");
+      expect(
+        screen.getByLabelText("Remove canonical-note.txt"),
+      ).toBeInTheDocument();
     });
     // The template comes back as an inline node, and the morning-brief part is
     // dropped from the restored draft.
     await expectInlineTemplateInComposer(template.title);
     expect(composer).not.toHaveTextContent("Morning Brief");
+    expect(screen.queryByText("legacy-note.txt")).not.toBeInTheDocument();
   });
 
   it("keeps newer template selections visible after an inline template steer", async () => {

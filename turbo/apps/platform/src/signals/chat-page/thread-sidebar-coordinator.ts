@@ -141,6 +141,20 @@ function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
   if (typeof input === "string") {
     return artifactRefFromUrl(input);
   }
+  if (!("file" in input)) {
+    return {
+      url: input.url,
+      kind: classifyChatAttachment({
+        contentType: input.contentType,
+        filename: input.filename,
+        url: input.url,
+      }),
+      filename: input.filename,
+      ...(input.shareAvailable === undefined
+        ? {}
+        : { shareAvailable: input.shareAvailable }),
+    };
+  }
   return {
     url: input.url,
     kind: classifyChatAttachment({

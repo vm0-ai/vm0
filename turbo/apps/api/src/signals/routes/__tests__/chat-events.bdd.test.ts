@@ -23,6 +23,7 @@ import {
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
@@ -43,6 +44,7 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { backdateRunStartedAtFixture } from "../../../test-fixtures/agent-runs";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import {
@@ -81,6 +83,7 @@ import {
   createUnassociatedThreadBoundZeroRunFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
+  clearLegacyChatEventInputColumnsFixture,
   deleteAgentRunFixture,
   deleteBddVm0ApiKey,
   holdChatEventFixture,
@@ -95,6 +98,7 @@ import {
   replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-events";
+import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroMailRoutes } from "../zero-mail";
@@ -443,6 +447,28 @@ async function claimChatRun(
     claim,
     sandboxHeaders,
   };
+}
+
+/**
+ * The time-budget sweep is global, so it can only be driven from a file that
+ * ages its own runs through `backdateRunStartedAtFixture`. Every other suite
+ * claims runs at the current time and therefore stays outside the window.
+ */
+async function runSteerRunTimeBudgetCron(): Promise<void> {
+  await accept(
+    setupApp({ context, routes: cronSteerRunTimeBudgetRoutes })(
+      cronSteerRunTimeBudgetContract,
+    ).steer({ headers: { authorization: "Bearer test-cron-secret" } }),
+    [200],
+  );
+}
+
+/** Age one claimed run to the given elapsed runtime. */
+async function ageClaimedRun(runId: string, elapsedMs: number): Promise<void> {
+  await backdateRunStartedAtFixture({
+    runId,
+    startedAt: new Date(now() - elapsedMs),
+  });
 }
 
 function claimEnvironment(claim: RunnerClaim): Record<string, string> {
@@ -1467,6 +1493,8 @@ describe("CHAT-02: queueing and recalling messages", () => {
 
     const firstPendingEventId = randomUUID();
     const secondPendingEventId = randomUUID();
+    const activeFileId = randomUUID();
+    chat.mockCompletedUploadObject(actor, activeFileId, "steer-notes.txt", 17);
     context.mocks.ably.publish.mockClear();
     const firstPending = await chat.requestSendEvent(
       actor,
@@ -1485,12 +1513,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
         threadId: active.threadId,
         prompt: "second steer message",
         clientEventId: secondPendingEventId,
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: activeFileId,
+              filenameSnapshot: "steer-notes.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: "second steer message" },
+          ],
+        },
       },
       [201],
     );
     if (firstPending.status !== 201 || secondPending.status !== 201) {
       throw new Error("Expected both pending sends to be accepted");
     }
+    await clearLegacyChatEventInputColumnsFixture(secondPendingEventId);
     expect(firstPending.body.runId).toBeNull();
     expect(secondPending.body.runId).toBeNull();
     await expect(
@@ -1511,7 +1552,13 @@ describe("CHAT-02: queueing and recalling messages", () => {
         secondPendingEventId,
         firstPendingEventId,
       ]),
-    ).resolves.toBe("first steer message\n\nsecond steer message");
+    ).resolves.toBe(
+      [
+        "first steer message",
+        `[Web file] steer-notes.txt (text/plain)\n   [ID] ${activeFileId}`,
+        "second steer message",
+      ].join("\n\n"),
+    );
     await expect(
       api.listRunnerActiveInputs(claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual([]);
@@ -1636,7 +1683,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
-  it("steers a run once when assistant output reaches its time budget", async () => {
+  it("steers a run once when it reaches its time budget", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1645,55 +1692,15 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "run until the time budget warning",
     });
     const claimed = await claimChatRun(runnerGroup, active.runId);
-    const running = await api.readRun(actor, active.runId);
-    if (!running.startedAt) {
-      throw new Error("Expected the claimed run to have a start time");
-    }
-    const startedAt = Date.parse(running.startedAt);
-    onTestFinished(() => {
-      clearMockNow();
-    });
 
-    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS - 1);
-    await webhooks.requestAgentEvents(
-      {
-        runId: active.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              content: [{ type: "text", text: "still below the threshold" }],
-            },
-          },
-        ],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS - 60_000);
+    await runSteerRunTimeBudgetCron();
     await expect(
       api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual([]);
 
-    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS);
-    await webhooks.requestAgentEvents(
-      {
-        runId: active.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 1,
-            message: {
-              content: [{ type: "text", text: "threshold reached" }],
-            },
-          },
-        ],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
+    await runSteerRunTimeBudgetCron();
     const budgetEventIds = await api.listRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
@@ -1724,29 +1731,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
       }),
     ).toBeFalsy();
 
-    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
-    await webhooks.requestAgentEvents(
-      {
-        runId: active.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 2,
-            message: {
-              content: [{ type: "text", text: "another assistant event" }],
-            },
-          },
-        ],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await runSteerRunTimeBudgetCron();
     await expect(
       api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual([]);
 
-    clearMockNow();
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
@@ -1759,36 +1748,12 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "leave the budget input unclaimed",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    const running = await api.readRun(actor, first.runId);
-    if (!running.startedAt) {
-      throw new Error("Expected the claimed run to have a start time");
-    }
-    onTestFinished(() => {
-      clearMockNow();
-    });
-    mockNow(Date.parse(running.startedAt) + RUN_TIME_BUDGET_STEER_AT_MS);
-    await webhooks.requestAgentEvents(
-      {
-        runId: first.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              content: [{ type: "text", text: "leave this warning pending" }],
-            },
-          },
-        ],
-      },
-      firstClaim.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await ageClaimedRun(first.runId, RUN_TIME_BUDGET_STEER_AT_MS);
+    await runSteerRunTimeBudgetCron();
     await expect(
       api.listRunnerActiveInputs(firstClaim.claim.sandboxToken, first.runId),
     ).resolves.toHaveLength(1);
 
-    clearMockNow();
     await cancelChatRun(actor, first.runId, firstClaim.sandboxHeaders);
     const second = await sendChatRun(actor, {
       agentId,
@@ -5661,15 +5626,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       agentId,
       prompt,
       userMessage,
-      generationTemplate,
-      attachFiles: [
-        {
-          id: fileId,
-          filename: "brief.pdf",
-          contentType: "application/pdf",
-          size: 42,
-        },
-      ],
     });
 
     const run = await api.readRun(actor, sent.runId);
@@ -5834,14 +5790,6 @@ describe("CHAT-02: generation templates and attachments", () => {
           { type: "text", text: "plain API attachment" },
         ],
       },
-      attachFiles: [
-        {
-          id: fileId,
-          filename: "api-input.txt",
-          contentType: "text/plain",
-          size: 12,
-        },
-      ],
     });
 
     const run = await api.readRun(actor, sent.runId);
@@ -5890,7 +5838,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
-  it("keeps single-template context for the legacy generationTemplate field", async () => {
+  it("normalizes the legacy generationTemplate field into a canonical part", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -5898,22 +5846,40 @@ describe("CHAT-02: generation templates and attachments", () => {
     if (!style) {
       throw new Error("Expected a registered illustration style");
     }
+    const generationTemplate: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: style.illustrationStyleId },
+    };
     const sent = await sendChatRun(actor, {
       agentId,
       prompt: "draw a dog",
-      generationTemplate: {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      },
+      generationTemplate,
     });
 
     const run = await api.readRun(actor, sent.runId);
-    expect(run.prompt).toBe("draw a dog");
+    expect(run.prompt).toBe(
+      "draw a dog\n\n[Template #1: Illustration template (illustration)]",
+    );
     const systemPrompt = run.appendSystemPrompt ?? "";
-    expect(systemPrompt).toContain("# Artifact Template Context");
+    expect(systemPrompt).toContain("# Inline Templates");
     expect(systemPrompt).toContain(style.illustrationStyleId);
-    expect(systemPrompt).not.toContain("# Inline Templates");
-    expect(systemPrompt).not.toContain("[Template #1:");
+    const messages = await chat.listThreadEvents(actor, sent.threadId);
+    const message = userMessages(messages.events).find((event) => {
+      return event.eventType === "input.prompt" && event.runId === sent.runId;
+    });
+    expect(message).toMatchObject({
+      generationTemplate,
+      userMessage: {
+        version: 1,
+        parts: expect.arrayContaining([
+          {
+            type: "template",
+            titleSnapshot: "Illustration template",
+            template: generationTemplate,
+          },
+        ]),
+      },
+    });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
@@ -5937,15 +5903,11 @@ describe("CHAT-02: generation templates and attachments", () => {
       },
     });
     const presentationRun = await api.readRun(actor, presentation.runId);
-    expect(presentationRun.prompt).toBe("make a launch deck");
+    expect(presentationRun.prompt).toBe(
+      "make a launch deck\n\n[Template #1: Presentation template (presentation)]",
+    );
     const presentationPrompt = presentationRun.appendSystemPrompt ?? "";
-    expect(presentationPrompt).toContain("# Artifact Template Context");
-    expect(presentationPrompt).toContain(
-      "The user deliberately selected this artifact template",
-    );
-    expect(presentationPrompt).toContain(
-      "It does not force you to generate: the user's prompt decides the task",
-    );
+    expect(presentationPrompt).toContain("# Inline Templates");
     expect(presentationPrompt).toContain(
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
@@ -5985,7 +5947,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const videoRun = await api.readRun(actor, video.runId);
     const videoPrompt = videoRun.appendSystemPrompt ?? "";
-    expect(videoPrompt).toContain("# Artifact Template Context");
+    expect(videoPrompt).toContain("# Inline Templates");
     expect(videoPrompt).toContain(
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
@@ -6048,7 +6010,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const avatarRun = await api.readRun(actor, avatar.runId);
     const avatarPrompt = avatarRun.appendSystemPrompt ?? "";
-    expect(avatarPrompt).toContain("# Artifact Template Context");
+    expect(avatarPrompt).toContain("# Inline Templates");
     expect(avatarPrompt).toContain(`Public JoggAI avatar ID: ${avatarId}`);
     expect(avatarPrompt).toContain(`Public JoggAI voice ID: ${avatarVoiceId}`);
     expect(avatarPrompt).toContain("Aspect ratio: landscape");
@@ -6074,7 +6036,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const websiteRun = await api.readRun(actor, website.runId);
     const websitePrompt = websiteRun.appendSystemPrompt ?? "";
-    expect(websitePrompt).toContain("# Artifact Template Context");
+    expect(websitePrompt).toContain("# Inline Templates");
     expect(websitePrompt).toContain(
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
@@ -6137,7 +6099,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const firstPrompt = (await api.readRun(actor, first.runId))
       .appendSystemPrompt;
-    expect(firstPrompt).toContain("# Artifact Template Context");
+    expect(firstPrompt).toContain("# Inline Templates");
     expect(firstPrompt).toContain(
       `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
@@ -6168,7 +6130,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const secondPrompt = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
-    expect(secondPrompt).not.toContain("# Artifact Template Context");
+    expect(secondPrompt).not.toContain("# Inline Templates");
     expect(secondPrompt).toContain("# Web Chat Run Context");
     expect(secondPrompt).not.toContain("Selected a template");
     expect(secondPrompt).not.toContain(style.illustrationStyleId);
@@ -6217,7 +6179,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const fresh = await sendChatRun(actor, { agentId, prompt: "draw a cat" });
     const freshPrompt = (await api.readRun(actor, fresh.runId))
       .appendSystemPrompt;
-    expect(freshPrompt).not.toContain("# Artifact Template Context");
+    expect(freshPrompt).not.toContain("# Inline Templates");
     expect(freshPrompt).not.toContain(
       "zero generate image --provider built-in --style",
     );
@@ -6247,7 +6209,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const illustrationPrompt = (await api.readRun(actor, illustration.runId))
       .appendSystemPrompt;
-    expect(illustrationPrompt).toContain("# Artifact Template Context");
+    expect(illustrationPrompt).toContain("# Inline Templates");
     expect(illustrationPrompt).toContain(style.illustrationStyleId);
     await cancelChatRun(actor, illustration.runId);
 
@@ -6262,7 +6224,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     });
     const workflowPrompt = (await api.readRun(actor, workflow.runId))
       .appendSystemPrompt;
-    expect(workflowPrompt).toContain("# Workflow Template Context");
+    expect(workflowPrompt).toContain("# Inline Templates");
     expect(workflowPrompt).toContain(
       `Auto-inbox label (${workflowTemplate.id})`,
     );
@@ -6272,7 +6234,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(workflowPrompt).not.toContain("Before creating anything");
     expect(workflowPrompt).toContain("Gmail label-applied automation");
-    expect(workflowPrompt).not.toContain("# Artifact Template Context");
     // The illustration run was cancelled, so only its message text is replayed
     // via "# Incomplete Rounds Context"; the style id is not.
     expect(workflowPrompt).toContain("# Incomplete Rounds Context");
@@ -6290,9 +6251,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     // type. Both earlier runs were cancelled, so the general "# Web Chat Run
     // Context" replay is suppressed in favor of resuming the existing session
     // (see prepareRecentChatContext).
-    expect(followUpPrompt).not.toContain("# Workflow Template Context");
+    expect(followUpPrompt).not.toContain("# Inline Templates");
     expect(followUpPrompt).not.toContain(workflowTemplate.id);
-    expect(followUpPrompt).not.toContain("# Artifact Template Context");
     expect(followUpPrompt).not.toContain("# Web Chat Run Context");
     expect(followUpPrompt).toContain("# Incomplete Rounds Context");
     expect(followUpPrompt).not.toContain("Selected a template");
@@ -6401,9 +6361,18 @@ describe("CHAT-02: generation templates and attachments", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "read this file",
-      attachFiles: [
-        { id: fileId, filename, contentType: "image/png", size: 42 },
-      ],
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId,
+            filenameSnapshot: filename,
+            contentType: "image/png",
+          },
+          { type: "text", text: "read this file" },
+        ],
+      },
     });
 
     const created = await api.readRun(actor, run.runId);
@@ -6433,6 +6402,11 @@ describe("CHAT-02: generation templates and attachments", () => {
       contentType: "image/png",
       size: 42,
       url: expect.stringContaining(`${fileId}/diagram_final_100_.png`),
+      assetRef: {
+        classification: "input",
+        access: "private",
+        materialization: { status: "ready" },
+      },
     });
     await cancelChatRun(actor, run.runId);
   }, 60_000);
@@ -6481,18 +6455,11 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         prompt: queuedPrompt,
         userMessage,
         clientEventId: queuedId,
-        attachFiles: [
-          {
-            id: fileId,
-            filename: "ordered.txt",
-            contentType: "text/plain",
-            size: 12,
-          },
-        ],
       },
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
+    await clearLegacyChatEventInputColumnsFixture(queuedId);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -6564,24 +6531,29 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         prompt: "queued with attachment",
         clientEventId: queuedId,
         realAgentInPreview: true,
-        attachFiles: [
-          {
-            id: fileId,
-            filename: "notes.txt",
-            contentType: "text/plain",
-            size: 12,
-          },
-          {
-            id: secondFileId,
-            filename: "details.json",
-            contentType: "application/json",
-            size: 24,
-          },
-        ],
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: "notes.txt",
+              contentType: "text/plain",
+            },
+            {
+              type: "file",
+              fileId: secondFileId,
+              filenameSnapshot: "details.json",
+              contentType: "application/json",
+            },
+            { type: "text", text: "queued with attachment" },
+          ],
+        },
       },
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
+    await clearLegacyChatEventInputColumnsFixture(queuedId);
     // Completing the anchor run promotes the queued message into a fresh
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);

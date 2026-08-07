@@ -930,6 +930,10 @@
       "description": "Suscripciones, método de pago y facturas en Stripe.",
       "title": "Gestionar la facturación"
     },
+    "paymentMethods": {
+      "description": "Administra los métodos de pago utilizados para la facturación en Stripe.",
+      "title": "Métodos de pago"
+    },
     "plans": {
       "cancellationNotice": "Tu plan {{plan}} ha sido cancelado y terminará el {{date}}.",
       "changeAnytime": "Actualiza o baja cuando quieras.",
@@ -1177,11 +1181,9 @@
       "file": "Archivo {{filename}}",
       "fileTooLarge": "{{filename}} supera el límite de 1 GB",
       "imageUnavailable": "[Imagen no disponible: {{filename}}]",
-      "importing": "Importando archivos adjuntos",
       "loadingFile": "Cargando {{filename}}",
       "previewFile": "Vista previa de {{filename}}",
       "title": "Archivos adjuntos",
-      "unavailable": "Adjunto no disponible",
       "uploadFailed": "No se pudo subir {{filename}}",
       "uploadFailedRetry": "No se pudo subir {{filename}}. Inténtalo de nuevo.",
       "uploadsFailed": "Algunos archivos adjuntos no se han subido. Inténtalo de nuevo."
@@ -1636,7 +1638,9 @@
       "videoOptionsLabel": "Opciones de vídeo {{spec}}",
       "videoOptionsModel": "Modelo",
       "videoOptionsRatio": "Proporción",
-      "videoOptionsResolution": "Resolución"
+      "videoOptionsResolution": "Resolución",
+      "videoSpecAudioOff": "Sin audio",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Hilo de chat",
@@ -1657,6 +1661,7 @@
       "icon": "Icono del hilo de chat",
       "loadingEarlier": "Cargando mensajes anteriores",
       "noEmojiFound": "No se ha encontrado ningún emoji",
+      "notFound": "Hilo de chat no encontrado",
       "openArtifacts": "Abrir artefactos",
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",

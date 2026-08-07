@@ -261,7 +261,10 @@ function encryptPayload(payload: unknown): string {
   });
 }
 
-function signedHeaders(body: string, timestamp: number): HeadersInit {
+function signedHeaders(
+  body: string,
+  timestamp: number,
+): Record<string, string> {
   const nonce = randomUUID();
   const signature = createHash("sha256")
     .update(`${String(timestamp)}${nonce}${ENCRYPT_KEY}${body}`)
@@ -840,7 +843,7 @@ describe("Feishu integration", () => {
     const connectBody = feishuConnectBody(connectUrl);
     const statusResponse = await connectApp.request(
       `/api/zero/feishu/connect/status?${new URLSearchParams(
-        Object.entries(connectBody).map(([key, value]) => {
+        Object.entries(connectBody).map(([key, value]): [string, string] => {
           return [key, String(value)];
         }),
       )}`,
@@ -3234,7 +3237,10 @@ describe("Feishu integration", () => {
     });
     await postEvent(callbackUrl, queuedPayload, { encrypted: true });
     await flushWaitUntilForTest();
-    const queuedEvent = await findPendingChatEventByPromptFixture(queuedPrompt);
+    const queuedEvent = await findPendingChatEventByPromptFixture({
+      userId: fixture.actor.userId,
+      prompt: queuedPrompt,
+    });
     if (!queuedEvent) {
       throw new Error("Expected the queued Feishu input event");
     }
@@ -3425,8 +3431,10 @@ describe("Feishu integration", () => {
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const failedDeliveryEvent =
-      await findPendingChatEventByPromptFixture(failedDeliveryPrompt);
+    const failedDeliveryEvent = await findPendingChatEventByPromptFixture({
+      userId: fixture.actor.userId,
+      prompt: failedDeliveryPrompt,
+    });
     if (!failedDeliveryEvent) {
       throw new Error("Expected the failed-delivery Feishu input event");
     }
@@ -3601,8 +3609,10 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-    const queuedFeishuParams =
-      await findPendingChatEventByPromptFixture(secondPrompt);
+    const queuedFeishuParams = await findPendingChatEventByPromptFixture({
+      userId: secondActor.userId,
+      prompt: secondPrompt,
+    });
     expect(queuedFeishuParams).toMatchObject({
       eventId: expect.any(String),
     });

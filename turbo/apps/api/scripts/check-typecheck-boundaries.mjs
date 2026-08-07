@@ -11,6 +11,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = resolve(packageRoot, "src");
 const baselineConfig = "tsconfig.json";
 const programConfigs = [
+  "tsconfig.gateways.json",
   "tsconfig.core.json",
   "tsconfig.bootstrap.json",
   "tsconfig.tests.json",

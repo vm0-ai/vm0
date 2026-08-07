@@ -162,12 +162,9 @@ function classifyAssistantError(
 }
 
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
-  const hasAttachments =
-    "attachFiles" in event && (event.attachFiles?.length ?? 0) > 0;
   return (
     Boolean(event.content) ||
     event.blocks.length > 0 ||
-    hasAttachments ||
     event.eventType === "input.rejected" ||
     event.eventType === "output.error" ||
     event.eventType === "run.failed" ||
@@ -397,9 +394,6 @@ export function createAssistantErrorRecoverySignals(deps: {
           agentId: meta.agentId,
           prompt: RETRY_PROMPT,
           hasTextContent: true,
-          attachFiles: undefined,
-          attachments: undefined,
-          generationTemplate: undefined,
           userMessage,
           ...(runOptions ? { runOptions } : {}),
           ...(features[FeatureSwitchKey.RealAgentInPreview]

@@ -69,7 +69,31 @@ function modelSelectionFromBody(body: {
   return body.model === null ? null : modelFirstSelection(body.model);
 }
 
-export function mockSubagentThread(context: TestContext, _threadId: string) {
+export function mockSubagentThread(context: TestContext, threadId: string) {
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [
+        {
+          id: threadId,
+          agentId: DEFAULT_AGENT_ID,
+          title: "Subagent thread",
+          sortAt: "2026-03-10T00:00:00Z",
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
+        },
+      ],
+      latestEventId: null,
+      latestSeqId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
   context.mocks.data.team([
     {
       id: DEFAULT_AGENT_ID,

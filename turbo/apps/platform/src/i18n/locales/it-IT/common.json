@@ -930,6 +930,10 @@
       "description": "Abbonamento, metodo di pagamento e fatture in Stripe.",
       "title": "Gestisci la fatturazione"
     },
+    "paymentMethods": {
+      "description": "Gestisci i metodi di pagamento utilizzati per la fatturazione in Stripe.",
+      "title": "Metodi di pagamento"
+    },
     "plans": {
       "cancellationNotice": "Il tuo piano {{plan}} è stato annullato e terminerà il {{date}}.",
       "changeAnytime": "Aggiorna o esegui il downgrade in qualsiasi momento.",
@@ -1177,11 +1181,9 @@
       "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} supera il limite di 1 GB",
       "imageUnavailable": "[Immagine non disponibile: {{filename}}]",
-      "importing": "Importazione allegato",
       "loadingFile": "Caricamento in corso {{filename}}",
       "previewFile": "Anteprima {{filename}}",
       "title": "Allegati",
-      "unavailable": "Allegato non disponibile",
       "uploadFailed": "Impossibile caricare {{filename}}",
       "uploadFailedRetry": "Impossibile caricare {{filename}}. Riprova.",
       "uploadsFailed": "Impossibile caricare alcuni allegati. Riprova."
@@ -1636,7 +1638,9 @@
       "videoOptionsLabel": "Opzioni video {{spec}}",
       "videoOptionsModel": "Modello",
       "videoOptionsRatio": "Proporzioni",
-      "videoOptionsResolution": "Risoluzione"
+      "videoOptionsResolution": "Risoluzione",
+      "videoSpecAudioOff": "Muto",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Discussione della chat",
@@ -1657,6 +1661,7 @@
       "icon": "Icona del thread di chat",
       "loadingEarlier": "Caricamento dei messaggi precedenti",
       "noEmojiFound": "Nessuna emoji trovata",
+      "notFound": "Conversazione non trovata",
       "openArtifacts": "Artefatti aperti",
       "openBrowser": "Apri il browser",
       "openNamedAgent": "Apri agente {{name}}",

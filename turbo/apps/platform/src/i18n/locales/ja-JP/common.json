@@ -909,6 +909,10 @@
       "description": "Stripe のサブスクリプション、支払い方法、請求書。",
       "title": "請求の管理"
     },
+    "paymentMethods": {
+      "description": "Stripe で請求に使用する支払い方法を管理します。",
+      "title": "支払い方法"
+    },
     "plans": {
       "cancellationNotice": "{{plan}} プランはキャンセルされ、{{date}} に終了します。",
       "changeAnytime": "いつでもアップグレードまたはダウングレードできます。",
@@ -1154,11 +1158,9 @@
       "file": "ファイル {{filename}}",
       "fileTooLarge": "{{filename}} が 1 GB の制限を超えています",
       "imageUnavailable": "[画像は利用できません: {{filename}}]",
-      "importing": "添付ファイルをインポートしています",
       "loadingFile": "{{filename}} をロードしています",
       "previewFile": "{{filename}} のプレビュー",
       "title": "添付ファイル",
-      "unavailable": "添付ファイルが利用できません",
       "uploadFailed": "{{filename}} のアップロードに失敗しました",
       "uploadFailedRetry": "{{filename}} のアップロードに失敗しました。もう一度やり直してください。",
       "uploadsFailed": "一部の添付ファイルのアップロードに失敗しました。もう一度やり直してください。"
@@ -1595,7 +1597,9 @@
       "videoOptionsLabel": "動画オプション {{spec}}",
       "videoOptionsModel": "モデル",
       "videoOptionsRatio": "比率",
-      "videoOptionsResolution": "解像度"
+      "videoOptionsResolution": "解像度",
+      "videoSpecAudioOff": "音声なし",
+      "videoSpecAudioOn": "音声あり"
     },
     "thread": {
       "ariaLabel": "チャットスレッド",
@@ -1616,6 +1620,7 @@
       "icon": "チャットスレッドアイコン",
       "loadingEarlier": "以前のメッセージを読み込んでいます",
       "noEmojiFound": "絵文字が見つかりませんでした",
+      "notFound": "チャットスレッドが見つかりません",
       "openArtifacts": "オープンアーティファクト",
       "openBrowser": "ブラウザを開く",
       "openNamedAgent": "エージェント {{name}} を開く",

@@ -120,8 +120,10 @@ import {
   featureSwitch$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
-import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
-import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
+import {
+  videoTemplateSpec,
+  type VideoTemplateSpec,
+} from "../../signals/zero-page/video-template-spec.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -254,6 +256,7 @@ import type {
 } from "../../signals/chat-page/chat-event-types.ts";
 import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
+import { userMessageFileAttachments } from "../../signals/chat-page/user-message-files.ts";
 import type {
   ChatPanelSignals,
   RecommendedFollowupSource,
@@ -378,8 +381,8 @@ function eventNonContentPart(
 }
 
 function chatEventAttachments(event: ChatEvent) {
-  return isInputChatEvent(event) && "attachFiles" in event
-    ? event.attachFiles
+  return isInputChatEvent(event)
+    ? userMessageFileAttachments(event.userMessage)
     : undefined;
 }
 
@@ -3708,7 +3711,28 @@ function ChatHistoryBackfillSkeleton({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
+function ChatThreadNotFound() {
+  const { t } = useTranslation();
+  return (
+    <main
+      data-chat-thread-not-found
+      className="flex min-h-0 flex-1 items-center justify-center px-6 py-16 text-center"
+    >
+      <h1 className="text-lg font-semibold text-foreground">
+        {t(($) => {
+          return $.chat.thread.notFound;
+        })}
+      </h1>
+    </main>
+  );
+}
+
 function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
+  const threadMeta = useGet(thread.threadMeta$);
+  if (!threadMeta) {
+    return <ChatThreadNotFound />;
+  }
+
   return (
     <>
       <ChatThreadHeader thread={thread} />
@@ -6539,11 +6563,12 @@ interface ResolvedMessageAttachment {
   readonly filename: string;
   readonly url: string;
   readonly contentType: string | undefined;
-  readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
   readonly text$?: TextPreviewComputed;
 }
+
+type OpenMessageImagePreview = (url: string, filename?: string) => void;
 
 function resolveAttachments(
   event: EnrichedChatEvent,
@@ -6554,7 +6579,6 @@ function resolveAttachments(
   const source =
     eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
   return source.map((f) => {
-    const resolvedFile = "id" in f ? (f as ResolvedAttachFile) : undefined;
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
         ? f.contentType
@@ -6572,7 +6596,6 @@ function resolveAttachments(
       filename: f.filename,
       url: f.url,
       contentType,
-      ...(resolvedFile?.assetRef ? { assetRef: resolvedFile.assetRef } : {}),
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
       ...(text$ ? { text$ } : {}),
@@ -6637,57 +6660,6 @@ function clipboardAttachmentsFromUserMessage(
   });
 }
 
-function AttachmentMaterializationState({
-  attachment,
-}: {
-  attachment: {
-    readonly filename: string;
-    readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
-  };
-}) {
-  const { t } = useTranslation();
-  const materialization = attachment.assetRef?.materialization;
-  if (!materialization || materialization.status === "ready") {
-    return null;
-  }
-  const pending = materialization.status === "pending";
-  const error =
-    materialization.status === "failed" ? materialization.error : undefined;
-  return (
-    <div
-      className="flex max-w-72 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-      role={pending ? "status" : "alert"}
-      title={error?.message}
-    >
-      {pending ? (
-        <IconLoader2
-          aria-hidden="true"
-          className="size-4 shrink-0 animate-spin text-muted-foreground"
-        />
-      ) : (
-        <IconAlertCircle
-          aria-hidden="true"
-          className="size-4 shrink-0 text-destructive"
-        />
-      )}
-      <span className="min-w-0">
-        <span className="block truncate font-medium">
-          {attachment.filename}
-        </span>
-        <span className="block text-xs text-muted-foreground">
-          {pending
-            ? t(($) => {
-                return $.chat.attachments.importing;
-              })
-            : t(($) => {
-                return $.chat.attachments.unavailable;
-              })}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 // Images and videos render as thumbnails, every other attachment as a chip.
 // The two shapes never share a row, so they are grouped before rendering.
 function isMediaAttachment(attachment: ResolvedMessageAttachment): boolean {
@@ -6699,14 +6671,11 @@ function MessageAttachment({
   onImageClick,
 }: {
   attachment: ResolvedMessageAttachment;
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
 }) {
   const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
-  if (a.assetRef && a.assetRef.materialization.status !== "ready") {
-    return <AttachmentMaterializationState attachment={a} />;
-  }
   if (a.isImage) {
     return (
       <ChatImagePreviewLink
@@ -6722,7 +6691,7 @@ function MessageAttachment({
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
-          onImageClick(a.url);
+          onImageClick(a.url, a.filename);
         }}
         placeholderClassName="h-full w-full"
         url={a.url}
@@ -6795,7 +6764,7 @@ function UserMessageAttachmentRow({
   testId,
 }: {
   attachments: ResolvedMessageAttachment[];
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
   testId: string;
 }) {
   if (attachments.length === 0) {
@@ -6822,7 +6791,7 @@ function UserMessageAttachments({
   onImageClick,
 }: {
   attachments: ReturnType<typeof resolveAttachments>;
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
 }) {
   if (attachments.length === 0) {
     return null;
@@ -7168,22 +7137,24 @@ const STRUCTURED_INLINE_LINK_REFERENCE_CLASS =
   "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
 /**
- * Read-only echo of the parameters a sent video used, resolved the same way the
- * composer chip resolves them. Talking-avatar templates share the "video"
- * envelope but take none of these parameters.
+ * Read-only echo of the parameters a sent video used. Like the composer chip,
+ * it drops the model name and the trailing parameters on narrow viewports so
+ * the template title keeps the room it needs.
  */
-function sentVideoTemplateSpec(
-  template: GenerationTemplateRequest,
-): string | undefined {
-  if (template.type !== "video") {
-    return undefined;
-  }
-  const { selection } = template;
-  if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
-    return undefined;
-  }
-  const resolved = resolveVideoGenerationOptions(selection.videoOptions);
-  return `${resolved.aspectRatio} \u00b7 ${resolved.duration}`;
+function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
+  return (
+    <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
+      <span className="hidden sm:inline">{`${spec.model} · `}</span>
+      {spec.core.join(" · ")}
+      <span className="hidden sm:inline">
+        {spec.rest
+          .map((segment) => {
+            return ` · ${segment}`;
+          })
+          .join("")}
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -7197,9 +7168,7 @@ function UserMessageTemplateReference({
 }) {
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
-  const spec = videoOptionsEnabled
-    ? sentVideoTemplateSpec(part.template)
-    : undefined;
+  const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
   return (
     <span
       data-structured-template-reference=""
@@ -7208,11 +7177,7 @@ function UserMessageTemplateReference({
     >
       <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-      {spec !== undefined && (
-        <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
-          {spec}
-        </span>
-      )}
+      {spec !== null && <SentVideoTemplateSpec spec={spec} />}
     </span>
   );
 }
@@ -7227,12 +7192,6 @@ function UserMessageFileReference({
   const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
-  if (
-    attachment?.assetRef &&
-    attachment.assetRef.materialization.status !== "ready"
-  ) {
-    return <AttachmentMaterializationState attachment={attachment} />;
-  }
   if (attachment) {
     const kind = classifyChatAttachment({
       filename: part.filenameSnapshot,
@@ -7702,7 +7661,7 @@ function UserMessageContent({
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
-  onImageClick: (url: string) => void;
+  onImageClick: OpenMessageImagePreview;
   agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
 }) {
   // Attachments read as their own object, so they all sit above the bubble
@@ -7857,10 +7816,9 @@ function resolvePagedUserMessageRendering({
     inputEvent ? "" : legacyContent,
   );
   const canonicalUserMessage = userMessage;
-  const attachFiles =
-    inputEvent && "attachFiles" in inputEvent
-      ? inputEvent.attachFiles
-      : undefined;
+  const attachFiles = canonicalUserMessage
+    ? userMessageFileAttachments(canonicalUserMessage)
+    : undefined;
   const copyText = canonicalUserMessage
     ? (messageDocumentToPrompt(canonicalUserMessage) ?? "")
     : cleanContent;
@@ -7899,6 +7857,14 @@ function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
     : undefined;
 }
 
+function messageImageLightboxTarget(
+  threadId: string,
+  url: string,
+  filename: string | undefined,
+) {
+  return { threadId, url, ...(filename ? { filename } : {}) };
+}
+
 function PagedUserMessage({
   event,
   thread,
@@ -7922,8 +7888,10 @@ function PagedUserMessage({
   const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox({ threadId: thread.threadId, url });
+  const openLightbox: OpenMessageImagePreview = (url, filename) => {
+    openImageLightbox(
+      messageImageLightboxTarget(thread.threadId, url, filename),
+    );
   };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;
@@ -8130,8 +8098,10 @@ function PagedAssistantEventItem({
   thread: ChatPanelSignals;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = (url: string) => {
-    openImageLightbox({ threadId: thread.threadId, url });
+  const openLightbox: OpenMessageImagePreview = (url, filename) => {
+    openImageLightbox(
+      messageImageLightboxTarget(thread.threadId, url, filename),
+    );
   };
   const error = chatEventError(event);
   if (error) {

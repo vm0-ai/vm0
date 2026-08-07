@@ -1,11 +1,11 @@
-import {
-  PI_STANDBY_PROFILE,
-  type PiModelConfig,
-  type RunSkillSnapshot,
+import type {
+  PiModelConfig,
+  RunSkillSnapshot,
 } from "@vm0/api-contracts/contracts/runners";
 import {
   getModelProviderPiChatCompletionsUrl,
   type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   isPiAgentModelSupported,
@@ -22,6 +22,12 @@ import {
 
 export type PiEdgeModelConfig = PiAgentModelConfig;
 
+export interface PiEdgeUsageConfig {
+  /** Canonical selected model used for observations and, when billable, pricing. */
+  readonly model: SupportedRunModel;
+  readonly billable: boolean;
+}
+
 export interface PiEdgeTurnArgs {
   readonly runId: string;
   readonly userId: string;
@@ -29,18 +35,12 @@ export interface PiEdgeTurnArgs {
   readonly prompt: string;
   readonly systemPrompt: string;
   readonly model: PiEdgeModelConfig;
+  readonly usage?: PiEdgeUsageConfig;
   readonly executionEnv: ExecutionEnv;
   readonly skillSnapshot: RunSkillSnapshot;
   readonly runnerGroup: string;
   readonly apiStartTime: number;
 }
-
-/**
- * Runner job profile for Pi runs. Runners advertise this as a distinct queue
- * lane backed by the default Sandbox resource shape, allowing the standby job
- * to be claimed independently from ordinary agent work.
- */
-export { PI_STANDBY_PROFILE };
 
 /** Build the non-secret model config persisted for the standby Sandbox. */
 export function piSandboxModelConfig(config: PiEdgeModelConfig): PiModelConfig {

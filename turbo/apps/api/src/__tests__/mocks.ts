@@ -29,7 +29,7 @@ type BrowserUseCdpCommandMock = Mock<
 >;
 interface RequestOptionsLike {
   readonly family?: number;
-  readonly headers?: HeadersInit;
+  readonly headers?: RequestInit["headers"];
   readonly method?: string;
   readonly lookup?: LookupFunction;
 }
@@ -203,6 +203,11 @@ export interface ApiTestMocks {
       };
     };
     readonly billingPortal: {
+      readonly configurations: {
+        readonly list: AsyncMock;
+        readonly create: AsyncMock;
+        readonly update: AsyncMock;
+      };
       readonly sessions: {
         readonly create: AsyncMock;
       };
@@ -361,6 +366,11 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       },
     },
     billingPortal: {
+      configurations: {
+        list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+        create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+        update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      },
       sessions: {
         create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       },
@@ -903,6 +913,11 @@ vi.mock("stripe", async (importOriginal) => {
           },
         },
         billingPortal: {
+          configurations: {
+            list: apiTestMocks.stripe.billingPortal.configurations.list,
+            create: apiTestMocks.stripe.billingPortal.configurations.create,
+            update: apiTestMocks.stripe.billingPortal.configurations.update,
+          },
           sessions: {
             create: apiTestMocks.stripe.billingPortal.sessions.create,
           },
@@ -1146,6 +1161,9 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.checkout.sessions.create.mockReset();
   apiTestMocks.stripe.checkout.sessions.retrieve.mockReset();
   apiTestMocks.stripe.checkout.sessions.expire.mockReset();
+  apiTestMocks.stripe.billingPortal.configurations.list.mockReset();
+  apiTestMocks.stripe.billingPortal.configurations.create.mockReset();
+  apiTestMocks.stripe.billingPortal.configurations.update.mockReset();
   apiTestMocks.stripe.billingPortal.sessions.create.mockReset();
   apiTestMocks.stripe.coupons.retrieve.mockReset();
   apiTestMocks.stripe.prices.retrieve.mockReset();

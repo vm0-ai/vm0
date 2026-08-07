@@ -7,6 +7,7 @@
  * depends on this package.
  */
 export const VIDEO_MODEL_IDS = [
+  "dreamina-seedance-2-5-260628",
   "dreamina-seedance-2-0-260128",
   "dreamina-seedance-2-0-fast-260128",
   "seedance-1-5-pro-251215",
@@ -43,6 +44,21 @@ export const VIDEO_DURATIONS = [
   "13s",
   "14s",
   "15s",
+  "16s",
+  "17s",
+  "18s",
+  "19s",
+  "20s",
+  "21s",
+  "22s",
+  "23s",
+  "24s",
+  "25s",
+  "26s",
+  "27s",
+  "28s",
+  "29s",
+  "30s",
 ] as const;
 
 export type VideoDuration = (typeof VIDEO_DURATIONS)[number];

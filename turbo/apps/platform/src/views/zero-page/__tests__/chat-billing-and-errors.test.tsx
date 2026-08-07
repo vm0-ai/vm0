@@ -36,7 +36,7 @@ import {
 
 describe("chat lifecycle", () => {
   it("shows billing recovery guidance when credits are depleted", async () => {
-    const threadId = "failed-guidance-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000001";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.api(
       zeroBillingCheckoutContract.create,
@@ -66,7 +66,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows Pro upgrade guidance when built-in video requires Pro", async () => {
-    const threadId = "failed-guidance-video-pro";
+    const threadId = "e1000000-0000-4000-a000-000000000002";
     mockFailedAssistantThread({ threadId, error: "pro_required" });
     context.mocks.api(
       zeroBillingCheckoutContract.create,
@@ -96,7 +96,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows Pro upgrade guidance for limited-free-1 even with credits", async () => {
-    const threadId = "failed-guidance-limited-free";
+    const threadId = "e1000000-0000-4000-a000-000000000003";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
@@ -153,7 +153,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows admin-only billing guidance when a member runs out of credits", async () => {
-    const threadId = "failed-guidance-member-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000004";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
@@ -177,7 +177,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows that chat can continue when credits become available", async () => {
-    const threadId = "failed-guidance-restored-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000005";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
@@ -220,7 +220,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows paid credit top-ups when a paid workspace runs out of credits", async () => {
-    const threadId = "failed-guidance-paid-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000006";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
@@ -289,7 +289,7 @@ describe("chat lifecycle", () => {
   });
 
   it("uses the plan capability when a paid tier cannot buy credits", async () => {
-    const threadId = "failed-guidance-capability-blocked-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000007";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
@@ -331,7 +331,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows credit top-ups when a Custom workspace runs out of credits", async () => {
-    const threadId = "failed-guidance-custom-credits";
+    const threadId = "e1000000-0000-4000-a000-000000000008";
     mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
     context.mocks.data.org({
       id: "org_1",
@@ -390,7 +390,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows model-provider setup guidance from failed assistant messages", async () => {
-    const threadId = "failed-guidance-provider";
+    const threadId = "e1000000-0000-4000-a000-000000000009";
     mockFailedAssistantThread({
       threadId,
       error: "No model provider configured",
@@ -409,7 +409,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows restart guidance for incompatible provider sessions", async () => {
-    const threadId = "failed-guidance-incompatible";
+    const threadId = "e1000000-0000-4000-a000-000000000010";
     mockFailedAssistantThread({
       threadId,
       error: "Cannot continue session with the selected provider",
@@ -426,7 +426,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows restart guidance for deleted provider sessions", async () => {
-    const threadId = "failed-guidance-deleted";
+    const threadId = "e1000000-0000-4000-a000-000000000011";
     mockFailedAssistantThread({
       threadId,
       error: "Model provider unavailable",
@@ -445,7 +445,7 @@ describe("chat lifecycle", () => {
   });
 
   it("renders generic assistant failures as markdown", async () => {
-    const threadId = "failed-guidance-generic";
+    const threadId = "e1000000-0000-4000-a000-000000000012";
     mockFailedAssistantThread({
       threadId,
       error: "Unexpected **tool** failure",
@@ -620,7 +620,7 @@ describe("chat lifecycle", () => {
 });
 describe("initial thinking indicator", () => {
   it("renders the latest run thinking marker inside the thinking indicator", async () => {
-    const threadId = "thread-initial-thinking";
+    const threadId = "e1000000-0000-4000-a000-000000000013";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -656,7 +656,7 @@ describe("initial thinking indicator", () => {
   });
 
   it("renders the thinking marker before thread detail resolves", async () => {
-    const threadId = "thread-initial-thinking-thread-detail-gated";
+    const threadId = "e1000000-0000-4000-a000-000000000014";
     const threadGate = context.mocks.deferred<void>();
     mockChatLifecycle(context, {
       threadId,
@@ -693,7 +693,7 @@ describe("initial thinking indicator", () => {
   });
 
   it("restarts on every follow-up line instead of sliding a short tail", async () => {
-    const threadId = "thread-initial-thinking-rollover";
+    const threadId = "e1000000-0000-4000-a000-000000000015";
     const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
       text: thinking,
@@ -775,7 +775,7 @@ describe("initial thinking indicator", () => {
   });
 
   it("shows every explicit thinking line in sequence", async () => {
-    const threadId = "thread-initial-thinking-multiline";
+    const threadId = "e1000000-0000-4000-a000-000000000016";
     const thinking = "ONE\nTWO\nTHREE";
     mockThinkingTypewriterLayout({
       text: thinking,
@@ -857,7 +857,7 @@ describe("initial thinking indicator", () => {
   });
 
   it("keeps the thinking marker visible while a later Morning Brief is queued", async () => {
-    const threadId = "thread-initial-thinking-with-queue";
+    const threadId = "e1000000-0000-4000-a000-000000000017";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -909,7 +909,7 @@ describe("initial thinking indicator", () => {
   });
 
   it("hides the thinking marker when the same run has assistant text", async () => {
-    const threadId = "thread-initial-thinking-answer";
+    const threadId = "e1000000-0000-4000-a000-000000000018";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [

@@ -180,6 +180,9 @@ const eventColumns = {
   seqId: chatEvents.seqId,
   sequenceNumber: chatEvents.runEventSequenceNumber,
   createdAt: chatEvents.createdAt,
+  // Old web/app response boundary (~2-day observed client window), including
+  // rows from a mixed API fleet (~102-minute observed overlap). The Stage 5/7
+  // chat-event cleanup follow-up PR removes these after both windows close.
   attachFiles: chatEvents.attachFiles,
   generationTemplate: chatEvents.generationTemplate,
   recommendedFollowups: chatEvents.recommendedFollowups,
@@ -452,6 +455,9 @@ function chatEventAttachFiles(
     if (canonicalAttachments.length > 0) {
       return canonicalAttachments;
     }
+    // Legacy response projection for old web/app clients (~2 days) and rows
+    // written during API overlap (~102 minutes). The Stage 5/7 chat-event
+    // cleanup follow-up PR removes it after both rollout windows close.
     if (row.attachFiles && row.attachFiles.length > 0) {
       return await get(resolveAttachFileUrls(userId, row.attachFiles));
     }
@@ -534,6 +540,9 @@ const chatEventBuilders = {
         row.eventType,
         "userMessage",
       ),
+      // Old web/app response projection (~2-day observed client window).
+      // Canonical clients read `userMessage`; the Stage 5/7 chat-event cleanup
+      // follow-up PR removes both fields after the client floor cutover.
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -584,6 +593,9 @@ const chatEventBuilders = {
         "userMessage",
       ),
       error: requiredChatEventField(row.error, row.eventType, "error"),
+      // Old web/app response projection (~2-day observed client window).
+      // Canonical clients read `userMessage`; the Stage 5/7 chat-event cleanup
+      // follow-up PR removes both fields after the client floor cutover.
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };

@@ -29,6 +29,7 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+from generated.model_usage import MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS
 from logging_utils import log_proxy_entry
 
 from ..buffer import (
@@ -70,13 +71,6 @@ class _ModelUsageTierDecision:
     committed: bool
 
 
-_MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS = {
-    "gpt-5.5": 272_001,
-    "gpt-5.6-sol": 272_001,
-    "gpt-5.6-terra": 272_001,
-    "gpt-5.6-luna": 272_001,
-    "MiniMax-M3": 512_001,
-}
 _MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE = {
     MODEL_USAGE_CATEGORY_INPUT: _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
     MODEL_USAGE_CATEGORY_OUTPUT: _MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT,
@@ -544,7 +538,7 @@ def _source_model_usage_tier(
     usage: dict,
 ) -> _ModelUsageTier | None:
     billing_tier = _model_usage_tier(provider, usage)
-    if provider not in _MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS:
+    if provider not in MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS:
         return billing_tier
 
     tiers = _model_provider_usage_tiers(flow)
@@ -583,7 +577,7 @@ def _model_provider_usage_tiers(
 
 
 def _model_usage_tier(provider: str, usage: dict) -> _ModelUsageTier | None:
-    min_input_tokens = _MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS.get(provider)
+    min_input_tokens = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS.get(provider)
     if min_input_tokens is None:
         return _MODEL_USAGE_TIER_BASE
 

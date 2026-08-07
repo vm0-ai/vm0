@@ -930,6 +930,10 @@
       "description": "Assinatura, forma de pagamento e faturas no Stripe.",
       "title": "Gerenciar cobrança"
     },
+    "paymentMethods": {
+      "description": "Gerencie os métodos de pagamento usados para cobrança no Stripe.",
+      "title": "Métodos de pagamento"
+    },
     "plans": {
       "cancellationNotice": "Seu plano {{plan}} foi cancelado e terminará em {{date}}.",
       "changeAnytime": "Faça upgrade ou downgrade a qualquer momento.",
@@ -1177,11 +1181,9 @@
       "file": "Arquivo {{filename}}",
       "fileTooLarge": "{{filename}} excede o limite de 1 GB",
       "imageUnavailable": "[Imagem indisponível: {{filename}}]",
-      "importing": "Importando anexo",
       "loadingFile": "Carregando {{filename}}",
       "previewFile": "Visualizar {{filename}}",
       "title": "Anexos",
-      "unavailable": "Anexo indisponível",
       "uploadFailed": "Falha ao enviar {{filename}}",
       "uploadFailedRetry": "Falha ao enviar {{filename}}. Tente novamente.",
       "uploadsFailed": "Falha ao enviar alguns anexos. Tente novamente."
@@ -1636,7 +1638,9 @@
       "videoOptionsLabel": "Opções de vídeo {{spec}}",
       "videoOptionsModel": "Modelo",
       "videoOptionsRatio": "Proporção",
-      "videoOptionsResolution": "Resolução"
+      "videoOptionsResolution": "Resolução",
+      "videoSpecAudioOff": "Sem áudio",
+      "videoSpecAudioOn": "Áudio"
     },
     "thread": {
       "ariaLabel": "Conversa",
@@ -1657,6 +1661,7 @@
       "icon": "Ícone da conversa",
       "loadingEarlier": "Carregando mensagens anteriores",
       "noEmojiFound": "Nenhum emoji encontrado",
+      "notFound": "Conversa não encontrada",
       "openArtifacts": "Abrir artefatos",
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",

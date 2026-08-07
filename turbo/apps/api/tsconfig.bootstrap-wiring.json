@@ -7,6 +7,7 @@
   "include": ["src/__tests__/vercel-crons.test.ts"],
   "exclude": ["node_modules", "dist"],
   "references": [
+    { "path": "./tsconfig.gateways.json" },
     { "path": "./tsconfig.core.json" },
     { "path": "./tsconfig.bootstrap.json" }
   ]

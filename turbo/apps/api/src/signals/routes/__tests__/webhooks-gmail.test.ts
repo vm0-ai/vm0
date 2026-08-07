@@ -5,10 +5,7 @@ import {
   randomUUID,
   sign as signData,
 } from "node:crypto";
-import {
-  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getVm0Vendor,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
@@ -35,8 +32,8 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { chatEventAutomationPart } from "./helpers/chat-event";
+import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { replaceBddVm0ApiKey } from "../../../test-fixtures/chat-events";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { webhooksGmailRoutes } from "../webhooks-gmail";
 
@@ -60,7 +57,6 @@ const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
 const GMAIL_WORKSPACE_MODEL = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
-const GMAIL_WORKSPACE_MODEL_VENDOR = getVm0Vendor(GMAIL_WORKSPACE_MODEL);
 const GOOGLE_OIDC_CERT_KID = "gmail-pubsub-test-key";
 const googleOidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const googleOidcPublicKeyPem = googleOidcKeyPair.publicKey.export({
@@ -409,12 +405,7 @@ async function configureWorkspaceModelProvider(
 }
 
 async function configureVm0ManagedModelKey(): Promise<void> {
-  const keySuffix = randomUUID();
-  await replaceBddVm0ApiKey({
-    vendor: GMAIL_WORKSPACE_MODEL_VENDOR,
-    apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
-    label: "dev-seed",
-  });
+  await seedVm0ManagedModelKey(context, GMAIL_WORKSPACE_MODEL);
 }
 
 async function configureAutomationThreadModel(

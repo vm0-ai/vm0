@@ -930,6 +930,10 @@
       "description": "Abonnement, méthode de paiement et factures dans Stripe.",
       "title": "Gérer la facturation"
     },
+    "paymentMethods": {
+      "description": "Gérez les moyens de paiement utilisés pour la facturation dans Stripe.",
+      "title": "Moyens de paiement"
+    },
     "plans": {
       "cancellationNotice": "Votre abonnement {{plan}} a été annulé et prendra fin le {{date}}.",
       "changeAnytime": "Passez à un niveau supérieur ou inférieur à tout moment.",
@@ -1177,11 +1181,9 @@
       "file": "Fichier {{filename}}",
       "fileTooLarge": "{{filename}} dépasse la limite de 1 Go",
       "imageUnavailable": "[Image non disponible : {{filename}}]",
-      "importing": "Importation de la pièce jointe",
       "loadingFile": "Chargement de {{filename}}",
       "previewFile": "Aperçu de {{filename}}",
       "title": "Pièces jointes",
-      "unavailable": "Pièce jointe non disponible",
       "uploadFailed": "Échec du téléchargement de {{filename}}",
       "uploadFailedRetry": "Échec du téléchargement de {{filename}}. Réessayez.",
       "uploadsFailed": "Certaines pièces jointes n'ont pas pu être téléchargées. Réessayez."
@@ -1636,7 +1638,9 @@
       "videoOptionsLabel": "Options vidéo {{spec}}",
       "videoOptionsModel": "Modèle",
       "videoOptionsRatio": "Format",
-      "videoOptionsResolution": "Résolution"
+      "videoOptionsResolution": "Résolution",
+      "videoSpecAudioOff": "Muet",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Fil de discussion",
@@ -1657,6 +1661,7 @@
       "icon": "Icône de fil de discussion",
       "loadingEarlier": "Chargement des messages précédents",
       "noEmojiFound": "Aucun emoji trouvé",
+      "notFound": "Fil de discussion introuvable",
       "openArtifacts": "Ouvrir les artéfacts",
       "openBrowser": "Ouvrir le navigateur",
       "openNamedAgent": "Ouvrir l'agent {{name}}",

@@ -60,6 +60,8 @@ const BUCKET = "test-user-storage-bucket";
 const FIXED_NOW_MS = Date.parse("2000-01-01T00:10:00.000Z");
 const THREADLESS_FORWARD_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const THREADLESS_TEST_NOW_MS = Date.parse("2026-08-03T06:00:00.000Z");
+// Mirrors THREADLESS_RUN_SWEEP_LIMIT in threadless-run-cleanup.service.ts.
+const THREADLESS_SWEEP_LIMIT = 20;
 const NON_TEST_TRIGGER_SOURCES: readonly TriggerSource[] =
   triggerSourceSchema.options.filter((source) => {
     return source !== "test";
@@ -419,6 +421,49 @@ async function findRun(runId: string): Promise<{
   return row
     ? { status: stringField(row, "status"), error: nullableString(row.error) }
     : null;
+}
+
+interface ThreadlessCleanupError {
+  readonly runId: string;
+  readonly error: string;
+}
+
+/** Keeps sweep failures attributable to this test's own fixtures. */
+function ownCleanupErrors(
+  threadlessRuns: {
+    readonly errors: readonly ThreadlessCleanupError[];
+  },
+  fixtures: readonly RunFixture[],
+): readonly ThreadlessCleanupError[] {
+  const owned = new Set(
+    fixtures.map((fixture) => {
+      return fixture.runId;
+    }),
+  );
+  return threadlessRuns.errors.filter((entry) => {
+    return owned.has(entry.runId);
+  });
+}
+
+/** Returns this test's still-present runs in the fixture order. */
+async function findRemainingRunIds(
+  fixtures: readonly RunFixture[],
+): Promise<readonly string[]> {
+  const states = await Promise.all(
+    fixtures.map(async (fixture) => {
+      return {
+        runId: fixture.runId,
+        present: (await findRun(fixture.runId)) !== null,
+      };
+    }),
+  );
+  return states
+    .filter((state) => {
+      return state.present;
+    })
+    .map((state) => {
+      return state.runId;
+    });
 }
 
 async function findRunnerJob(runId: string): Promise<{
@@ -853,7 +898,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     const userId = `user-${randomUUID()}`;
     const orgId = `org-${randomUUID()}`;
     const fixtures = await Promise.all(
-      Array.from({ length: 21 }, async (_, index) => {
+      Array.from({ length: THREADLESS_SWEEP_LIMIT + 1 }, async (_, index) => {
         return await trackRun(
           insertRunFixture({
             status: "completed",
@@ -873,24 +918,40 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       apiClient().cleanup({ headers: cronHeaders() }),
       [200],
     );
-    expect(firstResponse.body.threadlessRuns).toMatchObject({
-      discovered: 20,
-      deleted: 20,
-      failed: 0,
-    });
-    await expect(findRun(fixtures[20]!.runId)).resolves.not.toBeNull();
 
-    const secondResponse = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
+    // The sweep cohort is global while API test workers share one database, so
+    // a parallel file that strands its own threadless run can occupy part of
+    // this batch. The bound stays exact because these fixtures alone exceed it.
+    expect(firstResponse.body.threadlessRuns.discovered).toBe(
+      THREADLESS_SWEEP_LIMIT,
     );
     expect(
-      secondResponse.body.threadlessRuns.discovered,
-    ).toBeGreaterThanOrEqual(1);
-    expect(secondResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
-      1,
+      ownCleanupErrors(firstResponse.body.threadlessRuns, fixtures),
+    ).toStrictEqual([]);
+    const remaining = await findRemainingRunIds(fixtures);
+    // Oldest first: the pass takes a prefix of these fixtures, and the bound
+    // leaves the newest ones for a later pass.
+    expect(remaining).toStrictEqual(
+      fixtures.slice(fixtures.length - remaining.length).map((fixture) => {
+        return fixture.runId;
+      }),
     );
-    await expect(findRun(fixtures[20]!.runId)).resolves.toBeNull();
+    expect(remaining.length).toBeGreaterThanOrEqual(1);
+    expect(firstResponse.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
+      fixtures.length - remaining.length,
+    );
+    // What the bound left behind stays untouched and eligible for a next pass.
+    await expect(
+      Promise.all(
+        remaining.map((runId) => {
+          return findRun(runId);
+        }),
+      ),
+    ).resolves.toStrictEqual(
+      remaining.map(() => {
+        return { status: "completed", error: null };
+      }),
+    );
   });
 
   it("acknowledges an event projection that loses the root-delete race", async () => {

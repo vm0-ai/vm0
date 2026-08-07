@@ -40,7 +40,6 @@ import {
   notFound,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import { buildArtifactKeyV2 } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
@@ -93,7 +92,9 @@ import {
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
   hasAgentRunSourceAnnotation,
+  normalizeLegacyUserMessageInput,
   projectUserMessage,
+  userMessageFileParts,
   withAgentRunSourceAnnotation,
   type ChatAgentRunSourceAnnotation,
 } from "./zero-chat-user-message.service";
@@ -103,7 +104,6 @@ import {
   loadNextUnclaimedQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
-  resolveAttachFileMetadata$,
 } from "./zero-chat-queued-event.service";
 import {
   appendChatThreadEvent,
@@ -202,11 +202,15 @@ interface ResolvedThreadAndRunConfiguration {
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
-type IncomingGenerationTemplate = NormalSendBody["generationTemplate"];
 type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
+type CanonicalNormalSendBody = Omit<
+  NormalSendBody,
+  "attachFiles" | "generationTemplate"
+>;
+
 interface NormalSendArgs {
-  readonly body: NormalSendBody;
+  readonly body: CanonicalNormalSendBody;
   readonly auth: OrganizationAuthContext;
   readonly userId: string;
   readonly orgId: string;
@@ -351,9 +355,9 @@ async function resolveNormalSendAgentRunSource(params: {
 }
 
 function normalSendBodyWithAgentRunSource(
-  body: NormalSendBody,
+  body: CanonicalNormalSendBody,
   source: ChatAgentRunSourceAnnotation | null,
-): NormalSendBody {
+): CanonicalNormalSendBody {
   if (source === null) {
     return body;
   }
@@ -378,9 +382,13 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
 }
 
-interface RuntimeNormalSendBody extends Omit<NormalSendBody, "userMessage"> {
+interface RuntimeNormalSendBody extends Omit<
+  CanonicalNormalSendBody,
+  "userMessage"
+> {
   readonly userMessage: UserMessageDocument;
   readonly agentPrompt: string;
+  readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly generationTemplates: readonly GenerationTemplateRequest[];
   readonly userMessageGenerationTemplates: readonly GenerationTemplateRequest[];
   readonly hasTextContent: boolean;
@@ -660,19 +668,25 @@ function modelFirstSelection(
 }
 
 function normalizeNormalSendBody(body: NormalSendBody):
-  | { readonly ok: true; readonly data: NormalSendBody }
+  | { readonly ok: true; readonly data: CanonicalNormalSendBody }
   | {
       readonly ok: false;
       readonly response: ReturnType<typeof badRequestMessage>;
     } {
-  if (body.model === undefined) {
-    return { ok: true, data: body };
-  }
+  const { attachFiles, generationTemplate, ...canonicalBody } = body;
+  const userMessage = normalizeLegacyUserMessageInput({
+    userMessage: body.userMessage,
+    attachFiles,
+    generationTemplate,
+  });
   return {
     ok: true,
     data: {
-      ...body,
-      modelSelection: modelFirstSelection(body.model),
+      ...canonicalBody,
+      userMessage,
+      ...(body.model === undefined
+        ? {}
+        : { modelSelection: modelFirstSelection(body.model) }),
     },
   };
 }
@@ -682,34 +696,18 @@ function generateCallbackSecret(): string {
 }
 
 function resolveRuntimeNormalSendBody(
-  body: NormalSendBody,
+  body: CanonicalNormalSendBody,
 ): RuntimeNormalSendBody {
   const projection = projectUserMessage(body.userMessage);
-  const generationTemplate =
-    projection.generationTemplate ?? body.generationTemplate;
   return {
     ...body,
     userMessage: body.userMessage,
-    generationTemplate,
-    generationTemplates:
-      projection.generationTemplates.length > 0
-        ? projection.generationTemplates
-        : generationTemplate
-          ? [generationTemplate]
-          : [],
+    generationTemplate: projection.generationTemplate,
+    generationTemplates: projection.generationTemplates,
     userMessageGenerationTemplates: projection.generationTemplates,
     agentPrompt: projection.agentPrompt,
     hasTextContent: projection.hasTextContent,
   };
-}
-
-function attachFileIds(
-  attachFiles: readonly AttachFile[] | undefined,
-): string[] | null {
-  const ids = attachFiles?.map((file) => {
-    return file.id;
-  });
-  return ids && ids.length > 0 ? ids : null;
 }
 
 const resolveIncomingAttachFileMetadata$ = command(
@@ -717,27 +715,31 @@ const resolveIncomingAttachFileMetadata$ = command(
     { set },
     args: {
       readonly userId: string;
-      readonly attachFiles: readonly AttachFile[] | undefined;
+      readonly userMessage: UserMessageDocument;
     },
     signal: AbortSignal,
   ): Promise<ChatEventAttachFileMetadata[] | null> => {
-    if (!args.attachFiles || args.attachFiles.length === 0) {
+    const files = userMessageFileParts(args.userMessage);
+    if (files.length === 0) {
       return null;
     }
     const metadata: ChatEventAttachFileMetadata[] = [];
-    for (const file of args.attachFiles) {
+    for (const file of files) {
       const object = await set(
         resolveArtifactObject$,
-        { userId: args.userId, id: file.id },
+        { userId: args.userId, id: file.fileId },
         signal,
       );
       signal.throwIfAborted();
+      if (!object) {
+        throw new Error(`User-message attachment not found: ${file.fileId}`);
+      }
       metadata.push({
-        id: file.id,
-        filename: file.filename,
+        id: file.fileId,
+        filename: file.filenameSnapshot,
         contentType: file.contentType,
-        size: file.size,
-        objectKey: object?.key ?? buildArtifactKeyV2(file.id, file.filename),
+        size: object.size,
+        objectKey: object.key,
       });
     }
     return metadata;
@@ -905,19 +907,12 @@ async function resolveNormalSendFeatureSwitches(
 }
 
 function validateGenerationTemplatePrompt(
-  generationTemplate: IncomingGenerationTemplate,
-  generationTemplates: readonly GenerationTemplateRequest[] = [],
+  generationTemplates: readonly GenerationTemplateRequest[],
 ): NormalSendFailure | undefined {
-  const templates =
-    generationTemplates.length > 0
-      ? generationTemplates
-      : generationTemplate
-        ? [generationTemplate]
-        : [];
-  if (templates.length === 0) {
+  if (generationTemplates.length === 0) {
     return undefined;
   }
-  for (const template of templates) {
+  for (const template of generationTemplates) {
     const validation = buildGenerationTemplatePrompt(template);
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
@@ -1428,13 +1423,11 @@ function appendUnassociatedUserMessage(params: {
   readonly userId: string;
   readonly orgId: string;
   readonly prompt: string;
-  readonly attachFiles: readonly AttachFile[] | undefined;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly userMessage: UserMessageDocument;
-  readonly generationTemplate: IncomingGenerationTemplate;
   readonly revokesEventId: string | undefined;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
@@ -1454,7 +1447,6 @@ function appendUnassociatedUserMessage(params: {
       );
 
     const explicitId = params.clientEventId ?? undefined;
-    const fileIds = attachFileIds(params.attachFiles);
     const fileMetadata = params.attachFileMetadata;
     const event: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
@@ -1472,8 +1464,6 @@ function appendUnassociatedUserMessage(params: {
             },
           }
         : {}),
-      attachFiles: fileIds,
-      generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
       ? await replaceChatEvent(tx, params.revokesEventId, event, {
@@ -1567,14 +1557,12 @@ async function appendAssociatedUserMessage(params: {
   readonly orgId: string;
   readonly prompt: string;
   readonly runId: string;
-  readonly attachFiles: readonly AttachFile[] | undefined;
   readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly revokesEventId: string | undefined;
   readonly userMessage: UserMessageDocument;
-  readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
   readonly triggerSource: "web" | "agent";
   // When false, the thread's in-progress draft is preserved. Automation posts
@@ -1586,7 +1574,6 @@ async function appendAssociatedUserMessage(params: {
       await clearThreadDraft(tx, params.threadId, params.userId);
     }
     const explicitId = params.clientEventId ?? undefined;
-    const fileIds = attachFileIds(params.attachFiles);
     const fileMetadata = params.attachFileMetadata;
     const event: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
@@ -1595,8 +1582,6 @@ async function appendAssociatedUserMessage(params: {
       userMessage: params.userMessage,
       runId: params.runId,
       ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
-      attachFiles: fileIds,
-      generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
       ? await replaceChatEvent(tx, params.revokesEventId, event, {
@@ -1858,7 +1843,6 @@ function appendInterruptUserMessage(params: {
         content: null,
         runId: null,
         interruptsRunId: params.interruptsRunId,
-        attachFiles: null,
       },
       "any",
     );
@@ -2273,7 +2257,6 @@ const prepareNormalSend$ = command(
       normalSendBodyWithAgentRunSource(args.body, agentRunSource),
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
-      runtimeBody.generationTemplate,
       runtimeBody.generationTemplates,
     );
     if (generationTemplateError) {
@@ -2330,7 +2313,7 @@ const prepareNormalSend$ = command(
       resolveIncomingAttachFileMetadata$,
       {
         userId: args.userId,
-        attachFiles: runtimeBody.attachFiles,
+        userMessage: runtimeBody.userMessage,
       },
       signal,
     );
@@ -2373,13 +2356,11 @@ async function queueUnassociatedNormalEvent(params: {
     userId: params.userId,
     orgId: params.orgId,
     prompt: params.body.prompt,
-    attachFiles: params.body.attachFiles,
     attachFileMetadata: params.prepared.attachFileMetadata,
     clientEventId: params.body.clientEventId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
     userMessage: params.body.userMessage,
-    generationTemplate: params.body.generationTemplate,
     revokesEventId: params.body.revokesEventId,
     triggerSource: params.prepared.triggerSource,
     agentRunSource: params.prepared.agentRunSource,
@@ -2455,14 +2436,12 @@ function scheduleAssociatedUserMessage(params: {
         orgId: params.orgId,
         prompt: params.body.prompt,
         runId: params.runId,
-        attachFiles: params.body.attachFiles,
         attachFileMetadata: params.attachFileMetadata,
         clientEventId: params.body.clientEventId,
         chatThreadSortEventId: params.body.chatThreadSortEventId,
         touchThreadSort: params.touchThreadSort,
         revokesEventId: params.body.revokesEventId,
         userMessage: params.body.userMessage,
-        generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
         triggerSource: params.triggerSource,
         clearDraft: true,
@@ -2642,8 +2621,6 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
     const [queuedMessage] = await tx
       .select({
         userMessage: chatEvents.userMessage,
-        attachFiles: chatEvents.attachFiles,
-        generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
@@ -2676,10 +2653,6 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       error: INSUFFICIENT_CREDITS_MARKER,
       runEventSequenceNumber: 0,
       createdAt: rejectedCreatedAt,
-      attachFiles: queuedMessage.attachFiles
-        ? [...queuedMessage.attachFiles]
-        : null,
-      generationTemplate: queuedMessage.generationTemplate,
     });
     if (replacement) {
       await insertChatEvent(tx, {
@@ -2744,7 +2717,6 @@ async function appendInsufficientCreditsEvents(params: {
       );
 
     const explicitId = params.body.clientEventId ?? undefined;
-    const fileIds = attachFileIds(params.body.attachFiles);
     const fileMetadata = params.prepared.attachFileMetadata;
     const userValues: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
@@ -2755,7 +2727,6 @@ async function appendInsufficientCreditsEvents(params: {
       error: INSUFFICIENT_CREDITS_MARKER,
       runEventSequenceNumber: 0,
       createdAt: userCreatedAt,
-      attachFiles: fileIds,
     };
     const userMessage = params.body.revokesEventId
       ? await replaceChatEvent(tx, params.body.revokesEventId, userValues, {
@@ -3100,16 +3071,6 @@ const createNormalChatRun$ = command(
         ? autonomyBudgetExhausted()
         : badRequestMessage(queuedMessage.autonomyBudget.message);
     }
-    const attachFileMetadata = await set(
-      resolveAttachFileMetadata$,
-      {
-        userId: args.userId,
-        attachFiles: queuedMessage.attachFiles,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
     const createRunArgs = await buildNormalChatRunArgs(args, prepared, signal);
 
     if (args.timing) {
@@ -3134,10 +3095,7 @@ const createNormalChatRun$ = command(
           kind: "user_message",
           threadId: prepared.thread.threadId,
           eventId: queueFirstEventId,
-          orgId: args.orgId,
-          userId: args.userId,
           admissionTime: args.apiStartTime,
-          attachFileMetadata,
         },
       },
       signal,

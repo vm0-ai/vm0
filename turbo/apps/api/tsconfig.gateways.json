@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": "./src",
+    "outDir": "./.typecheck/gateways",
+    "tsBuildInfoFile": "./.typecheck/gateways.tsbuildinfo"
+  },
+  "include": [
+    "src/lib/env.ts",
+    "src/lib/log.ts",
+    "src/lib/secret-kms-client.ts",
+    "src/lib/singleton.ts",
+    "src/signals/external/s3.ts",
+    "src/signals/utils.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

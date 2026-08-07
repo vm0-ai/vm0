@@ -694,19 +694,24 @@ export const restoreConcurrencySubscription$ = command(
   },
 );
 
-export const startDowngrade$ = command(async ({ get }, signal: AbortSignal) => {
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingPortalContract);
-  const result = await accept(
-    client.create({
-      body: { returnUrl: window.location.href },
-      fetchOptions: { signal },
-    }),
-    [200],
-  );
-  signal.throwIfAborted();
-  window.location.href = result.body.url;
-});
+export const openBillingPortal$ = command(
+  async ({ get }, mode: "billing" | "payment_methods", signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingPortalContract);
+    const result = await accept(
+      client.create({
+        body: {
+          returnUrl: window.location.href,
+          ...(mode === "payment_methods" ? { mode } : {}),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    window.location.href = result.body.url;
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Downgrade dialog commands

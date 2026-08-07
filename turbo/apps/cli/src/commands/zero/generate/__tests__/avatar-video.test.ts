@@ -17,7 +17,7 @@ const AVATAR_VIDEO_RESULT = {
   size: 1234,
   url: "http://localhost:3000/f/user-1/avatar-video-file-id/avatar-video-avatar-v.mp4",
   durationSeconds: 42,
-  creditsCharged: 599,
+  creditsCharged: 623,
   provider: "joggai",
   model: "joggai-talking-avatar",
   providerVideoId: "jogg-video-123",
@@ -230,7 +230,7 @@ describe("zero generate avatar-video command", () => {
     );
     expect(stdout).toContain(`File: ${AVATAR_VIDEO_RESULT.filename}`);
     expect(stdout).toContain("Duration: 42s");
-    expect(stdout).toContain("Credits charged: 599");
+    expect(stdout).toContain("Credits charged: 623");
   });
 
   it("prints a complete generation result as JSON", async () => {
