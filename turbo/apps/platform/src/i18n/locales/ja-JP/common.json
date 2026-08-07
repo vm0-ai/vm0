@@ -5144,7 +5144,8 @@
         "lastEvent": "最新イベント",
         "manageConnection": "Stripe 接続を管理",
         "noDeliveries": "配信はまだありません",
-        "noMatchingEvents": "一致するイベントはまだありません"
+        "noMatchingEvents": "一致するイベントはまだありません",
+        "rule": "一致する Stripe 請求書の支払いが完了したとき"
       },
       "types": {
         "chat": "チャット",
@@ -5155,6 +5156,7 @@
         "googleMeet": "Google 会う",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {

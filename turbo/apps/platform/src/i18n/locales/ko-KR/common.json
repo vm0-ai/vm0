@@ -5144,7 +5144,8 @@
         "lastEvent": "최근 이벤트",
         "manageConnection": "Stripe 연결 관리",
         "noDeliveries": "아직 전달 없음",
-        "noMatchingEvents": "아직 일치하는 이벤트 없음"
+        "noMatchingEvents": "아직 일치하는 이벤트 없음",
+        "rule": "일치하는 Stripe 인보이스가 결제될 때"
       },
       "types": {
         "chat": "채팅",
@@ -5155,6 +5156,7 @@
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "웹후크"
       },
       "webhook": {

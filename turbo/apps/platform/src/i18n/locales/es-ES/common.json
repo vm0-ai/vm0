@@ -5225,7 +5225,8 @@
         "lastEvent": "Último evento",
         "manageConnection": "Gestionar conexión de Stripe",
         "noDeliveries": "Aún no hay entregas",
-        "noMatchingEvents": "Aún no hay eventos coincidentes"
+        "noMatchingEvents": "Aún no hay eventos coincidentes",
+        "rule": "Cuando se paga una factura de Stripe que coincide"
       },
       "types": {
         "chat": "Chat",
@@ -5236,6 +5237,7 @@
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {

@@ -1401,6 +1401,31 @@ describe("workflows routes", () => {
     expect(screen.getByText("Sales Research")).toBeInTheDocument();
   });
 
+  it("labels existing Stripe automations on the workspace workflows index", async () => {
+    mockWorkflowApis([
+      {
+        ...salesResearch(),
+        automations: [stripeInvoicePaidWorkflowAutomation()],
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+      featureSwitches: {
+        [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: false,
+      },
+    });
+
+    const stripePill = await waitFor(() => {
+      return buttonByText(/^Stripe$/u);
+    });
+    click(stripePill);
+    await expect(
+      screen.findByText("When a matching Stripe invoice is paid"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("renders the workspace workflow detail", async () => {
     mockWorkflowApis([salesResearch()]);
     mockConnectedAutomationConnectors();

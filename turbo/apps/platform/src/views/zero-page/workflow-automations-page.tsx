@@ -502,6 +502,11 @@ export function humanReadableAutomationRuleLabel(
       return $.workflows.automations.strapi.rule;
     });
   }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(($) => {
+      return $.workflows.automations.stripe.rule;
+    });
+  }
   return gmailAutomationTitle(automation);
 }
 
@@ -584,6 +589,11 @@ export function automationTypeLabel(
   if (automation.eventType === "strapi-entry-published") {
     return i18n.t(($) => {
       return $.workflows.automations.types.strapi;
+    });
+  }
+  if (automation.eventType === "stripe-invoice-paid") {
+    return i18n.t(($) => {
+      return $.workflows.automations.types.stripe;
     });
   }
   if (automation.eventType === "chat-run-finished") {

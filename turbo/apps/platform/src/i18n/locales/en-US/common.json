@@ -5145,7 +5145,8 @@
         "lastEvent": "Last event",
         "manageConnection": "Manage Stripe connection",
         "noDeliveries": "No deliveries yet",
-        "noMatchingEvents": "No matching events yet"
+        "noMatchingEvents": "No matching events yet",
+        "rule": "When a matching Stripe invoice is paid"
       },
       "types": {
         "chat": "Chat",
@@ -5156,6 +5157,7 @@
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {

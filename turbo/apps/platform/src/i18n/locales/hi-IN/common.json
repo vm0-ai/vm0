@@ -5145,7 +5145,8 @@
         "lastEvent": "पिछला इवेंट",
         "manageConnection": "Stripe कनेक्शन प्रबंधित करें",
         "noDeliveries": "अभी कोई डिलीवरी नहीं",
-        "noMatchingEvents": "अभी कोई मेल खाने वाला इवेंट नहीं"
+        "noMatchingEvents": "अभी कोई मेल खाने वाला इवेंट नहीं",
+        "rule": "जब मेल खाने वाला Stripe इनवॉइस भुगतान किया जाता है"
       },
       "types": {
         "chat": "चैट",
@@ -5156,6 +5157,7 @@
         "googleMeet": "Google मिलें",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "वेबहुक"
       },
       "webhook": {

@@ -5144,7 +5144,8 @@
         "lastEvent": "Peristiwa terakhir",
         "manageConnection": "Kelola koneksi Stripe",
         "noDeliveries": "Belum ada pengiriman",
-        "noMatchingEvents": "Belum ada peristiwa yang cocok"
+        "noMatchingEvents": "Belum ada peristiwa yang cocok",
+        "rule": "Saat faktur Stripe yang cocok dibayar"
       },
       "types": {
         "chat": "Chat",
@@ -5155,6 +5156,7 @@
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
+        "stripe": "Stripe",
         "webhook": "Webhook"
       },
       "webhook": {
