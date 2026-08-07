@@ -3,11 +3,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { singleton } from "./singleton";
 import { now } from "./time";
 
-export interface InvocationExecutionContext {
+interface InvocationExecutionContext {
   waitUntil(work: Promise<unknown>): void;
 }
 
-export interface InvocationResource<T> {
+interface InvocationResource<T> {
   readonly value: T;
   dispose(): Promise<void>;
 }
@@ -24,7 +24,7 @@ interface SettledWork {
   readonly outcome: "fulfilled" | "rejected";
 }
 
-export interface InvocationMetadata {
+interface InvocationMetadata {
   readonly kind: "fetch" | "scheduled";
   readonly requestId: string;
   readonly workerVersion?: string;
