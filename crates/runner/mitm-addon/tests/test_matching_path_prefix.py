@@ -18,6 +18,13 @@ class TestMatchPathPrefix:
         result = matching.match_path_prefix(["v1", "acme", "projects", "123"], ["v1", "{org}"])
         assert result == ({"org": "acme"}, 2)
 
+    def test_mixed_segments_capture_parameters(self):
+        result = matching.match_path_prefix(
+            ["v1", "octocat", "hello.git"],
+            ["v1", "{owner}", "{repo}.git"],
+        )
+        assert result == ({"owner": "octocat", "repo": "hello"}, 3)
+
     def test_compiled_full_match_rejects_extra_segments_that_prefix_consumes(self):
         pattern = matching.compile_path_pattern("/v1/{org}")
         assert pattern is not None
