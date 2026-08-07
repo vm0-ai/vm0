@@ -970,6 +970,17 @@ function withRuntimeOAuthToken(
   ];
 }
 
+async function markCustomConnectorNeedsReconnect(
+  db: Db,
+  connectorId: string,
+  reconnectReason: "missing_refresh_token" | "authorization_expired_or_revoked",
+): Promise<void> {
+  await db
+    .update(connectors)
+    .set({ needsReconnect: true, reconnectReason, updatedAt: nowDate() })
+    .where(eq(connectors.id, connectorId));
+}
+
 interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly db: Db;
   readonly orgId: string;
@@ -1038,14 +1049,11 @@ async function resolveCustomConnectorOAuth2AccessToken(
       return lockedAccessToken;
     }
     if (!lockedConnection.encryptedRefreshToken) {
-      await tx
-        .update(connectors)
-        .set({
-          needsReconnect: true,
-          reconnectReason: "missing_refresh_token",
-          updatedAt: nowDate(),
-        })
-        .where(eq(connectors.id, lockedConnection.id));
+      await markCustomConnectorNeedsReconnect(
+        tx,
+        lockedConnection.id,
+        "missing_refresh_token",
+      );
       return { kind: "reconnect-required" };
     }
     const [credentials, refreshToken] = await Promise.all([
@@ -1079,14 +1087,11 @@ async function resolveCustomConnectorOAuth2AccessToken(
       ) {
         throw new CustomConnectorOAuth2TokenRefreshError(refreshResult.error);
       }
-      await tx
-        .update(connectors)
-        .set({
-          needsReconnect: true,
-          reconnectReason: "authorization_expired_or_revoked",
-          updatedAt: nowDate(),
-        })
-        .where(eq(connectors.id, lockedConnection.id));
+      await markCustomConnectorNeedsReconnect(
+        tx,
+        lockedConnection.id,
+        "authorization_expired_or_revoked",
+      );
       return { kind: "reconnect-required" };
     }
     signal.throwIfAborted();
