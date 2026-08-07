@@ -35,6 +35,7 @@ import {
   ingestToAxiom,
 } from "./signals/external/axiom";
 import type { RouteEntry } from "./signals/route-entry";
+import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
 import {
   isAbortError,
   normalizeThrown,
@@ -539,6 +540,7 @@ export function createAppWithRoutes({
   routes,
   signal,
 }: CreateAppWithRoutesOptions): Hono {
+  configurePiEdgeTurnDispatcher();
   const app = new Hono();
   app.onError(handleError);
 

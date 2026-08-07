@@ -15,6 +15,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { generateSandboxToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -661,6 +662,67 @@ describe("PiLoop edge turn", () => {
     );
   });
 
+  it("continues direct Pi activation when the request aborts after commit", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const modelStarted = createDeferredPromise<void>(context.signal);
+    const releaseModel = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseModel.settled()) {
+        releaseModel.resolve();
+      }
+    });
+    server.use(
+      http.post(COMPLETIONS_URL, async () => {
+        modelStarted.resolve();
+        await releaseModel.promise;
+        return assistantTextStream(
+          "committed edge answer",
+          "committed edge reasoning",
+        );
+      }),
+    );
+
+    const controller = new AbortController();
+    context.mocks.axiom.ingest.mockImplementation((dataset: unknown) => {
+      if (
+        typeof dataset === "string" &&
+        dataset.includes("run-context") &&
+        !controller.signal.aborted
+      ) {
+        const error = new Error("abort after direct run commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return true;
+    });
+
+    const clientThreadId = randomUUID();
+    const clientEventId = randomUUID();
+    const request = {
+      agentId: fixture.agentId,
+      prompt: "finish Pi activation after the request aborts",
+      model: MODEL,
+      clientThreadId,
+      clientEventId,
+    } as const;
+    await expect(
+      chat.requestSendEvent(fixture.actor, request, [201], controller.signal),
+    ).rejects.toThrow();
+    expect(controller.signal.aborted).toBeTruthy();
+    await modelStarted.promise;
+
+    const retried = await chat.requestSendEvent(fixture.actor, request, [201]);
+    if (retried.status !== 201 || retried.body.runId === null) {
+      throw new Error("Expected the committed chat run to be recoverable");
+    }
+    releaseModel.resolve();
+    await flushWaitUntilForTest();
+    expect((await api.readRun(fixture.actor, retried.body.runId)).status).toBe(
+      "completed",
+    );
+  });
+
   it("starts the Pi edge turn when a concurrency-queued run is promoted", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     const fixture = await piEdgeFixture();
@@ -700,8 +762,34 @@ describe("PiLoop edge turn", () => {
     );
     expect(modelStarted.settled()).toBeFalsy();
 
-    await api.requestCancelRun(fixture.actor, occupyingRun.runId, [200]);
+    const promotionController = new AbortController();
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed" && !promotionController.signal.aborted) {
+        const error = new Error("abort after queued run promotion commit");
+        error.name = "AbortError";
+        promotionController.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+    const completed = await webhooks.requestAgentComplete(
+      {
+        runId: occupyingRun.runId,
+        exitCode: 1,
+        error: "release the concurrency slot for promotion",
+      },
+      {
+        authorization: `Bearer ${generateSandboxToken(
+          fixture.actor.userId,
+          occupyingRun.runId,
+          fixture.orgId,
+        )}`,
+      },
+      [200],
+      promotionController.signal,
+    );
+    expect(completed.status).toBe(200);
     await modelStarted.promise;
+    expect(promotionController.signal.aborted).toBeTruthy();
 
     expect((await api.readRun(fixture.actor, queuedRun.runId)).status).toBe(
       "pending",

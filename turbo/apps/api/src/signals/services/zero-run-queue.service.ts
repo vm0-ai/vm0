@@ -538,7 +538,14 @@ export const drainOrgQueue$ = command(
         payload,
         piEdgeTurn,
       });
-      signal.throwIfAborted();
+      // Promotion is durable now. Observe request cancellation for diagnostics,
+      // but let the commit-owned activation finish independently.
+      if (signal.aborted) {
+        L.debug("Request aborted after queued run promotion commit", {
+          runId: row.runId,
+          orgId: args.orgId,
+        });
+      }
       if (result.status === "full") {
         return 0;
       }
@@ -547,7 +554,7 @@ export const drainOrgQueue$ = command(
       }
       if (result.pendingActivation !== null) {
         await tapError(
-          set(activatePendingRun$, result.pendingActivation, signal),
+          set(activatePendingRun$, result.pendingActivation),
           (error) => {
             L.error("Failed to activate promoted queued run", {
               runId: row.runId,
@@ -556,7 +563,6 @@ export const drainOrgQueue$ = command(
             });
           },
         );
-        signal.throwIfAborted();
       }
       return 1;
     }

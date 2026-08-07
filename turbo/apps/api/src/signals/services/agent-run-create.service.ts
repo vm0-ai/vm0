@@ -8549,7 +8549,13 @@ export const completeAgentRun$ = command(
         timing,
       }),
     );
-    signal.throwIfAborted();
+    // The run and runner job are durable now. Observe request cancellation for
+    // diagnostics, but let the commit-owned activation finish independently.
+    if (signal.aborted) {
+      L.debug("Request aborted after run launch commit", {
+        orgId: args.orgId,
+      });
+    }
     if (
       !("status" in result) ||
       result.status !== 201 ||
@@ -8558,7 +8564,12 @@ export const completeAgentRun$ = command(
       return result;
     }
 
-    await set(activatePendingRun$, result.pendingActivation, signal);
+    await set(activatePendingRun$, result.pendingActivation);
+    if (signal.aborted) {
+      L.debug("Request remained aborted after run activation", {
+        runId: result.pendingActivation.runnerNotification.runId,
+      });
+    }
     const { pendingActivation: _pendingActivation, ...activatedResult } =
       result;
     return activatedResult;
