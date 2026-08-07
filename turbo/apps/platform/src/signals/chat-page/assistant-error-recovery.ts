@@ -1,9 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ModelProviderFramework } from "@vm0/api-contracts/contracts/model-provider-types";
-import type {
-  ModelProviderResponse,
-  OrgModelPoliciesResponse,
+import {
+  isSupportedRunModel,
+  type ModelProviderResponse,
+  type OrgModelPoliciesResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -375,7 +376,7 @@ export function createAssistantErrorRecoverySignals(deps: {
       if (!userMessage) {
         throw new Error("Failed to serialize retry message");
       }
-      const modelSelection = meta.selectedModel
+      const modelSelection = isSupportedRunModel(meta.selectedModel)
         ? {
             selectedModel: meta.selectedModel,
             ...(meta.serviceTier === "priority"

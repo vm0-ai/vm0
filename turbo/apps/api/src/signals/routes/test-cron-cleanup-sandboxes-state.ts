@@ -437,8 +437,7 @@ async function seedRunOwnershipForAction(
 
   const browserSessionId = randomUUID();
   await db.insert(browserSessions).values({
-    id: browserSessionId,
-    chatThreadId: randomUUID(),
+    chatThreadId: browserSessionId,
     runId,
     orgId: run.orgId,
     userId: run.userId,
@@ -518,9 +517,9 @@ async function getRunOwnershipForAction(
     .from(artifacts)
     .where(eq(artifacts.id, fileArtifactId));
   const [browserSession] = await db
-    .select({ id: browserSessions.id, runId: browserSessions.runId })
+    .select({ id: browserSessions.chatThreadId, runId: browserSessions.runId })
     .from(browserSessions)
-    .where(eq(browserSessions.id, browserSessionId));
+    .where(eq(browserSessions.chatThreadId, browserSessionId));
   const [generationJob] = await db
     .select({
       id: builtInGenerationJobs.id,
@@ -579,7 +578,7 @@ async function deleteRunOwnershipForAction(
   if (browserSessionId) {
     await db
       .delete(browserSessions)
-      .where(eq(browserSessions.id, browserSessionId));
+      .where(eq(browserSessions.chatThreadId, browserSessionId));
   }
   const generationJobId = readString(body, "generation_job_id");
   if (generationJobId) {

@@ -1,8 +1,7 @@
 import type { IDBPDatabase } from "idb";
 import {
-  canonicalChatEvent,
+  chatEventSchema,
   type ChatEvent,
-  compatibleChatEventSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
 import {
@@ -34,7 +33,7 @@ interface ChatEventWriteStore {
 }
 
 function storedChatEvent(raw: unknown): ChatEvent {
-  return canonicalChatEvent(compatibleChatEventSchema.parse(raw));
+  return chatEventSchema.parse(raw);
 }
 
 function storedEvent(threadId: string, event: ChatEvent): StoredChatEvent {

@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -14,8 +14,6 @@ export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v3";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
-const imageRecognitionGloballyAvailable$ = state(false);
-const avatarTemplatesApiSupported$ = state(false);
 
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
@@ -60,15 +58,12 @@ export const featureSwitch$ = computed((get) => {
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
-export const imageRecognitionAvailable$ = computed((get): boolean => {
-  return get(imageRecognitionGloballyAvailable$);
+export const imageRecognitionAvailable$ = computed((): boolean => {
+  return true;
 });
 
 export const avatarTemplatesEnabled$ = computed((get): boolean => {
-  return (
-    get(avatarTemplatesApiSupported$) &&
-    (get(featureSwitch$)[FeatureSwitchKey.JoggAiBuiltIn] ?? false)
-  );
+  return get(featureSwitch$)[FeatureSwitchKey.JoggAiBuiltIn] ?? false;
 });
 
 export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
@@ -97,8 +92,6 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
 
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(imageRecognitionGloballyAvailable$, false);
-    set(avatarTemplatesApiSupported$, false);
     const clerk = await get(clerk$);
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
@@ -122,18 +115,7 @@ export const reloadFeatureSwitch$ = command(
       result.body.switches,
       result.body.effectiveSwitches,
     );
-    if (result.body.supportsStructuredInlineTemplates !== true) {
-      combined[FeatureSwitchKey.StructuredPromptInlineTemplates] = false;
-    }
-    const imageRecognitionGloballyAvailable =
-      result.body.supportsImageRecognition === true;
-
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
-    set(imageRecognitionGloballyAvailable$, imageRecognitionGloballyAvailable);
-    set(
-      avatarTemplatesApiSupported$,
-      result.body.supportsAvatarTemplates === true,
-    );
   },
 );
 

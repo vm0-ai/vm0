@@ -189,7 +189,6 @@ export async function getChatThreadEventsSince(
     readonly userId: string;
     readonly orgId: string;
     readonly sinceSeqId?: number;
-    readonly sinceEventId?: string;
   },
 ): Promise<
   | {
@@ -201,14 +200,11 @@ export async function getChatThreadEventsSince(
 > {
   let rows: readonly ChatThreadEventRow[];
   const cursorPredicate =
-    args.sinceSeqId !== undefined
-      ? eq(cursorChatThreadEvent.seqId, args.sinceSeqId)
-      : args.sinceEventId !== undefined
-        ? eq(cursorChatThreadEvent.id, args.sinceEventId)
-        : undefined;
+    args.sinceSeqId === undefined
+      ? undefined
+      : eq(cursorChatThreadEvent.seqId, args.sinceSeqId);
   if (cursorPredicate !== undefined) {
-    // Keep a valid cursor row when its page is empty. UUID cursors remain
-    // accepted during rollout, but both cursor forms page on seq_id.
+    // Keep a valid cursor row when its page is empty.
     const cursorRows = await db
       .select({
         event: {

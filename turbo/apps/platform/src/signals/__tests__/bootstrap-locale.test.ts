@@ -756,10 +756,10 @@ describe("bootstrap locale", () => {
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
-  it("falls back to English for unsupported browser and legacy cached locales", () => {
+  it("falls back to English for unsupported browser and cached locales", () => {
     context.mocks.browser.language("nl-NL");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
-    context.store.set(testLocaleStorage.set$, "zh-CN");
+    context.store.set(testLocaleStorage.set$, "nl-NL");
 
     executeLocaleEntrypoint();
 

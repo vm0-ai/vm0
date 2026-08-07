@@ -344,7 +344,10 @@ describe("chat run queue", () => {
   it("falls back to generic queue guidance for a previous API response", async () => {
     mockCancellationRecoveryQueue();
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-      return respond(200, { lastReadAt: null });
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: false,
+      });
     });
 
     detachedSetupPage({ context, path: CHAT_PATH });

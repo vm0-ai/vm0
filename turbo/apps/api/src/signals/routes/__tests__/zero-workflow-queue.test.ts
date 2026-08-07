@@ -432,6 +432,7 @@ describe("workflow queue", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "user prompt wins queue priority",
+          hasTextContent: true,
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: "user prompt wins queue priority" }],
@@ -626,6 +627,7 @@ describe("workflow queue", () => {
         agentId: scenario.agentId,
         threadId: automation.threadId,
         prompt: "fresh user message",
+        hasTextContent: true,
         userMessage: {
           version: 1,
           parts: [{ type: "text", text: "fresh user message" }],
@@ -710,6 +712,7 @@ describe("workflow queue", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "stale user message",
+          hasTextContent: true,
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: "stale user message" }],
@@ -1443,6 +1446,7 @@ describe("workflow queue", () => {
           agentId: scenario.agentId,
           threadId: automation.threadId,
           prompt: "user interjection",
+          hasTextContent: true,
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: "user interjection" }],
@@ -1538,6 +1542,7 @@ describe("workflow queue", () => {
         agentId: scenario.agentId,
         threadId: automation.threadId,
         prompt: "user wins final admission",
+        hasTextContent: true,
         userMessage: {
           version: 1,
           parts: [{ type: "text", text: "user wins final admission" }],

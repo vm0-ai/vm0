@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import {
+  SUPPORTED_USER_LOCALES,
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
@@ -27,6 +28,7 @@ function createMockPreferences(
   return {
     timezone: "UTC",
     locale: "en-US",
+    supportedLocales: [...SUPPORTED_USER_LOCALES],
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,

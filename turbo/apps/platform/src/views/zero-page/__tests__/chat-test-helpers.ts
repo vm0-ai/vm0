@@ -118,6 +118,7 @@ export function mockSubagentThread(context: TestContext, _threadId: string) {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -850,6 +851,7 @@ export function mockChatLifecycle(
     }
     return respond(200, {
       lastReadAt: "2026-03-10T00:00:00Z",
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -931,6 +933,7 @@ export function mockChatLifecycle(
       id: threadId,
       title: null,
       createdAt: "2026-03-10T00:00:00Z",
+      selectedModel,
     });
   });
   // Unified chat event endpoint (creates thread + run + association)

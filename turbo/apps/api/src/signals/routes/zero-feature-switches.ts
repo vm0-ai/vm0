@@ -17,41 +17,19 @@ const featureSwitchesAuthOptions = {
   missingOrganizationStatus: 401,
 } as const;
 
-const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
-const LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH = "chatThreadSidebarAutoOpen";
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
-  readonly supportsStructuredInlineTemplates: boolean;
-  readonly supportsCustomConnectorOAuth2: boolean;
-  readonly supportsImageRecognition: boolean;
-  readonly supportsAvatarTemplates: boolean;
 }) {
-  const registeredEffectiveSwitches = getAllFeatureStates({
+  const effectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
     userId: params.userId,
     overrides: params.switches,
   });
-  // Platform bundles loaded before Mail follow-up removal still carry this
-  // key. Force them off until their compatible follow-up endpoint can be
-  // removed after the old frontend release drains.
-  // Platform bundles loaded before sidebar auto-open became permanent still
-  // gate that behavior on the removed switch. Keep it enabled until the old
-  // frontend release drains.
-  const effectiveSwitches = {
-    ...registeredEffectiveSwitches,
-    [LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH]: false,
-    [LEGACY_CHAT_THREAD_SIDEBAR_AUTO_OPEN_SWITCH]: true,
-  };
-
   return {
     switches: params.switches,
     effectiveSwitches,
-    supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
-    supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
-    supportsImageRecognition: params.supportsImageRecognition,
-    supportsAvatarTemplates: params.supportsAvatarTemplates,
   };
 }
 
@@ -66,10 +44,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
-      supportsStructuredInlineTemplates: true,
-      supportsCustomConnectorOAuth2: true,
-      supportsImageRecognition: true,
-      supportsAvatarTemplates: true,
     }),
   };
 });
@@ -103,10 +77,6 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-        supportsImageRecognition: true,
-        supportsAvatarTemplates: true,
       }),
     };
   },

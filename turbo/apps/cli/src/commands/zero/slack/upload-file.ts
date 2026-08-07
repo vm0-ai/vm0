@@ -224,7 +224,6 @@ async function uploadFile(options: UploadFileOptions): Promise<void> {
   const initialized = await initSlackFileUpload({
     filename,
     length: file.size,
-    supportsUploadHeaders: true,
     canonical: {
       operationId,
       contentType,

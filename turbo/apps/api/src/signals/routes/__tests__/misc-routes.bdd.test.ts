@@ -5,19 +5,7 @@ import { describe, expect, it } from "vitest";
 import { env } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
-import {
-  ALL_LOCALES_CLIENT_VERSION,
-  BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
-  createMiscRoutesApi,
-  FRENCH_CLIENT_VERSION,
-  GERMAN_CLIENT_VERSION,
-  HINDI_CLIENT_VERSION,
-  JAPANESE_CLIENT_VERSION,
-  KOREAN_CLIENT_VERSION,
-  INDONESIAN_CLIENT_VERSION,
-  SPANISH_CLIENT_VERSION,
-  ITALIAN_CLIENT_VERSION,
-} from "./helpers/api-bdd-misc";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 
 const context = testContext();
 
@@ -104,7 +92,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       admin,
       {
         timezone: "UTC",
-        locale: "zh-CN",
+        locale: "en-US",
         sendMode: "cmd-enter",
         pinnedAgentIds: [
           secondPinnedAgentId,
@@ -231,109 +219,37 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     expectApiError(missingLog.body);
   });
 
-  it("negotiates every locale by client capability", async () => {
+  it("reads and writes every supported locale through the canonical contract", async () => {
     const { api, admin } = testActors();
-    const localeCases = [
-      {
-        locale: "pt-BR",
-        clientVersion: BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
-        supportedLocales: ["en-US", "pt-BR"],
-      },
-      {
-        locale: "ja-JP",
-        clientVersion: JAPANESE_CLIENT_VERSION,
-        supportedLocales: ["en-US", "pt-BR", "ja-JP"],
-      },
-      {
-        locale: "ko-KR",
-        clientVersion: KOREAN_CLIENT_VERSION,
-        supportedLocales: ["en-US", "ko-KR"],
-      },
-      {
-        locale: "id-ID",
-        clientVersion: INDONESIAN_CLIENT_VERSION,
-        supportedLocales: ["en-US", "id-ID"],
-      },
-      {
-        locale: "de-DE",
-        clientVersion: GERMAN_CLIENT_VERSION,
-        supportedLocales: ["en-US", "de-DE"],
-      },
-      {
-        locale: "es-ES",
-        clientVersion: SPANISH_CLIENT_VERSION,
-        supportedLocales: ["en-US", "es-ES"],
-      },
-      {
-        locale: "it-IT",
-        clientVersion: ITALIAN_CLIENT_VERSION,
-        supportedLocales: ["en-US", "it-IT"],
-      },
-      {
-        locale: "fr-FR",
-        clientVersion: FRENCH_CLIENT_VERSION,
-        supportedLocales: ["en-US", "fr-FR"],
-      },
-      {
-        locale: "hi-IN",
-        clientVersion: HINDI_CLIENT_VERSION,
-        supportedLocales: ["en-US", "hi-IN"],
-      },
+    const supportedLocales = [
+      "en-US",
+      "pt-BR",
+      "ja-JP",
+      "ko-KR",
+      "id-ID",
+      "de-DE",
+      "es-ES",
+      "it-IT",
+      "fr-FR",
+      "hi-IN",
     ] as const;
 
-    for (const { locale, clientVersion, supportedLocales } of localeCases) {
-      const current = await api.readPreferences(admin, clientVersion);
+    for (const locale of supportedLocales) {
+      const current = await api.readPreferences(admin);
       expect(current.body.supportedLocales).toStrictEqual(supportedLocales);
 
-      const updated = await api.updatePreferences(
-        admin,
-        { locale },
-        [200],
-        clientVersion,
-      );
+      const updated = await api.updatePreferences(admin, { locale }, [200]);
       expect(updated.body).toMatchObject({
         locale,
         supportedLocales,
       });
     }
 
-    const allLocales = await api.readPreferences(
-      admin,
-      ALL_LOCALES_CLIENT_VERSION,
-    );
+    const allLocales = await api.readPreferences(admin);
     expect(allLocales.body).toMatchObject({
       locale: "hi-IN",
-      supportedLocales: [
-        "en-US",
-        "pt-BR",
-        "ja-JP",
-        "ko-KR",
-        "id-ID",
-        "de-DE",
-        "es-ES",
-        "it-IT",
-        "fr-FR",
-        "hi-IN",
-      ],
+      supportedLocales,
     });
-
-    const legacyRead = await api.readPreferences(admin);
-    expect(legacyRead.body.locale).toBe("en-US");
-    expect(legacyRead.body.supportedLocales).toBeUndefined();
-
-    const legacyWrite = await api.updatePreferences(
-      admin,
-      { locale: "hi-IN" },
-      [400],
-    );
-    expectApiError(legacyWrite.body);
-
-    await api.updatePreferences(admin, { timezone: "UTC" }, [200]);
-    const capableReread = await api.readPreferences(
-      admin,
-      HINDI_CLIENT_VERSION,
-    );
-    expect(capableReread.body.locale).toBe("hi-IN");
   });
 });
 

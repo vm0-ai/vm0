@@ -23,10 +23,11 @@ describe("user preferences contract", () => {
     expect(preferences.locale).toBe("id-ID");
   });
 
-  it("normalizes the previous locale in an API response", () => {
-    const preferences = userPreferencesResponseSchema.parse({
+  it("rejects the retired Chinese locale in an API response", () => {
+    const preferences = userPreferencesResponseSchema.safeParse({
       timezone: null,
       locale: "zh-CN",
+      supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: [],
       sendMode: "enter",
       morningBriefEnabled: false,
@@ -34,7 +35,7 @@ describe("user preferences contract", () => {
       captureNetworkBodiesRemaining: 0,
     });
 
-    expect(preferences.locale).toBe("en-US");
+    expect(preferences.success).toBe(false);
   });
 
   it("accepts the canonical Japanese locale", () => {

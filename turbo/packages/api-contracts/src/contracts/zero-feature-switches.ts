@@ -7,26 +7,6 @@ const c = initContract();
 export const featureSwitchesResponseSchema = z.object({
   switches: z.record(z.string(), z.boolean()),
   effectiveSwitches: z.record(z.string(), z.boolean()),
-  /**
-   * Optional capability handshake for multiple inline template parts.
-   * Older API deployments omit this field.
-   */
-  supportsStructuredInlineTemplates: z.boolean().optional(),
-  /**
-   * Optional compatibility handshake for custom connector OAuth 2.0.
-   * Keep returning this while older Platform bundles still read it.
-   */
-  supportsCustomConnectorOAuth2: z.boolean().optional(),
-  /**
-   * Optional capability handshake for managed image recognition.
-   * Older API deployments omit this field.
-   */
-  supportsImageRecognition: z.boolean().optional(),
-  /**
-   * Optional capability handshake for API-backed avatar templates.
-   * Older API deployments omit this field.
-   */
-  supportsAvatarTemplates: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

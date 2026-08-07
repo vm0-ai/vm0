@@ -143,7 +143,7 @@ interface NormalSendBody {
   };
   readonly userMessage: UserMessageInputDocument;
   readonly generationTemplate?: GenerationTemplateRequest;
-  readonly hasTextContent?: boolean;
+  readonly hasTextContent: boolean;
   readonly attachFiles?: AttachFile[];
   readonly computerUseHostId?: string | null;
   readonly cloudBrowserEnabled?: boolean;

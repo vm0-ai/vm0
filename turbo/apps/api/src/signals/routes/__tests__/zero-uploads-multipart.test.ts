@@ -14,13 +14,11 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroUploadsCompleteRoutes } from "../zero-uploads-complete";
-import { zeroUploadsImportImageRoutes } from "../zero-uploads-import-image";
 import { zeroUploadsMultipartRoutes } from "../zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
 
 const zeroUploadsTestRoutes = Object.freeze([
   ...zeroUploadsCompleteRoutes,
-  ...zeroUploadsImportImageRoutes,
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
 ]);

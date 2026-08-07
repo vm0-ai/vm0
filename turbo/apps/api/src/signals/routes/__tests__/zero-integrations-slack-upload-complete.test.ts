@@ -496,7 +496,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         body: {
           filename: "report.csv",
           length: 42,
-          supportsUploadHeaders: true,
           canonical: {
             operationId,
             contentType: "text/csv",
@@ -752,6 +751,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   it("keeps an attachment-only output out of the event stream", async () => {
     const { orgId, userId, runId, threadId, runnerGroup } =
       await seedRunScoped();
+    chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
     const token = zeroToken({ userId, orgId, runId });
     const initClient = setupApp({
@@ -869,9 +869,13 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       throw new Error("Expected canonical Slack upload initialization");
     }
     const canonicalAssetId = initialized.body.assetId;
+    const storageKey = new URL(initialized.body.url).pathname.replace(
+      /^\/+/u,
+      "",
+    );
     objectStore.addObject({
       bucket: "test-user-artifacts",
-      key: `artifacts/${userId}/${canonicalAssetId}/report.csv`,
+      key: storageKey,
       size: 42,
       body: Buffer.alloc(42, "a"),
     });
@@ -971,9 +975,13 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       throw new Error("Expected canonical Slack upload initialization");
     }
     const canonicalAssetId = initialized.body.assetId;
+    const storageKey = new URL(initialized.body.url).pathname.replace(
+      /^\/+/u,
+      "",
+    );
     objectStore.addObject({
       bucket: "test-user-artifacts",
-      key: `artifacts/${userId}/${canonicalAssetId}/report.csv`,
+      key: storageKey,
       size: 42,
       body: Buffer.alloc(42, "a"),
     });

@@ -60,14 +60,11 @@ const prepareUploadInner$ = command(
       {
         userId: auth.userId,
         filename,
-        allowV2:
-          bodyResult.data.multipart === true ||
-          bodyResult.data.supportsUploadHeaders === true,
       },
       signal,
     );
     const { id, key: s3Key, url, metadata } = artifact;
-    const uploadHeaders = metadata ? s3MetadataHeaders(metadata) : undefined;
+    const uploadHeaders = s3MetadataHeaders(metadata);
 
     if (
       bodyResult.data.multipart === true &&

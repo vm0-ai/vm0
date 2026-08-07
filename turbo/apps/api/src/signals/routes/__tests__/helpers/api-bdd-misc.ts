@@ -27,19 +27,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import {
-  addClientCapabilityToVersion,
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-  CLIENT_CAPABILITY_JA_JP_LOCALE,
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
-  CLIENT_VERSION_HEADER,
-} from "@vm0/api-contracts/contracts/client-headers";
-import {
   zeroUserPreferencesContract,
   updateUserPreferencesRequestSchema,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
@@ -91,77 +78,11 @@ const TEST_APP_ROUTES = Object.freeze([
 
 interface AuthHeaders {
   readonly authorization?: string;
-  readonly [CLIENT_VERSION_HEADER]?: string;
 }
 
 type UpdateUserPreferencesInput = z.input<
   typeof updateUserPreferencesRequestSchema
 >;
-
-export const BRAZILIAN_PORTUGUESE_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
-);
-export const JAPANESE_CLIENT_VERSION = addClientCapabilityToVersion(
-  BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
-  CLIENT_CAPABILITY_JA_JP_LOCALE,
-);
-export const KOREAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-);
-export const INDONESIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-);
-const ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  JAPANESE_CLIENT_VERSION,
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-);
-const ALL_LOCALES_WITH_INDONESIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-);
-export const GERMAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-);
-const ALL_LOCALES_WITH_GERMAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_INDONESIAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-);
-export const SPANISH_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-);
-const ALL_LOCALES_WITH_SPANISH_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_GERMAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-);
-export const ITALIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.662.0",
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-);
-const ALL_LOCALES_WITH_ITALIAN_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_SPANISH_CLIENT_VERSION,
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-);
-export const FRENCH_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.649.0",
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-);
-const ALL_LOCALES_WITH_FRENCH_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_ITALIAN_CLIENT_VERSION,
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-);
-export const HINDI_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.648.0",
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-);
-export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
-  ALL_LOCALES_WITH_FRENCH_CLIENT_VERSION,
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-);
 
 type ZeroLogsSearchQuery = z.input<
   (typeof zeroLogsSearchContract.searchLogs)["query"]
@@ -180,7 +101,6 @@ function authHeaders(actor: ApiTestUser | null): AuthHeaders {
 function authenticate(
   context: TestContext,
   actor: ApiTestUser | null,
-  clientVersion?: string,
 ): AuthHeaders {
   if (!actor) {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -194,10 +114,7 @@ function authenticate(
     actor.orgId,
     actor.orgRole,
   );
-  return {
-    ...authHeaders(actor),
-    ...(clientVersion && { [CLIENT_VERSION_HEADER]: clientVersion }),
-  };
+  return authHeaders(actor);
 }
 
 function workflowFiles(content: string): WorkflowFileEntry[] {
@@ -347,12 +264,12 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
-    async readPreferences(actor: ApiTestUser, clientVersion?: string) {
+    async readPreferences(actor: ApiTestUser) {
       return await accept(
         setupApp({ context, routes: zeroUserPreferencesRoutes })(
           zeroUserPreferencesContract,
         ).get({
-          headers: authenticate(context, actor, clientVersion),
+          headers: authenticate(context, actor),
         }),
         [200],
       );
@@ -362,13 +279,12 @@ export function createMiscRoutesApi(context: TestContext) {
       actor: ApiTestUser,
       body: UpdateUserPreferencesInput,
       statuses: readonly TStatus[],
-      clientVersion?: string,
     ) {
       return await accept(
         setupApp({ context, routes: zeroUserPreferencesRoutes })(
           zeroUserPreferencesContract,
         ).update({
-          headers: authenticate(context, actor, clientVersion),
+          headers: authenticate(context, actor),
           body,
         }),
         statuses,

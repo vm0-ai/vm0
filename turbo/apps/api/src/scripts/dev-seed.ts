@@ -501,11 +501,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.15), 1_000_000],
     ["tokens.output", usd(9), 1_000_000],
   ]),
-  ...usageGroup("image-interpret-marks", "google/gemini-3.5-flash", [
-    ["tokens.input", usd(1.5), 1_000_000],
-    ["tokens.cache_read", usd(0.15), 1_000_000],
-    ["tokens.output", usd(9), 1_000_000],
-  ]),
   // OpenRouter Qwen2.5 7B pricing retrieved 2026-08-06 from:
   // https://openrouter.ai/qwen/qwen-2.5-7b-instruct
   // Current providers do not discount cached input, so cache reads use the

@@ -37,6 +37,7 @@ describe("POST /api/zero/chat/events authorization", () => {
         body: {
           agentId: randomUUID(),
           prompt,
+          hasTextContent: true,
           userMessage: {
             version: 1,
             parts: [{ type: "text", text: prompt }],

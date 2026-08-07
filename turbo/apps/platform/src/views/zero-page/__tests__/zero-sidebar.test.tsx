@@ -330,6 +330,7 @@ function mockSidebarThreadStory(
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -393,11 +394,13 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
 
@@ -558,11 +561,13 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-12T12:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
 
@@ -627,6 +632,7 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -692,6 +698,7 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -729,12 +736,7 @@ describe("zero sidebar", () => {
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (
-          query.sinceSeqId ||
-          query.beforeSeqId ||
-          query.sinceId ||
-          query.beforeId
-        ) {
+        if (query.sinceSeqId || query.beforeSeqId) {
           return respond(200, { events: [] });
         }
         return respond(200, {
@@ -1425,6 +1427,7 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
 

@@ -639,7 +639,6 @@ export {
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadArtifactsContract,
-  artifactsContract,
   chatSearchContract,
   chatThreadSnapshotProjectionSchema,
   chatThreadEventSchema,
@@ -656,8 +655,6 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
-  imageArtifactEditSnapshotSchema,
-  imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -676,7 +673,6 @@ export {
   type ChatEventsContract,
   type ChatThreadEventsContract,
   type ChatThreadArtifactsContract,
-  type ArtifactsContract,
   type ChatSearchContract,
   type ChatSearchResponse,
   type ChatSearchResult,
@@ -697,8 +693,6 @@ export {
   type PersistedAttachment,
   type AttachFile,
   type ResolvedAttachFile,
-  type ImageArtifactEditSnapshot,
-  type ImageArtifactEditSnapshotState,
   type ChatThreadArtifactFile,
   type ChatThreadArtifactGoogleDriveSync,
   type ChatThreadArtifactRun,
@@ -1181,7 +1175,6 @@ export {
   setCustomConnectorValuesBodySchema,
   startCustomConnectorOAuth2BodySchema,
   startCustomConnectorOAuth2ResponseSchema,
-  patchCustomConnectorBodySchema,
   customConnectorAuthModeSchema,
   customConnectorOAuthConfigSchema,
   customConnectorOAuthConfigInputSchema,
@@ -1198,7 +1191,6 @@ export {
   type CustomConnectorValueInput,
   type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
-  type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";
 export {
   zeroAgentCustomConnectorsContract,
@@ -1660,20 +1652,6 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
-  ZERO_IMAGE_INTERPRET_MARKS_MAX_REGIONS,
-  ZERO_IMAGE_INTERPRET_MARKS_MAX_INSTRUCTION_LENGTH,
-  zeroImageIoInterpretMarksContract,
-  zeroImageIoInterpretMarksRegionSchema,
-  zeroImageIoInterpretMarksRequestSchema,
-  zeroImageIoInterpretMarksResultSchema,
-  zeroImageIoInterpretMarksResponseSchema,
-  type ZeroImageIoInterpretMarksContract,
-  type ZeroImageIoInterpretMarksRegion,
-  type ZeroImageIoInterpretMarksRequest,
-  type ZeroImageIoInterpretMarksResult,
-  type ZeroImageIoInterpretMarksResponse,
-} from "./zero-image-io-interpret-marks";
-export {
   zeroImageShareXContract,
   zeroImageShareXRequestSchema,
   zeroImageShareXResponseSchema,
@@ -1800,7 +1778,6 @@ export {
   zeroUploadsContract,
   type ZeroUploadsContract,
   type UploadPrepareResponse,
-  type UploadImportImageResponse,
 } from "./zero-uploads";
 export {
   zeroGoalsContract,
