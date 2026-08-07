@@ -960,7 +960,7 @@ mod tests {
         let firecracker = base_dir.path().join("firecracker");
         std::os::unix::fs::symlink("/bin/sh", &firecracker).unwrap();
 
-        let mut child = tokio::process::Command::new(&firecracker)
+        let mut leader = tokio::process::Command::new(&firecracker)
             .arg("-c")
             .arg("printf '%s\\n' \"$1\"; IFS= read -r _")
             .arg("vm0-orphan-kill-test")
@@ -973,7 +973,7 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
-        let stdout = child.stdout.take().unwrap();
+        let stdout = leader.stdout.take().unwrap();
         let mut stdout_lines = BufReader::new(stdout).lines();
         let ready_line = tokio::time::timeout(Duration::from_secs(5), stdout_lines.next_line())
             .await
@@ -982,33 +982,90 @@ mod tests {
             .expect("fake firecracker exited before readiness");
         assert_eq!(ready_line, ORPHAN_KILL_READY_LINE);
 
-        let pid = child.id().unwrap();
-        let ProcessStatRead::Found(stat) = process::read_process_stat_checked(pid).await else {
-            panic!("spawned process stat should be readable");
+        let leader_pid = leader.id().unwrap();
+        let ProcessStatRead::Found(leader_stat) =
+            process::read_process_stat_checked(leader_pid).await
+        else {
+            panic!("spawned group leader stat should be readable");
+        };
+        let mut member = tokio::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg("IFS= read -r _")
+            .process_group(i32::try_from(leader_stat.pgid).unwrap())
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let member_pid = member.id().unwrap();
+        let ProcessStatRead::Found(member_stat) =
+            process::read_process_stat_checked(member_pid).await
+        else {
+            panic!("spawned group member stat should be readable");
+        };
+        let leader_identity = FirecrackerProcessIdentity {
+            pid: leader_pid,
+            pgid: leader_stat.pgid,
+            starttime: leader_stat.starttime,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(base_dir.path().to_path_buf()),
+        };
+        let member_identity = FirecrackerProcessIdentity {
+            pid: member_pid,
+            pgid: member_stat.pgid,
+            starttime: member_stat.starttime,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(base_dir.path().to_path_buf()),
         };
         let target = KillTarget {
-            pid,
+            pid: leader_pid,
             ppid: None,
             run_id: None,
             sandbox_id: sandbox_id.into(),
             base_dir: Some(base_dir.path().to_path_buf()),
-            identity: Some(FirecrackerProcessIdentity {
-                pid,
-                pgid: stat.pgid,
-                starttime: stat.starttime,
-                sandbox_id: sandbox_id.into(),
-                base_dir: Some(base_dir.path().to_path_buf()),
-            }),
+            identity: Some(leader_identity.clone()),
         };
 
-        let outcome = terminate(&target).await;
+        let fixture_error = if leader_pid == member_pid {
+            Some(format!(
+                "group leader and member unexpectedly share PID {leader_pid}"
+            ))
+        } else if leader_stat.pgid != member_stat.pgid {
+            Some(format!(
+                "group member PGID {} does not match leader PGID {}",
+                member_stat.pgid, leader_stat.pgid
+            ))
+        } else {
+            None
+        };
+        let observations = if fixture_error.is_none() {
+            let outcome = terminate(&target).await;
+            let (leader_exit, member_exit) = tokio::join!(
+                wait_for_orphan_exit(&leader_identity),
+                wait_for_orphan_exit(&member_identity),
+            );
+            Some((outcome, leader_exit, member_exit))
+        } else {
+            None
+        };
+
+        let _ = leader.start_kill();
+        let _ = member.start_kill();
+        let (leader_status, member_status) = tokio::join!(leader.wait(), member.wait());
+
+        if let Some(error) = fixture_error {
+            panic!("invalid process-group fixture: {error}");
+        }
+        let (outcome, leader_exit, member_exit) = observations.unwrap();
         assert!(
             matches!(&outcome, Outcome::Killed(killed) if killed == &target),
             "unexpected orphan kill outcome: {outcome:?}"
         );
-
-        let status = child.wait().await.unwrap();
-        assert!(!status.success());
+        assert_eq!(leader_exit, Ok(()), "group leader remained live");
+        assert_eq!(member_exit, Ok(()), "group member remained live");
+        assert!(!leader_status.unwrap().success());
+        assert!(!member_status.unwrap().success());
     }
 
     #[test]
