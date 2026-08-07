@@ -85,6 +85,7 @@ type ComposerTemplateEditorSignals = Pick<
   | "templatePreview"
   | "hasTemplateAttachment$"
   | "insertTemplate$"
+  | "updateTemplateAt$"
   | "readSelectedTemplate$"
   | "prepareTemplateInsertion$"
   | "setTemplateAttachmentLifecycleRef$"
@@ -318,6 +319,7 @@ function composerTemplateSignals(
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
     insertTemplate$: composer.insertTemplate$,
+    updateTemplateAt$: composer.updateTemplateAt$,
     readSelectedTemplate$: composer.readSelectedTemplate$,
     prepareTemplateInsertion$: composer.prepareTemplateInsertion$,
     setTemplateAttachmentLifecycleRef$:

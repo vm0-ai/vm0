@@ -206,6 +206,10 @@ export interface WorkflowComposerSignals {
     void,
     [GenerationTemplateRequest, ComposerTemplateAttachment]
   >;
+  readonly updateTemplateAt$: Command<
+    void,
+    [number, GenerationTemplateRequest, ComposerTemplateAttachment]
+  >;
   readonly readSelectedTemplate$: Command<
     GenerationTemplateRequest | undefined,
     []
@@ -1537,7 +1541,7 @@ interface WorkflowComposerRuntime {
   openTemplate(category: string): void;
   /** Resolved when the lifecycle bridge mounts; false until then. */
   videoOptionsEnabled: boolean;
-  openTemplateOptions(anchor: DOMRect): void;
+  openTemplateOptions(anchor: DOMRect, position: number): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
@@ -1668,8 +1672,9 @@ function createInlineTemplateNode(
               }
             },
             openOptions: (anchor) => {
-              if (selectSelf()) {
-                runtime.openTemplateOptions(anchor);
+              const position = getPos();
+              if (typeof position === "number" && selectSelf()) {
+                runtime.openTemplateOptions(anchor, position);
               }
             },
             optionsEnabled: () => {
@@ -2384,6 +2389,39 @@ function createInsertTemplateCommand(editor: Editor) {
   );
 }
 
+/**
+ * Rewrites one inline template in place, addressed by position rather than by
+ * the editor selection. setNodeMarkup maps a NodeSelection to a TextSelection,
+ * so a selection-based update only works once; every later edit would fall
+ * through to inserting another chip.
+ */
+function createUpdateTemplateAtCommand(editor: Editor) {
+  return command(
+    (
+      _context,
+      position: number,
+      request: GenerationTemplateRequest,
+      attachment: ComposerTemplateAttachment,
+    ) => {
+      const target = editor.state.doc.nodeAt(position);
+      if (target?.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+        return;
+      }
+      const node = inlineTemplateNode(editor, request, attachment);
+      const transaction = editor.state.tr.setNodeMarkup(
+        position,
+        undefined,
+        node.attrs,
+      );
+      editor.view.dispatch(
+        transaction.setSelection(
+          NodeSelection.create(transaction.doc, position),
+        ),
+      );
+    },
+  );
+}
+
 function createPrepareTemplateInsertionCommand(editor: Editor) {
   return command(() => {
     const { selection } = editor.state;
@@ -2415,6 +2453,7 @@ function createReadSelectedTemplateCommand(editor: Editor) {
 function createTemplateInsertionCommands(editor: Editor) {
   return {
     insertTemplate$: createInsertTemplateCommand(editor),
+    updateTemplateAt$: createUpdateTemplateAtCommand(editor),
     readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
     prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
   };
@@ -2485,7 +2524,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
     videoOptionsEnabled: false,
-    openTemplateOptions(_anchor: DOMRect): void {},
+    openTemplateOptions(_anchor: DOMRect, _position: number): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
@@ -2519,7 +2558,7 @@ function createTemplateAttachmentControls(
         element.click();
       };
       runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
-      runtime.openTemplateOptions = (anchor) => {
+      runtime.openTemplateOptions = (anchor, position) => {
         element.dataset.templateAction = "options";
         element.dataset.templateAnchor = [
           anchor.left,
@@ -2527,6 +2566,7 @@ function createTemplateAttachmentControls(
           anchor.width,
           anchor.height,
         ].join(",");
+        element.dataset.templatePosition = String(position);
         element.click();
       };
       runtime.templateRemoved = () => {

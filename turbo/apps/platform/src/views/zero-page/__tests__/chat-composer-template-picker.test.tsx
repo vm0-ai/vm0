@@ -209,8 +209,7 @@ describe("chat composer templates", () => {
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
     await user.click(spec);
-    const ratio = await screen.findByRole("combobox", { name: "Ratio" });
-    await user.click(ratio);
+    await user.click(await screen.findByRole("combobox", { name: "Ratio" }));
     await user.click(await screen.findByRole("option", { name: "9:16" }));
 
     await waitFor(() => {
@@ -218,7 +217,17 @@ describe("chat composer templates", () => {
         screen.getByLabelText("Video options 9:16 \u00b7 8s"),
       ).toBeInTheDocument();
     });
-    // The chip is rewritten in place rather than duplicated.
+
+    // A second edit has to land in place too: setNodeMarkup drops the node
+    // selection, so a selection-based update would insert another chip here.
+    await user.click(await screen.findByRole("combobox", { name: "Duration" }));
+    await user.click(await screen.findByRole("option", { name: "6s" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video options 9:16 \u00b7 6s"),
+      ).toBeInTheDocument();
+    });
     expect(
       document.querySelectorAll("[data-composer-inline-template]"),
     ).toHaveLength(1);
@@ -231,8 +240,8 @@ describe("chat composer templates", () => {
           type: "video",
           selection: {
             stylePresetId: template.id,
-            // Only the changed value is persisted.
-            videoOptions: { aspectRatio: "9:16" },
+            // Only the changed values are persisted.
+            videoOptions: { aspectRatio: "9:16", duration: "6s" },
           },
         },
       });

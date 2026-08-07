@@ -319,25 +319,38 @@ function createTemplatePickerDialogSignals() {
   const internalVideoOptionsValue$ = state<GenerationTemplateRequest | null>(
     null,
   );
+  const internalVideoOptionsPosition$ = state<number | null>(null);
   const videoTemplateOptionsAnchor$ = computed((get) => {
     return get(internalVideoOptionsAnchor$);
   });
   const videoTemplateOptionsValue$ = computed((get) => {
     return get(internalVideoOptionsValue$);
   });
+  const videoTemplateOptionsPosition$ = computed((get) => {
+    return get(internalVideoOptionsPosition$);
+  });
   const openVideoTemplateOptions$ = command(
     (
       { set },
       anchor: VideoTemplateOptionsAnchor,
       value: GenerationTemplateRequest,
+      position: number,
     ) => {
       set(internalVideoOptionsValue$, value);
+      set(internalVideoOptionsPosition$, position);
       set(internalVideoOptionsAnchor$, anchor);
+    },
+  );
+  /** Keeps the open popover in step with the node it just rewrote. */
+  const setVideoTemplateOptionsValue$ = command(
+    ({ set }, value: GenerationTemplateRequest) => {
+      set(internalVideoOptionsValue$, value);
     },
   );
   const closeVideoTemplateOptions$ = command(({ set }) => {
     set(internalVideoOptionsAnchor$, null);
     set(internalVideoOptionsValue$, null);
+    set(internalVideoOptionsPosition$, null);
   });
 
   const websiteTemplatePreviewId$ = computed((get) => {
@@ -368,7 +381,9 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerReferenceValue$,
     videoTemplateOptionsAnchor$,
     videoTemplateOptionsValue$,
+    videoTemplateOptionsPosition$,
     openVideoTemplateOptions$,
+    setVideoTemplateOptionsValue$,
     closeVideoTemplateOptions$,
     websiteTemplatePreviewId$,
     websiteTemplatePreviewLoaded$,

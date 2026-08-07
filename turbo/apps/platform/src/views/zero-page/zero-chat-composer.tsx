@@ -5631,6 +5631,13 @@ function ComposerTemplateAttachmentSync({
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
   const openVideoOptions = useSet(signals.template.openVideoTemplateOptions$);
+  const videoOptionsPosition = useGet(
+    signals.template.videoTemplateOptionsPosition$,
+  );
+  const updateTemplateAt = useSet(signals.template.updateTemplateAt$);
+  const setVideoOptionsValue = useSet(
+    signals.template.setVideoTemplateOptionsValue$,
+  );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
   const attachment = selectedComposerTemplateAttachment(picker?.value);
   const openPicker = (category: string) => {
@@ -5657,7 +5664,17 @@ function ComposerTemplateAttachmentSync({
       <VideoTemplateOptionsPopover
         signals={signals}
         onChange={(next) => {
-          picker?.onChange(next);
+          const nextAttachment = selectedComposerTemplateAttachment(next);
+          if (videoOptionsPosition === null || !nextAttachment) {
+            return;
+          }
+          // Addressed by position: the editor selection does not survive
+          // repeated in-place updates, and the popover can outlive it.
+          updateTemplateAt(videoOptionsPosition, next, nextAttachment);
+          // The popover holds a snapshot; without this a second edit would be
+          // computed from the pre-edit value and undo the first one.
+          setVideoOptionsValue(next);
+          onDraftChange?.();
         }}
       />
       <button
@@ -5682,9 +5699,12 @@ function ComposerTemplateAttachmentSync({
             const anchor = parseTemplateAnchor(
               event.currentTarget.dataset.templateAnchor,
             );
+            const position = Number(
+              event.currentTarget.dataset.templatePosition,
+            );
             const selected = readSelectedTemplate();
-            if (anchor && selected) {
-              openVideoOptions(anchor, selected);
+            if (anchor && selected && Number.isInteger(position)) {
+              openVideoOptions(anchor, selected, position);
             }
           }
         }}
