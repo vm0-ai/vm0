@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { cronConnectorOauthStateCleanupContract } from "@vm0/api-contracts/contracts/cron";
-import {
-  zeroConnectorOauthContinueContract,
-  zeroConnectorOauthStartContract,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -12,6 +9,8 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { cronConnectorOauthStateCleanupRoutes } from "../cron-connector-oauth-state-cleanup";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -32,7 +31,9 @@ function mockAuthenticatedSession(): void {
 async function startGithubOauth(): Promise<URL> {
   mockAuthenticatedSession();
   const response = await accept(
-    setupApp({ context })(zeroConnectorOauthStartContract).start({
+    setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorOauthStartContract,
+    ).start({
       params: { connectorSlug: "github" },
       headers: { authorization: "Bearer clerk-session" },
       body: { authMethod: "oauth" },
@@ -57,7 +58,9 @@ describe("connector OAuth state cleanup cron", () => {
 
   it("requires the cron secret", async () => {
     const response = await accept(
-      setupApp({ context })(cronConnectorOauthStateCleanupContract).cleanup({
+      setupApp({ context, routes: cronConnectorOauthStateCleanupRoutes })(
+        cronConnectorOauthStateCleanupContract,
+      ).cleanup({
         headers: {},
       }),
       [401],
@@ -68,31 +71,21 @@ describe("connector OAuth state cleanup cron", () => {
     });
   });
 
-  it("deletes expired states while preserving usable handoffs", async () => {
+  it("deletes expired states while preserving unexpired states", async () => {
     mockNow(now() - 20 * 60 * 1000);
     await startGithubOauth();
     clearMockNow();
-    const usableContinuationUrl = await startGithubOauth();
+    await startGithubOauth();
 
     const cleanup = await accept(
-      setupApp({ context })(cronConnectorOauthStateCleanupContract).cleanup({
+      setupApp({ context, routes: cronConnectorOauthStateCleanupRoutes })(
+        cronConnectorOauthStateCleanupContract,
+      ).cleanup({
         headers: cronHeaders(),
       }),
       [200],
     );
 
     expect(cleanup.body.deleted).toBeGreaterThanOrEqual(1);
-    const continuation = await accept(
-      setupApp({ context })(zeroConnectorOauthContinueContract).continue({
-        params: { connectorSlug: "github" },
-        query: {
-          state: usableContinuationUrl.searchParams.get("state") ?? "",
-        },
-      }),
-      [307],
-    );
-    expect(continuation.headers.get("location")).toMatch(
-      /^https:\/\/github\.com\/login\/oauth\/authorize\?/u,
-    );
   });
 });

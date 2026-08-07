@@ -21,6 +21,7 @@ export function chatEventDisplayText(event: ChatEvent): string | null {
   switch (event.eventType) {
     case "input.prompt":
     case "input.automation":
+    case "input.budget":
     case "input.rejected": {
       if (!event.userMessage) {
         return null;

@@ -1,12 +1,9 @@
 import { command } from "ccstate";
 import { zeroCustomConnectorValuesContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { setCustomConnectorValues$ } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -20,24 +17,6 @@ const setValuesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const featureContext = await get(
-    userFeatureSwitchContext(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, featureContext)
-  ) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Custom connector CLI creation is not enabled",
-          code: "FORBIDDEN" as const,
-        },
-      },
-    };
-  }
-
   const result = await set(
     setCustomConnectorValues$,
     {

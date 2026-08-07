@@ -120,7 +120,7 @@ run_action() {
   local github_output="${test_dir}/github-output"
   local repo_vars_json
 
-  repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_BACKEND_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","ZERO_PRICE_PRO":"price_test_pro","ZERO_PRICE_TEAM":"price_test_team","ATOM_GRANT_PRICE":"price_test_atom_grant","ZERO_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","ZERO_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","ZERO_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
+  repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_BACKEND_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID":"bpc_test_concurrency","STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED":"true","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","ZERO_PRICE_PRO":"price_test_pro","ZERO_PRICE_TEAM":"price_test_team","ZERO_PRICE_USAGE_PACK_PLAN_PRO":"price_test_usage_pack_plan_pro","ZERO_PRICE_USAGE_PACK_PLAN_TEAM":"price_test_usage_pack_plan_team","ZERO_PRICE_USAGE_PACK_20":"price_test_usage_pack_20","ZERO_PRICE_USAGE_PACK_50":"price_test_usage_pack_50","ZERO_PRICE_USAGE_PACK_100":"price_test_usage_pack_100","ZERO_PRICE_USAGE_PACK_200":"price_test_usage_pack_200","ATOM_GRANT_PRICE":"price_test_atom_grant","ZERO_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","ZERO_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","ZERO_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
 
   extract_action_script > "$action_script"
 
@@ -185,6 +185,12 @@ assert_env_value "$success_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$success_env_file" "ONBOARDING_URL="
 assert_env_value "$success_env_file" ZERO_PRICE_PRO "price_test_pro"
 assert_env_value "$success_env_file" ZERO_PRICE_TEAM "price_test_team"
+assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_PLAN_PRO "price_test_usage_pack_plan_pro"
+assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_PLAN_TEAM "price_test_usage_pack_plan_team"
+assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_20 "price_test_usage_pack_20"
+assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_50 "price_test_usage_pack_50"
+assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_100 "price_test_usage_pack_100"
+assert_env_value "$success_env_file" ZERO_PRICE_USAGE_PACK_200 "price_test_usage_pack_200"
 assert_env_value "$success_env_file" ATOM_GRANT_PRICE "price_test_atom_grant"
 assert_env_value "$success_env_file" ZERO_PRICE_CUSTOM_CREDITS "price_test_custom_credits"
 assert_env_value "$success_env_file" ZERO_PRICE_CUSTOM_CREDIT_UNIT "price_test_custom_credit_unit"
@@ -196,6 +202,8 @@ assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME "
 assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE "https://api.github.test/api/webhooks/google-workspace-events"
 assert_env_value "$success_env_file" GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL "workspace-events-push@github.test"
 assert_env_value "$success_env_file" STRIPE_OAUTH_CLIENT_ID "doppler-STRIPE_OAUTH_CLIENT_ID"
+assert_env_value "$success_env_file" STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID "bpc_test_concurrency"
+assert_env_value "$success_env_file" STRIPE_CONCURRENCY_PORTAL_UPDATES_ENABLED "true"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
 assert_env_absent_value "$success_env_file" "github-slack-client-id"

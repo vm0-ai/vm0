@@ -498,8 +498,6 @@ pub enum CliTerminationReason {
     PostResultReap,
     /// The stuck-tool watchdog terminated the process.
     StuckToolWatchdog,
-    /// A resumed Codex process did not begin emitting real turn lifecycle events.
-    CodexResumeStartupTimeout,
     /// Heartbeat handling failed and required termination.
     HeartbeatError,
     /// Heartbeat handling panicked and required termination.
@@ -521,7 +519,6 @@ impl CliTerminationReason {
             Self::UserCancellation => "user_cancellation",
             Self::PostResultReap => "post_result_reap",
             Self::StuckToolWatchdog => "stuck_tool_watchdog",
-            Self::CodexResumeStartupTimeout => "codex_resume_startup_timeout",
             Self::HeartbeatError => "heartbeat_error",
             Self::HeartbeatPanic => "heartbeat_panic",
             Self::InitialPromptStdin => "initial_prompt_stdin",
@@ -642,7 +639,7 @@ impl FailureReason {
 pub enum FailureDetailSource {
     /// The reason came from a Claude result payload.
     ClaudeResult,
-    /// The reason came from Codex JSONL output.
+    /// The reason came from a Codex compatibility JSONL event.
     CodexJsonl,
     /// The reason came from stderr output.
     Stderr,
@@ -922,23 +919,6 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<CliTerminationReason>(serde_json::json!("user_cancellation"))
                 .unwrap(),
-            reason
-        );
-    }
-
-    #[test]
-    fn codex_resume_startup_timeout_reason_has_stable_serialization() {
-        let reason = CliTerminationReason::CodexResumeStartupTimeout;
-        assert_eq!(reason.as_str(), "codex_resume_startup_timeout");
-        assert_eq!(
-            serde_json::to_value(reason).unwrap(),
-            serde_json::json!("codex_resume_startup_timeout")
-        );
-        assert_eq!(
-            serde_json::from_value::<CliTerminationReason>(serde_json::json!(
-                "codex_resume_startup_timeout"
-            ))
-            .unwrap(),
             reason
         );
     }

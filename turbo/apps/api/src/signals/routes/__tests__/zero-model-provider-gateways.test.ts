@@ -12,6 +12,7 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -30,11 +31,15 @@ function useSession(role: "org:admin" | "org:member" = "org:admin") {
 }
 
 function mainClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsMainContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsMainContract,
+  );
 }
 
 function byIdClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsByIdContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsByIdContract,
+  );
 }
 
 describe("custom model provider gateway routes", () => {

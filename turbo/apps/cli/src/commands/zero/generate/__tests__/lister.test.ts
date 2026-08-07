@@ -138,18 +138,14 @@ function stubAvailableConnectors(connectorSlugs: string[]) {
 }
 
 function stubBillingStatus(
-  videoGenerationAllowed: boolean | undefined,
+  videoGenerationAllowed: boolean,
   tier = videoGenerationAllowed ? "pro" : "limited-free-1",
 ) {
   return http.get("http://localhost:3000/api/zero/billing/status", () => {
     return HttpResponse.json({
       tier,
-      ...(videoGenerationAllowed === undefined
-        ? {}
-        : {
-            canBuyCredits: videoGenerationAllowed,
-            videoGenerationAllowed,
-          }),
+      canBuyCredits: videoGenerationAllowed,
+      videoGenerationAllowed,
       credits: 0,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
@@ -364,7 +360,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
     expect(text).toContain(
-      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
+      "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
     );
     expect(text).toContain("Use: zero generate video --provider built-in -h");
     expect(text).toContain(
@@ -428,34 +424,6 @@ describe("zero generate lister", () => {
     );
     expect(text).toContain(
       "[Compare plans](http://localhost:3000/?settings=billing&billingView=plans)",
-    );
-  });
-
-  it("uses a restricted legacy tier when billing capability fields are omitted", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
-      stubUserConnectors([]),
-      stubBillingStatus(undefined, "limited-free-1"),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "video"]);
-
-    expect(output()).toContain(
-      "Availability: Requires a Pro, Team, or Custom workspace plan.",
-    );
-  });
-
-  it("uses an allowed legacy tier when billing capability fields are omitted", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
-      stubUserConnectors([]),
-      stubBillingStatus(undefined, "free"),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "video"]);
-
-    expect(output()).toContain(
-      "Availability: Available on the current plan without connector setup.",
     );
   });
 

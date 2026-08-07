@@ -12,6 +12,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { testCronMonitorChatEventQueueStateRoutes } from "../test-cron-monitor-chat-event-queue-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { cronMonitorChatEventQueueRoutes } from "../cron-monitor-chat-event-queue";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
@@ -23,7 +24,9 @@ interface MonitorFixture {
 }
 
 function apiClient() {
-  return setupApp({ context })(cronMonitorChatEventQueueContract);
+  return setupApp({ context, routes: cronMonitorChatEventQueueRoutes })(
+    cronMonitorChatEventQueueContract,
+  );
 }
 
 function stateClient() {
@@ -117,32 +120,12 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("alerts for a pointerless prompt with a null trigger source", async () => {
-    const fixture = await trackFixture(seedFixture("orphan"));
-
-    const response = await accept(
-      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
-      [500],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: "Internal server error",
-    });
-    expect(
-      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
-    ).toMatchObject({
-      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-      orphanedMessages: 1,
-      orphanedMessagesBySource: { "(unknown)": 1 },
-    });
-  });
-
   it("does not alert for pointerless web, test, or agent prompts", async () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
       stateClient().monitor({
-        body: { event_ids: fixture.eventIds.slice(1, 4) },
+        body: { event_ids: fixture.eventIds.slice(0, 3) },
       }),
       [200],
     );
@@ -158,7 +141,7 @@ describe("cron monitor chat event queue", () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
-      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(4) } }),
+      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(3) } }),
       [500],
     );
 

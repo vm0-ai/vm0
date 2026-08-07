@@ -2,10 +2,11 @@ import { command } from "ccstate";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
 
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { usageUnderbillingFields } from "../usage-underbilling";
@@ -18,10 +19,12 @@ import {
 } from "./zero-credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
+import type { Tx } from "../../lib/db-types";
+import { usagePackCreditGrantSchemaAvailable } from "./usage-pack-credit.service";
 
 const L = logger("CreditUsage");
 
-type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type WriteTx = Tx;
 
 async function deductOrgCredits(
   tx: WriteTx,
@@ -54,7 +57,11 @@ async function getOrgCredits(tx: WriteTx, orgId: string): Promise<number> {
   return metadata?.credits ?? 0;
 }
 
-async function expireCredits(tx: WriteTx, orgId: string): Promise<number> {
+async function expireCredits(
+  tx: WriteTx,
+  orgId: string,
+  at: Date,
+): Promise<number> {
   const expired = await tx
     .select({
       id: creditExpiresRecord.id,
@@ -64,7 +71,7 @@ async function expireCredits(tx: WriteTx, orgId: string): Promise<number> {
     .where(
       and(
         eq(creditExpiresRecord.orgId, orgId),
-        lte(creditExpiresRecord.expiresAt, nowDate()),
+        lte(creditExpiresRecord.expiresAt, at),
         gt(creditExpiresRecord.remaining, 0),
       ),
     )
@@ -101,6 +108,7 @@ async function deductFromExpiresRecords(
   tx: WriteTx,
   orgId: string,
   amount: number,
+  at: Date,
 ): Promise<void> {
   if (amount <= 0) {
     return;
@@ -116,7 +124,7 @@ async function deductFromExpiresRecords(
       and(
         eq(creditExpiresRecord.orgId, orgId),
         gt(creditExpiresRecord.remaining, 0),
-        gt(creditExpiresRecord.expiresAt, nowDate()),
+        gt(creditExpiresRecord.expiresAt, at),
       ),
     )
     .orderBy(asc(creditExpiresRecord.expiresAt))
@@ -137,8 +145,60 @@ async function deductFromExpiresRecords(
   // If left > 0, the excess comes from non-expiring credits — that's fine.
 }
 
+async function deductFromUsagePackCredits(
+  tx: WriteTx,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly amount: number;
+    readonly at: Date;
+  },
+): Promise<number> {
+  if (args.amount <= 0) {
+    return 0;
+  }
+
+  if (!(await usagePackCreditGrantSchemaAvailable(tx))) {
+    return args.amount;
+  }
+  const grants = await tx
+    .select({
+      id: usagePackCreditGrants.id,
+      remainingAmount: usagePackCreditGrants.remainingAmount,
+    })
+    .from(usagePackCreditGrants)
+    .where(
+      and(
+        eq(usagePackCreditGrants.orgId, args.orgId),
+        eq(usagePackCreditGrants.userId, args.userId),
+        gt(usagePackCreditGrants.remainingAmount, 0),
+        gt(usagePackCreditGrants.expiresAt, args.at),
+      ),
+    )
+    .orderBy(
+      sql`CASE ${usagePackCreditGrants.grantType} WHEN 'purchased' THEN 0 ELSE 1 END`,
+      asc(usagePackCreditGrants.expiresAt),
+      asc(usagePackCreditGrants.id),
+    )
+    .for("update");
+
+  let remainingCharge = args.amount;
+  for (const grant of grants) {
+    if (remainingCharge <= 0) {
+      break;
+    }
+    const deduction = Math.min(remainingCharge, grant.remainingAmount);
+    await tx
+      .update(usagePackCreditGrants)
+      .set({ remainingAmount: grant.remainingAmount - deduction })
+      .where(eq(usagePackCreditGrants.id, grant.id));
+    remainingCharge -= deduction;
+  }
+  return remainingCharge;
+}
+
 interface ProcessOrgUsageEventsResult {
-  readonly billableCredits: number;
+  readonly sharedCreditsCharged: number;
   readonly runIds: readonly string[];
   readonly lowBalanceAlert: CreditLowBalanceAlertArgs | null;
 }
@@ -300,7 +360,7 @@ async function processOrgUsageEventsInTransaction(
 
   if (pendingRecords.length === 0) {
     return {
-      billableCredits: 0,
+      sharedCreditsCharged: 0,
       runIds: [],
       lowBalanceAlert: null,
     };
@@ -328,11 +388,14 @@ async function processOrgUsageEventsInTransaction(
         };
       }),
     });
-  let billableCredits = 0;
+  const billableCreditsByUser = new Map<string, number>();
   const settlementOutcomes = pricedEvents.map((event) => {
     const allowanceUnits = allowanceByUsageEvent.get(event.record.id) ?? 0;
     const creditsCharged = event.grossCredits - allowanceUnits;
-    billableCredits += creditsCharged;
+    billableCreditsByUser.set(
+      event.record.userId,
+      (billableCreditsByUser.get(event.record.userId) ?? 0) + creditsCharged,
+    );
     return {
       usageEventId: event.record.id,
       creditsCharged,
@@ -342,15 +405,37 @@ async function processOrgUsageEventsInTransaction(
   await markUsageEventsProcessed(tx, settlementOutcomes);
   signal.throwIfAborted();
 
+  const settlementTime = nowDate();
+  let sharedCreditsCharged = 0;
+  const memberCharges = [...billableCreditsByUser.entries()].sort(
+    ([leftUserId], [rightUserId]) => {
+      return leftUserId.localeCompare(rightUserId);
+    },
+  );
+  for (const [userId, amount] of memberCharges) {
+    sharedCreditsCharged += await deductFromUsagePackCredits(tx, {
+      orgId,
+      userId,
+      amount,
+      at: settlementTime,
+    });
+  }
+  signal.throwIfAborted();
+
   let lowBalanceAlert: CreditLowBalanceAlertArgs | null = null;
-  if (billableCredits > 0) {
+  if (sharedCreditsCharged > 0) {
     // Order matters: settle expired credits BEFORE the new deduction.
     const beforeCredits = await getOrgCredits(tx, orgId);
-    const totalExpired = await expireCredits(tx, orgId);
+    const totalExpired = await expireCredits(tx, orgId, settlementTime);
     const effectiveBeforeCredits = Math.max(beforeCredits - totalExpired, 0);
-    await deductOrgCredits(tx, orgId, billableCredits);
+    await deductOrgCredits(tx, orgId, sharedCreditsCharged);
     const afterCredits = await getOrgCredits(tx, orgId);
-    await deductFromExpiresRecords(tx, orgId, billableCredits);
+    await deductFromExpiresRecords(
+      tx,
+      orgId,
+      sharedCreditsCharged,
+      settlementTime,
+    );
     if (
       effectiveBeforeCredits > LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS &&
       afterCredits <= LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS
@@ -363,16 +448,16 @@ async function processOrgUsageEventsInTransaction(
     }
   }
   signal.throwIfAborted();
-  return { billableCredits, runIds, lowBalanceAlert };
+  return { sharedCreditsCharged, runIds, lowBalanceAlert };
 }
 
 /**
- * Atomically process pending usage_event records for an org and deduct
- * the allowance-uncovered total from the org's credit balance.
+ * Atomically process pending usage_event records for an org. Allowance is
+ * applied first, then each member's usage pack grants, then shared org credits.
  *
  * Mirrors apps/web's `processOrgUsageEvents`. The transactional invariant
- * is critical: events are marked processed IFF the credit deduction
- * succeeds. If any helper throws, the whole transaction rolls back.
+ * is critical: events are marked processed IFF every applicable credit
+ * deduction succeeds. If any helper throws, the whole transaction rolls back.
  *
  * Acquires `pg_advisory_xact_lock(hashtext('credit_' || orgId))` —
  * verbatim same key string as web so api and web serialize correctly on
@@ -392,13 +477,13 @@ export const processOrgUsageEvents$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
 
-    const { billableCredits, runIds, lowBalanceAlert } =
+    const { sharedCreditsCharged, runIds, lowBalanceAlert } =
       await writeDb.transaction((tx) => {
         return processOrgUsageEventsInTransaction(tx, orgId, signal);
       });
     signal.throwIfAborted();
 
-    if (billableCredits > 0) {
+    if (sharedCreditsCharged > 0) {
       // Auto-recharge runs OUTSIDE the deduction transaction (Stripe
       // can't be transactional with DB). triggerAutoRecharge$ catches
       // its own errors (clearPendingFlag in catch); the await here is

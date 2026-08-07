@@ -560,6 +560,8 @@
         "label": "Filtros de tipo de artefacto",
         "presentation": "Presentaciones",
         "presentationAria": "Mostrar artefactos de presentación",
+        "sharedConversation": "Conversaciones compartidas",
+        "sharedConversationAria": "Mostrar artefactos de conversaciones compartidas",
         "video": "Vídeos",
         "videoAria": "Mostrar artefactos de vídeo",
         "website": "Sitios web",
@@ -608,6 +610,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentación",
+      "sharedConversation": "Conversación compartida",
       "text": "Texto",
       "video": "Vídeo"
     },
@@ -638,6 +641,7 @@
       "videoLabel": "Vista previa de vídeo para {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Abrir conversación compartida",
       "panelTitle": "Artefactos",
       "singularTitle": "Artefacto",
       "unavailable": "Este artefacto ya no está disponible."
@@ -979,7 +983,34 @@
         "name": "Equipo"
       },
       "upgrade": "Actualización",
-      "upgradeTo": "Actualizar a {{plan}}"
+      "upgradeTo": "Actualizar a {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} créditos extra",
+        "changePlan": "Cambiar plan",
+        "choosePlan": "Elige un plan",
+        "choosePlanDescription": "Elige primero el plan del espacio de trabajo. Los paquetes de miembros se configuran después.",
+        "configurePackages": "Configurar paquetes de miembros",
+        "configurePackagesDescription": "Elige un paquete obligatorio para cada miembro y revisa el total mensual combinado.",
+        "currentMember": "Miembro actual",
+        "description": "Elige un paquete de uso mensual para cada miembro.",
+        "discountBonusCredits": "Créditos extra por descuento",
+        "memberExclusive": "Cada paquete pertenece a un miembro y no se puede compartir. Cuando se agota, el uso vuelve a los créditos de pago por uso. Puedes actualizar a un paquete nuevo más adelante.",
+        "memberPackages": "Paquetes de miembros",
+        "memberUsage": "Uso del miembro",
+        "memberUsageTotal": "Total de paquetes mensuales",
+        "minimumPackageBreakdown": "Plan de {{base}} + paquete obligatorio de {{package}} para un miembro",
+        "monthlyTotal": "Total mensual",
+        "orderSummary": "Resumen del pedido",
+        "packagesStep": "Paquetes",
+        "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",
+        "planStep": "Plan",
+        "purchaseSteps": "Pasos de compra",
+        "selectedPlan": "Plan seleccionado",
+        "selectPlan": "Seleccionar {{plan}}",
+        "selectUsage": "Uso de {{name}}",
+        "startingAt": "Desde",
+        "totalCredits": "Créditos totales"
+      }
     },
     "restore": {
       "cancellationDescription": "Esto anulará la cancelación programada de tu plan {{plan}}.",
@@ -1083,7 +1114,6 @@
     "actions": {
       "authorize": "Autorizar",
       "cancel": "Cancelar",
-      "configure": "Configurar",
       "confirm": "Confirmar",
       "continue": "Continuar",
       "copied": "¡Copiado!",
@@ -1177,6 +1207,7 @@
         "googleCalendarCancelled": "Evento de Google Calendar cancelado",
         "googleCalendarCreated": "Evento de Google Calendar creado",
         "googleCalendarUpdated": "Evento de Google Calendar actualizado",
+        "googleFormsResponseSubmitted": "Respuesta de Google Forms enviada",
         "googleMeetTranscript": "Transcripción de Google Meet disponible",
         "notionChildPage": "Nueva página secundaria de Notion",
         "notionDatabaseItem": "Nuevo elemento de base de datos de Notion",
@@ -1319,7 +1350,6 @@
       "available_other": "Conectores disponibles para conectar ({{count}})",
       "configurePermissions": "Configurar permisos de {{connectorName}}",
       "customAuthorizeDescription": "Revisa, conecta y autoriza este conector personalizado para el agente.",
-      "customConnectDescription": "Revisa y conecta este conector personalizado.",
       "find": "Buscar conectores...",
       "remove": "Eliminar {{connectorName}}",
       "title": "Conectores"
@@ -1537,6 +1567,23 @@
       "worked": "Trabajo realizado",
       "workedFor": "Trabajo realizado durante {{duration}}"
     },
+    "sharing": {
+      "cancel": "Cancelar",
+      "close": "Cerrar",
+      "copyFailed": "No se pudo copiar el enlace",
+      "copyLink": "Copiar enlace",
+      "create": "Compartir",
+      "createFailed": "No se pudo crear la conversación compartida. Inténtalo de nuevo.",
+      "deselectGroup": "Deseleccionar grupo de mensajes",
+      "linkCopied": "Enlace copiado",
+      "selectedCount_one": "{{count}} seleccionado",
+      "selectedCount_many": "{{count}} seleccionados",
+      "selectedCount_other": "{{count}} seleccionados",
+      "selectGroup": "Seleccionar grupo de mensajes",
+      "shareLink": "Enlace de conversación compartida",
+      "start": "Compartir mensajes",
+      "tooLarge": "Selecciona menos mensajes para compartir"
+    },
     "shortcuts": {
       "number": "Número"
     },
@@ -1663,7 +1710,6 @@
       "edit": "Editar",
       "grant": "Conceder",
       "reconnect": "Volver a conectar",
-      "rename": "Renombrar",
       "revoke": "Revocar",
       "save": "Guardar",
       "saving": "Guardando...",
@@ -1914,17 +1960,12 @@
       "emptyAdmin": "Todavía no hay conectores personalizados. Crea uno para registrar una API para que cada miembro la use.",
       "emptyMember": "Tu organización aún no ha registrado ningún conector personalizado.",
       "moreOptions": "Más opciones",
-      "rename": {
-        "displayName": "Nombre de visualización",
-        "title": "Renombrar conector personalizado"
-      },
       "statusConnected": "Conectado",
       "toasts": {
         "connected": "Conectado",
         "created": "Se ha creado \"{{connector}}\"",
         "deleted": "Conector personalizado eliminado",
         "disconnected": "Desconectado",
-        "renamed": "Se ha cambiado el nombre a \"{{connector}}\"",
         "updated": "Se ha actualizado \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1932,19 +1973,6 @@
         "description": "Estos cambios en OAuth desconectarán a todos los miembros que estén conectados con OAuth. Tendrán que volver a conectar este conector personalizado.",
         "title": "¿Desconectar conexiones OAuth existentes?"
       }
-    },
-    "customProposal": {
-      "configure": "Configurar {{connector}}",
-      "descriptionAgent": "Al guardar, se conectarán tus valores y se autorizará a {{agent}}.",
-      "descriptionUser": "Al guardar, se conectará este conector personalizado a tu cuenta.",
-      "documentTitle": "Configurar conector personalizado",
-      "invalid": "Este enlace de propuesta de conector personalizado es inválido o está caducado.",
-      "requestScope": "Alcance de la solicitud",
-      "returnToChat": "Vuelve al chat y responde ACK para que el agente pueda verificar el conector.",
-      "saved": "Guardado",
-      "savedToast": "{{connector}} guardado",
-      "targetFallback": "este agente",
-      "update": "Actualizar {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Autoriza {{agent}}",
@@ -4634,6 +4662,12 @@
       "title": "Página no encontrada"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Esta conversación compartida no existe.",
+    "notFoundTitle": "Conversación compartida no encontrada",
+    "tryOkou": "Probar Okou"
+  },
   "usage": {
     "automations": {
       "empty": "No se usaron automatizaciones en este periodo",
@@ -4672,6 +4706,7 @@
       "imageRecognize": "Reconocimiento de imágenes",
       "maps": "Mapas",
       "peopleSearch": "Búsqueda de personas",
+      "translation": "Traducción",
       "usage": "Uso",
       "weather": "Tiempo",
       "webFetch": "Búsqueda web",
@@ -4813,6 +4848,11 @@
         "second_one": "{{count}} segundo",
         "second_many": "{{count}} segundos",
         "second_other": "{{count}} segundos"
+      },
+      "forms": {
+        "responseSubmittedTitle": "Respuesta de Google Forms enviada",
+        "rule": "Cuando {{form}} recibe una respuesta",
+        "summary": "Formulario {{form}}"
       },
       "github": {
         "accountConnect": "Conectar GitHub",
@@ -5136,6 +5176,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",

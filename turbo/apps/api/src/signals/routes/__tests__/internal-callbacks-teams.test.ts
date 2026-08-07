@@ -42,6 +42,7 @@ import {
   teamsMessageActivityForTest,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -962,7 +963,9 @@ describe("Teams chat callbacks", () => {
     });
     mocks.clerk.session(teams.fixture.userId, teams.fixture.orgId, "org:admin");
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -975,7 +978,9 @@ describe("Teams chat callbacks", () => {
       throw new Error("Expected the canonical Teams chat thread");
     }
     const threadMessages = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: createdThread.chatThreadId },
         query: {},
@@ -1055,7 +1060,9 @@ describe("Teams chat callbacks", () => {
       },
     ]);
     const completedThreadMessages = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: createdThread.chatThreadId },
         query: {},

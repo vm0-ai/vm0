@@ -56,9 +56,10 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * Physical storage for the immutable ChatEvent stream.
  * Each row is one typed event belonging to a chat_thread.
  *
- * User and automation inputs are persisted immediately. A run-less,
- * unrevoked input event is pending queue state; its run-attributed replacement
- * is the immutable claim.
+ * User, automation, goal, and budget inputs are persisted immediately. A
+ * run-less, unrevoked prompt, automation, or goal is pending thread queue
+ * state. A run-scoped budget is pending active input. Their run-attributed
+ * replacements are the immutable claims.
  *
  * Assistant rows are appended after run output exists. Queue marker control
  * rows can also be appended for queued runs and later revoked when the run
@@ -89,7 +90,7 @@ export const chatEvents = pgTable(
       )
       .notNull(),
     // Attribution only: identifies the run that consumed or produced this row.
-    // A null value on an unrevoked input.prompt/input.automation/input.goal is pending.
+    // A null value on an unrevoked input identifies pending queue or active-input state.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatEventUsagePayload>(),
     revokesEventId: uuid("revokes_event_id").references(
@@ -203,6 +204,7 @@ export const chatEvents = pgTable(
           'input.prompt',
           'input.automation',
           'input.goal',
+          'input.budget',
           'input.rejected',
           'output.message',
           'output.error',
@@ -223,12 +225,12 @@ export const chatEvents = pgTable(
       ),
       check(
         "chat_events_input_user_message_check",
-        sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
           OR ${table.userMessage} IS NOT NULL`,
       ),
       check(
         "chat_events_input_content_check",
-        sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
           OR ${table.content} IS NULL`,
       ),
       check(
@@ -250,6 +252,11 @@ export const chatEvents = pgTable(
           'morning_brief',
           'agent_run'
         )`,
+      ),
+      check(
+        "chat_events_input_context_type_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.automation', 'input.goal', 'input.budget')
+          OR ${table.contextType} IS NOT NULL`,
       ),
     ];
   },

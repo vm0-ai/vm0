@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
@@ -51,6 +51,7 @@ import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.servic
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
 
@@ -73,7 +74,7 @@ const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE = "oauth.access_token";
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 export interface CustomConnectorOAuthConfigRow {
   readonly connectorId: string;
@@ -108,6 +109,7 @@ export interface CustomConnectorRow {
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
   readonly skillMarkdown: string | null;
   readonly revision: number;
+  readonly storageVersion: number;
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -154,6 +156,13 @@ interface ValueMarker {
   readonly kind: CustomConnectorFieldKind;
   readonly key: string;
 }
+
+type EncryptedCustomConnectorValue = Omit<
+  CustomConnectorValueInput,
+  "value"
+> & {
+  readonly encryptedValue: string;
+};
 
 export class CustomConnectorRuntimePrefixError extends Error {
   constructor(connectorName: string | undefined) {
@@ -495,6 +504,7 @@ export function serialiseCustomConnector(args: {
     permissionBundleRef: effectivePermissionBundleRef(args.row),
     skillMarkdown: args.row.skillMarkdown,
     revision: args.row.revision,
+    storageVersion: args.row.storageVersion,
     connected,
     missingRequiredFields: [...responseMissingRequiredFields],
     configuredFieldKeys: [...configured],
@@ -504,7 +514,7 @@ export function serialiseCustomConnector(args: {
   };
 }
 
-export function validateDisplayName(raw: string): string | BadRequestResponse {
+function validateDisplayName(raw: string): string | BadRequestResponse {
   const displayName = raw.trim();
   if (displayName.length < 1 || displayName.length > 128) {
     return badRequestMessage(
@@ -2001,6 +2011,27 @@ function validateValueInputs(args: {
   });
 }
 
+async function encryptCustomConnectorValues(args: {
+  readonly values: readonly CustomConnectorValueInput[];
+  readonly featureSwitchContext: FeatureSwitchContextArg;
+  readonly signal: AbortSignal;
+}): Promise<readonly EncryptedCustomConnectorValue[]> {
+  const encryptedValues: EncryptedCustomConnectorValue[] = [];
+  for (const value of args.values) {
+    const encryptedValue = await encryptStoredSecretValue(
+      value.value,
+      args.featureSwitchContext,
+    );
+    args.signal.throwIfAborted();
+    encryptedValues.push({
+      key: value.key,
+      kind: value.kind,
+      encryptedValue,
+    });
+  }
+  return encryptedValues;
+}
+
 export const setCustomConnectorValues$ = command(
   async (
     { get, set },
@@ -2039,60 +2070,87 @@ export const setCustomConnectorValues$ = command(
     );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    for (const value of values) {
-      const encryptedValue = await encryptStoredSecretValue(
-        value.value,
-        featureSwitchContext,
-      );
-      signal.throwIfAborted();
-      await writeDb
-        .insert(orgCustomConnectorValues)
-        .values({
-          connectorId: args.connectorId,
-          userId: args.userId,
-          orgId: args.orgId,
-          kind: value.kind,
-          key: value.key,
-          encryptedValue,
-        })
-        .onConflictDoUpdate({
-          target: [
-            orgCustomConnectorValues.connectorId,
-            orgCustomConnectorValues.userId,
-            orgCustomConnectorValues.kind,
-            orgCustomConnectorValues.key,
-          ],
-          set: {
-            encryptedValue,
-            updatedAt: nowDate(),
-          },
-        });
-      signal.throwIfAborted();
-
-      if (
-        args.syncLegacySecret &&
-        value.kind === "secret" &&
-        value.key === LEGACY_SECRET_KEY
-      ) {
-        await writeDb
-          .insert(orgCustomConnectorSecrets)
+    const encryptedValues = await encryptCustomConnectorValues({
+      values,
+      featureSwitchContext,
+      signal,
+    });
+    if (encryptedValues.length > 0) {
+      await writeDb.transaction(async (tx) => {
+        await tx
+          .insert(connectors)
           .values({
-            connectorId: args.connectorId,
+            customConnectorId: args.connectorId,
+            authMethod: "manual",
+            storageVersion: connector.storageVersion,
             userId: args.userId,
             orgId: args.orgId,
-            encryptedValue,
           })
           .onConflictDoUpdate({
             target: [
-              orgCustomConnectorSecrets.connectorId,
-              orgCustomConnectorSecrets.userId,
+              connectors.orgId,
+              connectors.userId,
+              connectors.customConnectorId,
             ],
+            targetWhere: isNotNull(connectors.customConnectorId),
             set: {
-              encryptedValue,
+              authMethod: "manual",
+              storageVersion: connector.storageVersion,
               updatedAt: nowDate(),
             },
           });
-      }
+
+        for (const value of encryptedValues) {
+          await tx
+            .insert(orgCustomConnectorValues)
+            .values({
+              connectorId: args.connectorId,
+              userId: args.userId,
+              orgId: args.orgId,
+              kind: value.kind,
+              key: value.key,
+              encryptedValue: value.encryptedValue,
+            })
+            .onConflictDoUpdate({
+              target: [
+                orgCustomConnectorValues.connectorId,
+                orgCustomConnectorValues.userId,
+                orgCustomConnectorValues.kind,
+                orgCustomConnectorValues.key,
+              ],
+              set: {
+                encryptedValue: value.encryptedValue,
+                updatedAt: nowDate(),
+              },
+            });
+          signal.throwIfAborted();
+
+          if (
+            args.syncLegacySecret &&
+            value.kind === "secret" &&
+            value.key === LEGACY_SECRET_KEY
+          ) {
+            await tx
+              .insert(orgCustomConnectorSecrets)
+              .values({
+                connectorId: args.connectorId,
+                userId: args.userId,
+                orgId: args.orgId,
+                encryptedValue: value.encryptedValue,
+              })
+              .onConflictDoUpdate({
+                target: [
+                  orgCustomConnectorSecrets.connectorId,
+                  orgCustomConnectorSecrets.userId,
+                ],
+                set: {
+                  encryptedValue: value.encryptedValue,
+                  updatedAt: nowDate(),
+                },
+              });
+          }
+        }
+      });
     }
     signal.throwIfAborted();
 
@@ -2170,15 +2228,31 @@ export const disconnectCustomConnector$ = command(
             eq(orgCustomConnectorSecrets.orgId, args.orgId),
           ),
         );
-      await tx
-        .delete(connectors)
-        .where(
-          and(
-            eq(connectors.customConnectorId, args.connectorId),
-            eq(connectors.userId, args.userId),
-            eq(connectors.orgId, args.orgId),
-          ),
-        );
+      const [remainingValue] =
+        connector.authMode === "manual"
+          ? await tx
+              .select({ id: orgCustomConnectorValues.id })
+              .from(orgCustomConnectorValues)
+              .where(
+                and(
+                  eq(orgCustomConnectorValues.connectorId, args.connectorId),
+                  eq(orgCustomConnectorValues.userId, args.userId),
+                  eq(orgCustomConnectorValues.orgId, args.orgId),
+                ),
+              )
+              .limit(1)
+          : [];
+      if (!remainingValue) {
+        await tx
+          .delete(connectors)
+          .where(
+            and(
+              eq(connectors.customConnectorId, args.connectorId),
+              eq(connectors.userId, args.userId),
+              eq(connectors.orgId, args.orgId),
+            ),
+          );
+      }
     });
     signal.throwIfAborted();
     return undefined;

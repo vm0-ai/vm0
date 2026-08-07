@@ -87,6 +87,32 @@ import {
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
+import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
+import { cronConnectorCatalogRoutes } from "../cron-connector-catalog";
+import { runnersRoutes } from "../runners";
+import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
+import { zeroConnectorCheckRoutes } from "../zero-connector-check";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { zeroSteamPlayerRoutes } from "../zero-steam-player";
+import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...connectorsSlugCallbackRoutes,
+  ...cronConnectorCatalogRoutes,
+  ...runnersRoutes,
+  ...testSystemStoragePresignedUrlCacheStateRoutes,
+  ...zeroConnectorCatalogRoutes,
+  ...zeroConnectorCheckRoutes,
+  ...zeroConnectorsRoutes,
+  ...zeroFeatureSwitchesRoutes,
+  ...zeroSteamPlayerRoutes,
+  ...zeroUserPermissionGrantsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowsRoutes,
+]);
 
 const context = testContext();
 const zeroMocks = createZeroRouteMocks(context);
@@ -96,7 +122,7 @@ const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-const ACTIVE_KEY = "connectors/v2/active.json";
+const ACTIVE_KEY = "connectors/v3/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const DIAGNOSTICS_USER_ID = `user_${randomUUID()}`;
 const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
@@ -208,7 +234,7 @@ function catalogTemplate(reference: string): string {
 function releaseKeys(version: string): {
   readonly catalog: string;
 } {
-  const prefix = `connectors/v2/releases/${version}`;
+  const prefix = `connectors/v3/releases/${version}`;
   return {
     catalog: `${prefix}/catalog.json`,
   };
@@ -352,7 +378,6 @@ function publicAuthMethod(args: {
     label: `${args.id} auth`,
     description: null,
     visible: true,
-    featureSwitch: null,
     grantKind: args.grantKind,
     manualFields: args.manual
       ? [
@@ -1053,7 +1078,6 @@ function canonicalAuthMethod(
         "label",
         "description",
         "visible",
-        "featureSwitch",
         "grantKind",
         "manualFields",
         "startOptions",
@@ -1067,7 +1091,6 @@ function canonicalAuthMethod(
     label: publicMethod.label,
     description: publicMethod.description,
     visible: publicMethod.visible,
-    featureSwitch: publicMethod.featureSwitch,
     ...(privateMethod.client === undefined
       ? {}
       : { client: privateMethod.client }),
@@ -1096,7 +1119,7 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
     "platform/views/zero-page/components/settings/icons/" +
     `${connectorSlug}-${iconDigest.slice("sha256:".length, 19)}.svg`;
   const catalog: JsonRecord = {
-    artifactSchemaVersion: 2,
+    artifactSchemaVersion: 3,
     catalogVersion: options.version,
     categoryMetadata: {
       categories: [
@@ -1341,15 +1364,21 @@ function cronHeaders(secret = CRON_SECRET): { readonly authorization: string } {
 }
 
 function cronClient() {
-  return setupApp({ context })(cronConnectorCatalogContract);
+  return setupApp({ context, routes: cronConnectorCatalogRoutes })(
+    cronConnectorCatalogContract,
+  );
 }
 
 function diagnosticsClient() {
-  return setupApp({ context })(zeroConnectorCatalogContract);
+  return setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+    zeroConnectorCatalogContract,
+  );
 }
 
 function runnerFirewallClient() {
-  return setupApp({ context })(runnersBuiltinFirewallsResolveContract);
+  return setupApp({ context, routes: runnersRoutes })(
+    runnersBuiltinFirewallsResolveContract,
+  );
 }
 
 interface VolumeStorageState {
@@ -1425,7 +1454,9 @@ async function syncCatalog() {
 async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
   await accept(
-    setupApp({ context })(zeroFeatureSwitchesContract).update({
+    setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      zeroFeatureSwitchesContract,
+    ).update({
       headers: { authorization: "Bearer clerk-session" },
       body: { switches: { [FeatureSwitchKey.ZeroDebug]: true } },
     }),
@@ -1434,7 +1465,9 @@ async function enableDiagnosticsFeatureSwitch(): Promise<void> {
   onTestFinished(async () => {
     zeroMocks.clerk.session(DIAGNOSTICS_USER_ID, DIAGNOSTICS_ORG_ID);
     await accept(
-      setupApp({ context })(zeroFeatureSwitchesContract).delete({
+      setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+        zeroFeatureSwitchesContract,
+      ).delete({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -1453,7 +1486,10 @@ async function readStatus() {
 }
 
 async function rawCronRequest(path: string): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(path, {
+  return await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(path, {
     method: "GET",
   });
 }
@@ -1617,7 +1653,9 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -1647,8 +1685,13 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
-    const searchClient = setupApp({ context })(zeroConnectorsSearchContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
+    const searchClient = setupApp({ context, routes: zeroConnectorsRoutes })(
+      zeroConnectorsSearchContract,
+    );
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
 
     const list = await accept(catalogClient.list({ headers }), [200]);
@@ -1805,7 +1848,9 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).permissions({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).permissions({
         params: { connectorSlug: release.connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -1826,7 +1871,10 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const callsBeforePublicReads = context.mocks.s3.send.mock.calls.length;
 
     const [list, detail] = await Promise.all([
@@ -1863,7 +1911,9 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const digestResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1882,7 +1932,9 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const jsonResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1907,7 +1959,9 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const identityResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1926,7 +1980,9 @@ describe("connector catalog valid lifecycle", () => {
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const nonObjectResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1942,13 +1998,15 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: schemaRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 3,
+        artifactSchemaVersion: 4,
         catalogVersion: schemaRelease.version,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const schemaResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1964,12 +2022,14 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: shapeRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 2,
+        artifactSchemaVersion: 3,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
     const shapeResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -1997,7 +2057,9 @@ describe("connector catalog valid lifecycle", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const semanticResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -2018,7 +2080,9 @@ describe("connector catalog valid lifecycle", () => {
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(corruptedEvaluations).toHaveLength(1);
     const compatibilityResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -2036,7 +2100,9 @@ describe("connector catalog valid lifecycle", () => {
       await readApiTestConnectorCatalogCompatibilityEvaluations();
     expect(remainingEvaluations).toHaveLength(0);
     const missingResponse = await accept(
-      setupApp({ context })(zeroConnectorCatalogContract).list({
+      setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+        zeroConnectorCatalogContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
       }),
       [503],
@@ -2051,20 +2117,20 @@ describe("connector catalog valid lifecycle", () => {
       grantKind: "manual",
       manual: true,
     });
-    gated.featureSwitch = "awsConnector";
     const visible = publicAuthMethod({
       id: "cli",
       grantKind: "manual",
       manual: true,
     });
     const hidden = publicAuthMethod({
-      id: "api",
+      id: "oauth",
       grantKind: "manual",
       manual: true,
     });
     hidden.visible = false;
     const release = buildRelease({
       version: "2026-07-15.external-request-filters",
+      connectorSlug: "cal-com",
       mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [gated, visible, hidden]);
       },
@@ -2083,7 +2149,7 @@ describe("connector catalog valid lifecycle", () => {
             revoke: "none",
           }),
           manualPrivateAuthMethod({
-            id: "api",
+            id: "oauth",
             prefix: "HIDDEN",
             access: "static",
             revoke: "none",
@@ -2097,8 +2163,14 @@ describe("connector catalog valid lifecycle", () => {
     const orgId = `org_${randomUUID()}`;
     zeroMocks.clerk.session(userId, orgId);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
-    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
+    const featureClient = setupApp({
+      context,
+      routes: zeroFeatureSwitchesRoutes,
+    })(zeroFeatureSwitchesContract);
 
     const disabled = await accept(catalogClient.list({ headers }), [200]);
     expect(disabled.body.connectors[0]?.authMethods).toStrictEqual([
@@ -2114,7 +2186,7 @@ describe("connector catalog valid lifecycle", () => {
       featureClient.update({
         headers,
         body: {
-          switches: { [FeatureSwitchKey.AwsConnector]: true },
+          switches: { [FeatureSwitchKey.CalComConnector]: true },
         },
       }),
       [200],
@@ -2127,23 +2199,21 @@ describe("connector catalog valid lifecycle", () => {
     ).toStrictEqual(["api-token", "cli"]);
     await accept(featureClient.delete({ headers }), [200]);
 
-    const unsupported = buildRelease({
-      version: "2026-07-15.external-all-incompatible",
-      mutateCatalog: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.featureSwitch = "futureConnectorSwitch";
-      },
+    const graduated = buildRelease({
+      version: "2026-07-15.external-graduated-switch",
     });
-    serveObjects(catalogObjects([release, unsupported], unsupported));
+    serveObjects(catalogObjects([release, graduated], graduated));
     await syncCatalog();
-    const allFiltered = await accept(catalogClient.list({ headers }), [200]);
-    expect(allFiltered.body).toStrictEqual({
-      connectors: [],
-      categoryMetadata: { categories: [], groups: [] },
-    });
+    const graduatedVisible = await accept(
+      catalogClient.list({ headers }),
+      [200],
+    );
+    expect(graduatedVisible.body.connectors).toMatchObject([
+      {
+        slug: "external-test",
+        authMethods: [{ id: "api-token" }],
+      },
+    ]);
   });
 
   it("executes an external manual grant with catalog-owned storage", async () => {
@@ -2634,7 +2704,9 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const check = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: zeroConnectorCheckRoutes })(
+        zeroConnectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "url",
@@ -2670,7 +2742,9 @@ describe("connector catalog valid lifecycle", () => {
       "https://api.example.test/custom/",
     ]);
     const grants = await accept(
-      setupApp({ context })(zeroUserPermissionGrantsContract).apply({
+      setupApp({ context, routes: zeroUserPermissionGrantsRoutes })(
+        zeroUserPermissionGrantsContract,
+      ).apply({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           agentId: agent.agentId,
@@ -3256,7 +3330,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "api",
           grantKind: "device-auth",
         });
-        method.featureSwitch = "testOauthConnector";
         method.startOptions = [
           {
             id: "environment",
@@ -3381,7 +3454,9 @@ describe("connector catalog valid lifecycle", () => {
     const headers = { authorization: "Bearer clerk-session" };
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
-      setupApp({ context })(zeroConnectorOpenIdStartContract).start({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorOpenIdStartContract,
+      ).start({
         params: { connectorSlug: "steam" },
         headers,
         body: { authMethod: "openid" },
@@ -3390,7 +3465,9 @@ describe("connector catalog valid lifecycle", () => {
     );
     mockSteamOpenIdVerification();
     await accept(
-      setupApp({ context })(connectorsSlugCallbackContract).callback({
+      setupApp({ context, routes: connectorsSlugCallbackRoutes })(
+        connectorsSlugCallbackContract,
+      ).callback({
         params: { connectorSlug: "steam" },
         headers: {},
         query: steamOpenIdCallbackQuery(start.body.authorizationUrl),
@@ -3399,7 +3476,9 @@ describe("connector catalog valid lifecycle", () => {
     );
     mockSteamPlayerApisForCatalog();
     const player = await accept(
-      setupApp({ context })(zeroSteamPlayerContract).getPlayer({ headers }),
+      setupApp({ context, routes: zeroSteamPlayerRoutes })(
+        zeroSteamPlayerContract,
+      ).getPlayer({ headers }),
       [200],
     );
     expect(player.body).toMatchObject({
@@ -3434,7 +3513,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "cli",
           grantKind: "external-code",
         });
-        method.featureSwitch = "awsConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -3823,7 +3901,9 @@ describe("connector catalog valid lifecycle", () => {
     });
     created.agentId = agent.agentId;
     const workflow = await accept(
-      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+      setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsCollectionContract,
+      ).create({
         headers,
         body: {
           agentId: agent.agentId,
@@ -3835,7 +3915,9 @@ describe("connector catalog valid lifecycle", () => {
     );
     created.workflowId = workflow.body.id;
     await accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+        zeroWorkflowAutomationsContract,
+      ).create({
         headers,
         params: { workflowId: workflow.body.id },
         body: {
@@ -3909,7 +3991,9 @@ describe("connector catalog valid lifecycle", () => {
 
     const callsBeforeReadiness = context.mocks.s3.send.mock.calls.length;
     const readiness = await accept(
-      setupApp({ context })(zeroWorkflowsDetailContract).connectorReadiness({
+      setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsDetailContract,
+      ).connectorReadiness({
         headers,
         params: { workflowId: workflow.body.id },
       }),
@@ -4016,7 +4100,9 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
     const workflow = await accept(
-      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+      setupApp({ context, routes: zeroWorkflowsRoutes })(
+        zeroWorkflowsCollectionContract,
+      ).create({
         headers,
         body: {
           agentId: agent.agentId,
@@ -4065,7 +4151,9 @@ describe("connector catalog valid lifecycle", () => {
     );
 
     const firstCreate = accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+        zeroWorkflowAutomationsContract,
+      ).create({
         headers,
         params: { workflowId: workflow.body.id },
         body: {
@@ -4107,7 +4195,9 @@ describe("connector catalog valid lifecycle", () => {
     });
 
     await accept(
-      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+      setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+        zeroWorkflowAutomationsContract,
+      ).create({
         headers,
         params: { workflowId: workflow.body.id },
         body: {
@@ -4135,7 +4225,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "oauth",
           grantKind: "auth-code",
         });
-        method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -4193,7 +4282,10 @@ describe("connector catalog valid lifecycle", () => {
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const connected = await accept(catalogClient.status({ headers }), [200]);
     expect(connected.body.connectors[0]).toMatchObject({
       slug: "datadog",
@@ -4223,7 +4315,6 @@ describe("connector catalog valid lifecycle", () => {
           id: "oauth",
           grantKind: "auth-code",
         });
-        method.featureSwitch = "datadogConnector";
         setArtifactAuthMethods(artifact, [method]);
       },
       mutateRuntime: (artifact) => {
@@ -4252,7 +4343,10 @@ describe("connector catalog valid lifecycle", () => {
     configureSource();
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const callsBeforeRead = context.mocks.s3.send.mock.calls.length;
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
 
     const catalogResponse = await accept(
@@ -4264,7 +4358,9 @@ describe("connector catalog valid lifecycle", () => {
       [503],
     );
     const searchResponse = await accept(
-      setupApp({ context })(zeroConnectorsSearchContract).search({
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsSearchContract,
+      ).search({
         headers,
         query: {},
       }),
@@ -4317,7 +4413,9 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const diagnostic = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: zeroConnectorCheckRoutes })(
+        zeroConnectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "url",
@@ -5079,7 +5177,10 @@ describe("connector catalog executable compatibility", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const unavailable = await accept(catalogClient.list({ headers }), [503]);
     expect(unavailable.body.error.code).toBe("PROVIDER_UNAVAILABLE");
 
@@ -5281,26 +5382,6 @@ describe("connector catalog executable compatibility", () => {
     });
   });
 
-  it("leaves feature-switch rollout out of executable compatibility", async () => {
-    configureSource();
-    const unknownSwitch = buildRelease({
-      version: "2026-07-15.unknown-feature-switch",
-      mutateCatalog: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.featureSwitch = "futureConnectorSwitch";
-      },
-    });
-    serveObjects(catalogObjects([unknownSwitch], unknownSwitch));
-
-    expect((await syncCatalog()).body.filtering).toMatchObject({
-      stale: false,
-      filteredAuthMethods: [],
-    });
-  });
-
   it("accepts inline confidential test clients and applies rollout at request time", async () => {
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
     const provider = mockTestOAuthAuthCodeProvider({
@@ -5311,7 +5392,6 @@ describe("connector catalog executable compatibility", () => {
       id: "oauth",
       grantKind: "auth-code",
     });
-    method.featureSwitch = "testOauthConnector";
     const release = buildRelease({
       version: "2026-07-24.inline-confidential-test-client",
       connectorSlug: "test-oauth",
@@ -5332,8 +5412,14 @@ describe("connector catalog executable compatibility", () => {
     onTestFinished(createConnectorCleanup(actor, "test-oauth"));
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
-    const featureClient = setupApp({ context })(zeroFeatureSwitchesContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
+    const featureClient = setupApp({
+      context,
+      routes: zeroFeatureSwitchesRoutes,
+    })(zeroFeatureSwitchesContract);
 
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body,
@@ -5445,7 +5531,9 @@ describe("connector catalog executable compatibility", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: zeroConnectorCheckRoutes })(
+        zeroConnectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "environment",
@@ -5620,7 +5708,10 @@ describe("connector catalog executable compatibility", () => {
     });
     const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-    const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
+    const catalogClient = setupApp({
+      context,
+      routes: zeroConnectorCatalogRoutes,
+    })(zeroConnectorCatalogContract);
     const headers = { authorization: "Bearer clerk-session" };
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body,
@@ -5927,7 +6018,9 @@ describe("connector catalog rejection and latest-valid retention", () => {
     });
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const diagnostic = await accept(
-      setupApp({ context })(zeroConnectorCheckContract).check({
+      setupApp({ context, routes: zeroConnectorCheckRoutes })(
+        zeroConnectorCheckContract,
+      ).check({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           mode: "url",
@@ -5979,7 +6072,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "legacy-pointer-reference",
           mutatePointer: (pointer) => {
             pointer.integrity = {
-              key: "connectors/v2/releases/legacy-pointer-reference/integrity/catalog.json",
+              key: "connectors/v3/releases/legacy-pointer-reference/integrity/catalog.json",
               digest: pointer.catalogDigest,
             };
             delete pointer.catalogDigest;
@@ -6006,7 +6099,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "unsupported-schema",
           mutateArtifact: (artifact) => {
-            artifact.artifactSchemaVersion = 3;
+            artifact.artifactSchemaVersion = 4;
           },
         });
       },

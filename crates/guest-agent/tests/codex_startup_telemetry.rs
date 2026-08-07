@@ -5,92 +5,17 @@ mod common;
 use serde_json::{Value, json};
 use shell_quote::quote_shell_arg;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
+use std::time::Duration;
+use tokio::process::Command;
 
 const CODEX_STARTUP_ACTION: &str = "codex_startup";
+const GUEST_AGENT_TIMEOUT: Duration = Duration::from_secs(20);
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-#[test]
-fn ordinary_codex_records_startup_success_once_at_turn_started() -> TestResult {
-    common::ensure_canonical_workspace_for_test()?;
-
-    let tmp = tempfile::tempdir()?;
-    let codex = tmp.path().join("codex");
-    let runtime_dir = tmp.path().join("runtime");
-    write_jsonl_executable(
-        &codex,
-        &[
-            json!({
-                "type": "thread.started",
-                "thread_id": "00000000-0000-4000-8000-000000000101"
-            }),
-            json!({"type": "turn.started"}),
-            json!({"type": "turn.started"}),
-            json!({
-                "type": "turn.completed",
-                "usage": {"input_tokens": 1, "output_tokens": 1}
-            }),
-        ],
-        false,
-    )?;
-    let run_payload_path = write_run_payload(&runtime_dir, "measure successful startup")?;
-
-    let output = run_guest_agent(GuestAgentInvocation {
-        framework: TestFramework::Codex {
-            binary: &codex,
-            app_server_scenario: None,
-        },
-        runtime_dir: &runtime_dir,
-        run_payload_path: &run_payload_path,
-        home: tmp.path(),
-        run_id: "codex-startup-success",
-    })?;
-
-    assert_guest_success(&output);
-    let operations = read_sandbox_operations(&runtime_dir)?;
-    assert_one_codex_startup(&operations, true)?;
-
-    Ok(())
-}
-
-#[test]
-fn ordinary_codex_exit_before_turn_started_records_startup_failure() -> TestResult {
-    common::ensure_canonical_workspace_for_test()?;
-
-    let tmp = tempfile::tempdir()?;
-    let codex = tmp.path().join("codex");
-    let runtime_dir = tmp.path().join("runtime");
-    write_jsonl_executable(
-        &codex,
-        &[json!({
-            "type": "thread.started",
-            "thread_id": "00000000-0000-4000-8000-000000000102"
-        })],
-        false,
-    )?;
-    let run_payload_path = write_run_payload(&runtime_dir, "measure failed startup")?;
-
-    let output = run_guest_agent(GuestAgentInvocation {
-        framework: TestFramework::Codex {
-            binary: &codex,
-            app_server_scenario: None,
-        },
-        runtime_dir: &runtime_dir,
-        run_payload_path: &run_payload_path,
-        home: tmp.path(),
-        run_id: "codex-startup-before-turn-exit",
-    })?;
-
-    assert_guest_success(&output);
-    let operations = read_sandbox_operations(&runtime_dir)?;
-    assert_one_codex_startup(&operations, false)?;
-
-    Ok(())
-}
-
-#[test]
-fn app_server_records_startup_success_at_primary_turn_started() -> TestResult {
+#[tokio::test]
+async fn codex_records_startup_success_at_primary_turn_started() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let mock_codex = common::build_and_locate_mock_codex()?;
@@ -107,7 +32,8 @@ fn app_server_records_startup_success_at_primary_turn_started() -> TestResult {
         run_payload_path: &run_payload_path,
         home: tmp.path(),
         run_id: "codex-app-server-startup-success",
-    })?;
+    })
+    .await?;
 
     assert_guest_success(&output);
     let operations = read_sandbox_operations(&runtime_dir)?;
@@ -116,8 +42,8 @@ fn app_server_records_startup_success_at_primary_turn_started() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn app_server_secondary_turn_started_does_not_complete_startup() -> TestResult {
+#[tokio::test]
+async fn codex_secondary_turn_started_does_not_complete_startup() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let mock_codex = common::build_and_locate_mock_codex()?;
@@ -134,7 +60,8 @@ fn app_server_secondary_turn_started_does_not_complete_startup() -> TestResult {
         run_payload_path: &run_payload_path,
         home: tmp.path(),
         run_id: "codex-app-server-secondary-startup",
-    })?;
+    })
+    .await?;
 
     assert_guest_success(&output);
     let operations = read_sandbox_operations(&runtime_dir)?;
@@ -143,8 +70,8 @@ fn app_server_secondary_turn_started_does_not_complete_startup() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn claude_code_does_not_record_codex_startup() -> TestResult {
+#[tokio::test]
+async fn claude_code_does_not_record_codex_startup() -> TestResult {
     common::ensure_canonical_workspace_for_test()?;
 
     let tmp = tempfile::tempdir()?;
@@ -173,7 +100,8 @@ fn claude_code_does_not_record_codex_startup() -> TestResult {
         run_payload_path: &run_payload_path,
         home: tmp.path(),
         run_id: "claude-startup-control",
-    })?;
+    })
+    .await?;
 
     assert_guest_success(&output);
     let operations = read_sandbox_operations(&runtime_dir)?;
@@ -205,7 +133,7 @@ struct GuestAgentInvocation<'a> {
     run_id: &'a str,
 }
 
-fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Error> {
+async fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Error> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_guest-agent"));
     command
         .env_clear()
@@ -234,9 +162,7 @@ fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Er
                 .env("USE_MOCK_CODEX", "true")
                 .env("VM0_MOCK_CODEX_PATH", binary);
             if let Some(scenario) = app_server_scenario {
-                command
-                    .env("VM0_CODEX_APP_SERVER_BACKEND", "1")
-                    .env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
+                command.env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
             }
         }
         TestFramework::ClaudeCode { binary } => {
@@ -247,7 +173,11 @@ fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Er
         }
     }
 
-    command.output()
+    let timeout_context = format!(
+        "codex_startup_telemetry guest-agent scenario '{}' exceeded its completion budget",
+        args.run_id
+    );
+    common::command_output_with_timeout(&mut command, GUEST_AGENT_TIMEOUT, &timeout_context).await
 }
 
 fn write_run_payload(runtime_dir: &Path, prompt: &str) -> Result<std::path::PathBuf, String> {

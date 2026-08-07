@@ -55,6 +55,18 @@ import { currentConnectorCatalogValidatorIdentity } from "../../services/connect
 import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroConnectorsRoutes } from "../zero-connectors";
+import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
+import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
+import { zeroOrgReadRoutes } from "../zero-org-read";
+import { zeroUserPreferencesRoutes } from "../zero-user-preferences";
+
+const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersListRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
+]);
 
 // HTTP-level benchmarks for side-effect-free GET routes that showed elevated
 // P90 in production traces. All cases share one seeded DB fixture and only issue
@@ -89,17 +101,31 @@ const BENCH_CONNECTOR_CATALOG_KEY =
   `connectors/v${String(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION)}/` +
   `releases/${BENCH_CONNECTOR_CATALOG_VERSION}/catalog.json`;
 
-const chatThreadClient = setupApp({ context })(chatThreadByIdContract);
-const chatThreadEventsClient = setupApp({ context })(chatThreadEventsContract);
-const connectorsClient = setupApp({ context })(zeroConnectorsMainContract);
-const userPreferencesClient = setupApp({ context })(
-  zeroUserPreferencesContract,
+const chatThreadClient = setupApp({ context, routes: zeroChatThreadRoutes })(
+  chatThreadByIdContract,
 );
-const billingStatusClient = setupApp({ context })(zeroBillingStatusContract);
-const orgClient = setupApp({ context })(zeroOrgContract);
-const personalModelProvidersClient = setupApp({ context })(
-  zeroPersonalModelProvidersMainContract,
+const chatThreadEventsClient = setupApp({
+  context,
+  routes: zeroChatThreadRoutes,
+})(chatThreadEventsContract);
+const connectorsClient = setupApp({ context, routes: zeroConnectorsRoutes })(
+  zeroConnectorsMainContract,
 );
+const userPreferencesClient = setupApp({
+  context,
+  routes: zeroUserPreferencesRoutes,
+})(zeroUserPreferencesContract);
+const billingStatusClient = setupApp({
+  context,
+  routes: zeroBillingStatusRoutes,
+})(zeroBillingStatusContract);
+const orgClient = setupApp({ context, routes: zeroOrgReadRoutes })(
+  zeroOrgContract,
+);
+const personalModelProvidersClient = setupApp({
+  context,
+  routes: zeroPersonalModelProvidersMainTestRoutes,
+})(zeroPersonalModelProvidersMainContract);
 
 interface BenchChatThreadFixture {
   readonly userId: string;
@@ -127,7 +153,6 @@ function benchCatalogConnector(args: {
         label: "API token",
         description: null,
         visible: true,
-        featureSwitch: null,
         storage: {
           version: 1,
           secrets: [args.secretName],
@@ -607,6 +632,7 @@ async function seedTargetThreadRuns(
     chatThreadId: string;
     runId: string;
     eventType: "input.prompt" | "output.message";
+    contextType?: "web";
     content?: string;
     sequenceNumber: number;
     seqId: number;
@@ -647,7 +673,10 @@ async function seedTargetThreadRuns(
         // Input events carry their text in user_message only; chat_events
         // rejects a non-null content projection for them.
         ...(m === 0
-          ? { userMessage: benchUserMessage(content, attachmentId) }
+          ? {
+              contextType: "web",
+              userMessage: benchUserMessage(content, attachmentId),
+            }
           : { content }),
         ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
         createdAt: new Date(now + i * 1000 + m),

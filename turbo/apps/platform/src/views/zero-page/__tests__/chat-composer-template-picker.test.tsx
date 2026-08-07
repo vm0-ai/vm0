@@ -2963,7 +2963,7 @@ describe("chat composer templates", () => {
     }
   });
 
-  it("queues a selected template during an active run and clears the picker state", async () => {
+  it("renders a selected template inline during an active run and clears the picker state", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockActiveTemplateThread();
@@ -2977,15 +2977,16 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
     await selectTemplate(user, template);
-    const queuedComposer = await screen.findByRole("textbox", {
+    const activeComposer = await screen.findByRole("textbox", {
       name: "Message",
     });
-    await sendMessageInUI(user, queuedComposer, "Queue a matching deck");
+    await sendMessageInUI(user, activeComposer, "Steer with a matching deck");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Queue a matching deck",
-      );
+      expect(
+        screen.getByText("Steer with a matching deck"),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Template")).toHaveAttribute(
         "aria-pressed",
         "false",
@@ -2996,7 +2997,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("clears a recalled template after queueing the message again", async () => {
+  it("clears a recalled Morning Brief template after steering it inline", async () => {
     const user = userEvent.setup({ delay: null });
     const template = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const generationTemplate = {
@@ -3038,6 +3039,7 @@ describe("chat composer templates", () => {
                 template: generationTemplate,
               },
               { type: "text", text: "Queue a recalled illustration" },
+              { type: "morning_brief", briefDate: "2026-06-09" },
             ],
           },
           createdAt: "2026-06-09T10:00:02Z",
@@ -3081,9 +3083,10 @@ describe("chat composer templates", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Queue a recalled illustration",
-      );
+      expect(
+        screen.getByText("Queue a recalled illustration"),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(queuedGenerationTemplate).toStrictEqual(generationTemplate);
       expect(queuedUserMessageTemplate).toStrictEqual(generationTemplate);
       expect(screen.getByLabelText("Template")).toHaveAttribute(
@@ -3096,7 +3099,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("keeps newer template selections visible after a queued template is sent", async () => {
+  it("keeps newer template selections visible after an inline template steer", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const nextTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
@@ -3114,13 +3117,14 @@ describe("chat composer templates", () => {
     await sendMessageInUI(
       user,
       await screen.findByRole("textbox", { name: "Message" }),
-      "Queue a matching deck",
+      "Steer with a matching deck",
     );
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
-        "Queue a matching deck",
-      );
+      expect(
+        screen.getByText("Steer with a matching deck"),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     });
 
     await selectIllustrationTemplate(user, nextTemplate);

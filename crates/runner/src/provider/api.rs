@@ -10,6 +10,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
+        CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
         NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
@@ -31,7 +32,8 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    ReservedReuseClaimObservation, parse_runner_preference,
+    RunnerPreferenceClaimState, RunnerPreferenceResolution, parse_runner_preference,
+    parse_runner_preference_resolution,
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
@@ -40,23 +42,13 @@ use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse,
-    PollResponse, SandboxReuseResult,
+    CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTarget, ExecutionContext,
+    HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
-const CHAT_STEER_FEATURE_FLAG: &str = "chatSteer";
-const RESERVED_REUSE_CLAIM_TRACING_TARGET: &str = "runner::reserved_reuse_claim";
-
-fn chat_steer_enabled(
-    reuse_key: Option<&str>,
-    feature_flags: Option<&std::collections::HashMap<String, bool>>,
-) -> bool {
+fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
     reuse_key.is_some_and(|key| key.starts_with("thread:"))
-        && feature_flags
-            .and_then(|flags| flags.get(CHAT_STEER_FEATURE_FLAG))
-            .copied()
-            .unwrap_or(false)
 }
 
 #[derive(Serialize)]
@@ -95,6 +87,12 @@ struct ClaimRequestTelemetry {
     poll_http_request_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_preference_resolution: Option<RunnerPreferenceResolution>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_preference_claim_state: Option<RunnerPreferenceClaimState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_preference_targeted_self: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -111,6 +109,12 @@ struct PollRequestBody<'a> {
 pub(super) enum NetworkPolicyRefreshOutcome {
     Refreshed(NetworkPolicyRefreshBatchResponse),
     RunTerminal,
+}
+
+pub(super) enum ConnectorRuntimeSyncOutcome {
+    Synced(ConnectorRuntimeSyncBatchResponse),
+    RunTerminal,
+    RouteUnavailable,
 }
 
 #[derive(Deserialize)]
@@ -172,80 +176,6 @@ struct ClaimFailureDecision {
     status: Option<StatusCode>,
     transport_kind: Option<&'static str>,
     response_run_id: Option<RunId>,
-}
-
-enum ReservedReuseClaimOutcome {
-    Claimed { timezone_state: &'static str },
-    Unavailable,
-    ProviderFailure { class: ClaimFailureClass },
-    ResponseRunIdMismatch,
-}
-
-fn record_reserved_reuse_claim_observation(
-    observation: Option<ReservedReuseClaimObservation>,
-    run_id: RunId,
-    runner_id: &str,
-    heartbeat_generation: u64,
-    outcome: ReservedReuseClaimOutcome,
-) {
-    let Some(observation) = observation else {
-        return;
-    };
-    let duration_ms = duration_ms(observation.elapsed());
-    let preference_reason = observation.preference_reason();
-
-    match outcome {
-        ReservedReuseClaimOutcome::Claimed { timezone_state } => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "claimed",
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            timezone_state,
-            "reserved reusable claim observed"
-        ),
-        ReservedReuseClaimOutcome::Unavailable => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "unavailable",
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            "reserved reusable claim observed"
-        ),
-        ReservedReuseClaimOutcome::ProviderFailure { class } => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "provider_failure",
-            failure_class = class.as_str(),
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            "reserved reusable claim observed"
-        ),
-        ReservedReuseClaimOutcome::ResponseRunIdMismatch => tracing::info!(
-            target: RESERVED_REUSE_CLAIM_TRACING_TARGET,
-            measurement = "reserved_reuse_claim",
-            outcome = "response_run_id_mismatch",
-            run_id = %run_id,
-            runner_id,
-            heartbeat_generation,
-            runner_version = env!("CARGO_PKG_VERSION"),
-            duration_ms,
-            preference_reason,
-            "reserved reusable claim observed"
-        ),
-    }
 }
 
 const CLAIM_TELEMETRY_DURATION_MS_MAX: u64 = 9_007_199_254_740_991;
@@ -670,12 +600,28 @@ impl JobProvider for ApiProvider {
                             None
                         }
                     };
+                    let runner_preference_resolution = match parse_runner_preference_resolution(
+                        job.runner_preference_resolution,
+                    ) {
+                        Ok(resolution) => resolution,
+                        Err(error) => {
+                            warn!(
+                                run_id = %run_id,
+                                error = %error,
+                                "poll: invalid runner preference resolution, omitting telemetry context"
+                            );
+                            None
+                        }
+                    };
                     let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_reuse_key(reuse_key)
                         .with_history_generation_run_id(history_generation_run_id)
-                        .with_runner_preference(runner_preference)
+                        .with_runner_preference_context(
+                            runner_preference,
+                            runner_preference_resolution,
+                        )
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
                         .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
@@ -715,24 +661,21 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        let reserved_reuse_observation = candidate.reserved_reuse_claim_observation();
         match self
             .api
             .claim(&candidate, &self.runner_id, self.heartbeat_generation)
             .await
         {
             Ok(Some(ctx)) => {
-                let active_input_source =
-                    chat_steer_enabled(ctx.reuse_key.as_deref(), ctx.feature_flags.as_ref()).then(
-                        || {
-                            ActiveInputSource::api(
-                                self.api.clone(),
-                                run_id,
-                                ctx.sandbox_token.clone(),
-                                self.active_input_notifications.subscribe(run_id),
-                            )
-                        },
-                    );
+                let active_input_source = supports_thread_active_input(ctx.reuse_key.as_deref())
+                    .then(|| {
+                        ActiveInputSource::api(
+                            self.api.clone(),
+                            run_id,
+                            ctx.sandbox_token.clone(),
+                            self.active_input_notifications.subscribe(run_id),
+                        )
+                    });
                 let claimed = match if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
                 } else {
@@ -740,13 +683,6 @@ impl JobProvider for ApiProvider {
                 } {
                     Ok(claimed) => claimed,
                     Err(error) => {
-                        record_reserved_reuse_claim_observation(
-                            reserved_reuse_observation,
-                            run_id,
-                            &self.runner_id,
-                            self.heartbeat_generation,
-                            ReservedReuseClaimOutcome::ResponseRunIdMismatch,
-                        );
                         self.record_claim_failure(
                             run_id,
                             ClaimFailureDecision {
@@ -761,19 +697,6 @@ impl JobProvider for ApiProvider {
                         return None;
                     }
                 };
-                record_reserved_reuse_claim_observation(
-                    reserved_reuse_observation,
-                    run_id,
-                    &self.runner_id,
-                    self.heartbeat_generation,
-                    ReservedReuseClaimOutcome::Claimed {
-                        timezone_state: if claimed.context().user_timezone.is_some() {
-                            "present"
-                        } else {
-                            "absent"
-                        },
-                    },
-                );
                 self.claim_cooldowns.remove(run_id).await;
                 info!(
                     run_id = %run_id,
@@ -784,30 +707,14 @@ impl JobProvider for ApiProvider {
                 Some(claimed)
             }
             Ok(None) => {
-                record_reserved_reuse_claim_observation(
-                    reserved_reuse_observation,
-                    run_id,
-                    &self.runner_id,
-                    self.heartbeat_generation,
-                    ReservedReuseClaimOutcome::Unavailable,
-                );
                 self.claim_cooldowns.remove(run_id).await;
                 info!(run_id = %run_id, "job unavailable, skipping");
                 self.poll_wakeups.request_immediate_poll().await;
                 None
             }
             Err(e) => {
-                let decision = classify_claim_failure(&e);
-                record_reserved_reuse_claim_observation(
-                    reserved_reuse_observation,
-                    run_id,
-                    &self.runner_id,
-                    self.heartbeat_generation,
-                    ReservedReuseClaimOutcome::ProviderFailure {
-                        class: decision.class,
-                    },
-                );
-                self.record_claim_failure(run_id, decision).await;
+                self.record_claim_failure(run_id, classify_claim_failure(&e))
+                    .await;
                 None
             }
         }
@@ -1048,7 +955,7 @@ pub(crate) struct ApiClient {
 }
 
 impl ApiClient {
-    pub(super) fn new(http: HttpClient, token: String) -> Self {
+    pub(crate) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
     }
 
@@ -1308,6 +1215,53 @@ impl ApiClient {
             .json(&serde_json::json!({ "connectorSlugs": connector_slugs }))
     }
 
+    pub(super) async fn sync_connector_runtime(
+        &self,
+        run_id: RunId,
+        targets: &[ConnectorRuntimeTarget],
+    ) -> RunnerResult<ConnectorRuntimeSyncOutcome> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.connector_runtime_sync_request(&run_id, targets),
+            "connector runtime sync",
+        )
+        .await?;
+
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Ok(ConnectorRuntimeSyncOutcome::RouteUnavailable);
+        }
+        if resp.status() == StatusCode::CONFLICT {
+            let (status, body) = read_api_error(resp).await;
+            if serde_json::from_str::<ApiErrorEnvelope>(&body).is_ok_and(|response| {
+                response.error.code == CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE
+            }) {
+                return Ok(ConnectorRuntimeSyncOutcome::RunTerminal);
+            }
+            return Err(api_status_error("connector runtime sync", status, &body));
+        }
+
+        let resp = check_api_status(resp, "connector runtime sync").await?;
+        decode_api_json(resp, "connector runtime sync")
+            .await
+            .map(ConnectorRuntimeSyncOutcome::Synced)
+    }
+
+    fn connector_runtime_sync_request(
+        &self,
+        run_id: &str,
+        targets: &[ConnectorRuntimeTarget],
+    ) -> ApiRequestBuilder {
+        self.http
+            .request_resolved_route(
+                routes::runners::runs::by_run_id::connector_runtime::sync::route(
+                    routes::runners::runs::by_run_id::connector_runtime::sync::Params { run_id },
+                ),
+                &self.token,
+            )
+            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
+            .json(&serde_json::json!({ "targets": targets }))
+    }
+
     pub(super) async fn resolve_builtin_firewall_catalog(
         &self,
     ) -> RunnerResult<BuiltinFirewallCatalog> {
@@ -1340,6 +1294,8 @@ fn claim_request_body<'a>(
     runner_id: &'a str,
     heartbeat_generation: u64,
 ) -> ClaimRequestBody<'a> {
+    let runner_preference_telemetry =
+        candidate.runner_preference_claim_telemetry(runner_id, heartbeat_generation);
     let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
     let (
         direct_candidate_notification_to_enqueue_ms,
@@ -1389,6 +1345,12 @@ fn claim_request_body<'a>(
                 .poll_http_request_elapsed()
                 .map(claim_telemetry_duration_ms),
             poll_reason: candidate.poll_reason().map(String::from),
+            runner_preference_resolution: runner_preference_telemetry
+                .map(|telemetry| telemetry.resolution),
+            runner_preference_claim_state: runner_preference_telemetry
+                .map(|telemetry| telemetry.state),
+            runner_preference_targeted_self: runner_preference_telemetry
+                .and_then(|telemetry| telemetry.targeted_self),
         },
     }
 }
@@ -1726,7 +1688,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
-    use crate::provider::{RunnerPreference, RunnerPreferenceReason};
+    use crate::provider::{
+        RunnerPreference, RunnerPreferenceReason, RunnerPreferenceRemovalReason,
+    };
 
     const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
         "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
@@ -1740,15 +1704,10 @@ mod tests {
     }
 
     #[test]
-    fn chat_steer_requires_a_thread_run_and_enabled_feature() {
-        let enabled = std::collections::HashMap::from([(CHAT_STEER_FEATURE_FLAG.to_owned(), true)]);
-        let disabled =
-            std::collections::HashMap::from([(CHAT_STEER_FEATURE_FLAG.to_owned(), false)]);
-
-        assert!(chat_steer_enabled(Some("thread:chat-id"), Some(&enabled)));
-        assert!(!chat_steer_enabled(Some("thread:chat-id"), Some(&disabled)));
-        assert!(!chat_steer_enabled(Some("thread:chat-id"), None));
-        assert!(!chat_steer_enabled(Some("goal:goal-id"), Some(&enabled)));
+    fn active_input_source_requires_a_thread_run() {
+        assert!(supports_thread_active_input(Some("thread:chat-id")));
+        assert!(!supports_thread_active_input(Some("goal:goal-id")));
+        assert!(!supports_thread_active_input(None));
     }
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
@@ -2018,80 +1977,6 @@ mod tests {
             .get(field)
             .map(String::as_str)
             .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
-    }
-
-    fn marked_reusable_candidate(
-        run_id: RunId,
-        preference_reason: Option<RunnerPreferenceReason>,
-    ) -> JobCandidate {
-        let mut candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string())
-            .with_runner_preference(preference_reason.map(|reason| {
-                RunnerPreference::for_test(
-                    TEST_RUNNER_ID.parse().unwrap(),
-                    TEST_HEARTBEAT_GENERATION,
-                    reason,
-                    Instant::now() + Duration::from_secs(30),
-                )
-            }));
-        candidate.mark_reserved_reuse_claim_started();
-        candidate
-    }
-
-    fn reserved_reuse_claim_event(events: &[CapturedEvent]) -> &CapturedEvent {
-        let matching: Vec<_> = events
-            .iter()
-            .filter(|event| {
-                event
-                    .fields
-                    .get("message")
-                    .is_some_and(|message| message == "reserved reusable claim observed")
-            })
-            .collect();
-        assert_eq!(
-            matching.len(),
-            1,
-            "marked claim should emit exactly one observation; events={events:#?}"
-        );
-        matching[0]
-    }
-
-    fn assert_reserved_reuse_claim_event<'a>(
-        events: &'a [CapturedEvent],
-        run_id: RunId,
-        outcome: &str,
-        preference_reason: &str,
-    ) -> &'a CapturedEvent {
-        let event = reserved_reuse_claim_event(events);
-        assert_eq!(event.level, Level::INFO);
-        assert_eq!(event_field(event, "measurement"), "reserved_reuse_claim");
-        assert_eq!(event_field(event, "outcome"), outcome);
-        assert_eq!(event_field(event, "run_id"), run_id.to_string());
-        assert_eq!(event_field(event, "runner_id"), TEST_RUNNER_ID);
-        assert_eq!(
-            event_field(event, "heartbeat_generation"),
-            TEST_HEARTBEAT_GENERATION.to_string()
-        );
-        assert_eq!(
-            event_field(event, "runner_version"),
-            env!("CARGO_PKG_VERSION")
-        );
-        assert_eq!(event_field(event, "preference_reason"), preference_reason);
-        event_field(event, "duration_ms")
-            .parse::<u64>()
-            .expect("claim duration should be an integer number of milliseconds");
-        event
-    }
-
-    fn assert_no_reserved_reuse_claim_event(events: &[CapturedEvent]) {
-        assert!(
-            events.iter().all(|event| {
-                event
-                    .fields
-                    .get("message")
-                    .is_none_or(|message| message != "reserved reusable claim observed")
-            }),
-            "unmarked claim must not emit a reserved-reuse observation; events={events:#?}"
-        );
     }
 
     fn heartbeat_state_for_test() -> HeartbeatState {
@@ -2382,6 +2267,21 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
+        assert!(
+            body["telemetry"]
+                .get("runnerPreferenceResolution")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("runnerPreferenceClaimState")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("runnerPreferenceTargetedSelf")
+                .is_none()
+        );
         assert!(body.get("runnerPreference").is_none());
         assert!(!body.to_string().contains("rawSizeBytes"));
         assert!(!body.to_string().contains("sessionId"));
@@ -2389,6 +2289,86 @@ mod tests {
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
         assert!(body.get("capabilities").is_none());
+    }
+
+    #[test]
+    fn claim_request_body_serializes_preference_observation_at_claim_time() {
+        let active_preference = RunnerPreference::for_test(
+            TEST_RUNNER_ID.parse().unwrap(),
+            TEST_HEARTBEAT_GENERATION,
+            RunnerPreferenceReason::MatchingReuseKey,
+            Instant::now() + Duration::from_secs(60),
+        );
+        let active = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+            .with_runner_preference_context(
+                Some(active_preference),
+                Some(RunnerPreferenceResolution::MatchingWorkspaceCache),
+            );
+        let active_body = serde_json::to_value(claim_request_body_for_test(&active)).unwrap();
+        assert_eq!(
+            active_body["telemetry"]["runnerPreferenceResolution"],
+            "matching_workspace_cache"
+        );
+        assert_eq!(
+            active_body["telemetry"]["runnerPreferenceClaimState"],
+            "active"
+        );
+        assert_eq!(
+            active_body["telemetry"]["runnerPreferenceTargetedSelf"],
+            true
+        );
+
+        let expired_preference = RunnerPreference::for_test(
+            TEST_RUNNER_ID.parse().unwrap(),
+            TEST_HEARTBEAT_GENERATION,
+            RunnerPreferenceReason::ExactHistoryGeneration,
+            Instant::now() - Duration::from_secs(1),
+        );
+        let expired = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+            .with_runner_preference_context(
+                Some(expired_preference),
+                Some(RunnerPreferenceResolution::ExactHistoryGeneration),
+            );
+        let expired_body = serde_json::to_value(claim_request_body_for_test(&expired)).unwrap();
+        assert_eq!(
+            expired_body["telemetry"]["runnerPreferenceClaimState"],
+            "expired"
+        );
+
+        let cleared_preference = RunnerPreference::for_test(
+            Uuid::from_u128(8),
+            TEST_HEARTBEAT_GENERATION,
+            RunnerPreferenceReason::FinalizingPredecessor,
+            Instant::now() + Duration::from_secs(60),
+        );
+        let cleared = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+            .with_runner_preference_context(
+                Some(cleared_preference),
+                Some(RunnerPreferenceResolution::FinalizingPredecessor),
+            )
+            .without_runner_preference(RunnerPreferenceRemovalReason::Cleared);
+        let cleared_body = serde_json::to_value(claim_request_body_for_test(&cleared)).unwrap();
+        assert_eq!(
+            cleared_body["telemetry"]["runnerPreferenceClaimState"],
+            "cleared"
+        );
+        assert_eq!(
+            cleared_body["telemetry"]["runnerPreferenceTargetedSelf"],
+            false
+        );
+
+        let absent = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+            .with_runner_preference_context(None, Some(RunnerPreferenceResolution::NoViableHolder));
+        let absent_body = serde_json::to_value(claim_request_body_for_test(&absent)).unwrap();
+        assert_eq!(
+            absent_body["telemetry"]["runnerPreferenceClaimState"],
+            "absent"
+        );
+        assert!(
+            absent_body["telemetry"]
+                .get("runnerPreferenceTargetedSelf")
+                .is_none()
+        );
     }
 
     #[test]
@@ -2612,6 +2592,7 @@ mod tests {
                         "experimentalProfile": "vm0/large",
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
+                        "runnerPreferenceResolution": "exact_history_generation",
                         "runnerPreference": {
                             "runnerIdentity": {
                                 "runnerId": "00000000-0000-0000-0000-000000000005",
@@ -2651,6 +2632,15 @@ mod tests {
         );
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_eq!(
+            discovered
+                .runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::ExactHistoryGeneration,
+                state: RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
+        );
+        assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)
         );
@@ -2671,6 +2661,7 @@ mod tests {
                         "runId": run_id,
                         "experimentalProfile": "vm0/default",
                         "reuseKey": "thread:malformed-preference",
+                        "runnerPreferenceResolution": "matching_workspace_cache",
                         "runnerPreference": {
                             "runnerIdentity": {
                                 "runnerId": TEST_RUNNER_ID,
@@ -2698,6 +2689,51 @@ mod tests {
         assert_eq!(candidate.run_id(), run_id);
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
         assert!(candidate.runner_preference().is_none());
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::MatchingWorkspaceCache,
+                state: RunnerPreferenceClaimState::Cleared,
+                targeted_self: None,
+            })
+        );
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_preserves_poll_job_with_future_resolution() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": run_id,
+                        "experimentalProfile": "vm0/default",
+                        "runnerPreferenceResolution": "future_resolution"
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test_with_supported_profiles(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+            vec!["vm0/default".to_string()],
+        );
+
+        let candidate = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should preserve the job")
+            .expect("job candidate");
+
+        assert_eq!(candidate.run_id(), run_id);
+        assert!(
+            candidate
+                .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION,)
+                .is_none()
+        );
         mock.assert_async().await;
     }
 
@@ -2919,12 +2955,11 @@ mod tests {
         )
         .await;
 
-        let mut direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+        let direct = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
             .expect("discover should receive direct candidate")
             .unwrap();
         assert_eq!(direct.discovery_source(), Some(JobDiscoverySource::Ably));
-        direct.mark_reserved_reuse_claim_started();
         let (claim, events) = capture_api_provider_events(provider.claim(direct)).await;
         assert!(claim.is_none());
         let event = captured_event(&events, "claim failed, candidate cooling down");
@@ -2937,17 +2972,6 @@ mod tests {
             !format!("{event:#?}").contains("sensitive-claim-rejection-body"),
             "claim failure event must not contain the response body"
         );
-        let observation =
-            assert_reserved_reuse_claim_event(&events, rejected_run_id, "provider_failure", "none");
-        assert_eq!(
-            event_field(observation, "failure_class"),
-            "http_deterministic"
-        );
-        assert!(
-            !format!("{observation:#?}").contains("sensitive-claim-rejection-body"),
-            "claim observation must not contain the response body"
-        );
-
         let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
             .expect("claim failure should poll for another candidate")
@@ -3015,14 +3039,8 @@ mod tests {
         )
         .await;
 
-        let mut unavailable = provider.discover().await.unwrap();
-        unavailable.mark_reserved_reuse_claim_started();
-        let (claim, events) = capture_api_provider_events(provider.claim(unavailable)).await;
-        assert!(claim.is_none());
-        let observation =
-            assert_reserved_reuse_claim_event(&events, unavailable_run_id, "unavailable", "none");
-        assert!(!observation.fields.contains_key("failure_class"));
-        assert!(!observation.fields.contains_key("timezone_state"));
+        let unavailable = provider.discover().await.unwrap();
+        assert!(provider.claim(unavailable).await.is_none());
         let next = tokio::time::timeout(Duration::from_secs(1), provider.discover())
             .await
             .expect("unavailable claim should promptly poll the backlog")
@@ -3896,10 +3914,13 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let candidate =
-            marked_reusable_candidate(run_id, Some(RunnerPreferenceReason::ExactHistoryGeneration));
-        let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
-        let claimed = claimed.expect("shared current claim response should decode");
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("shared current claim response should decode");
         let context = claimed.context();
 
         assert_eq!(context.run_id, run_id);
@@ -3942,17 +3963,6 @@ mod tests {
         assert_eq!(
             context.codex_runtime_config.as_ref().unwrap().provider_id,
             "fixture_provider"
-        );
-        let event = assert_reserved_reuse_claim_event(
-            &events,
-            run_id,
-            "claimed",
-            "exact_history_generation",
-        );
-        assert_eq!(event_field(event, "timezone_state"), "present");
-        assert!(
-            !format!("{event:#?}").contains("UTC"),
-            "claim observation must not contain the raw timezone"
         );
         claim_mock.assert_calls_async(1).await;
     }
@@ -4053,18 +4063,18 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
-            run_id,
-            crate::profile::DEFAULT_PROFILE.to_string(),
-        )))
-        .await;
-        let claimed = claimed.expect("previous minimal claim response should remain compatible");
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("previous minimal claim response should remain compatible");
         let context = claimed.context();
 
         assert_eq!(context.prompt, "previous response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
-        assert_no_reserved_reuse_claim_event(&events);
         claim_mock.assert_calls_async(1).await;
     }
 
@@ -4162,7 +4172,7 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let candidate = marked_reusable_candidate(run_id, None);
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
         let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
 
         assert!(claimed.is_none());
@@ -4173,10 +4183,6 @@ mod tests {
             context_run_id.to_string()
         );
         assert_eq!(event_field(event, "retry_after_ms"), "30000");
-        let observation =
-            assert_reserved_reuse_claim_event(&events, run_id, "response_run_id_mismatch", "none");
-        assert!(!observation.fields.contains_key("failure_class"));
-        assert!(!observation.fields.contains_key("timezone_state"));
         claim_mock.assert_calls_async(1).await;
     }
 
@@ -4211,7 +4217,7 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let candidate = marked_reusable_candidate(run_id, None);
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
         let (claimed, events) = capture_api_provider_events(provider.claim(candidate)).await;
         let claimed = claimed.expect("claim should succeed");
         let event = captured_event(&events, "job claimed");
@@ -4220,8 +4226,6 @@ mod tests {
             "550e8400-e29b-41d4-a716-446655440000"
         );
         assert_eq!(event_field(event, "heartbeat_generation"), "7");
-        let observation = assert_reserved_reuse_claim_event(&events, run_id, "claimed", "none");
-        assert_eq!(event_field(observation, "timezone_state"), "absent");
         let (context, completion_auth, active_input_source) = claimed.into_parts();
         assert_eq!(context.sandbox_token, "claim-sandbox-token");
         assert!(active_input_source.is_none());

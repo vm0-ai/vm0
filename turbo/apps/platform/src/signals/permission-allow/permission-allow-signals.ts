@@ -138,12 +138,18 @@ interface UserPermissionGrantsByAgentParams {
 export function userPermissionGrantsByAgent(
   params: UserPermissionGrantsByAgentParams,
 ): Computed<Promise<readonly PlatformUserPermissionGrant[]>> {
-  return computed(async (get) => {
+  return computed(async (get, { signal }) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const result = await retryTransientLoad(() => {
-      return accept(client.list({ query: params }), [200]);
-    });
+    const result = await retryTransientLoad((loadSignal) => {
+      return accept(
+        client.list({
+          query: params,
+          fetchOptions: { signal: loadSignal },
+        }),
+        [200],
+      );
+    }, signal);
     return result.body;
   });
 }
@@ -151,12 +157,18 @@ export function userPermissionGrantsByAgent(
 export function userPermissionGrantsByAgentIfExists(
   params: UserPermissionGrantsByAgentParams,
 ): Computed<Promise<readonly PlatformUserPermissionGrant[] | null>> {
-  return computed(async (get) => {
+  return computed(async (get, { signal }) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const result = await retryTransientLoad(() => {
-      return accept(client.list({ query: params }), [200, 404]);
-    });
+    const result = await retryTransientLoad((loadSignal) => {
+      return accept(
+        client.list({
+          query: params,
+          fetchOptions: { signal: loadSignal },
+        }),
+        [200, 404],
+      );
+    }, signal);
     return result.status === 404 ? null : result.body;
   });
 }

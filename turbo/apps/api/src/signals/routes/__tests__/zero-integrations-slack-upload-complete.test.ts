@@ -48,6 +48,9 @@ import {
   deleteUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
+import { zeroIntegrationsSlackUploadCompleteRoutes } from "../zero-integrations-slack-upload-complete";
+import { zeroIntegrationsSlackUploadInitRoutes } from "../zero-integrations-slack-upload-init";
+import { zeroIntegrationsSlackUploadMaterializeRoutes } from "../zero-integrations-slack-upload-materialize";
 
 type CompletedChatEvent = Extract<ChatEvent, { eventType: "run.completed" }>;
 
@@ -331,9 +334,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   }
 
   it("returns 401 when no auth token is provided", async () => {
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: { fileId: "F123", channel: "C123" },
@@ -350,9 +354,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const runId = `run_${randomUUID()}`;
     const token = sandboxToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: { fileId: "F123", channel: "C123" },
@@ -367,9 +372,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const { orgId, userId } = await seedBaseContext();
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: { fileId: "F123", channel: "C123" },
@@ -390,9 +396,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       }),
     );
 
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: { fileId, channel: "C123" },
@@ -418,9 +425,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     mockSlackFileInfo(fileId);
     const token = zeroToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: {
@@ -479,9 +487,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     });
     mockSlackFileInfo("F-CANONICAL");
 
-    const initClient = setupApp({ context })(
-      integrationsSlackUploadInitContract,
-    );
+    const initClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
         body: {
@@ -532,9 +541,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       },
     });
 
-    const materializeClient = setupApp({ context })(
-      integrationsSlackUploadMaterializeContract,
-    );
+    const materializeClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadMaterializeRoutes,
+    })(integrationsSlackUploadMaterializeContract);
     const materialized = await accept(
       materializeClient.materialize({
         body: {
@@ -578,9 +588,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     }
     expect(catalogDetail.file.id).toBe(canonicalAssetId);
 
-    const completeClient = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const completeClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const completed = await accept(
       completeClient.complete({
         body: {
@@ -617,15 +628,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         access: "published",
         materialization: { status: "ready" },
       },
-    });
-    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
-    expect(
-      artifacts.artifacts.find((artifact) => {
-        return artifact.assetRef?.id === canonicalAssetId;
-      }),
-    ).toMatchObject({
-      fileId: canonicalAssetId,
-      assetRef: { id: canonicalAssetId },
     });
 
     mockGoogleDriveConnectorOAuth();
@@ -752,9 +754,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       await seedRunScoped();
     const operationId = randomUUID();
     const token = zeroToken({ userId, orgId, runId });
-    const initClient = setupApp({ context })(
-      integrationsSlackUploadInitContract,
-    );
+    const initClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
         body: {
@@ -842,9 +845,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       },
     });
 
-    const initClient = setupApp({ context })(
-      integrationsSlackUploadInitContract,
-    );
+    const initClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
         body: {
@@ -872,9 +876,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       body: Buffer.alloc(42, "a"),
     });
 
-    const materializeClient = setupApp({ context })(
-      integrationsSlackUploadMaterializeContract,
-    );
+    const materializeClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadMaterializeRoutes,
+    })(integrationsSlackUploadMaterializeContract);
     const materialized = await accept(
       materializeClient.materialize({
         body: { assetId: canonicalAssetId, operationId },
@@ -887,9 +892,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       fileId,
     });
 
-    const completeClient = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const completeClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const completed = await accept(
       completeClient.complete({
         body: {
@@ -939,9 +945,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       },
     );
 
-    const initClient = setupApp({ context })(
-      integrationsSlackUploadInitContract,
-    );
+    const initClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadInitRoutes,
+    })(integrationsSlackUploadInitContract);
     const initialized = await accept(
       initClient.init({
         body: {
@@ -971,9 +978,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       body: Buffer.alloc(42, "a"),
     });
 
-    const materializeClient = setupApp({ context })(
-      integrationsSlackUploadMaterializeContract,
-    );
+    const materializeClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadMaterializeRoutes,
+    })(integrationsSlackUploadMaterializeContract);
     const materialize = () => {
       return accept(
         materializeClient.materialize({
@@ -1014,9 +1022,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       throw new Error("Expected a stale concurrent Slack file allocation");
     }
 
-    const completeClient = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const completeClient = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const staleCompletion = await accept(
       completeClient.complete({
         body: {
@@ -1086,7 +1095,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   });
 
   it("generates a poster immediately for a Slack video Artifact", async () => {
-    const { orgId, userId, runId } = await seedRunScoped();
+    const { orgId, userId, runId, threadId } = await seedRunScoped();
     const fileId = `F-${randomUUID().slice(0, 8)}`;
     const permalink = `https://slack.example/files/${fileId}`;
     context.mocks.slack.files.info.mockResolvedValue({
@@ -1116,9 +1125,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     );
     const token = zeroToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     await accept(
       client.complete({
         body: { fileId, channel: "C123", title: "Demo video" },
@@ -1140,13 +1150,19 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         );
       }),
     ).toBeTruthy();
-    const artifacts = await chatApi.listArtifacts(actorFor({ orgId, userId }));
-    const videoArtifact = artifacts.artifacts.find((artifact) => {
-      return artifact.fileId === fileId;
+    const files = await visibleUploadedFiles({
+      orgId,
+      userId,
+      runId,
+      threadId,
     });
-    expect(videoArtifact?.previewImageUrl).toMatch(
-      /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
-    );
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({
+      id: fileId,
+      previewImageUrl: expect.stringMatching(
+        /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+      ),
+    });
   });
 
   it("does not record a run association for ordinary clerk session auth", async () => {
@@ -1155,9 +1171,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     mockSlackFileInfo(fileId);
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: { fileId, channel: "C123", title: "Session upload" },
@@ -1186,9 +1203,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     mockSlackFileInfo(fileId);
     const token = zeroToken({ userId, orgId, runId });
 
-    const client = setupApp({ context })(
-      integrationsSlackUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsSlackUploadCompleteRoutes,
+    })(integrationsSlackUploadCompleteContract);
     const body = { fileId, channel: "C123", title: "Retry upload" };
 
     await accept(

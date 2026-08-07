@@ -5830,16 +5830,23 @@ function ConnectorTriggerIcons({
       return { kind: "custom" as const, connector };
     }),
   ].slice(0, 3);
+  const hasComputerAccess = hasComputerUse || hasCloudBrowser;
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
-    <span className="flex items-center -space-x-2 sm:-space-x-1.5">
-      {enabled.map((item) => {
+    <span className="flex items-center sm:-space-x-1.5">
+      {enabled.map((item, index) => {
         const key =
           item.kind === "builtin" ? item.connector.slug : item.connector.id;
         return (
-          <span key={key} className="relative shrink-0">
+          <span
+            key={key}
+            className={cn(
+              "relative shrink-0",
+              (index > 0 || hasComputerAccess) && "hidden sm:block",
+            )}
+          >
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
               {item.kind === "builtin" ? (
                 <ConnectorIcon icon={item.connector.icon} size={16} />
@@ -8085,7 +8092,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerTemplateAttachmentSync signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
-          <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
+          <div className="flex items-center justify-between gap-1 px-2 pb-3 pt-1 sm:gap-2 sm:px-4">
             <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
               <ComposerUploadControl signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />

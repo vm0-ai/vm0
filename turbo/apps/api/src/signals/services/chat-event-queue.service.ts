@@ -7,6 +7,7 @@ import {
   isNull,
   lt,
   notExists,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -36,12 +37,28 @@ function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
   );
 }
 
-export function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
+function pendingActiveInputPromptCondition(db: ChatQueueReadDb) {
   return and(
     chatEventTypeIn(["input.prompt"]),
     isNull(chatEvents.runId),
     sql`${chatEvents.contextType} IS DISTINCT FROM 'morning_brief'`,
     unrevokedQueueEventCondition(db),
+  );
+}
+
+export function pendingActiveInputCondition(
+  db: ChatQueueReadDb,
+  runId: string,
+) {
+  return or(
+    pendingActiveInputPromptCondition(db),
+    and(
+      chatEventTypeIn(["input.budget"]),
+      isNull(chatEvents.runId),
+      eq(chatEvents.contextType, "agent_run"),
+      eq(chatEvents.contextId, runId),
+      unrevokedQueueEventCondition(db),
+    ),
   );
 }
 

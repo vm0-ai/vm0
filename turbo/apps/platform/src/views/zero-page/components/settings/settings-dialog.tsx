@@ -30,7 +30,6 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   isAdminOnlySettingsSection,
-  setSettingsClerkProfilePortalContainer$,
   settingsActiveSection$,
   setSettingsActiveSection$,
   type SettingsSection,
@@ -58,7 +57,7 @@ interface SidebarItem {
 }
 
 interface SidebarGroup {
-  label: string | null;
+  label: string;
   items: readonly SidebarItem[];
 }
 
@@ -98,9 +97,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
   const activeSection = useGet(settingsActiveSection$);
   const setActiveSection = useSet(setSettingsActiveSection$);
-  const setClerkProfilePortalContainer = useSet(
-    setSettingsClerkProfilePortalContainer$,
-  );
   const features = useGet(featureSwitch$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
@@ -269,7 +265,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        ref={setClerkProfilePortalContainer}
         closeLabel={t(($) => {
           return $.settings.shared.close;
         })}
@@ -315,17 +310,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           {/* Desktop: sidebar nav */}
           <nav className="hidden sm:flex sm:flex-col w-52 shrink-0 p-3 pt-3 pb-4 gap-4 overflow-y-auto zero-border-r bg-[hsl(var(--gray-0))]">
             {sidebarGroups.map((group) => {
-              const groupKey =
-                group.label ?? `__personal_${group.items[0]?.id ?? ""}`;
               return (
-                <div key={groupKey} className="shrink-0">
-                  {group.label !== null && (
-                    <div className="h-7 flex items-center pl-2">
-                      <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
-                        {group.label}
-                      </span>
-                    </div>
-                  )}
+                <div key={group.label} className="shrink-0">
+                  <div className="h-7 flex items-center pl-2">
+                    <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
+                      {group.label}
+                    </span>
+                  </div>
                   <div className="flex flex-col gap-1">
                     {group.items.map((item) => {
                       const Icon = item.icon;

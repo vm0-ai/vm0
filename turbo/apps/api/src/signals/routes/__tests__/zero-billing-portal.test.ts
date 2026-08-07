@@ -12,9 +12,16 @@ import {
   type InvoicesOrgFixture,
 } from "./helpers/zero-billing-invoices";
 import {
+  createBillingWebhookFixture,
+  generatedStripeCustomerId,
+  generatedStripeSubscriptionId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
+import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroBillingPortalRoutes } from "../zero-billing-portal";
 
 const context = testContext();
 const store = createStore();
@@ -31,7 +38,9 @@ describe("POST /api/zero/billing/portal", () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl: `${APP_ORIGIN}/settings` },
@@ -49,7 +58,9 @@ describe("POST /api/zero/billing/portal", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
 
     const response = await accept(
       client.create({
@@ -70,7 +81,9 @@ describe("POST /api/zero/billing/portal", () => {
   it("returns 400 when returnUrl is missing", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: {} as never,
@@ -85,7 +98,9 @@ describe("POST /api/zero/billing/portal", () => {
   it("returns 400 when returnUrl is not a valid URL", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl: "not-a-url" },
@@ -104,7 +119,9 @@ describe("POST /api/zero/billing/portal", () => {
       "org:member",
     );
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl: `${APP_ORIGIN}/settings` },
@@ -146,7 +163,9 @@ describe("POST /api/zero/billing/portal", () => {
       url: "https://billing.stripe.com/session/test",
     });
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl },
@@ -166,6 +185,47 @@ describe("POST /api/zero/billing/portal", () => {
     });
   });
 
+  it("returns a portal URL for an allowance-only org", async () => {
+    const fixture = createBillingWebhookFixture();
+    const customerId = generatedStripeCustomerId();
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      ...fixture,
+      customerId,
+      subscriptionId: generatedStripeSubscriptionId(),
+      shortWindowSeconds: 18_000,
+      shortWindowUnits: 5000,
+      weeklyWindowSeconds: 604_800,
+      weeklyWindowUnits: 50_000,
+      effectiveAt: new Date("2026-01-01T00:00:00Z"),
+      expiresAt: new Date("2099-01-01T00:00:00Z"),
+    });
+    mockEnv("APP_URL", APP_ORIGIN);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
+      url: "https://billing.stripe.com/session/allowance",
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingPortalRoutes })(
+        zeroBillingPortalContract,
+      ).create({
+        body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://billing.stripe.com/session/allowance",
+    });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith({
+      customer: customerId,
+      return_url: `${APP_ORIGIN}/settings/billing`,
+    });
+  });
+
   it.each([
     "https://evil.example.com/settings/billing",
     "https://okou.ai.evil.example/settings/billing",
@@ -177,7 +237,9 @@ describe("POST /api/zero/billing/portal", () => {
       "org:admin",
     );
 
-    const client = setupApp({ context })(zeroBillingPortalContract);
+    const client = setupApp({ context, routes: zeroBillingPortalRoutes })(
+      zeroBillingPortalContract,
+    );
     const response = await accept(
       client.create({
         body: { returnUrl },

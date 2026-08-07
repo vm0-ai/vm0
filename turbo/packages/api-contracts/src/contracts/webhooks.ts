@@ -32,6 +32,10 @@ const thirdPartyWebhookOkSchema = z.union([
   z.string(),
   z.object({ message: z.literal("pong") }),
 ]);
+const miniMaxWebhookOkSchema = z.union([
+  thirdPartyWebhookOkSchema,
+  z.object({ challenge: z.string() }),
+]);
 
 /**
  * Clerk third-party webhook contract for /api/webhooks/clerk.
@@ -98,6 +102,13 @@ const googleCalendarWebhookResponseSchema = z.object({
   duplicates: z.number(),
 });
 
+const googleFormsWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  watchStates: z.number(),
+  dispatched: z.number(),
+  duplicates: z.number(),
+});
+
 const googleWorkspaceEventsWebhookResponseSchema = z.object({
   success: z.literal(true),
   watchStates: z.number(),
@@ -135,6 +146,25 @@ export const webhookGmailContract = c.router({
       503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Gmail Pub/Sub push notifications",
+  },
+});
+
+/**
+ * Google Forms Pub/Sub push webhook contract.
+ */
+export const webhookGoogleFormsContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/google-forms",
+    body: c.type<string>(),
+    responses: {
+      200: googleFormsWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Google Forms Pub/Sub push notifications",
   },
 });
 
@@ -268,6 +298,28 @@ export const webhookBuiltInGenerationBytePlusContract = c.router({
   },
 });
 
+export const webhookBuiltInGenerationMiniMaxContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/built-in-generations/minimax/:generationId",
+    pathParams: z.object({
+      generationId: z.uuid(),
+    }),
+    query: z.object({
+      token: z.string().min(1),
+      visualKey: z.string().min(1).optional(),
+    }),
+    body: c.type<string>(),
+    responses: {
+      200: miniMaxWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle MiniMax built-in generation webhooks",
+  },
+});
+
 export const webhookBuiltInGenerationJoggAiContract = c.router({
   post: {
     method: "POST",
@@ -377,6 +429,12 @@ const firewallAuthResponseSchema = z.object({
   refreshedSecrets: z.array(z.string()),
 });
 
+const matchedFirewallAuthContextSchema = z.object({
+  name: z.string().min(1),
+  apiId: z.string().min(1),
+  customConnectorId: z.uuid().optional(),
+});
+
 export const webhookFirewallAuthContract = c.router({
   /**
    * POST /api/webhooks/agent/firewall/auth
@@ -401,6 +459,9 @@ export const webhookFirewallAuthContract = c.router({
       // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
+      // Stable matched-firewall identity used to resolve custom connector auth.
+      // Older addons omit this field and retain run-scoped auth-reference behavior.
+      matchedFirewall: matchedFirewallAuthContextSchema.optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.
       firewallBillable: z.boolean().optional(),
@@ -659,6 +720,10 @@ const sandboxOperationDownloadSourceSchema = z
   }, sessionHistoryDownloadSourceSchema.optional())
   .optional();
 
+export const runnerStartupPathSchema = z.enum(["sandbox", "workspace", "cold"]);
+
+export type RunnerStartupPath = z.infer<typeof runnerStartupPathSchema>;
+
 /**
  * Sandbox operation schema for internal sandbox operations (init, storage, cli, checkpoint, cleanup)
  */
@@ -668,6 +733,8 @@ const sandboxOperationSchema = z.object({
   duration_ms: z.number(),
   success: z.boolean(),
   error: z.string().optional(),
+  runner_startup_path: runnerStartupPathSchema.optional(),
+  sandbox_reuse_result: sandboxReuseResultSchema.optional(),
   encoding: sessionHistoryEncodingSchema.optional(),
   session_history_raw_size_bucket: sessionHistorySizeBucketSchema.optional(),
   session_history_encoded_size_bucket:
@@ -814,6 +881,7 @@ export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookGmailContract = typeof webhookGmailContract;
+export type WebhookGoogleFormsContract = typeof webhookGoogleFormsContract;
 export type WebhookGoogleCalendarContract =
   typeof webhookGoogleCalendarContract;
 export type WebhookGoogleWorkspaceEventsContract =
@@ -825,6 +893,8 @@ export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =
   typeof webhookBuiltInGenerationBytePlusContract;
+export type WebhookBuiltInGenerationMiniMaxContract =
+  typeof webhookBuiltInGenerationMiniMaxContract;
 export type WebhookBuiltInGenerationJoggAiContract =
   typeof webhookBuiltInGenerationJoggAiContract;
 export type WebhookFirewallAuthContract = typeof webhookFirewallAuthContract;

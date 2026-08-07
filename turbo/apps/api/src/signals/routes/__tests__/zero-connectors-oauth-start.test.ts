@@ -12,7 +12,14 @@ import {
   API_TEST_CONNECTOR_CATALOG,
   installApiTestConnectorCatalog,
 } from "../../../test-fixtures/connector-catalog";
+import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...connectorsSlugCallbackRoutes,
+  ...zeroConnectorsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -109,7 +116,7 @@ async function requestOauthStart(
     headers.set("authorization", "Bearer clerk-session");
   }
   headers.set("content-type", "application/json");
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   return await app.request(oauthStartUrl(connectorSlug, options.origin), {
     method: "POST",
     headers,
@@ -127,40 +134,10 @@ async function authorizationUrlFromResponse(response: Response): Promise<URL> {
   return new URL(body.authorizationUrl);
 }
 
-async function providerAuthorizationUrl(continuationUrl: URL): Promise<URL> {
-  const response = await requestOauthContinuation(continuationUrl);
-  expect(response.status).toBe(307);
-  expect(response.headers.get("cache-control")).toBe("no-store");
-  const location = response.headers.get("location");
-  if (!location) {
-    throw new Error("Expected connector OAuth handoff to redirect");
-  }
-  return new URL(location);
-}
-
-async function requestOauthContinuation(
-  continuationUrl: URL,
-): Promise<Response> {
-  const app = createApp({ signal: context.signal });
-  return await app.request(continuationUrl.toString());
-}
-
 function expectOauthState(authorizationUrl: URL): string {
   const state = authorizationUrl.searchParams.get("state");
   expect(state).toMatch(/^[0-9a-f]{64}$/);
   return state!;
-}
-
-function legacyContinuationUrl(
-  connectorSlug: string,
-  authorizationUrl: URL,
-): URL {
-  const continuationUrl = new URL(
-    `/api/zero/connectors/${connectorSlug}/oauth/continue`,
-    API_ORIGIN,
-  );
-  continuationUrl.searchParams.set("state", expectOauthState(authorizationUrl));
-  return continuationUrl;
 }
 
 async function rejectProviderAuthorization(
@@ -175,7 +152,7 @@ async function rejectProviderAuthorization(
   callbackUrl.searchParams.set("error", "access_denied");
   callbackUrl.searchParams.set("state", state!);
 
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   await app.request(callbackUrl.toString());
 }
 
@@ -249,106 +226,6 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     );
     expectOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
-  });
-
-  it("continues OAuth handoff URLs issued before deployment", async () => {
-    const response = await requestOauthStart("github", {
-      authenticated: true,
-      origin: API_ORIGIN,
-    });
-    expect(response.status).toBe(200);
-    const authorizationUrl = await authorizationUrlFromResponse(response);
-
-    const redirectedAuthorizationUrl = await providerAuthorizationUrl(
-      legacyContinuationUrl("github", authorizationUrl),
-    );
-
-    expect(redirectedAuthorizationUrl.toString()).toBe(
-      authorizationUrl.toString(),
-    );
-  });
-
-  it("rejects an OAuth handoff whose state does not exist", async () => {
-    const continuationUrl = new URL(
-      "/api/zero/connectors/github/oauth/continue",
-      API_ORIGIN,
-    );
-    continuationUrl.searchParams.set("state", "0".repeat(64));
-
-    const app = createApp({ signal: context.signal });
-    const response = await app.request(continuationUrl.toString());
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "OAuth handoff not found",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
-  it("rejects an OAuth handoff for a different connector slug", async () => {
-    const response = await requestOauthStart("github", {
-      authenticated: true,
-      origin: API_ORIGIN,
-    });
-    expect(response.status).toBe(200);
-    const authorizationUrl = await authorizationUrlFromResponse(response);
-    const continuationUrl = legacyContinuationUrl("notion", authorizationUrl);
-
-    const continueResponse = await requestOauthContinuation(continuationUrl);
-
-    expect(continueResponse.status).toBe(404);
-    await expect(continueResponse.json()).resolves.toStrictEqual({
-      error: {
-        message: "OAuth handoff not found",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
-  it("rejects an expired OAuth handoff", async () => {
-    const startedAt = new Date("2026-07-22T00:00:00.000Z");
-    mockNow(startedAt);
-    const response = await requestOauthStart("github", {
-      authenticated: true,
-      origin: API_ORIGIN,
-    });
-    expect(response.status).toBe(200);
-    const authorizationUrl = await authorizationUrlFromResponse(response);
-    const continuationUrl = legacyContinuationUrl("github", authorizationUrl);
-    mockNow(new Date(startedAt.getTime() + 15 * 60 * 1000));
-
-    const continueResponse = await requestOauthContinuation(continuationUrl);
-
-    expect(continueResponse.status).toBe(404);
-    await expect(continueResponse.json()).resolves.toStrictEqual({
-      error: {
-        message: "OAuth handoff not found",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
-  it("rejects an OAuth handoff after its callback claims it", async () => {
-    const response = await requestOauthStart("github", {
-      authenticated: true,
-      origin: API_ORIGIN,
-    });
-    expect(response.status).toBe(200);
-    const authorizationUrl = await authorizationUrlFromResponse(response);
-    const continuationUrl = legacyContinuationUrl("github", authorizationUrl);
-    await rejectProviderAuthorization(authorizationUrl);
-
-    const continueResponse = await requestOauthContinuation(continuationUrl);
-
-    expect(continueResponse.status).toBe(404);
-    await expect(continueResponse.json()).resolves.toStrictEqual({
-      error: {
-        message: "OAuth handoff not found",
-        code: "NOT_FOUND",
-      },
-    });
   });
 
   it("uses the configured web origin for local OAuth callback URLs", async () => {

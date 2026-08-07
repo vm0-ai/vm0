@@ -11,6 +11,7 @@ const storedOAuthStateSelection = Object.freeze({
   connectorSlug: connectorOauthStates.connectorSlug,
   customConnectorId: connectorOauthStates.customConnectorId,
   connectorRevision: connectorOauthStates.connectorRevision,
+  storageVersion: connectorOauthStates.storageVersion,
   authMethod: connectorOauthStates.authMethod,
   userId: connectorOauthStates.userId,
   orgId: connectorOauthStates.orgId,
@@ -41,50 +42,6 @@ type ConnectorOAuthStateStatus =
   | { readonly kind: "missing" }
   | { readonly kind: "invalid" }
   | { readonly kind: "usable" };
-
-type ConnectorOAuthAuthorizationResult =
-  | { readonly kind: "missing" }
-  | { readonly kind: "invalid" }
-  | { readonly kind: "usable"; readonly authorizationUrl: string };
-
-export async function getConnectorOAuthAuthorizationUrl(
-  db: ReadonlyDb,
-  args: {
-    readonly state: string;
-    readonly connectorSlug: ConnectorSlug;
-  },
-  signal: AbortSignal,
-): Promise<ConnectorOAuthAuthorizationResult> {
-  const [storedState] = await db
-    .select({
-      authorizationUrl: connectorOauthStates.authorizationUrl,
-      connectorSlug: connectorOauthStates.connectorSlug,
-      consumedAt: connectorOauthStates.consumedAt,
-      expiresAt: connectorOauthStates.expiresAt,
-    })
-    .from(connectorOauthStates)
-    .where(eq(connectorOauthStates.state, args.state))
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (!storedState) {
-    return { kind: "missing" };
-  }
-
-  if (
-    storedState.connectorSlug !== args.connectorSlug ||
-    storedState.consumedAt ||
-    storedState.expiresAt <= nowDate() ||
-    !storedState.authorizationUrl
-  ) {
-    return { kind: "invalid" };
-  }
-
-  return {
-    kind: "usable",
-    authorizationUrl: storedState.authorizationUrl,
-  };
-}
 
 export async function getConnectorOAuthStateStatus(
   db: Db,

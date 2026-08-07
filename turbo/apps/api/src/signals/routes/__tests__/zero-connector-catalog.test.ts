@@ -27,6 +27,8 @@ import {
   mockGitHubConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
+import { zeroConnectorCatalogRoutes } from "../zero-connector-catalog";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -41,7 +43,9 @@ async function enableFeatureSwitches(
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
-  const client = setupApp({ context })(zeroFeatureSwitchesContract);
+  const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
   await accept(
     client.update({
       headers: { authorization: "Bearer clerk-session" },
@@ -56,7 +60,9 @@ async function deleteFeatureSwitches(
   userId: string,
 ): Promise<void> {
   mocks.clerk.session(userId, orgId);
-  const client = setupApp({ context })(zeroFeatureSwitchesContract);
+  const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
   await accept(
     client.delete({ headers: { authorization: "Bearer clerk-session" } }),
     [200],
@@ -158,7 +164,9 @@ describe("GET /api/zero/connector-catalog", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(client.list({ headers: {} }), [401]);
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
@@ -167,7 +175,9 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns 401 when the session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [401],
@@ -179,7 +189,9 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns public catalog metadata without a catalog feature switch", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -195,7 +207,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -232,7 +246,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const headers = { authorization: "Bearer clerk-session" };
     const listResponse = await accept(client.list({ headers }), [200]);
     const statusResponse = await accept(client.status({ headers }), [200]);
@@ -285,7 +301,9 @@ describe("GET /api/zero/connector-catalog", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
       [200],
@@ -315,7 +333,9 @@ describe("GET /api/zero/connector-catalog", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.list({ headers: { authorization: `Bearer ${token}` } }),
       [403],
@@ -328,7 +348,9 @@ describe("GET /api/zero/connector-catalog", () => {
   });
 
   it("returns 401 for diagnostics when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(client.diagnostics({ headers: {} }), [401]);
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
@@ -337,7 +359,9 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns 401 for diagnostics when the session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.diagnostics({
         headers: { authorization: "Bearer clerk-session" },
@@ -369,7 +393,9 @@ describe("GET /api/zero/connector-catalog", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.diagnostics({
         headers: { authorization: `Bearer ${token}` },
@@ -383,7 +409,9 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns 403 for diagnostics when ZeroDebug is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.diagnostics({
         headers: { authorization: "Bearer clerk-session" },
@@ -406,7 +434,9 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.diagnostics({
         headers: { authorization: "Bearer clerk-session" },
@@ -434,7 +464,9 @@ describe("GET /api/zero/connector-catalog", () => {
   });
 
   it("returns 401 for catalog status when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(client.status({ headers: {} }), [401]);
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
@@ -443,7 +475,9 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns 401 for catalog status when the session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [401],
@@ -473,7 +507,9 @@ describe("GET /api/zero/connector-catalog", () => {
       exp: seconds + 600,
     });
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.status({ headers: { authorization: `Bearer ${token}` } }),
       [403],
@@ -490,7 +526,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -548,7 +586,9 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -588,7 +628,9 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -627,7 +669,9 @@ describe("GET /api/zero/connector-catalog", () => {
     );
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -666,7 +710,9 @@ describe("GET /api/zero/connector-catalog", () => {
     );
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -697,7 +743,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "openai" },
@@ -726,7 +774,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "parallel" },
@@ -759,7 +809,9 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const listResponse = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -782,7 +834,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "test-oauth-device" },
@@ -801,7 +855,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const connectorSlug = "x".repeat(65);
     const detailResponse = await accept(
       client.get({
@@ -830,7 +886,9 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "test-oauth-device" },
@@ -840,6 +898,11 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    expect(
+      response.body.connector.authMethods.map((method) => {
+        return method.id;
+      }),
+    ).toStrictEqual(["oauth", "api"]);
     const apiMethod = response.body.connector.authMethods.find((method) => {
       return method.id === "api";
     });
@@ -863,7 +926,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "neon" },
@@ -888,7 +953,9 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.get({
         params: { connectorSlug: "neon" },
@@ -910,7 +977,9 @@ describe("GET /api/zero/connector-catalog", () => {
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
     const response = await accept(
       client.permissions({
         params: { connectorSlug: "notion" },

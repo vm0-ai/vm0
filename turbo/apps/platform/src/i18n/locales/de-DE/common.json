@@ -546,6 +546,8 @@
         "label": "Filter für Artefakttypen",
         "presentation": "Präsentationen",
         "presentationAria": "Präsentationsartefakte anzeigen",
+        "sharedConversation": "Geteilte Unterhaltungen",
+        "sharedConversationAria": "Artefakte mit geteilten Unterhaltungen anzeigen",
         "video": "Videos",
         "videoAria": "Videoartefakte anzeigen",
         "website": "Websites",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Präsentation",
+      "sharedConversation": "Geteilte Unterhaltung",
       "text": "Text",
       "video": "Video"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "Videovorschau für {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Geteilte Unterhaltung öffnen",
       "panelTitle": "Artefakte",
       "singularTitle": "Artefakt",
       "unavailable": "Dieses Artefakt ist nicht mehr verfügbar."
@@ -958,7 +962,34 @@
         "name": "Team"
       },
       "upgrade": "Upgrade",
-      "upgradeTo": "Upgrade auf {{plan}}"
+      "upgradeTo": "Upgrade auf {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} Bonus-Credits",
+        "changePlan": "Plan ändern",
+        "choosePlan": "Plan auswählen",
+        "choosePlanDescription": "Wählen Sie zuerst den Workspace-Plan. Mitgliederpakete konfigurieren Sie im nächsten Schritt.",
+        "configurePackages": "Mitgliederpakete konfigurieren",
+        "configurePackagesDescription": "Wählen Sie für jedes Mitglied ein erforderliches Paket aus und prüfen Sie dann die kombinierte Monatssumme.",
+        "currentMember": "Aktuelles Mitglied",
+        "description": "Wählen Sie für jedes Mitglied ein monatliches Nutzungspaket aus.",
+        "discountBonusCredits": "Bonus-Credits durch Rabatt",
+        "memberExclusive": "Jedes Paket gehört einem Mitglied und kann nicht geteilt werden. Wenn ein Paket aufgebraucht ist, wird die Nutzung über nutzungsabhängige Credits abgerechnet. Sie können später auf ein neues Paket upgraden.",
+        "memberPackages": "Mitgliederpakete",
+        "memberUsage": "Nutzung des Mitglieds",
+        "memberUsageTotal": "Monatliche Paketsumme",
+        "minimumPackageBreakdown": "{{base}} Plan + {{package}} erforderliches Mitgliederpaket",
+        "monthlyTotal": "Monatliche Gesamtkosten",
+        "orderSummary": "Bestellübersicht",
+        "packagesStep": "Pakete",
+        "packOption": "{{price}} · {{credits}} Credits · {{discount}} % Rabatt",
+        "planStep": "Plan",
+        "purchaseSteps": "Kaufschritte",
+        "selectedPlan": "Ausgewählter Plan",
+        "selectPlan": "{{plan}} auswählen",
+        "selectUsage": "Nutzung für {{name}}",
+        "startingAt": "Ab",
+        "totalCredits": "Credits insgesamt"
+      }
     },
     "restore": {
       "cancellationDescription": "Dadurch wird die geplante Kündigung für Ihren {{plan}}-Plan rückgängig gemacht.",
@@ -1060,7 +1091,6 @@
     "actions": {
       "authorize": "Autorisieren",
       "cancel": "Abbrechen",
-      "configure": "Konfigurieren",
       "confirm": "Bestätigen",
       "continue": "Weiter",
       "copied": "Kopiert!",
@@ -1154,6 +1184,7 @@
         "googleCalendarCancelled": "Google Calendar-Ereignis abgesagt",
         "googleCalendarCreated": "Google Calendar-Ereignis erstellt",
         "googleCalendarUpdated": "Google Calendar-Ereignis aktualisiert",
+        "googleFormsResponseSubmitted": "Google Forms-Antwort eingereicht",
         "googleMeetTranscript": "Google Meet-Transkript bereit",
         "notionChildPage": "Neue untergeordnete Notion-Seite",
         "notionDatabaseItem": "Neues Notion-Datenbankelement",
@@ -1292,7 +1323,6 @@
       "available_other": "Verfügbare Integrationen ({{count}})",
       "configurePermissions": "Konfigurieren Sie {{connectorName}}-Berechtigungen",
       "customAuthorizeDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration und autorisieren Sie sie für den Agenten.",
-      "customConnectDescription": "Prüfen und verbinden Sie diese benutzerdefinierte Integration.",
       "find": "Integrationen suchen...",
       "remove": "{{connectorName}} entfernen",
       "title": "Integrationen"
@@ -1498,6 +1528,22 @@
       "worked": "Ausgeführt",
       "workedFor": "Ausgeführt in {{duration}}"
     },
+    "sharing": {
+      "cancel": "Abbrechen",
+      "close": "Schließen",
+      "copyFailed": "Der Link konnte nicht kopiert werden",
+      "copyLink": "Link kopieren",
+      "create": "Teilen",
+      "createFailed": "Die geteilte Unterhaltung konnte nicht erstellt werden. Versuche es erneut.",
+      "deselectGroup": "Nachrichtengruppe abwählen",
+      "linkCopied": "Link kopiert",
+      "selectedCount_one": "{{count}} ausgewählt",
+      "selectedCount_other": "{{count}} ausgewählt",
+      "selectGroup": "Nachrichtengruppe auswählen",
+      "shareLink": "Link zur geteilten Unterhaltung",
+      "start": "Nachrichten teilen",
+      "tooLarge": "Wähle weniger Nachrichten zum Teilen aus"
+    },
     "shortcuts": {
       "number": "Nummer"
     },
@@ -1624,7 +1670,6 @@
       "edit": "Bearbeiten",
       "grant": "Gewähren",
       "reconnect": "Wieder verbinden",
-      "rename": "Umbenennen",
       "revoke": "Widerrufen",
       "save": "Speichern",
       "saving": "Speichern...",
@@ -1874,17 +1919,12 @@
       "emptyAdmin": "Noch keine benutzerdefinierten Integrationen. Erstellen Sie eine, um eine API zu registrieren, die jedes Mitglied verwenden kann.",
       "emptyMember": "Ihre Organisation hat noch keine benutzerdefinierten Integrationen registriert.",
       "moreOptions": "Weitere Optionen",
-      "rename": {
-        "displayName": "Anzeigename",
-        "title": "Benutzerdefinierte Integration umbenennen"
-      },
       "statusConnected": "Verbunden",
       "toasts": {
         "connected": "Verbunden",
         "created": "Erstellt „{{connector}}“",
         "deleted": "Benutzerdefinierte Integration gelöscht",
         "disconnected": "Getrennt",
-        "renamed": "Umbenannt in „{{connector}}“",
         "updated": "Aktualisiert „{{connector}}“"
       },
       "updateConfirm": {
@@ -1892,19 +1932,6 @@
         "description": "Durch diese OAuth-Änderungen werden alle derzeit über OAuth verbundenen Mitglieder getrennt. Sie müssen diese benutzerdefinierte Integration erneut verbinden.",
         "title": "Bestehende OAuth-Verbindungen trennen?"
       }
-    },
-    "customProposal": {
-      "configure": "Konfigurieren Sie {{connector}}",
-      "descriptionAgent": "Durch das Speichern werden Ihre Werte verknüpft und {{agent}} autorisiert.",
-      "descriptionUser": "Durch das Speichern wird dieser benutzerdefinierte Integration für Ihr Konto verbunden.",
-      "documentTitle": "Benutzerdefinierte Integration konfigurieren",
-      "invalid": "Dieser Link zum Vorschlag für eine benutzerdefinierte Integration ist ungültig oder abgelaufen.",
-      "requestScope": "Umfang anfordern",
-      "returnToChat": "Kehren Sie zum Chat zurück und antworten Sie mit ACK, damit der Agent die Integration überprüfen kann.",
-      "saved": "Gespeichert",
-      "savedToast": "{{connector}} gespeichert",
-      "targetFallback": "dieser Agent",
-      "update": "Aktualisieren Sie {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Autorisieren Sie {{agent}}",
@@ -4565,6 +4592,12 @@
       "title": "Seite nicht gefunden"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Diese geteilte Unterhaltung existiert nicht.",
+    "notFoundTitle": "Geteilte Unterhaltung nicht gefunden",
+    "tryOkou": "Okou ausprobieren"
+  },
   "usage": {
     "automations": {
       "empty": "In diesem Zeitraum wurden keine Automatisierungen verwendet",
@@ -4599,6 +4632,7 @@
       "imageRecognize": "Bilderkennung",
       "maps": "Karten",
       "peopleSearch": "Personensuche",
+      "translation": "Übersetzung",
       "usage": "Nutzung",
       "weather": "Wetter",
       "webFetch": "Webabruf",
@@ -4734,6 +4768,11 @@
         "minute_other": "{{count}} Minuten",
         "second_one": "{{count}} Sekunde",
         "second_other": "{{count}} Sekunden"
+      },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms-Antwort eingereicht",
+        "rule": "Wenn {{form}} eine Antwort erhält",
+        "summary": "Formular {{form}}"
       },
       "github": {
         "accountConnect": "GitHub verbinden",
@@ -5057,6 +5096,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",

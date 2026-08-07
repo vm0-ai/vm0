@@ -32,6 +32,7 @@ use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{
     self, ExecutorConfig, RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryRestorePlan,
 };
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -242,6 +243,7 @@ struct FinalizationPhase {
     cli_agent_session_id: Option<String>,
     storage_fingerprints: StorageFingerprints,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    guest_timezone_intent: GuestTimezoneIntent,
     factory: SharedFactory,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
@@ -276,6 +278,7 @@ impl FinalizationPhase {
             cli_agent_session_id,
             storage_fingerprints,
             device_rate_limits,
+            guest_timezone_intent,
             factory,
             idle_pool,
             status,
@@ -347,6 +350,7 @@ impl FinalizationPhase {
                 workspace_image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
                 storage_fingerprints,
                 device_rate_limits,
+                guest_timezone_intent,
                 factory,
                 idle_pool,
                 status,
@@ -571,6 +575,7 @@ pub(super) fn spawn_job(
     } else {
         None
     };
+    let guest_timezone_intent = GuestTimezoneIntent::from_context(&context);
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let workspace_disk_mb = job_profile.workspace_disk_mb;
@@ -670,6 +675,7 @@ pub(super) fn spawn_job(
         cli_agent_session_id,
         storage_fingerprints,
         device_rate_limits: job_device_rate_limits,
+        guest_timezone_intent,
         factory,
         idle_pool: Arc::clone(&idle_pool),
         status: Arc::clone(&status),
@@ -958,6 +964,7 @@ mod tests {
                 reuse_key: Some(session_id.into()),
                 cli_agent_session_id: Some(session_id.into()),
                 storage_fingerprints: StorageFingerprints::default(),
+                guest_timezone_intent: GuestTimezoneIntent::Unknown,
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new())),
                 idle_pool: Arc::clone(&self.idle_pool),

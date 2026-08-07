@@ -62,6 +62,7 @@ export async function notifyRunnerJob(
       cliAgentSessionId: args.cliAgentSessionId,
       historyGenerationRunId: args.historyGenerationRunId,
       runnerPreference: reusePreference.runnerPreference,
+      runnerPreferenceResolution: reusePreference.outcome,
     },
   );
   const publishFinishedAt = now();

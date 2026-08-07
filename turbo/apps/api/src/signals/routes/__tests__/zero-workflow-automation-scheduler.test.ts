@@ -28,6 +28,18 @@ import { chatEventAutomationPart } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
+import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
+import { zeroAgentsRoutes } from "../zero-agents";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronExecuteWorkflowAutomationsRoutes,
+  ...testWorkflowAutomationExecutionRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowsRoutes,
+]);
 
 const context = testContext();
 const store = createStore();
@@ -58,7 +70,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function workflowAutomationExecutionClient() {
@@ -246,13 +260,13 @@ async function completeRunThroughSandbox(
 }
 
 async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(
-    `/api/zero/workflows/${scenario.workflowId}`,
-    {
-      method: "DELETE",
-      headers: { authorization: "Bearer clerk-session" },
-    },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(`/api/zero/workflows/${scenario.workflowId}`, {
+    method: "DELETE",
+    headers: { authorization: "Bearer clerk-session" },
+  });
   await expectOk(response, "delete workflow");
 }
 
@@ -260,9 +274,10 @@ describe("zero workflow automation scheduler", () => {
   it("rejects unauthenticated production cron requests", async () => {
     mockEnv("CRON_SECRET", CRON_SECRET);
 
-    const response = await createApp({ signal: context.signal }).request(
-      CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
-    );
+    const response = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request(CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE);
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
@@ -360,7 +375,9 @@ describe("zero workflow automation scheduler", () => {
     mockGmailConnectorOAuth({ email: "automation-user@example.com" });
     await wf.connectConnector(scenario.actor, "gmail");
     await accept(
-      setupApp({ context })(zeroUserConnectorsContract).update({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroUserConnectorsContract,
+      ).update({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { enabledConnectorSlugs: ["gmail"] },
@@ -547,7 +564,9 @@ describe("zero workflow automation scheduler", () => {
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
     const apiKey = await runsApi.createCliToken(member);
     await accept(
-      setupApp({ context })(zeroAgentsMainContract).list({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsMainContract,
+      ).list({
         headers: { authorization: `Bearer ${apiKey.token}` },
       }),
       [200],
@@ -570,7 +589,9 @@ describe("zero workflow automation scheduler", () => {
     // The agent owner flips the agent private, hiding it from the member.
     mocks.clerk.session(scenario.userId, scenario.orgId);
     await accept(
-      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsByIdContract,
+      ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { visibility: "private" },
@@ -583,7 +604,9 @@ describe("zero workflow automation scheduler", () => {
     // Restore visibility so the member's product reads work again; the skip
     // already happened during the tick above.
     await accept(
-      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentsByIdContract,
+      ).updateMetadata({
         headers: authHeaders(),
         params: { id: scenario.agentId },
         body: { visibility: "public" },

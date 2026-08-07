@@ -1,9 +1,15 @@
 import { command, computed, state } from "ccstate";
 
 const innerPageSignal$ = state<AbortSignal | undefined>(undefined);
+const innerPageLifecycleId$ = state("");
 
 export const setPageSignal$ = command(({ set }, signal: AbortSignal) => {
   set(innerPageSignal$, signal);
+  set(innerPageLifecycleId$, crypto.randomUUID());
+});
+
+export const pageLifecycleId$ = computed((get) => {
+  return get(innerPageLifecycleId$);
 });
 
 export const pageSignal$ = computed((get) => {

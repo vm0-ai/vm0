@@ -4,6 +4,8 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  googleFormsResponseSubmittedEventConfigSchema,
+  googleFormsResponseSubmittedEventCreateConfigSchema,
   googleMeetTranscriptGeneratedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
@@ -169,6 +171,56 @@ describe("Google Calendar event-cancelled workflow automation contract", () => {
         calendarId: "primary",
       },
     });
+  });
+});
+
+describe("Google Forms response-submitted workflow automation contract", () => {
+  it("keeps create and persisted configs separate", () => {
+    expect(
+      googleFormsResponseSubmittedEventCreateConfigSchema.parse({
+        provider: "google-forms",
+        event: "response_submitted",
+        formUrl: "https://docs.google.com/forms/d/1FAIpQLScContractsTest/edit",
+      }),
+    ).toStrictEqual({
+      provider: "google-forms",
+      event: "response_submitted",
+      formUrl: "https://docs.google.com/forms/d/1FAIpQLScContractsTest/edit",
+    });
+
+    const persisted = {
+      provider: "google-forms",
+      event: "response_submitted",
+      connectorId: "55555555-5555-4555-8555-555555555557",
+      form: {
+        id: "1FAIpQLScContractsTest",
+        title: "Customer survey",
+        url: "https://docs.google.com/forms/d/1FAIpQLScContractsTest/edit",
+      },
+    };
+    expect(
+      googleFormsResponseSubmittedEventConfigSchema.parse(persisted),
+    ).toStrictEqual(persisted);
+    expect(
+      googleFormsResponseSubmittedEventConfigSchema.safeParse({
+        ...persisted,
+        formUrl: persisted.form.url,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a response-submitted create request", () => {
+    expect(
+      zeroWorkflowAutomationCreateRequestSchema.safeParse({
+        kind: "event",
+        eventType: "google-forms-response-submitted",
+        eventConfig: {
+          provider: "google-forms",
+          event: "response_submitted",
+          formUrl: "1FAIpQLScContractsTest",
+        },
+      }).success,
+    ).toBe(true);
   });
 });
 

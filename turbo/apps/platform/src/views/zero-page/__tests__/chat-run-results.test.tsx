@@ -35,6 +35,53 @@ afterEach(async () => {
 });
 
 describe("chat lifecycle", () => {
+  it("keeps budget inputs out of the visible transcript", async () => {
+    mockChatLifecycle(context, {
+      threadId: "thread-budget-input-visibility",
+      chatEvents: [
+        {
+          id: "msg-budget-input-user",
+          role: "user",
+          eventType: "input.prompt",
+          content: "Start the long-running task",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T00:00:00Z",
+        },
+        {
+          id: "msg-budget-input-warning",
+          role: "user",
+          eventType: "input.budget",
+          content: "The runner has five minutes remaining",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T01:55:00Z",
+        },
+        {
+          id: "msg-budget-input-assistant",
+          role: "assistant",
+          eventType: "output.message",
+          content: "The task summary is ready",
+          runId: "run-budget-input",
+          createdAt: "2026-08-06T01:55:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-budget-input-visibility",
+    });
+
+    await expect(
+      screen.findByText("Start the long-running task"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("The task summary is ready"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText("The runner has five minutes remaining"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows run credit usage with friendly popover details", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip",
@@ -597,7 +644,17 @@ describe("chat lifecycle", () => {
         {
           id: "msg-server-queued-followup",
           role: "user",
-          content: "Follow up when the queued run starts",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "text",
+                text: "Follow up when the queued run starts",
+              },
+              { type: "morning_brief", briefDate: "2026-06-09" },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-06-09T10:00:02Z",
         },
@@ -964,7 +1021,6 @@ describe("chat lifecycle", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
-        featureSwitches: { [FeatureSwitchKey.ChatSteer]: true },
       });
 
       await screen.findByText(visibleOrder[0]!);
@@ -1017,63 +1073,6 @@ describe("chat lifecycle", () => {
       ).toBeInTheDocument();
     },
   );
-
-  it("keeps the legacy trailing-user layout when chat steer is disabled", async () => {
-    const threadId = "thread-work-folding-trailing-user-disabled";
-    const runId = "run-work-folding-trailing-user-disabled";
-    mockChatLifecycle(context, {
-      threadId,
-      chatEvents: [
-        {
-          role: "user",
-          content: "Prepare the disabled-switch launch plan",
-          runId,
-          createdAt: "2026-08-04T10:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "Reviewing the disabled-switch launch notes.",
-          runId,
-          createdAt: "2026-08-04T10:00:10Z",
-        },
-        {
-          role: "assistant",
-          content: "The disabled-switch launch plan is ready.",
-          runId,
-          createdAt: "2026-08-04T10:00:20Z",
-        },
-        {
-          role: "user",
-          content: "Add disabled-switch rollback steps",
-          runId,
-          createdAt: "2026-08-04T10:00:30Z",
-        },
-        {
-          role: "assistant",
-          content: null,
-          runId,
-          runLifecycleEvent: "completed",
-          createdAt: "2026-08-04T10:00:40Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatSteer]: false },
-    });
-
-    await expect(
-      screen.findByText("Reviewing the disabled-switch launch notes."),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByLabelText("Expand work history")).toBeNull();
-    expectTextBefore(
-      document.body,
-      "The disabled-switch launch plan is ready.",
-      "Add disabled-switch rollback steps",
-    );
-  });
 
   it("keeps the established completed-run layout across container sizes", async () => {
     const finalReply = "The launch plan is ready.";

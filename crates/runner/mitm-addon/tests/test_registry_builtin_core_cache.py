@@ -320,7 +320,7 @@ class TestRegistryBuiltinCoreCache:
         assert second_compiled is not None
         assert first_firewall_core(first_compiled) is not first_firewall_core(second_compiled)
 
-    def test_invalid_builtin_entry_does_not_poison_valid_vm_core_cache(self, tmp_path, mitm_ctx):
+    def test_omitted_builtin_entry_does_not_poison_valid_vm_core_cache(self, tmp_path, mitm_ctx):
         path, cache_path = write_registry_with_cache(
             tmp_path,
             {
@@ -338,13 +338,17 @@ class TestRegistryBuiltinCoreCache:
             patch.object(registry.ctx, "log", MagicMock(), create=True),
         ):
             valid_context = registry.get_vm_context("10.200.0.1", str(path))
-            invalid_context = registry.get_vm_context("10.200.0.2", str(path))
+            omitted_context = registry.get_vm_context("10.200.0.2", str(path))
             state = registry.load_registry_state(str(path))
 
         assert valid_context is not None
-        assert invalid_context is None
+        assert omitted_context is not None
         assert not isinstance(state, registry.RegistryUnavailable)
-        assert state.invalid_vms["10.200.0.2"].reason == "invalid_firewalls"
+        assert state.invalid_vms == {}
+        assert state.omitted_builtin_firewalls == {"10.200.0.2": frozenset({"missing-firewall"})}
+        omitted_vm, omitted_compiled, _ = omitted_context
+        assert omitted_vm["firewalls"] == []
+        assert omitted_compiled is None
         _, compiled_firewalls, compiled_policies = valid_context
         assert compiled_firewalls is not None
         result = matching.match_compiled_firewall_request(

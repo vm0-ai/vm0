@@ -4,8 +4,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, eq } from "drizzle-orm";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -28,8 +26,7 @@ import {
 import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.service";
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { pendingActiveInputPromptCondition } from "./chat-event-queue.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { pendingActiveInputCondition } from "./chat-event-queue.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
@@ -60,7 +57,7 @@ interface DrainChatThreadQueueInput {
   };
 }
 
-async function notifyRunningChatRunOfPendingInput(
+export async function notifyRunningChatRunOfPendingInput(
   db: Db,
   chatThreadId: string,
 ): Promise<boolean> {
@@ -68,8 +65,6 @@ async function notifyRunningChatRunOfPendingInput(
     .select({
       id: agentRuns.id,
       runnerGroup: agentRuns.runnerGroup,
-      userId: agentRuns.userId,
-      orgId: agentRuns.orgId,
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
@@ -83,21 +78,13 @@ async function notifyRunningChatRunOfPendingInput(
   if (!run) {
     return false;
   }
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    run.orgId,
-    run.userId,
-  );
-  if (!isFeatureEnabled(FeatureSwitchKey.ChatSteer, featureSwitchContext)) {
-    return false;
-  }
   const [pendingInput] = await db
     .select({ id: chatEvents.id })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.chatThreadId, chatThreadId),
-        pendingActiveInputPromptCondition(db),
+        pendingActiveInputCondition(db, run.id),
       ),
     )
     .limit(1);

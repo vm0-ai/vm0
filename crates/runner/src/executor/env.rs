@@ -361,14 +361,7 @@ pub(super) fn build_env_json_with_host_env(
     reuse_result: SandboxReuseResult,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
-    build_env_json_with_host_env_for_run(
-        context,
-        api_url,
-        sandbox_id,
-        reuse_result,
-        false,
-        host_env,
-    )
+    build_env_json_with_host_env_for_run(context, api_url, sandbox_id, reuse_result, host_env)
 }
 
 /// Build the guest-agent bootstrap environment.
@@ -380,17 +373,9 @@ pub(super) fn build_env_json_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-    has_active_input_source: bool,
 ) -> RunnerResult<HashMap<String, String>> {
     let host_env = HostEnv::from_process();
-    build_env_json_with_host_env_for_run(
-        context,
-        api_url,
-        sandbox_id,
-        reuse_result,
-        has_active_input_source,
-        &host_env,
-    )
+    build_env_json_with_host_env_for_run(context, api_url, sandbox_id, reuse_result, &host_env)
 }
 
 pub(super) fn build_env_json_with_host_env_for_run(
@@ -398,7 +383,6 @@ pub(super) fn build_env_json_with_host_env_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
-    has_active_input_source: bool,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
@@ -470,9 +454,7 @@ pub(super) fn build_env_json_with_host_env_for_run(
 
     match effective_cli_framework(&context.cli_agent_type) {
         EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env),
-        EffectiveCliFramework::Codex => {
-            insert_codex_env(&mut env, context, host_env, has_active_input_source);
-        }
+        EffectiveCliFramework::Codex => insert_codex_env(&mut env, context, host_env),
     }
 
     Ok(env)
@@ -690,15 +672,7 @@ pub(super) fn insert_codex_env(
     env: &mut HashMap<String, String>,
     context: &ExecutionContext,
     host_env: &HostEnv,
-    has_active_input_source: bool,
 ) {
-    if has_active_input_source {
-        env.insert(
-            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV.into(),
-            "1".into(),
-        );
-    }
-
     // Pass USE_MOCK_CODEX from host environment for testing unless preview
     // evaluation explicitly asks for the real agent runtime.
     if let Some(val) = &host_env.use_mock_codex

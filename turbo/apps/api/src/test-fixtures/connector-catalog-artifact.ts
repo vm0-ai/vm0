@@ -157,7 +157,6 @@ interface ProviderMethodArgs {
   readonly label?: string;
   readonly description?: string | null;
   readonly visible?: boolean;
-  readonly featureSwitch?: string | null;
   readonly scopes?: readonly string[];
   readonly fields?: readonly ManualField[];
   readonly startOptions?: readonly DeviceStartOption[];
@@ -304,7 +303,6 @@ function providerMethod(args: ProviderMethodArgs): ConnectorCatalogAuthMethod {
         ? "Test connector authorization."
         : args.description,
     visible: args.visible ?? true,
-    featureSwitch: args.featureSwitch ?? null,
     ...(client === undefined ? {} : { client }),
     storage: storageFromValueRefs(args.values),
     grant: providerGrant({
@@ -332,7 +330,6 @@ interface ManualMethodArgs {
   readonly label?: string;
   readonly description?: string | null;
   readonly visible?: boolean;
-  readonly featureSwitch?: string | null;
   readonly fields: readonly ManualField[];
   readonly envBindings: EnvironmentBindings;
   readonly additionalSecrets?: readonly string[];
@@ -353,7 +350,6 @@ function manualMethod(args: ManualMethodArgs): ConnectorCatalogAuthMethod {
         ? "Enter test connector credentials."
         : args.description,
     visible: args.visible ?? true,
-    featureSwitch: args.featureSwitch ?? null,
     storage: {
       version: 1,
       secrets: [...secrets],
@@ -371,7 +367,6 @@ interface StandardOauthMethodArgs {
   readonly tokenEnvironmentNames: readonly string[];
   readonly additionalValues?: Readonly<Record<string, string>>;
   readonly scopes?: readonly string[];
-  readonly featureSwitch?: string;
   readonly label?: string;
   readonly callbackDescription?: string;
   readonly platformEnvironmentNames?: readonly string[];
@@ -407,7 +402,6 @@ function standardOauthMethod(
     label: args.label ?? "OAuth",
     description:
       args.callbackDescription ?? "Sign in to the test connector provider.",
-    featureSwitch: args.featureSwitch,
     scopes: args.scopes,
     refreshableSecrets: [accessTokenName],
   });
@@ -599,7 +593,6 @@ const connectors = [
         connectorSlug: "aws",
         authMethodId: "cli",
         clientId: "arn:aws:signin:::devtools/cross-device",
-        featureSwitch: "awsConnector",
         scopes: ["openid"],
         values: {
           accessKeyId: secret("AWS_ACCESS_KEY_ID"),
@@ -661,7 +654,6 @@ const connectors = [
     label: "BentoML",
     authMethods: [
       manualMethod({
-        featureSwitch: "bentomlConnector",
         fields: [
           manualField({
             privateName: "BENTO_CLOUD_API_KEY",
@@ -771,7 +763,6 @@ const connectors = [
       providerMethod({
         connectorSlug: "datadog",
         authMethodId: "oauth",
-        featureSwitch: "datadogConnector",
         values: {
           accessToken: secret("DATADOG_ACCESS_TOKEN"),
           domain: variable("DATADOG_DOMAIN"),
@@ -802,7 +793,6 @@ const connectors = [
         connectorSlug: "figma",
         prefix: "FIGMA",
         tokenEnvironmentNames: ["FIGMA_TOKEN"],
-        featureSwitch: "figmaConnector",
       }),
       manualMethod({
         fields: [
@@ -978,6 +968,36 @@ const connectors = [
     ]),
   }),
   connector({
+    connectorSlug: "google-forms",
+    label: "Google Forms",
+    authMethods: [
+      standardOauthMethod({
+        connectorSlug: "google-forms",
+        prefix: "GOOGLE_FORMS",
+        tokenEnvironmentNames: ["GOOGLE_FORMS_TOKEN"],
+        scopes: [
+          "https://www.googleapis.com/auth/forms.body.readonly",
+          "https://www.googleapis.com/auth/forms.responses.readonly",
+        ],
+      }),
+    ],
+    firewall: generatedFirewall(
+      [
+        bearerApi("https://forms.googleapis.com", "GOOGLE_FORMS_TOKEN", [
+          { name: "forms.read", rules: ["GET /v1/forms/{formId}"] },
+          {
+            name: "responses.read",
+            rules: ["GET /v1/forms/{formId}/responses"],
+          },
+        ]),
+      ],
+      {
+        defaultAllowed: ["forms.read", "responses.read"],
+        defaultUnknownPolicy: "deny",
+      },
+    ),
+  }),
+  connector({
     connectorSlug: "google-maps",
     label: "Google Maps",
     authMethods: [
@@ -1120,7 +1140,6 @@ const connectors = [
         connectorSlug: "neon",
         prefix: "NEON",
         tokenEnvironmentNames: ["NEON_TOKEN"],
-        featureSwitch: "neonConnector",
       }),
       manualMethod({
         fields: [
@@ -1531,7 +1550,6 @@ const connectors = [
         authMethodId: "oauth",
         clientId: "test-oauth-client",
         clientSecret: "test-oauth-secret",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           accessToken: secret("TEST_OAUTH_ACCESS_TOKEN"),
@@ -1549,7 +1567,6 @@ const connectors = [
         authMethodId: "api",
         clientId: "test-oauth-client",
         clientSecret: "test-oauth-secret",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           initialAccessToken: secret("TEST_OAUTH_API_ACCESS_TOKEN"),
@@ -1570,7 +1587,6 @@ const connectors = [
       providerMethod({
         connectorSlug: "test-oauth",
         authMethodId: "api-token",
-        featureSwitch: "testOauthConnector",
         values: {
           inputSecret: secret("TEST_OAUTH_TOKEN"),
           inputVariable: variable("TEST_OAUTH_API_TOKEN_INPUT_VAR"),
@@ -1628,7 +1644,6 @@ const connectors = [
         connectorSlug: "test-oauth-device",
         authMethodId: "oauth",
         clientId: "test-oauth-device-client",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           accessToken: secret("TEST_OAUTH_DEVICE_ACCESS_TOKEN"),
@@ -1641,7 +1656,6 @@ const connectors = [
         connectorSlug: "test-oauth-device",
         authMethodId: "api",
         clientId: "test-oauth-device-api-client",
-        featureSwitch: "testOauthConnector",
         scopes: ["read"],
         values: {
           accessToken: secret("TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"),
@@ -1737,8 +1751,8 @@ const connectors = [
 ] satisfies readonly ConnectorCatalogArtifactConnector[];
 
 export const API_TEST_CONNECTOR_CATALOG_ARTIFACT = {
-  artifactSchemaVersion: 2,
-  catalogVersion: "api-test-v2",
+  artifactSchemaVersion: 3,
+  catalogVersion: "api-test-v3",
   categoryMetadata: {
     categories: [
       {

@@ -155,6 +155,12 @@ const mockChatEventOverrides = {
         } satisfies UserMessageDocument),
     };
   },
+  "input.budget": (message) => {
+    return {
+      content: null,
+      userMessage: requiredMockUserMessage(message),
+    };
+  },
   "input.rejected": (message) => {
     return {
       content: null,

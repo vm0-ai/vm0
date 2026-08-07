@@ -3,10 +3,6 @@ import { z } from "zod";
 import { connectorCatalogVersionSchema, privateNameSchema } from "./common";
 
 export const publicFieldIdSchema = z.string().regex(/^[a-z][a-zA-Z0-9]*$/u);
-export const connectorFeatureSwitchKeySchema = z
-  .string()
-  .max(128)
-  .regex(/^[a-z][a-zA-Z0-9]*$/u);
 export const internalOptionNameSchema = z
   .string()
   .regex(/^[a-zA-Z][a-zA-Z0-9_]*$/u);
@@ -245,7 +241,6 @@ const connectorAuthMethodSourceSchema = z
     label: z.string().min(1),
     description: z.string().min(1).nullable(),
     visible: z.boolean(),
-    featureSwitch: connectorFeatureSwitchKeySchema.optional(),
     client: connectorAuthClientSourceSchema.optional(),
     storage: connectorStorageSourceSchema,
     grant: connectorGrantSourceSchema,

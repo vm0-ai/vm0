@@ -7,7 +7,9 @@ mod publish;
 mod runtime;
 
 pub use error::SnapshotError;
-pub use output::SNAPSHOT_COMPLETE_MARKER_CONTENT;
+pub use output::{
+    SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotOutputValidation, validate_snapshot_output,
+};
 pub use provider::FirecrackerSnapshotProvider;
 
 use sandbox::SnapshotCreateConfig;

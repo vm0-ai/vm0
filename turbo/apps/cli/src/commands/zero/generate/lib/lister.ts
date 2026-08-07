@@ -138,6 +138,12 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       reason: "availability depends on the current workspace plan",
     },
     {
+      label: "Built-in MiniMax",
+      model: "MiniMax-H3",
+      command: "zero generate video --provider built-in --model minimax-h3 -h",
+      reason: "availability depends on the current workspace plan",
+    },
+    {
       label: "Built-in fal.ai",
       model: "fal-ai/veo3.1/fast",
       command: "zero generate video --provider built-in --model veo3.1-fast -h",
@@ -178,7 +184,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in video generation",
     command: "zero generate video --provider built-in -h",
     models:
-      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, veo3.1-fast, kling-v3-4k",
+      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
   },
   presentation: {
     label: "Built-in presentation generation",

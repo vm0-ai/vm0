@@ -50,6 +50,7 @@ import {
   canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
   type ExecutionFirewallEntry,
+  type ExecutionFirewallInlineEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
   FirewallBaseUrlResolutionError,
@@ -57,6 +58,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicy,
   type NetworkPolicies,
+  type NetworkPolicy,
   normalizeFirewallFixedHost,
 } from "@vm0/connectors/firewall-types";
 import {
@@ -166,7 +168,6 @@ import {
   compileModelProviderGatewayRuntime,
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
-import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import {
   autonomyBudgetSchemaAvailable,
   insertRolloutCompatibleZeroRun,
@@ -275,6 +276,7 @@ import {
   normalizeSessionHistoryBlobEncoding,
   type CompressedSessionHistoryBlobEncoding,
 } from "./session-history-blobs";
+import type { Tx } from "../../lib/db-types";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -317,7 +319,7 @@ type CreateRunBody = Omit<
 > & {
   readonly triggerSource: TriggerSource;
 };
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
@@ -522,7 +524,7 @@ const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
 type CustomConnectorAuthRefKind = "secret" | "variable";
 
-interface CustomConnectorAuthRef {
+export interface CustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
   readonly connectorRevision: number;
@@ -1866,10 +1868,6 @@ function providerEnvironmentFromSecretMap(
   return environment;
 }
 
-function vm0ApiKeySelectionOrder() {
-  return sql`case when ${eq(vm0ApiKeys.label, sql`'dev-seed'`)} then 0 else 1 end`;
-}
-
 async function multiAuthModelProviderEnvironment(
   db: Db,
   args: {
@@ -1975,22 +1973,12 @@ async function vm0ModelProviderEnvironment(
   const concreteType = getVm0ConcreteProviderType(selectedModel);
   const vendor = getVm0Vendor(selectedModel);
   const apiModel = getProviderRuntimeModel("vm0", selectedModel);
-  const exactRows = await db
+  const rows = await db
     .select({ apiKey: vm0ApiKeys.apiKey })
     .from(vm0ApiKeys)
-    .where(and(eq(vm0ApiKeys.vendor, vendor), eq(vm0ApiKeys.model, apiModel)))
-    .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
+    .where(eq(vm0ApiKeys.vendor, vendor))
     .limit(1);
-  const fallbackRows =
-    exactRows.length > 0
-      ? exactRows
-      : await db
-          .select({ apiKey: vm0ApiKeys.apiKey })
-          .from(vm0ApiKeys)
-          .where(eq(vm0ApiKeys.vendor, vendor))
-          .orderBy(vm0ApiKeySelectionOrder(), sql`random()`)
-          .limit(1);
-  const apiKey = fallbackRows[0]?.apiKey;
+  const apiKey = rows[0]?.apiKey;
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
@@ -2029,9 +2017,6 @@ async function customGatewayModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.modelProviderId || !args.selectedModelOverride) {
-    return null;
-  }
-  if (!(await modelProviderGatewaySchemaAvailable(db))) {
     return null;
   }
   const [row] = await db
@@ -3499,7 +3484,7 @@ async function loadStoredConnectorMaterializationSnapshot(
   );
 }
 
-type CustomConnectorRuntimeDataRows = Awaited<
+export type CustomConnectorRuntimeDataRows = Awaited<
   ReturnType<typeof loadCustomConnectorRuntimeData>
 >;
 
@@ -3733,7 +3718,7 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-async function loadEffectiveCustomConnectorPermissionBundle(args: {
+export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly snapshot: ConnectorRuntimeSnapshot;
 }): Promise<CustomConnectorPermissionBundle | null | undefined> {
@@ -3773,7 +3758,7 @@ function buildCustomConnectorPermissionPolicy(args: {
   };
 }
 
-async function buildCustomConnectorRuntimeContext(
+export async function buildCustomConnectorRuntimeContext(
   args: BuildCustomConnectorRuntimeContextArgs,
 ): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
@@ -3888,6 +3873,68 @@ async function buildCustomConnectorRuntimeContext(
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
   stats.flush(args.timing);
   return result;
+}
+
+interface CustomConnectorRuntimeExecutionState {
+  readonly firewall: Omit<ExecutionFirewallInlineEntry, "firewall"> & {
+    readonly firewall: Omit<Firewall, "apis"> & {
+      readonly apis: (Firewall["apis"][number] & {
+        readonly id: string;
+      })[];
+    };
+  };
+  readonly networkPolicy: NetworkPolicy;
+  readonly authRefs: readonly CustomConnectorAuthRef[];
+}
+
+export function customConnectorRuntimeExecutionState(args: {
+  readonly context: CustomConnectorRuntimeContext;
+  readonly connectorId: string;
+}): CustomConnectorRuntimeExecutionState | null {
+  const firewallName = customConnectorInternalName(args.connectorId);
+  const source = args.context.firewalls.find((firewall) => {
+    return firewall.name === firewallName;
+  });
+  if (!source) {
+    return null;
+  }
+
+  const permissionNames = collectPermissionNames(source.apis);
+  const defaultPolicy = allAllowPolicyForPermissions(permissionNames);
+  const policy = args.context.permissionPolicies?.[firewallName];
+  const networkPolicy = networkPolicyForFirewallPolicy(
+    permissionNames,
+    policy
+      ? {
+          ...policy,
+          unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+        }
+      : defaultPolicy,
+  );
+
+  return {
+    firewall: {
+      kind: "inline",
+      firewall: {
+        name: source.name,
+        apis: source.apis.map((api, index) => {
+          return {
+            id: `${firewallName}:${index}`,
+            base: api.base,
+            ...(api.hostPolicy !== undefined
+              ? { hostPolicy: api.hostPolicy }
+              : {}),
+            auth: api.auth,
+            permissions: api.permissions ?? [],
+          };
+        }),
+      },
+    },
+    networkPolicy,
+    authRefs: args.context.authRefs.filter((ref) => {
+      return ref.connectorId === args.connectorId;
+    }),
+  };
 }
 
 async function loadCustomConnectorContext(
@@ -4535,6 +4582,7 @@ async function checkFinalRunAdmission(
   db: Db,
   args: {
     readonly orgId: string;
+    readonly userId: string;
     readonly modelProviderType: string | null | undefined;
     readonly selectedModel: string | null | undefined;
     readonly enforceVm0Credits: boolean;
@@ -4550,12 +4598,14 @@ async function checkFinalRunAdmission(
         const availability = await resolveOrgCreditAvailability({
           db,
           orgId: args.orgId,
+          userId: args.userId,
         });
         args.signal.throwIfAborted();
         return (
           (await checkResolvedOrgCreditsForRunAdmission({
             db,
             orgId: args.orgId,
+            userId: args.userId,
             modelProviderType: args.modelProviderType,
             selectedModel: args.selectedModel,
             availability,
@@ -6273,10 +6323,14 @@ async function claimQueueFirstAssociationForLaunch(args: {
   if (!args.admission) {
     throw new Error("Queue-first claim requires resolved thread admission");
   }
+  if (!args.createArgs.zeroRunModelPin) {
+    throw new Error("Queue-first claim requires a run model pin");
+  }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
     admission: args.admission,
     runId: args.identity.runId,
+    selectedModel: args.createArgs.zeroRunModelPin.selectedModel,
     timing: args.timing,
   });
 }
@@ -6919,6 +6973,7 @@ async function resolveRunModelProvider(
       (await checkOrgCreditsForRunAdmission({
         db,
         orgId: args.orgId,
+        userId: args.userId,
         modelProviderType: "vm0",
         selectedModel: args.selectedModelOverride,
       })) ?? null;
@@ -8223,6 +8278,7 @@ export const completeAgentRun$ = command(
       async () => {
         return await checkFinalRunAdmission(db, {
           orgId: args.orgId,
+          userId: args.userId,
           modelProviderType,
           selectedModel,
           enforceVm0Credits:

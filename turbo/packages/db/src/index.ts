@@ -39,6 +39,8 @@ import * as connectorOauthDeviceAuthorizationSessionSchema from "./schema/connec
 import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
 import * as usageEventHourlyRollupSchema from "./schema/usage-event-hourly-rollup";
+import * as usagePackCreditGrantSchema from "./schema/usage-pack-credit-grant";
+import * as usagePackSubscriptionSchema from "./schema/usage-pack-subscription";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
@@ -103,6 +105,7 @@ import * as chatEventSchema from "./schema/chat-event";
 import * as chatThreadEventSchema from "./schema/chat-thread-event";
 import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as runOutputMaterializationSchema from "./schema/run-output-materialization";
+import * as piThreadMessageSchema from "./schema/pi-thread-message";
 import * as agentRunCustomConnectorAuthRefSchema from "./schema/agent-run-custom-connector-auth-ref";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
@@ -110,6 +113,7 @@ import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-s
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as artifactSchema from "./schema/artifact";
+import * as sharedThreadSchema from "./schema/shared-thread";
 import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-snapshot";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
@@ -118,6 +122,7 @@ import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
 import * as strapiIntegrationSchema from "./schema/strapi-integration";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
+import * as googleFormsEventSchema from "./schema/google-forms-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
@@ -182,6 +187,8 @@ export const schema = {
   ...connectorOauthStateSchema,
   ...usageEventSchema,
   ...usageEventHourlyRollupSchema,
+  ...usagePackCreditGrantSchema,
+  ...usagePackSubscriptionSchema,
   ...runBuiltInAdmissionSchema,
   ...usageDailySchema,
   ...githubInstallationSchema,
@@ -229,6 +236,7 @@ export const schema = {
   ...chatThreadEventSchema,
   ...chatThreadSnapshotSchema,
   ...runOutputMaterializationSchema,
+  ...piThreadMessageSchema,
   ...agentRunCustomConnectorAuthRefSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorOauthConfigSchema,
@@ -236,6 +244,7 @@ export const schema = {
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
   ...artifactSchema,
+  ...sharedThreadSchema,
   ...imageArtifactEditSnapshotSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
@@ -244,6 +253,7 @@ export const schema = {
   ...notionEventSchema,
   ...strapiIntegrationSchema,
   ...googleCalendarEventSchema,
+  ...googleFormsEventSchema,
   ...googleWorkspaceEventSchema,
   ...connectorCatalogSchema,
   ...mailDraftSchema,

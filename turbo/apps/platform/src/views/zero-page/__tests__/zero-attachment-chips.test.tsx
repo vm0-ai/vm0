@@ -454,7 +454,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens, zooms, and closes an uploaded image preview", async () => {
+  it("zooms an uploaded image preview with controls and double-click", async () => {
     await setupUploadedImagePreview();
 
     click(screen.getByLabelText("Open image preview for photo.png"));
@@ -473,9 +473,12 @@ describe("zero attachment chips", () => {
       "artifact-dialog-image-stage-content",
     );
     const transformContent = zoomContent.parentElement as HTMLElement;
+    const transformWrapper = transformContent.parentElement as HTMLElement;
 
     const lightboxImage = screen.getByTestId("attachment-lightbox-image");
     mockElementBox(zoomStage, { height: 600, width: 800 });
+    mockElementBox(transformWrapper, { height: 600, width: 800 });
+    mockElementBox(transformContent, { height: 600, width: 800 });
     Object.defineProperty(lightboxImage, "naturalWidth", {
       configurable: true,
       value: 1200,
@@ -484,6 +487,22 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("200%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(-200px, -150px) scale(2)",
+      );
+    });
+
+    click(screen.getByLabelText("Reset zoom"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
 
     click(screen.getByLabelText("Zoom in"));
@@ -508,6 +527,50 @@ describe("zero attachment chips", () => {
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("resets a transformed uploaded image preview with double-click", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-dialog-image-zoom-controls"),
+      ).toBeInTheDocument();
+    });
+
+    const zoomStage = screen.getByTestId("artifact-dialog-image-stage");
+    const zoomContent = screen.getByTestId(
+      "artifact-dialog-image-stage-content",
+    );
+    const transformContent = zoomContent.parentElement as HTMLElement;
+    const lightboxImage = screen.getByTestId("attachment-lightbox-image");
+
+    mockElementBox(zoomStage, { height: 600, width: 800 });
+    Object.defineProperty(lightboxImage, "naturalWidth", {
+      configurable: true,
+      value: 1200,
+    });
+    fireEvent.load(lightboxImage);
+
+    await waitFor(() => {
+      expect(lightboxImage).toHaveStyle({ width: "800px" });
+    });
+
+    click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("115%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toContain("scale(1.15)");
+    });
+
+    fireEvent.doubleClick(lightboxImage, { clientX: 200, clientY: 150 });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+      expect(transformContent.style.transform).toBe(
+        "translate(0px, 0px) scale(1)",
+      );
     });
   });
 
@@ -2262,6 +2325,11 @@ describe("zero attachment chips", () => {
   it("opens only the dialog download menu when the same artifact is in split view", async () => {
     const user = userEvent.setup({ delay: null });
     setupHostedSiteArtifactPreview({
+      // Stacking a dialog over the sidebar for the same artifact only happens
+      // with inline open off; the on path is covered by the next test.
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: false,
+      },
       filename: "split-dialog-download.html",
       htmlUrl: "https://split-dialog-download.sites.vm7.io",
       label: "Split dialog download",
@@ -2524,6 +2592,135 @@ describe("zero attachment chips", () => {
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("renders short artifact video urls and links as preview cards", async () => {
+    const bareVideoUrl = "https://cdn.vm7.io/artifacts/0123456789.mp4";
+    const linkedVideoUrl = "https://cdn.vm7.io/artifacts/abcdefghij.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-short-artifact-video-links",
+          role: "assistant",
+          content: `${bareVideoUrl}\n[Generated clip](${linkedVideoUrl})`,
+          runId: "run-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 0123456789.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Preview abcdefghij.mp4")).toBeInTheDocument();
+  });
+
+  it("requires complete urls for flat artifact preview cards", async () => {
+    const incompletePath = "artifacts/97ngzkxdyn.mp4";
+    const rootRelativePath = "/artifacts/97ngzkxdyn.mp4";
+    const completeUrl = "https://cdn.vm7.io/artifacts/97ngzkxdyn.mp4";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-incomplete-short-artifact-video-links",
+          role: "assistant",
+          content: `${incompletePath}\n${rootRelativePath}\n${completeUrl}`,
+          runId: "run-incomplete-short-artifact-video-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Preview 97ngzkxdyn.mp4"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Preview 97ngzkxdyn.mp4")).toHaveLength(1);
+    expect(
+      screen.getByText(incompletePath, { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(rootRelativePath, { exact: false }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders other short artifact urls with their preview ui", async () => {
+    const urls = {
+      audio: "https://cdn.vm7.io/artifacts/0000000001.mp3",
+      markdown: "https://cdn.vm7.io/artifacts/0000000002.md",
+      text: "https://cdn.vm7.io/artifacts/0000000003.txt",
+      json: "https://cdn.vm7.io/artifacts/0000000004.json",
+      csv: "https://cdn.vm7.io/artifacts/0000000005.csv",
+      pdf: "https://cdn.vm7.io/artifacts/0000000006.pdf",
+      html: "https://cdn.vm7.io/artifacts/0000000007.html",
+      file: "https://cdn.vm7.io/artifacts/0000000008.bin",
+      image: "https://cdn.vm7.io/artifacts/0000000009.png",
+    } as const;
+    context.mocks.http.get(urls.markdown, () => {
+      return new Response("# Notes", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(urls.text, () => {
+      return new Response("Transcript", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    context.mocks.http.get(urls.json, () => {
+      return new Response('{"status":"ready"}', {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    context.mocks.http.get(urls.csv, () => {
+      return new Response("metric,value\nactivation,87", {
+        headers: { "Content-Type": "text/csv" },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-other-short-artifact-links",
+          role: "assistant",
+          content: `${urls.audio}\n[Notes](${urls.markdown})\n${urls.text}\n[Status](${urls.json})\n${urls.csv}\n[Plan](${urls.pdf})\n[Short site](${urls.html})\n${urls.file}\n${urls.image}`,
+          runId: "run-other-short-artifact-links",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await expect(
+      screen.findByLabelText("Open audio preview for 0000000001.mp3"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open markdown preview for 0000000002.md"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open text preview for 0000000003.txt"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open json preview for 0000000004.json"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open csv preview for 0000000005.csv"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open pdf preview for 0000000006.pdf"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open html preview for Short site"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Download 0000000008.bin"),
+    ).toBeInTheDocument();
+    expect(screen.getByAltText("0000000009.png")).toBeInTheDocument();
   });
 
   it("opens document previews parsed from chat message links", async () => {

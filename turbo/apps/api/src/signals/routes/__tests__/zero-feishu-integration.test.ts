@@ -53,8 +53,33 @@ import {
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  readCustomConnectorCredentialStorageParent,
+  readCustomConnectorOAuthStorageState,
+} from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroAgentsRoutes } from "../zero-agents";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
+import { zeroCustomConnectorsDeleteRoutes } from "../zero-custom-connectors-delete";
+import { zeroCustomConnectorsGetRoutes } from "../zero-custom-connectors-get";
+import { zeroCustomConnectorOAuth2Routes } from "../zero-custom-connectors-oauth2";
+import { zeroCustomConnectorSecretDeleteRoutes } from "../zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorsSecretSetRoutes } from "../zero-custom-connectors-secret-set";
+import { zeroCustomConnectorsUpdateRoutes } from "../zero-custom-connectors-update";
+import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
+
+const zeroCustomConnectorByIdTestRoutes = Object.freeze([
+  ...zeroCustomConnectorsDeleteRoutes,
+  ...zeroCustomConnectorsGetRoutes,
+  ...zeroCustomConnectorsUpdateRoutes,
+]);
+
+const zeroCustomConnectorSecretTestRoutes = Object.freeze([
+  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorsSecretSetRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -660,7 +685,9 @@ describe("Feishu integration", () => {
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -905,6 +932,36 @@ describe("Feishu integration", () => {
     );
   }
 
+  async function startFeishuDmSession(fixture: FeishuRunFixture): Promise<{
+    readonly firstMessageId: string;
+    readonly mainSessionId: string;
+  }> {
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const firstMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "start the Feishu DM session", "ou_feishu_user", {
+        messageId: firstMessageId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const initialRun = await findRun(actor, "start the Feishu DM session");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
+    expect(initialClaim.resumeSession).toBeNull();
+    const mainSessionId = randomUUID();
+    await completeRunSession({
+      runId: initialRun.id,
+      sandboxToken: initialClaim.sandboxToken,
+      sessionId: mainSessionId,
+      history: `bdd initial feishu history ${initialRun.id}`,
+      assistantText: "Initial Feishu DM answer",
+    });
+    return { firstMessageId, mainSessionId };
+  }
+
   it("rejects configuration API access when the feature switch is disabled", async () => {
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -912,7 +969,9 @@ describe("Feishu integration", () => {
       orgRole: "org:admin",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     const response = await accept(
       client.getStatus({
@@ -943,7 +1002,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1005,7 +1066,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     await accept(
       client.setup({
@@ -1101,7 +1164,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const bothTokenRequestsStarted = createDeferredPromise<void>(
       context.signal,
     );
@@ -1187,7 +1252,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     const configured = await accept(
       client.setup({
@@ -1297,7 +1364,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(admin.userId, admin.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1327,9 +1396,10 @@ describe("Feishu integration", () => {
       [200],
     );
 
-    const customConnectorClient = setupApp({ context })(
-      zeroCustomConnectorsContract,
-    );
+    const customConnectorClient = setupApp({
+      context,
+      routes: zeroCustomConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
     const connectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -1352,6 +1422,7 @@ describe("Feishu integration", () => {
         },
       ],
       authMode: "oauth",
+      storageVersion: 1,
       permissionBundleRef: "builtin:feishu@1",
       connected: false,
       oauthConfig: {
@@ -1383,7 +1454,9 @@ describe("Feishu integration", () => {
     expect(skillMarkdown).not.toContain("Okou Feishu");
     expect(skillMarkdown).not.toContain(managedConnector.id);
     const permissionBundle = await accept(
-      setupApp({ context })(zeroCustomConnectorByIdContract).permissions({
+      setupApp({ context, routes: zeroCustomConnectorByIdTestRoutes })(
+        zeroCustomConnectorByIdContract,
+      ).permissions({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
       }),
@@ -1403,9 +1476,10 @@ describe("Feishu integration", () => {
       },
     });
 
-    const customConnectorOAuthClient = setupApp({ context })(
-      zeroCustomConnectorOAuth2Contract,
-    );
+    const customConnectorOAuthClient = setupApp({
+      context,
+      routes: zeroCustomConnectorOAuth2Routes,
+    })(zeroCustomConnectorOAuth2Contract);
     const customConnectorOAuthStart = await accept(
       customConnectorOAuthClient.start({
         headers: { authorization: "Bearer clerk-session" },
@@ -1425,6 +1499,14 @@ describe("Feishu integration", () => {
       customAuthorizationUrl.searchParams.get("state"),
       "Expected custom connector Feishu OAuth state",
     );
+    await expect(
+      readCustomConnectorOAuthStorageState(context, customOAuthState),
+    ).resolves.toMatchObject({
+      custom_oauth_state: {
+        storage_version: 1,
+        context_storage_version: 1,
+      },
+    });
     const oauthApp = createAppWithRoutes({
       signal: context.signal,
       routes: zeroFeishuOauthRoutes,
@@ -1451,6 +1533,18 @@ describe("Feishu integration", () => {
       id: managedConnector.id,
       connected: true,
     });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requireValue(
+          admin.orgId,
+          "Expected Feishu admin to have an organization",
+        ),
+        userId: admin.userId,
+        customConnectorId: managedConnector.id,
+      }),
+    ).resolves.toMatchObject({
+      connector: { storage_version: 1 },
+    });
     const adminFeishuStatus = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },
@@ -1462,7 +1556,9 @@ describe("Feishu integration", () => {
       connectedUserName: "Feishu User",
     });
     await accept(
-      setupApp({ context })(zeroCustomConnectorSecretContract).delete({
+      setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
+        zeroCustomConnectorSecretContract,
+      ).delete({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
       }),
@@ -1651,7 +1747,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1734,7 +1832,9 @@ describe("Feishu integration", () => {
       visibility: "public",
     });
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1810,7 +1910,9 @@ describe("Feishu integration", () => {
   it("deduplicates unconnected messages, connects, welcomes, and rejects account rebinding", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, appId, callbackUrl, defaultAgentId } = fixture;
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
 
     const firstEvent = directMessage(appId, "hello");
     const firstMessage = await postEvent(callbackUrl, firstEvent, {
@@ -2049,7 +2151,9 @@ describe("Feishu integration", () => {
     const fixture = await setupFeishuRunFixture();
     const { appId, callbackUrl } = fixture;
     await connectFixtureUser(fixture);
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     for (const command of [
       "/help",
       "/connect",
@@ -2136,9 +2240,10 @@ describe("Feishu integration", () => {
     const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
     oauthTokenExpiresInSeconds = 0;
     await connectFixtureUser(fixture);
-    const customConnectorClient = setupApp({ context })(
-      zeroCustomConnectorsContract,
-    );
+    const customConnectorClient = setupApp({
+      context,
+      routes: zeroCustomConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
     const connectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2150,7 +2255,9 @@ describe("Feishu integration", () => {
       "Expected connected Feishu custom connector",
     );
     const customConnectorGrants = await accept(
-      setupApp({ context })(zeroAgentCustomConnectorsContract).get({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      ).get({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: defaultAgentId },
       }),
@@ -2284,7 +2391,9 @@ describe("Feishu integration", () => {
       unknownPolicy: "deny",
     });
     const permissionGrant = await accept(
-      setupApp({ context })(zeroAgentCustomConnectorsContract).update({
+      setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      ).update({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: defaultAgentId },
         body: {
@@ -2328,7 +2437,9 @@ describe("Feishu integration", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -2341,7 +2452,9 @@ describe("Feishu integration", () => {
       "Expected the canonical Feishu file chat thread",
     );
     const threadEventsPage = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
@@ -2535,7 +2648,9 @@ describe("Feishu integration", () => {
     const run = await findRun(actor, "do the Feishu task");
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -2548,7 +2663,9 @@ describe("Feishu integration", () => {
       "Expected the canonical Feishu chat thread",
     );
     const threadMessages = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
@@ -2626,7 +2743,9 @@ describe("Feishu integration", () => {
       assistantText: "Canonical Feishu answer",
     });
     const claimedThreadMessages = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: chatThreadCreated.chatThreadId },
         query: {},
@@ -2705,7 +2824,9 @@ describe("Feishu integration", () => {
     );
     expect(removedReactions).toHaveLength(1);
 
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2715,32 +2836,11 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("resumes and resets Feishu DM sessions at message and agent boundaries", async () => {
+  it("resumes Feishu DM sessions across messages and quoted replies", async () => {
     const fixture = await setupFeishuRunFixture();
-    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
-      fixture;
-    await connectFixtureUser(fixture);
-    const firstMessageId = `om_${randomUUID()}`;
-    await postEvent(
-      callbackUrl,
-      directMessage(appId, "start the Feishu DM session", "ou_feishu_user", {
-        messageId: firstMessageId,
-      }),
-      { encrypted: true },
-    );
-    await flushWaitUntilForTest();
-    const initialRun = await findRun(actor, "start the Feishu DM session");
-    await runsApi.heartbeatRunner(runnerGroup);
-    const initialClaim = await runsApi.claimRunnerJob(initialRun.id);
-    expect(initialClaim.resumeSession).toBeNull();
-    const mainSessionId = randomUUID();
-    await completeRunSession({
-      runId: initialRun.id,
-      sandboxToken: initialClaim.sandboxToken,
-      sessionId: mainSessionId,
-      history: `bdd initial feishu history ${initialRun.id}`,
-      assistantText: "Initial Feishu DM answer",
-    });
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    const { firstMessageId, mainSessionId } =
+      await startFeishuDmSession(fixture);
 
     await postEvent(
       callbackUrl,
@@ -2799,6 +2899,24 @@ describe("Feishu integration", () => {
       });
     expect(completedQuotedReply?.replyInThread).toBeFalsy();
 
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resets Feishu DM sessions when switching agents", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, alternateAgentId } =
+      fixture;
+    await startFeishuDmSession(fixture);
+
     await postEvent(
       callbackUrl,
       directMessage(appId, `/switch ${alternateAgentId}`),
@@ -2826,7 +2944,9 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, switchedAgentRun.id, [200]);
     await flushWaitUntilForTest();
 
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2910,7 +3030,9 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
     await flushWaitUntilForTest();
 
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -2995,7 +3117,9 @@ describe("Feishu integration", () => {
     await runsApi.requestCancelRun(actor, threadFollowUpRun.id, [200]);
     await flushWaitUntilForTest();
 
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -3061,7 +3185,9 @@ describe("Feishu integration", () => {
       await runsApi.requestCancelRun(actor, run.id, [200]);
     }
     await flushWaitUntilForTest();
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -3144,7 +3270,9 @@ describe("Feishu integration", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const threadEvents = await accept(
-      setupApp({ context })(chatThreadsContract).events({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
         headers: { authorization: "Bearer clerk-session" },
         query: {},
       }),
@@ -3157,7 +3285,9 @@ describe("Feishu integration", () => {
       "Expected the queued Feishu chat thread",
     );
     const messages = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: thread.chatThreadId },
         query: {},
@@ -3233,7 +3363,9 @@ describe("Feishu integration", () => {
       }),
     ).toHaveLength(1);
     const afterReplay = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: thread.chatThreadId },
         query: {},
@@ -3319,7 +3451,9 @@ describe("Feishu integration", () => {
     });
 
     const afterDeliveryFailure = await accept(
-      setupApp({ context })(chatThreadEventsContract).list({
+      setupApp({ context, routes: zeroChatThreadRoutes })(
+        chatThreadEventsContract,
+      ).list({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: thread.chatThreadId },
         query: {},
@@ -3496,7 +3630,9 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
 
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -3685,7 +3821,9 @@ describe("Feishu integration", () => {
     expect(groupFollowUpClaim.resumeSession?.sessionId).toBe(groupCliSessionId);
     await runsApi.requestCancelRun(actor, groupFollowUp.id, [200]);
     await flushWaitUntilForTest();
-    const client = setupApp({ context })(zeroFeishuConnectContract);
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },

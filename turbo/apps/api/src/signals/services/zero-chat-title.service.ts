@@ -1,4 +1,5 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { SharedMessage } from "@vm0/api-contracts/contracts/shared-threads";
 import {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
@@ -232,6 +233,33 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
       content: sections.join("\n\n"),
     },
   ]);
+}
+
+/** Generate the immutable title stored with a public shared-thread snapshot. */
+export async function generateSharedThreadTitle(
+  messages: readonly SharedMessage[],
+): Promise<string> {
+  const recent = messages.slice(-TITLE_PRIOR_MESSAGE_CAP);
+  const conversation = recent
+    .map((message) => {
+      return `${message.role}: ${message.content.slice(0, TITLE_CONTEXT_CHAR_CAP)}`;
+    })
+    .join("\n");
+  const title = await generateText([
+    {
+      role: "system",
+      content:
+        "Generate a short, descriptive title (max 60 chars) for this shared conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
+    },
+    {
+      role: "user",
+      content: conversation,
+    },
+  ]);
+  if (!title) {
+    throw new Error("Shared thread title generation returned no title");
+  }
+  return title;
 }
 
 async function getLatestTitleContextMessages(

@@ -11,16 +11,10 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, {}),
-    ).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, {})).toBe(
-      true,
-    );
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.PwaChatKeyboardGestures, {})).toBe(
-      true,
-    );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
+    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -35,12 +29,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
-    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(false);
   });
 
@@ -118,14 +106,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatSteer]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(
-      staffOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
@@ -134,6 +115,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -146,14 +128,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatSteer]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
-      false,
-    );
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
@@ -162,6 +137,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

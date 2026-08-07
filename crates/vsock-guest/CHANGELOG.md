@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.65](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.64...vsock-guest-v0.19.65) (2026-08-07)
+
+## [0.19.64](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.63...vsock-guest-v0.19.64) (2026-08-06)
+
+## [0.19.63](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.62...vsock-guest-v0.19.63) (2026-08-06)
+
+
+### Documentation
+
+* **vsock-guest:** correct env script cleanup contract ([#25462](https://github.com/vm0-ai/vm0/issues/25462)) ([f5cb8d2](https://github.com/vm0-ai/vm0/commit/f5cb8d2337738345e4cb0f0f188d634a14a7ed40))
+
 ## [0.19.62](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.61...vsock-guest-v0.19.62) (2026-08-05)
 
 

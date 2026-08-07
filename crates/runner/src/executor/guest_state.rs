@@ -3,6 +3,7 @@
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
 
 use super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
+use crate::guest_timezone::{GuestTimezoneIntent, is_shell_safe_name};
 use crate::helper_exec::{
     format_command_output_excerpt, format_helper_exec_failure, helper_exec_succeeded,
     helper_exec_termination_label,
@@ -51,24 +52,7 @@ fn read_host_entropy() -> RunnerResult<Vec<u8>> {
 }
 
 pub(crate) fn is_shell_safe_guest_timezone_name(tz: &str) -> bool {
-    !tz.is_empty()
-        && tz
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'_' || b == b'-' || b == b'+')
-}
-
-fn user_timezone(context: &ExecutionContext) -> Option<&str> {
-    let tz = match context.user_timezone.as_deref() {
-        Some(tz) if !tz.is_empty() => tz,
-        _ => return None,
-    };
-    // The value is interpolated into a sudo shell command. This check protects
-    // that boundary; guest zone availability is handled by the command itself.
-    if !is_shell_safe_guest_timezone_name(tz) {
-        tracing::warn!(tz = %tz, "rejected unsafe timezone name");
-        return None;
-    }
-    Some(tz)
+    is_shell_safe_name(tz)
 }
 
 fn timezone_sync_body(tz: &str) -> String {
@@ -140,10 +124,25 @@ pub(crate) async fn restore_guest_state(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
 ) -> RunnerResult<()> {
-    let timezone = user_timezone(context).map(|name| GuestTimezone::BestEffort {
+    let intent = GuestTimezoneIntent::from_context(context);
+    if matches!(intent, GuestTimezoneIntent::Unknown) {
+        tracing::warn!(run_id = %context.run_id, "rejected unsafe timezone name");
+    }
+    let timezone = intent.guest_name().map(|name| GuestTimezone::BestEffort {
         name,
         run_id: context.run_id,
     });
+    restore_guest_state_inner(sandbox, timezone).await
+}
+
+pub(crate) async fn restore_guest_state_with_intent(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    intent: &GuestTimezoneIntent,
+) -> RunnerResult<()> {
+    let timezone = intent
+        .guest_name()
+        .map(|name| GuestTimezone::BestEffort { name, run_id });
     restore_guest_state_inner(sandbox, timezone).await
 }
 
@@ -222,11 +221,37 @@ guest-reseed || {{ status=$?; echo "guest-reseed failed" >&2; exit "$status"; }}
 /// - `/etc/timezone` + `/etc/localtime` — filesystem-level (read by libc)
 /// - `TZ` in `/etc/environment` — inherited by all login shells via PAM
 ///
-/// The agent process also receives `TZ` via the env vars in step 6.
-/// Skipped when no user timezone is configured (falls back to image default UTC).
+/// The agent process also receives `TZ` via its environment. This standalone
+/// helper keeps the fresh non-snapshot path unchanged when no timezone is
+/// configured; full reused-VM restoration applies the explicit UTC default.
 pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) {
-    let Some(tz) = user_timezone(context) else {
-        return;
+    let intent = GuestTimezoneIntent::from_context(context);
+    match intent {
+        GuestTimezoneIntent::Configured(_) => {
+            sync_guest_timezone_intent(sandbox, context.run_id, &intent).await;
+        }
+        GuestTimezoneIntent::Default => {}
+        GuestTimezoneIntent::Unknown => {
+            tracing::warn!(run_id = %context.run_id, "rejected unsafe timezone name");
+        }
+    }
+}
+
+pub(crate) async fn sync_guest_timezone_intent(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    intent: &GuestTimezoneIntent,
+) {
+    let _ = try_sync_guest_timezone_intent(sandbox, run_id, intent).await;
+}
+
+pub(crate) async fn try_sync_guest_timezone_intent(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    intent: &GuestTimezoneIntent,
+) -> RunnerResult<()> {
+    let Some(tz) = intent.guest_name() else {
+        return Ok(());
     };
     let cmd = timezone_sync_command(tz);
     // Best-effort: don't fail the run if timezone setup fails.
@@ -252,7 +277,7 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
                 format_command_output_excerpt("stdout", &result.stdout, result.stdout_truncated);
             if let Some(exit_code) = helper_exec_exit_code(&result) {
                 tracing::warn!(
-                    run_id = %context.run_id,
+                    run_id = %run_id,
                     tz = %tz,
                     termination = helper_exec_termination_label(&result),
                     exit_code,
@@ -262,7 +287,7 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
                 );
             } else {
                 tracing::warn!(
-                    run_id = %context.run_id,
+                    run_id = %run_id,
                     tz = %tz,
                     termination = helper_exec_termination_label(&result),
                     stderr_excerpt = %stderr_excerpt.as_deref().unwrap_or(""),
@@ -273,7 +298,9 @@ pub(super) async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &Executi
         }
         Ok(_) => {}
         Err(e) => {
-            tracing::warn!(run_id = %context.run_id, tz = %tz, error = %e, "failed to set guest timezone");
+            tracing::warn!(run_id = %run_id, tz = %tz, error = %e, "failed to set guest timezone");
+            return Err(e.into());
         }
     }
+    Ok(())
 }

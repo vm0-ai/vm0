@@ -1,6 +1,28 @@
 import { vi } from "vitest";
 import { replaceState } from "../signals/location.ts";
 
+type GetTokenImpl = (options?: {
+  skipCache?: boolean;
+}) => Promise<string | null>;
+
+type SessionTouchImpl = (options?: { intent?: "focus" }) => Promise<void>;
+
+interface MockedClerkSession {
+  readonly id: string;
+  readonly getToken: GetTokenImpl;
+  readonly touch: SessionTouchImpl;
+}
+
+interface MockedClerkResources {
+  readonly session: MockedClerkSession | undefined;
+}
+
+type MockedClerkListener = (resources: MockedClerkResources) => void;
+
+interface MockedClerkListenerOptions {
+  readonly skipInitialEmit?: boolean;
+}
+
 export interface MockedInvitation {
   id: string;
   accept?: () => Promise<unknown>;
@@ -64,9 +86,15 @@ let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
 let internalMockedClientSessions: MockedClientSession[] = [];
 let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
 let internalMockedClerkLoaded = true;
+let internalMockedClerkSessionTransitioning = false;
 
 export function mockClerkLoaded(loaded: boolean): void {
   internalMockedClerkLoaded = loaded;
+}
+
+export function mockClerkSessionTransitioning(transitioning: boolean): void {
+  internalMockedClerkSessionTransitioning = transitioning;
+  emitMockedClerkEvent();
 }
 
 export function mockUser(
@@ -160,6 +188,7 @@ export function clearMockedAuth() {
   internalMockedClientSessions = [];
   internalMockedClerkLoadOptions = {};
   internalMockedClerkLoaded = true;
+  internalMockedClerkSessionTransitioning = false;
   clerkListeners.length = 0;
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
@@ -171,6 +200,8 @@ export function clearMockedAuth() {
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
+  mockedClerk.sessionTouch.mockReset();
+  mockedClerk.sessionTouch.mockImplementation(defaultSessionTouchImpl);
   mockedClerk.load = mockedClerkLoad;
   mockedClerkLoad.mockReset();
   mockedClerkLoad.mockImplementation(defaultLoadImpl);
@@ -181,29 +212,34 @@ export function clearMockedAuth() {
   });
   mockedClerk.buildUrlWithAuth.mockReset();
   mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
+  mockedClerk.buildUserProfileUrl.mockReset();
+  mockedClerk.buildUserProfileUrl.mockImplementation(
+    defaultBuildUserProfileUrlImpl,
+  );
   mockedClerk.buildSignInUrl.mockReset();
   mockedClerk.buildSignInUrl.mockImplementation(defaultBuildSignInUrlImpl);
   mockedClerk.initialize.mockReset();
 }
 
-const clerkListeners: (() => void)[] = [];
+const clerkListeners: MockedClerkListener[] = [];
 function defaultClerkStatusOn(): void {}
 
 export function emitMockedClerkEvent(): void {
-  for (const listener of clerkListeners) {
-    listener();
+  const resources = { session: mockedClerk.session };
+  for (const listener of clerkListeners.slice()) {
+    listener(resources);
   }
 }
-
-type GetTokenImpl = (options?: {
-  skipCache?: boolean;
-}) => Promise<string | null>;
 
 const defaultGetTokenImpl: GetTokenImpl = () => {
   return Promise.resolve(internalMockedSession?.token ?? "");
 };
 
 const sessionGetToken = vi.fn<GetTokenImpl>(defaultGetTokenImpl);
+const defaultSessionTouchImpl: SessionTouchImpl = () => {
+  return Promise.resolve();
+};
+const sessionTouch = vi.fn<SessionTouchImpl>(defaultSessionTouchImpl);
 const clientSignInCreate = vi.fn(
   (_params: { strategy: "ticket"; ticket: string }) => {
     return Promise.resolve({
@@ -214,6 +250,10 @@ const clientSignInCreate = vi.fn(
 );
 const defaultBuildUrlWithAuthImpl = (to: string) => {
   return to;
+};
+
+const defaultBuildUserProfileUrlImpl = () => {
+  return "https://accounts.example.test/user";
 };
 
 interface MockedClerkLoadOptions {
@@ -304,12 +344,17 @@ export const mockedClerk = {
     return internalMockedOrganization;
   },
   get session() {
+    if (internalMockedClerkSessionTransitioning) {
+      return undefined;
+    }
     return {
       id: "test-session-id",
       getToken: sessionGetToken,
+      touch: sessionTouch,
     };
   },
   sessionGetToken,
+  sessionTouch,
   clientSignInCreate,
   client: {
     get sessions() {
@@ -329,7 +374,10 @@ export const mockedClerk = {
   closeUserProfile: vi.fn<() => void>(),
   load: mockedClerkLoad,
   on: defaultClerkStatusOn,
-  addListener: (cb: () => void) => {
+  addListener: (
+    cb: MockedClerkListener,
+    _options?: MockedClerkListenerOptions,
+  ) => {
     clerkListeners.push(cb);
     return () => {
       const idx = clerkListeners.indexOf(cb);
@@ -345,6 +393,9 @@ export const mockedClerk = {
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
   buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),
+  buildUserProfileUrl: vi.fn<typeof defaultBuildUserProfileUrlImpl>(
+    defaultBuildUserProfileUrlImpl,
+  ),
   setActive: vi.fn(defaultSetActiveImpl),
   createOrganization: vi.fn((_params: { name: string; slug: string }) => {
     return Promise.resolve({ id: "new-org-id" });

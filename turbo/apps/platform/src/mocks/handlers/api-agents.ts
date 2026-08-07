@@ -20,7 +20,6 @@ import {
   chatThreadModelSelectionContract,
   chatThreadEventsContract,
   chatThreadArtifactsContract,
-  artifactsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
@@ -232,11 +231,6 @@ export const apiAgentsHandlers = [
   // GET /api/zero/chat-threads/:threadId/artifacts
   mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, { runs: [] });
-  }),
-
-  // GET /api/zero/artifacts
-  mockApi(artifactsContract.list, ({ respond }) => {
-    return respond(200, { artifacts: [], truncated: false, nextCursor: null });
   }),
 
   // GET /api/zero/chat-threads/:id (thread detail)

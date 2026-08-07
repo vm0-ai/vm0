@@ -1,5 +1,18 @@
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  like,
+  lt,
+  lte,
+  notLike,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type {
   ArtifactCatalogKind,
   ArtifactDetail,
@@ -18,10 +31,16 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { sharedThreads } from "@vm0/db/schema/shared-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";
+import {
+  isSharedThreadArtifactLogicalKey,
+  sharedThreadArtifactAuthorUserId,
+  SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
+} from "../../lib/shared-thread-artifact";
 import { writeDb$, type Db } from "../external/db";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
 import { inferMimetype } from "./zero-chat-event-shared.service";
@@ -103,21 +122,40 @@ function fileArtifactKind(row: CatalogFileRow): "file" | "image" | "video" {
 function catalogArtifactKind(
   kind: ArtifactKind,
   metadata: Record<string, unknown> | null,
+  logicalKey: string,
 ): ArtifactCatalogKind {
+  if (kind === "file" && isSharedThreadArtifactLogicalKey(logicalKey)) {
+    return "shared-thread";
+  }
   return metadata &&
     metadataString(metadata, "generatedBy") === AVATAR_VIDEO_MARKER
     ? "avatar"
     : kind;
 }
 
-function artifactCatalogKindFilter(kind: ArtifactCatalogKind) {
+function artifactCatalogKindFilter(kind: ArtifactCatalogKind): SQL | undefined {
   const generatedBy = sql`${runUploadedFiles.metadata} ->> 'generatedBy'`;
+  if (kind === "shared-thread") {
+    return and(
+      eq(artifacts.kind, "file"),
+      like(
+        artifacts.logicalKey,
+        `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+      ),
+    );
+  }
   if (kind === "avatar") {
     return eq(generatedBy, AVATAR_VIDEO_MARKER);
   }
   if (kind === "file" || kind === "video") {
     return and(
       eq(artifacts.kind, kind),
+      kind === "file"
+        ? notLike(
+            artifacts.logicalKey,
+            `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`,
+          )
+        : undefined,
       sql`${generatedBy} IS DISTINCT FROM ${AVATAR_VIDEO_MARKER}`,
     );
   }
@@ -739,6 +777,7 @@ async function reconcilePendingArtifactCatalog(
 function toArtifactSummary(row: {
   readonly id: string;
   readonly kind: ArtifactKind;
+  readonly logicalKey: string;
   readonly projectionMetadata: Record<string, unknown> | null;
   readonly title: string;
   readonly thumbnail: ArtifactThumbnail | null;
@@ -747,7 +786,7 @@ function toArtifactSummary(row: {
 }): ArtifactSummary {
   return {
     id: row.id,
-    kind: catalogArtifactKind(row.kind, row.projectionMetadata),
+    kind: catalogArtifactKind(row.kind, row.projectionMetadata, row.logicalKey),
     title: row.title,
     thumbnail: row.thumbnail,
     createdAt: row.createdAt.toISOString(),
@@ -756,30 +795,57 @@ function toArtifactSummary(row: {
 }
 
 /**
- * The registry has no thread column, so a thread filter resolves through the
- * projection file: a file belongs to a thread either directly or via its run.
- * Files that predate `run_uploaded_files.chat_thread_id` fall back to the run
- * association, matching `resolveChatThreadId`'s first two steps.
+ * The registry has no thread column, so a thread filter resolves through each
+ * artifact kind's source association. File-backed artifacts use the projection
+ * file directly or its run, while shared threads retain their nullable source
+ * thread ID after snapshot creation.
  */
-function chatThreadFilter(db: Db, chatThreadId: string) {
-  return inArray(
-    artifacts.projectionFileId,
-    db
-      .select({ id: runUploadedFiles.id })
-      .from(runUploadedFiles)
-      .where(
-        or(
-          eq(runUploadedFiles.chatThreadId, chatThreadId),
-          inArray(
-            runUploadedFiles.runId,
-            db
-              .select({ id: zeroRuns.id })
-              .from(zeroRuns)
-              .where(eq(zeroRuns.chatThreadId, chatThreadId)),
-          ),
-        ),
+function fileChatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const runIds = db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.chatThreadId, chatThreadId));
+  const fileIds = db
+    .select({ id: runUploadedFiles.id })
+    .from(runUploadedFiles)
+    .where(
+      or(
+        eq(runUploadedFiles.chatThreadId, chatThreadId),
+        inArray(runUploadedFiles.runId, runIds),
       ),
+    );
+  return inArray(artifacts.projectionFileId, fileIds);
+}
+
+function sharedThreadChatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const sharedThreadIds = db
+    .select({ id: sharedThreads.id })
+    .from(sharedThreads)
+    .where(eq(sharedThreads.sourceChatThreadId, chatThreadId));
+  const filter = and(
+    eq(artifacts.kind, "file"),
+    like(artifacts.logicalKey, `${SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX}%`),
+    inArray(artifacts.entityId, sharedThreadIds),
   );
+  if (!filter) {
+    throw new Error("Shared-thread catalog filter is unavailable");
+  }
+  return filter;
+}
+
+function chatThreadFilter(db: Db, chatThreadId: string): SQL {
+  const fileFilter = fileChatThreadFilter(db, chatThreadId);
+  return sql`(${fileFilter} OR ${sharedThreadChatThreadFilter(
+    db,
+    chatThreadId,
+  )})`;
+}
+
+function artifactCatalogOwnerFilter(userId: string): SQL {
+  return inArray(artifacts.authorUserId, [
+    userId,
+    sharedThreadArtifactAuthorUserId(userId),
+  ]);
 }
 
 export const listArtifactCatalog$ = command(
@@ -797,6 +863,7 @@ export const listArtifactCatalog$ = command(
       .select({
         id: artifacts.id,
         kind: artifacts.kind,
+        logicalKey: artifacts.logicalKey,
         projectionMetadata: runUploadedFiles.metadata,
         title: artifacts.title,
         thumbnail: artifacts.thumbnail,
@@ -811,7 +878,7 @@ export const listArtifactCatalog$ = command(
       .where(
         and(
           eq(artifacts.orgId, args.orgId),
-          eq(artifacts.authorUserId, args.userId),
+          artifactCatalogOwnerFilter(args.userId),
           args.kind ? artifactCatalogKindFilter(args.kind) : undefined,
           args.chatThreadId
             ? chatThreadFilter(db, args.chatThreadId)
@@ -936,6 +1003,32 @@ async function hostedSiteDetail(
   };
 }
 
+async function avatarDetail(
+  db: Db,
+  summary: ArtifactSummary,
+  projectionFileId: string | null,
+  projectionMetadata: Record<string, unknown> | null,
+  signal: AbortSignal,
+): Promise<ArtifactDetail | null> {
+  if (projectionFileId === null) {
+    return null;
+  }
+  const file = await fileDetail(db, projectionFileId, signal);
+  const durationSeconds = projectionMetadata?.durationSeconds;
+  return file
+    ? {
+        ...summary,
+        kind: "avatar",
+        file,
+        model: metadataString(projectionMetadata ?? {}, "model"),
+        durationSeconds:
+          typeof durationSeconds === "number"
+            ? Math.round(durationSeconds)
+            : null,
+      }
+    : null;
+}
+
 /**
  * Load one artifact together with its kind entity. The caller check runs on the
  * registry row alone, so every kind shares the same permission rule.
@@ -951,6 +1044,7 @@ export const getArtifactCatalogEntry$ = command(
       .select({
         id: artifacts.id,
         kind: artifacts.kind,
+        logicalKey: artifacts.logicalKey,
         entityId: artifacts.entityId,
         projectionFileId: artifacts.projectionFileId,
         projectionMetadata: runUploadedFiles.metadata,
@@ -968,7 +1062,7 @@ export const getArtifactCatalogEntry$ = command(
         and(
           eq(artifacts.id, args.artifactId),
           eq(artifacts.orgId, args.orgId),
-          eq(artifacts.authorUserId, args.userId),
+          artifactCatalogOwnerFilter(args.userId),
         ),
       )
       .limit(1);
@@ -978,21 +1072,24 @@ export const getArtifactCatalogEntry$ = command(
     }
 
     const summary = toArtifactSummary(row);
+    if (
+      row.kind === "file" &&
+      isSharedThreadArtifactLogicalKey(row.logicalKey)
+    ) {
+      return {
+        ...summary,
+        kind: "shared-thread",
+        sharedThread: { id: row.entityId },
+      };
+    }
     if (summary.kind === "avatar") {
-      const file = await fileDetail(db, row.projectionFileId, signal);
-      const durationSeconds = row.projectionMetadata?.durationSeconds;
-      return file
-        ? {
-            ...summary,
-            kind: "avatar",
-            file,
-            model: metadataString(row.projectionMetadata ?? {}, "model"),
-            durationSeconds:
-              typeof durationSeconds === "number"
-                ? Math.round(durationSeconds)
-                : null,
-          }
-        : null;
+      return await avatarDetail(
+        db,
+        summary,
+        row.projectionFileId,
+        row.projectionMetadata,
+        signal,
+      );
     }
 
     if (row.kind === "file") {

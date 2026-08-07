@@ -39,6 +39,8 @@ class _RegistrySnapshot:
     invalid_vms: dict[str, InvalidVmEntry]
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
+    omitted_builtin_firewalls: dict[str, frozenset[str]]
+    omitted_custom_connector_ids: dict[str, frozenset[str]]
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
     loaded_key: _RegistryFileKey | None
 
@@ -55,7 +57,7 @@ RegistryState = _RegistrySnapshot | RegistryUnavailable
 
 
 def _empty_snapshot() -> _RegistrySnapshot:
-    return _RegistrySnapshot({}, {}, {}, {}, None, None)
+    return _RegistrySnapshot({}, {}, {}, {}, {}, {}, None, None)
 
 
 @dataclass
@@ -208,6 +210,8 @@ def _classify_registry_vms(
     dict,
     dict[str, InvalidVmEntry],
     dict[str, tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...]],
+    dict[str, frozenset[str]],
+    dict[str, frozenset[str]],
     registry_firewalls.BuiltinFirewallCatalogSnapshot | None,
 ]:
     new_registry: dict = {}
@@ -216,6 +220,8 @@ def _classify_registry_vms(
         str,
         tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...],
     ] = {}
+    omitted_builtin_firewalls: dict[str, frozenset[str]] = {}
+    omitted_custom_connector_ids: dict[str, frozenset[str]] = {}
     builtin_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = None
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
@@ -263,6 +269,13 @@ def _classify_registry_vms(
             )
             continue
 
+        try:
+            explicit_omitted_builtins = _omitted_runtime_intents(vm, "omittedBuiltinFirewalls")
+            explicit_omitted_custom_ids = _omitted_runtime_intents(vm, "omittedCustomConnectorIds")
+        except ValueError as e:
+            invalid_vms[client_ip] = InvalidVmEntry("invalid_omitted_intents", str(e))
+            continue
+
         raw_firewalls = vm.get("firewalls")
         vm_uses_builtin_catalog_dependency = isinstance(raw_firewalls, list) and any(
             isinstance(entry, dict) and entry.get("kind") == "builtin" for entry in raw_firewalls
@@ -287,6 +300,15 @@ def _classify_registry_vms(
             vm["firewalls"] = resolved_firewalls.firewalls
             if resolved_firewalls.builtin_cache_keys is not None:
                 builtin_cache_keys_by_client_ip[client_ip] = resolved_firewalls.builtin_cache_keys
+            if resolved_firewalls.omitted_builtin_names:
+                explicit_omitted_builtins = (
+                    explicit_omitted_builtins | resolved_firewalls.omitted_builtin_names
+                )
+
+        if explicit_omitted_builtins:
+            omitted_builtin_firewalls[client_ip] = explicit_omitted_builtins
+        if explicit_omitted_custom_ids:
+            omitted_custom_connector_ids[client_ip] = explicit_omitted_custom_ids
 
         new_registry[client_ip] = vm
 
@@ -294,8 +316,21 @@ def _classify_registry_vms(
         new_registry,
         invalid_vms,
         builtin_cache_keys_by_client_ip,
+        omitted_builtin_firewalls,
+        omitted_custom_connector_ids,
         builtin_catalog_snapshot,
     )
+
+
+def _omitted_runtime_intents(vm: dict, field_name: str) -> frozenset[str]:
+    raw_values = vm.get(field_name, [])
+    if not isinstance(raw_values, list) or any(
+        not isinstance(value, str) or value == "" for value in raw_values
+    ):
+        raise ValueError(f"proxy registry VM entry {field_name} must be a string list")
+    if len(set(raw_values)) != len(raw_values):
+        raise ValueError(f"proxy registry VM entry {field_name} must be unique")
+    return frozenset(raw_values)
 
 
 def _read_registry_vms(raw_bytes: bytes) -> dict:
@@ -387,6 +422,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
         new_registry,
         invalid_vms,
         builtin_cache_keys,
+        omitted_builtin_firewalls,
+        omitted_custom_connector_ids,
         builtin_catalog_snapshot,
     ) = _classify_registry_vms(
         raw_registry,
@@ -409,6 +446,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
+        omitted_builtin_firewalls,
+        omitted_custom_connector_ids,
         builtin_catalog_snapshot,
         key,
     )

@@ -18,15 +18,13 @@ import {
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  deleteVm0ManagedDefaultModelKey,
-  seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
-} from "./helpers/runtime-state";
+import { seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState } from "./helpers/runtime-state";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   generatedStripeCustomerId,
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
+import { webhooksAgentFirewallAuthRoutes } from "../webhooks-agent-firewall-auth";
 
 const context = testContext();
 
@@ -43,9 +41,6 @@ function addDays(date: Date, days: number): Date {
 }
 
 async function seedVm0ManagedDefaultModelKey(): Promise<void> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
   await seedVm0ManagedDefaultModelKeyState(context);
 }
 
@@ -498,7 +493,10 @@ describe("Usage Allowance", () => {
     });
     const api = createRunsApi(context);
     const run = await createVm0Run(actor, agentId, "billable firewall lease");
-    const client = setupApp({ context })(webhookFirewallAuthContract);
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
     const headers = {
       authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
     };
@@ -708,7 +706,10 @@ describe("Usage Allowance", () => {
       weeklyWindowUnits: 2,
     });
     await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
-    const client = setupApp({ context })(webhookFirewallAuthContract);
+    const client = setupApp({
+      context,
+      routes: webhooksAgentFirewallAuthRoutes,
+    })(webhookFirewallAuthContract);
     const headers = {
       authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
     };

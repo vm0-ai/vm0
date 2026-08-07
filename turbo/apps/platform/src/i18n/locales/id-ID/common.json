@@ -546,6 +546,8 @@
         "label": "Filter jenis artefak",
         "presentation": "Presentasi",
         "presentationAria": "Tampilkan artefak presentasi",
+        "sharedConversation": "Percakapan yang dibagikan",
+        "sharedConversationAria": "Tampilkan artefak percakapan yang dibagikan",
         "video": "Video",
         "videoAria": "Tampilkan artefak video",
         "website": "Situs web",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentasi",
+      "sharedConversation": "Percakapan yang dibagikan",
       "text": "Teks",
       "video": "Video"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "Pratinjau video untuk {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Buka percakapan yang dibagikan",
       "panelTitle": "Artefak",
       "singularTitle": "Artefak",
       "unavailable": "Artefak ini tidak lagi tersedia."
@@ -958,7 +962,34 @@
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",
-      "upgradeTo": "Tingkatkan ke {{plan}}"
+      "upgradeTo": "Tingkatkan ke {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} kredit bonus",
+        "changePlan": "Ubah paket",
+        "choosePlan": "Pilih paket",
+        "choosePlanDescription": "Pilih paket ruang kerja terlebih dahulu. Paket anggota dikonfigurasi berikutnya.",
+        "configurePackages": "Konfigurasikan paket anggota",
+        "configurePackagesDescription": "Pilih paket wajib untuk setiap anggota, lalu tinjau total bulanan gabungan.",
+        "currentMember": "Anggota saat ini",
+        "description": "Pilih paket penggunaan bulanan untuk setiap anggota.",
+        "discountBonusCredits": "Bonus kredit dari diskon",
+        "memberExclusive": "Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Saat paket habis, penggunaan kembali memakai kredit bayar sesuai pemakaian. Anda dapat meningkatkan ke paket baru nanti.",
+        "memberPackages": "Paket anggota",
+        "memberUsage": "Penggunaan anggota",
+        "memberUsageTotal": "Total paket bulanan",
+        "minimumPackageBreakdown": "Paket {{base}} + paket anggota wajib {{package}}",
+        "monthlyTotal": "Total bulanan",
+        "orderSummary": "Ringkasan pesanan",
+        "packagesStep": "Paket",
+        "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
+        "planStep": "Paket",
+        "purchaseSteps": "Langkah pembelian",
+        "selectedPlan": "Paket yang dipilih",
+        "selectPlan": "Pilih {{plan}}",
+        "selectUsage": "Penggunaan untuk {{name}}",
+        "startingAt": "Mulai dari",
+        "totalCredits": "Total kredit"
+      }
     },
     "restore": {
       "cancellationDescription": "Ini akan membatalkan pembatalan terjadwal untuk paket {{plan}} Anda.",
@@ -1060,7 +1091,6 @@
     "actions": {
       "authorize": "Otorisasi",
       "cancel": "Batal",
-      "configure": "Konfigurasi",
       "confirm": "Konfirmasi",
       "continue": "Lanjutkan",
       "copied": "Disalin!",
@@ -1154,6 +1184,7 @@
         "googleCalendarCancelled": "Acara Google Calendar dibatalkan",
         "googleCalendarCreated": "Acara Google Calendar dibuat",
         "googleCalendarUpdated": "Acara Google Calendar diperbarui",
+        "googleFormsResponseSubmitted": "Respons Google Forms dikirim",
         "googleMeetTranscript": "Transkrip Google Meet siap",
         "notionChildPage": "Halaman anak baru Notion",
         "notionDatabaseItem": "Item database baru Notion",
@@ -1292,7 +1323,6 @@
       "available_other": "Konektor yang tersedia untuk dihubungkan ({{count}})",
       "configurePermissions": "Konfigurasikan izin {{connectorName}}",
       "customAuthorizeDescription": "Tinjau, hubungkan, dan otorisasi konektor kustom ini untuk agen.",
-      "customConnectDescription": "Tinjau dan hubungkan konektor kustom ini.",
       "find": "Cari konektor...",
       "remove": "Hapus {{connectorName}}",
       "title": "Konektor"
@@ -1498,6 +1528,21 @@
       "worked": "Dikerjakan",
       "workedFor": "Dikerjakan selama {{duration}}"
     },
+    "sharing": {
+      "cancel": "Batal",
+      "close": "Tutup",
+      "copyFailed": "Tautan tidak dapat disalin",
+      "copyLink": "Salin tautan",
+      "create": "Bagikan",
+      "createFailed": "Percakapan yang dibagikan tidak dapat dibuat. Coba lagi.",
+      "deselectGroup": "Batalkan pilihan grup pesan",
+      "linkCopied": "Tautan disalin",
+      "selectedCount_other": "{{count}} dipilih",
+      "selectGroup": "Pilih grup pesan",
+      "shareLink": "Tautan percakapan yang dibagikan",
+      "start": "Bagikan pesan",
+      "tooLarge": "Pilih lebih sedikit pesan untuk dibagikan"
+    },
     "shortcuts": {
       "number": "nomor"
     },
@@ -1624,7 +1669,6 @@
       "edit": "Edit",
       "grant": "Berikan",
       "reconnect": "Hubungkan ulang",
-      "rename": "Ganti nama",
       "revoke": "Cabut",
       "save": "Simpan",
       "saving": "Menyimpan...",
@@ -1874,17 +1918,12 @@
       "emptyAdmin": "Belum ada konektor kustom. Buat satu untuk mendaftarkan API agar bisa digunakan semua anggota.",
       "emptyMember": "Org Anda belum mendaftarkan konektor kustom apa pun.",
       "moreOptions": "Opsi lainnya",
-      "rename": {
-        "displayName": "Nama tampilan",
-        "title": "Ganti nama konektor kustom"
-      },
       "statusConnected": "Terhubung",
       "toasts": {
         "connected": "Terhubung",
         "created": "Membuat \"{{connector}}\"",
         "deleted": "Konektor kustom dihapus",
         "disconnected": "Terputus",
-        "renamed": "Diubah namanya menjadi \"{{connector}}\"",
         "updated": "Diperbarui \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1892,19 +1931,6 @@
         "description": "Perubahan OAuth ini akan memutus semua anggota yang saat ini terhubung dengan OAuth. Mereka perlu menghubungkan lagi konektor kustom ini.",
         "title": "Putuskan koneksi OAuth yang ada?"
       }
-    },
-    "customProposal": {
-      "configure": "Konfigurasikan {{connector}}",
-      "descriptionAgent": "Menyimpan akan menghubungkan nilai Anda dan memberi otorisasi untuk {{agent}}.",
-      "descriptionUser": "Menyimpan akan menghubungkan konektor kustom ini untuk akun Anda.",
-      "documentTitle": "Konfigurasikan konektor kustom",
-      "invalid": "Tautan proposal konektor kustom ini tidak valid atau sudah kedaluwarsa.",
-      "requestScope": "Minta scope",
-      "returnToChat": "Kembali ke chat dan balas ACK agar agen dapat memverifikasi konektornya.",
-      "saved": "Tersimpan",
-      "savedToast": "{{connector}} tersimpan",
-      "targetFallback": "agen ini",
-      "update": "Perbarui {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Otorisasi {{agent}}",
@@ -4565,6 +4591,12 @@
       "title": "Halaman tidak ditemukan"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Percakapan yang dibagikan ini tidak ada.",
+    "notFoundTitle": "Percakapan yang dibagikan tidak ditemukan",
+    "tryOkou": "Coba Okou"
+  },
   "usage": {
     "automations": {
       "empty": "Tidak ada otomatisasi yang digunakan pada periode ini",
@@ -4599,6 +4631,7 @@
       "imageRecognize": "Pengenalan Gambar",
       "maps": "Peta",
       "peopleSearch": "Pencarian Orang",
+      "translation": "Terjemahan",
       "usage": "Penggunaan",
       "weather": "Cuaca",
       "webFetch": "Pengambilan Web",
@@ -4734,6 +4767,11 @@
         "minute_other": "{{count}} menit",
         "second_one": "{{count}} detik",
         "second_other": "{{count}} detik"
+      },
+      "forms": {
+        "responseSubmittedTitle": "Respons Google Forms dikirim",
+        "rule": "Saat {{form}} menerima respons",
+        "summary": "Formulir {{form}}"
       },
       "github": {
         "accountConnect": "Hubungkan GitHub",
@@ -5057,6 +5095,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",

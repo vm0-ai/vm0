@@ -5,19 +5,20 @@
 //!
 //! - `codex_app_server_events`: Codex app-server notification compatibility mapping.
 //! - `codex_setup`: pre-exec Codex auth/bootstrap.
-//! - `command`: Claude Code and Codex command construction.
+//! - `command`: Claude Code command construction.
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
-//! - `framework`: Claude-vs-Codex behavior switches.
+//! - `claude`: Claude result parsing and tool tracking.
 //! - `termination`: process-group termination FSM.
 //!
-//! `execute_cli` intentionally remains the orchestration owner for process
-//! spawn, stdout JSONL reading, event sender shutdown, heartbeat races, and
-//! child reaping. Branch ordering and deadline reset timing in that control
-//! flow are part of the runtime contract.
+//! `execute_cli` owns the Claude Code subprocess orchestration, while
+//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
+//! retains ownership of its process, event delivery, heartbeat races, and
+//! child reaping until completion.
 
 mod child_env;
 mod child_exit_notifier;
+mod claude;
 #[doc(hidden)]
 pub mod codex_app_server;
 mod codex_app_server_backend;
@@ -29,14 +30,13 @@ mod command;
 mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
-mod framework;
 mod line_reader;
 mod process_group;
 mod termination;
 
+pub use claude::{ClaudeResultStatus, ClaudeResultSummary};
 pub use codex_setup::setup_codex_for_config;
 pub use codex_startup::CodexStartupTiming;
-pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
 use crate::active_input::{ActiveInputController, ActiveInputWriter, ReplayUserEventAction};
 use crate::constants;
@@ -49,7 +49,6 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
 use event_delivery::{EventDeliveryRuntime, EventDeliverySender};
-use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
@@ -59,7 +58,6 @@ use guest_contracts::diagnostics::{
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::io::{Seek, Write};
 use std::path::Path;
 use std::pin::Pin;
 use std::process::{ExitStatus, Stdio};
@@ -84,7 +82,7 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
-/// Maximum retained bytes for one ordinary CLI stdout record before parsing.
+/// Maximum retained bytes for one Claude Code stdout record before parsing.
 ///
 /// LF is excluded. A preceding CR counts before CRLF normalization.
 const STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
@@ -122,19 +120,6 @@ fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeUserF
     claude_user_frame(&uuid, prompt)
 }
 
-fn codex_prompt_stdin(prompt: &str) -> Result<Stdio, AgentError> {
-    let mut file = tempfile::tempfile().map_err(|error| {
-        AgentError::Execution(format!("create anonymous Codex prompt stdin: {error}"))
-    })?;
-    file.write_all(prompt.as_bytes()).map_err(|error| {
-        AgentError::Execution(format!("write anonymous Codex prompt stdin: {error}"))
-    })?;
-    file.rewind().map_err(|error| {
-        AgentError::Execution(format!("rewind anonymous Codex prompt stdin: {error}"))
-    })?;
-    Ok(Stdio::from(file))
-}
-
 async fn write_claude_user_frame_to_stdin(
     stdin: &mut tokio::process::ChildStdin,
     uuid: &str,
@@ -170,31 +155,22 @@ async fn write_claude_stream_json_to_stdin(
     Ok(())
 }
 
-async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
-    match interval {
-        Some(interval) => {
-            interval.tick().await;
-        }
-        None => std::future::pending::<()>().await,
-    }
-}
-
-/// Bounded terminal failure detail extracted from CLI stdout JSONL.
+/// Bounded terminal failure detail extracted from a CLI event stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliFailureDiagnostic {
-    /// Terminal failure message selected from CLI stdout JSONL.
+    /// Terminal failure message selected from a CLI event.
     ///
     /// When produced by [`execute_cli_with_active_input_for_config`], this
     /// message has already been secret-masked, line-break escaped, and bounded
     /// before exposure.
     pub message: String,
 
-    /// High-level source of the stdout-derived failure detail.
+    /// High-level source of the event-derived failure detail.
     ///
     /// Values produced by [`execute_cli_with_active_input_for_config`] use
     /// `ClaudeResult` for Claude Code terminal result events and `CodexJsonl`
-    /// for Codex JSONL failure events. The final run diagnostic may still
-    /// prefer stderr when this stdout message is generic.
+    /// for Codex compatibility JSONL failure events. The final run diagnostic
+    /// may still prefer stderr when this event message is generic.
     pub source: FailureDetailSource,
 
     /// Optional structured failure reason parsed from supported CLI payloads.
@@ -214,7 +190,7 @@ pub struct CliFailureDiagnostic {
 pub struct CliExecutionResult {
     /// Terminal outcome code for the configured CLI backend.
     ///
-    /// For ordinary CLI execution, this is the CLI process exit code. On Unix,
+    /// For Claude Code execution, this is the CLI process exit code. On Unix,
     /// signal termination is mapped to `128 + signal`, matching shell
     /// convention, so SIGKILL is reported as `137`.
     ///
@@ -263,12 +239,12 @@ pub struct CliExecutionResult {
     /// drained stdout may contain another result event after cleanup starts.
     pub post_result_cleanup_result: Option<ClaudeResultSummary>,
 
-    /// Best-effort, secret-masked terminal failure diagnostic parsed from CLI
-    /// stdout JSONL.
+    /// Best-effort, secret-masked terminal failure diagnostic parsed from the
+    /// framework event stream.
     ///
-    /// Some frameworks report terminal failures as JSONL events on stdout, not
-    /// stderr. Keeping the diagnostic here lets the guest-agent surface the
-    /// actual failure reason in its final run error.
+    /// Frameworks can report terminal failures as structured events rather
+    /// than stderr. Keeping the diagnostic here lets the guest-agent surface
+    /// the actual failure reason in its final run error.
     pub failure_diagnostic: Option<CliFailureDiagnostic>,
 
     /// Guest-agent control-path error that caused the CLI process group to be
@@ -332,7 +308,6 @@ pub(super) struct CliRuntimeConfig<'a> {
     use_mock_claude: bool,
     mock_claude_path: Cow<'a, str>,
     use_mock_codex: bool,
-    use_codex_app_server_backend: bool,
     mock_codex_path: Cow<'a, str>,
     home_dir: Cow<'a, str>,
     api_url: Cow<'a, str>,
@@ -398,7 +373,6 @@ impl<'a> CliRuntimeConfig<'a> {
             use_mock_claude: config.use_mock_claude,
             mock_claude_path: Cow::Borrowed(&config.mock_claude_path),
             use_mock_codex: config.use_mock_codex,
-            use_codex_app_server_backend: config.use_codex_app_server_backend,
             mock_codex_path: Cow::Borrowed(&config.mock_codex_path),
             home_dir: Cow::Borrowed(&config.home_dir),
             api_url: Cow::Borrowed(&config.api_url),
@@ -546,12 +520,13 @@ impl<'a> CliEventIngestor<'a> {
         raw_line: impl AsRef<[u8]>,
         event: &serde_json::Value,
         masker: &SecretMasker,
-        behavior: CliFrameworkBehavior,
+        framework: env::Framework,
     ) -> Result<ParsedEventAction, AgentError> {
         let is_stream_event =
             event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event");
         if !is_stream_event
-            && behavior.is_codex_turn_started(event)
+            && matches!(framework, env::Framework::Codex)
+            && event.get("type").and_then(serde_json::Value::as_str) == Some("turn.started")
             && let Some(codex_startup) = self.codex_startup
         {
             codex_startup.record_success_at(Instant::now());
@@ -567,7 +542,7 @@ impl<'a> CliEventIngestor<'a> {
         }
         self.session_metadata_capture.capture_event(event);
 
-        if behavior.logs_codex_failure_diagnostics()
+        if matches!(framework, env::Framework::Codex)
             && let Some(diagnostic) = events::masked_codex_failure_diagnostic(event, masker)
         {
             let candidate = CliFailureDiagnostic {
@@ -717,7 +692,7 @@ async fn execute_cli_inner(
     controls: CliExecutionControls<'_>,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
-    if matches!(runtime.framework, env::Framework::Codex) && runtime.use_codex_app_server_backend {
+    if matches!(runtime.framework, env::Framework::Codex) {
         return codex_app_server_backend::execute_codex_app_server_for_runtime(
             masker,
             heartbeat_monitor,
@@ -731,14 +706,13 @@ async fn execute_cli_inner(
     let CliExecutionControls {
         active_input,
         user_cancellation,
-        codex_startup,
+        codex_startup: _,
     } = controls;
 
-    let behavior = CliFrameworkBehavior::new(runtime.framework);
     let replay_user_messages = active_input.is_enabled();
-    log_info!(LOG_TAG, "Starting {} execution...", behavior.agent_type());
+    log_info!(LOG_TAG, "Starting claude-code execution...");
 
-    let cmd = command::build_cli_command_for_runtime(runtime, replay_user_messages)?;
+    let cmd = command::build_claude_command_for_runtime(runtime, replay_user_messages);
     let (bin, args) = cmd
         .split_first()
         .ok_or_else(|| AgentError::Execution("empty command".into()))?;
@@ -753,55 +727,33 @@ async fn execute_cli_inner(
         .kill_on_drop(true);
 
     let mut child_env_values = child_env::values_for_runtime(runtime);
-    match runtime.framework {
-        env::Framework::ClaudeCode => {
-            // Suppress Claude CLI features that are unnecessary or harmful in a
-            // sandbox: startup network calls (statsig, Datadog, Segment, GCS
-            // update check, GitHub) add ~2s latency, background tasks can keep
-            // a one-shot run alive after its final result, telemetry has no
-            // receiver, and the CLI version is baked into the rootfs image.
-            child_env_values.extend([
-                (
-                    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE".to_string(),
-                    "1".to_string(),
-                ),
-                ("DISABLE_AUTOUPDATER".to_string(), "1".to_string()),
-                ("DISABLE_ERROR_REPORTING".to_string(), "1".to_string()),
-                ("DISABLE_INSTALLATION_CHECKS".to_string(), "1".to_string()),
-                ("DISABLE_TELEMETRY".to_string(), "1".to_string()),
-            ]);
-        }
-        env::Framework::Codex => {
-            // Auth reconciliation and `codex exec` both honor CODEX_HOME;
-            // pin it to $HOME/.codex so setup_codex state is visible to exec.
-            child_env_values.push(("CODEX_HOME".to_string(), runtime.codex_home()));
-            // Test-only mock fixture selector; keep it explicit instead of
-            // reopening inherited env for Codex children.
-            if runtime.use_mock_codex
-                && let Ok(fixture) = std::env::var("MOCK_CODEX_FIXTURE")
-            {
-                child_env_values.push(("MOCK_CODEX_FIXTURE".to_string(), fixture));
-            }
-            if runtime.codex_oauth_mode {
-                child_env_values.push((
-                    "CODEX_REFRESH_TOKEN_URL_OVERRIDE".to_string(),
-                    crate::codex_auth::REFRESH_TOKEN_NOOP_URL.to_string(),
-                ));
-            }
-        }
-    }
+    // Suppress Claude CLI features that are unnecessary or harmful in a
+    // sandbox: startup network calls (statsig, Datadog, Segment, GCS update
+    // check, GitHub) add ~2s latency, background tasks can keep a one-shot run
+    // alive after its final result, telemetry has no receiver, and the CLI
+    // version is baked into the rootfs image.
+    child_env_values.extend([
+        (
+            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
+            "1".to_string(),
+        ),
+        (
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_string(),
+            "1".to_string(),
+        ),
+        (
+            "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY".to_string(),
+            "1".to_string(),
+        ),
+        (
+            "CLAUDE_CODE_DISABLE_TERMINAL_TITLE".to_string(),
+            "1".to_string(),
+        ),
+        ("DISABLE_AUTOUPDATER".to_string(), "1".to_string()),
+        ("DISABLE_ERROR_REPORTING".to_string(), "1".to_string()),
+        ("DISABLE_INSTALLATION_CHECKS".to_string(), "1".to_string()),
+        ("DISABLE_TELEMETRY".to_string(), "1".to_string()),
+    ]);
     let child_env_values = child_env::normalize_values(child_env_values);
     exec_boundary::validate_process_argv_env(
         "CLI child argv/env too large",
@@ -810,11 +762,7 @@ async fn execute_cli_inner(
         &child_env_values,
     )
     .map_err(AgentError::Execution)?;
-    let stdin = match runtime.framework {
-        env::Framework::ClaudeCode => Stdio::piped(),
-        env::Framework::Codex => codex_prompt_stdin(runtime.prompt.as_ref())?,
-    };
-    cmd.stdin(stdin);
+    cmd.stdin(Stdio::piped());
     child_env::apply_values_to_tokio_command(&mut cmd, &child_env_values);
     // Set the child cwd explicitly at spawn time so the CLI observes the
     // current canonical workspace mount instead of relying on inherited cwd.
@@ -827,14 +775,9 @@ async fn execute_cli_inner(
 
     let mut child = cmd.spawn()?;
 
-    let claude_stdin = if behavior.uses_stream_json_stdin() {
-        let Some(stdin) = child.stdin.take() else {
-            let _ = child.start_kill();
-            return Err(AgentError::Execution("no stdin".into()));
-        };
-        Some(stdin)
-    } else {
-        None
+    let Some(claude_stdin) = child.stdin.take() else {
+        let _ = child.start_kill();
+        return Err(AgentError::Execution("no stdin".into()));
     };
 
     let stdout = child
@@ -851,15 +794,15 @@ async fn execute_cli_inner(
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
 
     let active_input_controller = active_input.controller();
-    let mut claude_stdin_write_handle = claude_stdin.map(|stdin| {
+    let mut claude_stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
         tokio::spawn(async move {
-            write_claude_stream_json_to_stdin(stdin, &run_id, &prompt, active_input).await
+            write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input).await
         })
     });
 
-    // Stream stdout JSONL, racing against heartbeat and process exit.
+    // Stream Claude Code stdout JSONL, racing against heartbeat and process exit.
     //
     // Event sending is decoupled from stdout reading via an mpsc channel
     // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout
@@ -907,16 +850,6 @@ async fn execute_cli_inner(
         agent_execution_timeout_secs = deadline.timeout_secs;
     }
 
-    // A resumed Codex process prints `thread.started` from the resume response
-    // before its real turn notifications begin. Bound only that transition;
-    // once any real lifecycle event arrives, long turns remain unrestricted.
-    let codex_resume_startup_deadline = tokio::time::sleep(Duration::MAX);
-    tokio::pin!(codex_resume_startup_deadline);
-    let codex_resume_startup_guard_enabled =
-        matches!(runtime.framework, env::Framework::Codex) && !runtime.resume_session_id.is_empty();
-    let mut codex_resume_startup_deadline_armed = false;
-    let mut codex_resume_lifecycle_started = false;
-
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
     // if a network tool exceeds STUCK_TOOL_TIMEOUT_SECS without producing
@@ -924,15 +857,11 @@ async fn execute_cli_inner(
     // parallel tool calls correctly.
     // See: https://github.com/anthropics/claude-code/issues/11650
     let mut stuck_tool_tracker: HashMap<String, (String, tokio::time::Instant)> = HashMap::new();
-    let mut stuck_tool_check = if behavior.uses_claude_tool_watchdog() {
-        let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
-        Some(tokio::time::interval_at(
-            tokio::time::Instant::now() + stuck_tool_interval,
-            stuck_tool_interval,
-        ))
-    } else {
-        None
-    };
+    let stuck_tool_interval = Duration::from_secs(constants::STUCK_TOOL_CHECK_INTERVAL_SECS);
+    let mut stuck_tool_check = tokio::time::interval_at(
+        tokio::time::Instant::now() + stuck_tool_interval,
+        stuck_tool_interval,
+    );
     // MAINTENANCE: update if Claude Code adds new network tools that can hang.
     const STUCK_TOOL_NAMES: &[&str] = &["WebSearch", "WebFetch"];
 
@@ -949,7 +878,7 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new(runtime, codex_startup);
+    let mut event_ingestor = CliEventIngestor::new(runtime, None);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
@@ -1087,7 +1016,7 @@ async fn execute_cli_inner(
                         }
 
                         if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
-                            if behavior.filters_replayed_user_events() && replay_user_messages {
+                            if replay_user_messages {
                                 match active_input_controller.replay_user_event_action(&event) {
                                     ReplayUserEventAction::External => {}
                                     ReplayUserEventAction::InternalInitialPrompt => {
@@ -1132,35 +1061,16 @@ async fn execute_cli_inner(
                                     line.as_bytes(),
                                     &event,
                                     masker,
-                                    behavior,
+                                    env::Framework::ClaudeCode,
                                 )
                                 .await?
                             {
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
-                            if codex_resume_startup_guard_enabled
-                                && !codex_resume_lifecycle_started
-                            {
-                                let event_type = event
-                                    .get("type")
-                                    .and_then(serde_json::Value::as_str);
-                                if behavior.is_codex_turn_lifecycle_event(&event) {
-                                    codex_resume_lifecycle_started = true;
-                                    codex_resume_startup_deadline_armed = false;
-                                } else if event_type == Some("thread.started")
-                                    && !codex_resume_startup_deadline_armed
-                                {
-                                    codex_resume_startup_deadline.as_mut().reset(
-                                        tokio::time::Instant::now()
-                                            + Duration::from_secs(
-                                                constants::CODEX_RESUME_STARTUP_TIMEOUT_SECS,
-                                            ),
-                                    );
-                                    codex_resume_startup_deadline_armed = true;
-                                }
-                            }
-                            let is_result_event = behavior.handles_claude_result_event(&event);
+                            let is_result_event =
+                                event.get("type").and_then(serde_json::Value::as_str)
+                                    == Some("result");
                             if post_result_cleanup_was_armed || is_result_event {
                                 match try_observe_cli_exit(
                                     &mut child,
@@ -1219,7 +1129,7 @@ async fn execute_cli_inner(
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
-                            behavior.track_claude_tool_events(&event, &mut stuck_tool_tracker);
+                            claude::track_claude_tool_events(&event, &mut stuck_tool_tracker);
                             termination_runtime.record_post_result_activity(
                                 post_result_cleanup_was_armed,
                                 termination_deadline.as_mut(),
@@ -1350,35 +1260,6 @@ async fn execute_cli_inner(
                 }
                 termination_runtime.handle_deadline(termination_deadline.as_mut());
             }
-            () = &mut codex_resume_startup_deadline, if codex_resume_startup_deadline_armed && cli_status.is_none() => {
-                match try_observe_cli_exit(
-                    &mut child,
-                    &mut cli_status,
-                    &mut cli_exit_at,
-                    &active_input_controller,
-                    &mut termination_runtime,
-                    stdout_closed,
-                    drain_deadline.as_mut(),
-                )? {
-                    CliExitObservation::NoNewExit => {}
-                    CliExitObservation::ExitedDrainingStdout => {
-                        codex_resume_startup_deadline_armed = false;
-                        continue;
-                    }
-                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
-                }
-                codex_resume_startup_deadline_armed = false;
-                let timeout_secs = constants::CODEX_RESUME_STARTUP_TIMEOUT_SECS;
-                let timeout_error = AgentError::Execution(format!(
-                    "Codex resume startup timeout: no turn lifecycle event received within {timeout_secs} seconds after thread.started"
-                ));
-                termination_runtime.begin_control_failure(
-                    TerminationReason::CodexResumeStartupTimeout,
-                    timeout_error,
-                    ControlTerminationLog::CodexResumeStartupTimeout { timeout_secs },
-                    termination_deadline.as_mut(),
-                );
-            }
             () = &mut drain_deadline, if cli_status.is_some() => {
                 log_warn!(
                     LOG_TAG,
@@ -1387,7 +1268,7 @@ async fn execute_cli_inner(
                 );
                 break Ok(());
             }
-            _ = tick_optional_interval(&mut stuck_tool_check), if cli_status.is_none() => {
+            _ = stuck_tool_check.tick(), if cli_status.is_none() => {
                 let timeout_secs = runtime.stuck_tool_timeout_secs;
                 // Find the oldest network tool that has exceeded the timeout.
                 let stuck = stuck_tool_tracker
@@ -1762,11 +1643,10 @@ mod tests {
     use std::os::unix::process::ExitStatusExt;
     use std::time::Duration;
 
-    fn runtime_for_exec_boundary_test<'a>(
+    fn runtime_for_command_test<'a>(
         framework: env::Framework,
         prompt: &'a str,
         append_system_prompt: &'a str,
-        use_codex_app_server_backend: bool,
         user_env: &'a HashMap<String, String>,
     ) -> CliRuntimeConfig<'a> {
         CliRuntimeConfig {
@@ -1781,7 +1661,6 @@ mod tests {
             use_mock_claude: false,
             mock_claude_path: Cow::Borrowed(""),
             use_mock_codex: false,
-            use_codex_app_server_backend,
             mock_codex_path: Cow::Borrowed(""),
             home_dir: Cow::Borrowed("/tmp/home"),
             api_url: Cow::Borrowed(""),
@@ -1807,49 +1686,30 @@ mod tests {
         }
     }
 
-    fn command_config_index(command: &[String], config: &str) -> Option<usize> {
-        command
-            .windows(2)
-            .position(|window| window[0] == "-c" && window[1] == config)
-    }
-
     #[test]
-    fn codex_web_search_override_covers_new_and_resumed_exec() {
+    fn codex_web_search_override_is_in_app_server_startup_config() {
         let user_env = HashMap::new();
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
 
-        let disabled_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
         assert!(
-            command_config_index(&disabled_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG)
-                .is_none()
+            !runtime
+                .codex_startup_config_overrides()
+                .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
         );
 
         runtime.disable_builtin_web_search = true;
 
-        let new_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let new_config_index =
-            command_config_index(&new_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG).unwrap();
-        let prompt_separator_index = new_command.iter().position(|arg| arg == "--").unwrap();
-        assert!(new_config_index < prompt_separator_index);
-
-        runtime.resume_session_id = Cow::Borrowed("thread-1");
-        let resumed_command = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let resumed_config_index =
-            command_config_index(&resumed_command, super::CODEX_WEB_SEARCH_DISABLED_CONFIG)
-                .unwrap();
-        let resume_index = resumed_command
-            .iter()
-            .position(|arg| arg == "resume")
-            .unwrap();
-        assert!(resumed_config_index < resume_index);
+        assert!(
+            runtime
+                .codex_startup_config_overrides()
+                .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
+        );
     }
 
     #[test]
     fn codex_web_search_override_composes_with_provider_config() {
         let user_env = HashMap::new();
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", true, &user_env);
+        let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
         runtime.disable_builtin_web_search = true;
         runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
             provider_id: "deepseek".to_string(),
@@ -1873,15 +1733,9 @@ mod tests {
     fn claude_large_prompt_is_not_rejected_by_process_argv_guard() {
         let user_env = HashMap::new();
         let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime = runtime_for_exec_boundary_test(
-            env::Framework::ClaudeCode,
-            &prompt,
-            "",
-            false,
-            &user_env,
-        );
+        let runtime = runtime_for_command_test(env::Framework::ClaudeCode, &prompt, "", &user_env);
 
-        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let cmd = command::build_claude_command_for_runtime(&runtime, false);
         let (bin, args) = cmd.split_first().unwrap();
         let env_values = child_env::values_for_runtime(&runtime);
 
@@ -1892,65 +1746,13 @@ mod tests {
             &env_values,
         )
         .unwrap();
-    }
-
-    #[test]
-    fn ordinary_codex_large_prompt_is_not_rejected_by_process_argv_guard() {
-        let user_env = HashMap::new();
-        let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, &prompt, "", false, &user_env);
-
-        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let (bin, args) = cmd.split_first().unwrap();
-        let env_values = child_env::values_for_runtime(&runtime);
-        exec_boundary::validate_process_argv_env(
-            "test cli child",
-            bin,
-            args.iter().map(String::as_str),
-            &env_values,
-        )
-        .unwrap();
-
-        assert!(!args.iter().any(|arg| arg == &prompt));
-    }
-
-    #[test]
-    fn ordinary_codex_large_developer_instructions_still_fail_process_argv_guard() {
-        let user_env = HashMap::new();
-        let append_system_prompt =
-            "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime = runtime_for_exec_boundary_test(
-            env::Framework::Codex,
-            "user prompt",
-            &append_system_prompt,
-            false,
-            &user_env,
-        );
-
-        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
-        let (bin, args) = cmd.split_first().unwrap();
-        let env_values = child_env::values_for_runtime(&runtime);
-        let error = exec_boundary::validate_process_argv_env(
-            "test cli child",
-            bin,
-            args.iter().map(String::as_str),
-            &env_values,
-        )
-        .unwrap_err();
-
-        assert!(error.contains("argv value too large"));
-        assert!(error.contains("length="));
-        assert!(error.contains("max=131071"));
-        assert!(!error.contains(&append_system_prompt));
     }
 
     #[test]
     fn codex_app_server_large_prompt_is_not_part_of_process_argv_guard() {
         let user_env = HashMap::new();
         let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
-        let runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, &prompt, "", true, &user_env);
+        let runtime = runtime_for_command_test(env::Framework::Codex, &prompt, "", &user_env);
         let mut env_values = child_env::values_for_runtime(&runtime);
         env_values.push(("CODEX_HOME".to_string(), runtime.codex_home()));
 
@@ -1964,7 +1766,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_codex_child_env_keeps_openai_base_url_without_structured_runtime_config() {
+    fn codex_child_env_keeps_openai_base_url_without_structured_runtime_config() {
         let user_env = HashMap::from([
             ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
             ("OPENAI_MODEL".to_string(), "gpt-5".to_string()),
@@ -1973,8 +1775,7 @@ mod tests {
                 "https://api.legacy-provider.test/v1".to_string(),
             ),
         ]);
-        let runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        let runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
 
         let env_values = child_env::values_for_runtime(&runtime);
 
@@ -1993,8 +1794,7 @@ mod tests {
                 "https://api.should-not-win.test/v1".to_string(),
             ),
         ]);
-        let mut runtime =
-            runtime_for_exec_boundary_test(env::Framework::Codex, "prompt", "", false, &user_env);
+        let mut runtime = runtime_for_command_test(env::Framework::Codex, "prompt", "", &user_env);
         runtime.codex_runtime_config = Some(codex_runtime_config::CodexRuntimeConfig {
             provider_id: "deepseek".to_string(),
             name: "DeepSeek".to_string(),

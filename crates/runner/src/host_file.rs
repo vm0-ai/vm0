@@ -79,6 +79,75 @@ pub(crate) fn validate_private_file_destination(path: &Path, context: &str) -> i
     secure_regular_private_file(&file, path, context)
 }
 
+/// Publish a private file through same-directory atomic replacement on Unix.
+///
+/// The caller remains responsible for parent-directory trust. This operation
+/// does not fsync the file or parent directory, serialize writers, or define
+/// concurrent-writer ordering. Staging-file cleanup after an error is best
+/// effort. Non-Unix builds use a direct platform write instead.
+#[cfg(unix)]
+pub(crate) async fn write_private_atomic(
+    path: &Path,
+    content: &[u8],
+    context: &str,
+) -> io::Result<()> {
+    use std::ffi::OsString;
+    use tokio::io::AsyncWriteExt;
+
+    let file_name = path.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{} does not have a file name; refusing to write {context}",
+                path.display()
+            ),
+        )
+    })?;
+    let mut tmp_name = OsString::from(".");
+    tmp_name.push(file_name);
+    tmp_name.push(format!(".{}.tmp", uuid::Uuid::new_v4()));
+    let tmp = path.with_file_name(tmp_name);
+
+    let result = async {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create_new(true).mode(PRIVATE_FILE_MODE);
+        let mut file = options
+            .open(&tmp)
+            .await
+            .map_err(|e| wrap_io(e, format!("open {context} tmp {}", tmp.display())))?;
+        chmod_private_file_fd(&file, &tmp, context)?;
+        file.write_all(content)
+            .await
+            .map_err(|e| wrap_io(e, format!("write {context} tmp {}", tmp.display())))?;
+        file.flush()
+            .await
+            .map_err(|e| wrap_io(e, format!("flush {context} tmp {}", tmp.display())))?;
+        drop(file);
+
+        tokio::fs::rename(&tmp, path)
+            .await
+            .map_err(|e| wrap_io(e, format!("rename {context} {}", path.display())))?;
+        Ok(())
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+    }
+    result
+}
+
+#[cfg(not(unix))]
+pub(crate) async fn write_private_atomic(
+    path: &Path,
+    content: &[u8],
+    context: &str,
+) -> io::Result<()> {
+    tokio::fs::write(path, content)
+        .await
+        .map_err(|e| wrap_io(e, format!("write {context} {}", path.display())))
+}
+
 pub(crate) fn secure_regular_private_file<Fd: AsRawFd>(
     file: &Fd,
     path: &Path,
@@ -613,6 +682,62 @@ mod tests {
 
     fn mode(path: &Path) -> u32 {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[tokio::test]
+    async fn write_private_atomic_publishes_private_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+
+        write_private_atomic(&path, b"new content", "test file")
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new content");
+        assert_eq!(mode(&path), PRIVATE_FILE_MODE);
+    }
+
+    #[tokio::test]
+    async fn write_private_atomic_replaces_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        std::fs::write(&path, b"old content").unwrap();
+
+        write_private_atomic(&path, b"new content", "test file")
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new content");
+    }
+
+    #[tokio::test]
+    async fn write_private_atomic_removes_staging_file_after_rename_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.json");
+        std::fs::create_dir(&path).unwrap();
+
+        let error = write_private_atomic(&path, b"content", "test file")
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("rename test file"),
+            "unexpected error: {error}"
+        );
+        let leftover_staging_files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with(".state.json.") && name.ends_with(".tmp")
+            })
+            .collect();
+        assert!(
+            leftover_staging_files.is_empty(),
+            "private file staging sibling should be removed after rename failure"
+        );
+        assert!(path.is_dir());
     }
 
     #[tokio::test]

@@ -17,6 +17,12 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorsContract,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
@@ -167,11 +173,41 @@ function mockAgentConnectorAuthorizations(
   });
 }
 
-function encodeBase64UrlJson(value: unknown): string {
-  return btoa(JSON.stringify(value))
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/u, "");
+function customConnector(
+  overrides: Partial<CustomConnectorResponse> = {},
+): CustomConnectorResponse {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    slug: "_acme-internal-api",
+    displayName: "Acme Internal API",
+    prefixes: ["https://api.acme.test/v1/"],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+    prefixTemplates: ["https://api.acme.test/v1/"],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
+    hasSecret: false,
+    createdAt: "2026-06-09T10:00:00Z",
+    updatedAt: "2026-06-09T10:00:00Z",
+    ...overrides,
+  };
 }
 
 function queryButtonByText(
@@ -2746,35 +2782,47 @@ describe("chat event action cards", () => {
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
   });
 
-  it("renders custom connector proposal links as configure cards", async () => {
-    const proposalUrl = `${window.location.origin}/connectors/custom/proposal?p=${encodeBase64UrlJson(
-      {
-        operation: "create",
-        displayName: "Acme Internal API",
-        prefixTemplates: ["https://{{variables.subdomain}}.acme.test/v1/"],
-        fields: [
+  it("connects and authorizes a custom connector from its action card", async () => {
+    const user = userEvent.setup({ delay: null });
+    let connected = false;
+    let enabledIds: string[] = [];
+    let savedSecret: string | null = null;
+    const connector = customConnector();
+    const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
           {
-            key: "api_key",
-            label: "API key",
-            kind: "secret",
-            required: true,
-          },
-          {
-            key: "subdomain",
-            label: "Subdomain",
-            kind: "variable",
-            required: true,
+            ...connector,
+            connected,
+            hasSecret: connected,
+            missingRequiredFields: connected ? [] : ["secret"],
+            configuredFieldKeys: connected ? ["secret"] : [],
           },
         ],
-        headerInjections: [
-          {
-            name: "Authorization",
-            valueTemplate: "Bearer {{secrets.api_key}}",
-          },
-        ],
-        queryInjections: [],
+      });
+    });
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.set,
+      ({ body, respond }) => {
+        savedSecret = body.value;
+        connected = true;
+        return respond(204);
       },
-    )}&agentId=${AGENT_ID}`;
+    );
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledIds });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, respond }) => {
+        if (!("enabledIds" in body)) {
+          throw new Error("Expected custom connector ID authorization");
+        }
+        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
+        return respond(200, { enabledIds });
+      },
+    );
 
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-custom-connector`,
@@ -2790,7 +2838,7 @@ describe("chat event action cards", () => {
         {
           id: "msg-assistant-custom-connector-card",
           role: "assistant",
-          content: proposalUrl,
+          content: connectUrl,
           runId: "run-custom-connector",
           createdAt: "2026-06-09T10:01:00Z",
         },
@@ -2802,17 +2850,51 @@ describe("chat event action cards", () => {
       path: `/chats/${THREAD_ID}-custom-connector`,
     });
 
-    const card = await screen.findByTestId("custom-connector-action-card");
+    const card = await screen.findByTestId("connector-action-card");
     expect(within(card).getByText("Acme Internal API")).toBeInTheDocument();
     expect(
       within(card).getByText(
         "Review, connect, and authorize this custom connector for the agent.",
       ),
     ).toBeInTheDocument();
-    const configureLink = queryAllByRoleFast("link", card).find((link) => {
-      return /configure/i.test(link.textContent ?? "");
+    await user.click(await waitForButtonByText("Connect", card));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Acme Internal API",
     });
-    expect(configureLink).toHaveAttribute("href", proposalUrl);
+    await user.type(within(dialog).getByLabelText("Secret"), "acme-secret");
+    await user.click(buttonByText("Save", dialog));
+
+    await waitFor(() => {
+      expect(savedSecret).toBe("acme-secret");
+      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(within(card).getByText("Authorized")).toBeInTheDocument();
+    });
+  });
+
+  it("leaves legacy custom connector proposal links as markdown", async () => {
+    const proposalUrl = `${window.location.origin}/connectors/custom/proposal?p=legacy`;
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-custom-connector-proposal`,
+      threadTitle: "Legacy custom connector proposal",
+      chatEvents: [
+        {
+          id: "msg-assistant-custom-connector-proposal",
+          role: "assistant",
+          content: `[Legacy proposal](${proposalUrl})`,
+          runId: "run-custom-connector-proposal",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-custom-connector-proposal`,
+    });
+
+    const legacyProposal = await screen.findByText("Legacy proposal");
+    expect(legacyProposal).toHaveAttribute("href", proposalUrl);
+    expect(screen.queryByTestId("connector-action-card")).toBeNull();
   });
 
   it("renders delegated computer use authorization links as action cards", async () => {
@@ -2924,6 +3006,126 @@ describe("chat event action cards", () => {
       "href",
       creditUrl,
     );
+  });
+
+  it("cancels stale permission loading when a confirmed grant reloads cards", async () => {
+    mockNow();
+    const user = userEvent.setup({ delay: null });
+    const requestStarted = context.mocks.deferred<void>();
+    const requestAborted = context.mocks.deferred<void>();
+    const threadId = "b0000000-0000-4000-a000-000000000951";
+    const reloadedAgentId = "c0000000-0000-4000-a000-000000000002";
+    const gmailPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow`;
+    const youtubePermissionUrl = `https://app.vm0.ai/agents/${reloadedAgentId}/permissions?connectorSlug=youtube&permission=videos.write&action=allow`;
+    let pendingRequest = true;
+    let abortObserved = false;
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: null,
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.list,
+      ({ query, signal, never, respond }) => {
+        if (query.agentId !== reloadedAgentId) {
+          return respond(200, []);
+        }
+        if (!pendingRequest) {
+          return respond(200, []);
+        }
+        pendingRequest = false;
+        requestStarted.resolve();
+        signal.addEventListener(
+          "abort",
+          () => {
+            if (!abortObserved) {
+              abortObserved = true;
+              requestAborted.resolve();
+            }
+          },
+          { once: true },
+        );
+        return never();
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorSlug: body.connectorSlug,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: isoFromNowMs(60 * 60 * 1000),
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Permission load owner",
+      chatEvents: [
+        {
+          id: "msg-user-permission-load-owner",
+          role: "user",
+          content: "Check Gmail permission",
+          runId: "run-permission-load-owner",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-load-owner",
+          role: "assistant",
+          content: `${gmailPermissionUrl}\n${youtubePermissionUrl}`,
+          runId: "run-permission-load-owner",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await requestStarted.promise;
+    const permissionCards = await screen.findAllByTestId(
+      "permission-action-card",
+    );
+    expect(permissionCards).toHaveLength(2);
+    const [gmailCard, youtubeCard] = permissionCards;
+    if (!gmailCard || !youtubeCard) {
+      throw new Error("Expected two permission cards");
+    }
+    await waitForButtonByText("Confirm", gmailCard);
+
+    await confirmPermissionAction(user, gmailCard);
+
+    await requestAborted.promise;
+    await waitFor(() => {
+      expect(
+        within(gmailCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+      expect(
+        within(youtubeCard).getByText("Allow videos.write"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Confirm", youtubeCard)).toBeEnabled();
+    });
   });
 
   it("automatically retries permission action loading before showing an error", async () => {

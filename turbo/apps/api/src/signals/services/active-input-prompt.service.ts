@@ -8,7 +8,7 @@ import type {
 } from "@vm0/db/schema/chat-event";
 
 import type { Db } from "../external/db";
-import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
 import { loadAgentPhoneQueuedLaunchMaterial } from "./agentphone-queued-launch-context.service";
 import { loadFeishuQueuedLaunchMaterial } from "./feishu-queued-launch-context.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -30,6 +30,7 @@ type ContextBackedTriggerSource =
 interface ActiveInputPromptEvent {
   readonly id: string;
   readonly chatThreadId: string;
+  readonly eventType: "input.prompt" | "input.budget";
   readonly triggerSource: TriggerSource | null;
   readonly userMessage: ChatEventUserMessage;
   readonly generationTemplate: ChatEventGenerationTemplate | null;
@@ -116,7 +117,7 @@ export async function materializeActiveInputPrompt(
     featureSwitchContext,
   );
   const userMessage = requiredUserMessageForEvent(
-    "input.prompt",
+    args.event.eventType,
     args.event.userMessage,
   );
   if (!userMessage) {

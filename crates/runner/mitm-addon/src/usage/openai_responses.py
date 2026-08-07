@@ -110,6 +110,7 @@ _RESPONSES_KNOWN_NON_USAGE_EVENTS = frozenset(
     )
 )
 _SseUsageParseErrorCallback = Callable[[str, str], None]
+_SseTerminalUsageCallback = Callable[[dict], None]
 _ResponsesEventTypeClassification = Literal[
     "terminal",
     "known_non_usage",
@@ -211,7 +212,8 @@ def _observed_responses_event_type(result: TopLevelStringFieldProbeResult) -> st
 
 
 def _classify_responses_event_type(body: bytes) -> _ResponsesEventTypeClassification:
-    return _classify_responses_event_type_result(_probe_responses_event_type(body))
+    result = _probe_responses_event_type(body)
+    return _classify_responses_event_type_result(result)
 
 
 def _classify_responses_event_type_result(
@@ -449,14 +451,15 @@ def _store_sse_result_values(
     *,
     event_name: str | None,
     data_event_type: _ResponsesEventTypeClassification | None = None,
-) -> None:
+    data_event_identity_consistent: bool = True,
+) -> dict | None:
     data_type = values.get(("type",))
     if (
         _is_known_non_usage_event(event_name)
         or data_event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE
         or (data_event_type is None and _is_known_non_usage_event(data_type))
     ):
-        return
+        return None
     event_identity = event_name if event_name is not None else data_type
     is_known_terminal_usage_event = (
         _is_known_terminal_usage_event(event_identity)
@@ -468,12 +471,31 @@ def _store_sse_result_values(
     source: dict = {}
     _store_response_values(values, source, prefix)
     if not is_known_terminal_usage_event and not _has_usage_quantity(source):
-        return
+        return None
     merge_openai_responses_usage_result(target, source)
+
+    if not _has_positive_usage_quantity(source):
+        return None
+    if not data_event_identity_consistent:
+        return None
+    if event_name is None:
+        if not _is_known_terminal_usage_event(data_type):
+            return None
+        if data_event_type not in (None, _RESPONSES_EVENT_TERMINAL):
+            return None
+        return source
+    if not _is_known_terminal_usage_event(event_name):
+        return None
+    if data_event_type not in (None, _RESPONSES_EVENT_TERMINAL):
+        return None
+    if data_type is not None and data_type != event_name:
+        return None
+    return source
 
 
 def create_openai_responses_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
+    on_terminal_usage: _SseTerminalUsageCallback | None = None,
 ) -> tuple[SseUsageScanner, dict]:
     """Create an incremental usage parser for content-decoded Responses SSE bytes.
 
@@ -491,11 +513,21 @@ def create_openai_responses_sse_usage_extractor(
     malformed non-terminal or unknown events remain silent. HTTP content
     decoding and its errors are outside this parser; callers feed decoded output
     and handle decoder completion separately.
+
+    ``on_terminal_usage(usage)`` is called after a complete, recognized terminal
+    event with compatible SSE/JSON identity contributes positive usage. The
+    callback receives that event's normalized usage snapshot, not the live
+    accumulator. This lets transport finalizers retain only terminal-proven
+    values without changing forward-compatible extraction from unknown events.
     """
 
     usage: dict = {}
     parser = SseUsageScanner(
-        _OpenAIResponsesSseUsageHandler(usage, on_parse_error=on_parse_error),
+        _OpenAIResponsesSseUsageHandler(
+            usage,
+            on_parse_error=on_parse_error,
+            on_terminal_usage=on_terminal_usage,
+        ),
         # Some compatible streams omit SSE event names and carry the terminal
         # response type in the JSON payload.
         capture_data_without_event=True,
@@ -509,6 +541,7 @@ class _OpenAIResponsesSseUsageHandler:
         usage: dict,
         *,
         on_parse_error: _SseUsageParseErrorCallback | None = None,
+        on_terminal_usage: _SseTerminalUsageCallback | None = None,
     ) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
@@ -518,6 +551,7 @@ class _OpenAIResponsesSseUsageHandler:
         self._discard_eventless_event = False
         self._discard_named_event = False
         self._on_parse_error = on_parse_error
+        self._on_terminal_usage = on_terminal_usage
 
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name is None or not _is_known_non_usage_event(event_name)
@@ -564,12 +598,18 @@ class _OpenAIResponsesSseUsageHandler:
             return
         result = extractor.finish()
         if result.complete:
-            _store_sse_result_values(
+            terminal_usage = _store_sse_result_values(
                 result.values,
                 self._usage,
                 event_name=event_name,
                 data_event_type=data_event_type,
+                data_event_identity_consistent=(
+                    self._on_terminal_usage is None
+                    or extractor.selected_scalar_values_are_consistent(("type",))
+                ),
             )
+            if terminal_usage is not None and self._on_terminal_usage is not None:
+                self._on_terminal_usage(terminal_usage)
             return
         event_type = event_name
         if event_type is None:
@@ -601,12 +641,17 @@ class _OpenAIResponsesSseUsageHandler:
         )
         self._extractor = JsonSelectiveExtractor(
             scalar_fields=scalar_fields,
+            scalar_consistency_paths={("type",)} if self._on_terminal_usage is not None else None,
             max_work_units=_RESPONSES_MAX_WORK_UNITS,
         )
         return self._extractor
 
     def _should_include_type_scalar(self) -> bool:
-        return self._data_event_type is None or self._on_parse_error is not None
+        return (
+            self._data_event_type is None
+            or self._on_parse_error is not None
+            or self._on_terminal_usage is not None
+        )
 
     def _start_full_extractor_from_prefix(
         self,

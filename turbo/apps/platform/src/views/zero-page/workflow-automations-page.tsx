@@ -353,6 +353,56 @@ function githubAutomationRuleLabel(
   return null;
 }
 
+function googleAutomationRuleLabel(
+  automation: ZeroWorkflowAutomationSummary,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "google-calendar-event-created": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.calendar.createdRule;
+        },
+        { calendar: quote(automation.eventConfig.calendarId) },
+      );
+    }
+    case "google-calendar-event-updated": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.calendar.updatedRule;
+        },
+        { calendar: quote(automation.eventConfig.calendarId) },
+      );
+    }
+    case "google-calendar-event-cancelled": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.calendar.cancelledRule;
+        },
+        { calendar: quote(automation.eventConfig.calendarId) },
+      );
+    }
+    case "google-forms-response-submitted": {
+      return i18n.t(
+        ($) => {
+          return $.workflows.automations.forms.rule;
+        },
+        { form: quote(automation.eventConfig.form.title) },
+      );
+    }
+    case "google-meet-transcript-generated": {
+      return i18n.t(($) => {
+        return $.workflows.automations.meet.rule;
+      });
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 export function humanReadableAutomationRuleLabel(
   automation: ZeroWorkflowAutomationSummary,
   displayTimezone: string,
@@ -428,34 +478,9 @@ export function humanReadableAutomationRuleLabel(
   if (githubLabel) {
     return githubLabel;
   }
-  if (automation.eventType === "google-calendar-event-created") {
-    return i18n.t(
-      ($) => {
-        return $.workflows.automations.calendar.createdRule;
-      },
-      { calendar: quote(automation.eventConfig.calendarId) },
-    );
-  }
-  if (automation.eventType === "google-calendar-event-updated") {
-    return i18n.t(
-      ($) => {
-        return $.workflows.automations.calendar.updatedRule;
-      },
-      { calendar: quote(automation.eventConfig.calendarId) },
-    );
-  }
-  if (automation.eventType === "google-calendar-event-cancelled") {
-    return i18n.t(
-      ($) => {
-        return $.workflows.automations.calendar.cancelledRule;
-      },
-      { calendar: quote(automation.eventConfig.calendarId) },
-    );
-  }
-  if (automation.eventType === "google-meet-transcript-generated") {
-    return i18n.t(($) => {
-      return $.workflows.automations.meet.rule;
-    });
+  const googleLabel = googleAutomationRuleLabel(automation);
+  if (googleLabel !== null) {
+    return googleLabel;
   }
   if (automation.eventType === "chat-run-finished") {
     return i18n.t(($) => {
@@ -477,6 +502,36 @@ export function humanReadableAutomationRuleLabel(
     });
   }
   return gmailAutomationTitle(automation);
+}
+
+function googleAutomationTypeLabel(
+  automation: ZeroWorkflowAutomationSummary,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "google-calendar-event-created":
+    case "google-calendar-event-updated":
+    case "google-calendar-event-cancelled": {
+      return i18n.t(($) => {
+        return $.workflows.automations.types.googleCalendar;
+      });
+    }
+    case "google-forms-response-submitted": {
+      return i18n.t(($) => {
+        return $.workflows.automations.types.googleForms;
+      });
+    }
+    case "google-meet-transcript-generated": {
+      return i18n.t(($) => {
+        return $.workflows.automations.types.googleMeet;
+      });
+    }
+    default: {
+      return null;
+    }
+  }
 }
 
 export function automationTypeLabel(
@@ -507,19 +562,9 @@ export function automationTypeLabel(
       return $.workflows.automations.types.github;
     });
   }
-  if (
-    automation.eventType === "google-calendar-event-created" ||
-    automation.eventType === "google-calendar-event-updated" ||
-    automation.eventType === "google-calendar-event-cancelled"
-  ) {
-    return i18n.t(($) => {
-      return $.workflows.automations.types.googleCalendar;
-    });
-  }
-  if (automation.eventType === "google-meet-transcript-generated") {
-    return i18n.t(($) => {
-      return $.workflows.automations.types.googleMeet;
-    });
+  const googleLabel = googleAutomationTypeLabel(automation);
+  if (googleLabel !== null) {
+    return googleLabel;
   }
   if (
     automation.eventType === "notion-child-page-created" ||

@@ -52,7 +52,7 @@ use super::session_restore::{
     MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
 };
 use super::storage::download_storages;
-use super::telemetry::{RunnerSpawnTiming, record_api_latency};
+use super::telemetry::{RunnerSpawnTiming, record_api_to_spawn};
 use super::workspace_session_history_materializer::{
     WorkspaceSessionHistoryMaterialization, WorkspaceSessionHistoryPhaseTiming,
     WorkspaceSessionHistoryTimings,
@@ -1189,6 +1189,7 @@ pub(super) struct RunControls {
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
     pub(super) prepared_storage: Option<crate::storage_cache::PreparedFreshStorage>,
     pub(super) prepared_guest_runtime: Option<PreparedGuestRuntime>,
+    guest_state_prepared: bool,
 }
 
 pub(super) enum PreparedGuestRuntime {
@@ -1281,6 +1282,7 @@ impl RunControls {
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
             prepared_storage: None,
             prepared_guest_runtime: None,
+            guest_state_prepared: false,
         }
     }
 
@@ -1294,6 +1296,11 @@ impl RunControls {
         plan: SessionHistoryRestorePlan,
     ) -> Self {
         self.session_history_restore_plan = plan;
+        self
+    }
+
+    pub(super) fn with_guest_state_prepared(mut self, prepared: bool) -> Self {
+        self.guest_state_prepared = prepared;
         self
     }
 }
@@ -1598,14 +1605,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         session_history_restore_plan,
         mut prepared_storage,
         prepared_guest_runtime,
+        guest_state_prepared,
     } = controls;
-    let has_active_input_source = active_input_source.is_some();
     let pre_spawn_started = Instant::now();
 
     // Complete cancellation-aware guest runtime and storage preparation while
     // taking ownership of model-catalog prefetch supervision.
     let prepared_guest_runtime = match prepared_guest_runtime {
         Some(prepared) => prepared,
+        None if guest_state_prepared => PreparedGuestRuntime::Ready(
+            StartedCodexModelCatalogPrefetch::start(sandbox, context, start.reuse_result, &cancel)
+                .await,
+        ),
         None => {
             PreparedGuestRuntime::prepare(
                 sandbox,
@@ -2075,7 +2086,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         &config.api_url,
         sandbox.id(),
         start.reuse_result,
-        has_active_input_source,
     ) {
         Ok(env_map) => env_map,
         Err(error) => {
@@ -2207,7 +2217,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     } = prepared_agent;
 
     // Claude Code process has a PID now — record end-to-end startup latency.
-    record_api_latency("api_to_spawn", context, telemetry);
+    record_api_to_spawn(
+        context,
+        telemetry,
+        start.reuse_result,
+        start.prev_storage.is_some(),
+    );
 
     // Start locally owned input and output work, then release deferred cache
     // fill now that process spawn has succeeded.

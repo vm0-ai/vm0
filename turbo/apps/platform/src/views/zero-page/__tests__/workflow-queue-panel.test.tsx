@@ -121,12 +121,13 @@ function setupWorkflowQueuePage({
 }
 
 describe("workflow queue panel", () => {
-  it("shows messages, automation events, and the active goal in one bottom queue", async () => {
+  it("renders active-run prompts inline while queueing automation events and the active goal", async () => {
     setupWorkflowQueuePage();
 
     await waitFor(() => {
+      expect(screen.getByText("2 events waiting")).toBeInTheDocument();
       expect(
-        screen.getByText("1 message and 2 events waiting"),
+        screen.getByText("Review the queued customer reply"),
       ).toBeInTheDocument();
       expect(screen.getByText("customer-followup")).toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
@@ -141,12 +142,11 @@ describe("workflow queue panel", () => {
         return row.getAttribute("aria-label");
       }),
     ).toStrictEqual([
-      "Queued message",
       "Pending automation event",
       "Pending automation event",
       "Active goal",
     ]);
-    expect(screen.getAllByLabelText("Queued message")).toHaveLength(1);
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Pause automation events"),
     ).not.toBeInTheDocument();

@@ -17,6 +17,7 @@ import { accept } from "../../../lib/accept.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
+import { setAblyLoop$ } from "../../realtime.ts";
 import { setLoop, withCleanup } from "../../utils.ts";
 import { sanitizeTokenInput } from "./token-input.ts";
 
@@ -150,6 +151,25 @@ const bumpReload$ = command(({ set }) => {
   });
 });
 
+const reloadCustomConnectorsFromRealtime$ = command(({ set }) => {
+  set(bumpReload$);
+  return false;
+});
+
+export const subscribeCustomConnectorListChanged$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(
+      setAblyLoop$,
+      {
+        topic: "customConnectorListChanged",
+        loopCommand$: reloadCustomConnectorsFromRealtime$,
+        options: { runOnSubscribe: true },
+      },
+      signal,
+    );
+  },
+);
+
 type CustomConnectorAuthorizationTarget =
   | { readonly kind: "visible-agents" }
   | { readonly kind: "agent"; readonly agentId: string };
@@ -273,36 +293,6 @@ export const deleteCustomConnector$ = command(
   },
 );
 
-export const renameCustomConnector$ = command(
-  async (
-    { get, set },
-    args: { id: string; displayName: string },
-    signal: AbortSignal,
-  ): Promise<CustomConnectorResponse> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroCustomConnectorByIdContract);
-    const result = await accept(
-      client.patch({
-        params: { id: args.id },
-        body: { displayName: args.displayName },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(bumpReload$);
-    toast.success(
-      i18n.t(
-        ($) => {
-          return $.connectors.custom.toasts.renamed;
-        },
-        { connector: result.body.displayName },
-      ),
-    );
-    return result.body;
-  },
-);
-
 const setCustomConnectorSecretForTarget$ = command(
   async (
     { get, set },
@@ -408,7 +398,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const authWindow = window.open(
       "about:blank",
       "_blank",
@@ -455,11 +445,10 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     set(bumpReload$);
     const connectors = await get(customConnectors$);
     signal.throwIfAborted();
-    if (
-      connectors.some((connector) => {
-        return connector.id === args.id && connector.connected;
-      })
-    ) {
+    const connected = connectors.some((connector) => {
+      return connector.id === args.id && connector.connected;
+    });
+    if (connected) {
       await set(
         authorizeCustomConnectorForTarget$,
         {
@@ -469,12 +458,13 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         signal,
       );
     }
+    return connected;
   },
 );
 
 export const connectCustomConnectorOAuth2$ = command(
-  async ({ set }, id: string, signal: AbortSignal): Promise<void> => {
-    await set(
+  async ({ set }, id: string, signal: AbortSignal): Promise<boolean> => {
+    return await set(
       connectCustomConnectorOAuth2ForTarget$,
       {
         id,
@@ -490,8 +480,8 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
     { set },
     args: { readonly id: string; readonly agentId: string },
     signal: AbortSignal,
-  ): Promise<void> => {
-    await set(
+  ): Promise<boolean> => {
+    return await set(
       connectCustomConnectorOAuth2ForTarget$,
       {
         id: args.id,
@@ -510,7 +500,6 @@ type DialogState =
   | { kind: "none" }
   | { kind: "create" }
   | { kind: "edit"; connector: CustomConnectorResponse }
-  | { kind: "rename"; connector: CustomConnectorResponse }
   | { kind: "connect"; connector: CustomConnectorResponse }
   | { kind: "access"; connector: CustomConnectorResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
@@ -552,11 +541,6 @@ export const openCustomConnectorEditConfirmationDialog$ = command(
 export const closeCustomConnectorEditConfirmationDialog$ = command(
   ({ set }) => {
     set(internalEditConfirmation$, null);
-  },
-);
-export const openCustomConnectorRenameDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
-    set(internalDialog$, { kind: "rename", connector });
   },
 );
 export const openCustomConnectorConnectDialog$ = command(
@@ -721,20 +705,6 @@ export const removeCustomConnectorAuthMethod$ = command(
 export const resetCustomConnectorCreateForm$ = command(({ set }) => {
   set(internalCreateForm$, CREATE_FORM_DEFAULTS);
 });
-
-// ---------------------------------------------------------------------------
-// Rename form state
-// ---------------------------------------------------------------------------
-
-const internalRenameInput$ = state("");
-export const customConnectorRenameInput$ = computed((get) => {
-  return get(internalRenameInput$);
-});
-export const setCustomConnectorRenameInput$ = command(
-  ({ set }, value: string) => {
-    set(internalRenameInput$, value);
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Connect form state

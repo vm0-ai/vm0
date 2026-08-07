@@ -1,6 +1,4 @@
 import { command } from "ccstate";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { ConnectorOauthCallbackResult } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 
@@ -16,9 +14,10 @@ import {
 } from "../services/connector-oauth-state.service";
 import { validateConnectorAuthorizationTarget$ } from "../services/connected-connector-authorization.service";
 import {
+  customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
-  parseCustomConnectorOAuthStateContext,
+  parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
 } from "../services/custom-connector-oauth2.service";
@@ -30,7 +29,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   connectorOAuthRedirectResponse,
   clearConnectorOAuthCookies,
-} from "./connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import { env } from "../../lib/env";
 
 const CUSTOM_CONNECTOR_OAUTH_CALLBACK_PATH = "/connectors/custom/callback";
@@ -86,48 +85,6 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!body.ok) {
     return body.response;
   }
-  const featureContext = await get(
-    userFeatureSwitchContext(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  const connector = await get(
-    getCustomConnectorById({
-      orgId: auth.orgId,
-      connectorId: params.id,
-    }),
-  );
-  signal.throwIfAborted();
-  const managedFeishuOAuthEnabled =
-    connector?.oauthConfig?.providerAdapter === "feishu" &&
-    isFeatureEnabled(FeatureSwitchKey.FeishuIntegration, featureContext);
-  if (
-    !managedFeishuOAuthEnabled &&
-    !isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, featureContext)
-  ) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Custom connector OAuth 2.0 is not enabled",
-          code: "FORBIDDEN" as const,
-        },
-      },
-    };
-  }
-  if (
-    (auth.tokenType === "zero" || body.data.agentId !== undefined) &&
-    !isFeatureEnabled(FeatureSwitchKey.CustomConnectorCliCreate, featureContext)
-  ) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Custom connector CLI creation is not enabled",
-          code: "FORBIDDEN" as const,
-        },
-      },
-    };
-  }
   const agentTarget = await set(
     validateConnectorAuthorizationTarget$,
     {
@@ -167,20 +124,12 @@ function validateClaimedState(storedState: StoredOAuthState):
   | {
       readonly ok: true;
       readonly context: NonNullable<
-        ReturnType<typeof parseCustomConnectorOAuthStateContext>
+        ReturnType<typeof parseValidCustomConnectorOAuthState>
       >;
     }
   | { readonly ok: false } {
-  const context = parseCustomConnectorOAuthStateContext(
-    storedState.oauthContext,
-  );
-  if (
-    !context ||
-    storedState.connectorSlug !== null ||
-    storedState.customConnectorId !== context.connectorId ||
-    storedState.connectorRevision !== context.connectorRevision ||
-    storedState.authMethod !== "oauth2"
-  ) {
+  const context = parseValidCustomConnectorOAuthState(storedState);
+  if (!context) {
     return { ok: false };
   }
   return { ok: true, context };
@@ -262,7 +211,7 @@ const completeOAuth2Callback$ = command(
       !connector ||
       connector.authMode !== "oauth" ||
       !connector.oauthConfig ||
-      connector.revision !== state.context.connectorRevision
+      !customConnectorOAuthStateMatchesDefinition(state.context, connector)
     ) {
       return callbackError(
         origin,
@@ -280,18 +229,6 @@ const completeOAuth2Callback$ = command(
       userFeatureSwitchContext(claimed.state.orgId, claimed.state.userId),
     );
     signal.throwIfAborted();
-    if (
-      claimed.state.authorizeAgent &&
-      !isFeatureEnabled(
-        FeatureSwitchKey.CustomConnectorCliCreate,
-        featureContext,
-      )
-    ) {
-      return callbackError(
-        origin,
-        "Custom connector CLI creation is not enabled",
-      );
-    }
     const credentials = await tapError(
       decryptCustomConnectorOAuth2Credentials(connector, featureContext),
     );
@@ -315,6 +252,7 @@ const completeOAuth2Callback$ = command(
           orgId: claimed.state.orgId,
           userId: claimed.state.userId,
           connectorId: connector.id,
+          storageVersion: connector.storageVersion,
           token,
           featureContext,
         });

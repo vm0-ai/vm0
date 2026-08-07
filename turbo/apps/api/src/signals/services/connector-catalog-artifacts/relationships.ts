@@ -151,9 +151,6 @@ function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
           label: method.label,
           description: method.description,
           visible: method.visible,
-          ...(method.featureSwitch === null
-            ? {}
-            : { featureSwitch: method.featureSwitch }),
           ...(method.client === undefined ? {} : { client: method.client }),
           storage: method.storage,
           grant: sourceGrant(method),

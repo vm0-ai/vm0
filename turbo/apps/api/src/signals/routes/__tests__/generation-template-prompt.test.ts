@@ -10,7 +10,7 @@ import { findImageStyle } from "@vm0/core/resource-registry";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,
-} from "../generation-template-prompt";
+} from "../../../lib/generation-template-prompt";
 
 describe("buildGenerationTemplatePrompt", () => {
   it("builds one shared context for multiple ordered templates", () => {

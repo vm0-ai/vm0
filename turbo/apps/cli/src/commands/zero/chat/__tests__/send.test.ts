@@ -124,29 +124,9 @@ describe("zero chat send command", () => {
       http.get(metadataUrl(OTHER_THREAD_ID), () => {
         return HttpResponse.json({
           id: OTHER_THREAD_ID,
+          agentId: AGENT_ID,
           title: "Busy thread",
           selectedModel: null,
-        });
-      }),
-      http.get("http://localhost:3000/api/zero/chat-threads/snapshot", () => {
-        return HttpResponse.json({
-          chatThreads: [
-            {
-              id: OTHER_THREAD_ID,
-              agentId: AGENT_ID,
-              title: "Busy thread",
-              sortAt: "2026-07-29T10:00:00.000Z",
-              createdAt: "2026-07-29T10:00:00.000Z",
-              updatedAt: "2026-07-29T10:00:00.000Z",
-              pinnedAt: null,
-              renamedAt: null,
-              selectedModel: null,
-              serviceTier: null,
-              computerUseHostId: null,
-            },
-          ],
-          latestEventId: null,
-          latestSeqId: null,
         });
       }),
       http.post(SEND_URL, async ({ request }) => {
@@ -325,6 +305,31 @@ describe("zero chat send command", () => {
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("is not a valid UserMessageDocument");
     expect(stderr).toContain("parts.0.filenameSnapshot");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("rejects a server-owned model annotation before calling the API", async () => {
+    const filePath = writeUserMessageFile({
+      version: 1,
+      parts: [
+        { type: "text", text: "Continue" },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
+
+    await expect(async () => {
+      await zeroChatCommand.parseAsync([
+        "node",
+        "cli",
+        "send",
+        "--user-message-file",
+        filePath,
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const stderr = mockConsoleError.mock.calls.flat().join("\n");
+    expect(stderr).toContain("is not a valid UserMessageDocument");
+    expect(stderr).toContain("parts.1.type");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

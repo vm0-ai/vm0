@@ -3,6 +3,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@vm0/core";
 import {
   IconExternalLink,
   IconCrown,
@@ -76,6 +77,8 @@ import {
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { UsagePackPricingPage } from "./usage-pack-pricing-page.tsx";
 
 const PLANS = [
   {
@@ -1651,6 +1654,46 @@ function ConcurrencyBillingSection({
     </section>
   );
 }
+
+function BillingPricingPage({
+  currentTier,
+  onBack,
+  onRestore,
+  periodEnd,
+  scheduledChange,
+}: {
+  readonly currentTier: BillingTier;
+  readonly onBack: () => void;
+  readonly onRestore: () => void;
+  readonly periodEnd: string | null | undefined;
+  readonly scheduledChange: ScheduledBillingChange;
+}) {
+  const featureSwitches = useGet(featureSwitch$);
+  const usagePackPlansEnabled =
+    featureSwitches[FeatureSwitchKey.UsagePackPlans] ?? false;
+  return (
+    <>
+      {usagePackPlansEnabled ? (
+        <UsagePackPricingPage currentTier={currentTier} onBack={onBack} />
+      ) : (
+        <PricingPage
+          currentTier={currentTier}
+          scheduledChange={scheduledChange}
+          periodEnd={periodEnd}
+          onBack={onBack}
+          onRestore={onRestore}
+        />
+      )}
+      <DowngradeConfirmDialog currentTier={currentTier} />
+      <RestorePlanConfirmDialog
+        currentTier={currentTier}
+        periodEnd={periodEnd}
+        scheduledChange={scheduledChange}
+      />
+    </>
+  );
+}
+
 export function OrgBillingTab() {
   const { t } = useTranslation();
   const pricingOpen = useGet(billingSubPage$);
@@ -1702,30 +1745,22 @@ export function OrgBillingTab() {
   );
   const showBuyCredits = capabilities.canBuyCredits;
   const showConcurrency = capabilities.canBuyConcurrency;
-  const canManageBilling = isPaid && status?.hasSubscription === true;
+  const canManageBilling = status?.hasSubscription === true;
   const openBillingPortal = () => {
     return detach(portal(pageSignal), Reason.DomCallback);
   };
 
   if (pricingOpen) {
     return (
-      <>
-        <PricingPage
-          currentTier={currentTier}
-          scheduledChange={scheduledChange}
-          periodEnd={periodEnd}
-          onBack={() => {
-            return setPricingOpen(false);
-          }}
-          onRestore={handleRestore}
-        />
-        <DowngradeConfirmDialog currentTier={currentTier} />
-        <RestorePlanConfirmDialog
-          currentTier={currentTier}
-          periodEnd={periodEnd}
-          scheduledChange={scheduledChange}
-        />
-      </>
+      <BillingPricingPage
+        currentTier={currentTier}
+        scheduledChange={scheduledChange}
+        periodEnd={periodEnd}
+        onBack={() => {
+          return setPricingOpen(false);
+        }}
+        onRestore={handleRestore}
+      />
     );
   }
 

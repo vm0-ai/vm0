@@ -23,6 +23,8 @@ import {
   materializeHourlyUsage$,
   readUsageStorageCounts$,
 } from "./helpers/zero-usage-insight";
+import { zeroMapsRoutes } from "../zero-maps";
+import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -66,7 +68,9 @@ function authHeaders() {
 }
 
 function apiClient() {
-  return setupApp({ context })(zeroUsageRecordContract);
+  return setupApp({ context, routes: zeroUsageRecordRoutes })(
+    zeroUsageRecordContract,
+  );
 }
 
 function createdAt(minutesAgo: number): Date {
@@ -945,7 +949,9 @@ describe("GET /api/zero/usage/record", () => {
       run.runId,
       ["maps:read"],
     );
-    const maps = setupApp({ context })(zeroMapsContract);
+    const maps = setupApp({ context, routes: zeroMapsRoutes })(
+      zeroMapsContract,
+    );
     const geocode = await accept(
       maps.geocode({
         headers: { authorization: `Bearer ${mapsToken}` },

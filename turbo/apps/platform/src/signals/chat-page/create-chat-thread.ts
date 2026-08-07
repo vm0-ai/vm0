@@ -46,8 +46,7 @@ import {
   type ChatEvent as PersistedChatEvent,
   type ChatPromptEvent,
   type ChatThreadArtifactRun,
-  type ChatUserMessageEvent,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
@@ -63,8 +62,6 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import {
-  chatSteerEnabled$,
-  chatThreadSidebarAutoOpenEnabled$,
   codexFastModeEnabled$,
   featureSwitch$,
   imageRecognitionAvailable$,
@@ -121,9 +118,7 @@ import {
 } from "./agent-reference-signals.ts";
 import {
   createConnectorCardSignalsRegistry,
-  createCustomConnectorCardSignalsRegistry,
   type ConnectorCardSignalsRegistry,
-  type CustomConnectorCardSignalsRegistry,
 } from "./connector-action-block.ts";
 import {
   createPermissionCardSignalsRegistry,
@@ -193,6 +188,7 @@ import {
   pauseChatThreadGoal$,
 } from "./chat-goal.ts";
 import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
+import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 import type {
   ChatEventSignals,
   SendChatEventInput,
@@ -206,7 +202,7 @@ function isInputChatEvent(
   event: ChatEvent,
 ): event is Extract<
   ChatEvent,
-  { eventType: ChatUserMessageEvent["eventType"] }
+  { eventType: "input.prompt" | "input.rejected" }
 > {
   return (
     event.eventType === "input.prompt" || event.eventType === "input.rejected"
@@ -1236,21 +1232,18 @@ type SemanticChatEventGroup = SemanticChatGroups["activeGroups"][number];
 function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
   chatEvents: readonly ChatEvent[],
-  chatSteerEnabled: boolean,
 ): SemanticChatEvent[] {
   const blocksByEventId = new Map(
     raw.map((entry) => {
       return [entry.event.id, entry.blocks] as const;
     }),
   );
-  return semanticChatEventsFromChatEvents(chatEvents, chatSteerEnabled).map(
-    (entry) => {
-      return {
-        ...entry,
-        blocks: blocksByEventId.get(entry.event.id) ?? [],
-      };
-    },
-  );
+  return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
+    return {
+      ...entry,
+      blocks: blocksByEventId.get(entry.event.id) ?? [],
+    };
+  });
 }
 
 function isRenderableAssistantSemanticEvent(entry: SemanticChatEvent): boolean {
@@ -1588,7 +1581,6 @@ const FIRST_CHAT_EVENT_SEQ_ID = 1;
 interface BodyBlockRegistries {
   readonly artifactCardSignals: ArtifactCardSignalsRegistry;
   readonly connectorCardSignals: ConnectorCardSignalsRegistry;
-  readonly customConnectorCardSignals: CustomConnectorCardSignalsRegistry;
   readonly permissionCardSignals: PermissionCardSignalsRegistry;
   readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
   readonly planUpgradeCardSignals: PlanUpgradeCardSignalsRegistry;
@@ -1601,7 +1593,6 @@ interface BodyBlockRegistries {
 function createBodyBlocksRenderer({
   artifactCardSignals,
   connectorCardSignals,
-  customConnectorCardSignals,
   permissionCardSignals,
   computerUseAuthorizationCardSignals,
   planUpgradeCardSignals,
@@ -1635,16 +1626,6 @@ function createBodyBlocksRenderer({
                 resolution === "register"
                   ? connectorCardSignals.register(block.descriptor)
                   : connectorCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "custom-connector-action": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? customConnectorCardSignals.register(block.descriptor)
-                  : customConnectorCardSignals.resolve(block.resourceKey),
             };
           }
           case "permission-action": {
@@ -1782,7 +1763,6 @@ function createPagedEventResources(
   const bodyBlocksRenderer = createBodyBlocksRenderer({
     artifactCardSignals,
     connectorCardSignals: createConnectorCardSignalsRegistry(),
-    customConnectorCardSignals: createCustomConnectorCardSignalsRegistry(),
     permissionCardSignals: createPermissionCardSignalsRegistry(),
     computerUseAuthorizationCardSignals:
       createComputerUseAuthorizationCardSignalsRegistry(),
@@ -1854,11 +1834,7 @@ function createPagedEventProjections({
   const rawEvents$ = createRawEventsComputed(registeredEvents$);
   const historyBackfillPending$ = createEventHistoryBackfillPending(rawEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
-    return semanticTranscriptEventsFromRaw(
-      get(rawEvents$),
-      get(chatEvents$),
-      get(chatSteerEnabled$),
-    );
+    return semanticTranscriptEventsFromRaw(get(rawEvents$), get(chatEvents$));
   });
   const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);
   return {
@@ -1946,7 +1922,6 @@ function createEventChangeEffects(
     ({ get, set }, signal: AbortSignal): void => {
       signal.throwIfAborted();
       if (
-        !get(chatThreadSidebarAutoOpenEnabled$) ||
         typeof window === "undefined" ||
         !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
       ) {
@@ -2441,7 +2416,7 @@ function userMessageForSend({
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: ChatPromptEvent["attachFiles"];
-}): UserMessageDocument {
+}): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
         generationTemplate,
@@ -2457,7 +2432,7 @@ function userMessageForSend({
 function queueUserMessage(
   options: QueueMessageOptions,
   result: PreparedSendMessageResult,
-): UserMessageDocument {
+): UserMessageInputDocument {
   return userMessageForSend({
     prompt: result.prompt,
     editorDocument: options.editorDocument,
@@ -2752,12 +2727,11 @@ function createRecallMessage(deps: RecallMessageDeps) {
   const { agentId$, chatEvents$, draft, queueDraftSync$, sendEvent$ } = deps;
 
   return command(async ({ get, set }, eventId: string, signal: AbortSignal) => {
-    const event = queuedEventsFromChatEvents(
-      get(chatEvents$),
-      get(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false,
-    ).find((candidate) => {
-      return candidate.id === eventId;
-    });
+    const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
+      (candidate) => {
+        return candidate.id === eventId;
+      },
+    );
     if (!event || event.eventType !== "input.prompt") {
       return;
     }
@@ -2813,14 +2787,14 @@ function createSkipAutomationEvent({
       eventId: string,
       signal: AbortSignal,
     ): Promise<void> => {
-      const event = queuedEventsFromChatEvents(
-        get(chatEvents$),
-        get(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false,
-      ).find((candidate) => {
-        return (
-          candidate.id === eventId && candidate.eventType === "input.automation"
-        );
-      });
+      const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
+        (candidate) => {
+          return (
+            candidate.id === eventId &&
+            candidate.eventType === "input.automation"
+          );
+        },
+      );
       const agentId = get(agentId$);
       if (!event || !agentId) {
         return;
@@ -2888,12 +2862,11 @@ function createCancelRunWithQueuedRecall({
     }
 
     const chatEvents = get(chatEvents$);
-    const queuedEvents = queuedEventsFromChatEvents(
-      chatEvents,
-      get(featureSwitch$)[FeatureSwitchKey.ChatSteer] ?? false,
-    ).filter((event) => {
-      return event.eventType === "input.prompt";
-    });
+    const queuedEvents = queuedEventsFromChatEvents(chatEvents).filter(
+      (event) => {
+        return event.eventType === "input.prompt";
+      },
+    );
     await Promise.all([
       ...liveRunIdsFromChatEvents(chatEvents).map((runId) => {
         return set(
@@ -3721,8 +3694,10 @@ export function createThreadComposerSignals(
 function createChatPanelSignalsWithDraft(
   chatEvents: ChatEventSignals,
   draft: DraftSignals,
+  signal: AbortSignal,
 ): ChatPanelSignals {
   const threadId = chatEvents.threadId;
+  const lifecycleId = crypto.randomUUID();
   const artifact = createArtifacts(threadId);
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
@@ -3753,6 +3728,7 @@ function createChatPanelSignalsWithDraft(
     }),
     ...artifact,
   };
+  const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
@@ -3764,6 +3740,8 @@ function createChatPanelSignalsWithDraft(
   });
   return {
     threadId,
+    lifecycleId,
+    signal,
     threadDraft$,
     threadMeta$,
     ...threadTitle,
@@ -3778,6 +3756,7 @@ function createChatPanelSignalsWithDraft(
     ...container,
     composer,
     feedback,
+    sharing,
     ...threadOwned,
     sidebar: messages.sidebar,
     ...publicChatThreadEventSignals(messages),
@@ -3798,15 +3777,20 @@ function createChatPanelSignalsWithDraft(
  */
 export function createChatPanelSignals(
   chatEvents: ChatEventSignals,
+  signal: AbortSignal,
 ): ChatPanelSignals {
-  return createChatPanelSignalsWithDraft(chatEvents, createDraftSignals());
+  return createChatPanelSignalsWithDraft(
+    chatEvents,
+    createDraftSignals(),
+    signal,
+  );
 }
 
 export const createCachedChatPanelSignals$ = command(
-  ({ set }, chatEvents: ChatEventSignals) => {
+  ({ set }, chatEvents: ChatEventSignals, signal: AbortSignal) => {
     const { draft, isNew } = set(ensureDraft$, chatEvents.threadId);
     return {
-      thread: createChatPanelSignalsWithDraft(chatEvents, draft),
+      thread: createChatPanelSignalsWithDraft(chatEvents, draft, signal),
       isNew,
     };
   },

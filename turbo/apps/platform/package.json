@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.685.4",
+  "version": "0.698.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -42,7 +42,7 @@
     "idb": "~8.0.3",
     "katex": "^0.17.0",
     "lowlight": "^3.3.0",
-    "mermaid": "^11.16.0",
+    "mermaid": "^11.16.1",
     "path-to-regexp": "^8.4.0",
     "posthog-js": "^1.372.1",
     "react": "^19.2.6",
@@ -50,6 +50,8 @@
     "react-i18next": "^17.0.11",
     "react-zoom-pan-pinch": "4.0.3",
     "rehype-katex": "^7.0.1",
+    "remark-cjk-friendly": "^2.3.1",
+    "remark-cjk-friendly-gfm-strikethrough": "^2.3.1",
     "remark-math": "^6.0.0",
     "signal-timers": "^1.0.4",
     "unicode-emoji-json": "^0.9.0"

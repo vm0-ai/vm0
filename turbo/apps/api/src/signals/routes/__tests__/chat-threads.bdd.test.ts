@@ -8,7 +8,7 @@ import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contrac
 import {
   chatThreadsContract,
   type ChatEvent,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
@@ -59,10 +59,7 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
-import {
-  deleteVm0ManagedDefaultModelKey,
-  seedVm0ManagedDefaultModelKey,
-} from "./helpers/runtime-state";
+import { seedVm0ManagedDefaultModelKey } from "./helpers/runtime-state";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -72,6 +69,17 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/zero-usage-insight";
+import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
+import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroGoalsRoutes } from "../zero-goals";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronCleanupSandboxesRoutes,
+  ...cronCompactChatThreadSnapshotsRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroGoalsRoutes,
+]);
 
 /**
  * CHAT-01 / CHAT-03: chat thread lifecycle beyond the mutation chain that
@@ -138,7 +146,10 @@ function it(name: string, test: () => Promise<void>, timeout?: number): void {
 }
 
 async function compactChatThreadSnapshots() {
-  const client = setupApp({ context })(cronCompactChatThreadSnapshotsContract);
+  const client = setupApp({
+    context,
+    routes: cronCompactChatThreadSnapshotsRoutes,
+  })(cronCompactChatThreadSnapshotsContract);
   const response = await accept(
     client.compact({
       headers: {
@@ -393,7 +404,7 @@ async function sendNoCreditMessage(
     readonly agentId: string;
     readonly threadId?: string;
     readonly prompt: string;
-    readonly userMessage?: UserMessageDocument;
+    readonly userMessage?: UserMessageInputDocument;
   },
 ): Promise<string> {
   await api.ensureOrgModelProvider(actor);
@@ -443,7 +454,7 @@ const CHAT_THREAD_READ_CAPABILITIES = [
 ] as const satisfies readonly ZeroCapability[];
 
 function goalsClient() {
-  return setupApp({ context })(zeroGoalsContract);
+  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
 }
 
 function zeroCapabilityHeaders(
@@ -551,7 +562,7 @@ const malformedChatThreadIdRequests = [
 
 describe("CHAT-01 thread detail, create, and delete cascades", () => {
   it("rejects malformed thread ids before auth and unauthenticated clerk bearers", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
 
     for (const request of malformedChatThreadIdRequests) {
       const response = await app.request(request.path, {
@@ -598,7 +609,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         },
       ],
     });
-    const zeroClient = setupApp({ context })(chatThreadsContract);
+    const zeroClient = setupApp({ context, routes: zeroChatThreadRoutes })(
+      chatThreadsContract,
+    );
     const zeroHeaders = zeroCapabilityHeaders(
       actor,
       randomUUID(),
@@ -1447,7 +1460,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     mockNow(cleanupAt);
     onTestFinished(clearMockNow);
     const cleanup = await accept(
-      setupApp({ context })(cronCleanupSandboxesContract).cleanup({
+      setupApp({ context, routes: cronCleanupSandboxesRoutes })(
+        cronCleanupSandboxesContract,
+      ).cleanup({
         headers: {
           authorization: `Bearer ${SANDBOX_CLEANUP_CRON_SECRET}`,
         },
@@ -2190,12 +2205,9 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 
   it("emits complete allowance-covered usage in one event", async () => {
-    const seededModel = await seedVm0ManagedDefaultModelKey(context);
+    const fixture = await seedVm0ManagedDefaultModelKey(context);
     const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
-    expect(seededModel).toBe(selectedModel);
-    onTestFinished(async () => {
-      await deleteVm0ManagedDefaultModelKey(context);
-    });
+    expect(fixture.selectedModel).toBe(selectedModel);
 
     const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Allowance usage message agent",

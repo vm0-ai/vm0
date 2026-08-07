@@ -6,6 +6,7 @@ import {
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
+  googleFormsResponseSubmittedEventConfigSchema,
   googleMeetTranscriptGeneratedEventConfigSchema,
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
@@ -23,6 +24,8 @@ import {
   type GmailWorkflowEventConfig,
   type GoogleCalendarWorkflowEventConfig,
   type GoogleMeetWorkflowEventConfig,
+  type GoogleFormsResponseSubmittedEventConfig,
+  type GoogleFormsResponseSubmittedEventCreateConfig,
   type GithubWorkflowEventConfig,
   type NotionChildPageCreatedEventConfig,
   type NotionChildPageCreatedEventCreateConfig,
@@ -82,6 +85,11 @@ import {
   ensureGoogleCalendarWatchForUser,
   hasEnabledGoogleCalendarConsumer,
 } from "./google-calendar-workflow-event.service";
+import {
+  ensureGoogleFormsWatchForUser,
+  hasEnabledGoogleFormsConsumer,
+  prepareGoogleFormsResponseEventConfigForPersist,
+} from "./google-forms-workflow-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
 import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
 import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
@@ -92,6 +100,7 @@ import {
   prepareNotionPageContentUpdatedEventConfigForPersist,
 } from "./notion-workflow-event.service";
 import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
+import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-forms-workflow-automation-feature-switch.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -150,6 +159,10 @@ type GoogleMeetWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "google-meet-transcript-generated"
 >;
+type GoogleFormsWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "google-forms-response-submitted"
+>;
 type NotionWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   | "notion-child-page-created"
@@ -190,6 +203,16 @@ function notionWorkflowAutomationsDisabledResult(): {
   return {
     kind: "bad-request",
     message: "Notion workflow automations are not enabled",
+  };
+}
+
+function googleFormsWorkflowAutomationsDisabledResult(): {
+  readonly kind: "bad-request";
+  readonly message: string;
+} {
+  return {
+    kind: "bad-request",
+    message: "Google Forms workflow automations are not enabled",
   };
 }
 
@@ -413,6 +436,7 @@ function supportedWorkflowEventType(
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
     eventType === "google-calendar-event-cancelled" ||
+    eventType === "google-forms-response-submitted" ||
     eventType === "google-meet-transcript-generated" ||
     eventType === "notion-child-page-created" ||
     eventType === "notion-database-item-created" ||
@@ -476,6 +500,12 @@ function supportedGoogleMeetEventType(
   return eventType === "google-meet-transcript-generated";
 }
 
+function supportedGoogleFormsEventType(
+  eventType: string | null,
+): eventType is GoogleFormsWorkflowEventType {
+  return eventType === "google-forms-response-submitted";
+}
+
 function supportedNotionEventType(
   eventType: string | null,
 ): eventType is NotionWorkflowEventType {
@@ -507,6 +537,7 @@ interface RowToSummaryOptions {
   readonly chatThreadId?: string | null;
   readonly webhookToken?: string;
   readonly webhookSecret?: string;
+  readonly warning?: string;
 }
 
 async function resolveAutomationChatThreadId(
@@ -642,6 +673,7 @@ function githubEventRowToSummary(
 function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
+  warning?: string,
 ): ZeroWorkflowAutomationSummary | null {
   if (row.eventType === "chat-run-finished") {
     return {
@@ -713,6 +745,19 @@ function eventRowToSummary(
       scheduleSummary: null,
     };
   }
+  if (row.eventType === "google-forms-response-submitted") {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "google-forms-response-submitted",
+      eventConfig: googleFormsResponseSubmittedEventConfigSchema.parse(
+        row.eventConfig,
+      ),
+      schedule: null,
+      scheduleSummary: null,
+      ...(warning === undefined ? {} : { warning }),
+    };
+  }
   if (row.eventType === "google-meet-transcript-generated") {
     return {
       ...rowSummaryBase(row, chatThreadId),
@@ -769,7 +814,7 @@ async function rowToSummary(
         })),
       };
     }
-    const eventSummary = eventRowToSummary(row, chatThreadId);
+    const eventSummary = eventRowToSummary(row, chatThreadId, options.warning);
     if (eventSummary) {
       return eventSummary;
     }
@@ -1277,6 +1322,18 @@ interface CreateGoogleCalendarEventAutomationInput {
   readonly autonomyBudget?: number;
 }
 
+interface CreateGoogleFormsEventAutomationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: GoogleFormsWorkflowEventType;
+  readonly eventConfig:
+    | GoogleFormsResponseSubmittedEventCreateConfig
+    | GoogleFormsResponseSubmittedEventConfig;
+  readonly enabled: boolean;
+  readonly autonomyBudget?: number;
+}
+
 interface CreateGoogleMeetEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1329,6 +1386,7 @@ type CreateAutomationInput =
   | CreateGmailEventAutomationInput
   | CreateGithubEventAutomationInput
   | CreateGoogleCalendarEventAutomationInput
+  | CreateGoogleFormsEventAutomationInput
   | CreateGoogleMeetEventAutomationInput
   | CreateNotionEventAutomationInput
   | CreateStrapiEventAutomationInput
@@ -1371,6 +1429,12 @@ function automationCreateInputIsGoogleCalendar(
   return supportedGoogleCalendarEventType(args.eventType);
 }
 
+function automationCreateInputIsGoogleForms(
+  args: CreateEventAutomationInput,
+): args is CreateGoogleFormsEventAutomationInput {
+  return supportedGoogleFormsEventType(args.eventType);
+}
+
 function automationCreateInputIsGoogleMeet(
   args: CreateEventAutomationInput,
 ): args is CreateGoogleMeetEventAutomationInput {
@@ -1397,6 +1461,9 @@ async function insertWorkflowEventAutomation(
       | CreateGmailEventAutomationInput
       | CreateGithubEventAutomationInput
       | CreateGoogleCalendarEventAutomationInput
+      | (CreateGoogleFormsEventAutomationInput & {
+          readonly eventConfig: GoogleFormsResponseSubmittedEventConfig;
+        })
       | CreateGoogleMeetEventAutomationInput
       | (CreateNotionEventAutomationInput & {
           readonly eventConfig: NotionWorkflowEventConfig;
@@ -1898,6 +1965,106 @@ async function createGoogleCalendarEventAutomationForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+function googleFormsSummaryWithWarning(
+  summary: ZeroWorkflowAutomationSummary,
+  warning: string | undefined,
+): ZeroWorkflowAutomationSummary {
+  if (
+    summary.kind !== "event" ||
+    summary.eventType !== "google-forms-response-submitted"
+  ) {
+    throw new Error("Expected Google Forms workflow automation summary");
+  }
+  return warning === undefined ? summary : { ...summary, warning };
+}
+
+async function createGoogleFormsEventAutomationForWorkflow(args: {
+  readonly context: CreateEventAutomationWorkflowContext;
+  readonly input: CreateGoogleFormsEventAutomationInput;
+  readonly signal: AbortSignal;
+}): Promise<AutomationResult> {
+  if (!("formUrl" in args.input.eventConfig)) {
+    return {
+      kind: "bad-request",
+      message: "formUrl is required for Google Forms response automations",
+    };
+  }
+  const prepared = await prepareGoogleFormsResponseEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      eventConfig: args.input.eventConfig,
+      signal: args.signal,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (prepared.kind !== "ok") {
+    return prepared;
+  }
+  const hadConsumer = args.input.enabled
+    ? await hasEnabledGoogleFormsConsumer({
+        db: args.context.db,
+        userId: args.input.member.userId,
+        formId: prepared.eventConfig.form.id,
+        signal: args.signal,
+      })
+    : false;
+  const summary = await insertWorkflowEventAutomation(args.context.db, {
+    input: { ...args.input, eventConfig: prepared.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  const resultSummary = googleFormsSummaryWithWarning(
+    summary,
+    prepared.warning,
+  );
+  if (!args.input.enabled) {
+    return { kind: "ok", summary: resultSummary };
+  }
+  const watchResult = await onRejection(
+    ensureGoogleFormsWatchForUser({
+      db: args.context.db,
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      formId: prepared.eventConfig.form.id,
+      connectorId: prepared.eventConfig.connectorId,
+      resetAutomationId: summary.id,
+      seedCursor: prepared.seedCursor,
+      signal: args.signal,
+    }),
+    async () => {
+      await args.context.db
+        .delete(zeroWorkflowAutomations)
+        .where(eq(zeroWorkflowAutomations.id, summary.id));
+    },
+  );
+  args.signal.throwIfAborted();
+  if (watchResult.kind === "ok") {
+    return { kind: "ok", summary: resultSummary };
+  }
+  await args.context.db
+    .delete(zeroWorkflowAutomations)
+    .where(eq(zeroWorkflowAutomations.id, summary.id));
+  if (!hadConsumer) {
+    await reconcileWorkflowEventWatches({
+      db: args.context.db,
+      automations: [
+        {
+          orgId: args.input.orgId,
+          ownerUserId: args.input.member.userId,
+          eventType: args.input.eventType,
+          eventConfig: prepared.eventConfig,
+        },
+      ],
+      signal: args.signal,
+    });
+  }
+  return { kind: "bad-request", message: watchResult.message };
+}
+
 async function createGoogleMeetEventAutomationForWorkflow(args: {
   readonly context: CreateEventAutomationWorkflowContext;
   readonly input: CreateGoogleMeetEventAutomationInput;
@@ -2206,6 +2373,24 @@ const createEventAutomationForWorkflow$ = command(
 
     if (automationCreateInputIsGoogleCalendar(input)) {
       return await createGoogleCalendarEventAutomationForWorkflow({
+        context: args,
+        input,
+        signal,
+      });
+    }
+
+    if (automationCreateInputIsGoogleForms(input)) {
+      const featureEnabled = await get(
+        googleFormsWorkflowAutomationCreationEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return googleFormsWorkflowAutomationsDisabledResult();
+      }
+      return await createGoogleFormsEventAutomationForWorkflow({
         context: args,
         input,
         signal,
@@ -2531,6 +2716,13 @@ const updateEventAutomationForWorkflow$ = command(
       return {
         kind: "bad-request",
         message: "Google Calendar event automations cannot be updated",
+      };
+    }
+    if (supportedGoogleFormsEventType(args.automation.eventType)) {
+      return {
+        kind: "bad-request",
+        message:
+          "this trigger has no updatable fields; delete it and create a new one",
       };
     }
     if (supportedGoogleMeetEventType(args.automation.eventType)) {
@@ -2922,6 +3114,17 @@ async function enabledWatchHadConsumer(args: {
       signal: args.signal,
     });
   }
+  if (supportedGoogleFormsEventType(args.automation.eventType)) {
+    const config = googleFormsResponseSubmittedEventConfigSchema.parse(
+      args.automation.eventConfig,
+    );
+    return await hasEnabledGoogleFormsConsumer({
+      db: args.db,
+      userId: args.automation.ownerUserId,
+      formId: config.form.id,
+      signal: args.signal,
+    });
+  }
   if (!supportedGoogleCalendarEventType(args.automation.eventType)) {
     return false;
   }
@@ -2950,6 +3153,23 @@ async function ensureEnabledWorkflowEventWatch(args: {
       orgId: args.automation.orgId,
       userId: args.automation.ownerUserId,
       forceRefresh: !args.hadConsumer,
+      signal: args.signal,
+    });
+    return result.kind === "ok"
+      ? null
+      : { kind: "bad-request", message: result.message };
+  }
+  if (supportedGoogleFormsEventType(args.automation.eventType)) {
+    const config = googleFormsResponseSubmittedEventConfigSchema.parse(
+      args.automation.eventConfig,
+    );
+    const result = await ensureGoogleFormsWatchForUser({
+      db: args.db,
+      orgId: args.automation.orgId,
+      userId: args.automation.ownerUserId,
+      formId: config.form.id,
+      connectorId: config.connectorId,
+      resetAutomationId: args.automation.id,
       signal: args.signal,
     });
     return result.kind === "ok"

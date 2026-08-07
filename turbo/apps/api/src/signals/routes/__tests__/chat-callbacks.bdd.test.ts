@@ -5,7 +5,7 @@ import type {
   AttachFile,
   GenerationTemplateRequest,
   ChatEvent,
-  UserMessageDocument,
+  UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
@@ -23,7 +23,7 @@ import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
-  holdChatThreadRowLockFixture,
+  holdGoalThreadLockFixture,
   holdModelPolicyReadsFixture,
   insertQueuedSlackMissingContextFixture,
   readChatEventContextFixture,
@@ -47,6 +47,8 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
+import { cronBrowserReconcileRoutes } from "../cron-browser-reconcile";
+import { zeroGoalsRoutes } from "../zero-goals";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -65,7 +67,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const misc = createMiscRoutesApi(context);
 
 function goalsClient() {
-  return setupApp({ context })(zeroGoalsContract);
+  return setupApp({ context, routes: zeroGoalsRoutes })(zeroGoalsContract);
 }
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
@@ -230,7 +232,7 @@ async function startChatRun(
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
-    readonly userMessage?: UserMessageDocument;
+    readonly userMessage?: UserMessageInputDocument;
     readonly revokesEventId?: string;
   },
   options?: {
@@ -534,7 +536,9 @@ async function expectCancellationRecoveryPending(
 }
 
 function cancellationRecoveryCronClient() {
-  return setupApp({ context })(cronBrowserReconcileContract);
+  return setupApp({ context, routes: cronBrowserReconcileRoutes })(
+    cronBrowserReconcileContract,
+  );
 }
 
 async function waitForRunContext(actor: ApiTestUser, runId: string) {
@@ -1395,7 +1399,7 @@ describe("CHAT-02: completed chat callback", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const firstUserMessage: UserMessageDocument = {
+    const firstUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -1777,7 +1781,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     }
     expect(goalContinuation.userMessage).toStrictEqual({
       version: 1,
-      parts: [{ type: "goal", goalBrief }],
+      parts: [
+        { type: "goal", goalBrief },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
     });
     expect(goalContinuation.content).toBeNull();
     expect(chatEventDisplayText(goalContinuation)).toBe("");
@@ -2019,58 +2026,49 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       "revoke the goal invalidated at final settlement",
     );
     await misc.deleteOrgModelProvider(actor, "anthropic-api-key", [204]);
-    const modelPolicyReads = await holdModelPolicyReadsFixture({
+    const goalThreadLock = await holdGoalThreadLockFixture({
+      threadId: first.threadId,
       signal: context.signal,
     });
     onTestFinished(async () => {
-      modelPolicyReads.release();
-      await modelPolicyReads.done;
+      goalThreadLock.release();
+      await goalThreadLock.done;
     });
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "completed before the final goal launch failure"),
     ]);
 
-    await completeChatRunOk(first.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await expect
-      .poll(modelPolicyReads.blockedWaiterCount)
-      .toBeGreaterThanOrEqual(1);
-
     let goalEventId: string | undefined;
-    await expect
-      .poll(async () => {
-        const [eventId] = await goalQueueEventIds(first.threadId);
-        goalEventId = eventId;
-        return eventId;
-      })
-      .toBeDefined();
+    const [paused] = await Promise.all([
+      accept(
+        goalsClient().pause({
+          headers: zeroGoalHeaders(actor, first.runId),
+        }),
+        [200],
+      ),
+      (async () => {
+        await expect.poll(goalThreadLock.waiterCount).toBe(1);
+        await completeChatRunOk(first.runId, sandboxHeaders, {
+          lastEventSequence: 0,
+        });
+        await expect
+          .poll(async () => {
+            const [eventId] = await goalQueueEventIds(first.threadId);
+            goalEventId = eventId;
+            return eventId;
+          })
+          .toBeDefined();
+        await expect.poll(goalThreadLock.waiterCount).toBeGreaterThanOrEqual(2);
+        goalThreadLock.release();
+        await goalThreadLock.done;
+      })(),
+    ]);
+    expect(paused.body.status).toBe("paused");
+    await flushWaitUntilForTest();
+
     if (!goalEventId) {
       throw new Error("Expected the final-boundary goal queue event");
     }
-    const threadLock = await holdChatThreadRowLockFixture({
-      threadId: first.threadId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      threadLock.release();
-      await threadLock.done;
-    });
-
-    const pauseRequest = goalsClient().pause({
-      headers: zeroGoalHeaders(actor, first.runId),
-    });
-    await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
-
-    modelPolicyReads.release();
-    await modelPolicyReads.done;
-    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
-    threadLock.release();
-
-    const paused = await accept(pauseRequest, [200]);
-    expect(paused.body.status).toBe("paused");
-    await threadLock.done;
-    await flushWaitUntilForTest();
 
     const events = await waitForThreadMessages(
       actor,
@@ -4188,7 +4186,7 @@ describe("CHAT-02: auto-send after failures", () => {
       type: "illustration",
       selection: { illustrationStyleId: style.illustrationStyleId },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -4204,7 +4202,7 @@ describe("CHAT-02: auto-send after failures", () => {
         },
       ],
     };
-    const templatePrompt = `Select ${style.title} illustration template`;
+    const templatePrompt = `[Template #1: ${style.title} (illustration)]`;
     const feedbackPrompt =
       "Feedback on this part of your reply:\n\n" +
       "> The failed response omitted the owner\n\nName the responsible owner";

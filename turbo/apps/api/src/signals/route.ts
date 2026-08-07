@@ -1,6 +1,3 @@
-import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
-import { healthContract } from "@vm0/api-contracts/contracts/health";
-
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { E2E_ROUTES } from "./e2e-routes";
@@ -18,6 +15,7 @@ import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-br
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronMonitorChatEventQueueRoutes } from "./routes/cron-monitor-chat-event-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
+import { cronRenewGoogleFormsWatchesRoutes } from "./routes/cron-renew-google-forms-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
@@ -32,8 +30,8 @@ import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailMorningBriefUnsubscribeRoutes } from "./routes/email-morning-brief-unsubscribe";
 import { zeroMorningBriefRoutes } from "./routes/zero-morning-brief";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
-import { apiHealth$ } from "./routes/health";
-import { apiBuildInfo$ } from "./routes/build-info";
+import { healthRoutes } from "./routes/health";
+import { buildInfoRoutes } from "./routes/build-info";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { modelStatsRoutes } from "./routes/model-stats";
@@ -52,6 +50,7 @@ import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-gene
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
+import { webhooksGoogleFormsRoutes } from "./routes/webhooks-google-forms";
 import { webhooksGoogleCalendarRoutes } from "./routes/webhooks-google-calendar";
 import { webhooksGoogleWorkspaceEventsRoutes } from "./routes/webhooks-google-workspace-events";
 import { webhooksNotionRoutes } from "./routes/webhooks-notion";
@@ -78,6 +77,7 @@ import { zeroBillingStatusRoutes } from "./routes/zero-billing-status";
 import { zeroBankingRoutes } from "./routes/zero-banking";
 import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroChatEventsRoutes } from "./routes/zero-chat-events";
+import { zeroSharedThreadRoutes } from "./routes/zero-shared-threads";
 import { zeroClaudeCodeDeviceAuthRoutes } from "./routes/zero-claude-code-device-auth";
 import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
@@ -119,6 +119,7 @@ import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
 import { zeroRecognitionRoutes } from "./routes/zero-recognition";
+import { zeroTranslationRoutes } from "./routes/zero-translation";
 import { zeroReportErrorRoutes } from "./routes/zero-report-error";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
@@ -134,7 +135,6 @@ import { zeroBrowserRoutes } from "./routes/zero-browser";
 import { zeroBrowserAuthorizationRoutes } from "./routes/zero-browser-authorization";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
-import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { zeroStrapiIntegrationsRoutes } from "./routes/zero-strapi-integrations";
 import { zeroStrapiEventsRoutes } from "./routes/zero-strapi-events";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
@@ -196,14 +196,8 @@ import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 
 export const ROUTES: readonly RouteEntry[] = [
-  {
-    route: healthContract.check,
-    handler: apiHealth$,
-  },
-  {
-    route: buildInfoContract.get,
-    handler: apiBuildInfo$,
-  },
+  ...healthRoutes,
+  ...buildInfoRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
@@ -216,6 +210,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
   ...webhooksGmailRoutes,
+  ...webhooksGoogleFormsRoutes,
   ...webhooksGoogleCalendarRoutes,
   ...webhooksGoogleWorkspaceEventsRoutes,
   ...webhooksNotionRoutes,
@@ -241,6 +236,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronExecuteWorkflowAutomationsRoutes,
   ...cronMonitorChatEventQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
+  ...cronRenewGoogleFormsWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
   ...cronProcessUsageEventsRoutes,
@@ -274,6 +270,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBankingRoutes,
   ...zeroChatThreadRoutes,
   ...zeroChatEventsRoutes,
+  ...zeroSharedThreadRoutes,
   ...zeroClaudeCodeDeviceAuthRoutes,
   ...zeroComposesRoutes,
   ...zeroComputerUseAuthorizationRoutes,
@@ -321,6 +318,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroQueuePositionRoutes,
   ...zeroRealtimeTokenRoutes,
   ...zeroRecognitionRoutes,
+  ...zeroTranslationRoutes,
   ...zeroReportErrorRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
@@ -339,7 +337,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserModelPreferenceRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
-  ...zeroWorkflowQueueRoutes,
   ...zeroStrapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,

@@ -546,6 +546,8 @@
         "label": "アーティファクトの種類のフィルター",
         "presentation": "プレゼンテーション",
         "presentationAria": "プレゼンテーションのアーティファクトを表示する",
+        "sharedConversation": "共有された会話",
+        "sharedConversationAria": "共有された会話のアーティファクトを表示",
         "video": "動画",
         "videoAria": "ビデオアーティファクトを表示する",
         "website": "ウェブサイト",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "マークダウン",
       "presentation": "プレゼンテーション",
+      "sharedConversation": "共有された会話",
       "text": "テキスト",
       "video": "ビデオ"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "{{filename}} のビデオ プレビュー"
     },
     "sidebar": {
+      "openSharedConversation": "共有された会話を開く",
       "panelTitle": "アーティファクト",
       "singularTitle": "アーティファクト",
       "unavailable": "このアーティファクトはもう入手できません。"
@@ -958,7 +962,34 @@
         "name": "チーム"
       },
       "upgrade": "アップグレード",
-      "upgradeTo": "{{plan}} にアップグレードする"
+      "upgradeTo": "{{plan}} にアップグレードする",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} ボーナスクレジット",
+        "changePlan": "プランを変更",
+        "choosePlan": "プランを選択",
+        "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
+        "configurePackages": "メンバーパッケージを設定",
+        "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
+        "currentMember": "現在のメンバー",
+        "description": "各メンバーに月額利用パックを選択します。",
+        "discountBonusCredits": "割引によるボーナスクレジット",
+        "memberExclusive": "各パッケージは1人のメンバー専用で共有できません。パッケージを使い切ると、従量課金クレジットに切り替わります。後から新しいパッケージにアップグレードできます。",
+        "memberPackages": "メンバーパッケージ",
+        "memberUsage": "メンバーの利用設定",
+        "memberUsageTotal": "月額パック合計",
+        "minimumPackageBreakdown": "{{base}} のプラン + {{package}} の必須メンバーパッケージ",
+        "monthlyTotal": "月額合計",
+        "orderSummary": "注文内容",
+        "packagesStep": "パッケージ",
+        "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
+        "planStep": "プラン",
+        "purchaseSteps": "購入手順",
+        "selectedPlan": "選択したプラン",
+        "selectPlan": "{{plan}} を選択",
+        "selectUsage": "{{name}} の利用設定",
+        "startingAt": "最低料金",
+        "totalCredits": "合計クレジット"
+      }
     },
     "restore": {
       "cancellationDescription": "これにより、{{plan}} プランの予定されたキャンセルが取り消されます。",
@@ -1060,7 +1091,6 @@
     "actions": {
       "authorize": "承認する",
       "cancel": "キャンセル",
-      "configure": "設定する",
       "confirm": "確認する",
       "continue": "続ける",
       "copied": "コピーしました！",
@@ -1154,6 +1184,7 @@
         "googleCalendarCancelled": "Google Calendar イベントがキャンセルされました",
         "googleCalendarCreated": "Google Calendar イベントが作成されました",
         "googleCalendarUpdated": "Google Calendar イベントが更新されました",
+        "googleFormsResponseSubmitted": "Google Forms の回答が送信されました",
         "googleMeetTranscript": "Google 会議記録の準備が完了しました",
         "notionChildPage": "新しい Notion 子ページ",
         "notionDatabaseItem": "新しい Notion データベース項目",
@@ -1292,7 +1323,6 @@
       "available_other": "接続可能なコネクタ ({{count}})",
       "configurePermissions": "{{connectorName}} 権限を構成する",
       "customAuthorizeDescription": "エージェント用のこのカスタム コネクタを確認、接続、承認します。",
-      "customConnectDescription": "このカスタム コネクタを確認して接続します。",
       "find": "コネクタを検索...",
       "remove": "{{connectorName}} を削除します",
       "title": "コネクター"
@@ -1498,6 +1528,21 @@
       "worked": "働いた",
       "workedFor": "{{duration}} で働いていました"
     },
+    "sharing": {
+      "cancel": "キャンセル",
+      "close": "閉じる",
+      "copyFailed": "リンクをコピーできませんでした",
+      "copyLink": "リンクをコピー",
+      "create": "共有",
+      "createFailed": "共有された会話を作成できませんでした。もう一度お試しください。",
+      "deselectGroup": "メッセージグループの選択を解除",
+      "linkCopied": "リンクをコピーしました",
+      "selectedCount_other": "{{count}}件選択中",
+      "selectGroup": "メッセージグループを選択",
+      "shareLink": "共有された会話のリンク",
+      "start": "メッセージを共有",
+      "tooLarge": "共有するメッセージを減らしてください"
+    },
     "shortcuts": {
       "number": "番号"
     },
@@ -1624,7 +1669,6 @@
       "edit": "編集",
       "grant": "グラント",
       "reconnect": "再接続",
-      "rename": "名前の変更",
       "revoke": "取り消し",
       "save": "保存",
       "saving": "保存中...",
@@ -1874,17 +1918,12 @@
       "emptyAdmin": "カスタム コネクタはまだありません。すべてのメンバーが使用する API を登録するために作成します。",
       "emptyMember": "組織はまだカスタム コネクタを登録していません。",
       "moreOptions": "その他のオプション",
-      "rename": {
-        "displayName": "表示名",
-        "title": "カスタムコネクタの名前を変更する"
-      },
       "statusConnected": "接続済み",
       "toasts": {
         "connected": "接続済み",
         "created": "「{{connector}}」を作成しました",
         "deleted": "カスタムコネクタが削除されました",
         "disconnected": "切断されました",
-        "renamed": "名前を「{{connector}}」に変更しました",
         "updated": "「{{connector}}」を更新しました"
       },
       "updateConfirm": {
@@ -1892,19 +1931,6 @@
         "description": "これらの OAuth の変更により、現在 OAuth に接続しているすべてのメンバーが切断されます。このカスタム コネクタを再度接続する必要があります。",
         "title": "既存の OAuth 接続を切断しますか?"
       }
-    },
-    "customProposal": {
-      "configure": "{{connector}} を構成する",
-      "descriptionAgent": "保存すると、値が接続され、{{agent}} が承認されます。",
-      "descriptionUser": "保存すると、アカウントのこのカスタム コネクタが接続されます。",
-      "documentTitle": "カスタムコネクタの構成",
-      "invalid": "このカスタム コネクタ プロポーザル リンクは無効であるか、期限切れです。",
-      "requestScope": "リクエストの範囲",
-      "returnToChat": "チャットに戻り、エージェントがコネクタを確認できるように ACK を返信します。",
-      "saved": "保存されました",
-      "savedToast": "{{connector}} が保存されました",
-      "targetFallback": "このエージェント",
-      "update": "{{connector}} を更新します"
     },
     "directed": {
       "authorizeAgent": "{{agent}} を承認する",
@@ -4565,6 +4591,12 @@
       "title": "ページが見つかりません"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "この共有された会話は存在しません。",
+    "notFoundTitle": "共有された会話が見つかりません",
+    "tryOkou": "Okouを試す"
+  },
   "usage": {
     "automations": {
       "empty": "この期間にオートメーションの利用はありません",
@@ -4599,6 +4631,7 @@
       "imageRecognize": "画像認識",
       "maps": "地図",
       "peopleSearch": "人物検索",
+      "translation": "翻訳",
       "usage": "使用量",
       "weather": "天気",
       "webFetch": "ウェブフェッチ",
@@ -4734,6 +4767,11 @@
         "minute_other": "{{count}} 分",
         "second_one": "{{count}} 秒",
         "second_other": "{{count}} 秒"
+      },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms の回答が送信されました",
+        "rule": "{{form}} に回答が送信されたとき",
+        "summary": "フォーム {{form}}"
       },
       "github": {
         "accountConnect": "GitHub を接続します",
@@ -5057,6 +5095,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google 会う",
         "notion": "Notion",
         "strapi": "Strapi",

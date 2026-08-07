@@ -2466,7 +2466,13 @@ describe("chat composer models", () => {
     mockManyConnectedConnectors();
     mockAgentConnectorAuthorizations(["github"]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
@@ -2490,7 +2496,13 @@ describe("chat composer models", () => {
     mockManyConnectedConnectors();
     mockAgentConnectorAuthorizations(["slack"]);
 
-    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
+    });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),

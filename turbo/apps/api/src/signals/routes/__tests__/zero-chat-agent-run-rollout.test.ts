@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
+import { createStore } from "ccstate";
 import { Client } from "pg";
 import { z } from "zod";
 
@@ -10,21 +12,33 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
+import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { onRejection, safeJsonParse } from "../../utils";
+import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
+  insertUsageEvent$,
+  readUsageEventState$,
+} from "./helpers/zero-usage-insight";
+import {
   readChatAgentRunContextSchemaAvailable,
   resetDatabasePool,
 } from "./helpers/runtime-state";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
 
 const context = testContext();
+const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const usageSettlement = setupApp({
+  context,
+  routes: testUsageSettlementRoutes,
+})(testUsageSettlementContract);
 const migrationJournalSchema = z.object({
   entries: z.array(
     z.object({
@@ -65,6 +79,25 @@ async function withDatabaseClient<T>(
   });
   await client.end();
   return result;
+}
+
+async function readOrgCredits(
+  databaseUrl: string,
+  orgId: string,
+): Promise<number> {
+  return await withDatabaseClient(databaseUrl, async (client) => {
+    const result = await client.query<{ readonly credits: string }>(
+      `SELECT credits::text AS credits
+       FROM org_metadata
+       WHERE org_id = $1`,
+      [orgId],
+    );
+    const credits = Number(result.rows[0]?.credits);
+    if (!Number.isSafeInteger(credits)) {
+      throw new Error("Expected a safe rollout credit balance");
+    }
+    return credits;
+  });
 }
 
 async function findAgentRunContextMigration(
@@ -201,6 +234,48 @@ async function runPreAgentRunContextRouteProbe(
     throw new Error("Expected an org-scoped rollout actor");
   }
   await api.grantProEntitlement(actor);
+
+  // Migration 0845 is intentionally absent here. Settlement must probe the
+  // schema without aborting its transaction, then preserve shared credits.
+  const rolloutProvider = `usage-pack-rollout-${randomUUID()}`;
+  await seedUsagePricingRows([
+    {
+      kind: "model",
+      provider: rolloutProvider,
+      category: "tokens.input",
+      unitPrice: 1,
+      unitSize: 1,
+    },
+  ]);
+  const creditsBeforeSettlement = await readOrgCredits(
+    preMigrationUrl,
+    actor.orgId,
+  );
+  const usageEventKey = randomUUID();
+  await store.set(
+    insertUsageEvent$,
+    {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      kind: "model",
+      provider: rolloutProvider,
+      category: "tokens.input",
+      quantity: 1,
+      idempotencyKey: usageEventKey,
+    },
+    context.signal,
+  );
+  await accept(
+    usageSettlement.process({ body: { org_id: actor.orgId } }),
+    [200],
+  );
+  await expect(
+    store.set(readUsageEventState$, usageEventKey, context.signal),
+  ).resolves.toMatchObject({ status: "processed", creditsCharged: 1 });
+  await expect(readOrgCredits(preMigrationUrl, actor.orgId)).resolves.toBe(
+    creditsBeforeSettlement - 1,
+  );
+
   await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName: "Pre-agent-run-context rollout agent",
@@ -233,7 +308,9 @@ async function runPreAgentRunContextRouteProbe(
   });
   const targetEventId = randomUUID();
   const delegated = await accept(
-    setupApp({ context })(chatEventsContract).send({
+    setupApp({ context, routes: zeroChatEventsRoutes })(
+      chatEventsContract,
+    ).send({
       headers: { authorization: `Bearer ${zeroToken}` },
       body: {
         agentId: agent.agentId,

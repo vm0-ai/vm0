@@ -1,11 +1,8 @@
 import { command, type Command } from "ccstate";
-import { timeout } from "signal-timers";
 import { createElement } from "react";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { initTheme$ } from "./theme.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
-import { i18n } from "../i18n/index.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
@@ -58,7 +55,6 @@ import {
 } from "./onboarding/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
-import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
 import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
 import { setupBrowserSessionPage$ } from "./browser-session/browser-session-page-setup.ts";
@@ -86,10 +82,10 @@ import {
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
+import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-setup.ts";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
-import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
@@ -142,6 +138,11 @@ function setupAuthSidebarPageWrapper(
 
 const ROUTE_CONFIG = [
   {
+    path: ROUTES.sharedThread,
+    setup: setupSharedThreadPage$,
+    analytics: false,
+  },
+  {
     path: ROUTES.signIn,
     setup: setupSignInPage$,
   },
@@ -178,10 +179,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.ideas,
     setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
-  },
-  {
-    path: ROUTES.customConnectorProposal,
-    setup: setupAuthPageWrapper(setupCustomConnectorProposalPage$),
   },
   {
     path: ROUTES.computerUseAuthorize,
@@ -441,86 +438,6 @@ const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(syncLocalePreference$, signal);
 });
 
-function showSuccessToastAfterMount(
-  message: string,
-  signal: AbortSignal,
-): void {
-  const showToast = () => {
-    timeout(
-      () => {
-        toast.success(message);
-      },
-      0,
-      { signal },
-    );
-  };
-
-  if (document.readyState === "complete") {
-    showToast();
-    return;
-  }
-
-  window.addEventListener("load", showToast, { once: true, signal });
-}
-
-const handleBillingRedirect$ = command(({ set }, signal: AbortSignal) => {
-  const url = new URL(window.location.href);
-  const billing = url.searchParams.get("billing");
-  const credits = url.searchParams.get("credits");
-  const concurrency = url.searchParams.get("concurrency");
-  if (!billing && !credits && !concurrency) {
-    return;
-  }
-
-  url.searchParams.delete("billing");
-  url.searchParams.delete("billing_session_id");
-  url.searchParams.delete("credits");
-  url.searchParams.delete("credit_checkout_session_id");
-  url.searchParams.delete("concurrency");
-  window.history.replaceState(null, "", url.toString());
-
-  if (billing === "pro" || billing === "team") {
-    const label =
-      billing === "pro"
-        ? i18n.t(($) => {
-            return $.billing.plans.pro.name;
-          })
-        : i18n.t(($) => {
-            return $.billing.plans.team.name;
-          });
-    showSuccessToastAfterMount(
-      i18n.t(
-        ($) => {
-          return $.billing.toasts.checkoutCompleted;
-        },
-        { plan: label },
-      ),
-      signal,
-    );
-    set(reloadBillingStatus$);
-  }
-
-  if (credits === "purchased") {
-    showSuccessToastAfterMount(
-      i18n.t(($) => {
-        return $.billing.toasts.creditsAdded;
-      }),
-      signal,
-    );
-    set(reloadBillingStatus$);
-  }
-
-  if (concurrency === "purchased") {
-    showSuccessToastAfterMount(
-      i18n.t(($) => {
-        return $.billing.toasts.concurrencyAdded;
-      }),
-      signal,
-    );
-    set(reloadBillingStatus$);
-  }
-});
-
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
   navigator.serviceWorker?.addEventListener(
     "message",
@@ -552,7 +469,6 @@ export const bootstrap$ = command(
 
     render();
 
-    set(handleBillingRedirect$, signal);
     set(handleSlackRedirect$);
 
     await Promise.all([

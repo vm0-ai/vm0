@@ -177,21 +177,10 @@ describe("auth tokens", () => {
     );
   });
 
-  it("grants custom connector writes by default and honors a disabled override", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.CustomConnectorCliCreate]: false },
-    );
+  it("grants custom connector writes by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
-      "connector:write",
-    );
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "connector:write",
-    );
+    expect(verifyZeroToken(token)?.capabilities).toContain("connector:write");
   });
 
   it("grants scrape capability by default", () => {
@@ -218,6 +207,12 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain(
       "people-search:read",
     );
+  });
+
+  it("grants translation capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("translation:write");
   });
 
   it("gates image recognition on run eligibility", () => {

@@ -27,7 +27,7 @@ import { nowDate } from "../../lib/time";
 import {
   CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
   generateConnectorOAuthState,
-} from "../routes/connector-oauth-route-state";
+} from "../../lib/connector-oauth-state";
 import { createDeferredPromise, safeJsonParse, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -59,6 +59,7 @@ const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 const customConnectorOAuthStateContextSchema = z.object({
   connectorId: z.string().uuid(),
   connectorRevision: z.number().int().positive(),
+  storageVersion: z.number().int().positive().optional(),
   providerContext: z
     .object({
       provider: z.literal("feishu"),
@@ -503,6 +504,7 @@ export const startCustomConnectorOAuth2$ = command(
     const context: CustomConnectorOAuthStateContext = {
       connectorId: connector.id,
       connectorRevision: connector.revision,
+      storageVersion: connector.storageVersion,
       ...(providerAdapter === "feishu"
         ? {
             providerContext: {
@@ -525,6 +527,7 @@ export const startCustomConnectorOAuth2$ = command(
         state,
         customConnectorId: connector.id,
         connectorRevision: connector.revision,
+        storageVersion: connector.storageVersion,
         authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
         userId: args.userId,
         orgId: args.orgId,
@@ -553,6 +556,57 @@ export function parseCustomConnectorOAuthStateContext(
     safeJsonParse(raw),
   );
   return parsed.success ? parsed.data : null;
+}
+
+type StoredCustomConnectorOAuthState = Pick<
+  typeof connectorOauthStates.$inferSelect,
+  | "authMethod"
+  | "connectorRevision"
+  | "connectorSlug"
+  | "customConnectorId"
+  | "oauthContext"
+  | "storageVersion"
+>;
+
+export function parseValidCustomConnectorOAuthState(
+  storedState: StoredCustomConnectorOAuthState,
+): CustomConnectorOAuthStateContext | null {
+  const context = parseCustomConnectorOAuthStateContext(
+    storedState.oauthContext,
+  );
+  if (
+    !context ||
+    storedState.connectorSlug !== null ||
+    storedState.customConnectorId !== context.connectorId ||
+    storedState.connectorRevision !== context.connectorRevision ||
+    storedState.authMethod !== CUSTOM_CONNECTOR_OAUTH_METHOD_ID
+  ) {
+    return null;
+  }
+  const hasStoredVersion = storedState.storageVersion !== null;
+  const hasContextVersion = context.storageVersion !== undefined;
+  if (hasStoredVersion !== hasContextVersion) {
+    return null;
+  }
+  if (
+    storedState.storageVersion !== null &&
+    storedState.storageVersion !== context.storageVersion
+  ) {
+    return null;
+  }
+  return context;
+}
+
+export function customConnectorOAuthStateMatchesDefinition(
+  context: CustomConnectorOAuthStateContext,
+  connector: Pick<CustomConnectorRow, "id" | "revision" | "storageVersion">,
+): boolean {
+  return (
+    connector.id === context.connectorId &&
+    connector.revision === context.connectorRevision &&
+    (context.storageVersion === undefined ||
+      connector.storageVersion === context.storageVersion)
+  );
 }
 
 export async function decryptCustomConnectorOAuth2Credentials(
@@ -684,6 +738,7 @@ export async function storeCustomConnectorOAuth2Connection(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
+  readonly storageVersion: number;
   readonly token: OAuthTokenResult;
   readonly featureContext: FeatureSwitchContext;
 }): Promise<void> {
@@ -694,7 +749,7 @@ export async function storeCustomConnectorOAuth2Connection(args: {
       .values({
         customConnectorId: args.connectorId,
         authMethod: "oauth",
-        storageVersion: 1,
+        storageVersion: args.storageVersion,
         tokenExpiresAt: args.token.expiresAt,
         userId: args.userId,
         orgId: args.orgId,
@@ -707,6 +762,8 @@ export async function storeCustomConnectorOAuth2Connection(args: {
         ],
         targetWhere: isNotNull(connectors.customConnectorId),
         set: {
+          authMethod: "oauth",
+          storageVersion: args.storageVersion,
           tokenExpiresAt: args.token.expiresAt,
           needsReconnect: false,
           reconnectReason: null,
@@ -804,6 +861,42 @@ function connectionAccessTokenIsCurrent(connection: StoredConnection): boolean {
   );
 }
 
+interface AvailableCustomConnectorOAuth2AccessToken {
+  readonly kind: "available";
+  readonly encryptedAccessToken: string;
+  readonly tokenExpiresAt: Date | null;
+  readonly status: "current" | "refreshed";
+}
+
+type CustomConnectorOAuth2AccessTokenResolution =
+  | AvailableCustomConnectorOAuth2AccessToken
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "reconnect-required" };
+
+function storedConnectionAccessToken(
+  connection: StoredConnection,
+): CustomConnectorOAuth2AccessTokenResolution {
+  if (connection.needsReconnect) {
+    return { kind: "reconnect-required" };
+  }
+  if (!connection.encryptedAccessToken) {
+    return { kind: "unavailable" };
+  }
+  return {
+    kind: "available",
+    encryptedAccessToken: connection.encryptedAccessToken,
+    tokenExpiresAt: connection.tokenExpiresAt,
+    status: "current",
+  };
+}
+
+export class CustomConnectorOAuth2TokenRefreshError extends Error {
+  constructor(cause: unknown) {
+    super("Custom connector OAuth 2.0 token refresh failed", { cause });
+    this.name = "CustomConnectorOAuth2TokenRefreshError";
+  }
+}
+
 function withoutRuntimeOAuthToken(
   values: readonly StoredValueRow[],
 ): readonly StoredValueRow[] {
@@ -831,16 +924,21 @@ function withRuntimeOAuthToken(
   ];
 }
 
-async function resolveCustomConnectorOAuth2AccessToken(args: {
+interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly connector: CustomConnectorRow;
   readonly featureContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<string | null> {
+  readonly forceRefresh?: boolean;
+}
+
+async function resolveCustomConnectorOAuth2AccessToken(
+  args: ResolveCustomConnectorOAuth2AccessTokenArgs,
+): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {
-    return null;
+    return { kind: "unavailable" };
   }
   const oauthConfig = args.connector.oauthConfig;
   const connection = await loadConnection({
@@ -850,11 +948,15 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
     connectorId: args.connector.id,
   });
   args.signal.throwIfAborted();
-  if (!connection?.encryptedAccessToken || connection.needsReconnect) {
-    return null;
+  if (!connection) {
+    return { kind: "unavailable" };
   }
-  if (connectionAccessTokenIsCurrent(connection)) {
-    return connection.encryptedAccessToken;
+  const accessToken = storedConnectionAccessToken(connection);
+  if (accessToken.kind !== "available") {
+    return accessToken;
+  }
+  if (!args.forceRefresh && connectionAccessTokenIsCurrent(connection)) {
+    return accessToken;
   }
   return await args.db.transaction(async (tx) => {
     const lockedConnection = await loadConnection({
@@ -865,14 +967,26 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
       lockRow: true,
     });
     args.signal.throwIfAborted();
-    if (
-      !lockedConnection?.encryptedAccessToken ||
-      lockedConnection.needsReconnect
-    ) {
-      return null;
+    if (!lockedConnection) {
+      return { kind: "unavailable" };
     }
-    if (connectionAccessTokenIsCurrent(lockedConnection)) {
-      return lockedConnection.encryptedAccessToken;
+    const lockedAccessToken = storedConnectionAccessToken(lockedConnection);
+    if (lockedAccessToken.kind !== "available") {
+      return lockedAccessToken;
+    }
+    if (
+      args.forceRefresh &&
+      lockedAccessToken.encryptedAccessToken !==
+        accessToken.encryptedAccessToken &&
+      connectionAccessTokenIsCurrent(lockedConnection)
+    ) {
+      return lockedAccessToken;
+    }
+    if (
+      !args.forceRefresh &&
+      connectionAccessTokenIsCurrent(lockedConnection)
+    ) {
+      return lockedAccessToken;
     }
     if (!lockedConnection.encryptedRefreshToken) {
       await tx
@@ -883,7 +997,7 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
           updatedAt: nowDate(),
         })
         .where(eq(connectors.id, lockedConnection.id));
-      return null;
+      return { kind: "reconnect-required" };
     }
     const [credentials, refreshToken] = await Promise.all([
       decryptCustomConnectorOAuth2Credentials(
@@ -897,7 +1011,7 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
     ]);
     args.signal.throwIfAborted();
     if (!credentials) {
-      return null;
+      return { kind: "unavailable" };
     }
     const refreshResult = await settle(
       refreshCustomConnectorOAuth2Token({
@@ -912,7 +1026,7 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
         !isOAuthProviderHttpError(refreshResult.error) ||
         refreshResult.error.oauthError !== "invalid_grant"
       ) {
-        throw refreshResult.error;
+        throw new CustomConnectorOAuth2TokenRefreshError(refreshResult.error);
       }
       await tx
         .update(connectors)
@@ -922,7 +1036,7 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
           updatedAt: nowDate(),
         })
         .where(eq(connectors.id, lockedConnection.id));
-      return null;
+      return { kind: "reconnect-required" };
     }
     args.signal.throwIfAborted();
     const encryptedAccessToken = await replaceConnectionTokens({
@@ -936,7 +1050,12 @@ async function resolveCustomConnectorOAuth2AccessToken(args: {
       featureContext: args.featureContext,
     });
     args.signal.throwIfAborted();
-    return encryptedAccessToken;
+    return {
+      kind: "available",
+      encryptedAccessToken,
+      tokenExpiresAt: refreshResult.value.expiresAt,
+      status: "refreshed",
+    };
   });
 }
 
@@ -952,13 +1071,12 @@ export async function refreshCustomConnectorOAuth2ValuesIfNeeded(args: {
   if (args.connector.authMode !== "oauth") {
     return args.values;
   }
-  const encryptedAccessToken =
-    await resolveCustomConnectorOAuth2AccessToken(args);
-  return encryptedAccessToken
+  const accessToken = await resolveCustomConnectorOAuth2AccessToken(args);
+  return accessToken.kind === "available"
     ? withRuntimeOAuthToken(
         args.values,
         args.connector.id,
-        encryptedAccessToken,
+        accessToken.encryptedAccessToken,
       )
     : withoutRuntimeOAuthToken(args.values);
 }
@@ -1002,7 +1120,8 @@ export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
   readonly connectorRevision: number;
   readonly featureContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<string | null> {
+  readonly forceRefresh?: boolean;
+}): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   const connector = await loadLiveCustomConnector(args);
   args.signal.throwIfAborted();
   if (
@@ -1010,7 +1129,7 @@ export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
     connector.revision !== args.connectorRevision ||
     connector.authMode !== "oauth"
   ) {
-    return null;
+    return { kind: "unavailable" };
   }
   return await resolveCustomConnectorOAuth2AccessToken({
     ...args,

@@ -546,6 +546,8 @@
         "label": "आर्टिफ़ैक्ट प्रकार फिल्टर",
         "presentation": "प्रस्तुतियों",
         "presentationAria": "प्रस्तुति आर्टिफ़ैक्ट दिखाएँ",
+        "sharedConversation": "साझा की गई बातचीत",
+        "sharedConversationAria": "साझा बातचीत वाले आर्टिफ़ैक्ट दिखाएँ",
         "video": "वीडियो",
         "videoAria": "वीडियो आर्टिफ़ैक्ट दिखाएँ",
         "website": "वेबसाइटें",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "प्रस्तुति",
+      "sharedConversation": "साझा बातचीत",
       "text": "मूलपाठ",
       "video": "वीडियो"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "{{filename}} के लिए वीडियो पूर्वावलोकन"
     },
     "sidebar": {
+      "openSharedConversation": "साझा बातचीत खोलें",
       "panelTitle": "आर्टिफ़ैक्ट",
       "singularTitle": "आर्टिफ़ैक्ट",
       "unavailable": "यह आर्टिफ़ैक्ट अब उपलब्ध नहीं है।"
@@ -958,7 +962,34 @@
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",
-      "upgradeTo": "{{plan}} में अपग्रेड करें"
+      "upgradeTo": "{{plan}} में अपग्रेड करें",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} बोनस क्रेडिट",
+        "changePlan": "प्लान बदलें",
+        "choosePlan": "प्लान चुनें",
+        "choosePlanDescription": "पहले वर्कस्पेस प्लान चुनें। सदस्य पैकेज अगले चरण में कॉन्फ़िगर किए जाते हैं।",
+        "configurePackages": "सदस्य पैकेज कॉन्फ़िगर करें",
+        "configurePackagesDescription": "हर सदस्य के लिए एक आवश्यक पैकेज चुनें, फिर संयुक्त मासिक कुल की समीक्षा करें।",
+        "currentMember": "मौजूदा सदस्य",
+        "description": "हर सदस्य के लिए मासिक उपयोग पैक चुनें।",
+        "discountBonusCredits": "छूट से बोनस क्रेडिट",
+        "memberExclusive": "हर पैकेज एक सदस्य का होता है और साझा नहीं किया जा सकता। पैकेज समाप्त होने पर उपयोग पे-एज़-यू-गो क्रेडिट पर वापस चला जाता है। आप बाद में नए पैकेज में अपग्रेड कर सकते हैं।",
+        "memberPackages": "सदस्य पैकेज",
+        "memberUsage": "सदस्य उपयोग",
+        "memberUsageTotal": "मासिक पैक का कुल",
+        "minimumPackageBreakdown": "{{base}} प्लान + {{package}} का आवश्यक सदस्य पैकेज",
+        "monthlyTotal": "मासिक कुल",
+        "orderSummary": "ऑर्डर सारांश",
+        "packagesStep": "पैकेज",
+        "packOption": "{{price}} · {{credits}} क्रेडिट · {{discount}}% की छूट",
+        "planStep": "प्लान",
+        "purchaseSteps": "खरीद के चरण",
+        "selectedPlan": "चुना गया प्लान",
+        "selectPlan": "{{plan}} चुनें",
+        "selectUsage": "{{name}} के लिए उपयोग",
+        "startingAt": "शुरुआती कीमत",
+        "totalCredits": "कुल क्रेडिट"
+      }
     },
     "restore": {
       "cancellationDescription": "यह आपके {{plan}} योजना के लिए निर्धारित रद्दीकरण पूर्ववत कर देगा।",
@@ -1060,7 +1091,6 @@
     "actions": {
       "authorize": "अधिकृत करें",
       "cancel": "रद्द करें",
-      "configure": "कॉन्फ़िगर करें",
       "confirm": "पुष्टि करें",
       "continue": "जारी रखें",
       "copied": "नकल की गई!",
@@ -1154,6 +1184,7 @@
         "googleCalendarCancelled": "Google Calendar इवेंट रद्द कर दिया गया",
         "googleCalendarCreated": "Google Calendar इवेंट बनाया गया",
         "googleCalendarUpdated": "Google Calendar इवेंट अपडेट किया गया",
+        "googleFormsResponseSubmitted": "Google Forms जवाब सबमिट हुआ",
         "googleMeetTranscript": "Google मीट ट्रांस्क्रिप्ट तैयार",
         "notionChildPage": "नया Notion चाइल्ड पेज",
         "notionDatabaseItem": "नया Notion डेटाबेस आइटम",
@@ -1292,7 +1323,6 @@
       "available_other": "कनेक्ट करने के लिए उपलब्ध कनेक्टर ({{count}})",
       "configurePermissions": "{{connectorName}} अनुमतियाँ कॉन्फ़िगर करें",
       "customAuthorizeDescription": "एजेंट के लिए इस कस्टम कनेक्टर की समीक्षा करें, कनेक्ट करें और अधिकृत करें।",
-      "customConnectDescription": "इस कस्टम कनेक्टर की समीक्षा करें और कनेक्ट करें.",
       "find": "कनेक्टर ढूंढें...",
       "remove": "{{connectorName}} हटाएँ",
       "title": "कनेक्टर्स"
@@ -1498,6 +1528,22 @@
       "worked": "काम किया",
       "workedFor": "{{duration}} के लिए काम किया"
     },
+    "sharing": {
+      "cancel": "रद्द करें",
+      "close": "बंद करें",
+      "copyFailed": "लिंक कॉपी नहीं हो सका",
+      "copyLink": "लिंक कॉपी करें",
+      "create": "शेयर करें",
+      "createFailed": "साझा बातचीत नहीं बनाई जा सकी। फिर से कोशिश करें।",
+      "deselectGroup": "संदेश समूह का चयन हटाएँ",
+      "linkCopied": "लिंक कॉपी हो गया",
+      "selectedCount_one": "{{count}} चुना गया",
+      "selectedCount_other": "{{count}} चुने गए",
+      "selectGroup": "संदेश समूह चुनें",
+      "shareLink": "साझा बातचीत का लिंक",
+      "start": "संदेश शेयर करें",
+      "tooLarge": "शेयर करने के लिए कम संदेश चुनें"
+    },
     "shortcuts": {
       "number": "संख्या"
     },
@@ -1624,7 +1670,6 @@
       "edit": "संपादन करना",
       "grant": "अनुदान",
       "reconnect": "रिकनेक्ट",
-      "rename": "नाम बदलें",
       "revoke": "रद्द करना",
       "save": "बचाना",
       "saving": "सहेजा जा रहा है...",
@@ -1874,17 +1919,12 @@
       "emptyAdmin": "अभी तक कोई कस्टम कनेक्टर नहीं. प्रत्येक सदस्य के उपयोग के लिए एक API पंजीकृत करने के लिए एक बनाएं।",
       "emptyMember": "आपके संगठन ने अभी तक कोई कस्टम कनेक्टर पंजीकृत नहीं किया है.",
       "moreOptions": "अधिक विकल्प",
-      "rename": {
-        "displayName": "प्रदर्शित होने वाला नाम",
-        "title": "कस्टम कनेक्टर का नाम बदलें"
-      },
       "statusConnected": "जुड़े हुए",
       "toasts": {
         "connected": "जुड़े हुए",
         "created": "\"{{connector}}\" बनाया गया",
         "deleted": "कस्टम कनेक्टर हटा दिया गया",
         "disconnected": "डिस्कनेक्ट किया गया",
-        "renamed": "\"{{connector}}\" का नाम बदला गया",
         "updated": "अपडेट किया गया \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1892,19 +1932,6 @@
         "description": "ये OAuth परिवर्तन वर्तमान में OAuth से जुड़े प्रत्येक सदस्य को डिस्कनेक्ट कर देंगे। उन्हें इस कस्टम कनेक्टर को फिर से कनेक्ट करना होगा.",
         "title": "मौजूदा OAuth कनेक्शन डिस्कनेक्ट करें?"
       }
-    },
-    "customProposal": {
-      "configure": "{{connector}} कॉन्फ़िगर करें",
-      "descriptionAgent": "बचत आपके मूल्यों को जोड़ेगी और {{agent}} को अधिकृत करेगी।",
-      "descriptionUser": "सेव करने पर यह कस्टम कनेक्टर आपके खाते से कनेक्ट हो जाएगा.",
-      "documentTitle": "कस्टम कनेक्टर कॉन्फ़िगर करें",
-      "invalid": "यह कस्टम कनेक्टर प्रस्ताव लिंक अमान्य है या समाप्त हो गया है।",
-      "requestScope": "स्कोप का अनुरोध करें",
-      "returnToChat": "चैट पर लौटें और ACK उत्तर दें ताकि एजेंट कनेक्टर को सत्यापित कर सके।",
-      "saved": "सहेजा गया",
-      "savedToast": "{{connector}} सहेजा गया",
-      "targetFallback": "यह एजेंट",
-      "update": "{{connector}} अपडेट करें"
     },
     "directed": {
       "authorizeAgent": "{{agent}} को अधिकृत करें",
@@ -4565,6 +4592,12 @@
       "title": "पृष्ठ नहीं मिला"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "यह साझा बातचीत मौजूद नहीं है।",
+    "notFoundTitle": "साझा बातचीत नहीं मिली",
+    "tryOkou": "Okou आज़माएँ"
+  },
   "usage": {
     "automations": {
       "empty": "इस अवधि में किसी भी ऑटोमेशन का उपयोग नहीं किया गया",
@@ -4599,6 +4632,7 @@
       "imageRecognize": "छवि पहचान",
       "maps": "एमएपीएस",
       "peopleSearch": "लोग खोजें",
+      "translation": "अनुवाद",
       "usage": "उपयोग",
       "weather": "मौसम",
       "webFetch": "वेब फ़ेच",
@@ -4734,6 +4768,11 @@
         "minute_other": "{{count}} मिनट",
         "second_one": "{{count}} सेकंड",
         "second_other": "{{count}} सेकंड"
+      },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms जवाब सबमिट हुआ",
+        "rule": "जब {{form}} को कोई जवाब मिले",
+        "summary": "फ़ॉर्म {{form}}"
       },
       "github": {
         "accountConnect": "GitHub कनेक्ट करें",
@@ -5057,6 +5096,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google मिलें",
         "notion": "Notion",
         "strapi": "Strapi",

@@ -26,6 +26,7 @@ use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{SandboxReuseDisposition, SandboxReuseTerminal};
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkFailureParts, IdleParkRequest,
     IdleParkRequestParts, ParkResult, ParkingGate,
@@ -166,6 +167,7 @@ pub(super) struct FinalizeContext {
     pub(super) workspace_image_size_bytes: u64,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    pub(super) guest_timezone_intent: GuestTimezoneIntent,
     pub(super) factory: Arc<Box<dyn SandboxFactory>>,
     pub(super) idle_pool: SharedIdlePool,
     pub(super) status: Arc<StatusTracker>,
@@ -249,6 +251,7 @@ async fn finalize_sandbox_for_completion_inner(
         workspace_image_size_bytes,
         storage_fingerprints,
         device_rate_limits,
+        guest_timezone_intent,
         factory,
         idle_pool,
         status,
@@ -336,6 +339,7 @@ async fn finalize_sandbox_for_completion_inner(
                 )
                 | SandboxReuseDisposition::Ineligible(_) => None,
             },
+            guest_timezone_intent,
             workspace_image_size_bytes,
             workspace_promotion,
         });
@@ -1023,6 +1027,7 @@ mod tests {
                 workspace_image_size_bytes: 0,
                 storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
                 device_rate_limits: None,
+                guest_timezone_intent: GuestTimezoneIntent::Unknown,
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
@@ -1231,6 +1236,14 @@ mod tests {
         let network_log_session = fixture.network_log_session().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-network-log-park",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.guest_timezone_intent = GuestTimezoneIntent::Configured("Asia/Shanghai".into());
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
@@ -1245,13 +1258,7 @@ mod tests {
                 SandboxReuseResult::PoolMiss,
                 CompletionAuth::local(),
             ),
-            fixture.finalize_context(
-                run_id,
-                sandbox_id,
-                "sess-network-log-park",
-                network_log_session,
-                RunCancellationHandle::new(),
-            ),
+            context,
         )
         .await;
 
@@ -1260,6 +1267,10 @@ mod tests {
             let reservation = idle_pool
                 .reserve_reusable_generation("sess-network-log-park", "vm0/default", &None, run_id)
                 .expect("finalized sandbox should be reusable for its generation");
+            assert_eq!(
+                reservation.guest_timezone_intent(),
+                &GuestTimezoneIntent::Configured("Asia/Shanghai".into())
+            );
             assert!(matches!(
                 idle_pool.restore_reserved(reservation),
                 RestoreReservedIdleResult::Restored
@@ -2461,7 +2472,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalizer_notifies_after_replaced_idle_workspace_cache_promotion() {
+    async fn finalizer_notifies_after_replaced_idle_promotion_despite_destroy_panic() {
         let fixture = FinalizeTestFixture::new().await;
         let session_id = "sess-replaced-cache";
         let dir = tempfile::tempdir().unwrap();
@@ -2490,6 +2501,7 @@ mod tests {
         let existing_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
         add_healthy_reuse_preparation_matcher(&existing_overrides);
         existing_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        existing_overrides.push_destroy_panic("simulated replaced idle destroy panic");
         let existing_factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
             MockSandboxFactory::with_overrides(Arc::clone(&existing_overrides)),
         ));
@@ -2519,6 +2531,7 @@ mod tests {
             storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             restored_session_identity: None,
             history_generation_run_id: None,
+            guest_timezone_intent: GuestTimezoneIntent::Unknown,
             workspace_image_size_bytes: b"image".len() as u64,
             workspace_promotion: Some(old_promotion),
         })

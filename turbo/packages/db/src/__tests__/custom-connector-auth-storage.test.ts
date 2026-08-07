@@ -23,6 +23,9 @@ describe("custom connector auth storage schema", () => {
     expect(orgCustomConnectors.authMode.notNull).toBe(true);
     expect(orgCustomConnectors.enabled.notNull).toBe(true);
     expect(orgCustomConnectors.revision.notNull).toBe(true);
+    expect(orgCustomConnectors.storageVersion.notNull).toBe(true);
+    expect(orgCustomConnectors.storageVersion.hasDefault).toBe(true);
+    expect(orgCustomConnectors.storageVersion.columnType).toBe("PgBigInt53");
     expect(names(connectorConfig.uniqueConstraints)).toContain(
       "idx_org_custom_connectors_id_org",
     );
@@ -32,6 +35,7 @@ describe("custom connector auth storage schema", () => {
         "chk_org_custom_connectors_auth_mode",
         "chk_org_custom_connectors_mcp",
         "chk_org_custom_connectors_revision_positive",
+        "chk_org_custom_connectors_storage_version_positive",
         "chk_org_custom_connectors_skill_size",
       ]),
     );
@@ -75,10 +79,13 @@ describe("custom connector auth storage schema", () => {
     ).toBeDefined();
 
     expect(connectorOauthStates.connectorSlug.notNull).toBe(false);
+    expect(connectorOauthStates.storageVersion.notNull).toBe(false);
+    expect(connectorOauthStates.storageVersion.columnType).toBe("PgBigInt53");
     expect(names(stateConfig.checks)).toEqual(
       expect.arrayContaining([
         "chk_connector_oauth_states_identity",
         "chk_connector_oauth_states_custom_revision",
+        "chk_connector_oauth_states_custom_storage_version",
       ]),
     );
   });

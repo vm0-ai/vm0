@@ -28,6 +28,7 @@ import {
   effectiveCustomConnectorPermissionBundleRef,
   FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF,
 } from "./feishu-custom-connector-permissions";
+import type { Tx } from "../../lib/db-types";
 
 type UpdateUserConnectorsResult =
   | {
@@ -63,7 +64,7 @@ type UpdateUserCustomConnectorsResult =
     };
 
 type UserCustomConnectorUpdateOperation = "replace" | "add" | "remove";
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 type AddUserCustomConnectorResult =
   | { readonly status: "added" }

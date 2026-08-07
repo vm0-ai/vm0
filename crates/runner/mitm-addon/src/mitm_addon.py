@@ -55,7 +55,6 @@ import http_local_responses
 import http_network_log
 import matching
 import mitmproxy_compat
-import network_log_sanitization
 import platform_api
 import registry
 import request_classification
@@ -95,8 +94,9 @@ from logging_utils import (
     NETWORK_LOG_MAX_SAFE_SIZE,
     add_firewall_metadata,
     elapsed_ms,
-    log_network_entry,
+    log_http_network_entry,
     log_proxy_entry,
+    project_url_for_proxy_log,
     shutdown_log_writer,
 )
 from url_utils import AuthorityValidationError, TrustedAuthority, get_trusted_authority
@@ -154,7 +154,13 @@ class _BufferedRequestBodyCheck:
 
 
 def load(loader: Loader) -> None:
-    """Register custom options for the addon."""
+    """Initialize compatibility and process-global state before addon options.
+
+    Exact-version mitmproxy and wsproto compatibility is installed first. An
+    unreviewed runtime raises ``RuntimeError`` before the process-global runner
+    usage-flush signal handler or custom options are registered. The signal
+    handler is installed next, followed by custom option registration.
+    """
     mitmproxy_compat.install_runtime_compatibility()
     signal.signal(
         runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
@@ -588,7 +594,7 @@ def _http_network_log_entry(
     latency_ms: int,
     request_size: int,
     response_size: int,
-) -> dict:
+) -> tuple[dict, str]:
     url, host, port = http_network_log.target(flow)
     entry = {
         "type": "http",
@@ -596,7 +602,6 @@ def _http_network_log_entry(
         "host": host,
         "port": port,
         "method": flow.request.method,
-        "url": network_log_sanitization.sanitize_request_url_for_network_log(url),
         "status": status_code,
         "latency_ms": latency_ms,
         "request_size": request_size,
@@ -617,7 +622,7 @@ def _http_network_log_entry(
     if flow_metadata.firewall_base(flow.metadata):
         add_firewall_metadata(flow, entry)
     codex_model_catalog_cache.add_network_log_fields(flow, entry)
-    return entry
+    return entry, url
 
 
 def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
@@ -1748,7 +1753,7 @@ def _finish_response_handling(
     proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     if network_log_path:
         response_size = _response_size(flow)
-        log_entry = _http_network_log_entry(
+        log_entry, raw_url = _http_network_log_entry(
             flow,
             action=firewall_action,
             status_code=status_code,
@@ -1761,7 +1766,7 @@ def _finish_response_handling(
         if flow_metadata.should_capture_body(flow.metadata):
             body_capture.add_capture_fields(flow, log_entry)
 
-        log_network_entry(network_log_path, log_entry)
+        log_http_network_entry(network_log_path, log_entry, raw_url)
 
     response_streaming.finalize_model_sse_usage(flow)
     response_streaming.finalize_model_json_usage(flow, proxy_log_path)
@@ -1820,13 +1825,14 @@ def _finish_response_handling(
 
     # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
-        safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+        url_projection = project_url_for_proxy_log(original_url)
         log_proxy_entry(
             proxy_log_path,
             "warn",
-            f"Response {flow.response.status_code}: {safe_url}",
+            f"Response {flow.response.status_code}: {url_projection.value}",
             type="http_error",
             status=flow.response.status_code,
+            **url_projection.truncation_fields(),
         )
 
 
@@ -1862,7 +1868,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     error_msg = flow.error.msg if flow.error else "unknown error"
 
     # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
-    log_entry = _http_network_log_entry(
+    log_entry, raw_url = _http_network_log_entry(
         flow,
         action=firewall_action,
         status_code=0,
@@ -1872,7 +1878,7 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     )
     log_entry["error"] = error_msg
 
-    log_network_entry(network_log_path, log_entry)
+    log_http_network_entry(network_log_path, log_entry, raw_url)
 
     # Report proxy-extracted usage for model provider responses.
     # The SSE parser may have partially populated model_provider_usage before the
@@ -1886,13 +1892,14 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     if response_streaming.finalize_interrupted_connector_response_state(flow):
         usage.report_connector_usage(flow, run_id)
 
-    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
+    url_projection = project_url_for_proxy_log(original_url)
     log_proxy_entry(
         proxy_log_path,
         "warn",
-        f"Error: {error_msg}: {safe_url}",
+        f"Error: {error_msg}: {url_projection.value}",
         type="connection_error",
         error=error_msg,
+        **url_projection.truncation_fields(),
     )
 
 

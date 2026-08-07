@@ -17,6 +17,7 @@
 
 #![allow(dead_code)] // consumed across multiple test binaries
 
+mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
@@ -41,9 +42,13 @@ use tokio::net::TcpListener;
 use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot};
 
+use process_session::CommandSession;
+
 pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
 
 static UNIQUE_TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+const COMMAND_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 128 + SIGTERM(15). Rust / glibc's default signal handler maps a
 /// SIGTERM-terminated process to this exit code.
@@ -73,7 +78,7 @@ pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
 /// Documented maximum byte length for one returned stderr line after CRLF normalization.
 pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 
-/// Integration contract for one accepted ordinary CLI stdout record.
+/// Integration contract for one accepted Claude Code stdout record.
 pub const CLI_STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
@@ -97,22 +102,21 @@ pub async fn command_output_with_timeout(
     timeout: Duration,
     timeout_context: &str,
 ) -> io::Result<Output> {
+    CommandSession::configure(command);
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()?;
+    let session = CommandSession::from_child(&child)?;
     let (Some(mut stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {
-        return match child.kill().await {
-            Ok(()) => Err(io::Error::other(
+        return match terminate_command(&mut child, &session).await {
+            Ok(_) => Err(io::Error::other(
                 "captured child omitted its stdout or stderr pipe",
             )),
-            Err(error) => Err(io::Error::new(
-                error.kind(),
-                format!(
-                    "captured child omitted its stdout or stderr pipe; failed to terminate and reap child: {error}"
-                ),
-            )),
+            Err(error) => Err(io::Error::other(format!(
+                "captured child omitted its stdout or stderr pipe; cleanup failed: {error}"
+            ))),
         };
     };
     let mut stdout_bytes = Vec::new();
@@ -120,12 +124,11 @@ pub async fn command_output_with_timeout(
 
     let output = {
         let wait_with_output = async {
-            let (status, stdout_result, stderr_result) = tokio::join!(
-                child.wait(),
+            let (stdout_result, stderr_result) = tokio::join!(
                 stdout.read_to_end(&mut stdout_bytes),
                 stderr.read_to_end(&mut stderr_bytes),
             );
-            let status = status?;
+            let status = child.wait().await?;
             stdout_result?;
             stderr_result?;
             Ok(Output {
@@ -139,17 +142,79 @@ pub async fn command_output_with_timeout(
 
     match output {
         Ok(output) => output,
-        Err(_) => match child.kill().await {
-            Ok(()) => Err(io::Error::new(
+        Err(_) => match terminate_command(&mut child, &session).await {
+            Ok(_) => Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 timeout_context.to_string(),
             )),
-            Err(error) => Err(io::Error::new(
-                error.kind(),
-                format!("{timeout_context}; failed to terminate and reap timed-out child: {error}"),
-            )),
+            Err(error) => Err(io::Error::other(format!(
+                "{timeout_context}; timed-out command cleanup failed: {error}"
+            ))),
         },
     }
+}
+
+async fn terminate_command(
+    child: &mut tokio::process::Child,
+    session: &CommandSession,
+) -> Result<std::process::ExitStatus, String> {
+    let direct_kill_error = child.start_kill().err();
+    let deadline = tokio::time::Instant::now() + COMMAND_CLEANUP_TIMEOUT;
+    let session_error = session
+        .kill_members(deadline, COMMAND_CLEANUP_TIMEOUT)
+        .await
+        .err();
+    let wait_result = wait_for_child_until(child, deadline).await;
+
+    match (session_error, wait_result) {
+        (None, Ok(status)) => Ok(status),
+        (Some(session_error), Ok(status)) => Err(command_cleanup_error(
+            direct_kill_error,
+            Some(session_error),
+            format!("killed child status: {status}"),
+        )),
+        (session_error, Err(wait_error)) => Err(command_cleanup_error(
+            direct_kill_error,
+            session_error,
+            wait_error,
+        )),
+    }
+}
+
+async fn wait_for_child_until(
+    child: &mut tokio::process::Child,
+    deadline: tokio::time::Instant,
+) -> Result<std::process::ExitStatus, String> {
+    match child.try_wait() {
+        Ok(Some(status)) => return Ok(status),
+        Ok(None) => {}
+        Err(error) => return Err(format!("wait after kill failed: {error}")),
+    }
+
+    match tokio::time::timeout_at(deadline, child.wait()).await {
+        Ok(Ok(status)) => Ok(status),
+        Ok(Err(error)) => Err(format!("wait after kill failed: {error}")),
+        Err(_) => Err(format!(
+            "wait after kill timed out after {}ms",
+            COMMAND_CLEANUP_TIMEOUT.as_millis()
+        )),
+    }
+}
+
+fn command_cleanup_error(
+    direct_kill_error: Option<io::Error>,
+    session_error: Option<String>,
+    wait_result: String,
+) -> String {
+    let mut errors = Vec::new();
+    if let Some(direct_kill_error) = direct_kill_error {
+        errors.push(format!("start kill failed: {direct_kill_error}"));
+    }
+    if let Some(session_error) = session_error {
+        errors.push(format!("session cleanup failed: {session_error}"));
+    }
+    errors.push(wait_result);
+    errors.join("; ")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -758,7 +823,7 @@ fn cargo_build_session_id() -> Option<String> {
     Some(format!("{boot_id}:{parent_pid}:{parent_start_time}"))
 }
 
-/// Test-specific values for the experimental Codex app-server backend env.
+/// Test-specific values for Codex app-server execution env.
 pub struct CodexAppServerEnvConfig<'a> {
     pub run_id: &'a str,
     pub prompt: &'a str,
@@ -800,12 +865,10 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
-        guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
         guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
         guest_contracts::env::MOCK_CODEX_PATH_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         process_control_ipc::BOOTSTRAP_ENV,
-        "MOCK_CODEX_FIXTURE",
         "MOCK_CODEX_APP_SERVER_SCENARIO",
     ] {
         unsafe {
@@ -862,7 +925,7 @@ pub unsafe fn set_user_env_file_env_for_test(
     Ok(())
 }
 
-/// Configure one test binary for the experimental Codex app-server backend.
+/// Configure one test binary for Codex app-server execution.
 ///
 /// Must be called before building a `GuestRuntime` because runtime bootstrap
 /// captures the process env snapshot.
@@ -878,7 +941,6 @@ pub unsafe fn setup_codex_app_server_env(
     unsafe {
         clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
-        std::env::set_var("VM0_CODEX_APP_SERVER_BACKEND", "1");
         std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
         std::env::set_var("USE_MOCK_CODEX", "true");
         if let Some(scenario) = config.scenario {

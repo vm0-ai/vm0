@@ -197,9 +197,18 @@ export const executionFirewallBuiltinEntrySchema = z.object({
   baseUrlVars: z.record(z.string(), z.string()).optional(),
 });
 
+const executionFirewallSchema = firewallSchema.extend({
+  apis: z.array(
+    firewallApiSchema.extend({
+      id: z.string().min(1).optional(),
+    }),
+  ),
+});
+
 export const executionFirewallInlineEntrySchema = z.object({
   kind: z.literal("inline"),
-  firewall: firewallSchema,
+  firewall: executionFirewallSchema,
+  customConnectorId: z.uuid().optional(),
 });
 
 export const executionFirewallEntrySchema = z.discriminatedUnion("kind", [

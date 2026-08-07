@@ -125,7 +125,7 @@ pub async fn run_benchmark(
 
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     {
-        let path = resource_locks.snapshot_paths().memory_bin();
+        let path = resource_locks.snapshot_paths().memory();
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
 
@@ -179,7 +179,6 @@ pub async fn run_benchmark(
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
             dns_port: None, // benchmark does not use custom DNS proxy
-            guest_dns_netfilter_trace: false,
         })
         .await
     {
@@ -394,6 +393,7 @@ async fn run_sandbox(
         proxy_log_path: &proxy_log_path,
         firewalls: None,
         network_policies: None,
+        connector_runtime_targets: None,
         encrypted_secrets: None,
         secret_connector_map: None,
         secret_connector_metadata_map: None,

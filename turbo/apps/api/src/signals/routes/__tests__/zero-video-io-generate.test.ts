@@ -43,6 +43,10 @@ const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 const BYTEPLUS_VIDEO_URL =
   "https://ark-content.byteplus.example/files/video-output.mp4";
+const MINIMAX_H3_MODEL = "MiniMax-H3";
+const MINIMAX_VIDEO_GENERATION_URL =
+  "https://api.minimax.io/v2/video_generation";
+const MINIMAX_VIDEO_URL = "https://minimax.example/files/h3-video-output.mp4";
 const FAL_VEO_FAST_MODEL = "fal-ai/veo3.1/fast";
 const FAL_VEO_FAST_QUEUE_URL = `https://queue.fal.run/${FAL_VEO_FAST_MODEL}`;
 const FAL_STATUS_URL =
@@ -57,6 +61,8 @@ const KLING_STATUS_URL =
 const KLING_RESPONSE_URL =
   "https://queue.fal.run/fal-ai/kling-video/v3/4k/text-to-video/requests/kling-video-request/response";
 const KLING_VIDEO_URL = "https://v3b.fal.media/files/kling-output.mp4";
+const CLOUDFLARE_MEDIA_FRAME_URL =
+  /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//u;
 const WEB_ORIGIN = "https://www.vm0.test";
 
 const VIDEO_PRICING_DEFAULTS = [
@@ -144,6 +150,36 @@ const VIDEO_PRICING_DEFAULTS = [
     unitPrice: 504,
     unitSize: 1,
   },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "output_video_seconds.768p",
+    unitPrice: 160,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "output_video_seconds.2k",
+    unitPrice: 260,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "input_video_seconds.768p",
+    unitPrice: 160,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "input_video_seconds.2k",
+    unitPrice: 260,
+    unitSize: 1,
+  },
+  {
+    provider: MINIMAX_H3_MODEL,
+    category: "input_image.additional",
+    unitPrice: 80,
+    unitSize: 1,
+  },
 ] as const;
 
 interface VideoFixture {
@@ -214,6 +250,19 @@ async function postBytePlusWebhook(
     body: JSON.stringify(payload),
   });
   expect(response.status).toBe(200);
+}
+
+async function postMiniMaxWebhook(
+  app: ReturnType<typeof createVideoIoTestApp>,
+  callbackUrl: string,
+  payload: unknown,
+): Promise<Response> {
+  const url = new URL(callbackUrl);
+  return await app.request(`${url.pathname}${url.search}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 function readFalWebhookUrl(requestUrl: string | null): string {
@@ -409,6 +458,13 @@ describe("POST /api/zero/video-io/generate", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+    server.use(
+      http.get(CLOUDFLARE_MEDIA_FRAME_URL, () => {
+        return new HttpResponse("video poster unavailable in route fixture", {
+          status: 404,
+        });
+      }),
+    );
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -1050,6 +1106,292 @@ describe("POST /api/zero/video-io/generate", () => {
     // (9400/1M); the no-video rate would charge 3080, so the exact balance
     // drop pins the with-video pricing category.
     await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1880);
+  });
+
+  it("generates MiniMax H3 with full references and charges every billed usage component", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    const referenceImageUrls = Array.from({ length: 7 }, (_, index) => {
+      return `https://example.com/reference-${index + 1}.png`;
+    });
+    const referenceAudioUrls = [
+      "https://example.com/reference-1.mp3",
+      "https://example.com/reference-2.mp3",
+      "https://example.com/reference-3.mp3",
+    ];
+    const referenceVideoUrl = "https://example.com/reference.mp4";
+
+    let observedAuthorization: string | null = null;
+    let observedBody: unknown = null;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedBody = await request.json();
+        return HttpResponse.json({ task_id: "minimax-h3-task" });
+      }),
+      http.get(MINIMAX_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "preserve the character and follow the reference soundtrack",
+        model: "h3",
+        duration: "5s",
+        aspectRatio: "16:9",
+        imageUrls: referenceImageUrls,
+        videoUrls: [referenceVideoUrl],
+        audioUrls: referenceAudioUrls,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const callbackUrl = readCallbackUrl(observedBody);
+    const webhookUrl = new URL(callbackUrl);
+    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+    expect(webhookUrl.pathname).toBe(
+      `/api/webhooks/built-in-generations/minimax/${generationId}`,
+    );
+
+    const challengeResponse = await postMiniMaxWebhook(app, callbackUrl, {
+      challenge: "verify-minimax-callback",
+    });
+    expect(challengeResponse.status).toBe(200);
+    await expect(challengeResponse.json()).resolves.toStrictEqual({
+      challenge: "verify-minimax-callback",
+    });
+
+    const completionResponse = await postMiniMaxWebhook(app, callbackUrl, {
+      task: {
+        id: "minimax-h3-task",
+        model: MINIMAX_H3_MODEL,
+        status: "succeeded",
+        content: { url: MINIMAX_VIDEO_URL },
+        resolution: "2K",
+        duration: 5,
+        usage: {
+          total_seconds: 9,
+          input_seconds: 4,
+          output_seconds: 5,
+          input_image_count: 7,
+        },
+        ratio: "16:9",
+        task_type: "generation",
+        modality: "video",
+      },
+    });
+    expect(completionResponse.status).toBe(200);
+
+    expect(observedAuthorization).toBe("Bearer test-minimax-key");
+    expect(observedBody).toStrictEqual({
+      model: MINIMAX_H3_MODEL,
+      content: [
+        {
+          type: "text",
+          text: "preserve the character and follow the reference soundtrack",
+        },
+        ...referenceImageUrls.map((url) => {
+          return {
+            type: "image_url",
+            image_url: { url },
+            role: "reference_image",
+          };
+        }),
+        {
+          type: "video_url",
+          video_url: { url: referenceVideoUrl },
+          role: "reference_video",
+        },
+        ...referenceAudioUrls.map((url) => {
+          return {
+            type: "audio_url",
+            audio_url: { url },
+            role: "reference_audio",
+          };
+        }),
+      ],
+      callback_url: callbackUrl,
+      resolution: "2K",
+      duration: 5,
+      ratio: "16:9",
+    });
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "video/mp4",
+      size: VIDEO_BYTES.byteLength,
+      creditsCharged: 2500,
+      model: MINIMAX_H3_MODEL,
+      aspectRatio: "16:9",
+      duration: "5s",
+      durationSeconds: 5,
+      resolution: "2k",
+      generateAudio: true,
+      sourceUrl: MINIMAX_VIDEO_URL,
+      requestId: "minimax-h3-task",
+    });
+
+    // 5 output seconds at 260 credits, 4 reference-video seconds at 260
+    // credits, and 2 reference images after the five-image free tier at 80.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 2500);
+  });
+
+  it("submits MiniMax H3 first and last frames with adaptive ratio", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({ task_id: "minimax-h3-frame-task" });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "transition naturally between the supplied frames",
+        model: "minimax-h3",
+        duration: "5s",
+        firstFrameImageUrl: "https://example.com/first.png",
+        lastFrameImageUrl: "https://example.com/last.png",
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const callbackUrl = readCallbackUrl(observedBody);
+    expect(observedBody).toStrictEqual({
+      model: MINIMAX_H3_MODEL,
+      content: [
+        {
+          type: "text",
+          text: "transition naturally between the supplied frames",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/first.png" },
+          role: "first_frame",
+        },
+        {
+          type: "image_url",
+          image_url: { url: "https://example.com/last.png" },
+          role: "last_frame",
+        },
+      ],
+      callback_url: callbackUrl,
+      resolution: "2K",
+      duration: 5,
+      ratio: "adaptive",
+    });
+
+    const cancellationResponse = await postMiniMaxWebhook(app, callbackUrl, {
+      task: {
+        id: "minimax-h3-frame-task",
+        status: "cancelled",
+        error: { message: "test cancellation" },
+      },
+    });
+    expect(cancellationResponse.status).toBe(200);
+  });
+
+  it("rejects silent MiniMax H3 requests before provider submission", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledMiniMax = false;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, () => {
+        calledMiniMax = true;
+        return HttpResponse.json({ task_id: "unexpected-task" });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a silent city",
+        model: "minimax-h3",
+        generateAudio: false,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "MiniMax H3 always generates native audio",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledMiniMax).toBeFalsy();
+  });
+
+  it("rejects MiniMax H3 prompts above the official 7000-character limit", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledMiniMax = false;
+    server.use(
+      http.post(MINIMAX_VIDEO_GENERATION_URL, () => {
+        calledMiniMax = true;
+        return HttpResponse.json({ task_id: "unexpected-task" });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "x".repeat(7001),
+        model: "minimax-h3",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "prompt exceeds 7000 characters for MiniMax H3",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledMiniMax).toBeFalsy();
   });
 
   it("generates video files with the recommended Fal fallback model", async () => {

@@ -8,7 +8,6 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
@@ -111,11 +110,7 @@ async function primeRuntimeChatDb(): Promise<
   return await context.store.get(chatIdb$);
 }
 
-function setupChatPage({
-  autoOpenEnabled = false,
-}: {
-  readonly autoOpenEnabled?: boolean;
-} = {}): void {
+function setupChatPage(): void {
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
@@ -123,9 +118,6 @@ function setupChatPage({
     org: {
       activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
       memberships: [{ id: IDB_ORG_ID }],
-    },
-    featureSwitches: {
-      [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
     },
   });
 }
@@ -274,7 +266,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     });
 
     try {
-      setupChatPage({ autoOpenEnabled: true });
+      setupChatPage();
       await catchUpRequested.promise;
 
       await expect(
@@ -486,7 +478,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     });
 
     try {
-      setupChatPage({ autoOpenEnabled: true });
+      setupChatPage();
 
       await expect(
         screen.findByText("Browser stopped remotely", undefined, {
@@ -559,6 +551,69 @@ describe("zero chat thread IndexedDB fallback", () => {
       ).resolves.toBeInTheDocument();
       expect(
         screen.queryByText("Send a message to start the conversation"),
+      ).not.toBeInTheDocument();
+    } finally {
+      runtimeDb.close();
+    }
+  });
+
+  it("treats an event type unknown to the client as an IndexedDB cache miss", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000104",
+      threadId: THREAD_ID,
+      eventType: "input.future-budget",
+      content: null,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "Unsupported cached input" }],
+      },
+      runId: "run-unsupported-cached-input",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: "00000000-0000-4000-8000-000000000105",
+            threadId: THREAD_ID,
+            eventType: "input.prompt",
+            content: null,
+            userMessage: {
+              version: 1,
+              parts: [{ type: "text", text: USER_MESSAGE }],
+            },
+            seqId: 1,
+            createdAt: "2026-03-10T00:00:01Z",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000106",
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: ASSISTANT_MESSAGE,
+            seqId: 2,
+            createdAt: "2026-03-10T00:00:02Z",
+          },
+        ],
+      });
+    });
+
+    try {
+      setupChatPage();
+
+      await expect(
+        screen.findByText(USER_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      await expect(
+        screen.findByText(ASSISTANT_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      expect(
+        screen.queryByText("Unsupported cached input"),
       ).not.toBeInTheDocument();
     } finally {
       runtimeDb.close();

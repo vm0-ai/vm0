@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.8...guest-contracts-v0.5.9) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove obsolete codex event fallbacks ([#25511](https://github.com/vm0-ai/vm0/issues/25511)) ([94e8703](https://github.com/vm0-ai/vm0/commit/94e87037eef09c503c7280070237483fafad69fa))
+
+## [0.5.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.7...guest-contracts-v0.5.8) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
 ## [0.5.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.6...guest-contracts-v0.5.7) (2026-08-05)
 
 

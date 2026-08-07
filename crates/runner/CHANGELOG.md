@@ -1,5 +1,120 @@
 # Changelog
 
+## [0.159.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.159.0...runner-rs-v0.159.1) (2026-08-07)
+
+## [0.159.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.22...runner-rs-v0.159.0) (2026-08-07)
+
+
+### Features
+
+* **connectors:** sync active run connector state ([#25420](https://github.com/vm0-ai/vm0/issues/25420)) ([87e716c](https://github.com/vm0-ai/vm0/commit/87e716cdf766fb3a1af51cdd20b7833717fe1133))
+
+## [0.158.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.21...runner-rs-v0.158.22) (2026-08-06)
+
+
+### Refactoring
+
+* **mitm-addon:** share threaded http test server ([#25487](https://github.com/vm0-ai/vm0/issues/25487)) ([1295edc](https://github.com/vm0-ai/vm0/commit/1295edcf4d31beb55cb1c77ddd993f93cde696f1))
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.158.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.20...runner-rs-v0.158.21) (2026-08-06)
+
+
+### Documentation
+
+* **python:** document addon load initialization contract ([#25480](https://github.com/vm0-ai/vm0/issues/25480)) ([ccac1ed](https://github.com/vm0-ai/vm0/commit/ccac1ed7bbd31cb494cd538d82f756cdcf79f04c))
+
+## [0.158.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.19...runner-rs-v0.158.20) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** centralize firecracker snapshot validation ([#25469](https://github.com/vm0-ai/vm0/issues/25469)) ([2ff4c4e](https://github.com/vm0-ai/vm0/commit/2ff4c4ecbc54f1eb2d7a65664122e489b3afc362))
+
+## [0.158.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.18...runner-rs-v0.158.19) (2026-08-06)
+
+
+### Performance Improvements
+
+* **runner:** correlate preference reuse outcomes ([#25443](https://github.com/vm0-ai/vm0/issues/25443)) ([1314003](https://github.com/vm0-ai/vm0/commit/1314003df53a575df0b20a1c4c67cc3304486199))
+
+## [0.158.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.17...runner-rs-v0.158.18) (2026-08-06)
+
+
+### Bug Fixes
+
+* **runner:** retry active input after source read failure ([#25438](https://github.com/vm0-ai/vm0/issues/25438)) ([fac4b4a](https://github.com/vm0-ai/vm0/commit/fac4b4afcb92c90a177a1e71917bd774eb053870))
+
+## [0.158.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.16...runner-rs-v0.158.17) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
+## [0.158.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.15...runner-rs-v0.158.16) (2026-08-06)
+
+
+### Documentation
+
+* **python:** document server-connect prebinding contract ([#25406](https://github.com/vm0-ai/vm0/issues/25406)) ([9e37d23](https://github.com/vm0-ai/vm0/commit/9e37d230db7b4921ac7f8334b474756c43b10fe7))
+
+
+### Refactoring
+
+* remove chat steer feature switch ([#25369](https://github.com/vm0-ai/vm0/issues/25369)) ([7ef396a](https://github.com/vm0-ai/vm0/commit/7ef396a972b1937b2d345921d98bfca0051e3277))
+
+## [0.158.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.14...runner-rs-v0.158.15) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** retire pre-park handoff observation ([#25379](https://github.com/vm0-ai/vm0/issues/25379)) ([2ef8c8c](https://github.com/vm0-ai/vm0/commit/2ef8c8cb338e0951667d86f8014e1373cab1ea54))
+* **sandbox-fc:** retire balloon settle summary ([#25380](https://github.com/vm0-ai/vm0/issues/25380)) ([ec2b177](https://github.com/vm0-ai/vm0/commit/ec2b177f7908e4bf61a9eab9c7217257578b3872))
+
+
+### Performance Improvements
+
+* **runner:** bound codex zstd timestamp buffering ([#25383](https://github.com/vm0-ai/vm0/issues/25383)) ([1cd62f8](https://github.com/vm0-ai/vm0/commit/1cd62f8733310973339c7549d4e28a0cd0e21275))
+
+## [0.158.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.13...runner-rs-v0.158.14) (2026-08-06)
+
+
+### Performance Improvements
+
+* **python:** bound network log url serialization ([#25362](https://github.com/vm0-ai/vm0/issues/25362)) ([287c719](https://github.com/vm0-ai/vm0/commit/287c7195a97e4381ae8a15ce2555ec30c8a67177))
+
+## [0.158.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.12...runner-rs-v0.158.13) (2026-08-06)
+
+
+### Bug Fixes
+
+* **python:** accept trailing authority-fragment base url variables ([#25339](https://github.com/vm0-ai/vm0/issues/25339)) ([46fdc70](https://github.com/vm0-ai/vm0/commit/46fdc7052407228e21856a8b47e43ef31060cd87))
+
+
+### Documentation
+
+* **python:** document auth base rewrite validation ([#25337](https://github.com/vm0-ai/vm0/issues/25337)) ([228bb70](https://github.com/vm0-ai/vm0/commit/228bb706ec45dfb23142f2786ed92d64919669a7))
+
+
+### Refactoring
+
+* **runner:** centralize private atomic file publication ([#25342](https://github.com/vm0-ai/vm0/issues/25342)) ([3b3293d](https://github.com/vm0-ai/vm0/commit/3b3293d941e76f2f406a199c360e95b99144b64b))
+
+## [0.158.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.11...runner-rs-v0.158.12) (2026-08-05)
+
+
+### Bug Fixes
+
+* **runner:** treat removed catalog connectors as absent ([#25307](https://github.com/vm0-ai/vm0/issues/25307)) ([603597b](https://github.com/vm0-ai/vm0/commit/603597bc0c1774807f66b5976f1b56d2a468f3e8))
+
+## [0.158.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.10...runner-rs-v0.158.11) (2026-08-05)
+
+
+### Performance Improvements
+
+* **runner:** overlap exact reuse restore with claim ([#25286](https://github.com/vm0-ai/vm0/issues/25286)) ([bb4463d](https://github.com/vm0-ai/vm0/commit/bb4463d2d86e77b9bae948b367ee60fddc52fb83))
+
 ## [0.158.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.9...runner-rs-v0.158.10) (2026-08-05)
 
 

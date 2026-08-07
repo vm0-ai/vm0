@@ -1,8 +1,112 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
+const composerConnectorSlugs = ["github", "slack", "asana"] as const;
+
+interface ConnectorCatalogStatusItem {
+  readonly slug: string;
+  readonly icon: Readonly<Record<string, unknown>>;
+  readonly [key: string]: unknown;
+}
+
+interface ConnectorCatalogStatusResponse {
+  readonly connectors: readonly ConnectorCatalogStatusItem[];
+  readonly [key: string]: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isConnectorCatalogStatusResponse(
+  value: unknown,
+): value is ConnectorCatalogStatusResponse {
+  if (!isRecord(value) || !Array.isArray(value.connectors)) {
+    return false;
+  }
+  return value.connectors.every((connector) => {
+    return (
+      isRecord(connector) &&
+      typeof connector.slug === "string" &&
+      isRecord(connector.icon)
+    );
+  });
+}
+
+async function mockComposerConnectorState(page: Page): Promise<void> {
+  const connectorSlugs = new Set<string>(composerConnectorSlugs);
+  const iconUrl = new URL("/playwright/composer-connector.svg", appUrl).href;
+  await page.route(iconUrl, async (route) => {
+    await route.fulfill({
+      body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#2563eb" /></svg>',
+      contentType: "image/svg+xml",
+    });
+  });
+  await page.route("**/api/zero/connector-catalog/status", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isConnectorCatalogStatusResponse(body)) {
+      throw new Error("Connector catalog returned an unexpected response");
+    }
+    const availableSlugs = new Set(
+      body.connectors.map((connector) => {
+        return connector.slug;
+      }),
+    );
+    for (const slug of connectorSlugs) {
+      if (!availableSlugs.has(slug)) {
+        throw new Error(`Connector catalog is missing ${slug}`);
+      }
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        connectors: body.connectors.map((connector) => {
+          if (!connectorSlugs.has(connector.slug)) {
+            return connector;
+          }
+          return {
+            ...connector,
+            connected: true,
+            connectionStatus: "connected",
+            icon: { ...connector.icon, url: iconUrl },
+          };
+        }),
+      },
+    });
+  });
+  await page.route("**/api/zero/agents/*/user-connectors", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      json: { enabledConnectorSlugs: composerConnectorSlugs },
+    });
+  });
+}
+
+async function expectInside(inner: Locator, outer: Locator): Promise<void> {
+  await expect(inner).toBeVisible();
+  await expect(outer).toBeVisible();
+  const innerBox = await inner.boundingBox();
+  const outerBox = await outer.boundingBox();
+  if (!innerBox || !outerBox) {
+    throw new Error("Composer geometry unavailable");
+  }
+  const tolerance = 0.5;
+  expect(innerBox.x).toBeGreaterThanOrEqual(outerBox.x - tolerance);
+  expect(innerBox.y).toBeGreaterThanOrEqual(outerBox.y - tolerance);
+  expect(innerBox.x + innerBox.width).toBeLessThanOrEqual(
+    outerBox.x + outerBox.width + tolerance,
+  );
+  expect(innerBox.y + innerBox.height).toBeLessThanOrEqual(
+    outerBox.y + outerBox.height + tolerance,
+  );
+}
 
 async function cardEdgeAppearance(locator: Locator) {
   return locator.evaluate((element) => {
@@ -27,6 +131,174 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test("chat composer keeps the Send button inside on narrow screens", async ({
+  page,
+}) => {
+  await mockComposerConnectorState(page);
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  const composer = page.locator(".zero-composer");
+  const editor = composer.getByRole("textbox", { name: "Message" });
+  const workflowButton = composer.getByRole("button", {
+    name: "Create workflow",
+  });
+  const connectorsButton = composer.getByRole("button", {
+    name: "Connectors",
+    exact: true,
+  });
+  const microphoneButton = composer.getByRole("button", {
+    name: "Voice input",
+  });
+  const sendButton = composer.getByRole("button", { name: "Send" });
+
+  await expect(connectorsButton.locator("img")).toHaveCount(3);
+  await connectorsButton.click();
+  await expect(
+    page.getByRole("switch", { name: "Disable Cloud browser" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await editor.fill("Keep the mobile Send button contained");
+  await expect(microphoneButton).toBeVisible();
+  await expect(sendButton).toBeEnabled();
+
+  for (const width of [360, 320]) {
+    await page.setViewportSize({ width, height: 780 });
+    await expect(workflowButton).toBeVisible();
+    await expect(connectorsButton.locator("img:visible")).toHaveCount(0);
+    await expect(
+      connectorsButton.locator("img:visible, svg:visible"),
+    ).toHaveCount(1);
+    await expectInside(sendButton, composer);
+  }
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(workflowButton).toBeVisible();
+  await expect(connectorsButton.locator("img:visible")).toHaveCount(3);
+  await expect(
+    connectorsButton.locator("img:visible, svg:visible"),
+  ).toHaveCount(4);
+  await expectInside(sendButton, composer);
+});
+
+test("image lightbox centers and pans across the full viewer", async ({
+  page,
+}) => {
+  const imageMarkup = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
+      <rect width="1200" height="900" fill="#2563eb" />
+    </svg>
+  `;
+  const imageUrl = new URL("/playwright/lightbox-geometry.svg", appUrl).href;
+  const uploadUrl = new URL("/playwright/lightbox-upload", appUrl).href;
+
+  await page.route("**/api/zero/uploads/prepare", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "playwright-lightbox-geometry",
+        filename: "lightbox.svg",
+        contentType: "image/svg+xml",
+        size: Buffer.byteLength(imageMarkup),
+        url: imageUrl,
+        uploadUrl,
+      },
+    });
+  });
+  await page.route(uploadUrl, async (route) => {
+    await route.fulfill({ status: 200 });
+  });
+  await page.route(imageUrl, async (route) => {
+    await route.fulfill({
+      body: imageMarkup,
+      contentType: "image/svg+xml",
+    });
+  });
+
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  await page
+    .getByRole("main")
+    .locator('input[type="file"]')
+    .setInputFiles({
+      buffer: Buffer.from(imageMarkup),
+      mimeType: "image/svg+xml",
+      name: "lightbox.svg",
+    });
+
+  await page
+    .getByRole("button", { name: "Open image preview for lightbox.svg" })
+    .click();
+
+  const lightbox = page.getByTestId("attachment-lightbox");
+  const stage = lightbox.getByTestId("artifact-dialog-image-stage");
+  const image = lightbox.getByTestId("attachment-lightbox-image");
+  await expect(lightbox).toBeVisible();
+  await expect(image).toBeVisible();
+  await expect
+    .poll(async () => {
+      return image.evaluate((element) => {
+        return element instanceof HTMLImageElement ? element.naturalWidth : 0;
+      });
+    })
+    .toBeGreaterThan(0);
+
+  await expect
+    .poll(async () => {
+      const stageBox = await stage.boundingBox();
+      const imageBox = await image.boundingBox();
+      if (!stageBox || !imageBox) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const horizontalDelta = Math.abs(
+        imageBox.x + imageBox.width / 2 - (stageBox.x + stageBox.width / 2),
+      );
+      const verticalDelta = Math.abs(
+        imageBox.y + imageBox.height / 2 - (stageBox.y + stageBox.height / 2),
+      );
+      return Math.max(horizontalDelta, verticalDelta);
+    })
+    .toBeLessThan(2);
+
+  const zoomIn = lightbox.getByRole("button", { name: "Zoom in" });
+  for (let step = 0; step < 4; step += 1) {
+    await zoomIn.click();
+  }
+  await expect(lightbox.getByText("160%", { exact: true })).toBeVisible();
+
+  const imageBeforePan = await image.boundingBox();
+  const stageBox = await stage.boundingBox();
+  if (!imageBeforePan || !stageBox) {
+    throw new Error("Image lightbox geometry unavailable");
+  }
+
+  const dragStart = {
+    x: stageBox.x + stageBox.width / 2,
+    y: stageBox.y + stageBox.height / 2,
+  };
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStart.x + 210, dragStart.y + 120, { steps: 10 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => {
+      const imageAfterPan = await image.boundingBox();
+      return imageAfterPan ? imageAfterPan.x - imageBeforePan.x : 0;
+    })
+    .toBeGreaterThan(180);
+  await expect
+    .poll(async () => {
+      const imageAfterPan = await image.boundingBox();
+      return imageAfterPan ? imageAfterPan.y - imageBeforePan.y : 0;
+    })
+    .toBeGreaterThan(90);
+
+  await lightbox.getByRole("button", { name: "Close" }).click();
+  await expect(lightbox).toBeHidden();
+  await page.getByRole("button", { name: "Remove lightbox.svg" }).click();
+});
+
 test("selected avatar and voice cards keep a single border", async ({
   page,
 }) => {
@@ -37,7 +309,6 @@ test("selected avatar and voice cards keep a single border", async ({
         effectiveSwitches: { joggAiBuiltIn: true },
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
         supportsImageRecognition: true,
         supportsAvatarTemplates: true,
       },

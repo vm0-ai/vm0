@@ -546,6 +546,8 @@
         "label": "Artifact kind filters",
         "presentation": "Presentations",
         "presentationAria": "Show presentation artifacts",
+        "sharedConversation": "Shared conversations",
+        "sharedConversationAria": "Show shared conversation artifacts",
         "video": "Videos",
         "videoAria": "Show video artifacts",
         "website": "Websites",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Presentation",
+      "sharedConversation": "Shared conversation",
       "text": "Text",
       "video": "Video"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "Video preview for {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Open shared conversation",
       "panelTitle": "Artifacts",
       "singularTitle": "Artifact",
       "unavailable": "This artifact is no longer available."
@@ -958,7 +962,34 @@
         "name": "Team"
       },
       "upgrade": "Upgrade",
-      "upgradeTo": "Upgrade to {{plan}}"
+      "upgradeTo": "Upgrade to {{plan}}",
+      "usagePacks": {
+        "bonusCredits": "+{{value}} bonus credits",
+        "changePlan": "Change plan",
+        "choosePlan": "Choose a plan",
+        "choosePlanDescription": "Choose the workspace plan first. Member packages are configured next.",
+        "configurePackages": "Configure member packages",
+        "configurePackagesDescription": "Choose a required package for every member, then review the combined monthly total.",
+        "currentMember": "Current member",
+        "description": "Choose a monthly usage pack for every member.",
+        "discountBonusCredits": "Bonus credits from discount",
+        "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
+        "memberPackages": "Member packages",
+        "memberUsage": "Member usage",
+        "memberUsageTotal": "Monthly pack total",
+        "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
+        "monthlyTotal": "Monthly total",
+        "orderSummary": "Order summary",
+        "packagesStep": "Packages",
+        "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
+        "planStep": "Plan",
+        "purchaseSteps": "Purchase steps",
+        "selectedPlan": "Selected plan",
+        "selectPlan": "Select {{plan}}",
+        "selectUsage": "Usage for {{name}}",
+        "startingAt": "Starting at",
+        "totalCredits": "Total credits"
+      }
     },
     "restore": {
       "cancellationDescription": "This will undo the scheduled cancellation for your {{plan}} plan.",
@@ -1060,7 +1091,6 @@
     "actions": {
       "authorize": "Authorize",
       "cancel": "Cancel",
-      "configure": "Configure",
       "confirm": "Confirm",
       "continue": "Continue",
       "copied": "Copied!",
@@ -1154,6 +1184,7 @@
         "googleCalendarCancelled": "Google Calendar event cancelled",
         "googleCalendarCreated": "Google Calendar event created",
         "googleCalendarUpdated": "Google Calendar event updated",
+        "googleFormsResponseSubmitted": "Google Forms response submitted",
         "googleMeetTranscript": "Google Meet transcript ready",
         "notionChildPage": "New Notion child page",
         "notionDatabaseItem": "New Notion database item",
@@ -1292,7 +1323,6 @@
       "available_other": "Available connectors to connect ({{count}})",
       "configurePermissions": "Configure {{connectorName}} permissions",
       "customAuthorizeDescription": "Review, connect, and authorize this custom connector for the agent.",
-      "customConnectDescription": "Review and connect this custom connector.",
       "find": "Find connectors...",
       "remove": "Remove {{connectorName}}",
       "title": "Connectors"
@@ -1498,6 +1528,22 @@
       "worked": "Worked",
       "workedFor": "Worked for {{duration}}"
     },
+    "sharing": {
+      "cancel": "Cancel",
+      "close": "Close",
+      "copyFailed": "Could not copy the link",
+      "copyLink": "Copy link",
+      "create": "Share",
+      "createFailed": "Could not create the shared conversation. Try again.",
+      "deselectGroup": "Deselect message group",
+      "linkCopied": "Link copied",
+      "selectedCount_one": "{{count}} selected",
+      "selectedCount_other": "{{count}} selected",
+      "selectGroup": "Select message group",
+      "shareLink": "Shared conversation link",
+      "start": "Share messages",
+      "tooLarge": "Select fewer messages to share"
+    },
     "shortcuts": {
       "number": "number"
     },
@@ -1624,7 +1670,6 @@
       "edit": "Edit",
       "grant": "Grant",
       "reconnect": "Reconnect",
-      "rename": "Rename",
       "revoke": "Revoke",
       "save": "Save",
       "saving": "Saving...",
@@ -1874,17 +1919,12 @@
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
       "moreOptions": "More options",
-      "rename": {
-        "displayName": "Display name",
-        "title": "Rename custom connector"
-      },
       "statusConnected": "Connected",
       "toasts": {
         "connected": "Connected",
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
         "disconnected": "Disconnected",
-        "renamed": "Renamed to \"{{connector}}\"",
         "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {
@@ -1892,19 +1932,6 @@
         "description": "These OAuth changes will disconnect every member currently connected with OAuth. They'll need to connect this custom connector again.",
         "title": "Disconnect existing OAuth connections?"
       }
-    },
-    "customProposal": {
-      "configure": "Configure {{connector}}",
-      "descriptionAgent": "Saving will connect your values and authorize {{agent}}.",
-      "descriptionUser": "Saving will connect this custom connector for your account.",
-      "documentTitle": "Configure custom connector",
-      "invalid": "This custom connector proposal link is invalid or expired.",
-      "requestScope": "Request scope",
-      "returnToChat": "Return to the chat and reply ACK so the agent can verify the connector.",
-      "saved": "Saved",
-      "savedToast": "{{connector}} saved",
-      "targetFallback": "this agent",
-      "update": "Update {{connector}}"
     },
     "directed": {
       "authorizeAgent": "Authorize {{agent}}",
@@ -4565,6 +4592,12 @@
       "title": "Page not found"
     }
   },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "This shared conversation does not exist.",
+    "notFoundTitle": "Shared conversation not found",
+    "tryOkou": "Try Okou"
+  },
   "usage": {
     "automations": {
       "empty": "No automations used in this period",
@@ -4599,6 +4632,7 @@
       "imageRecognize": "Image Recognize",
       "maps": "Maps",
       "peopleSearch": "People Search",
+      "translation": "Translation",
       "usage": "Usage",
       "weather": "Weather",
       "webFetch": "Web Fetch",
@@ -4734,6 +4768,11 @@
         "minute_other": "{{count}} minutes",
         "second_one": "{{count}} second",
         "second_other": "{{count}} seconds"
+      },
+      "forms": {
+        "responseSubmittedTitle": "Google Forms response submitted",
+        "rule": "When {{form}} receives a response",
+        "summary": "Form {{form}}"
       },
       "github": {
         "accountConnect": "Connect GitHub",
@@ -5057,6 +5096,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
+        "googleForms": "Google Forms",
         "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",

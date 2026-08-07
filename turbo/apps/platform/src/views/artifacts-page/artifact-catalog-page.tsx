@@ -5,15 +5,18 @@ import type {
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 import {
   IconAlertTriangle,
+  IconChevronRight,
   IconFile,
   IconPhoto,
   IconPresentationAnalytics,
+  IconMessages,
   IconUser,
   IconVideo,
   IconWorld,
 } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
-import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 import { Alert, AlertDescription } from "@vm0/ui/components/ui/alert";
 import { useTranslation } from "react-i18next";
@@ -25,6 +28,7 @@ import {
   selectedArtifactCatalogKind$,
   setArtifactCatalogKind$,
 } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { lightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -48,6 +52,7 @@ const ARTIFACT_KIND_OPTIONS: readonly ArtifactCatalogKind[] = [
   "image",
   "video",
   "avatar",
+  "shared-thread",
   "file",
 ];
 
@@ -64,6 +69,8 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
       <IconVideo size={16} stroke={1.7} />
     ) : kind === "avatar" ? (
       <IconUser size={16} stroke={1.7} />
+    ) : kind === "shared-thread" ? (
+      <IconMessages size={16} stroke={1.7} />
     ) : (
       <IconFile size={16} stroke={1.7} />
     );
@@ -88,9 +95,13 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
               ? t(($) => {
                   return $.artifacts.kinds.avatar;
                 })
-              : t(($) => {
-                  return $.artifacts.kinds.file;
-                });
+              : kind === "shared-thread"
+                ? t(($) => {
+                    return $.artifacts.kinds.sharedConversation;
+                  })
+                : t(($) => {
+                    return $.artifacts.kinds.file;
+                  });
 
   return (
     <span
@@ -197,6 +208,55 @@ function ArtifactCatalogCard({
   );
 }
 
+function ArtifactSharedConversationList({
+  artifacts,
+  onOpen,
+}: {
+  readonly artifacts: readonly ArtifactSummary[];
+  readonly onOpen: (artifactId: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ul className="zero-card divide-y divide-border overflow-hidden">
+      {artifacts.map((artifact) => {
+        return (
+          <li key={artifact.id}>
+            <button
+              type="button"
+              aria-label={t(
+                ($) => {
+                  return $.artifacts.catalog.cardPreview;
+                },
+                { title: artifact.title },
+              )}
+              onClick={() => {
+                onOpen(artifact.id);
+              }}
+              className="group flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground transition-colors group-hover:text-foreground">
+                <IconMessages size={16} stroke={1.7} aria-hidden />
+              </span>
+              <span
+                title={artifact.title}
+                className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+              >
+                {artifact.title}
+              </span>
+              <IconChevronRight
+                size={16}
+                stroke={1.7}
+                aria-hidden
+                className="shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
+              />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function ArtifactCatalogGrid({
   artifacts,
   onOpen,
@@ -225,14 +285,36 @@ export function ArtifactCatalogGrid({
   );
 }
 
-export function ArtifactCatalogSkeleton() {
+export function ArtifactCatalogSkeleton({
+  layout = "grid",
+}: {
+  readonly layout?: "grid" | "list";
+} = {}) {
   const { t } = useTranslation();
+  const loadingLabel = t(($) => {
+    return $.artifacts.catalog.loading;
+  });
+  if (layout === "list") {
+    return (
+      <div
+        className="zero-card divide-y divide-border overflow-hidden"
+        aria-label={loadingLabel}
+      >
+        {Array.from({ length: 8 }, (_, index) => {
+          return (
+            <div key={index} className="flex items-center gap-3 px-4 py-3">
+              <div className="size-8 shrink-0 rounded-lg bg-gray-50" />
+              <div className="h-4 w-2/3 rounded bg-muted/60" />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     <div
       className="grid gap-3"
-      aria-label={t(($) => {
-        return $.artifacts.catalog.loading;
-      })}
+      aria-label={loadingLabel}
       style={{
         gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${String(ARTIFACT_GRID_MIN_CARD_WIDTH_PX)}px), 1fr))`,
       }}
@@ -295,19 +377,22 @@ export function ArtifactCatalogEmpty() {
 
 function ArtifactCatalogKindFilter({
   selectedKind,
-  supportedKinds,
+  avatarEnabled,
+  sharedConversationEnabled,
   onKindChange,
 }: {
   readonly selectedKind: ArtifactCatalogKind | null;
-  readonly supportedKinds: readonly ArtifactCatalogKind[] | undefined;
+  readonly avatarEnabled: boolean;
+  readonly sharedConversationEnabled: boolean;
   readonly onKindChange: (value: ArtifactCatalogKind | null) => void;
 }) {
   const { t } = useTranslation();
-  const options = supportedKinds?.includes("avatar")
-    ? ARTIFACT_KIND_OPTIONS
-    : ARTIFACT_KIND_OPTIONS.filter((kind) => {
-        return kind !== "avatar";
-      });
+  const options = ARTIFACT_KIND_OPTIONS.filter((kind) => {
+    return (
+      (kind !== "avatar" || avatarEnabled) &&
+      (kind !== "shared-thread" || sharedConversationEnabled)
+    );
+  });
   return (
     <div
       className="flex flex-wrap items-center gap-1.5"
@@ -338,9 +423,13 @@ function ArtifactCatalogKindFilter({
                     ? t(($) => {
                         return $.artifacts.catalog.filters.avatar;
                       })
-                    : t(($) => {
-                        return $.artifacts.catalog.filters.file;
-                      });
+                    : kind === "shared-thread"
+                      ? t(($) => {
+                          return $.artifacts.catalog.filters.sharedConversation;
+                        })
+                      : t(($) => {
+                          return $.artifacts.catalog.filters.file;
+                        });
         const ariaLabel =
           kind === "presentation"
             ? t(($) => {
@@ -362,9 +451,14 @@ function ArtifactCatalogKindFilter({
                     ? t(($) => {
                         return $.artifacts.catalog.filters.avatarAria;
                       })
-                    : t(($) => {
-                        return $.artifacts.catalog.filters.fileAria;
-                      });
+                    : kind === "shared-thread"
+                      ? t(($) => {
+                          return $.artifacts.catalog.filters
+                            .sharedConversationAria;
+                        })
+                      : t(($) => {
+                          return $.artifacts.catalog.filters.fileAria;
+                        });
         return (
           <button
             key={kind}
@@ -397,9 +491,10 @@ export function ArtifactCatalogPage() {
   const loadMore = useSet(loadMoreArtifactCatalog$);
   const pageSignal = useGet(pageSignal$);
   const lightboxUrl = useGet(lightboxUrl$);
+  const featureSwitches = useGet(featureSwitch$);
   const catalog = useLoadable(artifactCatalog$);
-  const lastCatalog = useLastLoadable(artifactCatalog$);
   const artifacts = catalog.state === "hasData" ? catalog.data.artifacts : [];
+  const sharedConversationLayout = selectedKind === "shared-thread";
   const hasMore =
     catalog.state === "hasData" && catalog.data.nextCursor !== null;
 
@@ -445,19 +540,33 @@ export function ArtifactCatalogPage() {
         <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
-            supportedKinds={
-              lastCatalog.state === "hasData"
-                ? lastCatalog.data.supportedKinds
-                : undefined
+            avatarEnabled={
+              featureSwitches[FeatureSwitchKey.JoggAiBuiltIn] ?? false
+            }
+            sharedConversationEnabled={
+              featureSwitches[FeatureSwitchKey.SharedThreadSharing] ?? false
             }
             onKindChange={setKind}
           />
           {catalog.state === "loading" ? (
-            <ArtifactCatalogSkeleton />
+            <ArtifactCatalogSkeleton
+              layout={sharedConversationLayout ? "list" : "grid"}
+            />
           ) : catalog.state === "hasError" ? (
             <ArtifactCatalogError />
           ) : artifacts.length === 0 ? (
             <ArtifactCatalogEmpty />
+          ) : sharedConversationLayout ? (
+            <ArtifactSharedConversationList
+              artifacts={artifacts}
+              onOpen={(artifactId) => {
+                detach(
+                  openArtifact(artifactId, pageSignal),
+                  Reason.DomCallback,
+                  "artifact catalog open",
+                );
+              }}
+            />
           ) : (
             <ArtifactCatalogGrid
               artifacts={artifacts}

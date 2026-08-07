@@ -4,7 +4,10 @@ import type {
   BrowserSessionChangedPayload,
   ConnectorChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
-import type { RunnerPreference } from "@vm0/api-contracts/contracts/runners";
+import type {
+  RunnerPreference,
+  RunnerPreferenceResolution,
+} from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -103,6 +106,19 @@ export async function publishConnectorChangedForUserSafely(
     (error) => {
       L.warn("Failed to publish connector changed signal", {
         connectorSlug,
+        error,
+      });
+    },
+  );
+}
+
+export async function publishCustomConnectorListChangedForUserSafely(
+  userId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "customConnectorListChanged"),
+    (error) => {
+      L.warn("Failed to publish custom connector list changed signal", {
         error,
       });
     },
@@ -386,6 +402,7 @@ export async function publishRunnerJobNotification(
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
     readonly runnerPreference: RunnerPreference | null;
+    readonly runnerPreferenceResolution: RunnerPreferenceResolution;
   },
 ): Promise<boolean> {
   const published = await tapError(
@@ -403,6 +420,11 @@ export async function publishRunnerJobNotification(
           : {}),
         ...(metadata?.runnerPreference
           ? { runnerPreference: metadata.runnerPreference }
+          : {}),
+        ...(metadata
+          ? {
+              runnerPreferenceResolution: metadata.runnerPreferenceResolution,
+            }
           : {}),
       });
       L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);

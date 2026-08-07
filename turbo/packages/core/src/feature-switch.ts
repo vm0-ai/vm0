@@ -34,11 +34,6 @@ export interface FeatureSwitchContext {
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
-const CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES = [
-  ...STAFF_ORG_ID_HASHES,
-  "a6e60503", // geo rollout workspace
-] as const;
-
 /**
  * Registry of all feature switches
  */
@@ -255,6 +250,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.GoogleFormsWorkflowAutomations]: {
+    maintainer: "lancy@vm0.ai",
+    description: "Enable Google Forms response workflow automations.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.GithubWebhookAutomations]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -320,8 +321,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable multiple inline artifact templates in structured chat prompts.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
     maintainer: "bingjie@vm0.ai",
@@ -330,12 +330,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CustomModelGateways]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.UsagePackPlans]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
+      "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
-    enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -364,30 +363,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatSteer]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Steer pending chat prompts into active runs and render them inline.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
+  [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Automatically open the latest sidebar-capable card from a running or successfully completed chat run when the utility sidebar is closed and split view is available.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.MermaidDiagrams]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Render ```mermaid code blocks in assistant markdown as diagrams, and tell the web chat agent that they are rendered.",
+      "Create immutable public snapshots from explicitly selected chat messages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -395,6 +374,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.CjkFriendlyMarkdown]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Close markdown emphasis (`*`, `**`, `***`, `~~`) that sits directly against CJK punctuation, which plain CommonMark leaves as literal asterisks. Turn off to fall back to stock CommonMark parsing.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -445,18 +430,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
-  },
-  [FeatureSwitchKey.CustomConnectorCliCreate]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Allow Zero CLI agents to create and configure custom connectors directly.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CustomConnectorOAuth2]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
-    enabled: true,
   },
 };
 

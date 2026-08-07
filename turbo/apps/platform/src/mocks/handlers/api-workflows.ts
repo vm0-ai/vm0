@@ -663,6 +663,29 @@ function createWorkflowAutomationSummaryForRequest(
       databaseUrl: body.eventConfig.databaseUrl,
     });
   }
+  if (body.eventType === "google-forms-response-submitted") {
+    const formInput = body.eventConfig.formUrl.trim();
+    const formId =
+      /^https?:\/\/docs\.google\.com\/forms\/d\/([^/]+)/.exec(formInput)?.[1] ??
+      formInput;
+    return {
+      ...base,
+      kind: "event",
+      eventType: "google-forms-response-submitted",
+      eventConfig: {
+        provider: "google-forms",
+        event: "response_submitted",
+        connectorId: crypto.randomUUID(),
+        form: {
+          id: formId,
+          title: "Mock Google Form",
+          url: `https://docs.google.com/forms/d/${formId}/edit`,
+        },
+      },
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   return passthroughEventAutomationSummaryForRequest(base, body);
 }
 

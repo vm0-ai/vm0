@@ -424,6 +424,24 @@ def _classify_request(
         return BrowserAllow(vm_info=vm_info)
 
     is_asterisk_form = flow.request.path == "*"
+    intent = connector_intent.from_flow(flow)
+    omitted_builtin_firewalls = registry_state.omitted_builtin_firewalls.get(
+        client_ip,
+        frozenset(),
+    )
+    omitted_custom_connector_ids = registry_state.omitted_custom_connector_ids.get(
+        client_ip,
+        frozenset(),
+    )
+    if intent.status == "present" and intent.value in (
+        omitted_builtin_firewalls | omitted_custom_connector_ids
+    ):
+        return Allow(
+            vm_info=vm_info,
+            builtin_firewall_catalog_snapshot=(registry_state.builtin_firewall_catalog_snapshot),
+            is_asterisk_form=is_asterisk_form,
+        )
+
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
     if compiled_firewalls:
@@ -432,7 +450,7 @@ def _classify_request(
             flow.request.method,
             compiled_firewalls,
             compiled_network_policies,
-            connector_intent.from_flow(flow),
+            intent,
             is_asterisk_form=is_asterisk_form,
         )
         if isinstance(result, matching.FirewallAmbiguous):

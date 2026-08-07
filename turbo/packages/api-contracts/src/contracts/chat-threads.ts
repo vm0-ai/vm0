@@ -88,57 +88,6 @@ const chatThreadArtifactRunSchema = z.object({
   files: z.array(chatThreadArtifactFileSchema),
 });
 
-const artifactItemSchema = z.object({
-  artifactItemId: z.string(),
-  threadId: z.string(),
-  runId: z.string(),
-  fileId: z.string(),
-  agentId: z.string(),
-  agentName: z.string().nullable().optional(),
-  agentAvatarUrl: z.string().nullable().optional(),
-  threadTitle: z.string().nullable().optional(),
-  filename: z.string(),
-  contentType: z.string(),
-  size: z.number().default(0),
-  url: z.string(),
-  assetRef: assetRefSchema.optional(),
-  previewImageUrl: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  artifactKind: hostedArtifactKindSchema.optional(),
-  googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
-});
-
-/**
- * Keyset pagination for the artifacts list. Both fields are optional so
- * un-paginated callers (older frontend bundles) still get a valid first page.
- * `cursor` is an opaque token returned as `nextCursor` from a previous page.
- */
-const artifactsListQuerySchema = z.object({
-  limit: z.coerce.number().int().positive().max(10_000).optional(),
-  cursor: z.string().optional(),
-  updatedAfter: z.string().datetime().optional(),
-});
-
-const artifactsListResponseSchema = z.object({
-  artifacts: z.array(artifactItemSchema),
-  /**
-   * True when more artifacts exist beyond this page. Retained for backward
-   * compatibility with older frontend bundles that read it; new clients follow
-   * `nextCursor` instead.
-   */
-  truncated: z.boolean(),
-  /**
-   * Opaque cursor for the next page, or null when this is the last page.
-   */
-  nextCursor: z.string().nullable(),
-  /**
-   * Database time captured before the first page was read. Incremental clients
-   * persist it only after the complete page chain has been cached.
-   */
-  syncUntil: z.string().datetime().optional(),
-});
-
 const imageArtifactEditSnapshotItemSchema = z.object({
   url: z.string().url(),
   x: z.number(),
@@ -411,7 +360,7 @@ const userMessageSourcePartSchema = z.discriminatedUnion("kind", [
   userMessageAgentSourcePartSchema,
 ]);
 
-const userMessagePartSchema = z.discriminatedUnion("type", [
+const userMessageInputPartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
   userMessageAgentPartSchema,
@@ -463,11 +412,57 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
+const userMessageModelPartSchema = z
+  .object({
+    type: z.literal("model"),
+    selectedModel: z.string().min(1),
+  })
+  .strict();
+
+const userMessagePartSchema = z.discriminatedUnion("type", [
+  ...userMessageInputPartSchema.options,
+  userMessageModelPartSchema,
+]);
+
 const userMessageDocumentSchema = z
   .object({
     version: z.literal(1),
     parts: z
       .array(userMessagePartSchema)
+      .min(1)
+      .refine(
+        (parts) => {
+          return (
+            parts.filter((part) => {
+              return (
+                part.type === "source" ||
+                part.type === "automation" ||
+                part.type === "goal" ||
+                part.type === "morning_brief"
+              );
+            }).length <= 1
+          );
+        },
+        { message: "A user message may contain at most one non-content part" },
+      )
+      .refine(
+        (parts) => {
+          return (
+            parts.filter((part) => {
+              return part.type === "model";
+            }).length <= 1
+          );
+        },
+        { message: "A user message may contain at most one model part" },
+      ),
+  })
+  .strict();
+
+const userMessageInputDocumentSchema = z
+  .object({
+    version: z.literal(1),
+    parts: z
+      .array(userMessageInputPartSchema)
       .min(1)
       .refine(
         (parts) => {
@@ -551,6 +546,14 @@ const inputGoalEventSchema = chatEventBaseSchema
     runEventId: z.never().optional(),
     revokesEventId: z.never().optional(),
     sequenceNumber: z.never().optional(),
+  })
+  .strict();
+
+const inputBudgetEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.budget"),
+    content: z.null(),
+    userMessage: userMessageDocumentSchema,
   })
   .strict();
 
@@ -707,6 +710,7 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema,
   inputAutomationEventSchema,
   inputGoalEventSchema,
+  inputBudgetEventSchema,
   inputRejectedEventSchema,
   outputMessageEventSchema,
   outputErrorEventSchema,
@@ -773,16 +777,14 @@ const chatThreadDetailSchema = z.object({
 
 const chatThreadMetadataSchema = z.object({
   id: z.string(),
-  // Optional during API/CLI rollout so a newer CLI can fall back to the
-  // compact thread snapshot when it reaches an older API.
-  agentId: z.string().uuid().optional(),
+  agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
 });
 
 const chatThreadDraftSchema = z
   .object({
-    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftUserMessage: userMessageInputDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
   .superRefine(requireUserMessageForDraftAttachments);
@@ -874,7 +876,7 @@ const chatNormalSendBodyShape = {
    */
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
-  userMessage: userMessageDocumentSchema,
+  userMessage: userMessageInputDocumentSchema,
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
@@ -1070,7 +1072,7 @@ export const chatThreadByIdContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z
       .object({
-        draftUserMessage: userMessageDocumentSchema.nullable(),
+        draftUserMessage: userMessageInputDocumentSchema.nullable(),
         draftAttachments: z
           .array(persistedAttachmentSchema)
           .nullable()
@@ -1543,19 +1545,6 @@ export const chatThreadArtifactsContract = c.router({
 });
 
 export const artifactsContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/artifacts",
-    headers: authHeadersSchema,
-    query: artifactsListQuerySchema,
-    responses: {
-      200: artifactsListResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary:
-      "List artifacts for the caller's current organization (keyset-paginated)",
-  },
   getImageEditSnapshot: {
     method: "GET",
     path: "/api/zero/artifacts/image-edit-snapshot",
@@ -1632,6 +1621,8 @@ export {
   chatThreadDraftSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
+  userMessageInputPartSchema,
+  userMessageInputDocumentSchema,
   userMessagePartSchema,
   userMessageDocumentSchema,
   presentationGenerationTemplateRequestSchema,
@@ -1645,8 +1636,6 @@ export {
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
-  artifactItemSchema,
-  artifactsListResponseSchema,
   imageArtifactEditSnapshotSchema,
   imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
@@ -1662,6 +1651,10 @@ export type GenerationTemplateRequest = z.infer<
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
 export type FeedbackNotePart = z.infer<typeof feedbackNotePartSchema>;
+export type UserMessageInputPart = z.infer<typeof userMessageInputPartSchema>;
+export type UserMessageInputDocument = z.infer<
+  typeof userMessageInputDocumentSchema
+>;
 export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
@@ -1731,12 +1724,13 @@ export type ChatInputEvent = Extract<
       | "input.prompt"
       | "input.automation"
       | "input.goal"
+      | "input.budget"
       | "input.rejected";
   }
 >;
 export type ChatUserMessageEvent = Extract<
   ChatEvent,
-  { eventType: "input.prompt" | "input.rejected" }
+  { eventType: "input.prompt" | "input.budget" | "input.rejected" }
 >;
 export type ChatAutomationEvent = Extract<
   ChatEvent,
@@ -1763,8 +1757,6 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
-export type ArtifactItem = z.infer<typeof artifactItemSchema>;
-export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type ImageArtifactEditSnapshot = z.infer<
   typeof imageArtifactEditSnapshotSchema
 >;

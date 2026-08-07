@@ -65,7 +65,7 @@ use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{
     ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobCandidate, JobProvider,
-    LocalProvider, NetworkPolicyRefreshHandle,
+    LocalProvider, NetworkPolicyRefreshHandle, RunnerPreferenceRemovalReason,
 };
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
@@ -86,7 +86,6 @@ mod job_terminal_log;
 mod mitm_restart;
 mod orphan_reap;
 mod ownership;
-mod pre_park_handoff_observation;
 mod sandbox_finalization;
 mod signals;
 
@@ -111,9 +110,6 @@ use mitm_restart::{
 use orphan_reap::{
     OrphanReapMode, OrphanReapProcessDiscovery, OrphanedActiveRuns, reap_orphaned_active_runs,
 };
-use pre_park_handoff_observation::{
-    CandidateOutcome, CandidateReason, record_candidate_observation,
-};
 use signals::{
     EarlySignals, SignalController, SignalHandlerTask, handle_stopping_signal, recv_handler_task,
 };
@@ -123,16 +119,7 @@ const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
 fn candidate_for_admission(
     candidate: JobCandidate,
     pending_candidate: &mut Option<JobCandidate>,
-    runner_id: &str,
-    heartbeat_generation: u64,
 ) -> JobCandidate {
-    record_candidate_observation(
-        &candidate,
-        runner_id,
-        heartbeat_generation,
-        CandidateOutcome::Received,
-        None,
-    );
     if let Some(pending) =
         pending_candidate.take_if(|pending| pending.run_id() == candidate.run_id())
     {
@@ -149,26 +136,10 @@ fn candidate_for_admission(
 fn retain_finalizing_candidate(
     pending_candidate: &mut Option<JobCandidate>,
     candidate: JobCandidate,
-    runner_id: &str,
-    heartbeat_generation: u64,
 ) {
     if pending_candidate.is_none() {
-        record_candidate_observation(
-            &candidate,
-            runner_id,
-            heartbeat_generation,
-            CandidateOutcome::Retained,
-            None,
-        );
         *pending_candidate = Some(candidate);
     } else {
-        record_candidate_observation(
-            &candidate,
-            runner_id,
-            heartbeat_generation,
-            CandidateOutcome::SlotOccupied,
-            None,
-        );
         info!(
             run_id = %candidate.run_id(),
             "finalizing candidate not retained because the pending slot is occupied"
@@ -494,7 +465,7 @@ async fn run_start_with_home(
     let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
         resource_locks
             .profile_paths()
-            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory_bin()),
+            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory()),
     );
 
     // Compute the smallest profile resources for budget pre-check.
@@ -623,7 +594,6 @@ async fn run_start_with_home(
             .create_runtime(sandbox::RuntimeConfig {
                 proxy_port: Some(mitm.port()),
                 dns_port: Some(dns_port),
-                guest_dns_netfilter_trace: args.local,
             })
             .await
             .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
@@ -959,6 +929,7 @@ enum SignalSource {
 enum StartLoopEvent {
     BudgetExhaustedReactorEntered,
     IdleCleanupProcessed { expired_count: usize },
+    ActiveRunStatusPublished { run_id: RunId },
     BeforeIdlePoolOwnershipTransfer { run_id: RunId },
     VmParkedForReuse { run_id: RunId, reuse_key: String },
     UsageFlushRequested,
@@ -1064,6 +1035,26 @@ impl StartLoopTestObserver {
 
     fn notify_before_idle_pool_ownership_transfer(&self, run_id: RunId) {
         self.record(StartLoopEvent::BeforeIdlePoolOwnershipTransfer { run_id });
+    }
+
+    fn notify_active_run_status_published(&self, run_id: RunId) {
+        self.record(StartLoopEvent::ActiveRunStatusPublished { run_id });
+    }
+
+    fn active_run_status_was_published(&self, run_id: RunId) -> bool {
+        self.inner
+            .events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .any(|event| {
+                matches!(
+                    event,
+                    StartLoopEvent::ActiveRunStatusPublished {
+                        run_id: observed_run_id
+                    } if *observed_run_id == run_id
+                )
+            })
     }
 
     fn notify_vm_parked_for_reuse(&self, run_id: RunId, reuse_key: String) {
@@ -1564,16 +1555,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             current_mode = mode;
             shared.status.set_mode(mode).await;
         }
-        if mode != RunnerMode::Running
-            && let Some(candidate) = pending_finalizing_candidate.take()
-        {
-            record_candidate_observation(
-                &candidate,
-                &runner.id,
-                runner.heartbeat_generation,
-                CandidateOutcome::Cancelled,
-                Some(CandidateReason::RunnerModeChanged),
-            );
+        if mode != RunnerMode::Running {
+            pending_finalizing_candidate = None;
         }
         match mode {
             RunnerMode::Starting => {}
@@ -1658,8 +1641,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let candidate = candidate_for_admission(
                     candidate,
                     &mut pending_finalizing_candidate,
-                    &runner.id,
-                    runner.heartbeat_generation,
                 );
                 let result = handle_discovered_job(
                     DiscoveredJob { candidate },
@@ -1684,8 +1665,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     retain_finalizing_candidate(
                         &mut pending_finalizing_candidate,
                         candidate,
-                        &runner.id,
-                        runner.heartbeat_generation,
                     );
                 }
                 let mut drained_ready_candidates = 0;
@@ -1708,8 +1687,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     let candidate = candidate_for_admission(
                         candidate,
                         &mut pending_finalizing_candidate,
-                        &runner.id,
-                        runner.heartbeat_generation,
                     );
                     let result = handle_discovered_job(
                         DiscoveredJob { candidate },
@@ -1733,8 +1710,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         retain_finalizing_candidate(
                             &mut pending_finalizing_candidate,
                             candidate,
-                            &runner.id,
-                            runner.heartbeat_generation,
                         );
                     }
                 }
@@ -1879,14 +1854,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = pending_finalizing_candidate.take() else {
                     continue;
                 };
-                record_candidate_observation(
-                    &candidate,
-                    &runner.id,
-                    runner.heartbeat_generation,
-                    CandidateOutcome::Expired,
-                    None,
-                );
-                let candidate = candidate.without_runner_preference();
+                let candidate = candidate
+                    .without_runner_preference(RunnerPreferenceRemovalReason::Expired);
                 let result = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
@@ -1908,8 +1877,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     retain_finalizing_candidate(
                         &mut pending_finalizing_candidate,
                         candidate,
-                        &runner.id,
-                        runner.heartbeat_generation,
                     );
                 }
                 if result.needs_reuse_state_refresh {
@@ -1944,8 +1911,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         retain_finalizing_candidate(
                             &mut pending_finalizing_candidate,
                             candidate,
-                            &runner.id,
-                            runner.heartbeat_generation,
                         );
                     }
                 }

@@ -42,9 +42,6 @@ use crate::factory::InvariantConfig;
 use crate::guest_dns_failure_diagnostics::{
     GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_diagnostics,
 };
-use crate::guest_dns_netfilter_trace::GuestDnsNetfilterTraceAttachment;
-use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceBaseline;
-use crate::guest_dns_network_evidence::GuestDnsNetworkEvidenceTarget;
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
@@ -475,8 +472,6 @@ pub struct FirecrackerSandbox {
     pub(crate) cow_device: Option<PooledNbdCowDevice>,
     /// Firecracker-local device rate limiters for this sandbox lifecycle.
     device_rate_limits: Option<FirecrackerDeviceRateLimits>,
-    /// Attachment-local counters captured before Firecracker starts.
-    guest_dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
     /// Per-sandbox runtime task handles.
     runtime: SandboxRuntimeHandles,
     /// Process-group leader PID for the spawned Firecracker wrapper.
@@ -530,7 +525,6 @@ pub(crate) struct FirecrackerSandboxInit {
     pub(crate) cow_device: PooledNbdCowDevice,
     pub(crate) device_rate_limits: Option<FirecrackerDeviceRateLimits>,
     pub(crate) leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
-    pub(crate) guest_dns_network_baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
 }
 
 pub(crate) struct SandboxNetwork {
@@ -556,27 +550,6 @@ impl SandboxNetwork {
 
     fn host_device(&self) -> &str {
         self.info.host_device()
-    }
-
-    fn attachment_generation(&self) -> u64 {
-        self.info.attachment_generation()
-    }
-
-    fn guest_dns_netfilter_trace(&self) -> &GuestDnsNetfilterTraceAttachment {
-        self.info.guest_dns_netfilter_trace()
-    }
-
-    fn reuse_eligible(&self) -> bool {
-        self.lease.as_ref().is_some_and(NetnsLease::reuse_eligible)
-    }
-
-    pub(crate) fn set_dns_network_baseline(
-        &mut self,
-        baseline: Option<Arc<GuestDnsNetworkEvidenceBaseline>>,
-    ) {
-        if let Some(lease) = self.lease.as_mut() {
-            lease.set_dns_network_baseline(baseline);
-        }
     }
 
     fn mark_non_reusable(&mut self) -> sandbox::Result<()> {
@@ -619,7 +592,6 @@ impl FirecrackerSandbox {
             cow_device,
             device_rate_limits,
             leak_tx,
-            guest_dns_network_baseline,
         } = init;
         let id = config.id.to_string();
         Self {
@@ -631,7 +603,6 @@ impl FirecrackerSandbox {
             network: SandboxNetwork::from_lease(network),
             cow_device: Some(cow_device),
             device_rate_limits,
-            guest_dns_network_baseline,
             runtime: SandboxRuntimeHandles::default(),
             process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
@@ -660,23 +631,6 @@ impl FirecrackerSandbox {
 
     pub(crate) fn allow_workspace_delete_on_leak_cleanup(&mut self) {
         self.delete_workspace_on_leak_cleanup = true;
-    }
-
-    pub(crate) fn dns_network_evidence_target_for_reuse(
-        &self,
-    ) -> Option<GuestDnsNetworkEvidenceTarget> {
-        self.factory_config
-            .dns_port
-            .filter(|_| self.network.reuse_eligible())
-            .map(|dns_port| {
-                GuestDnsNetworkEvidenceTarget::new(
-                    self.network.name(),
-                    self.network.host_device(),
-                    self.network.peer_ip(),
-                    dns_port,
-                    self.network.guest_dns_netfilter_trace(),
-                )
-            })
     }
 
     fn current_state(&self) -> SandboxState {
@@ -1334,10 +1288,7 @@ impl FirecrackerSandbox {
                             host_device: self.network.host_device(),
                             peer_ip: self.network.peer_ip(),
                             dns_port,
-                            attachment_generation: self.network.attachment_generation(),
                             readiness_attempts: error.attempts,
-                            root_netfilter_trace: self.network.guest_dns_netfilter_trace(),
-                            network_evidence_baseline: self.guest_dns_network_baseline.as_deref(),
                             startup_mode: if self.factory_config.snapshot.is_some() {
                                 "snapshot_restore"
                             } else {
@@ -3453,60 +3404,6 @@ fn park_admission_action(outcome: SandboxParkOutcome) -> &'static str {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum BalloonSettleOutcome {
-    SkippedZeroTarget,
-    TargetReached,
-    WithinTolerance,
-    PressureLimited,
-    Deadline,
-    StatsUnavailable,
-}
-
-impl BalloonSettleOutcome {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::SkippedZeroTarget => "skipped_zero_target",
-            Self::TargetReached => "target_reached",
-            Self::WithinTolerance => "within_tolerance",
-            Self::PressureLimited => "pressure_limited",
-            Self::Deadline => "deadline",
-            Self::StatsUnavailable => "stats_unavailable",
-        }
-    }
-}
-
-fn emit_balloon_settle_summary(
-    settle_outcome: BalloonSettleOutcome,
-    elapsed_ms: u64,
-    sample_count: u32,
-    park_outcome: SandboxParkOutcome,
-) {
-    info!(
-        target: "sandbox_fc::balloon_settle",
-        measurement = "balloon_settle",
-        outcome = settle_outcome.as_str(),
-        elapsed_ms,
-        sample_count,
-        admission_action = park_admission_action(park_outcome),
-        "balloon settle completed"
-    );
-}
-
-fn complete_balloon_settle(
-    summary: &BalloonSettleSummary,
-    settle_outcome: BalloonSettleOutcome,
-    park_outcome: SandboxParkOutcome,
-) -> SandboxParkOutcome {
-    emit_balloon_settle_summary(
-        settle_outcome,
-        summary.elapsed_ms(),
-        summary.sample_count,
-        park_outcome,
-    );
-    park_outcome
-}
-
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
 ///
 /// The guest needs running vCPUs to inflate, so this must be called
@@ -3542,7 +3439,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     &summary,
                     outcome,
                 );
-                return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
+                return outcome;
             }
         }
 
@@ -3570,11 +3467,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon fully inflated, proceeding to pause"
                     );
-                    return complete_balloon_settle(
-                        &summary,
-                        BalloonSettleOutcome::TargetReached,
-                        SandboxParkOutcome::Reusable,
-                    );
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 if deficit_mib <= tolerance_mib {
@@ -3598,11 +3491,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
                     );
-                    return complete_balloon_settle(
-                        &summary,
-                        BalloonSettleOutcome::WithinTolerance,
-                        SandboxParkOutcome::Reusable,
-                    );
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 if summary.is_pressure_limited_partial_reclaim(deficit_mib, tolerance_mib) {
@@ -3627,11 +3516,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                         reason = BALLOON_PRESSURE_LIMITED_REASON,
                         "balloon pressure-limited partial reclaim, proceeding to pause"
                     );
-                    return complete_balloon_settle(
-                        &summary,
-                        BalloonSettleOutcome::PressureLimited,
-                        SandboxParkOutcome::Reusable,
-                    );
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 trace!(
@@ -3670,11 +3555,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
-                return complete_balloon_settle(
-                    &summary,
-                    BalloonSettleOutcome::StatsUnavailable,
-                    outcome,
-                );
+                return outcome;
             }
             Err(_) => {
                 let outcome = summary.park_outcome();
@@ -3686,7 +3567,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     &summary,
                     outcome,
                 );
-                return complete_balloon_settle(&summary, BalloonSettleOutcome::Deadline, outcome);
+                return outcome;
             }
         }
 
@@ -3754,12 +3635,6 @@ async fn park_inner(
         // savings.
         wait_for_balloon(&client, target, log_id).await
     } else {
-        emit_balloon_settle_summary(
-            BalloonSettleOutcome::SkippedZeroTarget,
-            0,
-            0,
-            SandboxParkOutcome::Reusable,
-        );
         SandboxParkOutcome::Reusable
     };
 

@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  getProviderRuntimeModel,
   getVm0Vendor,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -48,6 +47,7 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
+import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TENANT_NAME = "E2E Test Tenant";
@@ -61,7 +61,7 @@ const STARTER_GRANT_SOURCE = "starter_grant";
 const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
 const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 
-type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type StarterGrantTx = Tx;
 
 function isoString(value: Date): string {
   return value.toISOString();
@@ -298,35 +298,26 @@ async function seedDefaultAgent(
 
 async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
   await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, composeId));
-  await db.insert(vm0ApiKeys).values(vm0ManagedKeyRows(composeId));
+  await db
+    .insert(vm0ApiKeys)
+    .values(vm0ManagedKeyRows(composeId))
+    .onConflictDoNothing({ target: vm0ApiKeys.vendor });
 }
 
 function vm0ManagedKeyRows(composeId: string) {
   return [
     {
       vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
-      model: getProviderRuntimeModel(
-        "vm0",
-        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-      ),
       apiKey: `vm0-key-default-${composeId}`,
       label: composeId,
     },
     {
       vendor: "anthropic",
-      model: "claude-sonnet-4-6",
       apiKey: `vm0-key-anthropic-${composeId}`,
       label: composeId,
     },
     {
-      vendor: "deepseek",
-      model: "deepseek-v4-flash",
-      apiKey: `vm0-key-deepseek-${composeId}`,
-      label: composeId,
-    },
-    {
       vendor: "moonshot",
-      model: "kimi-k2.7-code",
       apiKey: `vm0-key-moonshot-${composeId}`,
       label: composeId,
     },

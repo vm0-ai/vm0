@@ -204,6 +204,8 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     port: numberValue(event.port),
     method: stringValue(event.method),
     url: stringValue(event.url),
+    url_truncated: booleanValue(event.url_truncated),
+    url_original_char_count: numberValue(event.url_original_char_count),
     status: numberValue(event.status),
     latency_ms: numberValue(event.latency_ms),
     request_size: numberValue(event.request_size),

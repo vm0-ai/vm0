@@ -8,6 +8,7 @@ use sandbox::{
     SandboxParkNonReusableReason, SandboxParkOutcome,
 };
 
+use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_reuse_preparation::IdleReusePreparation;
 use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
@@ -19,7 +20,9 @@ use crate::workspace_image_cache::{
 use crate::workspace_promotion::abandon_unpublished_workspace_promotion;
 
 use super::entry::{
-    IdleSandboxMetadata, IdleSandboxResources, ParkedIdleCandidate, RejectedParkedIdleCandidate,
+    IdleDestroyJob, IdleEntry, IdleSandboxMetadata, IdleSandboxResources, ParkedIdleCandidate,
+    RejectedParkedIdleCandidate, ReservedIdleSandbox, SpeculativeIdleSandbox,
+    WorkspacePromotionPolicy,
 };
 
 /// One-shot request to transition an active sandbox into same-reuse-key idle
@@ -43,6 +46,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) storage_fingerprints: StorageFingerprints,
     pub(crate) restored_session_identity: Option<RestoredSessionIdentity>,
     pub(crate) history_generation_run_id: Option<RunId>,
+    pub(crate) guest_timezone_intent: GuestTimezoneIntent,
     pub(crate) workspace_image_size_bytes: u64,
     pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
@@ -96,6 +100,23 @@ pub(crate) enum IdleParkFailureParts {
     },
 }
 
+struct IdleParkTransitionInput {
+    run_id: RunId,
+    resources: IdleSandboxResources,
+    metadata: IdleSandboxMetadata,
+    budget_lease: BudgetLease,
+    workspace_image_size_bytes: u64,
+}
+
+pub(crate) enum SpeculativeReparkResult {
+    Reparked(Box<ReservedIdleSandbox>),
+    Destroy {
+        destroy_job: Box<IdleDestroyJob>,
+        reason: &'static str,
+        error: String,
+    },
+}
+
 impl IdleParkRequest {
     pub(crate) fn new(parts: IdleParkRequestParts) -> Self {
         Self { parts }
@@ -120,7 +141,7 @@ impl IdleParkRequest {
     ) -> Result<IdleParkOutcome, IdleParkFailure> {
         let IdleParkRequestParts {
             run_id,
-            mut sandbox,
+            sandbox,
             factory,
             reuse_key,
             sandbox_id,
@@ -131,14 +152,10 @@ impl IdleParkRequest {
             storage_fingerprints,
             restored_session_identity,
             history_generation_run_id,
+            guest_timezone_intent,
             workspace_image_size_bytes,
             workspace_promotion,
         } = self.parts;
-
-        let retained_runtime_dir = restored_session_identity
-            .as_ref()
-            .and_then(RestoredSessionIdentity::final_metadata_verification)
-            .map(|verification| verification.runtime_dir.to_owned());
 
         let metadata = IdleSandboxMetadata {
             reuse_key,
@@ -149,49 +166,84 @@ impl IdleParkRequest {
             storage_fingerprints,
             restored_session_identity,
             history_generation_run_id,
+            guest_timezone_intent,
             last_completed_at: None,
         };
 
-        if let Some(promotion) = workspace_promotion.as_ref()
-            && let Err(mismatch) =
-                promotion.validate_stored_cache_identity(WorkspaceImagePromotionIdentityRequest {
-                    sandbox_id: metadata.sandbox_id,
-                    profile_name: &metadata.profile_name,
-                    reuse_key: metadata.reuse_key(),
-                    working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: workspace_image_size_bytes,
-                })
-        {
-            tracing::warn!(
-                sandbox_id = %metadata.sandbox_id,
-                profile_name = %metadata.profile_name,
-                mismatch = mismatch.as_str(),
-                "workspace promotion identity mismatch before idle park; destroying without workspace promotion"
-            );
-            abandon_unpublished_workspace_promotion(
-                workspace_promotion,
-                "promotion_identity_mismatch",
-            )
-            .await;
-            return Err(IdleParkFailure {
-                ownership: IdleParkFailureOwnership::Active {
-                    resources: IdleSandboxResources {
-                        sandbox,
-                        factory,
-                        workspace_promotion: None,
-                    },
-                    budget_lease,
+        park_idle_transition(
+            IdleParkTransitionInput {
+                run_id,
+                resources: IdleSandboxResources {
+                    sandbox,
+                    factory,
+                    workspace_promotion,
                 },
-                reason: "promotion_identity_mismatch",
-                error: format!("workspace promotion identity mismatch: {mismatch}"),
-            });
-        }
+                metadata,
+                budget_lease,
+                workspace_image_size_bytes,
+            },
+            observer,
+        )
+        .await
+    }
+}
 
-        let preparation = match IdleReusePreparation::new(
-            sandbox.id(),
-            run_id,
-            retained_runtime_dir.as_deref(),
-        ) {
+async fn park_idle_transition(
+    input: IdleParkTransitionInput,
+    observer: Option<&mut dyn SandboxFinalExecParkObserver>,
+) -> Result<IdleParkOutcome, IdleParkFailure> {
+    let IdleParkTransitionInput {
+        run_id,
+        resources,
+        metadata,
+        budget_lease,
+        workspace_image_size_bytes,
+    } = input;
+    let IdleSandboxResources {
+        mut sandbox,
+        factory,
+        workspace_promotion,
+    } = resources;
+    let retained_runtime_dir = metadata
+        .restored_session_identity
+        .as_ref()
+        .and_then(RestoredSessionIdentity::final_metadata_verification)
+        .map(|verification| verification.runtime_dir.to_owned());
+
+    if let Some(promotion) = workspace_promotion.as_ref()
+        && let Err(mismatch) =
+            promotion.validate_stored_cache_identity(WorkspaceImagePromotionIdentityRequest {
+                sandbox_id: metadata.sandbox_id,
+                profile_name: &metadata.profile_name,
+                reuse_key: metadata.reuse_key(),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: workspace_image_size_bytes,
+            })
+    {
+        tracing::warn!(
+            sandbox_id = %metadata.sandbox_id,
+            profile_name = %metadata.profile_name,
+            mismatch = mismatch.as_str(),
+            "workspace promotion identity mismatch before idle park; destroying without workspace promotion"
+        );
+        abandon_unpublished_workspace_promotion(workspace_promotion, "promotion_identity_mismatch")
+            .await;
+        return Err(IdleParkFailure {
+            ownership: IdleParkFailureOwnership::Active {
+                resources: IdleSandboxResources {
+                    sandbox,
+                    factory,
+                    workspace_promotion: None,
+                },
+                budget_lease,
+            },
+            reason: "promotion_identity_mismatch",
+            error: format!("workspace promotion identity mismatch: {mismatch}"),
+        });
+    }
+
+    let preparation =
+        match IdleReusePreparation::new(sandbox.id(), run_id, retained_runtime_dir.as_deref()) {
             Ok(preparation) => preparation,
             Err(error) => {
                 return Err(IdleParkFailure {
@@ -209,73 +261,131 @@ impl IdleParkRequest {
             }
         };
 
-        let final_exec_and_park = {
-            let request = preparation.exec_request();
-            let transition = match observer {
-                Some(observer) => sandbox.final_exec_and_park_with_observer(
-                    &request,
-                    "idle-reuse-preparation-and-park",
-                    observer,
-                ),
-                None => sandbox.final_exec_and_park(&request, "idle-reuse-preparation-and-park"),
-            };
-            AssertUnwindSafe(transition).catch_unwind().await
+    let final_exec_and_park = {
+        let request = preparation.exec_request();
+        let transition = match observer {
+            Some(observer) => sandbox.final_exec_and_park_with_observer(
+                &request,
+                "idle-reuse-preparation-and-park",
+                observer,
+            ),
+            None => sandbox.final_exec_and_park(&request, "idle-reuse-preparation-and-park"),
         };
-        match final_exec_and_park {
-            Ok(Ok(outcome)) => {
-                let candidate = ParkedIdleCandidate {
-                    resources: IdleSandboxResources {
-                        sandbox,
-                        factory,
-                        workspace_promotion,
+        AssertUnwindSafe(transition).catch_unwind().await
+    };
+    match final_exec_and_park {
+        Ok(Ok(outcome)) => {
+            let candidate = ParkedIdleCandidate {
+                resources: IdleSandboxResources {
+                    sandbox,
+                    factory,
+                    workspace_promotion,
+                },
+                metadata,
+                budget_lease,
+            };
+            if let Err(error) = preparation.validate_result(&outcome.exec_result) {
+                return Err(IdleParkFailure {
+                    ownership: IdleParkFailureOwnership::Parked {
+                        rejected: candidate.into_rejected(),
                     },
-                    metadata,
-                    budget_lease,
-                };
-                if let Err(error) = preparation.validate_result(&outcome.exec_result) {
-                    return Err(IdleParkFailure {
-                        ownership: IdleParkFailureOwnership::Parked {
-                            rejected: candidate.into_rejected(),
-                        },
-                        reason: "reuse_preparation_failed",
-                        error: error.to_string(),
-                    });
-                }
-                Ok(match outcome.park_outcome {
-                    SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
-                    SandboxParkOutcome::NonReusable(reason) => {
-                        IdleParkOutcome::NonReusable { candidate, reason }
-                    }
-                })
+                    reason: "reuse_preparation_failed",
+                    error: error.to_string(),
+                });
             }
-            Ok(Err(e)) => Err(IdleParkFailure {
+            Ok(match outcome.park_outcome {
+                SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
+                SandboxParkOutcome::NonReusable(reason) => {
+                    IdleParkOutcome::NonReusable { candidate, reason }
+                }
+            })
+        }
+        Ok(Err(error)) => Err(IdleParkFailure {
+            ownership: IdleParkFailureOwnership::Active {
+                resources: IdleSandboxResources {
+                    sandbox,
+                    factory,
+                    workspace_promotion,
+                },
+                budget_lease,
+            },
+            reason: "park_failed",
+            error: error.to_string(),
+        }),
+        Err(_) => {
+            // A panic leaves the park transition state uncertain; destroy
+            // the sandbox, but do not publish a workspace cache image.
+            abandon_unpublished_workspace_promotion(workspace_promotion, "park_panicked").await;
+            Err(IdleParkFailure {
                 ownership: IdleParkFailureOwnership::Active {
                     resources: IdleSandboxResources {
                         sandbox,
                         factory,
-                        workspace_promotion,
+                        workspace_promotion: None,
                     },
                     budget_lease,
                 },
-                reason: "park_failed",
-                error: e.to_string(),
-            }),
-            Err(_) => {
-                // A panic leaves the park transition state uncertain; destroy
-                // the sandbox, but do not publish a workspace cache image.
-                abandon_unpublished_workspace_promotion(workspace_promotion, "park_panicked").await;
-                Err(IdleParkFailure {
-                    ownership: IdleParkFailureOwnership::Active {
-                        resources: IdleSandboxResources {
-                            sandbox,
-                            factory,
-                            workspace_promotion: None,
-                        },
+                reason: "park_panicked",
+                error: "sandbox park panicked".into(),
+            })
+        }
+    }
+}
+
+impl SpeculativeIdleSandbox {
+    pub(crate) async fn repark_for_claim_rollback(
+        self,
+        run_id: RunId,
+        workspace_image_size_bytes: u64,
+    ) -> SpeculativeReparkResult {
+        let Self { entry } = self;
+        let IdleEntry {
+            resources,
+            metadata,
+            budget_lease,
+            parked_at,
+            idle_timeout,
+        } = entry;
+        let reuse_key = metadata.reuse_key.clone();
+        let profile_name = metadata.profile_name.clone();
+        match park_idle_transition(
+            IdleParkTransitionInput {
+                run_id,
+                resources,
+                metadata,
+                budget_lease,
+                workspace_image_size_bytes,
+            },
+            None,
+        )
+        .await
+        {
+            Ok(IdleParkOutcome::Reusable(candidate)) => {
+                SpeculativeReparkResult::Reparked(Box::new(ReservedIdleSandbox {
+                    entry: candidate.into_idle_entry(parked_at, idle_timeout),
+                }))
+            }
+            Ok(IdleParkOutcome::NonReusable { candidate, reason }) => {
+                let (payload, budget_lease) = candidate.into_active_destroy_parts();
+                SpeculativeReparkResult::Destroy {
+                    destroy_job: Box::new(IdleDestroyJob {
+                        payload,
                         budget_lease,
-                    },
-                    reason: "park_panicked",
-                    error: "sandbox park panicked".into(),
-                })
+                        reuse_key,
+                        profile_name,
+                    }),
+                    reason: "speculative_repark_non_reusable",
+                    error: format!("re-parked sandbox is not reusable: {}", reason.as_str()),
+                }
+            }
+            Err(failure) => {
+                let (destroy_job, reason, error) =
+                    failure.into_speculative_destroy_job(reuse_key, profile_name);
+                SpeculativeReparkResult::Destroy {
+                    destroy_job: Box::new(destroy_job),
+                    reason,
+                    error,
+                }
             }
         }
     }
@@ -304,6 +414,39 @@ impl IdleParkOutcome {
 }
 
 impl IdleParkFailure {
+    fn into_speculative_destroy_job(
+        self,
+        reuse_key: String,
+        profile_name: String,
+    ) -> (IdleDestroyJob, &'static str, String) {
+        let Self {
+            ownership,
+            reason,
+            error,
+        } = self;
+        let (payload, budget_lease) = match ownership {
+            IdleParkFailureOwnership::Active {
+                resources,
+                budget_lease,
+            } => (
+                resources
+                    .into_destroy_payload(WorkspacePromotionPolicy::AbandonUnpublished(reason)),
+                budget_lease,
+            ),
+            IdleParkFailureOwnership::Parked { rejected } => rejected.into_active_destroy_parts(),
+        };
+        (
+            IdleDestroyJob {
+                payload,
+                budget_lease,
+                reuse_key,
+                profile_name,
+            },
+            reason,
+            error,
+        )
+    }
+
     pub(crate) fn into_parts(self) -> IdleParkFailureParts {
         let Self {
             ownership,

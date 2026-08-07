@@ -844,6 +844,73 @@ def test_same_flush_retryable_batches_preserve_batch_order_after_out_of_order_ca
     )
 
 
+def test_late_retryable_batch_precedes_saturated_suffix_from_same_flush(tmp_path):
+    callbacks: list[DeliveryOutcomeCallback] = []
+    first_attempt_runs: list[str] = []
+    retry_runs: list[str] = []
+    pending_path = tmp_path / "usage-pending"
+    retrying = False
+
+    def enqueue_webhook(
+        url: str,
+        sandbox_token: str,
+        payload: dict,
+        path: str,
+        log_type: str,
+        delivery_outcome_callback: DeliveryOutcomeCallback,
+    ) -> bool:
+        del url, sandbox_token, path
+        assert log_type == "usage_event"
+        run_id = payload["runId"]
+        if retrying:
+            retry_runs.append(run_id)
+            delivery_outcome_callback("success")
+            return True
+        first_attempt_runs.append(run_id)
+        if run_id == "run-a":
+            callbacks.append(delivery_outcome_callback)
+            return True
+        return False
+
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue_webhook)
+    usage.set_pending_path(str(pending_path))
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    for run_id, source_key in (("run-a", "source-a"), ("run-b", "source-b")):
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            run_id,
+            [event(source_key=source_key)],
+            str(proxy_log_path),
+        )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    assert first_attempt_runs == ["run-a", "run-b"]
+    assert len(callbacks) == 1
+
+    callbacks[0]("retryable_failure")
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=2,
+        reports=0,
+        flush_request_id="late-retryable-retained",
+    )
+
+    retrying = True
+    assert usage.flush_usage_events(trigger="test") == 2
+
+    assert retry_runs == ["run-a", "run-b"]
+    assert usage.flush_usage_events(trigger="test") == 0
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="late-retryable-drained",
+    )
+
+
 def test_synchronous_retryable_delivery_before_admission_saturation_is_retained(
     tmp_path,
 ):

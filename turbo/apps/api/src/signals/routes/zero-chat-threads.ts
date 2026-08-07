@@ -6,14 +6,10 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
   type ChatEvent,
-  type CompatibleChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-  CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-  CLIENT_TYPE_APP,
-  CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { z } from "zod";
@@ -69,36 +65,11 @@ function isValidChatThreadId(id: string): boolean {
   return chatThreadIdSchema.safeParse(id).success;
 }
 
-const canonicalBrowserLifecycleEvents$ = computed((get): boolean => {
-  const headers = get(request$).raw.headers;
-  if (headers.get(CLIENT_TYPE_HEADER) !== CLIENT_TYPE_APP) {
-    return true;
-  }
-  return clientVersionSupportsCapability(
-    headers.get(CLIENT_VERSION_HEADER),
-    CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-  );
-});
-
 function chatEventForClient(
   event: ChatEvent,
-  canonicalBrowserLifecycleEvents: boolean,
   supportsAgentRunSource: boolean,
-): CompatibleChatEvent {
-  const projectedEvent = projectChatEventForClient(
-    event,
-    supportsAgentRunSource,
-  );
-  if (canonicalBrowserLifecycleEvents) {
-    return projectedEvent;
-  }
-  if (projectedEvent.eventType === "browser.open") {
-    return { ...projectedEvent, eventType: "browser.started" };
-  }
-  if (projectedEvent.eventType === "browser.close") {
-    return { ...projectedEvent, eventType: "browser.stopped" };
-  }
-  return projectedEvent;
+): ChatEvent {
+  return projectChatEventForClient(event, supportsAgentRunSource);
 }
 
 function projectChatEventForClient(
@@ -110,6 +81,7 @@ function projectChatEventForClient(
   }
   if (
     event.eventType === "input.prompt" ||
+    event.eventType === "input.budget" ||
     event.eventType === "input.goal" ||
     event.eventType === "input.rejected"
   ) {
@@ -218,9 +190,8 @@ const listChatEventsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
-  const supportsAgentRunSource = clientSupportsAgentRunSource(
-    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
-  );
+  const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
+  const supportsAgentRunSource = clientSupportsAgentRunSource(clientVersion);
 
   const events = await get(
     zeroChatThreadEventsPage({
@@ -237,16 +208,11 @@ const listChatEventsInner$ = computed(async (get) => {
     return chatThreadNotFound();
   }
 
-  const canonicalBrowserLifecycleEvents = get(canonicalBrowserLifecycleEvents$);
   return {
     status: 200 as const,
     body: {
       events: events.map((event) => {
-        return chatEventForClient(
-          event,
-          canonicalBrowserLifecycleEvents,
-          supportsAgentRunSource,
-        );
+        return chatEventForClient(event, supportsAgentRunSource);
       }),
     },
   };
@@ -255,9 +221,8 @@ const listChatEventsInner$ = computed(async (get) => {
 const getChatThreadEventInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.get));
-  const supportsAgentRunSource = clientSupportsAgentRunSource(
-    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
-  );
+  const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
+  const supportsAgentRunSource = clientSupportsAgentRunSource(clientVersion);
 
   const event = await get(
     zeroChatThreadEventById({
@@ -272,11 +237,7 @@ const getChatThreadEventInner$ = computed(async (get) => {
 
   return {
     status: 200 as const,
-    body: chatEventForClient(
-      event,
-      get(canonicalBrowserLifecycleEvents$),
-      supportsAgentRunSource,
-    ),
+    body: chatEventForClient(event, supportsAgentRunSource),
   };
 });
 

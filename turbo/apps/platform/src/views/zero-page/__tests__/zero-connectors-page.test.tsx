@@ -16,6 +16,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
+  zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
@@ -221,25 +222,25 @@ function mockConnectors(
     oauthScopes?: string[];
     tokenExpiresAt?: string | null;
   }[],
-): void {
-  context.mocks.data.connectors(
-    connectors.map((connector) => {
-      return {
-        id: crypto.randomUUID(),
-        slug: connector.connectorSlug,
-        authMethod: connector.authMethod ?? "oauth",
-        externalId: null,
-        externalUsername: connector.externalUsername ?? null,
-        externalEmail: null,
-        oauthScopes: connector.oauthScopes ?? null,
-        connectionStatus: connector.connectionStatus ?? "connected",
-        reconnectReason: connector.reconnectReason ?? null,
-        tokenExpiresAt: connector.tokenExpiresAt ?? null,
-        createdAt: "2026-01-01T00:00:00Z",
-        updatedAt: "2026-01-01T00:00:00Z",
-      };
-    }),
-  );
+): ConnectorResponse[] {
+  const responses = connectors.map((connector) => {
+    return {
+      id: crypto.randomUUID(),
+      slug: connector.connectorSlug,
+      authMethod: connector.authMethod ?? "oauth",
+      externalId: null,
+      externalUsername: connector.externalUsername ?? null,
+      externalEmail: null,
+      oauthScopes: connector.oauthScopes ?? null,
+      connectionStatus: connector.connectionStatus ?? "connected",
+      reconnectReason: connector.reconnectReason ?? null,
+      tokenExpiresAt: connector.tokenExpiresAt ?? null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    } satisfies ConnectorResponse;
+  });
+  context.mocks.data.connectors(responses);
+  return responses;
 }
 
 async function setupAwsExternalCodeConnection(): Promise<{
@@ -377,11 +378,24 @@ function mockCustomConnectorStory(): void {
   context.mocks.api(
     zeroCustomConnectorsContract.create,
     ({ body, respond }) => {
+      const prefixTemplates = body.prefixTemplates ?? body.prefixes ?? [];
+      const fields = body.fields ?? [];
+      const headerInjections = body.headerInjections ?? [];
+      const firstHeader = headerInjections[0];
       const created = customConnector({
         displayName: body.displayName,
-        prefixes: body.prefixes,
-        headerName: body.headerName,
-        headerTemplate: body.headerTemplate,
+        prefixes: prefixTemplates,
+        prefixTemplates,
+        fields,
+        headerInjections,
+        queryInjections: body.queryInjections ?? [],
+        authMode: body.authMode ?? "manual",
+        headerName: firstHeader?.name ?? body.headerName,
+        headerTemplate:
+          firstHeader?.valueTemplate.replaceAll(
+            "{{secrets.secret}}",
+            "{{secret}}",
+          ) ?? body.headerTemplate,
       });
       connectors = [...connectors, created];
       return respond(201, created);
@@ -419,22 +433,6 @@ function mockCustomConnectorStory(): void {
           : connector;
       });
       return respond(204);
-    },
-  );
-  context.mocks.api(
-    zeroCustomConnectorByIdContract.patch,
-    ({ params, body, respond }) => {
-      let renamed = connectors.find((connector) => {
-        return connector.id === params.id;
-      });
-      connectors = connectors.map((connector) => {
-        if (connector.id !== params.id) {
-          return connector;
-        }
-        renamed = { ...connector, displayName: body.displayName };
-        return renamed;
-      });
-      return respond(200, renamed ?? customConnector({}));
     },
   );
   context.mocks.api(
@@ -2069,10 +2067,10 @@ describe("connectors page", () => {
     });
   });
 
-  it("connects Stripe OAuth from a legacy event for all visible agents", async () => {
+  it("ignores a null change before completing Stripe OAuth from a scoped event", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000002";
-    mockConnectors([]);
+    let listedConnectors = mockConnectors([]);
     context.mocks.data.team([
       teamAgent(defaultAgentId, "Zero"),
       teamAgent(researchAgentId, "Research Agent"),
@@ -2134,6 +2132,22 @@ describe("connectors page", () => {
         return respond(200, { enabledConnectorSlugs: ["stripe"] });
       },
     );
+    let connectorListRequests = 0;
+    const catchUpObserved = context.mocks.deferred<void>();
+    context.mocks.api(zeroConnectorsMainContract.list, ({ respond }) => {
+      connectorListRequests += 1;
+      if (
+        context.mocks.ably.hasSubscription("connector:changed") &&
+        !catchUpObserved.settled()
+      ) {
+        catchUpObserved.resolve();
+      }
+      return respond(200, {
+        connectors: listedConnectors,
+        configuredConnectorSlugs: ["stripe"],
+        connectorProvidedBindings: [],
+      });
+    });
 
     detachedSetupPage({
       context,
@@ -2158,14 +2172,41 @@ describe("connectors page", () => {
       expect(
         context.mocks.ably.hasSubscription("connector:changed"),
       ).toBeTruthy();
+      expect(within(dialog).getByText("Connecting...")).toBeInTheDocument();
     });
+    await catchUpObserved.promise;
+    const requestsBeforeNull = connectorListRequests;
 
-    context.mocks.ably.trigger("connector:changed", {
-      connectorSlug: "github",
+    context.mocks.ably.trigger("connector:changed", null);
+    authWindow.close();
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeFalsy();
+      expect(
+        within(dialog).queryByText("Connecting..."),
+      ).not.toBeInTheDocument();
     });
     expect(authorizedAgentIds).toStrictEqual([]);
+    expect(connectorListRequests - requestsBeforeNull).toBe(1);
 
-    mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
+    const completionWindow = createMockAuthWindow();
+    context.mocks.browser.open(completionWindow);
+    click(buttonByText("Connect", dialog));
+
+    await waitFor(() => {
+      expect(completionWindow.location.href).toBe(
+        "https://oauth.test/stripe/authorize",
+      );
+      expect(
+        context.mocks.ably.hasSubscription("connector:changed"),
+      ).toBeTruthy();
+    });
+
+    listedConnectors = mockConnectors([
+      { connectorSlug: "stripe", authMethod: "oauth" },
+    ]);
     context.mocks.ably.trigger("connector:changed", {
       connectorSlug: "stripe",
     });
@@ -3348,6 +3389,39 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("refreshes the cached custom connector list after a realtime create event", async () => {
+    let connectors: CustomConnectorResponse[] = [];
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors });
+    });
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    const emptyState = await screen.findByText(
+      "No custom connectors yet. Create one to register an API for every member to use.",
+    );
+    expect(emptyState).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("customConnectorListChanged"),
+      ).toBeTruthy();
+    });
+    click(tabByText("Built-in"));
+
+    connectors = [customConnector({ slug: "_acme-search" })];
+    context.mocks.ably.trigger("customConnectorListChanged");
+    click(tabByText("Custom"));
+
+    await waitFor(() => {
+      expect(connectorCardByLabel("Acme Search")).toBeInTheDocument();
+    });
+  });
+
   it("localizes the custom connector OAuth entry flow in Portuguese", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000033";
     const connector = customConnector({
@@ -3373,9 +3447,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors?tab=custom",
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-      },
     });
 
     await waitFor(() => {
@@ -3853,9 +3924,6 @@ describe("connectors page", () => {
     detachedSetupPage({
       context,
       path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.CustomConnectorOAuth2]: false,
-      },
     });
 
     click(await screen.findByText("Custom"));
@@ -3877,6 +3945,8 @@ describe("connectors page", () => {
       within(createDialog).getByLabelText(/Prefixes/u),
       "https://api.acme.test/v1/",
     );
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("API authentication"));
     click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
@@ -3917,17 +3987,19 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
 
     click(screen.getByLabelText("More options"));
-    click(await screen.findByText("Rename"));
+    click(await screen.findByText("Edit"));
 
-    const renameDialog = await screen.findByRole("dialog");
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
     await waitFor(() => {
-      expect(renameDialog).toHaveStyle({ pointerEvents: "auto" });
+      expect(editDialog).toHaveStyle({ pointerEvents: "auto" });
     });
     await fill(
-      within(renameDialog).getByLabelText("Display name"),
+      within(editDialog).getByLabelText("Display name"),
       "Acme Billing API",
     );
-    click(buttonByText("Save", renameDialog));
+    click(buttonByText("Save", editDialog));
 
     await waitFor(() => {
       expect(screen.getByText("Acme Billing API")).toBeInTheDocument();

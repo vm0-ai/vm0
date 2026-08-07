@@ -7,6 +7,7 @@ import {
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   normalizeMockChatEvents,
@@ -373,6 +374,19 @@ function viewportOffsetTop(eventId: string): number {
 function scrollTo(container: HTMLElement, scrollTop: number): void {
   container.scrollTop = scrollTop;
   fireEvent.scroll(container);
+}
+
+function buttonByName(name: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return (
+      candidate.getAttribute("aria-label") === name ||
+      candidate.textContent?.replace(/\s+/g, " ").trim() === name
+    );
+  });
+  if (!button) {
+    throw new Error(`Expected a ${name} button`);
+  }
+  return button;
 }
 
 function simpleUserEvents(
@@ -778,7 +792,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -809,40 +822,6 @@ describe("chat scroll position", () => {
     );
   });
 
-  it("leaves content growth alone while diagrams are switched off", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000817";
-    const { growContent } = mockLateGrowingThread({
-      threadId,
-      prefix: "growth-switched-off",
-    });
-    const resizeObserver = installResizeObserver();
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    const container = await waitFor(() => {
-      expect(
-        screen.getByText("growth-switched-off message 7"),
-      ).toBeInTheDocument();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(700);
-      return current;
-    });
-    const messageContainer = container.querySelector(
-      "[data-message-container]",
-    );
-    if (!messageContainer) {
-      throw new Error("Chat message container not found");
-    }
-
-    // Nothing observes the messages, so the thread stays where the per-event
-    // commit left it — the behaviour every reader had before the observer.
-    expect(resizeObserver.isObserved(messageContainer)).toBeFalsy();
-    growContent(400);
-    resizeObserver.trigger(messageContainer);
-
-    expect(container.scrollTop).toBe(700);
-  });
-
   it("keeps following the tail when growing content delivers a second scroll event", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000815";
     const { growContent } = mockLateGrowingThread({
@@ -854,7 +833,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -898,7 +876,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -951,7 +928,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -1674,7 +1650,6 @@ describe("chat scroll position", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
     });
 
     const container = await waitFor(() => {
@@ -1748,6 +1723,81 @@ describe("chat scroll position", () => {
 
     await waitFor(() => {
       expect(container.scrollTop).toBe(820);
+    });
+  });
+
+  it("restores the visible anchor after entering and exiting sharing", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "scroll-sharing-transition";
+    const events = simpleUserEvents(threadId, "sharing-transition", 8);
+    const sharingActive = () => {
+      return (
+        document.querySelector("[data-chat-share-selectable-group]") !== null
+      );
+    };
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Sharing transition",
+      chatEvents: events,
+    });
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return sharingActive() ? 180 : 300;
+            },
+            scrollHeight: () => {
+              return sharingActive() ? 1060 : 1000;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              if (!Number.isFinite(index)) {
+                return undefined;
+              }
+              return {
+                top: index * 100 + (sharingActive() ? 60 : 0),
+                height: 80,
+              };
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.SharedThreadSharing]: true,
+      },
+    });
+
+    const container = await waitFor(() => {
+      expect(
+        screen.getByText("sharing-transition message 7"),
+      ).toBeInTheDocument();
+      expect(chatScrollContainer().scrollTop).toBe(700);
+      return chatScrollContainer();
+    });
+    scrollTo(container, 420);
+    expect(viewportOffsetTop("sharing-transition-4")).toBe(-20);
+
+    await user.click(buttonByName("Share messages"));
+
+    await waitFor(() => {
+      expect(sharingActive()).toBeTruthy();
+      expect(viewportOffsetTop("sharing-transition-4")).toBe(-20);
+      expect(container.scrollTop).toBe(480);
+    });
+
+    await user.click(buttonByName("Cancel"));
+
+    await waitFor(() => {
+      expect(sharingActive()).toBeFalsy();
+      expect(viewportOffsetTop("sharing-transition-4")).toBe(-20);
+      expect(container.scrollTop).toBe(420);
     });
   });
 });

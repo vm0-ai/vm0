@@ -121,7 +121,6 @@ export interface SemanticChatGroups<
 
 export function semanticChatEventsFromChatEvents(
   events: readonly ChatEvent[],
-  chatSteerEnabled = false,
 ): SemanticChatEventState[] {
   const interruptedRunIds = new Set(
     events.flatMap((event) => {
@@ -150,6 +149,7 @@ export function semanticChatEventsFromChatEvents(
       isRecallControlEvent(event) ||
       isQueueMarkerEvent(event) ||
       isGoalQueueEvent(event) ||
+      event.eventType === "input.budget" ||
       isGoalMarkerEvent(event) ||
       isBrowserLifecycleEventType(event.eventType) ||
       isInterruptedAssistantCancellation(event, interruptedRunIds) ||
@@ -182,7 +182,7 @@ export function semanticChatEventsFromChatEvents(
       optimisticAssociation !== "run" &&
       (event.eventType === "input.automation" ||
         (event.eventType === "input.prompt" &&
-          (!chatSteerEnabled || isTemporarilyQueuedMorningBrief(event))));
+          isTemporarilyQueuedMorningBrief(event)));
     return [{ event, isQueued, isOptimisticRun }];
   });
 }
@@ -301,10 +301,9 @@ export function queuedEventsFromSemanticEvents(
 
 export function queuedEventsFromChatEvents(
   events: readonly ChatEvent[],
-  chatSteerEnabled = false,
 ): QueuedChatEvent[] {
   return queuedEventsFromSemanticEvents(
-    semanticChatEventsFromChatEvents(events, chatSteerEnabled),
+    semanticChatEventsFromChatEvents(events),
   );
 }
 

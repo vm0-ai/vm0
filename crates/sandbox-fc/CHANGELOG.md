@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.37.193](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.192...sandbox-fc-v0.37.193) (2026-08-07)
+
+## [0.37.192](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.191...sandbox-fc-v0.37.192) (2026-08-06)
+
+## [0.37.191](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.190...sandbox-fc-v0.37.191) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** centralize firecracker snapshot validation ([#25469](https://github.com/vm0-ai/vm0/issues/25469)) ([2ff4c4e](https://github.com/vm0-ai/vm0/commit/2ff4c4ecbc54f1eb2d7a65664122e489b3afc362))
+
+## [0.37.190](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.189...sandbox-fc-v0.37.190) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
+## [0.37.189](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.188...sandbox-fc-v0.37.189) (2026-08-06)
+
+## [0.37.188](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.187...sandbox-fc-v0.37.188) (2026-08-06)
+
+
+### Refactoring
+
+* **sandbox-fc:** retire balloon settle summary ([#25380](https://github.com/vm0-ai/vm0/issues/25380)) ([ec2b177](https://github.com/vm0-ai/vm0/commit/ec2b177f7908e4bf61a9eab9c7217257578b3872))
+
+## [0.37.187](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.186...sandbox-fc-v0.37.187) (2026-08-06)
+
 ## [0.37.186](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.185...sandbox-fc-v0.37.186) (2026-08-05)
 
 
