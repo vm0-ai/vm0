@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.401.1](https://github.com/vm0-ai/vm0/compare/api-v1.401.0...api-v1.401.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **api:** account for pi edge model usage ([#25668](https://github.com/vm0-ai/vm0/issues/25668)) ([ec55732](https://github.com/vm0-ai/vm0/commit/ec55732fa303284e24b119ac8210438c650024d8))
+
+
+### Refactoring
+
+* **api:** steer run time budget from a per-minute cron ([#25726](https://github.com/vm0-ai/vm0/issues/25726)) ([16693cb](https://github.com/vm0-ai/vm0/commit/16693cb6daa03a8486f0d9f2f6cb9184db2c54cf))
+* **chat:** make user message parts canonical ([#25717](https://github.com/vm0-ai/vm0/issues/25717)) ([2020c27](https://github.com/vm0-ai/vm0/commit/2020c2720a08dc98f3159299bc9b6e1897351c60))
+
+
+### Performance Improvements
+
+* **api:** drop the dom lib from the api type-check surface ([#25723](https://github.com/vm0-ai/vm0/issues/25723)) ([6845f42](https://github.com/vm0-ai/vm0/commit/6845f4200a9951ac0143b18f076e75eea5259b39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.1
+    * @vm0/connectors bumped to 1.204.2
+    * @vm0/core bumped to 8.529.1
+    * @vm0/db bumped to 1.178.1
+    * @vm0/pi-agent-runtime bumped to 1.3.2
+
 ## [1.401.0](https://github.com/vm0-ai/vm0/compare/api-v1.400.0...api-v1.401.0) (2026-08-07)
 
 
