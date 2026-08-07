@@ -985,7 +985,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("rejects pre-run-model-annotation app clients before route handlers run", async () => {
+    it("rejects pre-content-event-reader app clients before route handlers run", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -994,7 +994,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.695.0",
+          [CLIENT_VERSION_HEADER]: "0.706.2",
         },
       });
 
@@ -1035,6 +1035,22 @@ describe("createApp", () => {
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
           [CLIENT_VERSION_HEADER]: MINIMUM_WEB_CLIENT_VERSION,
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("allows newer app clients", async () => {
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.706.4",
         },
       });
 
