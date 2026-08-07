@@ -243,9 +243,13 @@ Apply `docs/fallback.md`. The default is no fallback.
 - Flag negative tests that only assert deleted behavior is still deleted
   (retired route still 404s, legacy field still ignored). The exception is a
   fail-closed security boundary, where rejection is the product behavior.
-- The PR summary must contain a `Fallbacks` section listing every fallback the
-  PR introduces, keeps, or removes, or an explicit `Fallbacks: none`. A
-  fallback present in the diff but absent from the summary is a finding.
+- The PR summary must contain a `Fallbacks` section listing **every** fallback
+  or compatibility behavior the PR introduces, keeps, or removes, or an
+  explicit `Fallbacks: none`. An undeclared fallback is a **P1** finding on its
+  own, independent of whether the fallback itself is justified. Report it under
+  High Priority (P1) and require the author to add the missing entry to the PR
+  summary. Record it even when the fallback is correct and stays: the finding
+  is the missing declaration, not the code.
 - The review comment must itself list every fallback found in the diff, with
   its surface, window, removal condition, and a justified / not-justified
   verdict. A review that stays silent about fallbacks in a PR that has one is
@@ -309,7 +313,7 @@ LGTM
 - <file path>: <issue description>
 
 ### Fallbacks
-- <file path and symbol>: <old/new interaction it protects> — surface <DB/API ~4s | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, verdict <Justified / Not justified>
+- <file path and symbol>: <old/new interaction it protects> — surface <DB/API ~4s | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, declared in PR summary <Yes / No — P1>, verdict <Justified / Not justified>
 - <or: None>
 
 ### Testing
@@ -318,8 +322,10 @@ LGTM
 ```
 
 The `Fallbacks` section is mandatory in every review, including when the answer
-is `None`. List each fallback the diff introduces, keeps, or removes, and flag
-any that the PR summary failed to declare.
+is `None`. List each fallback the diff introduces, keeps, or removes, and mark
+whether the PR summary declares it. Every fallback missing from the summary is
+also a P1 entry under Findings, phrased as a request to add it to the PR
+summary.
 
 Or if there are P0/P1 blockers:
 
