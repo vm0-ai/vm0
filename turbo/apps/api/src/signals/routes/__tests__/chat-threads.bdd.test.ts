@@ -2917,7 +2917,7 @@ describe("CHAT-01 chat search index", () => {
     expect(peerLegacy.results).toHaveLength(1);
 
     const firstTick = await projectChatEventSearch();
-    expect(firstTick.success).toBe(true);
+    expect(firstTick.success).toBeTruthy();
     expect(firstTick.threads).toBeGreaterThanOrEqual(2);
     expect(firstTick.indexedEvents).toBeGreaterThanOrEqual(2);
 
@@ -2943,7 +2943,7 @@ describe("CHAT-01 chat search index", () => {
 
     // Re-running the projector is idempotent for already-indexed threads.
     const secondTick = await projectChatEventSearch();
-    expect(secondTick.success).toBe(true);
+    expect(secondTick.success).toBeTruthy();
     const stable = await chat.searchChat(owner, "天气");
     expect(stable.results).toHaveLength(1);
   }, 60_000);
@@ -2973,7 +2973,7 @@ describe("CHAT-01 chat search index", () => {
     });
 
     const tick = await projectChatEventSearch();
-    expect(tick.success).toBe(true);
+    expect(tick.success).toBeTruthy();
 
     const assistantHit = await chat.searchChat(actor, "axolotl");
     expect(assistantHit.results).toHaveLength(1);
