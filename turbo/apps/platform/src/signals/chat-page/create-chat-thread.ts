@@ -1945,9 +1945,19 @@ function createEventChangeEffects(
   );
   const afterEventsChange$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const scrollPosition = get(chatEvents.hasOptimisticUserMessage$)
+      const hasOptimisticUserMessage = get(
+        chatEvents.hasOptimisticUserMessage$,
+      );
+      const scrollPosition = hasOptimisticUserMessage
         ? null
         : set(scroll.readRenderedThreadScrollPosition$);
+      L.debug("events change scroll decision", {
+        threadId,
+        hasOptimisticUserMessage,
+        storedTargetEventId:
+          get(scroll.threadScrollPosition$)?.targetEventId ?? null,
+        targetEventId: scrollPosition?.targetEventId ?? null,
+      });
       await Promise.all([
         set(syncRegisteredEvents$, signal),
         set(autoOpenSidebar$, signal),

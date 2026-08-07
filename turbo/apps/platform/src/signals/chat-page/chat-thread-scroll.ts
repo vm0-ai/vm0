@@ -275,6 +275,13 @@ function createScrollNavigationSignals(
     if (!container) {
       throw new Error("Chat scroll container is not mounted");
     }
+    L.debug("scroll to bottom", {
+      threadId,
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      heldTargetEventId:
+        get(scroll.threadScrollPosition$)?.targetEventId ?? null,
+    });
     set(scroll.clearThreadScrollPosition$);
     applyScrollTop(runtime, container, container.scrollHeight);
     runtime.initialized = true;
@@ -310,6 +317,13 @@ function createScrollNavigationSignals(
     // renders no anchor. Holding a position nothing renders would freeze the
     // thread where it stands and every later resize would try again, so the
     // thread goes back to following the tail.
+    L.debug("resize scroll restore fell back to the tail", {
+      threadId,
+      targetEventId: position?.targetEventId ?? null,
+      anchorRendered:
+        position !== null &&
+        scrollAnchorForEvent(container, position.targetEventId) !== null,
+    });
     set(scrollToBottom$);
   });
 
