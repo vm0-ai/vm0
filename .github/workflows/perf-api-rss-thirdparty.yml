@@ -1,0 +1,41 @@
+name: Perf API RSS Third-Party Ablation
+
+on:
+  push:
+    branches:
+      - "perf/api-rss-thirdparty**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-api-rss-thirdparty-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        variant:
+          - core-full
+          - services-all
+          - services-half-1
+          - services-half-2
+          - routes-all
+          - lib-external
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/toolchain-init
+      - name: Write probe project
+        run: bash .github/scripts/rss6-probe.sh "${{ matrix.variant }}"
+      - name: Measure probe peak RSS
+        working-directory: turbo/apps/api
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/rss6-measure.sh" "${{ matrix.variant }}"
