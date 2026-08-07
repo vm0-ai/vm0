@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
-import { IconSearch } from "@tabler/icons-react";
+import { Search } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { Dialog, DialogContent } from "./dialog";
@@ -77,9 +77,9 @@ const CommandInput = React.forwardRef<
         wrapperClassName,
       )}
     >
-      <IconSearch
+      <Search
         size={16}
-        stroke={2}
+        strokeWidth={2}
         className="shrink-0 text-muted-foreground"
       />
       <CommandPrimitive.Input

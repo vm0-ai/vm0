@@ -1,4 +1,4 @@
-import { IconMoon, IconSun } from "@tabler/icons-react";
+import { Moon, Sun } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -389,9 +389,9 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           })}
         >
           {theme === "dark" ? (
-            <IconSun size={16} stroke={2} />
+            <Sun size={16} strokeWidth={2} />
           ) : (
-            <IconMoon size={16} stroke={2} />
+            <Moon size={16} strokeWidth={2} />
           )}
         </button>
 

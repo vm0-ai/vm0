@@ -1,7 +1,7 @@
 // Slash-workflow domain helpers and the suggestion menu, shared by the chat
 // composer. Kept in its own module so the textarea composer and the TipTap
 // workflow composer can both reuse them without an import cycle.
-import { IconChevronRight, IconFileText } from "@tabler/icons-react";
+import { ChevronRight, FileText } from "lucide-react";
 import { cn, PopoverContent } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -155,9 +155,9 @@ export function SlashWorkflowMenu({
             className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
           >
             <span className="flex min-w-0 items-center gap-2">
-              <IconFileText
+              <FileText
                 size={16}
-                stroke={1.8}
+                strokeWidth={1.8}
                 className="shrink-0 text-muted-foreground"
               />
               <span className="truncate">
@@ -166,9 +166,9 @@ export function SlashWorkflowMenu({
                 })}
               </span>
             </span>
-            <IconChevronRight
+            <ChevronRight
               size={16}
-              stroke={1.8}
+              strokeWidth={1.8}
               className="shrink-0 text-muted-foreground"
             />
           </Link>

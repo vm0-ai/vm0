@@ -1,11 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import {
-  IconDownload,
-  IconShare2,
-  IconSquarePlus,
-  IconX,
-} from "@tabler/icons-react";
+import { Download, Share2, SquarePlus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +33,7 @@ export function InstallBanner() {
 
   return (
     <div className="shrink-0 flex items-center gap-2 bg-primary/5 border-b border-primary/20 px-3 py-2 text-sm">
-      <IconDownload size={16} className="text-primary shrink-0" />
+      <Download size={16} className="text-primary shrink-0" />
       <span className="flex-1 min-w-0 truncate text-foreground">
         {t(($) => {
           return $.lifecycle.pwaInstall.banner;
@@ -68,7 +63,7 @@ export function InstallBanner() {
           return $.lifecycle.pwaInstall.dismiss;
         })}
       >
-        <IconX size={14} />
+        <X size={14} />
       </button>
     </div>
   );
@@ -107,7 +102,7 @@ export function IosInstallModal() {
               1
             </span>
             <span className="flex-1 flex items-center gap-1.5 flex-wrap">
-              <IconShare2 size={16} className="inline" aria-hidden />
+              <Share2 size={16} className="inline" aria-hidden />
               {t(($) => {
                 return $.lifecycle.pwaInstall.stepOne;
               })}
@@ -118,7 +113,7 @@ export function IosInstallModal() {
               2
             </span>
             <span className="flex-1 flex items-center gap-1.5 flex-wrap">
-              <IconSquarePlus size={16} className="inline" aria-hidden />
+              <SquarePlus size={16} className="inline" aria-hidden />
               {t(($) => {
                 return $.lifecycle.pwaInstall.stepTwo;
               })}

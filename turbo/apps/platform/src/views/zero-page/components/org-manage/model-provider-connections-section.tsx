@@ -1,12 +1,7 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import {
-  IconDotsVertical,
-  IconPencil,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
+import { EllipsisVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Button,
   Checkbox,
@@ -91,7 +86,7 @@ function AddConnectionMenu({
           size="sm"
           className="zero-btn-morandi h-9 gap-2 rounded-lg border"
         >
-          <IconPlus size={14} />
+          <Plus size={14} />
           {t(($) => {
             return $.settings.models.gateways.add;
           })}
@@ -160,7 +155,7 @@ function ConnectionCard({
               return $.settings.models.gateways.actions;
             })}
           >
-            <IconDotsVertical size={15} />
+            <EllipsisVertical size={15} />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -169,7 +164,7 @@ function ConnectionCard({
               openEdit(connection, settingsDialogSignal);
             }}
           >
-            <IconPencil size={14} />
+            <Pencil size={14} />
             {t(($) => {
               return $.settings.shared.edit;
             })}
@@ -180,7 +175,7 @@ function ConnectionCard({
               openDelete(connection);
             }}
           >
-            <IconTrash size={14} />
+            <Trash2 size={14} />
             {t(($) => {
               return $.settings.shared.delete;
             })}

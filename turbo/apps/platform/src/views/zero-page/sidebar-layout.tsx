@@ -6,12 +6,7 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import {
-  IconMenu2,
-  IconPackage,
-  IconShare3,
-  IconUserPlus,
-} from "@tabler/icons-react";
+import { Menu, Package, Share2, UserPlus } from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { Button, cn } from "@vm0/ui";
@@ -84,7 +79,7 @@ function InviteButtonLeaf() {
       }}
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
     >
-      <IconUserPlus size={14} stroke={1.5} />
+      <UserPlus size={14} strokeWidth={1.5} />
       {t(($) => {
         return $.appShell.sidebar.mobile.invite;
       })}
@@ -117,7 +112,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
       })}
       aria-pressed={open}
     >
-      <IconPackage size={16} stroke={1.5} />
+      <Package size={16} strokeWidth={1.5} />
     </button>
   );
 }
@@ -179,7 +174,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
         return $.chat.sharing.start;
       })}
     >
-      <IconShare3 size={16} stroke={1.5} />
+      <Share2 size={16} strokeWidth={1.5} />
     </button>
   );
 }
@@ -272,7 +267,7 @@ function MobileTopBar() {
           return $.appShell.sidebar.mobile.openMenu;
         })}
       >
-        <IconMenu2 size={18} stroke={1.8} />
+        <Menu size={18} strokeWidth={1.8} />
       </button>
       {breadcrumb && (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">

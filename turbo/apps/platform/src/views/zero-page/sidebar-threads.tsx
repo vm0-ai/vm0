@@ -8,15 +8,15 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  IconPlus,
-  IconCheck,
-  IconChevronRight,
-  IconTrash,
-  IconPencil,
-  IconDots,
-  IconPin,
-  IconPinnedOff,
-} from "@tabler/icons-react";
+  Check,
+  ChevronRight,
+  Ellipsis,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -136,7 +136,7 @@ function SessionStateIndicator({
       })}
       className="flex items-center justify-center text-sidebar-foreground/50"
     >
-      <IconPencil size={16} stroke={2} />
+      <Pencil size={16} strokeWidth={2} />
     </span>
   );
 }
@@ -231,15 +231,15 @@ function ChatThreadMenu({
                 >
                   {usePinnedIndicatorTrigger ? (
                     <>
-                      <IconPin size={16} stroke={2} className="md:hidden" />
-                      <IconDots
+                      <Pin size={16} strokeWidth={2} className="md:hidden" />
+                      <Ellipsis
                         size={16}
-                        stroke={2}
+                        strokeWidth={2}
                         className="hidden md:block"
                       />
                     </>
                   ) : (
-                    <IconDots size={16} stroke={2} />
+                    <Ellipsis size={16} strokeWidth={2} />
                   )}
                 </span>
               </TooltipTrigger>
@@ -257,14 +257,14 @@ function ChatThreadMenu({
           <DropdownMenuItem onSelect={handleTogglePin}>
             {isPinned ? (
               <>
-                <IconPinnedOff size={16} stroke={2} className="mr-2" />
+                <PinOff size={16} strokeWidth={2} className="mr-2" />
                 {t(($) => {
                   return $.chat.sidebar.unpin;
                 })}
               </>
             ) : (
               <>
-                <IconPin size={16} stroke={2} className="mr-2" />
+                <Pin size={16} strokeWidth={2} className="mr-2" />
                 {t(($) => {
                   return $.chat.sidebar.pin;
                 })}
@@ -272,7 +272,7 @@ function ChatThreadMenu({
             )}
           </DropdownMenuItem>
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
-            <IconPencil size={16} stroke={2} className="mr-2" />
+            <Pencil size={16} strokeWidth={2} className="mr-2" />
             {t(($) => {
               return $.chat.sidebar.rename;
             })}
@@ -283,7 +283,7 @@ function ChatThreadMenu({
             }}
             className="text-destructive focus:text-destructive"
           >
-            <IconTrash size={16} stroke={2} className="mr-2" />
+            <Trash2 size={16} strokeWidth={2} className="mr-2" />
             {t(($) => {
               return $.chat.sidebar.delete;
             })}
@@ -328,7 +328,7 @@ function ChatThreadSideDecorator({
                 })}
                 className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
-                <IconPin size={16} stroke={2} />
+                <Pin size={16} strokeWidth={2} />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -663,7 +663,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <IconDots size={16} stroke={2} />
+          <Ellipsis size={16} strokeWidth={2} />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -717,9 +717,9 @@ function ChatThreadsTitle() {
       <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <IconChevronRight
+          <ChevronRight
             size={12}
-            stroke={2}
+            strokeWidth={2}
             className={collapsed ? "" : "rotate-90"}
           />
         </span>
@@ -754,7 +754,7 @@ function ChatThreadsTitle() {
                 }}
                 disabled={!currentChatAgentId || newChatDisabled}
               >
-                <IconPlus size={16} stroke={2} className="mr-2" />
+                <Plus size={16} strokeWidth={2} className="mr-2" />
                 {t(($) => {
                   return $.chat.newChat;
                 })}
@@ -765,9 +765,9 @@ function ChatThreadsTitle() {
                   toggleUnreadOnly(false);
                 }}
               >
-                <IconCheck
+                <Check
                   size={16}
-                  stroke={2}
+                  strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
                 />
                 {t(($) => {
@@ -779,9 +779,9 @@ function ChatThreadsTitle() {
                   toggleUnreadOnly(true);
                 }}
               >
-                <IconCheck
+                <Check
                   size={16}
-                  stroke={2}
+                  strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
                 />
                 {t(($) => {

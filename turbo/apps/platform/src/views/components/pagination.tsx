@@ -1,9 +1,9 @@
 import {
-  IconChevronLeft,
-  IconChevronRight,
-  IconChevronsLeft,
-  IconChevronsRight,
-} from "@tabler/icons-react";
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
 import {
   Button,
   Select,
@@ -73,7 +73,7 @@ function PaginationNavigation({
         onClick={onBackTwoPages}
         disabled={!canGoBackTwo}
       >
-        <IconChevronsLeft className="size-4" />
+        <ChevronsLeft className="size-4" />
       </Button>
       <Button
         aria-label={t(($) => {
@@ -85,7 +85,7 @@ function PaginationNavigation({
         onClick={onPrevPage}
         disabled={!hasPrev}
       >
-        <IconChevronLeft className="size-4" />
+        <ChevronLeft className="size-4" />
       </Button>
       <Button
         aria-label={t(($) => {
@@ -97,7 +97,7 @@ function PaginationNavigation({
         onClick={onNextPage}
         disabled={!hasNext || isLoading}
       >
-        <IconChevronRight className="size-4" />
+        <ChevronRight className="size-4" />
       </Button>
       <Button
         aria-label={t(($) => {
@@ -109,7 +109,7 @@ function PaginationNavigation({
         onClick={onForwardTwoPages}
         disabled={!hasNext || isLoading}
       >
-        <IconChevronsRight className="size-4" />
+        <ChevronsRight className="size-4" />
       </Button>
     </div>
   );

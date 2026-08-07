@@ -3,14 +3,14 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconSun,
-  IconMoon,
-  IconDeviceDesktop,
-  IconPalette,
-  IconKeyboard,
-  IconLoader2,
-  IconBug,
-} from "@tabler/icons-react";
+  Bug,
+  Keyboard,
+  LoaderCircle,
+  Monitor,
+  Moon,
+  Palette,
+  Sun,
+} from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { cn } from "@vm0/ui";
@@ -41,11 +41,11 @@ import { LanguageSettings } from "./components/settings/language-settings.tsx";
 function AppearanceSettings() {
   const { t } = useTranslation();
   const THEME_OPTIONS = [
-    { value: "light" as ThemePreference, icon: IconSun },
-    { value: "dark" as ThemePreference, icon: IconMoon },
+    { value: "light" as ThemePreference, icon: Sun },
+    { value: "dark" as ThemePreference, icon: Moon },
     {
       value: "system" as ThemePreference,
-      icon: IconDeviceDesktop,
+      icon: Monitor,
     },
   ] as const;
   const prefLoadable = useLoadable(themePreference$);
@@ -64,9 +64,9 @@ function AppearanceSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconPalette
+              <Palette
                 size={22}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="text-muted-foreground"
               />
             </div>
@@ -113,7 +113,7 @@ function AppearanceSettings() {
                     : "zero-chip text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon size={15} stroke={1.5} />
+                <Icon size={15} strokeWidth={1.5} />
                 {label}
               </button>
             );
@@ -150,9 +150,9 @@ function SendModeSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconKeyboard
+              <Keyboard
                 size={22}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="text-muted-foreground"
               />
             </div>
@@ -204,7 +204,7 @@ function SendModeSettings() {
                 )}
               >
                 {saving === value && (
-                  <IconLoader2 size={14} className="animate-spin" />
+                  <LoaderCircle size={14} className="animate-spin" />
                 )}
                 {label}
               </button>
@@ -247,7 +247,11 @@ function CaptureNetworkBodiesSettings() {
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <IconBug size={22} stroke={1.5} className="text-muted-foreground" />
+            <Bug
+              size={22}
+              strokeWidth={1.5}
+              className="text-muted-foreground"
+            />
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">

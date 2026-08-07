@@ -11,20 +11,19 @@ import type {
   ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  IconBrandGithub,
-  IconCalendarTime,
-  IconClock,
-  IconDatabasePlus,
-  IconFilePencil,
-  IconFilePlus,
-  IconLink,
-  IconMail,
-  IconMessageCircle,
-  IconRepeat,
-  IconTag,
-  IconVideo,
-} from "@tabler/icons-react";
-import { Button, Switch, cn } from "@vm0/ui";
+  CalendarClock,
+  Clock,
+  DatabasePlus,
+  FilePen,
+  FilePlus,
+  Link,
+  Mail,
+  MessageCircle,
+  Repeat,
+  Tag,
+  Video,
+} from "lucide-react";
+import { Button, GithubIcon, Switch, cn } from "@vm0/ui";
 import {
   Dialog,
   DialogContent,
@@ -639,15 +638,15 @@ export function AutomationListIcon({
   const Icon = (() => {
     if (automation.kind === "schedule") {
       if (automation.schedule.type === "loop") {
-        return IconRepeat;
+        return Repeat;
       }
       if (automation.schedule.type === "once") {
-        return IconClock;
+        return Clock;
       }
-      return IconCalendarTime;
+      return CalendarClock;
     }
     if (automation.eventType === "webhook-received") {
-      return IconLink;
+      return Link;
     }
     if (
       automation.eventType === "github-label-applied" ||
@@ -657,27 +656,27 @@ export function AutomationListIcon({
       automation.eventType === "github-workflow-job-completed" ||
       automation.eventType === "github-workflow-run-completed"
     ) {
-      return IconBrandGithub;
+      return GithubIcon;
     }
     if (automation.eventType === "google-meet-transcript-generated") {
-      return IconVideo;
+      return Video;
     }
     if (automation.eventType === "notion-child-page-created") {
-      return IconFilePlus;
+      return FilePlus;
     }
     if (automation.eventType === "notion-database-item-created") {
-      return IconDatabasePlus;
+      return DatabasePlus;
     }
     if (automation.eventType === "notion-page-content-updated") {
-      return IconFilePencil;
+      return FilePen;
     }
     if (automation.eventType === "gmail-label-applied") {
-      return IconTag;
+      return Tag;
     }
     if (automation.eventType === "chat-run-finished") {
-      return IconMessageCircle;
+      return MessageCircle;
     }
-    return IconMail;
+    return Mail;
   })();
   const tone =
     automation.kind === "schedule"
@@ -698,7 +697,7 @@ export function AutomationListIcon({
       )}
       aria-hidden="true"
     >
-      <Icon size={compact ? 16 : 28} stroke={1.6} />
+      <Icon size={compact ? 16 : 28} strokeWidth={1.6} />
     </span>
   );
 }
@@ -793,7 +792,7 @@ function WorkflowSelectionStep({
         onClick={onCreateWorkflow}
       >
         <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground">
-          <IconMessageCircle size={16} stroke={1.6} />
+          <MessageCircle size={16} strokeWidth={1.6} />
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-foreground">

@@ -1,4 +1,4 @@
-import { IconPlug } from "@tabler/icons-react";
+import { Plug } from "lucide-react";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
@@ -20,7 +20,7 @@ function ConnectorIconFallback({
       })}
       className="inline-flex h-full w-full items-center justify-center text-muted-foreground"
     >
-      <IconPlug size={size * 0.65} stroke={1.5} aria-hidden="true" />
+      <Plug size={size * 0.65} strokeWidth={1.5} aria-hidden="true" />
     </span>
   );
 }

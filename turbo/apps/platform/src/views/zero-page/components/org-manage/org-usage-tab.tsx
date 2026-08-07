@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
-import { IconChevronRight } from "@tabler/icons-react";
+import { ChevronRight } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -409,9 +409,9 @@ function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
         className="mb-1 cursor-pointer list-none px-2"
       >
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <IconChevronRight
+          <ChevronRight
             size={13}
-            stroke={2}
+            strokeWidth={2}
             className="shrink-0 transition-transform group-open:rotate-90"
           />
           <span>

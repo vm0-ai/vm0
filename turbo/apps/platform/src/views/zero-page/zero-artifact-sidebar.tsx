@@ -1,16 +1,16 @@
 import type { ReactNode } from "react";
 import {
-  IconArrowLeft,
-  IconArrowsDiagonal,
-  IconArrowsDiagonalMinimize2,
-  IconChevronLeft,
-  IconChevronRight,
-  IconDots,
-  IconExternalLink,
-  IconLoader2,
-  IconZoomReset,
-  IconX,
-} from "@tabler/icons-react";
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Ellipsis,
+  ExternalLink,
+  LoaderCircle,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import {
   useGet,
   useLastLoadable,
@@ -567,7 +567,7 @@ function ArtifactSidebarHeader({
             })}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
           >
-            <IconArrowLeft size={16} />
+            <ArrowLeft size={16} />
           </button>
         </ArtifactActionTooltip>
       )}
@@ -705,7 +705,7 @@ function ArtifactOpenExternalAction({ url }: { url: string }) {
         data-testid="artifact-sidebar-open-external"
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
-        <IconExternalLink size={16} />
+        <ExternalLink size={16} />
       </a>
     </ArtifactActionTooltip>
   );
@@ -735,11 +735,7 @@ function ArtifactFullscreenAction({
         data-testid="artifact-sidebar-fullscreen-toggle"
         className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
-        {fullscreen ? (
-          <IconArrowsDiagonalMinimize2 size={16} />
-        ) : (
-          <IconArrowsDiagonal size={16} />
-        )}
+        {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
       </button>
     </ArtifactActionTooltip>
   );
@@ -762,7 +758,7 @@ function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
             })}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           >
-            <IconDots size={16} />
+            <Ellipsis size={16} />
           </button>
         </DropdownMenuTrigger>
       </ArtifactActionTooltip>
@@ -794,7 +790,7 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
         data-testid="artifact-sidebar-close"
         className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
-        <IconX size={16} />
+        <X size={16} />
       </button>
     </ArtifactActionTooltip>
   );
@@ -884,7 +880,7 @@ function ArtifactBody({
 function ArtifactSpinner() {
   return (
     <div className="flex h-full items-center justify-center text-muted-foreground">
-      <IconLoader2 size={20} className="animate-spin" />
+      <LoaderCircle size={20} className="animate-spin" />
     </div>
   );
 }
@@ -1213,7 +1209,7 @@ function ArtifactImageNavigationControls({
           data-testid="artifact-sidebar-previous-image"
           className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
-          <IconChevronLeft size={22} stroke={1.8} />
+          <ChevronLeft size={22} strokeWidth={1.8} />
         </button>
       )}
       {navigation.onNext && (
@@ -1229,7 +1225,7 @@ function ArtifactImageNavigationControls({
           data-testid="artifact-sidebar-next-image"
           className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
-          <IconChevronRight size={22} stroke={1.8} />
+          <ChevronRight size={22} strokeWidth={1.8} />
         </button>
       )}
     </>
@@ -1295,7 +1291,7 @@ function ArtifactImageZoomControls({
         })}
         data-testid="artifact-sidebar-image-reset-zoom"
       >
-        <IconZoomReset size={15} stroke={1.8} />
+        <RotateCcw size={15} strokeWidth={1.8} />
       </button>
     </div>
   );

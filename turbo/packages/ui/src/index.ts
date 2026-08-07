@@ -12,6 +12,13 @@ export {
   CardDescription,
   CardContent,
 } from "./components/ui/card";
+export {
+  GithubIcon,
+  GoogleDriveIcon,
+  NotionIcon,
+  SlackIcon,
+  TelegramIcon,
+} from "./components/ui/brand-icons";
 export { Checkbox } from "./components/ui/checkbox";
 export { CopyButton, type CopyButtonProps } from "./components/ui/copy-button";
 export { Input } from "./components/ui/input";

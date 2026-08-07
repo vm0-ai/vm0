@@ -1,12 +1,12 @@
 import {
-  IconAdjustmentsHorizontal,
-  IconArrowLeft,
-  IconCheck,
-  IconLoader2,
-  IconPlayerPause,
-  IconPlayerPlay,
-  IconUser,
-} from "@tabler/icons-react";
+  ArrowLeft,
+  Check,
+  LoaderCircle,
+  Pause,
+  Play,
+  SlidersHorizontal,
+  User,
+} from "lucide-react";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ZeroAvatarVideoAvatar,
@@ -196,7 +196,7 @@ function CatalogFiltersPopover({
           size="sm"
           className="h-9 gap-2 rounded-full bg-background px-3 shadow-none"
         >
-          <IconAdjustmentsHorizontal size={15} stroke={1.7} />
+          <SlidersHorizontal size={15} strokeWidth={1.7} />
           {t(($) => {
             return $.artifacts.templates.filters.title;
           })}
@@ -378,7 +378,7 @@ function AvatarTemplateMedia({
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/15 group-data-[loading=true]/avatar-preview:flex"
           >
-            <IconLoader2 className="size-6 animate-spin text-white drop-shadow" />
+            <LoaderCircle className="size-6 animate-spin text-white drop-shadow" />
           </span>
         </>
       ) : previewImageUrl ? (
@@ -391,9 +391,9 @@ function AvatarTemplateMedia({
           className="h-full w-full object-cover"
         />
       ) : (
-        <IconUser
+        <User
           size={40}
-          stroke={1.4}
+          strokeWidth={1.4}
           className="text-muted-foreground"
           aria-hidden="true"
         />
@@ -431,7 +431,7 @@ function AvatarTemplateCardContent({
             className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
             aria-hidden="true"
           >
-            <IconCheck size={13} stroke={2.2} />
+            <Check size={13} strokeWidth={2.2} />
           </span>
         )}
       </div>
@@ -725,7 +725,7 @@ function CatalogLoadingSpinner() {
       role="status"
       className="flex h-14 shrink-0 items-center justify-center text-muted-foreground"
     >
-      <IconLoader2 className="size-5 animate-spin" aria-hidden="true" />
+      <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
       <span className="sr-only">
         {t(($) => {
           return $.settings.shared.loading;
@@ -810,14 +810,14 @@ function VoicePreviewControl({
           "group-data-[playing=true]/voice:bg-primary group-data-[playing=true]/voice:text-primary-foreground",
         )}
       >
-        <IconPlayerPlay
+        <Play
           size={17}
-          stroke={1.9}
+          strokeWidth={1.9}
           className="ml-0.5 group-data-[playing=true]/voice:hidden"
         />
-        <IconPlayerPause
+        <Pause
           size={17}
-          stroke={1.9}
+          strokeWidth={1.9}
           className="hidden group-data-[playing=true]/voice:block"
         />
       </button>
@@ -918,6 +918,7 @@ function AvatarVoiceCard({
               </p>
             )}
           </div>
+<<<<<<< HEAD
           <div className="flex shrink-0 items-center gap-2">
             {recommended && (
               <span
@@ -938,6 +939,16 @@ function AvatarVoiceCard({
               </span>
             )}
           </div>
+=======
+          {selected && (
+            <span
+              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+              aria-hidden="true"
+            >
+              <Check size={13} strokeWidth={2.2} />
+            </span>
+          )}
+>>>>>>> a8cd3a090c (refactor: replace @tabler/icons-react with lucide-react)
         </div>
         {metadata.length > 0 && (
           <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
@@ -1135,7 +1146,7 @@ function AvatarVoicePickerContent({
           })}
           onClick={onBack}
         >
-          <IconArrowLeft className="size-4" />
+          <ArrowLeft className="size-4" />
         </Button>
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
           {t(

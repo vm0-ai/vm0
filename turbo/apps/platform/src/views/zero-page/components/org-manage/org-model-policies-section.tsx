@@ -10,12 +10,12 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
-  IconAlertTriangle,
-  IconDotsVertical,
-  IconPencil,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
+  EllipsisVertical,
+  Pencil,
+  Plus,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -548,7 +548,7 @@ function PolicyActionsMenu({
             },
           )}
         >
-          <IconDotsVertical size={14} stroke={1.5} />
+          <EllipsisVertical size={14} strokeWidth={1.5} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -558,7 +558,7 @@ function PolicyActionsMenu({
             onEdit(policy);
           }}
         >
-          <IconPencil size={14} stroke={1.5} />
+          <Pencil size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.settings.models.actions.editModel;
           })}
@@ -571,7 +571,7 @@ function PolicyActionsMenu({
             onDelete(policy);
           }}
         >
-          <IconTrash size={14} stroke={1.5} />
+          <Trash2 size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.settings.models.actions.deleteModel;
           })}
@@ -604,7 +604,7 @@ function AddModelButton({
       disabled={disabled}
       onClick={onClick}
     >
-      <IconPlus size={14} stroke={2} />
+      <Plus size={14} strokeWidth={2} />
       {t(($) => {
         return $.settings.models.actions.addModel;
       })}
@@ -661,7 +661,7 @@ function PolicyRow({
           )}
           {policy.routeStatus !== "valid" && (
             <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-              <IconAlertTriangle size={12} />
+              <TriangleAlert size={12} />
               {policy.routeStatus === "missing_provider"
                 ? t(($) => {
                     return $.settings.models.policies.missingProvider;

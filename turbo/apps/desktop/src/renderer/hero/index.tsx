@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  IconAlertCircle,
-  IconBuilding,
-  IconCode,
-  IconDots,
-  IconFolderPlus,
-  IconLogout,
-  IconPlayerPlay,
-  IconPlayerStop,
-  IconPlug,
-  IconTrash,
-} from "@tabler/icons-react";
+  Building,
+  CircleAlert,
+  Code,
+  Ellipsis,
+  FolderPlus,
+  LogOut,
+  Play,
+  Plug,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopAuthState } from "../../desktop-bridge";
 import {
@@ -132,7 +132,7 @@ function FooterMenu({ items }: { readonly items: readonly FooterMenuItem[] }) {
           setOpen((value) => !value);
         }}
       >
-        <IconDots size={17} />
+        <Ellipsis size={17} />
       </button>
       {open && (
         <div className="footer-menu-popover" role="menu">
@@ -230,7 +230,7 @@ function OnlineHero({
         authState={authState}
         menuItems={[
           {
-            icon: <IconPlayerStop size={15} />,
+            icon: <Square size={15} />,
             label: "Stop",
             tone: "danger",
             disabled: stopDisabled,
@@ -274,7 +274,7 @@ function OfflineHero({
           }}
           disabled={startDisabled}
         >
-          <IconPlayerPlay size={16} />
+          <Play size={16} />
           <span>Go online</span>
         </button>
       </div>
@@ -283,7 +283,7 @@ function OfflineHero({
         permissionGranted={permissionGranted}
         menuItems={[
           {
-            icon: <IconBuilding size={15} />,
+            icon: <Building size={15} />,
             label: "Switch workspace",
             disabled: orgSelectionLoadable.state === "loading",
             onClick: () => {
@@ -291,7 +291,7 @@ function OfflineHero({
             },
           },
           {
-            icon: <IconLogout size={15} />,
+            icon: <LogOut size={15} />,
             label: "Sign out",
             tone: "danger",
             disabled: signOutLoadable.state === "loading",
@@ -342,7 +342,7 @@ function FilesystemPluginPanel({
   const directoryCount = plugin.allowedDirectories.length;
 
   return (
-    <Panel title="Filesystem plugin" icon={<IconFolderPlus size={18} />}>
+    <Panel title="Filesystem plugin" icon={<FolderPlus size={18} />}>
       <div className="runtime-grid">
         <div>
           <span>Status</span>
@@ -389,7 +389,7 @@ function FilesystemPluginPanel({
                     void removeDirectory(directory);
                   }}
                 >
-                  <IconTrash size={15} />
+                  <Trash2 size={15} />
                 </button>
               </div>
             );
@@ -398,13 +398,13 @@ function FilesystemPluginPanel({
       </div>
       {plugin.lastError && (
         <div className="inline-alert inline-alert-error">
-          <IconAlertCircle size={16} />
+          <CircleAlert size={16} />
           <span>{plugin.lastError}</span>
         </div>
       )}
       <div className="panel-actions">
         <IconButton
-          icon={<IconFolderPlus size={15} />}
+          icon={<FolderPlus size={15} />}
           onClick={() => {
             void addDirectory();
           }}
@@ -453,7 +453,7 @@ function McpPluginsPanel({
   };
 
   return (
-    <Panel title="MCP servers" icon={<IconPlug size={18} />}>
+    <Panel title="MCP servers" icon={<Plug size={18} />}>
       <div className="filesystem-directory-list">
         {plugin.servers.length === 0 ? (
           <div className="compact-empty">No MCP servers configured.</div>
@@ -499,12 +499,12 @@ function McpPluginsPanel({
                       void removeServer(server.name);
                     }}
                   >
-                    <IconTrash size={15} />
+                    <Trash2 size={15} />
                   </button>
                 </div>
                 {server.lastError && (
                   <div className="inline-alert inline-alert-error">
-                    <IconAlertCircle size={16} />
+                    <CircleAlert size={16} />
                     <span>{server.lastError}</span>
                   </div>
                 )}
@@ -526,13 +526,13 @@ function McpPluginsPanel({
       />
       {importError && (
         <div className="inline-alert inline-alert-error">
-          <IconAlertCircle size={16} />
+          <CircleAlert size={16} />
           <span>{importError}</span>
         </div>
       )}
       <div className="panel-actions">
         <IconButton
-          icon={<IconCode size={15} />}
+          icon={<Code size={15} />}
           onClick={() => {
             setImportError(null);
             setConfigJson(MCP_SERVERS_SAMPLE_CONFIG);
@@ -542,7 +542,7 @@ function McpPluginsPanel({
           Use sample
         </IconButton>
         <IconButton
-          icon={<IconPlug size={15} />}
+          icon={<Plug size={15} />}
           onClick={() => {
             void submitImport();
           }}

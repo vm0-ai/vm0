@@ -1,5 +1,5 @@
 import { GoogleOneTap, SignIn, SignUp } from "@clerk/react";
-import { IconLoader2 } from "@tabler/icons-react";
+import { LoaderCircle } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -27,7 +27,7 @@ function AuthLoadingFallback() {
       data-testid="clerk-auth-loading"
       role="status"
     >
-      <IconLoader2 className="animate-spin" size={20} aria-hidden="true" />
+      <LoaderCircle className="animate-spin" size={20} aria-hidden="true" />
       <span className="sr-only">
         {t(($) => {
           return $.auth.loading;

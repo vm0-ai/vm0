@@ -1,14 +1,14 @@
 import {
-  IconCircleCheck,
-  IconExternalLink,
-  IconLoader2,
-  IconPaperclip,
-  IconPencil,
-  IconPlayerPlay,
-  IconSend,
-  IconTrash,
-  IconX,
-} from "@tabler/icons-react";
+  CircleCheck,
+  ExternalLink,
+  LoaderCircle,
+  Paperclip,
+  Pencil,
+  Play,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react";
 import type {
   ZeroMailAttachment,
   ZeroMailDraft,
@@ -56,7 +56,7 @@ function SidebarCloseButton({ close }: { readonly close: () => void }) {
       })}
       className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
     >
-      <IconX size={16} />
+      <X size={16} />
     </button>
   );
 }
@@ -153,7 +153,9 @@ function GmailReconnectButton({
       disabled={reconnectDisabled}
       onClick={reconnect}
     >
-      {reconnecting ? <IconLoader2 size={15} className="animate-spin" /> : null}
+      {reconnecting ? (
+        <LoaderCircle size={15} className="animate-spin" />
+      ) : null}
       {reconnecting
         ? t(($) => {
             return $.chat.mail.reconnecting;
@@ -194,9 +196,9 @@ function MailMessageHeader({
             }
           >
             {active ? (
-              <IconPencil size={11} stroke={2} />
+              <Pencil size={11} strokeWidth={2} />
             ) : (
-              <IconCircleCheck size={11} stroke={2} />
+              <CircleCheck size={11} strokeWidth={2} />
             )}
             {active
               ? t(($) => {
@@ -277,7 +279,7 @@ function AttachmentSummary({
 }) {
   return (
     <div className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-foreground/15 bg-background/80 px-1.5">
-      <IconPaperclip size={14} className="shrink-0 text-muted-foreground" />
+      <Paperclip size={14} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 truncate text-xs font-medium">
         {attachment.filename}
       </span>
@@ -409,7 +411,7 @@ function MailMediaAttachmentPreview({
             className="h-full w-full object-contain"
           />
           <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition-colors group-hover:bg-black/30">
-            <IconPlayerPlay size={16} stroke={1.8} />
+            <Play size={16} strokeWidth={1.8} />
           </span>
         </>
       )}
@@ -1101,9 +1103,9 @@ function MailDraftDetail({
             onClick={onDelete}
           >
             {deleteLoadable.state === "loading" ? (
-              <IconLoader2 size={15} className="animate-spin" />
+              <LoaderCircle size={15} className="animate-spin" />
             ) : (
-              <IconTrash size={15} />
+              <Trash2 size={15} />
             )}
             {t(($) => {
               return $.chat.actions.delete;
@@ -1115,7 +1117,7 @@ function MailDraftDetail({
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">
             <a href={openInGmail} target="_blank" rel="noreferrer">
-              <IconExternalLink size={15} />
+              <ExternalLink size={15} />
               {t(($) => {
                 return $.chat.mail.openInGmail;
               })}
@@ -1124,9 +1126,9 @@ function MailDraftDetail({
           {active ? (
             <Button type="button" size="sm" disabled={pending} onClick={onSend}>
               {sendLoadable.state === "loading" ? (
-                <IconLoader2 size={15} className="animate-spin" />
+                <LoaderCircle size={15} className="animate-spin" />
               ) : (
-                <IconSend size={15} />
+                <Send size={15} />
               )}
               {t(($) => {
                 return $.chat.actions.send;

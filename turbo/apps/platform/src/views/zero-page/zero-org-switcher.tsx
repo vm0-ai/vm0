@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@vm0/ui";
-import { IconChevronDown, IconPlus, IconMail } from "@tabler/icons-react";
+import { ChevronDown, Mail, Plus } from "lucide-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import {
   bestEffort,
@@ -111,7 +111,7 @@ function InvitationRow({
         onClick={handleAccept}
         className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
       >
-        <IconMail size={13} />
+        <Mail size={13} />
         {isAccepting
           ? t(($) => {
               return $.appShell.sidebar.workspaceSwitcher.joining;
@@ -154,9 +154,9 @@ function CreateWorkspaceItem() {
         disabled={clerk === null || creatingOrg}
         className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
       >
-        <IconPlus
+        <Plus
           size={18}
-          stroke={1.5}
+          strokeWidth={1.5}
           className="shrink-0 text-muted-foreground"
         />
         <span>
@@ -359,7 +359,7 @@ export function ZeroOrgSwitcher() {
             <span className="min-w-0 flex-1 text-left text-sm font-semibold leading-tight truncate">
               {orgName}
             </span>
-            <IconChevronDown
+            <ChevronDown
               size={16}
               className="ml-auto shrink-0 text-muted-foreground"
             />

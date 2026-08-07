@@ -1,11 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import {
-  IconDownload,
-  IconEye,
-  IconFileMusic,
-  IconPlayerPlay,
-  IconVideo,
-} from "@tabler/icons-react";
+import { Download, Eye, FileMusic, Play, Video } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -231,7 +225,7 @@ function AttachmentAnchorChip({
       className="group/doc-preview inline-flex w-fit self-start align-top text-left no-underline"
     >
       <AttachmentDocumentThumbnailArtwork
-        actionIcon={<IconEye size={10} />}
+        actionIcon={<Eye size={10} />}
         actionLabel={t(($) => {
           return $.artifacts.preview.badge;
         })}
@@ -454,7 +448,7 @@ function FileThumbnailPreview({
           />
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <IconDownload size={10} />
+          <Download size={10} />
           {t(($) => {
             return $.artifacts.actions.download;
           })}
@@ -522,7 +516,7 @@ function AudioPreview({
           />
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <IconFileMusic size={10} />
+          <FileMusic size={10} />
           {t(($) => {
             return $.artifacts.preview.badge;
           })}
@@ -599,11 +593,11 @@ function VideoThumbnailPreview({
         <div className="absolute inset-0 z-20 bg-black/15 transition-colors group-hover/video-preview:bg-black/35" />
         <span className="absolute inset-0 z-30 flex items-center justify-center">
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-            <IconPlayerPlay size={20} stroke={1.8} />
+            <Play size={20} strokeWidth={1.8} />
           </span>
         </span>
         <div className="absolute right-2 top-2 z-30 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/video-preview:opacity-100">
-          <IconVideo size={10} />
+          <Video size={10} />
           {t(($) => {
             return $.artifacts.preview.badge;
           })}

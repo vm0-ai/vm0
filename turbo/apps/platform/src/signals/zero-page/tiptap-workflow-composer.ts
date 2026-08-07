@@ -347,8 +347,9 @@ function createChatThreadMentionNodeView(node: ProseMirrorNode): NodeView {
   dom.contentEditable = "false";
   dom.style.outline = "none";
   dom.style.userSelect = "none";
+  // Mirrors MessageCircle from lucide-react.
   const icon = createComposerIcon(13, 1.7, [
-    "M3 20l1.3 -3.9c-2.324 -3.437 -1.426 -7.872 2.1 -10.374c3.526 -2.501 8.59 -2.296 11.845 .48c3.255 2.777 3.695 7.266 1.029 10.501c-2.666 3.235 -7.615 4.215 -11.574 2.293l-4.7 1",
+    "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719",
   ]);
   icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");
@@ -525,9 +526,10 @@ function createFeedbackItemNodeView(
   const quoteIconContainer = document.createElement("span");
   quoteIconContainer.className =
     "flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted";
+  // Mirrors Quote from lucide-react.
   const quoteIcon = createComposerIcon(12, 1.5, [
-    "M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
-    "M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
+    "M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z",
+    "M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z",
   ]);
   quoteIcon.setAttribute("class", "-scale-x-100 text-muted-foreground");
   quoteIconContainer.append(quoteIcon);
@@ -541,7 +543,7 @@ function createFeedbackItemNodeView(
     "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
     "focus-visible:ring-ring";
   removeButton.append(
-    createComposerIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
+    createComposerIcon(14, 1.8, ["M18 6 6 18", "m6 6 12 12"]),
   );
   quoteChip.append(quoteIconContainer, quoteText, removeButton);
   quoteDom.append(quoteChip);
@@ -811,7 +813,7 @@ function createTemplateAttachmentNodeView(
     "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
     "focus-visible:ring-ring";
   removeButton.append(
-    createComposerIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
+    createComposerIcon(14, 1.8, ["M18 6 6 18", "m6 6 12 12"]),
   );
   chip.append(openButton, removeButton);
   dom.append(chip);
@@ -840,11 +842,13 @@ function createTemplateAttachmentNodeView(
       image.className = "h-full w-full object-cover";
       iconContainer.append(image);
     } else {
+      // Mirrors FileText from lucide-react.
       const icon = createComposerIcon(12, 1.5, [
-        "M4 4h16v16h-16z",
-        "M8 8h8",
-        "M8 12h8",
-        "M8 16h5",
+        "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+        "M14 2v5a1 1 0 0 0 1 1h5",
+        "M10 9H8",
+        "M16 13H8",
+        "M16 17H8",
       ]);
       icon.setAttribute("class", "text-muted-foreground");
       iconContainer.append(icon);
@@ -965,14 +969,23 @@ function createInlineTemplateNodeView(
 
   const openButton = document.createElement("button");
   openButton.type = "button";
+<<<<<<< HEAD
   openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
   // Mirrors IconColorSwatch from @tabler/icons-react, which the composer
   // template picker button and sent-message template chips also use.
+=======
+  openButton.className =
+    "flex h-full min-w-0 items-center gap-1.5 rounded-md text-orange-600 " +
+    "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-orange-500/40 " +
+    "dark:text-orange-300 dark:focus-visible:ring-orange-300/40";
+  // Mirrors SwatchBook from lucide-react, which the composer template picker
+  // button and sent-message template chips also use.
+>>>>>>> a8cd3a090c (refactor: replace @tabler/icons-react with lucide-react)
   const icon = createComposerIcon(13, 1.7, [
-    "M19 3h-4a2 2 0 0 0 -2 2v12a4 4 0 0 0 8 0v-12a2 2 0 0 0 -2 -2",
-    "M13 7.35l-2 -2a2 2 0 0 0 -2.828 0l-2.828 2.828a2 2 0 0 0 0 2.828l9 9",
-    "M7.3 13h-2.3a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h12",
-    "M17 17l0 .01",
+    "M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z",
+    "M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7",
+    "M 7 17h.01",
+    "m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8",
   ]);
   icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");

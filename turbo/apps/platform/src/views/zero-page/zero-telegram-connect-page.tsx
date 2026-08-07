@@ -2,11 +2,11 @@ import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { JSX, ReactNode } from "react";
 import {
-  IconAlertCircle,
-  IconArrowLeft,
-  IconCircleCheck,
-  IconLoader2,
-} from "@tabler/icons-react";
+  ArrowLeft,
+  CircleAlert,
+  CircleCheck,
+  LoaderCircle,
+} from "lucide-react";
 import { Button, CopyButton } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -43,7 +43,7 @@ function BackLink() {
       pathname="/settings/telegram"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
-      <IconArrowLeft size={14} />
+      <ArrowLeft size={14} />
       {t(($) => {
         return $.connectors.providerConnect.telegram.back;
       })}
@@ -69,20 +69,20 @@ function TelegramMark({
   state?: "idle" | "success" | "error" | "loading" | "warning";
 }) {
   if (state === "success") {
-    return <IconCircleCheck size={40} className="text-emerald-500" />;
+    return <CircleCheck size={40} className="text-emerald-500" />;
   }
 
   if (state === "warning") {
-    return <IconAlertCircle size={40} className="text-amber-500" />;
+    return <CircleAlert size={40} className="text-amber-500" />;
   }
 
   if (state === "error") {
-    return <IconAlertCircle size={40} className="text-destructive" />;
+    return <CircleAlert size={40} className="text-destructive" />;
   }
 
   if (state === "loading") {
     return (
-      <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
+      <LoaderCircle size={40} className="animate-spin text-muted-foreground" />
     );
   }
 
@@ -239,7 +239,7 @@ function DomainStatusPolling() {
     <>
       <span ref={domainStatusPollerRef} hidden />
       <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-        <IconLoader2 size={13} className="animate-spin" />
+        <LoaderCircle size={13} className="animate-spin" />
         {t(($) => {
           return $.connectors.providerConnect.telegram.checkingDomain;
         })}
@@ -356,7 +356,7 @@ function ConnectActions({
       <div className="flex w-full flex-col gap-3">
         <Button className="w-full" disabled={connecting} onClick={onConnect}>
           {connecting ? (
-            <IconLoader2 size={16} className="animate-spin" />
+            <LoaderCircle size={16} className="animate-spin" />
           ) : null}
           {connecting
             ? t(($) => {
@@ -372,7 +372,7 @@ function ConnectActions({
 
   return (
     <Button className="w-full" disabled={connecting} onClick={onConnect}>
-      {connecting ? <IconLoader2 size={16} className="animate-spin" /> : null}
+      {connecting ? <LoaderCircle size={16} className="animate-spin" /> : null}
       {connecting
         ? t(($) => {
             return $.connectors.actions.connecting;

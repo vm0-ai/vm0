@@ -15,15 +15,15 @@ import {
   cn,
 } from "@vm0/ui";
 import {
-  IconAdjustmentsHorizontal,
-  IconBug,
-  IconBuilding,
-  IconCoins,
-  IconCpu,
-  IconCreditCard,
-  IconFileInvoice,
-  IconUsers,
-} from "@tabler/icons-react";
+  Bug,
+  Building,
+  Coins,
+  Cpu,
+  CreditCard,
+  ReceiptText,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
@@ -172,9 +172,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     {
       id: "preference",
       label: sectionMeta.preference.title,
-      icon: IconAdjustmentsHorizontal,
+      icon: SlidersHorizontal,
     },
-    { id: "debug", label: sectionMeta.debug.title, icon: IconBug },
+    { id: "debug", label: sectionMeta.debug.title, icon: Bug },
   ];
   const personalGroup: SidebarGroup = {
     label: t(($) => {
@@ -192,16 +192,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       {
         id: "general",
         label: sectionMeta.general.title,
-        icon: IconBuilding,
+        icon: Building,
       },
-      { id: "people", label: sectionMeta.people.title, icon: IconUsers },
+      { id: "people", label: sectionMeta.people.title, icon: Users },
     ],
   };
   const modelsGroup: SidebarGroup = {
     label: t(($) => {
       return $.settings.dialog.groups.models;
     }),
-    items: [{ id: "model", label: sectionMeta.model.title, icon: IconCpu }],
+    items: [{ id: "model", label: sectionMeta.model.title, icon: Cpu }],
   };
   const billingGroup: SidebarGroup = {
     label: t(($) => {
@@ -215,19 +215,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           : t(($) => {
               return $.settings.dialog.sections.usage.usageTitle;
             }),
-        icon: IconCoins,
+        icon: Coins,
       },
       ...(isAdmin
         ? [
             {
               id: "billing" as const,
               label: sectionMeta.billing.title,
-              icon: IconCreditCard,
+              icon: CreditCard,
             },
             {
               id: "invoices" as const,
               label: sectionMeta.invoices.title,
-              icon: IconFileInvoice,
+              icon: ReceiptText,
             },
           ]
         : []),

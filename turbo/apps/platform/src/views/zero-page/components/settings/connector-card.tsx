@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  IconAdjustmentsHorizontal,
-  IconCircleCheck,
-  IconDotsVertical,
-  IconLoader2,
-  IconPlus,
-} from "@tabler/icons-react";
+  CircleCheck,
+  EllipsisVertical,
+  LoaderCircle,
+  Plus,
+  SlidersHorizontal,
+} from "lucide-react";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
@@ -157,9 +157,13 @@ function CatalogConnectorCard({
           aria-hidden="true"
         >
           {busy ? (
-            <IconLoader2 size={16} stroke={1.5} className="animate-spin" />
+            <LoaderCircle
+              size={16}
+              strokeWidth={1.5}
+              className="animate-spin"
+            />
           ) : (
-            <IconPlus size={14} stroke={1.5} />
+            <Plus size={14} strokeWidth={1.5} />
           )}
         </span>
       </div>
@@ -191,7 +195,7 @@ function ConnectorConnectionStatus({
   if (busy) {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
+        <LoaderCircle size={12} strokeWidth={1.5} className="animate-spin" />
         {t(($) => {
           return $.connectors.card.connecting;
         })}
@@ -303,7 +307,7 @@ function ConnectionConnectorCard({
                   })}
                   disabled={busy}
                 >
-                  <IconDotsVertical size={14} stroke={1.5} />
+                  <EllipsisVertical size={14} strokeWidth={1.5} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
@@ -406,7 +410,7 @@ function OnboardingConnectorCard({
       </div>
       {connected ? (
         <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-primary">
-          <IconCircleCheck size={16} aria-hidden="true" />
+          <CircleCheck size={16} aria-hidden="true" />
           {t(($) => {
             return $.connectors.card.connected;
           })}
@@ -425,7 +429,7 @@ function OnboardingConnectorCard({
           }}
         >
           {busy ? (
-            <IconLoader2 className="animate-spin" aria-hidden="true" />
+            <LoaderCircle className="animate-spin" aria-hidden="true" />
           ) : null}
           {t(($) => {
             return $.connectors.actions.connect;
@@ -494,7 +498,7 @@ function ActionConnectorCard({
         onClick={onActivate}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {busy ? <IconLoader2 size={15} className="animate-spin" /> : null}
+        {busy ? <LoaderCircle size={15} className="animate-spin" /> : null}
         {actionLabel}
       </button>
     </div>
@@ -560,7 +564,7 @@ function PermissionConnectorCard({
                       { connector: connector.label },
                     )}
                   >
-                    <IconAdjustmentsHorizontal size={15} stroke={1.5} />
+                    <SlidersHorizontal size={15} strokeWidth={1.5} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">

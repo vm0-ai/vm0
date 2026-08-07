@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { IconX } from "@tabler/icons-react";
+import { X } from "lucide-react";
 import type { DesktopComputerUseState } from "../../computer-use-types";
 import {
   KeyValueList,
@@ -70,7 +70,7 @@ export function RuntimeErrorDetailsModal({
             aria-label="Close error details"
             onClick={onClose}
           >
-            <IconX size={18} />
+            <X size={18} />
           </button>
         </div>
         <div className="runtime-error-body">

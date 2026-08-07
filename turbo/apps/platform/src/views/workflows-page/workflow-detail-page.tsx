@@ -31,44 +31,41 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
-  IconAlertTriangle,
-  IconBrandGithub,
-  IconBrandNotion,
-  IconCalendarTime,
-  IconCircleCheck,
-  IconChevronDown,
-  IconClock,
-  IconCopy,
-  IconDatabasePlus,
-  IconFilePencil,
-  IconFilePlus,
-  IconFileText,
-  IconHistory,
-  IconInfoCircle,
-  IconLink,
-  IconLoader2,
-  IconMail,
-  IconMessageCircle,
-  IconPlayerPlay,
-  IconPlus,
-  IconPencil,
-  IconRepeat,
-  IconRoute,
-  IconTrash,
-  IconUpload,
-  IconDotsVertical,
-  IconEye,
-  IconExternalLink,
-  IconPlugConnected,
-  IconVideo,
-  IconWebhook,
-  IconX,
-} from "@tabler/icons-react";
+  CalendarClock,
+  ChevronDown,
+  CircleCheck,
+  Clock,
+  Copy,
+  DatabasePlus,
+  EllipsisVertical,
+  ExternalLink,
+  Eye,
+  FilePen,
+  FilePlus,
+  FileText,
+  History,
+  Info,
+  Link as LinkIcon,
+  LoaderCircle,
+  Mail,
+  MessageCircle,
+  Pencil,
+  Play,
+  PlugZap,
+  Plus,
+  Repeat,
+  Route,
+  Trash2,
+  TriangleAlert,
+  Upload,
+  Video,
+  Webhook,
+  X,
+} from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
   Checkbox,
-  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -80,7 +77,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  GithubIcon,
   Input,
+  NotionIcon,
   Select,
   SelectContent,
   SelectItem,
@@ -93,6 +92,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  cn,
 } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
@@ -994,7 +994,7 @@ function WorkflowBreadcrumb({
     <DetailPageBreadcrumbBar>
       <BreadcrumbLink
         pathname={ROUTES.workflows}
-        icon={<IconRoute size={14} stroke={1.5} className="shrink-0" />}
+        icon={<Route size={14} strokeWidth={1.5} className="shrink-0" />}
       >
         {i18n.t(($) => {
           return $.workflows.common.workflows;
@@ -1041,7 +1041,7 @@ function WorkflowHeaderIcon({
   }
   return (
     <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-muted-foreground sm:h-16 sm:w-16">
-      <IconRoute size={28} stroke={1.7} />
+      <Route size={28} strokeWidth={1.7} />
     </span>
   );
 }
@@ -1160,7 +1160,7 @@ function WorkflowTabNav({
       </div>
       <TabsList className="zero-tabs hidden h-9 gap-1 px-1 py-1 sm:inline-flex">
         <TabsTrigger value="automations" className={WORKFLOW_TAB_TRIGGER_CLASS}>
-          <IconClock size={14} stroke={1.5} />
+          <Clock size={14} strokeWidth={1.5} />
           {i18n.t(($) => {
             return $.workflows.list.automations;
           })}
@@ -1169,13 +1169,13 @@ function WorkflowTabNav({
           value="instructions"
           className={WORKFLOW_TAB_TRIGGER_CLASS}
         >
-          <IconFileText size={14} stroke={1.5} />
+          <FileText size={14} strokeWidth={1.5} />
           {i18n.t(($) => {
             return $.workflows.common.instructions;
           })}
         </TabsTrigger>
         <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
-          <IconInfoCircle size={14} stroke={1.5} />
+          <Info size={14} strokeWidth={1.5} />
           {i18n.t(($) => {
             return $.workflows.common.settings;
           })}
@@ -1253,9 +1253,9 @@ function WorkflowChatButton({
       }}
     >
       {opening ? (
-        <IconLoader2 size={14} className="shrink-0 animate-spin" />
+        <LoaderCircle size={14} className="shrink-0 animate-spin" />
       ) : (
-        <IconMessageCircle size={14} stroke={2} className="shrink-0" />
+        <MessageCircle size={14} strokeWidth={2} className="shrink-0" />
       )}
       <span className="truncate">{chatLabel}</span>
     </Button>
@@ -1338,7 +1338,7 @@ function WorkflowInfoTab({
                 setActionDialog("copy");
               }}
             >
-              <IconCopy size={14} stroke={1.5} />
+              <Copy size={14} strokeWidth={1.5} />
               {i18n.t(($) => {
                 return $.workflows.common.copyWorkflow;
               })}
@@ -1372,7 +1372,7 @@ function WorkflowInfoTab({
                     setActionDialog("delete");
                   }}
                 >
-                  <IconTrash size={14} stroke={1.5} />
+                  <Trash2 size={14} strokeWidth={1.5} />
                   {i18n.t(($) => {
                     return $.workflows.common.deleteWorkflow;
                   })}
@@ -1651,9 +1651,9 @@ function WorkflowConnectorReadiness({
               }}
             >
               {checking ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <IconPlugConnected size={14} stroke={1.5} />
+                <PlugZap size={14} strokeWidth={1.5} />
               )}
               {checkLabel}
             </Button>
@@ -1670,9 +1670,9 @@ function WorkflowConnectorReadiness({
           role="alert"
           className="flex items-start gap-2 border-t border-border/50 px-4 py-3 text-sm text-destructive sm:px-5"
         >
-          <IconAlertTriangle
+          <TriangleAlert
             size={16}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="mt-0.5 shrink-0"
           />
           <p>{errorMessage}</p>
@@ -1699,9 +1699,9 @@ function WorkflowConnectorReadiness({
             className="flex items-center gap-2 border-t border-border/50 px-4 py-4 text-sm text-muted-foreground sm:px-5"
             aria-live="polite"
           >
-            <IconCircleCheck
+            <CircleCheck
               size={16}
-              stroke={1.5}
+              strokeWidth={1.5}
               className="shrink-0 text-emerald-500"
             />
             {copy.empty}
@@ -1767,7 +1767,7 @@ function WorkflowConnectorReadinessRow({
               aria-label={`${action.label} ${entry.label}`}
             >
               {action.label}
-              <IconExternalLink size={13} stroke={1.5} />
+              <ExternalLink size={13} strokeWidth={1.5} />
             </a>
           </Button>
         ) : null}
@@ -2017,7 +2017,7 @@ function ShadowWarning({
 
   return (
     <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-      <IconAlertTriangle size={16} stroke={1.5} className="mt-0.5 shrink-0" />
+      <TriangleAlert size={16} strokeWidth={1.5} className="mt-0.5 shrink-0" />
       <p className="min-w-0">
         <span className="font-medium">/{detail.name}</span>{" "}
         {i18n.t(($) => {
@@ -2112,7 +2112,7 @@ function WorkflowPublicToggle({
             <DialogDescription>{copy.confirmDescription}</DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
-            <IconAlertTriangle size={16} stroke={1.5} />
+            <TriangleAlert size={16} strokeWidth={1.5} />
             <AlertTitle>{copy.automationWarning}</AlertTitle>
             <AlertDescription>
               {i18n.t(
@@ -2143,7 +2143,9 @@ function WorkflowPublicToggle({
                 submitVisibilityAction("demote");
               }}
             >
-              {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
+              {busy ? (
+                <LoaderCircle size={14} className="animate-spin" />
+              ) : null}
               {copy.makePrivate}
             </Button>
           </DialogFooter>
@@ -2317,7 +2319,7 @@ function WorkflowCopyForm({
       </label>
       {form.removeOriginal ? (
         <Alert variant="destructive">
-          <IconAlertTriangle size={16} stroke={1.5} />
+          <TriangleAlert size={16} strokeWidth={1.5} />
           <AlertTitle>
             {i18n.t(($) => {
               return $.workflows.detail.copy.removalAlert;
@@ -2487,7 +2489,9 @@ function WorkflowCopyDialogFooter({
         })}
       </Button>
       <Button type="button" disabled={disabled} onClick={onSubmit}>
-        {submitting ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        {submitting ? (
+          <LoaderCircle size={14} className="animate-spin" />
+        ) : null}
         {removeOriginal
           ? i18n.t(($) => {
               return $.workflows.detail.copy.copyAndRemove;
@@ -2566,7 +2570,7 @@ function WorkflowDeleteDialog({
             }}
           >
             {deleting ? (
-              <IconLoader2 size={14} className="animate-spin" />
+              <LoaderCircle size={14} className="animate-spin" />
             ) : null}
             {i18n.t(($) => {
               return $.workflows.common.delete;
@@ -2652,9 +2656,9 @@ function WorkflowFilePicker({
           className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-sm px-0.5 py-0.5 text-sm font-medium text-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="min-w-0 truncate">{selectedLabel}</span>
-          <IconChevronDown
+          <ChevronDown
             size={14}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="shrink-0 text-muted-foreground"
           />
         </button>
@@ -2745,9 +2749,9 @@ function WorkflowFileManagementItems({
         )}
       >
         {saving ? (
-          <IconLoader2 size={15} className="animate-spin" />
+          <LoaderCircle size={15} className="animate-spin" />
         ) : (
-          <IconUpload size={15} stroke={1.5} />
+          <Upload size={15} strokeWidth={1.5} />
         )}
         <span>
           {i18n.t(($) => {
@@ -2785,7 +2789,7 @@ function WorkflowFileManagementItems({
           className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-destructive transition-colors hover:bg-accent disabled:opacity-60"
           onClick={onDeleteSelectedFile}
         >
-          <IconTrash size={15} stroke={1.5} />
+          <Trash2 size={15} strokeWidth={1.5} />
           <span>
             {i18n.t(($) => {
               return $.workflows.detail.files.deleteSelected;
@@ -4338,14 +4342,14 @@ type AutomationCreateOption = {
   readonly kind: AutomationCreateDialogKind;
   readonly title: string;
   readonly description: string;
-  readonly icon: typeof IconClock;
+  readonly icon: typeof Clock;
   readonly badge?: string;
 };
 
 type AutomationCreateCategory = {
   readonly key: AutomationCategoryKey;
   readonly label: string;
-  readonly icon: typeof IconClock;
+  readonly icon: typeof Clock;
   readonly options: readonly AutomationCreateOption[];
 };
 
@@ -4369,7 +4373,7 @@ function buildIntegrationAutomationOptions({
       description: i18n.t(($) => {
         return $.workflows.automations.chat.runFinishedDescription;
       }),
-      icon: IconMessageCircle,
+      icon: MessageCircle,
     },
   ];
   if (githubLabelAutomationsEnabled) {
@@ -4381,7 +4385,7 @@ function buildIntegrationAutomationOptions({
       description: i18n.t(($) => {
         return $.workflows.automations.github.labelAppliedDescription;
       }),
-      icon: IconBrandGithub,
+      icon: GithubIcon,
     });
   }
   integrationOptions.push({
@@ -4392,7 +4396,7 @@ function buildIntegrationAutomationOptions({
     description: i18n.t(($) => {
       return $.workflows.automations.github.workflowRunDescription;
     }),
-    icon: IconBrandGithub,
+    icon: GithubIcon,
   });
   if (githubWebhookAutomationsEnabled) {
     integrationOptions.push(
@@ -4404,7 +4408,7 @@ function buildIntegrationAutomationOptions({
         description: i18n.t(($) => {
           return $.workflows.automations.github.workflowJobDescription;
         }),
-        icon: IconBrandGithub,
+        icon: GithubIcon,
       },
       {
         kind: "github-pull-request-review",
@@ -4414,7 +4418,7 @@ function buildIntegrationAutomationOptions({
         description: i18n.t(($) => {
           return $.workflows.automations.github.reviewDescription;
         }),
-        icon: IconBrandGithub,
+        icon: GithubIcon,
       },
       {
         kind: "github-deployment-status",
@@ -4424,7 +4428,7 @@ function buildIntegrationAutomationOptions({
         description: i18n.t(($) => {
           return $.workflows.automations.github.deploymentStatusDescription;
         }),
-        icon: IconBrandGithub,
+        icon: GithubIcon,
       },
       {
         kind: "github-issue-comment",
@@ -4434,7 +4438,7 @@ function buildIntegrationAutomationOptions({
         description: i18n.t(($) => {
           return $.workflows.automations.github.issueCommentDescription;
         }),
-        icon: IconBrandGithub,
+        icon: GithubIcon,
       },
     );
   }
@@ -4447,7 +4451,7 @@ function buildIntegrationAutomationOptions({
       description: i18n.t(($) => {
         return $.workflows.automations.strapi.entryPublishedDescription;
       }),
-      icon: IconWebhook,
+      icon: Webhook,
     });
   }
   integrationOptions.push({
@@ -4458,7 +4462,7 @@ function buildIntegrationAutomationOptions({
     description: i18n.t(($) => {
       return $.workflows.automations.webhook.createDescription;
     }),
-    icon: IconLink,
+    icon: LinkIcon,
     ...(webhookTierEligible
       ? {}
       : {
@@ -4485,7 +4489,7 @@ function buildNotionAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.notion.childPageDescription;
       }),
-      icon: IconFilePlus,
+      icon: FilePlus,
     },
     {
       kind: "notion-database-item",
@@ -4495,7 +4499,7 @@ function buildNotionAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.notion.databaseItemDescription;
       }),
-      icon: IconDatabasePlus,
+      icon: DatabasePlus,
     },
     {
       kind: "notion-page-content-updated",
@@ -4505,7 +4509,7 @@ function buildNotionAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.notion.contentUpdatedDescription;
       }),
-      icon: IconFilePencil,
+      icon: FilePen,
     },
   ];
 }
@@ -4537,7 +4541,7 @@ function buildCalendarAutomationOptions(
         description: i18n.t(($) => {
           return $.workflows.automations.calendar.createdDescription;
         }),
-        icon: IconCalendarTime,
+        icon: CalendarClock,
       },
       {
         kind: "google-calendar-updated",
@@ -4547,7 +4551,7 @@ function buildCalendarAutomationOptions(
         description: i18n.t(($) => {
           return $.workflows.automations.calendar.updatedDescription;
         }),
-        icon: IconCalendarTime,
+        icon: CalendarClock,
       },
       {
         kind: "google-calendar-cancelled",
@@ -4557,7 +4561,7 @@ function buildCalendarAutomationOptions(
         description: i18n.t(($) => {
           return $.workflows.automations.calendar.cancelledDescription;
         }),
-        icon: IconCalendarTime,
+        icon: CalendarClock,
       },
     );
   }
@@ -4570,7 +4574,7 @@ function buildCalendarAutomationOptions(
       description: i18n.t(($) => {
         return $.workflows.automations.meet.transcriptReadyDescription;
       }),
-      icon: IconVideo,
+      icon: Video,
     });
   }
   return options;
@@ -4586,7 +4590,7 @@ function buildScheduleAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.schedule.frequencyIntervalDescription;
       }),
-      icon: IconRepeat,
+      icon: Repeat,
     },
     {
       kind: "scheduled",
@@ -4596,7 +4600,7 @@ function buildScheduleAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.schedule.frequencyScheduleDescription;
       }),
-      icon: IconClock,
+      icon: Clock,
     },
     {
       kind: "once",
@@ -4606,7 +4610,7 @@ function buildScheduleAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.schedule.frequencyOnceDescription;
       }),
-      icon: IconClock,
+      icon: Clock,
     },
   ];
 }
@@ -4621,7 +4625,7 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.gmail.newMessageDescription;
       }),
-      icon: IconMail,
+      icon: Mail,
     },
     {
       kind: "gmail-label",
@@ -4631,7 +4635,7 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
       description: i18n.t(($) => {
         return $.workflows.automations.gmail.addLabelDescription;
       }),
-      icon: IconMail,
+      icon: Mail,
     },
   ];
 }
@@ -4673,7 +4677,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.schedule;
       }),
-      icon: IconClock,
+      icon: Clock,
       options: buildScheduleAutomationOptions(),
     },
     {
@@ -4681,7 +4685,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.email;
       }),
-      icon: IconMail,
+      icon: Mail,
       options: buildEmailAutomationOptions(),
     },
     {
@@ -4689,7 +4693,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.calendar;
       }),
-      icon: IconCalendarTime,
+      icon: CalendarClock,
       options: calendarOptions,
     },
     {
@@ -4697,7 +4701,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.notion;
       }),
-      icon: IconBrandNotion,
+      icon: NotionIcon,
       options: notionOptions,
     },
     {
@@ -4705,7 +4709,7 @@ function buildAutomationCreateCategories({
       label: i18n.t(($) => {
         return $.workflows.automations.picker.integrations;
       }),
-      icon: IconLink,
+      icon: LinkIcon,
       options: integrationOptions,
     },
   ];
@@ -4739,7 +4743,7 @@ function AutomationCreateCategoryButton({
           : "text-sidebar-foreground hover:bg-gray-50",
       )}
     >
-      <Icon size={16} stroke={1.5} className="shrink-0" />
+      <Icon size={16} strokeWidth={1.5} className="shrink-0" />
       <span className="truncate">{category.label}</span>
     </button>
   );
@@ -4767,7 +4771,7 @@ function AutomationCreateOptionCard({
           accentChip,
         )}
       >
-        <Icon size={20} stroke={1.5} />
+        <Icon size={20} strokeWidth={1.5} />
       </span>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-semibold">{option.title}</span>
@@ -4831,7 +4835,7 @@ function AutomationCreateMenu({
           type="button"
           className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
         >
-          <IconPlus size={14} stroke={1.5} />
+          <Plus size={14} strokeWidth={1.5} />
           <span>
             {i18n.t(($) => {
               return $.workflows.automations.common.addAutomation;
@@ -5003,9 +5007,9 @@ function CreateGoogleMeetTranscriptGeneratedAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <IconVideo size={14} stroke={1.5} />
+                <Video size={14} strokeWidth={1.5} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.meet.addAction;
@@ -5184,7 +5188,7 @@ function CreateChatRunFinishedAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating && (
-                <IconLoader2 size={14} className="mr-1.5 animate-spin" />
+                <LoaderCircle size={14} className="mr-1.5 animate-spin" />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.chat.addAction;
@@ -5467,9 +5471,9 @@ function StrapiAutomationForm({
         </Button>
         <Button type="submit" disabled={creating}>
           {creating ? (
-            <IconLoader2 size={14} className="animate-spin" />
+            <LoaderCircle size={14} className="animate-spin" />
           ) : (
-            <IconWebhook size={14} />
+            <Webhook size={14} />
           )}
           {i18n.t(($) => {
             return $.workflows.automations.strapi.addAction;
@@ -5774,9 +5778,9 @@ function CreateNotionDatabaseItemAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <IconBrandNotion size={14} stroke={1.5} />
+                <NotionIcon size={14} strokeWidth={1.5} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -5978,9 +5982,9 @@ function CreateNotionPageContentUpdatedAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <IconBrandNotion size={14} stroke={1.5} />
+                <NotionIcon size={14} strokeWidth={1.5} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -6085,9 +6089,9 @@ function CreateNotionChildPageAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <IconBrandNotion size={14} stroke={1.5} />
+                <NotionIcon size={14} strokeWidth={1.5} />
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.notion.addAction;
@@ -6179,7 +6183,7 @@ function CreateIntervalAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {i18n.t(($) => {
                 return $.workflows.automations.schedule.addIntervalAction;
@@ -6281,7 +6285,7 @@ function CreateScheduledAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {i18n.t(($) => {
                 return $.workflows.automations.schedule.addScheduleAction;
@@ -6382,7 +6386,7 @@ function CreateOnceAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {i18n.t(($) => {
                 return $.workflows.automations.schedule.addOnceAction;
@@ -7002,7 +7006,7 @@ function GmailMatchConditionRow({
           onChange(removeGmailMatchCondition(conditions, index));
         }}
       >
-        <IconX size={16} stroke={1.5} />
+        <X size={16} strokeWidth={1.5} />
       </Button>
     </div>
   );
@@ -7044,7 +7048,7 @@ function GmailMatchConditionsEditor({
           }
         }}
       >
-        <IconPlus size={14} stroke={1.5} />
+        <Plus size={14} strokeWidth={1.5} />
         {i18n.t(($) => {
           return $.workflows.automations.gmail.addCondition;
         })}
@@ -7128,7 +7132,7 @@ function CreateGmailNewMessageAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {i18n.t(($) => {
                 return $.workflows.automations.gmail.addMessageAction;
@@ -7246,7 +7250,7 @@ function CreateGmailLabelAppliedAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {i18n.t(($) => {
                 return $.workflows.automations.gmail.addLabelAction;
@@ -8166,7 +8170,7 @@ function CreateGithubLabelAppliedAutomationDialog({
             </Button>
             <Button type="submit" disabled={submitDisabled}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {githubLabelAddActionLabel()}
             </Button>
@@ -8259,7 +8263,7 @@ function CreateGithubWorkflowRunCompletedAutomationDialog({
             </Button>
             <Button type="submit" disabled={submitDisabled}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {i18n.t(($) => {
                 return $.workflows.automations.github.addWorkflowAction;
@@ -8424,9 +8428,9 @@ function CreateGithubWebhookAutomationDialog({
             </Button>
             <Button type="submit" disabled={submitDisabled}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <IconBrandGithub size={14} stroke={1.5} />
+                <GithubIcon size={14} strokeWidth={1.5} />
               )}
               {copy.action}
             </Button>
@@ -8575,7 +8579,7 @@ function CreateGoogleCalendarEventAutomationDialog({
             </Button>
             <Button type="submit" disabled={creating}>
               {creating ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : null}
               {copy.action}
             </Button>
@@ -8718,7 +8722,7 @@ function CreatedWebhookAutomationView({
               copyText(curlExample);
             }}
           >
-            <IconCopy size={13} />
+            <Copy size={13} />
             {i18n.t(($) => {
               return $.workflows.automations.webhook.copy;
             })}
@@ -8747,7 +8751,7 @@ function WebhookReadonlyField({
     <div className="flex min-w-0 gap-2">
       <Input readOnly value={value} className="min-w-0" />
       <Button type="button" variant="outline" onClick={onCopy}>
-        <IconCopy size={14} />
+        <Copy size={14} />
         {i18n.t(($) => {
           return $.workflows.automations.webhook.copy;
         })}
@@ -8826,7 +8830,7 @@ function RevealWebhookSecretDialog({
                       copyText(curlExample);
                     }}
                   >
-                    <IconCopy size={13} />
+                    <Copy size={13} />
                     {copy.copy}
                   </Button>
                 </div>
@@ -8868,9 +8872,9 @@ function RevealWebhookSecretDialog({
               }}
             >
               {revealing ? (
-                <IconLoader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : (
-                <IconEye size={14} stroke={1.5} />
+                <Eye size={14} strokeWidth={1.5} />
               )}
               {copy.reveal}
             </Button>
@@ -8909,7 +8913,9 @@ function CreateWebhookAutomationView({
           })}
         </Button>
         <Button type="button" disabled={creating} onClick={onCreate}>
-          {creating ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {creating ? (
+            <LoaderCircle size={14} className="animate-spin" />
+          ) : null}
           {i18n.t(($) => {
             return $.workflows.automations.webhook.create;
           })}
@@ -9005,7 +9011,7 @@ function AutomationRow({
           </div>
         </div>
         <AutomationRunStat
-          icon={<IconHistory size={14} stroke={1.5} />}
+          icon={<History size={14} strokeWidth={1.5} />}
           label={i18n.t(($) => {
             return $.workflows.automations.schedule.last;
           })}
@@ -9014,7 +9020,7 @@ function AutomationRow({
         />
         {automation.kind === "schedule" ? (
           <AutomationRunStat
-            icon={<IconClock size={14} stroke={1.5} />}
+            icon={<Clock size={14} strokeWidth={1.5} />}
             label={i18n.t(($) => {
               return $.workflows.automations.schedule.next;
             })}
@@ -9217,9 +9223,9 @@ function AutomationControls({
                 }}
               >
                 {busy ? (
-                  <IconLoader2 size={14} className="animate-spin" />
+                  <LoaderCircle size={14} className="animate-spin" />
                 ) : (
-                  <IconPlayerPlay size={14} stroke={1.5} />
+                  <Play size={14} strokeWidth={1.5} />
                 )}
               </Button>
             </TooltipTrigger>
@@ -9252,7 +9258,7 @@ function AutomationControls({
                     setEditingAutomationId(automation.id);
                   }}
                 >
-                  <IconPencil size={14} stroke={1.5} />
+                  <Pencil size={14} strokeWidth={1.5} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -9317,7 +9323,7 @@ function AutomationMoreActionsMenu({
               })}
               className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground data-[state=open]:bg-gray-200 data-[state=open]:text-foreground"
             >
-              <IconDotsVertical size={14} stroke={1.5} />
+              <EllipsisVertical size={14} strokeWidth={1.5} />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
@@ -9336,7 +9342,7 @@ function AutomationMoreActionsMenu({
             className="gap-2"
             onModalSelect={onRevealWebhookSecret}
           >
-            <IconEye size={14} stroke={1.5} />
+            <Eye size={14} strokeWidth={1.5} />
             {i18n.t(($) => {
               return $.workflows.automations.webhook.revealTitle;
             })}
@@ -9353,9 +9359,9 @@ function AutomationMoreActionsMenu({
           }}
         >
           {deleting ? (
-            <IconLoader2 size={14} className="animate-spin" />
+            <LoaderCircle size={14} className="animate-spin" />
           ) : (
-            <IconTrash size={14} stroke={1.5} />
+            <Trash2 size={14} strokeWidth={1.5} />
           )}
           {i18n.t(($) => {
             return $.workflows.automations.common.deleteAutomation;
@@ -9658,9 +9664,9 @@ function UpdateScheduleAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <IconClock size={13} stroke={1.5} />
+            <Clock size={13} strokeWidth={1.5} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9741,9 +9747,9 @@ function UpdateGmailNewMessageAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <IconMail size={13} stroke={1.5} />
+            <Mail size={13} strokeWidth={1.5} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9831,9 +9837,9 @@ function UpdateGmailLabelAppliedAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <IconMail size={13} stroke={1.5} />
+            <Mail size={13} strokeWidth={1.5} />
           )}
           <span>
             {i18n.t(($) => {
@@ -9957,9 +9963,9 @@ function UpdateGithubLabelAppliedAutomationForm({
         </Button>
         <Button type="submit" disabled={submitDisabled}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <IconBrandGithub size={13} stroke={1.5} />
+            <GithubIcon size={13} strokeWidth={1.5} />
           )}
           <span>
             {i18n.t(($) => {
@@ -10030,9 +10036,9 @@ function UpdateGithubWorkflowRunCompletedAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <IconBrandGithub size={13} stroke={1.5} />
+            <GithubIcon size={13} strokeWidth={1.5} />
           )}
           <span>
             {i18n.t(($) => {
@@ -10102,9 +10108,9 @@ function UpdateGithubWebhookAutomationForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? (
-            <IconLoader2 size={13} className="animate-spin" />
+            <LoaderCircle size={13} className="animate-spin" />
           ) : (
-            <IconBrandGithub size={13} stroke={1.5} />
+            <GithubIcon size={13} strokeWidth={1.5} />
           )}
           <span>
             {i18n.t(($) => {

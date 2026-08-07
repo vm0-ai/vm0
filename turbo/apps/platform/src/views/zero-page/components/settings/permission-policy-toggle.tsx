@@ -1,4 +1,4 @@
-import { IconBan, IconCheck, IconCircleHalf2 } from "@tabler/icons-react";
+import { Ban, Check, Contrast } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 type PermissionPolicyToggleValue = "allow" | "deny";
@@ -11,7 +11,7 @@ export function PermissionPolicyMixedBadge() {
   const { t } = useTranslation();
   return (
     <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
-      <IconCircleHalf2 size={12} className="shrink-0" />
+      <Contrast size={12} className="shrink-0" />
       <span>
         {t(($) => {
           return $.connectors.permissions.actions.mixed;
@@ -66,7 +66,7 @@ export function PermissionPolicyToggle({
           tone: "allow",
         })}
       >
-        <IconCheck size={12} stroke={2.5} />
+        <Check size={12} strokeWidth={2.5} />
         {t(($) => {
           return $.connectors.permissions.actions.allow;
         })}
@@ -83,7 +83,7 @@ export function PermissionPolicyToggle({
           tone: "deny",
         })}
       >
-        <IconBan size={12} stroke={2.5} />
+        <Ban size={12} strokeWidth={2.5} />
         {t(($) => {
           return $.connectors.permissions.actions.deny;
         })}

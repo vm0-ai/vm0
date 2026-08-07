@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { IconCopy, IconMessageCircle } from "@tabler/icons-react";
+import { Copy, MessageCircle } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -71,7 +71,7 @@ function FeedbackToolbar({
           aria-keyshortcuts="c"
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-          <IconCopy size={14} stroke={2} />
+          <Copy size={14} strokeWidth={2} />
           {t(($) => {
             return $.chat.actions.copy;
           })}
@@ -84,7 +84,7 @@ function FeedbackToolbar({
           aria-keyshortcuts="f"
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-          <IconMessageCircle size={14} stroke={2} />
+          <MessageCircle size={14} strokeWidth={2} />
           {t(($) => {
             return $.chat.feedback.provide;
           })}

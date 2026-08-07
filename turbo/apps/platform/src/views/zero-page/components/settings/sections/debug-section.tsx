@@ -1,7 +1,7 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { IconBug } from "@tabler/icons-react";
+import { Bug } from "lucide-react";
 import { Switch } from "@vm0/ui/components/ui/switch";
 
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
@@ -39,7 +39,11 @@ function CaptureNetworkBodiesBlock() {
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <IconBug size={22} stroke={1.5} className="text-muted-foreground" />
+            <Bug
+              size={22}
+              strokeWidth={1.5}
+              className="text-muted-foreground"
+            />
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">

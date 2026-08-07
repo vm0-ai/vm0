@@ -3,12 +3,7 @@ import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Button } from "@vm0/ui";
-import {
-  IconAlertTriangle,
-  IconBan,
-  IconCheck,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { Ban, Check, LoaderCircle, TriangleAlert } from "lucide-react";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
   PlatformConnectorPermissionMetadata,
@@ -129,15 +124,9 @@ function ConnectorPermissionCard({
         </div>
         <div className="flex items-center gap-2 py-2">
           {action === "allow" ? (
-            <IconCheck
-              size={20}
-              className="shrink-0 text-green-600 opacity-70"
-            />
+            <Check size={20} className="shrink-0 text-green-600 opacity-70" />
           ) : (
-            <IconBan
-              size={20}
-              className="shrink-0 text-destructive opacity-70"
-            />
+            <Ban size={20} className="shrink-0 text-destructive opacity-70" />
           )}
           <span className="min-w-0 flex-1 text-sm text-foreground truncate">
             {permission.description ?? permission.name}
@@ -156,7 +145,10 @@ function LoadingCard() {
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
         <VM0Logo />
-        <IconLoader2 size={20} className="animate-spin text-muted-foreground" />
+        <LoaderCircle
+          size={20}
+          className="animate-spin text-muted-foreground"
+        />
       </div>
     </div>
   );
@@ -214,9 +206,9 @@ function ResultCard({
         <VM0Logo />
         <div className="flex flex-col items-center gap-4">
           {allowed ? (
-            <IconCheck size={40} className="text-green-600 opacity-70" />
+            <Check size={40} className="text-green-600 opacity-70" />
           ) : (
-            <IconBan size={40} className="text-destructive opacity-70" />
+            <Ban size={40} className="text-destructive opacity-70" />
           )}
           <p className="text-center text-lg font-medium leading-7 text-foreground">
             {title}
@@ -247,7 +239,7 @@ function ErrorMessage({ message }: { message: string }) {
   return (
     <StatusMessage>
       <div className="flex flex-col items-center gap-2">
-        <IconAlertTriangle size={24} />
+        <TriangleAlert size={24} />
         <p className="text-sm">{message}</p>
       </div>
     </StatusMessage>
@@ -494,7 +486,7 @@ function ConfirmGrantCard({
         <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col gap-3 px-[26px]">
           {saveError && (
             <div className="flex items-center justify-center gap-2 text-sm font-medium text-destructive">
-              <IconAlertTriangle size={16} />
+              <TriangleAlert size={16} />
               <span>
                 {t(($) => {
                   return $.authorization.permission.errors.updateFailed;

@@ -9,7 +9,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { Input } from "@vm0/ui/components/ui/input";
-import { IconLoader2 } from "@tabler/icons-react";
+import { LoaderCircle } from "lucide-react";
 
 import {
   claudeCodeDeviceAuthDialogState$,
@@ -274,7 +274,7 @@ function ClaudeCodeDeviceAuthBody({
             disabled={submitting}
             data-testid="claude-code-device-auth-submit"
           >
-            {submitting && <IconLoader2 size={14} className="animate-spin" />}
+            {submitting && <LoaderCircle size={14} className="animate-spin" />}
             {submitting
               ? t(($) => {
                   return $.settings.shared.connecting;
@@ -308,7 +308,7 @@ function ClaudeCodeDeviceAuthLoadingContent() {
       role="status"
       data-testid="claude-code-device-auth-loading"
     >
-      <IconLoader2 size={16} className="animate-spin" />
+      <LoaderCircle size={16} className="animate-spin" />
       <span>
         {t(($) => {
           return $.settings.models.deviceAuth.claude.preparing;

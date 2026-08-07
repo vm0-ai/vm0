@@ -1,4 +1,4 @@
-import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
+import { Check, CircleAlert, LoaderCircle } from "lucide-react";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { useTranslation } from "react-i18next";
@@ -78,7 +78,7 @@ export function ZeroConnectorCallbackPage({
     >
       {status === "loading" ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <IconLoader2 size={16} className="animate-spin" aria-hidden="true" />
+          <LoaderCircle size={16} className="animate-spin" aria-hidden="true" />
           <span>
             {t(($) => {
               return $.connectors.callback.finishing;
@@ -95,9 +95,9 @@ export function ZeroConnectorCallbackPage({
             }
           >
             {status === "success" ? (
-              <IconCheck size={16} aria-hidden="true" />
+              <Check size={16} aria-hidden="true" />
             ) : (
-              <IconAlertCircle size={16} aria-hidden="true" />
+              <CircleAlert size={16} aria-hidden="true" />
             )}
             <span>
               {status === "success"

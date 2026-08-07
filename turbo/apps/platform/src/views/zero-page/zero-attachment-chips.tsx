@@ -9,17 +9,17 @@ import {
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
-  IconArrowsDiagonal,
-  IconArrowsDiagonalMinimize2,
-  IconChevronLeft,
-  IconChevronRight,
-  IconColumns2,
-  IconFileMusic,
-  IconPhoto,
-  IconLoader2,
-  IconZoomReset,
-  IconX,
-} from "@tabler/icons-react";
+  ChevronLeft,
+  ChevronRight,
+  Columns2,
+  FileMusic,
+  Image,
+  LoaderCircle,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
@@ -280,7 +280,7 @@ function ArtifactDialogSplitViewButton({ onClick }: { onClick: () => void }) {
       })}
       onClick={onClick}
     >
-      <IconColumns2 size={18} stroke={1.8} />
+      <Columns2 size={18} strokeWidth={1.8} />
     </DialogIconButton>
   );
 }
@@ -307,9 +307,9 @@ function ArtifactDialogFullscreenButton({
       onClick={onClick}
     >
       {fullscreen ? (
-        <IconArrowsDiagonalMinimize2 size={18} stroke={1.8} />
+        <Minimize2 size={18} strokeWidth={1.8} />
       ) : (
-        <IconArrowsDiagonal size={18} stroke={1.8} />
+        <Maximize2 size={18} strokeWidth={1.8} />
       )}
     </DialogIconButton>
   );
@@ -409,7 +409,7 @@ function artifactDialogMetadataFromItem(params: {
 function ArtifactDialogLoadingBody() {
   return (
     <div className="flex h-full items-center justify-center p-6 text-muted-foreground">
-      <IconLoader2 size={20} stroke={1.8} className="animate-spin" />
+      <LoaderCircle size={20} strokeWidth={1.8} className="animate-spin" />
     </div>
   );
 }
@@ -535,7 +535,7 @@ function ArtifactDialogImageZoomControls({
           return $.artifacts.actions.resetZoom;
         })}
       >
-        <IconZoomReset size={15} stroke={1.8} />
+        <RotateCcw size={15} strokeWidth={1.8} />
       </button>
     </div>
   );
@@ -566,7 +566,7 @@ function ArtifactDialogImageNavigationControls({
           data-testid="artifact-dialog-previous-image"
           className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
-          <IconChevronLeft size={22} stroke={1.8} />
+          <ChevronLeft size={22} strokeWidth={1.8} />
         </button>
       )}
       {navigation.onNext && (
@@ -582,7 +582,7 @@ function ArtifactDialogImageNavigationControls({
           data-testid="artifact-dialog-next-image"
           className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
-          <IconChevronRight size={22} stroke={1.8} />
+          <ChevronRight size={22} strokeWidth={1.8} />
         </button>
       )}
     </>
@@ -809,7 +809,7 @@ function ArtifactDialogBody({
       <ArtifactDialogStage centered>
         <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
-            <IconFileMusic size={28} stroke={1.6} />
+            <FileMusic size={28} strokeWidth={1.6} />
           </span>
           <p className="max-w-full truncate text-sm text-muted-foreground">
             {filename}
@@ -1185,7 +1185,7 @@ function ArtifactPreviewDialogActions({
           closeLightboxWithDialogExit(rootSignal);
         }}
       >
-        <IconX size={18} stroke={1.8} />
+        <X size={18} strokeWidth={1.8} />
       </DialogIconButton>
     </div>
   );
@@ -1524,9 +1524,9 @@ function ComposerImagePreviewButton({
         title={filename}
         className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
       >
-        <IconPhoto
+        <Image
           size={20}
-          stroke={1.5}
+          strokeWidth={1.5}
           className="text-muted-foreground m-auto h-full"
         />
       </button>
@@ -1556,9 +1556,13 @@ function ComposerImagePreviewButton({
           className="absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground"
         >
           {currentImageStatus === "loading" ? (
-            <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
+            <LoaderCircle
+              size={14}
+              strokeWidth={1.8}
+              className="animate-spin"
+            />
           ) : (
-            <IconPhoto size={16} stroke={1.5} />
+            <Image size={16} strokeWidth={1.5} />
           )}
         </span>
       )}
@@ -1580,7 +1584,7 @@ function ComposerImagePreviewButton({
         }`}
       />
       <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/image-preview:bg-black/30">
-        <IconPhoto
+        <Image
           size={18}
           className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
         />
@@ -1629,7 +1633,7 @@ function AttachmentChip({
       )}
       {uploading && (
         <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
-          <IconLoader2
+          <LoaderCircle
             size={10}
             className="animate-spin text-muted-foreground"
           />
@@ -1659,7 +1663,7 @@ function AttachmentChip({
               )
         }
       >
-        <IconX size={9} stroke={2.5} />
+        <X size={9} strokeWidth={2.5} />
       </button>
     </div>
   );

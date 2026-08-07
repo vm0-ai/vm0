@@ -18,7 +18,7 @@ import {
   Switch,
   cn,
 } from "@vm0/ui";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { TriangleAlert } from "lucide-react";
 import {
   Alert,
   AlertDescription,
@@ -501,7 +501,7 @@ export function ZeroSettingsTab({
             </DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
-            <IconAlertTriangle size={16} stroke={1.5} />
+            <TriangleAlert size={16} strokeWidth={1.5} />
             <AlertTitle>
               {t(($) => {
                 return $.profile.makePrivate.warningTitle;

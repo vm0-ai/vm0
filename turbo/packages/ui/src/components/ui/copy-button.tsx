@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { IconCopy, IconCheck } from "@tabler/icons-react";
+import { Check, Copy } from "lucide-react";
 import { cn } from "../../lib/utils";
 import {
   Tooltip,
@@ -60,9 +60,9 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
               {...props}
             >
               {copied ? (
-                <IconCheck className="h-4 w-4 text-green-500" />
+                <Check className="h-4 w-4 text-green-500" />
               ) : (
-                <IconCopy className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                <Copy className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
               )}
             </button>
           </TooltipTrigger>

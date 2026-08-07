@@ -79,15 +79,15 @@ import {
 } from "../../../../signals/zero-page/settings/permissions-dialog.ts";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {
-  IconCheck,
-  IconBan,
-  IconChevronRight,
-  IconClock,
-  IconChevronDown,
-  IconLoader2,
-  IconSearch,
-  IconX,
-} from "@tabler/icons-react";
+  Ban,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  LoaderCircle,
+  Search,
+  X,
+} from "lucide-react";
 import {
   PermissionPolicyMixedBadge,
   PermissionPolicyToggle,
@@ -335,8 +335,8 @@ function PolicyPill({
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             } ${disabled ? "cursor-default" : "cursor-pointer"}`}
           >
-            {option === "allow" && <IconCheck size={12} stroke={2.5} />}
-            {option === "deny" && <IconBan size={12} stroke={2.5} />}
+            {option === "allow" && <Check size={12} strokeWidth={2.5} />}
+            {option === "deny" && <Ban size={12} strokeWidth={2.5} />}
             {option === "allow"
               ? t(($) => {
                   return $.connectors.permissions.actions.allow;
@@ -552,7 +552,7 @@ function allowDurationMenuLabel(option: UserPermissionGrantExpiresIn): string {
 
 function MenuItemCheck({ active }: { active: boolean }) {
   return active ? (
-    <IconCheck size={14} stroke={2.5} />
+    <Check size={14} strokeWidth={2.5} />
   ) : (
     <span className="h-3.5 w-3.5 shrink-0" />
   );
@@ -617,9 +617,9 @@ function PermissionAllowDurationDropdown({
               : "cursor-pointer text-muted-foreground hover:bg-muted/50 hover:text-foreground"
           }`}
         >
-          <IconClock size={12} className="shrink-0" />
+          <Clock size={12} className="shrink-0" />
           <span className="max-w-[90px] truncate">{label}</span>
-          <IconChevronDown size={12} stroke={2.5} className="shrink-0" />
+          <ChevronDown size={12} strokeWidth={2.5} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -657,7 +657,7 @@ function PermissionAllowDurationDropdown({
 function PermissionAllowDurationStatic({ label }: { label: string }) {
   return (
     <span className="inline-flex h-6 max-w-[150px] shrink-0 items-center gap-1.5 rounded-md border zero-border bg-muted/40 px-2 text-[11px] font-medium text-muted-foreground">
-      <IconClock size={12} className="shrink-0" />
+      <Clock size={12} className="shrink-0" />
       <span className="truncate">{label}</span>
     </span>
   );
@@ -834,9 +834,9 @@ function PermissionGroupHeader({
         onClick={onToggle}
         className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
       >
-        <IconChevronRight
+        <ChevronRight
           size={14}
-          stroke={2}
+          strokeWidth={2}
           className={`transition-transform ${expanded ? "rotate-90" : ""}`}
         />
         {category} ({permissions.length})
@@ -1497,9 +1497,9 @@ function LoadedPermissionsDrawerContent({
           className={`flex flex-col gap-2 pb-3 -mx-6 px-6 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
         >
           <div className="relative w-full">
-            <IconSearch
+            <Search
               size={15}
-              stroke={1.5}
+              strokeWidth={1.5}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
             />
             <input
@@ -1526,7 +1526,7 @@ function LoadedPermissionsDrawerContent({
                   return $.connectors.permissions.clearSearch;
                 })}
               >
-                <IconX size={13} stroke={1.8} />
+                <X size={13} strokeWidth={1.8} />
               </button>
             )}
           </div>
@@ -1719,7 +1719,7 @@ function PermissionsContent({
           <div className="flex flex-1 items-center justify-center">
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <IconLoader2 size={16} className="animate-spin" />
+                <LoaderCircle size={16} className="animate-spin" />
                 {t(($) => {
                   return $.connectors.permissions.loading;
                 })}

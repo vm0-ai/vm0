@@ -1,7 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@vm0/ui";
-import { IconAlertCircle, IconCheck, IconLoader2 } from "@tabler/icons-react";
+import { Check, CircleAlert, LoaderCircle } from "lucide-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import {
@@ -26,7 +26,7 @@ export function EmailUnsubscribePage() {
         <VM0Logo />
         {status === "done" ? (
           <div className="flex flex-col items-center gap-2.5">
-            <IconCheck size={20} className="text-muted-foreground" />
+            <Check size={20} className="text-muted-foreground" />
             <h1 className="text-lg font-medium text-foreground">
               {t(($) => {
                 return $.lifecycle.emailUnsubscribe.doneTitle;
@@ -43,7 +43,7 @@ export function EmailUnsubscribePage() {
           </div>
         ) : status === "error" || !token ? (
           <div className="flex flex-col items-center gap-2.5">
-            <IconAlertCircle size={20} className="text-destructive" />
+            <CircleAlert size={20} className="text-destructive" />
             <h1 className="text-lg font-medium text-foreground">
               {t(($) => {
                 return $.lifecycle.emailUnsubscribe.errorTitle;
@@ -79,7 +79,7 @@ export function EmailUnsubscribePage() {
               }}
             >
               {status === "submitting" ? (
-                <IconLoader2 size={16} className="animate-spin" />
+                <LoaderCircle size={16} className="animate-spin" />
               ) : null}
               {t(($) => {
                 return $.lifecycle.emailUnsubscribe.action;

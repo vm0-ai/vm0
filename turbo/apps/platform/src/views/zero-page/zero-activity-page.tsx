@@ -2,11 +2,7 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import {
-  IconUsers,
-  IconCircleDot,
-  IconPlugConnected,
-} from "@tabler/icons-react";
+import { CircleDot, PlugZap, Users } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -153,7 +149,7 @@ export function ZeroActivityPage() {
                   })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
-                  <IconUsers size={14} stroke={1.5} className="shrink-0" />
+                  <Users size={14} strokeWidth={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -178,7 +174,7 @@ export function ZeroActivityPage() {
                   })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
-                  <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
+                  <CircleDot size={14} strokeWidth={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -203,11 +199,7 @@ export function ZeroActivityPage() {
                   })}
                   className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
                 >
-                  <IconPlugConnected
-                    size={14}
-                    stroke={1.5}
-                    className="shrink-0"
-                  />
+                  <PlugZap size={14} strokeWidth={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -2,13 +2,13 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
-  IconSun,
-  IconMoon,
-  IconDeviceDesktop,
-  IconKeyboard,
-  IconLoader2,
-  IconPalette,
-} from "@tabler/icons-react";
+  Keyboard,
+  LoaderCircle,
+  Monitor,
+  Moon,
+  Palette,
+  Sun,
+} from "lucide-react";
 import { cn } from "@vm0/ui";
 import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
 
@@ -32,11 +32,11 @@ import { LanguageSettings } from "../language-settings.tsx";
 
 const THEME_OPTIONS: readonly {
   value: ThemePreference;
-  icon: typeof IconSun;
+  icon: typeof Sun;
 }[] = [
-  { value: "light", icon: IconSun },
-  { value: "dark", icon: IconMoon },
-  { value: "system", icon: IconDeviceDesktop },
+  { value: "light", icon: Sun },
+  { value: "dark", icon: Moon },
+  { value: "system", icon: Monitor },
 ];
 
 function AppearanceBlock() {
@@ -52,9 +52,9 @@ function AppearanceBlock() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconPalette
+              <Palette
                 size={22}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="text-muted-foreground"
               />
             </div>
@@ -102,7 +102,7 @@ function AppearanceBlock() {
                     : "zero-chip text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon size={15} stroke={1.5} />
+                <Icon size={15} strokeWidth={1.5} />
                 {label}
               </button>
             );
@@ -137,9 +137,9 @@ function EnterBlock() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconKeyboard
+              <Keyboard
                 size={22}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="text-muted-foreground"
               />
             </div>
@@ -191,7 +191,7 @@ function EnterBlock() {
                 )}
               >
                 {saving === value && (
-                  <IconLoader2 size={14} className="animate-spin" />
+                  <LoaderCircle size={14} className="animate-spin" />
                 )}
                 {label}
               </button>

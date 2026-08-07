@@ -6,12 +6,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import {
-  IconSearch,
-  IconLoader2,
-  IconDownload,
-  IconChartLine,
-} from "@tabler/icons-react";
+import { ChartLine, Download, LoaderCircle, Search } from "lucide-react";
 import {
   Button,
   Input,
@@ -224,7 +219,7 @@ function ActivityBreadcrumbLink() {
       pathname="/activities"
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
     >
-      <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+      <ChartLine size={14} strokeWidth={1.5} className="shrink-0" />
       {t(($) => {
         return $.activity.detail.activity;
       })}
@@ -435,7 +430,7 @@ export function ActivityHeaderCard({
                         }
                       }}
                     >
-                      <IconDownload size={14} stroke={1.5} />
+                      <Download size={14} strokeWidth={1.5} />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left">
@@ -554,7 +549,7 @@ function ActivityStepsContent({
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="relative flex-1 sm:flex-none sm:w-44">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder={t(($) => {
                 return $.activity.detail.steps.search;
@@ -1107,9 +1102,9 @@ export function StepsList({
       )}
       {isLoading ? (
         <div className="flex justify-center py-8">
-          <IconLoader2
+          <LoaderCircle
             size={20}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="animate-spin text-muted-foreground"
           />
         </div>

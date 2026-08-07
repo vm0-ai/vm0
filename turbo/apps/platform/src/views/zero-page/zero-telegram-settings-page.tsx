@@ -6,18 +6,18 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
-  IconAlertTriangle,
-  IconArrowLeft,
-  IconArrowRight,
-  IconCircleCheck,
-  IconDotsVertical,
-  IconExternalLink,
-  IconKey,
-  IconLoader2,
-  IconPlus,
-  IconRefresh,
-  IconRobot,
-} from "@tabler/icons-react";
+  ArrowLeft,
+  ArrowRight,
+  Bot,
+  CircleCheck,
+  EllipsisVertical,
+  ExternalLink,
+  Key,
+  LoaderCircle,
+  Plus,
+  RefreshCw,
+  TriangleAlert,
+} from "lucide-react";
 import {
   type TelegramBot,
   type TelegramBotStatus,
@@ -240,7 +240,7 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
   if (bot.tokenStatus === "invalid") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
-        <IconAlertTriangle className="h-3.5 w-3.5" />
+        <TriangleAlert className="h-3.5 w-3.5" />
         {t(($) => {
           return $.connectors.providerSettings.telegram.tokenInvalid;
         })}
@@ -263,7 +263,7 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
         });
     return (
       <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-secondary-foreground">
-        <IconCircleCheck className="h-3.5 w-3.5 text-green-600" />
+        <CircleCheck className="h-3.5 w-3.5 text-green-600" />
         <span
           className="min-w-0 truncate"
           title={connectedUserLabel ?? undefined}
@@ -276,7 +276,7 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
-      <IconAlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+      <TriangleAlert className="h-3.5 w-3.5 text-amber-500" />
       {t(($) => {
         return $.connectors.providerSettings.telegram.notConnected;
       })}
@@ -290,7 +290,7 @@ function TelegramBotIconFallback({ botId }: { botId: string }) {
       className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2AABEE]/10 text-[#2AABEE]"
       data-testid={`telegram-bot-avatar-fallback-${botId}`}
     >
-      <IconRobot className="h-5 w-5" stroke={1.75} />
+      <Bot className="h-5 w-5" strokeWidth={1.75} />
     </div>
   );
 }
@@ -457,7 +457,7 @@ function TelegramSetupStatusLine({
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
       <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-        <IconCircleCheck className="h-4 w-4 text-green-600" />
+        <CircleCheck className="h-4 w-4 text-green-600" />
         {t(($) => {
           return $.connectors.providerSettings.telegram.token.verified;
         })}
@@ -490,7 +490,7 @@ function AddTelegramBotTokenField({
         })}
       </label>
       <div className="relative">
-        <IconKey
+        <Key
           size={16}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
@@ -607,7 +607,7 @@ function AddTelegramTokenStep({
             className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
           >
             {BOT_FATHER_HANDLE}
-            <IconExternalLink className="h-3.5 w-3.5" />
+            <ExternalLink className="h-3.5 w-3.5" />
           </a>
           {t(($) => {
             return $.connectors.providerSettings.telegram.token.send;
@@ -669,7 +669,7 @@ function AddTelegramDomainStep({
       </div>
       {confirmed ? (
         <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
-          <IconCircleCheck className="h-4 w-4" />
+          <CircleCheck className="h-4 w-4" />
           {t(($) => {
             return $.connectors.providerSettings.telegram.domain.detected;
           })}
@@ -713,7 +713,7 @@ function AddTelegramPrivacyStep({
       </div>
       {confirmed ? (
         <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
-          <IconCircleCheck className="h-4 w-4" />
+          <CircleCheck className="h-4 w-4" />
           {t(($) => {
             return $.connectors.providerSettings.telegram.privacy.off;
           })}
@@ -990,7 +990,7 @@ function AddTelegramBotDialogFrame({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm" disabled={disabled}>
-          <IconPlus size={16} />
+          <Plus size={16} />
           {t(($) => {
             return $.connectors.providerSettings.telegram.addBot;
           })}
@@ -1293,7 +1293,7 @@ function AddTelegramBotDialogFooter({
           })
         ) : (
           <span className="inline-flex items-center gap-2">
-            <IconArrowLeft size={16} />
+            <ArrowLeft size={16} />
             {t(($) => {
               return $.connectors.providerSettings.telegram.steps.back;
             })}
@@ -1308,9 +1308,9 @@ function AddTelegramBotDialogFooter({
           onClick={onAddBot}
         >
           {adding ? (
-            <IconLoader2 size={16} className="animate-spin" />
+            <LoaderCircle size={16} className="animate-spin" />
           ) : (
-            <IconPlus size={16} />
+            <Plus size={16} />
           )}
           {adding
             ? t(($) => {
@@ -1329,7 +1329,7 @@ function AddTelegramBotDialogFooter({
         >
           {checkingTarget ? (
             <>
-              <IconLoader2 size={16} className="animate-spin" />
+              <LoaderCircle size={16} className="animate-spin" />
               {t(($) => {
                 return $.connectors.providerSettings.telegram.checking;
               })}
@@ -1339,7 +1339,7 @@ function AddTelegramBotDialogFooter({
               {t(($) => {
                 return $.connectors.providerSettings.telegram.steps.next;
               })}
-              <IconArrowRight size={16} />
+              <ArrowRight size={16} />
             </>
           )}
         </Button>
@@ -1500,9 +1500,9 @@ function TelegramReinstallAction({
       }}
     >
       {reinstalling ? (
-        <IconLoader2 size={15} className="animate-spin" />
+        <LoaderCircle size={15} className="animate-spin" />
       ) : (
-        <IconRefresh size={15} />
+        <RefreshCw size={15} />
       )}
       {reinstalling
         ? t(($) => {
@@ -1600,7 +1600,7 @@ function TelegramMoreActions({
             { bot: botLabel },
           )}
         >
-          <IconDotsVertical size={16} stroke={1.5} />
+          <EllipsisVertical size={16} strokeWidth={1.5} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
@@ -1892,7 +1892,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
               })}
             </label>
             <div className="relative">
-              <IconKey
+              <Key
                 size={16}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
               />
@@ -1928,9 +1928,9 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
             </Button>
             <Button type="submit" disabled={!canSubmit} className="gap-2">
               {reinstalling ? (
-                <IconLoader2 size={16} className="animate-spin" />
+                <LoaderCircle size={16} className="animate-spin" />
               ) : (
-                <IconRefresh size={16} />
+                <RefreshCw size={16} />
               )}
               {reinstalling
                 ? t(($) => {
@@ -2191,7 +2191,7 @@ export function ZeroTelegramSettingsPage() {
                     .backToIntegrations;
                 })}
               >
-                <IconArrowLeft size={17} stroke={1.8} />
+                <ArrowLeft size={17} strokeWidth={1.8} />
                 {t(($) => {
                   return $.connectors.providerSettings.telegram
                     .backToIntegrations;

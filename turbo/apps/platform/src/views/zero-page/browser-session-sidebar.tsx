@@ -1,4 +1,4 @@
-import { IconArrowsDiagonal, IconX } from "@tabler/icons-react";
+import { Maximize2, X } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 
@@ -42,7 +42,7 @@ export function BrowserSessionSidebar({
           })}
           className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
-          <IconArrowsDiagonal size={16} />
+          <Maximize2 size={16} />
         </a>
         <button
           type="button"
@@ -59,7 +59,7 @@ export function BrowserSessionSidebar({
           })}
           className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
-          <IconX size={16} />
+          <X size={16} />
         </button>
       </div>
       <div className="min-h-0 flex-1">

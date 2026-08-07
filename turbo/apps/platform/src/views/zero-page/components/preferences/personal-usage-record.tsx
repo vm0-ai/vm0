@@ -1,16 +1,13 @@
 import type { MouseEvent } from "react";
 import { useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import {
-  IconBrandGithub,
-  IconBrandSlack,
-  IconBrandTelegram,
-  IconChevronDown,
-  IconClock,
-  IconMail,
-  IconMessageCircle,
-  IconPhone,
-  IconRobot,
-} from "@tabler/icons-react";
+  Bot,
+  ChevronDown,
+  Clock,
+  Mail,
+  MessageCircle,
+  Phone,
+} from "lucide-react";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type {
   UsageRecordKind,
@@ -27,6 +24,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  GithubIcon,
+  SlackIcon,
+  TelegramIcon,
 } from "@vm0/ui";
 import {
   Tooltip,
@@ -55,17 +55,17 @@ import {
 const CARD_BORDER = "0.7px solid hsl(var(--gray-400))";
 
 const SOURCE_ICONS = {
-  chat: IconMessageCircle,
-  automation: IconClock,
-  slack: IconBrandSlack,
-  teams: IconMessageCircle,
-  telegram: IconBrandTelegram,
-  email: IconMail,
-  agentphone: IconPhone,
-  github: IconBrandGithub,
-  agent: IconRobot,
-  other: IconRobot,
-} as const satisfies Record<UsageRecordSource, typeof IconMessageCircle>;
+  chat: MessageCircle,
+  automation: Clock,
+  slack: SlackIcon,
+  teams: MessageCircle,
+  telegram: TelegramIcon,
+  email: Mail,
+  agentphone: Phone,
+  github: GithubIcon,
+  agent: Bot,
+  other: Bot,
+} as const satisfies Record<UsageRecordSource, typeof MessageCircle>;
 
 const KIND_META = {
   model: {
@@ -270,9 +270,9 @@ export function UsageRangeSelect({
           className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
         >
           {rangeLabel(value)}
-          <IconChevronDown
+          <ChevronDown
             size={14}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="ml-1.5 text-muted-foreground"
           />
         </Button>
@@ -436,7 +436,7 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
           aria-label={label}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
         >
-          <Icon size={20} stroke={1.5} />
+          <Icon size={20} strokeWidth={1.5} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-h-8 min-w-0 items-center gap-3">

@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { IconPencil, IconLoader2 } from "@tabler/icons-react";
+import { LoaderCircle, Pencil } from "lucide-react";
 import { Button } from "@vm0/ui";
 
 export function UnsavedBar({
@@ -28,9 +28,9 @@ export function UnsavedBar({
         className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
-          <IconPencil
+          <Pencil
             size={18}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="shrink-0 text-muted-foreground"
           />
           <span>
@@ -60,9 +60,9 @@ export function UnsavedBar({
             disabled={saving || saveDisabled}
           >
             {saving ? (
-              <IconLoader2
+              <LoaderCircle
                 size={14}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="animate-spin mr-1.5"
               />
             ) : null}

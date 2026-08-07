@@ -1,7 +1,7 @@
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
+import { ChartLine, Search, Upload } from "lucide-react";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -88,7 +88,7 @@ function InspectBreadcrumb({ title }: { title: string }) {
         pathname="/activities"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
-        <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+        <ChartLine size={14} strokeWidth={1.5} className="shrink-0" />
         {t(($) => {
           return $.activity.detail.activity;
         })}
@@ -115,7 +115,11 @@ function InspectEmptyState() {
         })}
       />
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <IconUpload size={48} stroke={1} className="text-muted-foreground/40" />
+        <Upload
+          size={48}
+          strokeWidth={1}
+          className="text-muted-foreground/40"
+        />
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
             return $.activity.inspect.noLog.title;
@@ -133,7 +137,7 @@ function InspectEmptyState() {
         )}
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
-            <IconUpload size={16} stroke={1.5} />
+            <Upload size={16} strokeWidth={1.5} />
             {t(($) => {
               return $.activity.inspect.noLog.upload;
             })}
@@ -235,7 +239,7 @@ function StepsTab({
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="relative flex-1 sm:flex-none sm:w-44">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder={t(($) => {
                 return $.activity.detail.steps.search;

@@ -2,7 +2,7 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { IconLoader2, IconPlus, IconWand } from "@tabler/icons-react";
+import { LoaderCircle, Plus, Wand } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -241,7 +241,7 @@ function AgentTabsView({
             return onCreate(activeTab);
           }}
         >
-          <IconPlus size={14} stroke={2} />
+          <Plus size={14} strokeWidth={2} />
           {t(($) => {
             return $.list.actions.new;
           })}
@@ -422,7 +422,7 @@ function CreateAgentAvatarPreview() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
-                      <IconWand size={10} stroke={1.5} />
+                      <Wand size={10} strokeWidth={1.5} />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -619,7 +619,7 @@ function CreateTeammateDialogContent({
         >
           {creating ? (
             <span className="inline-flex items-center gap-1.5">
-              <IconLoader2 size={14} className="animate-spin" />
+              <LoaderCircle size={14} className="animate-spin" />
               {t(($) => {
                 return $.list.create.creating;
               })}

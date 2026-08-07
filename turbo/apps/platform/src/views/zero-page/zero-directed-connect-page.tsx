@@ -63,7 +63,7 @@ import {
   type DirectedConnectManualGrantDialogKey,
 } from "../../signals/connectors-page/directed-connect-slug.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { IconCheck, IconLoader2 } from "@tabler/icons-react";
+import { Check, LoaderCircle } from "lucide-react";
 import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent, ReactNode } from "react";
@@ -284,7 +284,7 @@ function ManualGrantForm({
         disabled={!allFilled || submitting}
         className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
       >
-        {submitting && <IconLoader2 size={14} className="animate-spin" />}
+        {submitting && <LoaderCircle size={14} className="animate-spin" />}
         {submitting
           ? t(($) => {
               return $.connectors.actions.saving;
@@ -359,7 +359,7 @@ function ConnectActions({
     return (
       <>
         <div className="inline-flex h-9 w-[100px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
-          <IconCheck size={16} />
+          <Check size={16} />
           {t(($) => {
             return $.connectors.card.connected;
           })}
@@ -370,7 +370,7 @@ function ConnectActions({
           onClick={onConnect}
           className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60 inline-flex items-center gap-1.5"
         >
-          {isConnecting && <IconLoader2 size={12} className="animate-spin" />}
+          {isConnecting && <LoaderCircle size={12} className="animate-spin" />}
           {isConnecting
             ? t(($) => {
                 return $.connectors.directed.reconnecting;
@@ -389,7 +389,7 @@ function ConnectActions({
       onClick={onConnect}
       className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
     >
-      {isConnecting && <IconLoader2 size={14} className="animate-spin" />}
+      {isConnecting && <LoaderCircle size={14} className="animate-spin" />}
       {isConnecting
         ? t(($) => {
             return $.connectors.actions.connecting;
@@ -576,7 +576,7 @@ function DirectedConnectCardContent({
         <div className="flex w-full flex-col gap-4">
           <div className="flex flex-col items-center gap-2.5">
             {isLoading ? (
-              <IconLoader2
+              <LoaderCircle
                 size={20}
                 className="animate-spin text-muted-foreground"
               />

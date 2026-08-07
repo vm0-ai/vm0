@@ -1,20 +1,20 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
-  IconBox,
-  IconBriefcase,
-  IconChartBar,
-  IconCircleCheckFilled,
-  IconCode,
-  IconMessageCircle,
-  IconMessagePlus,
-  IconScanEye,
-  IconSparkles,
-  IconSpeakerphone,
-  IconSun,
-  IconTrendingUp,
-  type Icon,
-} from "@tabler/icons-react";
+  Box,
+  Briefcase,
+  ChartBar,
+  CircleCheckBig,
+  Code,
+  type LucideIcon,
+  Megaphone,
+  MessageCircle,
+  MessageSquarePlus,
+  ScanEye,
+  Sparkles,
+  Sun,
+  TrendingUp,
+} from "lucide-react";
 import { cn } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
@@ -46,16 +46,18 @@ import {
 } from "./onboarding-shell.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 
-const CATEGORY_ICONS: Readonly<Record<OnboardingWorkflowCategoryId, Icon>> = {
-  engineering: IconCode,
-  product: IconBox,
-  data: IconChartBar,
-  marketing: IconSpeakerphone,
-  sales: IconTrendingUp,
-  support: IconMessageCircle,
-  ceo: IconBriefcase,
-  operations: IconSun,
-  everyone: IconSparkles,
+const CATEGORY_ICONS: Readonly<
+  Record<OnboardingWorkflowCategoryId, LucideIcon>
+> = {
+  engineering: Code,
+  product: Box,
+  data: ChartBar,
+  marketing: Megaphone,
+  sales: TrendingUp,
+  support: MessageCircle,
+  ceo: Briefcase,
+  operations: Sun,
+  everyone: Sparkles,
 };
 
 function WorkflowConnectorIcon({
@@ -242,11 +244,11 @@ function WorkflowCard({
           })}
           onClick={onPreview}
         >
-          <IconScanEye size={16} stroke={1.6} aria-hidden="true" />
+          <ScanEye size={16} strokeWidth={1.6} aria-hidden="true" />
         </button>
       </span>
       {selected ? (
-        <IconCircleCheckFilled
+        <CircleCheckBig
           size={18}
           className="absolute right-3 top-3 text-primary"
           aria-hidden="true"
@@ -299,7 +301,7 @@ function WorkflowOptions({
         )}
       >
         <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted/40 text-primary">
-          <IconMessagePlus size={19} aria-hidden="true" />
+          <MessageSquarePlus size={19} aria-hidden="true" />
         </span>
         <span className="text-sm font-semibold text-foreground">
           {t(($) => {
@@ -337,7 +339,7 @@ function CategoryOptions({
             className="flex min-h-[130px] min-w-0 flex-col items-start gap-2.5 rounded-xl border border-border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-muted/40">
-              <CategoryIcon size={21} stroke={1.7} aria-hidden="true" />
+              <CategoryIcon size={21} strokeWidth={1.7} aria-hidden="true" />
             </span>
             <span className="text-sm font-semibold">{category.title}</span>
             <span className="text-xs leading-[1.35] text-muted-foreground">

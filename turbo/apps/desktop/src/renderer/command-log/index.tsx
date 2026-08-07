@@ -1,19 +1,19 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  IconActivityHeartbeat,
-  IconAlertCircle,
-  IconCheck,
-  IconChevronDown,
-  IconChevronRight,
-  IconCode,
-  IconHistory,
-  IconMaximize,
-  IconPhoto,
-  IconPlayerPlay,
-  IconPlayerStop,
-  IconRefresh,
-  IconX,
-} from "@tabler/icons-react";
+  Activity,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  Code,
+  History,
+  Image,
+  Maximize,
+  Play,
+  RefreshCw,
+  Square,
+  X,
+} from "lucide-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopComputerUseState } from "../../computer-use-types";
 import {
@@ -83,7 +83,7 @@ export function RuntimePanel({
     (state.host.lastError !== null || state.host.errorLog.length > 0);
 
   return (
-    <Panel title="Runtime" icon={<IconActivityHeartbeat size={18} />}>
+    <Panel title="Runtime" icon={<Activity size={18} />}>
       <div className="runtime-grid">
         <div>
           <span>Status</span>
@@ -99,7 +99,7 @@ export function RuntimePanel({
                   setErrorDetailsOpen(true);
                 }}
               >
-                <IconAlertCircle size={15} />
+                <CircleAlert size={15} />
               </button>
             )}
           </strong>
@@ -131,7 +131,7 @@ export function RuntimePanel({
       <div className="panel-actions">
         <IconButton
           tone="primary"
-          icon={<IconPlayerPlay size={15} />}
+          icon={<Play size={15} />}
           onClick={() => {
             void start();
           }}
@@ -141,7 +141,7 @@ export function RuntimePanel({
         </IconButton>
         <IconButton
           tone="danger"
-          icon={<IconPlayerStop size={15} />}
+          icon={<Square size={15} />}
           onClick={() => {
             void stop();
           }}
@@ -150,7 +150,7 @@ export function RuntimePanel({
           Stop
         </IconButton>
         <IconButton
-          icon={<IconRefresh size={15} />}
+          icon={<RefreshCw size={15} />}
           onClick={() => {
             void refresh();
           }}
@@ -182,7 +182,7 @@ function RuntimeRecoveryAlert({
   }
   return (
     <div className="inline-alert">
-      <IconRefresh size={16} />
+      <RefreshCw size={16} />
       <span>
         {`${RECOVERY_PHASE_LABELS[recovery.phase]} retry attempt ${
           recovery.attempt
@@ -219,7 +219,7 @@ function CommandLogSection({
     <>
       {collapsible && (
         <span className="command-log-section-disclosure">
-          <IconChevronRight size={14} />
+          <ChevronRight size={14} />
         </span>
       )}
       {icon}
@@ -255,7 +255,7 @@ function ScreenshotBlock({
 }) {
   const meta = screenshotMeta(entry.result);
   return (
-    <CommandLogSection title="Screenshot" icon={<IconPhoto size={15} />}>
+    <CommandLogSection title="Screenshot" icon={<Image size={15} />}>
       <button
         type="button"
         className="screenshot-thumbnail"
@@ -269,7 +269,7 @@ function ScreenshotBlock({
       >
         <img src={screenshot} alt={`${entry.kind} screenshot`} />
         <span>
-          <IconMaximize size={14} />
+          <Maximize size={14} />
           Open
         </span>
       </button>
@@ -301,11 +301,7 @@ function CommandLogRow({
         onClick={onToggle}
       >
         <span className="command-log-chevron">
-          {expanded ? (
-            <IconChevronDown size={16} />
-          ) : (
-            <IconChevronRight size={16} />
-          )}
+          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
         <span className="command-log-main">
           <span className="row-title">{entry.kind}</span>
@@ -318,24 +314,21 @@ function CommandLogRow({
       </button>
       {expanded && (
         <div className="command-log-details">
-          <CommandLogSection title="Parameters" icon={<IconCode size={15} />}>
+          <CommandLogSection title="Parameters" icon={<Code size={15} />}>
             <KeyValueList
               value={entry.payload}
               emptyLabel="No parameters were sent."
             />
           </CommandLogSection>
           {entry.error && (
-            <CommandLogSection
-              title="Error"
-              icon={<IconAlertCircle size={15} />}
-            >
+            <CommandLogSection title="Error" icon={<CircleAlert size={15} />}>
               <pre className="json-block">{formatJson(entry.error)}</pre>
             </CommandLogSection>
           )}
           {entry.result && (
             <CommandLogSection
               title="Result"
-              icon={<IconCheck size={15} />}
+              icon={<Check size={15} />}
               collapsible
             >
               <KeyValueList
@@ -345,7 +338,7 @@ function CommandLogRow({
             </CommandLogSection>
           )}
           {resultAppState && (
-            <CommandLogSection title="App State" icon={<IconCode size={15} />}>
+            <CommandLogSection title="App State" icon={<Code size={15} />}>
               <pre className="agent-state-block">{resultAppState}</pre>
             </CommandLogSection>
           )}
@@ -411,7 +404,7 @@ function ScreenshotLightbox({
             {preview.meta && <span>{preview.meta}</span>}
           </div>
           <button type="button" className="icon-only-button" onClick={onClose}>
-            <IconX size={18} />
+            <X size={18} />
           </button>
         </div>
         <img src={preview.src} alt={preview.title} />
@@ -443,7 +436,7 @@ export function CommandLogPanel({
   };
 
   return (
-    <Panel title="Command Log" icon={<IconHistory size={18} />}>
+    <Panel title="Command Log" icon={<History size={18} />}>
       {entries.length === 0 ? (
         <div className="empty-state">No local native commands have run.</div>
       ) : (

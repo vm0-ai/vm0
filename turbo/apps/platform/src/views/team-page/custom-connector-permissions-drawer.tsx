@@ -1,4 +1,4 @@
-import { IconLoader2 } from "@tabler/icons-react";
+import { LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CustomConnectorPermissionBundleResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -234,7 +234,7 @@ export function CustomConnectorPermissionsDrawer({
             <div className="flex flex-1 items-center justify-center">
               {loading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <IconLoader2 size={16} className="animate-spin" />
+                  <LoaderCircle size={16} className="animate-spin" />
                   {t(($) => {
                     return $.connectors.permissions.loading;
                   })}

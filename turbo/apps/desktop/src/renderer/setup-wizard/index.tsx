@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import {
-  IconAlertCircle,
-  IconBuilding,
-  IconCheck,
-  IconExternalLink,
-  IconLogout,
-  IconShieldCheck,
-} from "@tabler/icons-react";
+  Building,
+  Check,
+  CircleAlert,
+  ExternalLink,
+  LogOut,
+  ShieldCheck,
+} from "lucide-react";
 import { useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopAuthState } from "../../desktop-bridge";
@@ -58,7 +58,7 @@ function StepIndex({
 }) {
   return (
     <span className={`step-index step-index-${tone}`}>
-      {tone === "ready" ? <IconCheck size={14} /> : step}
+      {tone === "ready" ? <Check size={14} /> : step}
     </span>
   );
 }
@@ -96,7 +96,7 @@ export function AuthStepCard({
         </div>
         <div className="row-actions">
           <IconButton
-            icon={<IconBuilding size={15} />}
+            icon={<Building size={15} />}
             onClick={() => {
               void selectOrg();
             }}
@@ -106,7 +106,7 @@ export function AuthStepCard({
           </IconButton>
           <IconButton
             tone="danger"
-            icon={<IconLogout size={15} />}
+            icon={<LogOut size={15} />}
             onClick={() => {
               void signOut();
             }}
@@ -146,7 +146,7 @@ export function AuthStepCard({
             <>
               <IconButton
                 tone="primary"
-                icon={<IconBuilding size={15} />}
+                icon={<Building size={15} />}
                 onClick={() => {
                   void selectOrg();
                 }}
@@ -156,7 +156,7 @@ export function AuthStepCard({
               </IconButton>
               <IconButton
                 tone="danger"
-                icon={<IconLogout size={15} />}
+                icon={<LogOut size={15} />}
                 onClick={() => {
                   void signOut();
                 }}
@@ -168,7 +168,7 @@ export function AuthStepCard({
           ) : (
             <IconButton
               tone="primary"
-              icon={<IconExternalLink size={15} />}
+              icon={<ExternalLink size={15} />}
               onClick={() => {
                 void signIn();
               }}
@@ -207,22 +207,19 @@ function PermissionSetupRow({
       <div className="row-actions">
         {granted ? (
           <span className="check-pill">
-            <IconCheck size={14} />
+            <Check size={14} />
             Ready
           </span>
         ) : (
           <IconButton
-            icon={<IconShieldCheck size={15} />}
+            icon={<ShieldCheck size={15} />}
             onClick={onRequest}
             disabled={requestLoading}
           >
             Request
           </IconButton>
         )}
-        <IconButton
-          icon={<IconExternalLink size={15} />}
-          onClick={onOpenSettings}
-        >
+        <IconButton icon={<ExternalLink size={15} />} onClick={onOpenSettings}>
           Settings
         </IconButton>
       </div>
@@ -298,7 +295,7 @@ function BrowserAutomationSetupRow({
       </div>
       <div className="row-actions">
         <span className={`automation-pill automation-pill-${pillStatus}`}>
-          {ready ? <IconCheck size={14} /> : <IconAlertCircle size={14} />}
+          {ready ? <Check size={14} /> : <CircleAlert size={14} />}
           {AUTOMATION_PERMISSION_STATUS_LABELS[pillStatus]}
         </span>
         {!ready &&
@@ -306,7 +303,7 @@ function BrowserAutomationSetupRow({
             return (
               <IconButton
                 key={target}
-                icon={<IconShieldCheck size={15} />}
+                icon={<ShieldCheck size={15} />}
                 disabled={disabled}
                 onClick={() => {
                   void probeAutomation(target);
@@ -318,7 +315,7 @@ function BrowserAutomationSetupRow({
           })}
         {needsApproval && (
           <IconButton
-            icon={<IconExternalLink size={15} />}
+            icon={<ExternalLink size={15} />}
             onClick={() => {
               void openAutomationSettings();
             }}

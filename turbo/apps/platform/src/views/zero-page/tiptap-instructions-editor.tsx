@@ -10,17 +10,17 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Markdown } from "@tiptap/markdown";
 import { common, createLowlight } from "lowlight";
 import {
-  IconBold,
-  IconItalic,
-  IconStrikethrough,
-  IconH1,
-  IconH2,
-  IconH3,
-  IconList,
-  IconListNumbers,
-  IconBlockquote,
-  IconCode,
-} from "@tabler/icons-react";
+  Bold,
+  Code,
+  Heading1,
+  Heading2,
+  Heading3,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Strikethrough,
+} from "lucide-react";
 import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import "highlight.js/styles/github.css";
@@ -310,7 +310,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.bold}
           >
-            <IconBold size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Bold size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -320,7 +320,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.italic}
           >
-            <IconItalic size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Italic size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -330,7 +330,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.strikethrough}
           >
-            <IconStrikethrough size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Strikethrough size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -340,7 +340,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.inlineCode}
           >
-            <IconCode size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Code size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
 
           <ToolbarDivider />
@@ -353,7 +353,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.heading1}
           >
-            <IconH1 size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Heading1 size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -363,7 +363,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.heading2}
           >
-            <IconH2 size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Heading2 size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -373,7 +373,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.heading3}
           >
-            <IconH3 size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Heading3 size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
 
           <ToolbarDivider />
@@ -386,7 +386,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.bulletList}
           >
-            <IconList size={ICON_SIZE} stroke={ICON_STROKE} />
+            <List size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -396,7 +396,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.orderedList}
           >
-            <IconListNumbers size={ICON_SIZE} stroke={ICON_STROKE} />
+            <ListOrdered size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
             onAction={() => {
@@ -406,7 +406,7 @@ export function TiptapInstructionsEditor({
             disabled={disabled}
             title={labels.blockquote}
           >
-            <IconBlockquote size={ICON_SIZE} stroke={ICON_STROKE} />
+            <Quote size={ICON_SIZE} strokeWidth={ICON_STROKE} />
           </ToolbarButton>
         </BubbleMenu>
       )}
