@@ -8417,6 +8417,29 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       state: "available",
     });
 
+    await connectors.updateCustomConnector(actor, custom.id, {
+      displayName: "BDD Internal API Updated",
+      prefixTemplates: ["https://*.internal.example.com/v2/"],
+      fields: custom.fields,
+      headerInjections: [
+        {
+          name: "X-Authorization",
+          valueTemplate: "Token {{secrets.secret}}",
+        },
+      ],
+      queryInjections: custom.queryInjections,
+      authMode: custom.authMode,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    const lastKnownGoodAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(lastKnownGoodAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer restored-custom-secret-value" },
+    });
+
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");

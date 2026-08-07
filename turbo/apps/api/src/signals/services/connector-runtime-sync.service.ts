@@ -4,8 +4,6 @@ import type {
   ConnectorRuntimeTarget,
 } from "@vm0/api-contracts/contracts/runners";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -15,18 +13,14 @@ import {
   buildCustomConnectorRuntimeContext,
   customConnectorRuntimeExecutionState,
   loadEffectiveCustomConnectorPermissionBundle,
-  type CustomConnectorAuthRef,
   type CustomConnectorRuntimeDataRows,
 } from "./agent-run-create.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveActiveNetworkPolicyRefreshes } from "./zero-user-permission-grants.service";
 import {
-  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
   CustomConnectorRuntimePrefixError,
   loadCustomConnectorRuntimeData,
-  type StoredValueRow,
 } from "./zero-custom-connector.service";
 
 interface ConnectorRuntimeScope {
@@ -35,24 +29,13 @@ interface ConnectorRuntimeScope {
   readonly agentId: string;
 }
 
-interface CustomConnectionSnapshot {
-  readonly needsReconnect: boolean;
-  readonly secrets: readonly {
-    readonly name: string;
-    readonly encryptedValue: string;
-  }[];
-}
-
 interface CustomTargetSnapshot {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly grant: AgentCustomConnectorGrant | undefined;
-  readonly connection: CustomConnectionSnapshot | undefined;
 }
 
-export interface ConnectorRuntimeResolution {
+interface ConnectorRuntimeResolution {
   readonly result: ConnectorRuntimeSyncResult;
-  readonly customAuthRefs?: readonly CustomConnectorAuthRef[];
-  readonly customAuthState?: "reconnect-required";
 }
 
 function customAbsentResult(
@@ -78,73 +61,6 @@ function builtinUnresolvedResult(
       reason: "connector-unavailable",
     },
   };
-}
-
-function connectionSnapshots(
-  rows: readonly {
-    readonly customConnectorId: string;
-    readonly needsReconnect: boolean;
-    readonly secretName: string | null;
-    readonly encryptedValue: string | null;
-  }[],
-): ReadonlyMap<string, CustomConnectionSnapshot> {
-  const grouped = new Map<
-    string,
-    Omit<CustomConnectionSnapshot, "secrets"> & {
-      secrets: { name: string; encryptedValue: string }[];
-    }
-  >();
-  for (const row of rows) {
-    let connection = grouped.get(row.customConnectorId);
-    if (!connection) {
-      connection = {
-        needsReconnect: row.needsReconnect,
-        secrets: [],
-      };
-      grouped.set(row.customConnectorId, connection);
-    }
-    if (row.secretName && row.encryptedValue) {
-      connection.secrets.push({
-        name: row.secretName,
-        encryptedValue: row.encryptedValue,
-      });
-    }
-  }
-  return grouped;
-}
-
-function valuesWithOAuthAccessToken(
-  row: CustomTargetSnapshot,
-): readonly StoredValueRow[] {
-  if (row.row.connector.authMode !== "oauth") {
-    return row.row.values;
-  }
-  const connection = row.connection;
-  const encryptedAccessToken = connection?.secrets.find((secret) => {
-    return secret.name === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME;
-  })?.encryptedValue;
-  if (!connection || connection.needsReconnect || !encryptedAccessToken) {
-    return row.row.values.filter((value) => {
-      return !(
-        value.kind === "secret" &&
-        value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-      );
-    });
-  }
-  return [
-    ...row.row.values.filter((value) => {
-      return !(
-        value.kind === "secret" &&
-        value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-      );
-    }),
-    {
-      connectorId: row.row.connector.id,
-      kind: "secret" as const,
-      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-      encryptedValue: encryptedAccessToken,
-    },
-  ];
 }
 
 async function loadCustomSnapshot(args: {
@@ -183,29 +99,6 @@ async function loadCustomSnapshot(args: {
             ),
           ),
         );
-      const connectionRows = await tx
-        .select({
-          customConnectorId: connectors.customConnectorId,
-          needsReconnect: connectors.needsReconnect,
-          secretName: secrets.name,
-          encryptedValue: secrets.encryptedValue,
-        })
-        .from(connectors)
-        .leftJoin(secrets, eq(secrets.connectorId, connectors.id))
-        .where(
-          and(
-            eq(connectors.orgId, args.scope.orgId),
-            eq(connectors.userId, args.scope.userId),
-            inArray(connectors.customConnectorId, args.customConnectorIds),
-          ),
-        );
-      const connections = connectionSnapshots(
-        connectionRows.flatMap((row) => {
-          return row.customConnectorId
-            ? [{ ...row, customConnectorId: row.customConnectorId }]
-            : [];
-        }),
-      );
       const grants = new Map(
         grantRows.map((grant) => {
           return [grant.customConnectorId, grant] as const;
@@ -223,7 +116,6 @@ async function loadCustomSnapshot(args: {
                   permissionNames: [...grant.permissionNames],
                 }
               : undefined,
-          connection: connections.get(row.connector.id),
         });
       }
       return {
@@ -247,8 +139,7 @@ async function resolveCustomTarget(args: {
   if (!custom.grant) {
     return customAbsentResult(args.target, "grant-unavailable");
   }
-  const values = valuesWithOAuthAccessToken(custom);
-  const row = { ...custom.row, values };
+  const row = custom.row;
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
     row,
     snapshot: args.snapshot.connectorCatalogSnapshot,
@@ -296,11 +187,6 @@ async function resolveCustomTarget(args: {
         customConnectorId: args.target.customConnectorId,
       },
     },
-    customAuthRefs: state.authRefs,
-    ...(custom.row.connector.authMode === "oauth" &&
-    custom.connection?.needsReconnect
-      ? { customAuthState: "reconnect-required" }
-      : {}),
   };
 }
 

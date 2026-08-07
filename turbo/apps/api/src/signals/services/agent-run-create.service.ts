@@ -546,7 +546,7 @@ const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
 
 type CustomConnectorAuthRefKind = "secret" | "variable";
 
-export interface CustomConnectorAuthRef {
+interface CustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
   readonly connectorRevision: number;
@@ -4000,7 +4000,6 @@ interface CustomConnectorRuntimeExecutionState {
     };
   };
   readonly networkPolicy: NetworkPolicy;
-  readonly authRefs: readonly CustomConnectorAuthRef[];
 }
 
 export function customConnectorRuntimeExecutionState(args: {
@@ -4047,9 +4046,6 @@ export function customConnectorRuntimeExecutionState(args: {
       },
     },
     networkPolicy,
-    authRefs: args.context.authRefs.filter((ref) => {
-      return ref.connectorId === args.connectorId;
-    }),
   };
 }
 
