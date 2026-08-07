@@ -388,16 +388,13 @@ fn has_insufficient_credits_response_envelope(normalized: &str) -> bool {
         return false;
     };
 
-    let mut search_start = status_index + STATUS_MARKER.len();
-    while let Some((value, end_index)) = parse_next_json_object(normalized, search_start) {
-        if value.as_ref().is_some_and(|value| {
-            value.get("error").and_then(Value::as_str) == Some("insufficient_credits")
-        }) {
-            return true;
-        }
-        search_start = end_index;
-    }
-    false
+    let Some((Some(value), _)) =
+        parse_next_json_object(normalized, status_index + STATUS_MARKER.len())
+    else {
+        return false;
+    };
+
+    value.get("error").and_then(Value::as_str) == Some("insufficient_credits")
 }
 
 fn is_claude_invalid_credentials_error(normalized: &str) -> bool {

@@ -412,6 +412,8 @@ fn cli_failure_reason_ignores_unverified_insufficient_credits_envelopes() {
         r#"unexpected status 402 Payment Required: {"debug":{"error":"insufficient_credits"}}"#,
         r#"provider response: {"error":"insufficient_credits"}"#,
         r#"provider response: {"error":"insufficient_credits"}; later request returned 402 Payment Required"#,
+        r#"unexpected status 402 Payment Required: {"error":"payment_required"}; trailing {"error":"insufficient_credits"}"#,
+        r#"unexpected status 402 Payment Required: {invalid {"error":"insufficient_credits"}"#,
     ] {
         let reason = classify_cli_failure_reason(AgentFramework::Codex, message);
 
