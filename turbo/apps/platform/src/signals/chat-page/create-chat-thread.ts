@@ -41,6 +41,10 @@ import type {
   OptimisticUserMessageAssociation,
 } from "./chat-event-types.ts";
 import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
+import {
   chatThreadArtifactsContract,
   type AttachFile,
   type GenerationTemplateRequest,
@@ -1956,11 +1960,15 @@ function createEventChangeEffects(
         ? null
         : get(scroll.threadScrollPosition$);
       L.debug("events change scroll decision", {
+        traceTime: chatEventTraceTime(),
         threadId,
         hasOptimisticUserMessage,
         storedTargetEventId:
           get(scroll.threadScrollPosition$)?.targetEventId ?? null,
         targetEventId: scrollPosition?.targetEventId ?? null,
+        eventTail: chatEventDebugSummaries(
+          get(chatEvents.chatEvents$).slice(-10),
+        ),
       });
       await Promise.all([
         set(syncRegisteredEvents$, signal),

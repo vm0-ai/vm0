@@ -7,6 +7,10 @@ import type {
   OptimisticUserMessageAssociation,
 } from "./chat-event-types.ts";
 import type { ParsedBodyBlock } from "./parse-body-blocks.ts";
+import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
 
 export interface OptimisticChatEventInput {
   threadId: string;
@@ -59,6 +63,7 @@ export const appendOptimisticChatEvent$ = command(
       return [...next, entry];
     });
     L.debug("optimistic event appended", {
+      traceTime: chatEventTraceTime(),
       threadId: entry.threadId,
       eventId: entry.event.id,
       association: entry.optimisticUserMessageAssociation ?? null,
@@ -97,15 +102,14 @@ export const reconcileOptimisticChatEvents$ = command(
       threadId,
     );
     L.debug("optimistic events reconciled", {
+      traceTime: chatEventTraceTime(),
       threadId,
       serverEventCount: events.length,
       // A pending user message that no server event ever matches keeps
       // `hasOptimisticUserMessage$` true, which pins the thread to the tail.
       pendingUserMessagesBefore: before,
       pendingUserMessagesAfter: after,
-      serverEventIds: events.slice(0, 10).map((event) => {
-        return event.id;
-      }),
+      serverEvents: chatEventDebugSummaries(events),
     });
   },
 );

@@ -33,6 +33,10 @@ import {
 } from "./chat-thread-event-sourcing.ts";
 import { registerActiveChatEventSignals$ } from "./chat-event-signal-registry.ts";
 import { logger } from "../log.ts";
+import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
 
 const L = logger("ChatEventSignals");
 
@@ -100,6 +104,13 @@ function createSendInputChatEvent({
       const clientEventId = crypto.randomUUID();
       const createdAt = nowDate().toISOString();
       const chatThreadSortEventId = crypto.randomUUID();
+      L.debug("send input prepared", {
+        traceTime: chatEventTraceTime(),
+        threadId,
+        clientEventId,
+        delivery: input.delivery,
+        createdAt,
+      });
       set(touchOptimisticChatThreadSort$, {
         id: chatThreadSortEventId,
         threadId,
@@ -128,6 +139,11 @@ function createSendInputChatEvent({
         signal,
       );
       signal.throwIfAborted();
+      L.debug("send input optimistic change notified", {
+        traceTime: chatEventTraceTime(),
+        threadId,
+        clientEventId,
+      });
       const result = await sendChatEvent(
         get(zeroClient$),
         {
@@ -159,6 +175,12 @@ function createSendInputChatEvent({
         signal,
       );
       signal.throwIfAborted();
+      L.debug("send input accepted", {
+        traceTime: chatEventTraceTime(),
+        threadId,
+        clientEventId,
+        runId: result.runId,
+      });
       if (input.delivery === "run" && result.runId === null) {
         set(reloadBillingStatus$);
         await set(syncRemoteEvents$, signal);
@@ -341,8 +363,10 @@ function createChatEventSetup({
       signal: AbortSignal,
     ): Promise<void> => {
       L.debug("receive synced chat events", {
+        traceTime: chatEventTraceTime(),
         threadId,
         count: events.length,
+        events: chatEventDebugSummaries(events),
       });
       await set(mergePersistentEvents$, [...events], signal);
       signal.throwIfAborted();
