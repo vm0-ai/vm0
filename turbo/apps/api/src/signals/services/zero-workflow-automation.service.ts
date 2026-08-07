@@ -3525,10 +3525,10 @@ export const enableWorkflowAutomation$ = command(
       db: writeDb,
       signal,
     });
+    signal.throwIfAborted();
     if (eventEnableFailure) {
       return eventEnableFailure;
     }
-
     // The owning agent is derived from the workflow row (hard 1:N); it always
     // exists. Re-confirm the owner can still run it before re-enabling.
     const agentId = await loadAutomationWorkflowAgentId(writeDb, {
