@@ -2,12 +2,17 @@ import { command } from "ccstate";
 import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
-import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  type StripeInvoice,
+  type StripeMetadataParam,
+  type StripeSubscription,
+  type StripeSubscriptionItem,
+} from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
@@ -293,7 +298,7 @@ function stripeObjectId(
   return value?.id ?? null;
 }
 
-function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
+function subscriptionWillCancel(subscription: StripeSubscription): boolean {
   return subscription.cancel_at_period_end || subscription.cancel_at !== null;
 }
 
@@ -457,7 +462,7 @@ export const createCreditCheckoutSession$ = command(
       throw new Error("Custom credit price not configured");
     }
     const unitQuantity = Math.ceil(args.credits / CREDITS_PER_DOLLAR);
-    const metadata: Stripe.MetadataParam = {
+    const metadata: StripeMetadataParam = {
       ...baseMetadata,
       creditsAmountMode: "amount_subtotal",
       requestedCreditsAmount: String(args.credits),
@@ -499,15 +504,15 @@ export const createCreditCheckoutSession$ = command(
 );
 
 function expandedLatestInvoice(
-  subscription: Stripe.Subscription,
-): Stripe.Invoice | null {
+  subscription: StripeSubscription,
+): StripeInvoice | null {
   return typeof subscription.latest_invoice === "string"
     ? null
     : subscription.latest_invoice;
 }
 
 function concurrencySubscriptionItem(
-  items: readonly Stripe.SubscriptionItem[],
+  items: readonly StripeSubscriptionItem[],
 ): {
   readonly id: string;
   readonly quantity: number;
@@ -628,7 +633,7 @@ export const startConcurrencyPurchase$ = command(
     );
     signal.throwIfAborted();
 
-    const metadata: Stripe.MetadataParam = {
+    const metadata: StripeMetadataParam = {
       purpose: CONCURRENCY_SUBSCRIPTION_PURPOSE,
       orgId: args.orgId,
       priceId: args.priceId,
