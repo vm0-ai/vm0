@@ -1,12 +1,15 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { v5 as uuidv5 } from "uuid";
 
 import type {
   AgentEvent,
   EventConsumerPayload,
 } from "../../lib/event-consumer/verify";
+import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -27,6 +30,27 @@ import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
+const PI_EDGE_USAGE_IDEMPOTENCY_NAMESPACE =
+  "b760944c-e497-4d12-8997-7e5485a590db";
+
+export interface PiEdgeModelUsageEntry {
+  readonly category:
+    | "tokens.input"
+    | "tokens.output"
+    | "tokens.cache_read"
+    | "tokens.cache_creation"
+    | "tokens.input.long_context"
+    | "tokens.output.long_context"
+    | "tokens.cache_read.long_context"
+    | "tokens.cache_creation.long_context";
+  readonly quantity: number;
+}
+
+export interface PiEdgeModelUsage {
+  readonly messageId: string;
+  readonly provider: string;
+  readonly entries: readonly PiEdgeModelUsageEntry[];
+}
 
 interface OutputCandidate {
   readonly sequenceNumber: number;
@@ -243,27 +267,68 @@ function orderedAssistantItems(
   });
 }
 
+async function insertPiEdgeModelUsageInTransaction(
+  tx: Tx,
+  payload: EventConsumerPayload,
+  modelUsage: PiEdgeModelUsage | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  if (modelUsage === undefined) {
+    return;
+  }
+  await tx
+    .insert(usageEvent)
+    .values(
+      modelUsage.entries.map((entry) => {
+        return {
+          runId: payload.runId,
+          idempotencyKey: uuidv5(
+            `${payload.runId}:${modelUsage.messageId}:${entry.category}`,
+            PI_EDGE_USAGE_IDEMPOTENCY_NAMESPACE,
+          ),
+          orgId: payload.context.orgId,
+          userId: payload.context.userId,
+          kind: "model",
+          provider: modelUsage.provider,
+          category: entry.category,
+          quantity: entry.quantity,
+        };
+      }),
+    )
+    .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+  signal.throwIfAborted();
+}
+
+async function lockRunOutputProjection(
+  tx: Tx,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT set_config('lock_timeout', ${RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT}, true)`,
+  );
+  await tx.execute(
+    sql`SELECT set_config('statement_timeout', ${RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
+  );
+  const lockKey = `run_output_projection:${runId}`;
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+  );
+  signal.throwIfAborted();
+}
+
 async function materializeRunOutputEvents(
   writeDb: Db,
   payload: EventConsumerPayload,
   signal: AbortSignal,
+  piEdgeModelUsage?: PiEdgeModelUsage,
 ): Promise<MaterializedChatProjection | null> {
   const assistantItems = assistantEventItems(payload.events);
   const latestResult = latestCandidate(payload.events, resultText);
   const latestOutput = latestCandidate(payload.events, callbackOutputText);
-  const projectionLockKey = `run_output_projection:${payload.runId}`;
 
   return await writeDb.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT set_config('lock_timeout', ${RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT}, true)`,
-    );
-    await tx.execute(
-      sql`SELECT set_config('statement_timeout', ${RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
-    );
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${projectionLockKey}, 0))`,
-    );
-    signal.throwIfAborted();
+    await lockRunOutputProjection(tx, payload.runId, signal);
 
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
@@ -271,6 +336,13 @@ async function materializeRunOutputEvents(
     const piAssistantItems = await projectPiEventsInTransaction(
       tx,
       { runId: payload.runId, thread, events: payload.events },
+      signal,
+    );
+
+    await insertPiEdgeModelUsageInTransaction(
+      tx,
+      payload,
+      piEdgeModelUsage,
       signal,
     );
 
@@ -386,8 +458,14 @@ export const materializeRunOutputEvents$ = command(
     { set },
     payload: EventConsumerPayload,
     signal: AbortSignal,
+    piEdgeModelUsage?: PiEdgeModelUsage,
   ): Promise<MaterializedChatProjection | null> => {
-    return await materializeRunOutputEvents(set(writeDb$), payload, signal);
+    return await materializeRunOutputEvents(
+      set(writeDb$),
+      payload,
+      signal,
+      piEdgeModelUsage,
+    );
   },
 );
 

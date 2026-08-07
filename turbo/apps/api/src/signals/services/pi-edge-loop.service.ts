@@ -17,6 +17,8 @@ import { settle } from "../utils";
 import {
   materializeRunOutputEvents$,
   publishMaterializedChatProjection,
+  type PiEdgeModelUsage,
+  type PiEdgeModelUsageEntry,
 } from "./agent-event-consumer-run-output.service";
 import {
   completeAgentRun$,
@@ -33,6 +35,96 @@ import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
 const L = logger("pi:edge");
 
 class PiHandoffRequested extends Error {}
+
+const LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS: Readonly<Record<string, number>> = {
+  "gpt-5.5": 272_001,
+  "gpt-5.6-sol": 272_001,
+  "gpt-5.6-terra": 272_001,
+  "gpt-5.6-luna": 272_001,
+  "MiniMax-M3": 512_001,
+};
+
+function modelUsageQuantity(value: number, category: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Pi edge model returned invalid ${category} usage`);
+  }
+  return value;
+}
+
+function piEdgeModelUsage(args: {
+  readonly messageId: string;
+  readonly billingModel: string | undefined;
+  readonly message: PiAgentMessage;
+}): PiEdgeModelUsage | undefined {
+  if (args.billingModel === undefined || args.message.role !== "assistant") {
+    return undefined;
+  }
+  if (
+    args.message.stopReason === "error" ||
+    args.message.stopReason === "aborted"
+  ) {
+    return undefined;
+  }
+
+  const quantities = {
+    input: modelUsageQuantity(args.message.usage.input, "input"),
+    output: modelUsageQuantity(args.message.usage.output, "output"),
+    cacheRead: modelUsageQuantity(args.message.usage.cacheRead, "cache read"),
+    cacheCreation: modelUsageQuantity(
+      args.message.usage.cacheWrite,
+      "cache creation",
+    ),
+  };
+  const totalInput =
+    quantities.input + quantities.cacheRead + quantities.cacheCreation;
+  const longContextMinimum =
+    LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[args.billingModel];
+  const tier =
+    longContextMinimum !== undefined && totalInput >= longContextMinimum
+      ? "long-context"
+      : "base";
+  const categories: Readonly<
+    Record<
+      "input" | "output" | "cacheRead" | "cacheCreation",
+      PiEdgeModelUsageEntry["category"]
+    >
+  > =
+    tier === "long-context"
+      ? {
+          input: "tokens.input.long_context",
+          output: "tokens.output.long_context",
+          cacheRead: "tokens.cache_read.long_context",
+          cacheCreation: "tokens.cache_creation.long_context",
+        }
+      : {
+          input: "tokens.input",
+          output: "tokens.output",
+          cacheRead: "tokens.cache_read",
+          cacheCreation: "tokens.cache_creation",
+        };
+  const entries: PiEdgeModelUsageEntry[] = [
+    { category: categories.input, quantity: quantities.input },
+    { category: categories.output, quantity: quantities.output },
+    {
+      category: categories.cacheRead,
+      quantity: quantities.cacheRead,
+    },
+    {
+      category: categories.cacheCreation,
+      quantity: quantities.cacheCreation,
+    },
+  ].filter((entry) => {
+    return entry.quantity > 0;
+  });
+  if (entries.length === 0) {
+    throw new Error("Pi edge model returned no billable usage");
+  }
+  return {
+    messageId: args.messageId,
+    provider: args.billingModel,
+    entries,
+  };
+}
 
 function piMessageEvent(args: {
   readonly runId: string;
@@ -66,6 +158,12 @@ function piEdgeFailure(runId: string, error: unknown): string {
   return error instanceof Error ? error.message : "Pi edge turn failed";
 }
 
+function transcriptMessagePayload(message: {
+  readonly payload: unknown;
+}): unknown {
+  return message.payload;
+}
+
 /**
  * Runs an eligible Pi turn inside the API with Pi's native agent loop. Read
  * batches execute against the pinned Storage ExecutionEnv. A complete
@@ -89,9 +187,7 @@ export const runPiEdgeTurn$ = command(
         const transcript = await readPiTranscript(db, thread.chatThreadId);
         signal.throwIfAborted();
         const priorMessages = parsePiAgentMessages(
-          transcript.messages.map((message) => {
-            return message.payload;
-          }),
+          transcript.messages.map(transcriptMessagePayload),
         );
         let sequenceNumber = 1;
         let expectedLastOrdinal = transcript.lastOrdinal;
@@ -109,10 +205,16 @@ export const runPiEdgeTurn$ = command(
             events: [event],
             context,
           };
+          const modelUsage = piEdgeModelUsage({
+            messageId: `${args.runId}/${sequenceNumber}`,
+            billingModel: args.billingModel,
+            message,
+          });
           const projection = await set(
             materializeRunOutputEvents$,
             payload,
             signal,
+            modelUsage,
           );
           signal.throwIfAborted();
           if (projection) {

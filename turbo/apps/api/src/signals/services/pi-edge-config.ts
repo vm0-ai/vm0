@@ -29,6 +29,8 @@ export interface PiEdgeTurnArgs {
   readonly prompt: string;
   readonly systemPrompt: string;
   readonly model: PiEdgeModelConfig;
+  /** Canonical vm0-managed model used for usage pricing. Undefined for BYOK. */
+  readonly billingModel?: string;
   readonly executionEnv: ExecutionEnv;
   readonly skillSnapshot: RunSkillSnapshot;
   readonly runnerGroup: string;

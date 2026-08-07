@@ -560,6 +560,7 @@ interface CustomConnectorAuthRef {
 
 interface PreparedRunnerLaunch {
   readonly piEdge?: PiEdgeModelConfig;
+  readonly piEdgeBillingModel?: string;
   readonly piExecutionEnv?: ExecutionEnv;
   readonly piPrompt?: string;
   readonly piSystemPrompt?: string;
@@ -5984,6 +5985,18 @@ function preparedRunnerGroup(content: AgentComposeContent): string {
   return group;
 }
 
+function managedPiEdgeBillingModel(
+  args: BuildRunnerJobPayloadInput,
+): string | undefined {
+  if (args.piEdge === undefined || args.modelProvider?.type !== "vm0") {
+    return undefined;
+  }
+  if (args.modelUsageProvider === undefined) {
+    throw new Error("Pi edge billing requires a canonical managed model");
+  }
+  return args.modelUsageProvider;
+}
+
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
@@ -6075,6 +6088,7 @@ function buildRunnerJobPayload(
       builtContext.context,
       piResources,
     );
+    const piEdgeBillingModel = managedPiEdgeBillingModel(args);
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,
@@ -6084,6 +6098,7 @@ function buildRunnerJobPayload(
     const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
     return {
       ...(args.piEdge === undefined ? {} : { piEdge: args.piEdge }),
+      ...(piEdgeBillingModel === undefined ? {} : { piEdgeBillingModel }),
       ...(piResources === undefined
         ? {}
         : {
@@ -8202,6 +8217,9 @@ async function committedAtomicLaunchResponse(args: {
       prompt: args.launch.piPrompt,
       systemPrompt: args.launch.piSystemPrompt,
       model: args.launch.piEdge,
+      ...(args.launch.piEdgeBillingModel === undefined
+        ? {}
+        : { billingModel: args.launch.piEdgeBillingModel }),
       executionEnv: args.launch.piExecutionEnv,
       skillSnapshot: args.launch.runSkillSnapshot,
       runnerGroup: args.committed.runnerJobPayload.runnerGroup,

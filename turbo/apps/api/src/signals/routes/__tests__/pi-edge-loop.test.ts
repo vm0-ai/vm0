@@ -22,13 +22,20 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
+import {
+  deleteUsagePricingRows,
+  seedUsagePricingRows,
+  type UsagePricingRow,
+} from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -42,6 +49,11 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const workflows = createWorkflowsBddApi(context);
+const billing = createBillingMediaApi(context);
+type AgentEventsBody = Parameters<typeof webhooks.requestAgentEvents>[0];
+type AgentUsageEventBody = Parameters<
+  typeof webhooks.requestAgentUsageEvent
+>[0];
 
 const MODEL = "deepseek-v4-flash";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
@@ -49,7 +61,13 @@ const CODEX_MODEL = "gpt-5.5";
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const OPENAI_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
+
+interface CompletionStreamOptions {
+  readonly usage?: Readonly<Record<string, unknown>>;
+  readonly responseModel?: string;
+}
 
 function recordOf(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -60,14 +78,16 @@ function recordOf(value: unknown): Record<string, unknown> | null {
 function completionStream(
   deltas: readonly Record<string, unknown>[],
   finishReason: "stop" | "tool_calls",
+  options: CompletionStreamOptions = {},
 ): HttpResponse<string> {
+  const responseModel = options.responseModel ?? MODEL;
   const chunks = [
     ...deltas.map((delta) => {
       return {
         id: "chatcmpl-pi-edge",
         object: "chat.completion.chunk",
         created: 1,
-        model: MODEL,
+        model: responseModel,
         choices: [{ index: 0, delta, finish_reason: null }],
       };
     }),
@@ -75,8 +95,9 @@ function completionStream(
       id: "chatcmpl-pi-edge",
       object: "chat.completion.chunk",
       created: 1,
-      model: MODEL,
+      model: responseModel,
       choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+      ...(options.usage === undefined ? {} : { usage: options.usage }),
     },
   ];
   return HttpResponse.text(
@@ -92,10 +113,12 @@ function completionStream(
 function assistantTextStream(
   text: string,
   thinking: string,
+  options: CompletionStreamOptions = {},
 ): HttpResponse<string> {
   return completionStream(
     [{ role: "assistant", reasoning_content: thinking }, { content: text }],
     "stop",
+    options,
   );
 }
 
@@ -105,6 +128,8 @@ function assistantToolStream(args: {
   readonly arguments: Record<string, unknown>;
   readonly thinking: string;
   readonly text?: string;
+  readonly usage?: Readonly<Record<string, unknown>>;
+  readonly responseModel?: string;
 }): HttpResponse<string> {
   return completionStream(
     [
@@ -125,6 +150,12 @@ function assistantToolStream(args: {
       },
     ],
     "tool_calls",
+    {
+      ...(args.usage === undefined ? {} : { usage: args.usage }),
+      ...(args.responseModel === undefined
+        ? {}
+        : { responseModel: args.responseModel }),
+    },
   );
 }
 
@@ -399,9 +430,17 @@ interface PiEdgeFixture {
   readonly agentInstructions: string;
   readonly workflowSkillName: string;
   readonly storageObjects: PiStorageObjects;
+  readonly model: SupportedRunModel;
 }
 
-async function piEdgeFixture(): Promise<PiEdgeFixture> {
+async function piEdgeFixture(
+  options: {
+    readonly provider?: "byok" | "vm0";
+    readonly model?: SupportedRunModel;
+  } = {},
+): Promise<PiEdgeFixture> {
+  const providerType = options.provider ?? "byok";
+  const model = options.model ?? MODEL;
   const orgId = `org_pi_edge_${randomUUID()}`;
   const actor = bdd.user({ orgId });
   const switchOwner = bdd.user({ orgId });
@@ -413,17 +452,23 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
-  const provider = await api.createOrgModelProvider(actor, {
-    type: "deepseek",
-    secret: "pi-edge-deepseek-key",
-  });
+  const provider =
+    providerType === "byok"
+      ? await api.createOrgModelProvider(actor, {
+          type: "deepseek",
+          secret: "pi-edge-deepseek-key",
+        })
+      : undefined;
+  if (providerType === "vm0") {
+    await seedVm0ManagedModelKey(context, model);
+  }
   await api.updateOrgModelPolicies(actor, [
     {
-      model: MODEL,
+      model,
       isDefault: true,
-      defaultProviderType: "deepseek",
+      defaultProviderType: providerType === "vm0" ? "vm0" : "deepseek",
       credentialScope: "org",
-      modelProviderId: provider.providerId,
+      modelProviderId: provider?.providerId ?? null,
     },
   ]);
   const agent = await bdd.createAgent(actor, {
@@ -449,6 +494,7 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     agentInstructions,
     workflowSkillName,
     storageObjects,
+    model,
   };
 }
 
@@ -528,6 +574,7 @@ async function codexPiEdgeFixture(args?: {
     agentInstructions,
     workflowSkillName,
     storageObjects,
+    model: CODEX_MODEL,
   };
 }
 
@@ -559,15 +606,16 @@ async function sendChatRun(
   fixture: PiEdgeFixture,
   prompt: string,
   threadId?: string,
-  model: SupportedRunModel = MODEL,
+  model: SupportedRunModel = fixture.model,
+  clientEventId = randomUUID(),
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const sent = await chat.requestSendEvent(
     fixture.actor,
-    {
-      agentId: fixture.agentId,
-      prompt,
-      model,
-      clientEventId: randomUUID(),
+      {
+        agentId: fixture.agentId,
+        prompt,
+        model,
+        clientEventId,
       ...(threadId === undefined ? {} : { threadId }),
     },
     [201],
@@ -576,6 +624,57 @@ async function sendChatRun(
     throw new Error("Expected the chat send to create a run");
   }
   return { runId: sent.body.runId, threadId: sent.body.threadId };
+}
+
+async function withModelPricing(
+  model: string,
+  rows: readonly Omit<UsagePricingRow, "kind" | "provider">[],
+): Promise<void> {
+  const categories = rows.map((row) => {
+    return row.category;
+  });
+  const previousRows = await deleteUsagePricingRows({
+    kind: "model",
+    provider: model,
+    categories,
+  });
+  onTestFinished(async () => {
+    await deleteUsagePricingRows({
+      kind: "model",
+      provider: model,
+      categories,
+    });
+    await seedUsagePricingRows(previousRows);
+  });
+  await seedUsagePricingRows(
+    rows.map((row) => {
+      return { ...row, kind: "model", provider: model };
+    }),
+  );
+}
+
+async function unitPriceModelTokens(model: string): Promise<void> {
+  await withModelPricing(
+    model,
+    [
+      "tokens.input",
+      "tokens.output",
+      "tokens.cache_read",
+      "tokens.cache_creation",
+    ].map((category) => {
+      return { category, unitPrice: 1, unitSize: 1 };
+    }),
+  );
+}
+
+async function usageRun(actor: ApiTestUser, runId: string) {
+  const response = await billing.readUsageRuns(actor, [200]);
+  if (response.status !== 200) {
+    throw new Error("Expected usage runs read to succeed");
+  }
+  return response.body.runs.find((run) => {
+    return run.runId === runId;
+  });
 }
 
 async function readTranscript(runId: string) {
@@ -1420,6 +1519,281 @@ describe("PiLoop edge turn", () => {
     });
   });
 
+  it("bills every vm0-managed API response once using normalized canonical-model usage", async () => {
+    await unitPriceModelTokens(MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    const completionRequests: unknown[] = [];
+    let modelCall = 0;
+    server.use(
+      http.post(COMPLETIONS_URL, async ({ request }) => {
+        completionRequests.push(await request.json());
+        const currentCall = modelCall;
+        modelCall += 1;
+        if (currentCall === 0) {
+          return assistantToolStream({
+            id: "read_billing_1",
+            name: "read",
+            arguments: {
+              path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+            },
+            thinking: "read before answering",
+            responseModel: "untrusted-response-model",
+            usage: {
+              prompt_tokens: 100,
+              completion_tokens: 11,
+              prompt_tokens_details: {
+                cached_tokens: 20,
+                cache_write_tokens: 5,
+              },
+              completion_tokens_details: { reasoning_tokens: 4 },
+            },
+          });
+        }
+        return assistantTextStream("billed edge answer", "billed reasoning", {
+          responseModel: "untrusted-response-model",
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 7,
+            prompt_tokens_details: { cached_tokens: 10 },
+            completion_tokens_details: { reasoning_tokens: 3 },
+          },
+        });
+      }),
+    );
+
+    const clientEventId = randomUUID();
+    const run = await sendChatRun(
+      fixture,
+      "bill both managed model responses",
+      undefined,
+      fixture.model,
+      clientEventId,
+    );
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "completed",
+    );
+    expect(completionRequests).toHaveLength(2);
+    for (const request of completionRequests) {
+      expect(request).toMatchObject({
+        model: MODEL,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+    }
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      runId: run.runId,
+      model: MODEL,
+      inputTokens: 145,
+      outputTokens: 18,
+      cacheTokens: 35,
+      creditsCharged: 198,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 198,
+    );
+
+    const replay = await sendChatRun(
+      fixture,
+      "bill both managed model responses",
+      run.threadId,
+      fixture.model,
+      clientEventId,
+    );
+    await flushWaitUntilForTest();
+    expect(replay).toStrictEqual(run);
+    expect(completionRequests).toHaveLength(2);
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      creditsCharged: 198,
+    });
+  });
+
+  it("keeps BYOK API-edge usage out of vm0 billing", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    server.use(
+      http.post(COMPLETIONS_URL, () => {
+        return assistantTextStream("BYOK answer", "BYOK reasoning", {
+          usage: {
+            prompt_tokens: 40,
+            completion_tokens: 9,
+            prompt_tokens_details: { cached_tokens: 7 },
+          },
+        });
+      }),
+    );
+
+    const run = await sendChatRun(fixture, "do not charge vm0 for BYOK");
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+      "completed",
+    );
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore,
+    );
+  });
+
+  it("settles successful managed usage when a later edge model call fails", async () => {
+    await unitPriceModelTokens(MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    let modelCall = 0;
+    server.use(
+      http.post(COMPLETIONS_URL, () => {
+        const currentCall = modelCall;
+        modelCall += 1;
+        if (currentCall === 0) {
+          return assistantToolStream({
+            id: "read_before_failure_1",
+            name: "read",
+            arguments: {
+              path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+            },
+            thinking: "this successful call must still be billed",
+            usage: { prompt_tokens: 20, completion_tokens: 3 },
+          });
+        }
+        return HttpResponse.json(
+          { error: "provider unavailable after the first response" },
+          { status: 503 },
+        );
+      }),
+    );
+
+    const run = await sendChatRun(
+      fixture,
+      "bill the successful call before failure",
+    );
+    await flushWaitUntilForTest();
+
+    expect(modelCall).toBe(2);
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      model: MODEL,
+      inputTokens: 20,
+      outputTokens: 3,
+      cacheTokens: 0,
+      creditsCharged: 23,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 23,
+    );
+  });
+
+  it("fails closed without projecting a managed response that has no usage", async () => {
+    await unitPriceModelTokens(MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    server.use(
+      http.post(COMPLETIONS_URL, () => {
+        return assistantTextStream(
+          "this answer must not be projected",
+          "usage is missing",
+        );
+      }),
+    );
+
+    const prompt = "reject a managed success without usage";
+    const run = await sendChatRun(fixture, prompt);
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
+    await expect(readTranscript(run.runId)).resolves.toMatchObject({
+      version: 1,
+      lastOrdinal: 1,
+      messages: [
+        {
+          ordinal: 1,
+          role: "user",
+          payload: {
+            role: "user",
+            content: [{ type: "text", text: prompt }],
+          },
+        },
+      ],
+    });
+    await expect(
+      outputMessages(fixture.actor, run.threadId),
+    ).resolves.toHaveLength(0);
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore,
+    );
+  });
+
+  it("uses the managed model long-context tier only above the exact boundary", async () => {
+    const model = "gpt-5.6-luna";
+    await withModelPricing(model, [
+      {
+        category: "tokens.input",
+        unitPrice: 1,
+        unitSize: 272_001,
+      },
+      {
+        category: "tokens.input.long_context",
+        unitPrice: 2,
+        unitSize: 272_001,
+      },
+    ]);
+    const fixture = await piEdgeFixture({ provider: "vm0", model });
+    await enablePiLoop(fixture);
+    const inputTokens = [272_000, 272_001] as const;
+    let modelCall = 0;
+    server.use(
+      http.post(OPENAI_COMPLETIONS_URL, () => {
+        const promptTokens = inputTokens[modelCall];
+        modelCall += 1;
+        if (promptTokens === undefined) {
+          throw new Error("Unexpected long-context model call");
+        }
+        return assistantTextStream(
+          `boundary response ${promptTokens}`,
+          "classify the canonical model tier",
+          {
+            responseModel: "untrusted-response-model",
+            usage: {
+              prompt_tokens: promptTokens,
+              completion_tokens: 0,
+            },
+          },
+        );
+      }),
+    );
+
+    const baseRun = await sendChatRun(fixture, "base context boundary");
+    await flushWaitUntilForTest();
+    const longRun = await sendChatRun(fixture, "long context boundary");
+    await flushWaitUntilForTest();
+
+    expect(modelCall).toBe(2);
+    await expect(usageRun(fixture.actor, baseRun.runId)).resolves.toMatchObject(
+      {
+        model,
+        inputTokens: 272_000,
+        creditsCharged: 1,
+      },
+    );
+    await expect(usageRun(fixture.actor, longRun.runId)).resolves.toMatchObject(
+      {
+        model,
+        inputTokens: 272_001,
+        creditsCharged: 2,
+      },
+    );
+  });
+
   it("requeues an expired standby onto the cold-start lane without settling the run", async () => {
     const fixture = await piEdgeFixture();
     await enablePiLoop(fixture);
@@ -1564,9 +1938,12 @@ describe("PiLoop edge turn", () => {
     ).resolves.toHaveLength(0);
   });
 
-  it("commits the complete sandbox tool batch, publishes handoff, and stops writing", async () => {
-    const fixture = await piEdgeFixture();
+  it("bills edge and runner usage once across a replayed sandbox handoff", async () => {
+    await unitPriceModelTokens(MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
     const completionRequests: unknown[] = [];
     server.use(
       http.post(COMPLETIONS_URL, async ({ request }) => {
@@ -1577,6 +1954,11 @@ describe("PiLoop edge turn", () => {
           arguments: { command: "pwd" },
           thinking: "the sandbox must execute this",
           text: "I will inspect the workspace.",
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 3,
+            prompt_tokens_details: { cached_tokens: 2 },
+          },
         });
       }),
     );
@@ -1657,49 +2039,79 @@ describe("PiLoop edge turn", () => {
     const sandboxHeaders = webhooks.sandboxWebhookHeaders({
       runId: run.runId,
     });
-    await webhooks.requestAgentEvents(
-      {
-        runId: run.runId,
-        events: [
-          {
-            type: "pi.message.completed",
-            sequenceNumber: 3,
-            messageId: `${run.runId}/3`,
-            expectedVersion: 1,
-            expectedLastOrdinal: 2,
-            message: {
-              role: "toolResult",
-              toolCallId: "bash_handoff_1",
-              toolName: "bash",
-              content: [{ type: "text", text: "/home/user/workspace\n" }],
-              details: {},
-              isError: false,
-              timestamp: 2,
-            },
+    const continuation: AgentEventsBody = {
+      runId: run.runId,
+      events: [
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 3,
+          messageId: `${run.runId}/3`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 2,
+          message: {
+            role: "toolResult",
+            toolCallId: "bash_handoff_1",
+            toolName: "bash",
+            content: [{ type: "text", text: "/home/user/workspace\n" }],
+            details: {},
+            isError: false,
+            timestamp: 2,
           },
-          {
-            type: "pi.message.completed",
-            sequenceNumber: 4,
-            messageId: `${run.runId}/4`,
-            expectedVersion: 1,
-            expectedLastOrdinal: 3,
-            message: {
-              role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text: "Sandbox resumed the handed-off tool call.",
-                },
-              ],
-              stopReason: "stop",
-              timestamp: 3,
+        },
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 4,
+          messageId: `${run.runId}/4`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 3,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "Sandbox resumed the handed-off tool call.",
+              },
+            ],
+            stopReason: "stop",
+            usage: {
+              input: 9999,
+              output: 9999,
+              cacheRead: 9999,
+              cacheWrite: 9999,
+              totalTokens: 39_996,
+              cost: {
+                input: 9999,
+                output: 9999,
+                cacheRead: 9999,
+                cacheWrite: 9999,
+                total: 39_996,
+              },
             },
+            timestamp: 3,
           },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
+        },
+      ],
+    };
+    await webhooks.requestAgentEvents(continuation, sandboxHeaders, [200]);
+    await webhooks.requestAgentEvents(continuation, sandboxHeaders, [200]);
+
+    const runnerUsage: AgentUsageEventBody = {
+      runId: run.runId,
+      events: [
+        {
+          idempotencyKey: randomUUID(),
+          kind: "model",
+          provider: MODEL,
+          category: "tokens.output",
+          quantity: 5,
+        },
+      ],
+    };
+    const usageHeaders = {
+      authorization: `Bearer ${standbyContext.sandboxToken}`,
+    };
+    await webhooks.requestAgentUsageEvent(runnerUsage, usageHeaders, [200]);
+    await webhooks.requestAgentUsageEvent(runnerUsage, usageHeaders, [200]);
     await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
@@ -1730,5 +2142,15 @@ describe("PiLoop edge turn", () => {
         }),
       ],
     });
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      model: MODEL,
+      inputTokens: 10,
+      outputTokens: 8,
+      cacheTokens: 2,
+      creditsCharged: 20,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 20,
+    );
   });
 });
