@@ -16,10 +16,9 @@ import {
   type OrgMembersResponse,
   type OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
-import type { User } from "@clerk/backend";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { clerk$ } from "../external/clerk";
+import { clerk$, type ClerkUser } from "../external/clerk";
 import {
   listAllOrganizationMemberships,
   listAllPendingOrganizationInvitations,
@@ -572,7 +571,7 @@ function requiredClerkMembershipUserId(
   return userId;
 }
 
-function userPrimaryEmail(user: User): string {
+function userPrimaryEmail(user: ClerkUser): string {
   const primary = user.emailAddresses.find((e) => {
     return e.id === user.primaryEmailAddressId;
   });

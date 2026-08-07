@@ -25,7 +25,7 @@ const gatewayModules = JSON.parse(
 // Third-party declaration surfaces that only the gateway project may resolve.
 // Add a scope here once its clients move into tsconfig.gateways.json; see
 // the ablation numbers in PR #25714.
-const isolatedDependencies = ["@aws-sdk", "@slack", "@smithy"];
+const isolatedDependencies = ["@aws-sdk", "@clerk", "@slack", "@smithy"];
 
 const gatewayBoundaryOptions = {
   modules: gatewayModules,
