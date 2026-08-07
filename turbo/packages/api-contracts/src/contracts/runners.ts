@@ -208,8 +208,21 @@ export const connectorRuntimeTargetSchema = z.discriminatedUnion("kind", [
   connectorRuntimeCustomTargetSchema,
 ]);
 
+export const connectorRuntimeCustomTargetRegistrationSchema =
+  connectorRuntimeCustomTargetSchema.extend({
+    baseUrlVars: z.record(z.string(), z.string()).optional(),
+  });
+
+export const connectorRuntimeTargetRegistrationSchema = z.discriminatedUnion(
+  "kind",
+  [
+    connectorRuntimeBuiltinTargetSchema,
+    connectorRuntimeCustomTargetRegistrationSchema,
+  ],
+);
+
 function connectorRuntimeTargetKey(
-  target: z.infer<typeof connectorRuntimeTargetSchema>,
+  target: z.infer<typeof connectorRuntimeTargetRegistrationSchema>,
 ): string {
   return target.kind === "builtin"
     ? `builtin:${target.connectorSlug}`
@@ -217,7 +230,7 @@ function connectorRuntimeTargetKey(
 }
 
 function uniqueConnectorRuntimeTargets(
-  targets: readonly z.infer<typeof connectorRuntimeTargetSchema>[],
+  targets: readonly z.infer<typeof connectorRuntimeTargetRegistrationSchema>[],
   context: z.RefinementCtx,
 ): void {
   const seen = new Set<string>();
@@ -236,7 +249,7 @@ function uniqueConnectorRuntimeTargets(
 }
 
 const connectorRuntimeTargetsSchema = z
-  .array(connectorRuntimeTargetSchema)
+  .array(connectorRuntimeTargetRegistrationSchema)
   .superRefine(uniqueConnectorRuntimeTargets);
 
 const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
@@ -283,6 +296,14 @@ export const connectorRuntimeCustomAvailableResultSchema =
       }),
     }),
     networkPolicy: networkPolicySchema,
+    baseUrlVars: z.record(z.string(), z.string()).optional(),
+  });
+
+export const connectorRuntimeCustomUnresolvedResultSchema =
+  connectorRuntimeResultBaseSchema.extend({
+    target: connectorRuntimeCustomTargetSchema,
+    state: z.literal("unresolved"),
+    reason: connectorRuntimeCustomAbsentReasonSchema,
   });
 
 export const connectorRuntimeCustomAbsentResultSchema =
@@ -296,6 +317,7 @@ export const connectorRuntimeSyncResultSchema = z.union([
   connectorRuntimeBuiltinAvailableResultSchema,
   connectorRuntimeBuiltinUnresolvedResultSchema,
   connectorRuntimeCustomAvailableResultSchema,
+  connectorRuntimeCustomUnresolvedResultSchema,
   connectorRuntimeCustomAbsentResultSchema,
 ]);
 const connectorPermissionNameListSchema = z
@@ -1214,6 +1236,9 @@ export type StoredConnectorPermissionBaseline = z.infer<
 export type NetworkPolicyRefresh = z.infer<typeof networkPolicyRefreshSchema>;
 export type ConnectorRuntimeTarget = z.infer<
   typeof connectorRuntimeTargetSchema
+>;
+export type ConnectorRuntimeTargetRegistration = z.infer<
+  typeof connectorRuntimeTargetRegistrationSchema
 >;
 export type ConnectorRuntimeCustomAbsentReason = z.infer<
   typeof connectorRuntimeCustomAbsentReasonSchema

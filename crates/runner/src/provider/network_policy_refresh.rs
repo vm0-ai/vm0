@@ -50,7 +50,7 @@ use crate::ids::RunId;
 use crate::proxy::{CustomConnectorRuntimeRegistryState, ProxyRegistryHandle};
 use crate::types::{
     ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeSyncState, ConnectorRuntimeTarget,
-    FirewallEntry, NetworkPolicy, NetworkPolicyRefresh,
+    ConnectorRuntimeTargetRegistration, FirewallEntry, NetworkPolicy, NetworkPolicyRefresh,
 };
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
@@ -99,6 +99,8 @@ struct ActiveRunNetworkPolicyState {
 struct ActiveConnectorRefreshState {
     generation: u64,
     consecutive_failures: u32,
+    // Custom-only routing inputs pinned for this run. They are not target identity.
+    pinned_base_url_vars: Option<HashMap<String, String>>,
 }
 
 struct ScheduledRefreshTask {
@@ -119,7 +121,7 @@ pub(crate) struct NetworkPolicyRefreshRegistration<'a> {
     pub(crate) source_ip: &'a str,
     pub(crate) registry: ProxyRegistryHandle,
     pub(crate) connector_slugs: HashSet<String>,
-    pub(crate) targets: Option<&'a [ConnectorRuntimeTarget]>,
+    pub(crate) targets: Option<&'a [ConnectorRuntimeTargetRegistration]>,
     pub(crate) refreshes: Option<&'a HashMap<String, NetworkPolicyRefresh>>,
 }
 
@@ -266,7 +268,9 @@ impl NetworkPolicyRefreshCore {
                 .connector_slugs
                 .iter()
                 .cloned()
-                .map(|connector_slug| ConnectorRuntimeTarget::Builtin { connector_slug })
+                .map(
+                    |connector_slug| ConnectorRuntimeTargetRegistration::Builtin { connector_slug },
+                )
                 .collect(),
         };
         if runtime_targets.is_empty() {
@@ -287,13 +291,13 @@ impl NetworkPolicyRefreshCore {
 
             let connectors = runtime_targets
                 .iter()
-                .cloned()
-                .map(|target| {
+                .map(|registration| {
                     (
-                        target,
+                        registration.target(),
                         ActiveConnectorRefreshState {
                             generation: 0,
                             consecutive_failures: 0,
+                            pinned_base_url_vars: registration.custom_base_url_vars().cloned(),
                         },
                     )
                 })
@@ -316,12 +320,13 @@ impl NetworkPolicyRefreshCore {
         if tagged {
             for target in runtime_targets
                 .iter()
+                .map(ConnectorRuntimeTargetRegistration::target)
                 .filter(|target| matches!(target, ConnectorRuntimeTarget::Custom { .. }))
             {
                 self.replace_schedule_deadline_if_current(
                     registration.run_id,
                     &ConnectorRefreshTarget {
-                        target: target.clone(),
+                        target,
                         generation: 0,
                     },
                     Some(tokio::time::Instant::now()),
@@ -666,7 +671,7 @@ impl NetworkPolicyRefreshCore {
             {
                 Ok(true) => {
                     if self
-                        .complete_successful_refresh(run_id, target, deadline)
+                        .complete_successful_refresh(run_id, target, deadline, None)
                         .await
                     {
                         info!(
@@ -709,10 +714,12 @@ impl NetworkPolicyRefreshCore {
         run_id: RunId,
         active_targets: &[ConnectorRefreshTarget],
     ) -> bool {
-        let requested_targets = active_targets
-            .iter()
-            .map(|target| target.target.clone())
-            .collect::<Vec<_>>();
+        let Some(requested_targets) = self
+            .connector_runtime_sync_registrations(run_id, active_targets)
+            .await
+        else {
+            return true;
+        };
         let mut transport_retry_attempted = false;
         let response = loop {
             let response = self
@@ -833,16 +840,28 @@ impl NetworkPolicyRefreshCore {
                 retry_targets.push(target.clone());
                 continue;
             };
-            if let (
-                ConnectorRuntimeTarget::Builtin { .. },
-                ConnectorRuntimeSyncState::Unresolved { reason },
-            ) = (&target.target, &result.state)
-            {
+            let candidate_base_url_vars = match (&target.target, &result.state) {
+                (
+                    ConnectorRuntimeTarget::Custom { .. },
+                    ConnectorRuntimeSyncState::Available { .. },
+                ) => result.base_url_vars.clone(),
+                _ if result.base_url_vars.is_some() => {
+                    warn!(
+                        run_id = %run_id,
+                        target = %target.target.log_identity(),
+                        "connector runtime sync returned base URL variables for an invalid target state"
+                    );
+                    retry_targets.push(target.clone());
+                    continue;
+                }
+                _ => None,
+            };
+            if let ConnectorRuntimeSyncState::Unresolved { reason } = &result.state {
                 warn!(
                     run_id = %run_id,
                     target = %target.target.log_identity(),
                     reason = ?reason,
-                    "builtin connector runtime sync is unresolved; retaining last-known-good policy"
+                    "connector runtime sync is unresolved; retaining last-known-good state"
                 );
                 retry_targets.push(target.clone());
                 continue;
@@ -857,6 +876,20 @@ impl NetworkPolicyRefreshCore {
             let Some(snapshot) = self.active_snapshot_for_target(run_id, target).await else {
                 continue;
             };
+            if candidate_base_url_vars.is_some()
+                && !self
+                    .custom_base_url_vars_match(run_id, target, candidate_base_url_vars.as_ref())
+                    .await
+                    .unwrap_or(true)
+            {
+                warn!(
+                    run_id = %run_id,
+                    target = %target.target.log_identity(),
+                    "connector runtime sync tried to replace run-pinned base URL variables"
+                );
+                retry_targets.push(target.clone());
+                continue;
+            }
             let publication = match (&target.target, &result.state) {
                 (
                     ConnectorRuntimeTarget::Builtin { connector_slug },
@@ -967,7 +1000,12 @@ impl NetworkPolicyRefreshCore {
             match published {
                 true => {
                     if self
-                        .complete_successful_refresh(run_id, target, deadline)
+                        .complete_successful_refresh(
+                            run_id,
+                            target,
+                            deadline,
+                            candidate_base_url_vars.as_ref(),
+                        )
                         .await
                     {
                         info!(
@@ -1106,6 +1144,37 @@ impl NetworkPolicyRefreshCore {
             .collect()
     }
 
+    async fn connector_runtime_sync_registrations(
+        &self,
+        run_id: RunId,
+        targets: &[ConnectorRefreshTarget],
+    ) -> Option<Vec<ConnectorRuntimeTargetRegistration>> {
+        let active_runs = self.inner.active_runs.lock().await;
+        let active = active_runs.get(&run_id)?;
+        targets
+            .iter()
+            .map(|target| {
+                let connector = active.connectors.get(&target.target)?;
+                if connector.generation != target.generation {
+                    return None;
+                }
+                Some(match &target.target {
+                    ConnectorRuntimeTarget::Builtin { connector_slug } => {
+                        ConnectorRuntimeTargetRegistration::Builtin {
+                            connector_slug: connector_slug.clone(),
+                        }
+                    }
+                    ConnectorRuntimeTarget::Custom {
+                        custom_connector_id,
+                    } => ConnectorRuntimeTargetRegistration::Custom {
+                        custom_connector_id: custom_connector_id.clone(),
+                        base_url_vars: connector.pinned_base_url_vars.clone(),
+                    },
+                })
+            })
+            .collect()
+    }
+
     async fn run_is_tagged(&self, run_id: RunId) -> bool {
         self.inner
             .active_runs
@@ -1135,11 +1204,27 @@ impl NetworkPolicyRefreshCore {
         })
     }
 
+    async fn custom_base_url_vars_match(
+        &self,
+        run_id: RunId,
+        target: &ConnectorRefreshTarget,
+        candidate: Option<&HashMap<String, String>>,
+    ) -> Option<bool> {
+        let active_runs = self.inner.active_runs.lock().await;
+        let active = active_runs.get(&run_id)?;
+        let connector = active.connectors.get(&target.target)?;
+        Some(match (&connector.pinned_base_url_vars, candidate) {
+            (Some(pinned), Some(candidate)) => pinned == candidate,
+            _ => true,
+        })
+    }
+
     async fn complete_successful_refresh(
         &self,
         run_id: RunId,
         target: &ConnectorRefreshTarget,
         deadline: Option<tokio::time::Instant>,
+        candidate_base_url_vars: Option<&HashMap<String, String>>,
     ) -> bool {
         let mut active_runs = self.inner.active_runs.lock().await;
         let Some(active) = active_runs.get_mut(&run_id) else {
@@ -1148,6 +1233,13 @@ impl NetworkPolicyRefreshCore {
         let Some(connector) = active.connectors.get_mut(&target.target) else {
             return false;
         };
+        if let Some(candidate) = candidate_base_url_vars {
+            match &connector.pinned_base_url_vars {
+                Some(pinned) if pinned != candidate => return false,
+                Some(_) => {}
+                None => connector.pinned_base_url_vars = Some(candidate.clone()),
+            }
+        }
         if connector.generation != target.generation {
             return false;
         }
@@ -1400,6 +1492,7 @@ fn custom_connector_runtime_registry_state(
                         custom_connector_id: Some(entry_connector_id),
                     },
                 ),
+            ..
         } => {
             validate_connector_runtime_network_policy(network_policy)?;
             if entry_connector_id != custom_connector_id {
@@ -1418,7 +1511,7 @@ fn custom_connector_runtime_registry_state(
             Err("custom available result must include an inline firewall")
         }
         ConnectorRuntimeSyncState::Unresolved { .. } => {
-            Err("custom connector runtime result cannot be unresolved")
+            Err("unresolved custom runtime result reached registry publication")
         }
     }
 }
@@ -1532,6 +1625,12 @@ mod tests {
         ConnectorRuntimeTarget::Custom {
             custom_connector_id: custom_connector_id.to_string(),
         }
+    }
+
+    fn runtime_target_registration(
+        target: &ConnectorRuntimeTarget,
+    ) -> ConnectorRuntimeTargetRegistration {
+        target.clone().into()
     }
 
     fn custom_runtime_firewall(custom_connector_id: &str) -> FirewallEntry {
@@ -1918,6 +2017,7 @@ mod tests {
                         ActiveConnectorRefreshState {
                             generation: 0,
                             consecutive_failures: 0,
+                            pinned_base_url_vars: None,
                         },
                     )
                 })
@@ -2395,7 +2495,7 @@ mod tests {
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: HashSet::from(["slack".to_string()]),
-            targets: Some(std::slice::from_ref(&target)),
+            targets: Some(std::slice::from_ref(&runtime_target_registration(&target))),
             refreshes: Some(&refreshes),
         })
         .await;
@@ -2575,12 +2675,15 @@ mod tests {
         let (_dir, registry, registry_path) =
             registered_runtime_registry(run_id, &firewalls, &policies).await;
 
+        let registrations = targets
+            .clone()
+            .map(ConnectorRuntimeTargetRegistration::from);
         core.register_run(NetworkPolicyRefreshRegistration {
             run_id,
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: connector_slugs.map(ToOwned::to_owned).into(),
-            targets: Some(&targets),
+            targets: Some(&registrations),
             refreshes: None,
         })
         .await;
@@ -2657,7 +2760,7 @@ mod tests {
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: HashSet::new(),
-            targets: Some(std::slice::from_ref(&target)),
+            targets: Some(std::slice::from_ref(&runtime_target_registration(&target))),
             refreshes: None,
         })
         .await;
@@ -2741,6 +2844,199 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tagged_custom_target_pins_first_routing_values_and_forwards_them_after_wakeup() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let target = custom_target(custom_connector_id);
+        let registration = runtime_target_registration(&target);
+        let firewall = custom_runtime_firewall(custom_connector_id);
+        let base_url_vars = HashMap::from([("subdomain".to_string(), "acme".to_string())]);
+        let first_sync = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                .json_body(json!({ "targets": [target.clone()] }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "available",
+                        "firewall": firewall,
+                        "networkPolicy": {
+                            "allow": ["custom.read"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                        "baseUrlVars": base_url_vars,
+                    }],
+                }));
+        });
+        let empty_firewalls = Vec::new();
+        let empty_policies = HashMap::new();
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &empty_firewalls, &empty_policies).await;
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: HashSet::new(),
+            targets: Some(std::slice::from_ref(&registration)),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_refresh_request(&mut requests).await;
+        assert!(
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        first_sync.assert_calls(1);
+        assert_eq!(
+            core.inner.active_runs.lock().await[&run_id].connectors[&target].pinned_base_url_vars,
+            Some(base_url_vars.clone())
+        );
+        let registry_after_available = tokio::fs::read(&registry_path).await.unwrap();
+
+        first_sync.delete_async().await;
+        let unresolved_sync = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                .json_body(json!({
+                    "targets": [{
+                        "kind": "custom",
+                        "customConnectorId": custom_connector_id,
+                        "baseUrlVars": base_url_vars,
+                    }],
+                }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "unresolved",
+                        "reason": "runtime-configuration-unavailable",
+                    }],
+                }));
+        });
+        core.notify_connector_runtime_sync(run_id, target.clone())
+            .await;
+        let request = recv_refresh_request(&mut requests).await;
+        assert!(
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        unresolved_sync.assert_calls(1);
+        assert_eq!(
+            tokio::fs::read(&registry_path).await.unwrap(),
+            registry_after_available
+        );
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(
+            active.connectors[&target].pinned_base_url_vars,
+            Some(base_url_vars)
+        );
+        assert_eq!(active.connectors[&target].consecutive_failures, 1);
+        assert!(active.refresh_tasks.contains_key(&target));
+        drop(active_runs);
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn tagged_custom_target_rejects_routing_value_replacement() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let target = custom_target(custom_connector_id);
+        let pinned_base_url_vars = HashMap::from([("subdomain".to_string(), "acme".to_string())]);
+        let replacement_base_url_vars =
+            HashMap::from([("subdomain".to_string(), "other".to_string())]);
+        let registration = ConnectorRuntimeTargetRegistration::Custom {
+            custom_connector_id: custom_connector_id.to_string(),
+            base_url_vars: Some(pinned_base_url_vars.clone()),
+        };
+        let firewall = custom_runtime_firewall(custom_connector_id);
+        server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                .json_body(json!({
+                    "targets": [{
+                        "kind": "custom",
+                        "customConnectorId": custom_connector_id,
+                        "baseUrlVars": pinned_base_url_vars,
+                    }],
+                }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "available",
+                        "firewall": firewall,
+                        "networkPolicy": {
+                            "allow": ["custom.write"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "allow",
+                        },
+                        "baseUrlVars": replacement_base_url_vars,
+                    }],
+                }));
+        });
+        let initial_firewall = custom_runtime_firewall(custom_connector_id);
+        let initial_name = format!("custom_connector_{}", custom_connector_id.replace('-', ""));
+        let initial_policies = HashMap::from([(
+            initial_name,
+            NetworkPolicy {
+                allow: vec!["custom.read".to_string()],
+                deny: vec![],
+                ask: vec![],
+                unknown_policy: "deny".to_string(),
+            },
+        )]);
+        let firewalls = vec![initial_firewall];
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &initial_policies).await;
+        let registry_before = tokio::fs::read(&registry_path).await.unwrap();
+
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: HashSet::new(),
+            targets: Some(std::slice::from_ref(&registration)),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_refresh_request(&mut requests).await;
+        assert!(
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        assert_eq!(
+            tokio::fs::read(&registry_path).await.unwrap(),
+            registry_before
+        );
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(
+            active.connectors[&target].pinned_base_url_vars,
+            Some(pinned_base_url_vars)
+        );
+        assert_eq!(active.connectors[&target].consecutive_failures, 1);
+        assert!(active.refresh_tasks.contains_key(&target));
+        drop(active_runs);
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
     async fn invalid_tagged_custom_response_retains_last_known_good_and_retries() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
@@ -2788,7 +3084,7 @@ mod tests {
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: HashSet::new(),
-            targets: Some(std::slice::from_ref(&target)),
+            targets: Some(std::slice::from_ref(&runtime_target_registration(&target))),
             refreshes: None,
         })
         .await;
@@ -2862,7 +3158,7 @@ mod tests {
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: HashSet::from(["slack".to_string()]),
-            targets: Some(std::slice::from_ref(&target)),
+            targets: Some(std::slice::from_ref(&runtime_target_registration(&target))),
             refreshes: None,
         })
         .await;
@@ -2924,7 +3220,7 @@ mod tests {
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: HashSet::new(),
-            targets: Some(std::slice::from_ref(&target)),
+            targets: Some(std::slice::from_ref(&runtime_target_registration(&target))),
             refreshes: None,
         })
         .await;
@@ -2984,7 +3280,7 @@ mod tests {
             source_ip: "10.200.0.2",
             registry,
             connector_slugs: HashSet::from(["slack".to_string()]),
-            targets: Some(std::slice::from_ref(&target)),
+            targets: Some(std::slice::from_ref(&runtime_target_registration(&target))),
             refreshes: None,
         })
         .await;

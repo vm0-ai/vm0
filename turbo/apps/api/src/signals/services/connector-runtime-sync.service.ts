@@ -2,6 +2,7 @@ import type {
   ConnectorRuntimeCustomAbsentReason,
   ConnectorRuntimeSyncResult,
   ConnectorRuntimeTarget,
+  ConnectorRuntimeTargetRegistration,
 } from "@vm0/api-contracts/contracts/runners";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -39,6 +40,20 @@ interface CustomTargetSnapshot {
 
 interface ConnectorRuntimeResolution {
   readonly result: ConnectorRuntimeSyncResult;
+}
+
+function connectorRuntimeTargetIdentity(
+  registration: ConnectorRuntimeTargetRegistration,
+): ConnectorRuntimeTarget {
+  return registration.kind === "builtin"
+    ? {
+        kind: "builtin",
+        connectorSlug: registration.connectorSlug,
+      }
+    : {
+        kind: "custom",
+        customConnectorId: registration.customConnectorId,
+      };
 }
 
 function customAbsentResult(
@@ -211,7 +226,7 @@ async function resolveCustomTarget(args: {
 export async function resolveConnectorRuntimeTargets(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
-  readonly targets: readonly ConnectorRuntimeTarget[];
+  readonly targets: readonly ConnectorRuntimeTargetRegistration[];
 }): Promise<readonly ConnectorRuntimeResolution[]> {
   const builtinConnectorSlugs = args.targets.flatMap((target) => {
     return target.kind === "builtin" ? [target.connectorSlug] : [];
@@ -240,7 +255,8 @@ export async function resolveConnectorRuntimeTargets(args: {
   );
 
   const results: ConnectorRuntimeResolution[] = [];
-  for (const target of args.targets) {
+  for (const registration of args.targets) {
+    const target = connectorRuntimeTargetIdentity(registration);
     if (target.kind === "custom") {
       if (!customSnapshot) {
         throw new Error("Custom connector runtime snapshot is unavailable");

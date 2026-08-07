@@ -42,9 +42,9 @@ use crate::ids::RunId;
 use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
-    CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTarget, ExecutionContext,
-    HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PiExecutionMode, PollResponse,
-    SandboxReuseResult,
+    CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
+    ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PiExecutionMode,
+    PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -1254,7 +1254,7 @@ impl ApiClient {
     pub(super) async fn sync_connector_runtime(
         &self,
         run_id: RunId,
-        targets: &[ConnectorRuntimeTarget],
+        targets: &[ConnectorRuntimeTargetRegistration],
     ) -> RunnerResult<ConnectorRuntimeSyncOutcome> {
         let run_id = run_id.to_string();
         let resp = send_api(
@@ -1285,7 +1285,7 @@ impl ApiClient {
     fn connector_runtime_sync_request(
         &self,
         run_id: &str,
-        targets: &[ConnectorRuntimeTarget],
+        targets: &[ConnectorRuntimeTargetRegistration],
     ) -> ApiRequestBuilder {
         self.http
             .request_resolved_route(

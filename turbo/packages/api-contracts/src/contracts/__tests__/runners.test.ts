@@ -284,16 +284,48 @@ describe("connector runtime synchronization contract", () => {
   });
 
   it("requires unique tagged targets", () => {
-    const target = {
+    const firstTarget = {
       kind: "custom" as const,
       customConnectorId,
+      baseUrlVars: { subdomain: "first" },
+    };
+    const secondTarget = {
+      ...firstTarget,
+      baseUrlVars: { subdomain: "second" },
     };
 
     expect(
       runnersConnectorRuntimeSyncContract.sync.body.safeParse({
-        targets: [target, target],
+        targets: [firstTarget, secondTarget],
       }).success,
     ).toBe(false);
+  });
+
+  it("preserves optional custom routing values in target registrations", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const target = {
+      kind: "custom" as const,
+      customConnectorId,
+      baseUrlVars: { subdomain: "acme" },
+    };
+
+    const execution = executionContextSchema.parse({
+      ...fixture,
+      connectorRuntimeTargets: [target],
+    });
+    const request = runnersConnectorRuntimeSyncContract.sync.body.parse({
+      targets: [target],
+    });
+
+    expect(execution.connectorRuntimeTargets).toEqual([target]);
+    expect(request.targets).toEqual([target]);
+    expect(
+      runnersConnectorRuntimeSyncContract.sync.body.safeParse({
+        targets: [{ kind: "custom", customConnectorId }],
+      }).success,
+    ).toBe(true);
   });
 
   it("requires stable API identities on available custom firewalls", () => {
@@ -320,6 +352,7 @@ describe("connector runtime synchronization contract", () => {
         ask: [],
         unknownPolicy: "allow" as const,
       },
+      baseUrlVars: { subdomain: "acme" },
     };
 
     expect(connectorRuntimeSyncResultSchema.safeParse(result).success).toBe(
@@ -341,7 +374,7 @@ describe("connector runtime synchronization contract", () => {
     ).toBe(false);
   });
 
-  it("keeps builtin retry states distinct from custom authoritative absence", () => {
+  it("keeps target-specific retry and authoritative absence states distinct", () => {
     const builtinTarget = {
       kind: "builtin" as const,
       connectorSlug: "slack",
@@ -373,7 +406,14 @@ describe("connector runtime synchronization contract", () => {
       connectorRuntimeSyncResultSchema.safeParse({
         target: customTarget,
         state: "unresolved",
-        reason: "connector-unavailable",
+        reason: "runtime-configuration-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: builtinTarget,
+        state: "unresolved",
+        reason: "runtime-configuration-unavailable",
       }).success,
     ).toBe(false);
   });

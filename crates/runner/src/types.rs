@@ -131,7 +131,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
     #[serde(default)]
-    pub connector_runtime_targets: Option<Vec<ConnectorRuntimeTarget>>,
+    pub connector_runtime_targets: Option<Vec<ConnectorRuntimeTargetRegistration>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -1268,6 +1268,59 @@ pub enum ConnectorRuntimeTarget {
     Custom { custom_connector_id: String },
 }
 
+/// Stable connector identity plus run-pinned metadata used at registration and
+/// in runtime synchronization requests. Metadata never participates in target
+/// equality, result correlation, or realtime notification routing.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ConnectorRuntimeTargetRegistration {
+    #[serde(rename_all = "camelCase")]
+    Builtin { connector_slug: String },
+    #[serde(rename_all = "camelCase")]
+    Custom {
+        custom_connector_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_url_vars: Option<HashMap<String, String>>,
+    },
+}
+
+impl ConnectorRuntimeTargetRegistration {
+    pub(crate) fn target(&self) -> ConnectorRuntimeTarget {
+        match self {
+            Self::Builtin { connector_slug } => ConnectorRuntimeTarget::Builtin {
+                connector_slug: connector_slug.clone(),
+            },
+            Self::Custom {
+                custom_connector_id,
+                ..
+            } => ConnectorRuntimeTarget::Custom {
+                custom_connector_id: custom_connector_id.clone(),
+            },
+        }
+    }
+
+    pub(crate) fn custom_base_url_vars(&self) -> Option<&HashMap<String, String>> {
+        match self {
+            Self::Custom { base_url_vars, .. } => base_url_vars.as_ref(),
+            Self::Builtin { .. } => None,
+        }
+    }
+}
+
+impl From<ConnectorRuntimeTarget> for ConnectorRuntimeTargetRegistration {
+    fn from(target: ConnectorRuntimeTarget) -> Self {
+        match target {
+            ConnectorRuntimeTarget::Builtin { connector_slug } => Self::Builtin { connector_slug },
+            ConnectorRuntimeTarget::Custom {
+                custom_connector_id,
+            } => Self::Custom {
+                custom_connector_id,
+                base_url_vars: None,
+            },
+        }
+    }
+}
+
 impl ConnectorRuntimeTarget {
     pub(crate) fn log_identity(&self) -> String {
         match self {
@@ -1291,6 +1344,10 @@ impl ConnectorRuntimeTarget {
 pub struct ConnectorRuntimeSyncResult {
     pub target: ConnectorRuntimeTarget,
     pub next_sync_at: Option<String>,
+    /// First-admission Custom routing inputs. The scheduler pins these only
+    /// after the accompanying executable state publishes successfully.
+    #[serde(default)]
+    pub base_url_vars: Option<HashMap<String, String>>,
     #[serde(flatten)]
     pub state: ConnectorRuntimeSyncState,
 }
@@ -1319,6 +1376,12 @@ pub enum ConnectorRuntimeSyncState {
 pub enum ConnectorRuntimeUnresolvedReason {
     #[serde(rename = "connector-unavailable")]
     Connector,
+    #[serde(rename = "grant-unavailable")]
+    Grant,
+    #[serde(rename = "permission-bundle-unavailable")]
+    PermissionBundle,
+    #[serde(rename = "runtime-configuration-unavailable")]
+    RuntimeConfiguration,
 }
 
 #[derive(Clone, Debug, Deserialize)]
