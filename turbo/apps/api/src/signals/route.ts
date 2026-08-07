@@ -1,6 +1,5 @@
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
-import { E2E_ROUTES } from "./e2e-routes";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
@@ -392,5 +391,4 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,
-  ...E2E_ROUTES,
 ];

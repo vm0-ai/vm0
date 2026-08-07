@@ -18,7 +18,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -34,7 +33,6 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -46,7 +44,7 @@ import { tapError } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 import type { Tx } from "../../lib/db-types";
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
@@ -93,22 +91,6 @@ interface TelegramPostFixtureSeed {
   readonly telegramBotId: string;
   readonly webhookSecret: string;
   readonly name: string;
-}
-
-function resolveTelegramApiUrlForDiagnostics(): string | null {
-  const telegramApiUrl = optionalEnv("TELEGRAM_API_URL");
-  if (telegramApiUrl) {
-    return telegramApiUrl;
-  }
-
-  const mockFlag = optionalEnv("E2E_TELEGRAM_MOCK_ENABLED");
-  const mockEnabled = mockFlag === "1" || mockFlag === "true";
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (mockEnabled && vercelUrl) {
-    return `https://${vercelUrl}/api/test/telegram-mock/bot`;
-  }
-
-  return null;
 }
 
 async function loadInstallation(db: ReadonlyDb, botId: string) {
@@ -320,20 +302,6 @@ async function loadChatThreadRoutes(db: ReadonlyDb, botId: string) {
       .where(eq(telegramInstallations.telegramBotId, botId)),
   ]);
   return [...customRoutes, ...officialRoutes];
-}
-
-function loadMockCalls(db: ReadonlyDb) {
-  return db
-    .select({
-      method: e2eTelegramMockCallLog.method,
-      botToken: e2eTelegramMockCallLog.botToken,
-      chatId: e2eTelegramMockCallLog.chatId,
-      bodyJson: e2eTelegramMockCallLog.bodyJson,
-      createdAt: e2eTelegramMockCallLog.createdAt,
-    })
-    .from(e2eTelegramMockCallLog)
-    .orderBy(desc(e2eTelegramMockCallLog.createdAt))
-    .limit(50);
 }
 
 function readString(value: unknown): string | null {
@@ -1845,10 +1813,7 @@ const getTestTelegramState$ = computed(async (get) => {
     loadOfficialMessages(db, installation?.orgId),
     loadChatThreadRoutes(db, query.bot_id),
   ]);
-  const [composeVersion, mockCalls] = await Promise.all([
-    loadComposeVersion(db, compose?.headVersionId),
-    loadMockCalls(db),
-  ]);
+  const composeVersion = await loadComposeVersion(db, compose?.headVersionId);
 
   return {
     status: 200 as const,
@@ -1868,8 +1833,6 @@ const getTestTelegramState$ = computed(async (get) => {
             ),
           }
         : null,
-      resolved_telegram_api_url: resolveTelegramApiUrlForDiagnostics(),
-      mock_calls: mockCalls,
       messages,
       official_messages: officialMessages,
       routes,

@@ -1,12 +1,12 @@
 /**
  * Test OAuth provider — internal synthetic OAuth 2.0 connector.
  *
- * The "provider" is a set of routes under /api/test/oauth-provider/ in this
- * same application. Relative URLs are resolved from Vercel's concrete preview
- * URL or the configured app/API URL at runtime.
+ * API integration tests intercept the provider URLs, so no external mock
+ * server is needed. The fixtures cover authorization-code and device-code
+ * flows without adding provider routes to the deployed application.
  *
- * For tests only: UI is hidden by FeatureSwitchKey.TestOauthConnector, and
- * the provider routes themselves 404 in production via isTestEndpointAllowed().
+ * For tests only: UI is hidden by FeatureSwitchKey.TestOauthConnector, and no
+ * deployed API routes implement these provider URLs.
  */
 
 import { z } from "zod";

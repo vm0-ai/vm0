@@ -17,13 +17,13 @@ jq -e '
   .jobs.prepare.outputs["playwright-runner-consumer-needed"] ==
     "${{ steps.needed.outputs.playwright-runner-consumer-needed }}" and
   any(.jobs.prepare.steps[];
-    .id == "turbo" and
+    .id == "playwright" and
     (.run | contains(".github/scripts/runner-image-context.sh playwright-consumer"))
   ) and
   any(.jobs.prepare.steps[];
     .id == "needed" and
     .env.PLAYWRIGHT_RUNNER_CONSUMER_NEEDED ==
-      "${{ steps.turbo.outputs.playwright-runner-consumer-needed }}"
+      "${{ steps.playwright.outputs.playwright-runner-consumer-needed }}"
   )
 ' <<<"$workflow_json" >/dev/null || fail "Playwright dedicated-runner demand must reach runner image selection"
 

@@ -27,6 +27,25 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test("send a message through the deployed runner", async ({ page }) => {
+  test.setTimeout(120_000);
+  const marker = `PRODUCT_CHAT_E2E_${Date.now()}`;
+
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  const chatComposer = page.locator("[data-chat-composer]");
+  const composer = chatComposer.locator(
+    '.zero-composer [contenteditable="true"]',
+  );
+  await composer.fill(`printf ${marker}`);
+  await chatComposer.getByRole("button", { name: "Send" }).click();
+
+  await expect(
+    page.locator('[data-role="assistant"]').getByText(marker, { exact: true }),
+  ).toBeVisible({ timeout: 90_000 });
+});
+
 test("image lightbox centers and pans across the full viewer", async ({
   page,
 }) => {

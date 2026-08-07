@@ -15,7 +15,6 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -31,7 +30,6 @@ import { and, desc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { pgTextDecoder } from "../../lib/db-structured-result";
-import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -43,7 +41,7 @@ import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 import type { Tx } from "../../lib/db-types";
 
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
@@ -86,22 +84,6 @@ function contentKeys(value: unknown): string[] {
     return Object.keys(value);
   }
   return [];
-}
-
-function resolvedSlackApiUrl(): string | null {
-  const slackApiUrl = optionalEnv("SLACK_API_URL");
-  if (slackApiUrl) {
-    return slackApiUrl;
-  }
-
-  const flag = optionalEnv("E2E_SLACK_MOCK_ENABLED");
-  const mockEnabled = flag === "1" || flag === "true";
-  const vercelUrl = optionalEnv("VERCEL_URL");
-  if (mockEnabled && vercelUrl) {
-    return `https://${vercelUrl}/api/test/slack-mock/`;
-  }
-
-  return null;
 }
 
 interface UpsertSlackInstallationInput {
@@ -794,20 +776,6 @@ async function seedUserVariablesForTest(
   }
 }
 
-function recentMockCalls(db: ReadonlyDb) {
-  return db
-    .select({
-      method: e2eSlackMockCallLog.method,
-      teamId: e2eSlackMockCallLog.teamId,
-      channelId: e2eSlackMockCallLog.channelId,
-      bodyJson: e2eSlackMockCallLog.bodyJson,
-      createdAt: e2eSlackMockCallLog.createdAt,
-    })
-    .from(e2eSlackMockCallLog)
-    .orderBy(desc(e2eSlackMockCallLog.createdAt))
-    .limit(50);
-}
-
 const getSlackState$ = computed(async (get) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -848,8 +816,6 @@ const getSlackState$ = computed(async (get) => {
     db,
     compose?.headVersionId,
   );
-  const mockCalls = await recentMockCalls(db);
-
   return {
     status: 200 as const,
     body: {
@@ -893,13 +859,6 @@ const getSlackState$ = computed(async (get) => {
             content_keys: contentKeys(composeVersion.content),
           }
         : null,
-      resolved_slack_api_url: resolvedSlackApiUrl(),
-      mock_calls: mockCalls.map((call) => {
-        return {
-          ...call,
-          createdAt: isoString(call.createdAt),
-        };
-      }),
     },
   };
 });

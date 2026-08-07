@@ -28,7 +28,7 @@ import { monitorChatEventQueueForEvents$ } from "../services/cron-monitor-chat-e
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 import type { Tx } from "../../lib/db-types";
 
 const actionBody$ = bodyResultOf(

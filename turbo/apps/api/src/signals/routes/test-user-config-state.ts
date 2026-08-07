@@ -16,7 +16,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(testUserConfigStateContract.action);
 
@@ -26,11 +26,8 @@ const actionBody$ = bodyResultOf(testUserConfigStateContract.action);
  * and no web UI ever replaced them. Existing rows still drive run environment
  * injection and the Slack / Teams / Telegram readiness checks, so route tests
  * need a seam to seed and inspect them without resurrecting a production
- * surface. Unlike the sibling `test-connector-credential-storage-state`
- * fixture it is also mounted in `E2E_ROUTES`, because the deployed
- * variable-expansion boundary (`t31-zero-variable.bats`) needs the same seam
- * and previews cannot reach in-process fixtures. `isTestEndpointAllowed` keeps
- * it to development and bypass-authenticated previews; production returns 404.
+ * surface. API tests mount this route explicitly through `setupApp`; deployed
+ * applications never register it.
  */
 type UserConfigStateAction<
   TAction extends TestUserConfigStateActionBody["action"],
