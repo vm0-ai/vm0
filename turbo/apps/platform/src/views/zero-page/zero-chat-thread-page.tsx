@@ -4274,6 +4274,34 @@ function ThinkingLabel({
   );
 }
 
+function ThinkingBlocks({ blockStyle }: { blockStyle: CSSProperties }) {
+  const rippleEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRippleThinkingIndicator] ??
+    false;
+  if (rippleEnabled) {
+    return (
+      <span className="zero-blocks-ripple shrink-0">
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+      </span>
+    );
+  }
+  return (
+    <span className="zero-blocks shrink-0" style={blockStyle}>
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 function InlineThinkingRow({
   blockStyle,
   isQueued,
@@ -4287,11 +4315,7 @@ function InlineThinkingRow({
 }) {
   return (
     <div className="flex items-center gap-2 h-5">
-      <span className="zero-blocks shrink-0" style={blockStyle}>
-        <span />
-        <span />
-        <span />
-      </span>
+      <ThinkingBlocks blockStyle={blockStyle} />
       <ThinkingLabel
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
@@ -4370,11 +4394,7 @@ function WaitingForAssistantResponse({
         <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
           <div className="flex h-5 min-w-0 items-center gap-2">
-            <span className="zero-blocks shrink-0" style={blockStyle}>
-              <span />
-              <span />
-              <span />
-            </span>
+            <ThinkingBlocks blockStyle={blockStyle} />
             <ThinkingLabel
               isQueued={isQueued}
               thinkingLabel={thinkingLabel}

@@ -431,6 +431,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatRippleThinkingIndicator]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Render the chat thinking indicator as a 3x3 sparse ripple in the brand colour instead of the 3-block loader.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

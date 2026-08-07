@@ -73,4 +73,5 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   CjkFriendlyMarkdown = "cjkFriendlyMarkdown",
   VideoTemplateOptions = "videoTemplateOptions",
+  ChatRippleThinkingIndicator = "chatRippleThinkingIndicator",
 }

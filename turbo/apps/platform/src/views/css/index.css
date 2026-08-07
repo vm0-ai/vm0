@@ -357,6 +357,80 @@ body {
   }
 }
 
+/* Thinking indicator: 3x3 sparse ripple loader, behind the
+ * chatRippleThinkingIndicator switch. A wave sweeps the diagonal and each cell
+ * morphs square-to-circle as it lights, which is what makes a static grid read
+ * as soft. The delay step is wide relative to the lit window on purpose: at most
+ * one diagonal band carries the brand colour at a time, so the indicator stays
+ * quiet next to body text while never fully going dark. */
+.zero-blocks-ripple {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 3.5px);
+  grid-template-rows: repeat(3, 3.5px);
+  gap: 1.5px;
+}
+.zero-blocks-ripple span {
+  border-radius: 1px;
+  background: hsl(var(--muted-foreground) / 0.3);
+  animation: zero-block-ripple 1.4s cubic-bezier(0.35, 0, 0.3, 1) infinite;
+}
+/* Delay follows each cell's diagonal distance from the top-left corner. */
+.zero-blocks-ripple span:nth-child(2),
+.zero-blocks-ripple span:nth-child(4) {
+  animation-delay: 0.26s;
+}
+.zero-blocks-ripple span:nth-child(3),
+.zero-blocks-ripple span:nth-child(5),
+.zero-blocks-ripple span:nth-child(7) {
+  animation-delay: 0.52s;
+}
+.zero-blocks-ripple span:nth-child(6),
+.zero-blocks-ripple span:nth-child(8) {
+  animation-delay: 0.78s;
+}
+.zero-blocks-ripple span:nth-child(9) {
+  animation-delay: 1.04s;
+}
+@keyframes zero-block-ripple {
+  0% {
+    transform: scale(0.84);
+    border-radius: 1px;
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+  10% {
+    transform: scale(1.08);
+    border-radius: 45%;
+    background: hsl(var(--primary) / 0.85);
+  }
+  22% {
+    transform: scale(1);
+    border-radius: 26%;
+    background: hsl(var(--primary) / 0.5);
+  }
+  36%,
+  100% {
+    transform: scale(0.84);
+    border-radius: 1px;
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+}
+/* Keep the wave legible without motion: colour still travels, nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  .zero-blocks-ripple span {
+    animation-name: zero-block-ripple-calm;
+    animation-duration: 2s;
+  }
+}
+@keyframes zero-block-ripple-calm {
+  0%,
+  100% {
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+  40% {
+    background: hsl(var(--primary) / 0.75);
+  }
+}
+
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
   --zero-card-radius: 1rem;
