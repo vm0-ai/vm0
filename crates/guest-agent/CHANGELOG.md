@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.64.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.7...guest-agent-v0.64.8) (2026-08-07)
+
+## [0.64.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.6...guest-agent-v0.64.7) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
 ## [0.64.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.5...guest-agent-v0.64.6) (2026-08-06)
 
 ## [0.64.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.4...guest-agent-v0.64.5) (2026-08-05)

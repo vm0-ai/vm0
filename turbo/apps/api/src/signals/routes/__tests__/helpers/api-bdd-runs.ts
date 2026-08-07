@@ -32,6 +32,7 @@ import {
 } from "@vm0/api-contracts/contracts/cron";
 import {
   runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -105,6 +106,10 @@ type RunnerNetworkPolicyRefreshRequest = z.input<
   (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
 >;
 type RunnerNetworkPolicyRefreshStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
+type RunnerConnectorRuntimeSyncRequest = z.input<
+  (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
+>;
+type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
@@ -595,6 +600,39 @@ export function createRunsApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async requestSyncConnectorRuntimeAs<
+      TStatus extends RunnerConnectorRuntimeSyncStatus,
+    >(
+      authorization: string | undefined,
+      runId: string,
+      body: RunnerConnectorRuntimeSyncRequest,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async syncConnectorRuntime(
+      runId: string,
+      body: RunnerConnectorRuntimeSyncRequest,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersConnectorRuntimeSyncContract).sync({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body,
+        }),
+        [200],
+      );
+      return response.body.results;
     },
 
     async createCliToken(actor: ApiTestUser): Promise<{

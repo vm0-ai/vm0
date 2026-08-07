@@ -155,22 +155,22 @@ async fn write_claude_stream_json_to_stdin(
     Ok(())
 }
 
-/// Bounded terminal failure detail extracted from CLI stdout JSONL.
+/// Bounded terminal failure detail extracted from a CLI event stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliFailureDiagnostic {
-    /// Terminal failure message selected from CLI stdout JSONL.
+    /// Terminal failure message selected from a CLI event.
     ///
     /// When produced by [`execute_cli_with_active_input_for_config`], this
     /// message has already been secret-masked, line-break escaped, and bounded
     /// before exposure.
     pub message: String,
 
-    /// High-level source of the stdout-derived failure detail.
+    /// High-level source of the event-derived failure detail.
     ///
     /// Values produced by [`execute_cli_with_active_input_for_config`] use
     /// `ClaudeResult` for Claude Code terminal result events and `CodexJsonl`
-    /// for Codex JSONL failure events. The final run diagnostic may still
-    /// prefer stderr when this stdout message is generic.
+    /// for Codex compatibility JSONL failure events. The final run diagnostic
+    /// may still prefer stderr when this event message is generic.
     pub source: FailureDetailSource,
 
     /// Optional structured failure reason parsed from supported CLI payloads.
@@ -239,12 +239,12 @@ pub struct CliExecutionResult {
     /// drained stdout may contain another result event after cleanup starts.
     pub post_result_cleanup_result: Option<ClaudeResultSummary>,
 
-    /// Best-effort, secret-masked terminal failure diagnostic parsed from CLI
-    /// stdout JSONL.
+    /// Best-effort, secret-masked terminal failure diagnostic parsed from the
+    /// framework event stream.
     ///
-    /// Some frameworks report terminal failures as JSONL events on stdout, not
-    /// stderr. Keeping the diagnostic here lets the guest-agent surface the
-    /// actual failure reason in its final run error.
+    /// Frameworks can report terminal failures as structured events rather
+    /// than stderr. Keeping the diagnostic here lets the guest-agent surface
+    /// the actual failure reason in its final run error.
     pub failure_diagnostic: Option<CliFailureDiagnostic>,
 
     /// Guest-agent control-path error that caused the CLI process group to be
@@ -802,7 +802,7 @@ async fn execute_cli_inner(
         })
     });
 
-    // Stream stdout JSONL, racing against heartbeat and process exit.
+    // Stream Claude Code stdout JSONL, racing against heartbeat and process exit.
     //
     // Event sending is decoupled from stdout reading via an mpsc channel
     // to prevent a deadlock: Bun (Claude CLI runtime) uses blocking stdout

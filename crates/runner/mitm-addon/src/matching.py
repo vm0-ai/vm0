@@ -174,6 +174,7 @@ class _CompiledApi(NamedTuple):
 
 class CompiledFirewallCore(NamedTuple):
     name: str
+    intent_identity: str
     api_cores: tuple[_CompiledApiCore, ...]
     name_malformed: bool
 
@@ -185,6 +186,10 @@ class _CompiledFirewall(NamedTuple):
     @property
     def name(self) -> str:
         return self.core.name
+
+    @property
+    def intent_identity(self) -> str:
+        return self.core.intent_identity
 
     @property
     def name_malformed(self) -> bool:
@@ -827,6 +832,12 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
     raw_name = fw_entry.get("name")
     name_malformed = not isinstance(raw_name, str) or raw_name == ""
     firewall_name = raw_name if isinstance(raw_name, str) else ""
+    raw_custom_connector_id = fw_entry.get("customConnectorId")
+    intent_identity = (
+        raw_custom_connector_id
+        if isinstance(raw_custom_connector_id, str) and raw_custom_connector_id != ""
+        else firewall_name
+    )
 
     raw_apis = fw_entry.get("apis", [])
     if not isinstance(raw_apis, list):
@@ -915,7 +926,12 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
 
     if not api_cores:
         return None
-    return CompiledFirewallCore(firewall_name, tuple(api_cores), name_malformed)
+    return CompiledFirewallCore(
+        firewall_name,
+        intent_identity,
+        tuple(api_cores),
+        name_malformed,
+    )
 
 
 def bind_compiled_firewall_core(
@@ -1414,6 +1430,20 @@ def _winning_owner_names(collection: _FirewallMatchCollection) -> tuple[str, ...
     return tuple(sorted(names))
 
 
+def _owner_name_for_intent(
+    collection: _FirewallMatchCollection,
+    intent_value: str,
+) -> str | None:
+    matching_names = {
+        match.firewall.name
+        for match in _winning_api_matches(collection)
+        if not match.firewall.name_malformed and match.firewall.intent_identity == intent_value
+    }
+    if len(matching_names) != 1:
+        return None
+    return next(iter(matching_names))
+
+
 def _ambiguity_reason(
     intent: connector_intent.ConnectorIntent,
 ) -> ConnectorRouteAmbiguityReason:
@@ -1436,8 +1466,10 @@ def _selected_owner_name(
         return None
     if len(owners) == 1:
         return owners[0]
-    if intent.status == "present" and intent.value in owners:
-        return intent.value
+    if intent.status == "present" and intent.value is not None:
+        selected_name = _owner_name_for_intent(collection, intent.value)
+        if selected_name is not None:
+            return selected_name
     return FirewallAmbiguous(
         upper_method,
         path,
