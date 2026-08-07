@@ -34,7 +34,6 @@ import {
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
-import { secrets } from "@vm0/db/schema/secret";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -49,6 +48,12 @@ import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
+import {
+  loadCustomConnectorCredentialAccesses,
+  loadCurrentCustomConnectorOAuthConnectionIds,
+  loadCurrentCustomConnectorValueMarkers,
+  type CustomConnectorCredentialAccess,
+} from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 import type { Tx } from "../../lib/db-types";
@@ -1273,92 +1278,6 @@ async function findCustomConnectorPrefixConflict(
   return null;
 }
 
-async function loadConnectorValueMarkers(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<readonly ValueMarker[]> {
-  const [valueRows, legacyRows] = await Promise.all([
-    args.db
-      .select({
-        connectorId: orgCustomConnectorValues.connectorId,
-        kind: orgCustomConnectorValues.kind,
-        key: orgCustomConnectorValues.key,
-      })
-      .from(orgCustomConnectorValues)
-      .where(
-        and(
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-        ),
-      ),
-    args.db
-      .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-      .from(orgCustomConnectorSecrets)
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-        ),
-      ),
-  ]);
-  const markers: ValueMarker[] = valueRows
-    .filter((row): row is ValueMarker => {
-      return row.kind === "secret" || row.kind === "variable";
-    })
-    .map((row) => {
-      return { connectorId: row.connectorId, kind: row.kind, key: row.key };
-    });
-  const existing = new Set(
-    markers.map((marker) => {
-      return `${marker.connectorId}:${customConnectorValueMarkerKey(marker)}`;
-    }),
-  );
-  for (const row of legacyRows) {
-    const marker = {
-      connectorId: row.connectorId,
-      kind: "secret" as const,
-      key: LEGACY_SECRET_KEY,
-    };
-    const key = `${marker.connectorId}:${customConnectorValueMarkerKey(marker)}`;
-    if (!existing.has(key)) {
-      markers.push(marker);
-      existing.add(key);
-    }
-  }
-  return markers;
-}
-
-async function loadConnectedOAuthConnectorIds(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<ReadonlySet<string>> {
-  const rows = await args.db
-    .select({ customConnectorId: connectors.customConnectorId })
-    .from(connectors)
-    .innerJoin(
-      secrets,
-      and(
-        eq(secrets.connectorId, connectors.id),
-        eq(secrets.name, CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME),
-      ),
-    )
-    .where(
-      and(
-        eq(connectors.orgId, args.orgId),
-        eq(connectors.userId, args.userId),
-        eq(connectors.authMethod, "oauth"),
-        eq(connectors.needsReconnect, false),
-      ),
-    );
-  return new Set(
-    rows.flatMap((row) => {
-      return row.customConnectorId ? [row.customConnectorId] : [];
-    }),
-  );
-}
-
 export const createCustomConnector$ = command(
   async (
     { get, set },
@@ -1872,13 +1791,11 @@ export function getCustomConnectorResponse(args: {
       return null;
     }
     const [markers, oauthConnections] = await Promise.all([
-      loadConnectorValueMarkers({
-        db,
+      loadCurrentCustomConnectorValueMarkers(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
-      loadConnectedOAuthConnectorIds({
-        db,
+      loadCurrentCustomConnectorOAuthConnectionIds(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
@@ -2157,8 +2074,7 @@ export const setCustomConnectorValues$ = command(
     signal.throwIfAborted();
 
     const db = get(db$);
-    const markers = await loadConnectorValueMarkers({
-      db,
+    const markers = await loadCurrentCustomConnectorValueMarkers(db, {
       orgId: args.orgId,
       userId: args.userId,
     });
@@ -2266,6 +2182,8 @@ async function loadStoredValuesForConnector(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
+  readonly authMode: CustomConnectorAuthMode;
+  readonly storageVersion: number;
 }): Promise<readonly StoredValueRow[]> {
   const [valueRows, legacyRows] = await Promise.all([
     args.db
@@ -2276,6 +2194,25 @@ async function loadStoredValuesForConnector(args: {
         encryptedValue: orgCustomConnectorValues.encryptedValue,
       })
       .from(orgCustomConnectorValues)
+      .innerJoin(
+        orgCustomConnectors,
+        and(
+          eq(orgCustomConnectors.id, orgCustomConnectorValues.connectorId),
+          eq(orgCustomConnectors.orgId, orgCustomConnectorValues.orgId),
+          eq(orgCustomConnectors.authMode, args.authMode),
+          eq(orgCustomConnectors.storageVersion, args.storageVersion),
+        ),
+      )
+      .innerJoin(
+        connectors,
+        and(
+          eq(connectors.customConnectorId, orgCustomConnectors.id),
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.authMethod, orgCustomConnectors.authMode),
+          eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
+        ),
+      )
       .where(
         and(
           eq(orgCustomConnectorValues.orgId, args.orgId),
@@ -2289,6 +2226,26 @@ async function loadStoredValuesForConnector(args: {
         encryptedValue: orgCustomConnectorSecrets.encryptedValue,
       })
       .from(orgCustomConnectorSecrets)
+      .innerJoin(
+        orgCustomConnectors,
+        and(
+          eq(orgCustomConnectors.id, orgCustomConnectorSecrets.connectorId),
+          eq(orgCustomConnectors.orgId, orgCustomConnectorSecrets.orgId),
+          eq(orgCustomConnectors.authMode, "manual"),
+          eq(orgCustomConnectors.authMode, args.authMode),
+          eq(orgCustomConnectors.storageVersion, args.storageVersion),
+        ),
+      )
+      .innerJoin(
+        connectors,
+        and(
+          eq(connectors.customConnectorId, orgCustomConnectors.id),
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.authMethod, orgCustomConnectors.authMode),
+          eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
+        ),
+      )
       .where(
         and(
           eq(orgCustomConnectorSecrets.orgId, args.orgId),
@@ -2524,6 +2481,7 @@ export async function loadCustomConnectorRuntimeData(
   readonly {
     readonly connector: CustomConnectorRow;
     readonly values: readonly StoredValueRow[];
+    readonly credentialAccess: CustomConnectorCredentialAccess;
   }[]
 > {
   const measure =
@@ -2569,19 +2527,39 @@ export async function loadCustomConnectorRuntimeData(
   }
 
   return await measure("connectorValueRows", async () => {
+    const credentialAccesses = await loadCustomConnectorCredentialAccesses(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      definitions: connectorRows.map((row) => {
+        return {
+          id: row.connector.id,
+          authMode: row.connector.authMode,
+          storageVersion: row.connector.storageVersion,
+        };
+      }),
+    });
     return await Promise.all(
       connectorRows.map(async (row) => {
         const connector = normaliseCustomConnectorRow(
           row.connector,
           row.oauthConfig,
         );
-        const values = await loadStoredValuesForConnector({
-          db,
-          orgId: args.orgId,
-          userId: args.userId,
-          connectorId: connector.id,
-        });
-        return { connector, values };
+        const credentialAccess = credentialAccesses.get(connector.id);
+        if (!credentialAccess) {
+          throw new Error("Expected custom connector credential access");
+        }
+        const values =
+          credentialAccess.kind === "current"
+            ? await loadStoredValuesForConnector({
+                db,
+                orgId: args.orgId,
+                userId: args.userId,
+                connectorId: connector.id,
+                authMode: connector.authMode,
+                storageVersion: connector.storageVersion,
+              })
+            : [];
+        return { connector, values, credentialAccess };
       }),
     );
   });

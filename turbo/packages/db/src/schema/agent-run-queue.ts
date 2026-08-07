@@ -5,7 +5,8 @@ import { agentRuns } from "./agent-run";
  * Agent Run Queue table
  * Temporary storage for runs waiting on concurrency slots.
  * API-created rows store an encrypted prepared runner job payload.
- * Legacy/test rows may omit the payload and use SQL-only promotion.
+ * The owning API writer requires the payload; readers reject a missing value
+ * as corrupted persisted state.
  * Records are deleted after dequeue.
  * Follows the same pattern as runner_job_queue.
  */

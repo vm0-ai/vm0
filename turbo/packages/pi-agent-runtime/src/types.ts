@@ -302,14 +302,18 @@ export type PiAgentMessage =
   | PiAssistantMessage
   | PiToolResultMessage;
 
-/** OpenAI-compatible provider Pi can drive. */
+/** OpenAI-compatible providers Pi can drive. */
+export const PI_OPENAI_COMPATIBLE_PROVIDERS = [
+  "deepseek",
+  "moonshotai",
+  "openai",
+  "openrouter",
+  "vercel-ai-gateway",
+  "codex",
+] as const;
+
 export type PiOpenAICompatibleProvider =
-  | "deepseek"
-  | "moonshotai"
-  | "openai"
-  | "openrouter"
-  | "vercel-ai-gateway"
-  | "codex";
+  (typeof PI_OPENAI_COMPATIBLE_PROVIDERS)[number];
 
 /** Model endpoint and credential the Pi agent loop runs against. */
 export interface PiAgentModelConfig {

@@ -4,15 +4,17 @@ import type {
 } from "@vm0/api-contracts/contracts/runners";
 import {
   getModelProviderPiChatCompletionsUrl,
+  supportedRunModelSchema,
   type ModelProviderType,
-  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   isPiAgentModelSupported,
+  PI_OPENAI_COMPATIBLE_PROVIDERS,
   type ExecutionEnv,
   type PiAgentModelConfig,
   type PiOpenAICompatibleProvider,
 } from "@vm0/pi-agent-runtime";
+import { z } from "zod";
 
 /**
  * Cycle-free Pi edge configuration shared between the launch pipeline
@@ -22,11 +24,24 @@ import {
 
 export type PiEdgeModelConfig = PiAgentModelConfig;
 
-export interface PiEdgeUsageConfig {
-  /** Canonical selected model used for observations and, when billable, pricing. */
-  readonly model: SupportedRunModel;
-  readonly billable: boolean;
-}
+export const piEdgeModelConfigSchema = z
+  .object({
+    provider: z.enum(PI_OPENAI_COMPATIBLE_PROVIDERS),
+    baseUrl: z.url(),
+    apiKey: z.string().min(1),
+    model: z.string().min(1),
+  })
+  .readonly();
+
+/** Canonical selected model used for observations and, when billable, pricing. */
+export const piEdgeUsageConfigSchema = z
+  .object({
+    model: supportedRunModelSchema,
+    billable: z.boolean(),
+  })
+  .readonly();
+
+export type PiEdgeUsageConfig = z.infer<typeof piEdgeUsageConfigSchema>;
 
 export interface PiEdgeTurnArgs {
   readonly runId: string;

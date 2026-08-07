@@ -70,4 +70,5 @@ export enum FeatureSwitchKey {
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   VideoTemplateOptions = "videoTemplateOptions",
+  ChatSearchIndex = "chatSearchIndex",
 }

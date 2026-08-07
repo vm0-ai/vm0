@@ -11,6 +11,9 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { parseGitHubTreeUrl, resolveSkillRef } from "@vm0/core/github-url";
+import { getSkillStorageName } from "@vm0/core/storage-names";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { HttpResponse, http } from "msw";
 import { v5 as uuidv5 } from "uuid";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -18,8 +21,9 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
+import { generateSandboxToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {
@@ -51,6 +55,7 @@ import {
   createAgentComposeFixture,
   readAgentComposeByIdFixture,
 } from "../../../test-fixtures/agent-composes";
+import { readSystemStorageVersionNameByS3KeyFixture } from "../../../test-fixtures/storage";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -75,6 +80,7 @@ const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const OPENAI_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
+const STORAGE_ARCHIVE_SUFFIX = "/archive.tar.gz";
 const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
   "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
 
@@ -405,7 +411,44 @@ interface PiStorageObjects {
 function acceptPiStorageObjects(): PiStorageObjects {
   const objects = new Map<string, Buffer>();
   const seededObjects = new Map<string, Buffer>();
-  context.mocks.s3.send.mockImplementation((command: unknown) => {
+  const systemSkillNameByStorageName = new Map(
+    [...SEED_SKILLS, GOAL_SKILL_NAME].flatMap((skillRef) => {
+      const parsed = parseGitHubTreeUrl(resolveSkillRef(skillRef));
+      return parsed
+        ? [[getSkillStorageName(parsed.fullPath), parsed.skillName] as const]
+        : [];
+    }),
+  );
+  const systemSkillStorageNames = [...systemSkillNameByStorageName.keys()];
+  const resolveBody = async (
+    objectKey: string,
+    key: string,
+  ): Promise<Buffer | undefined> => {
+    const stored = objects.get(objectKey) ?? seededObjects.get(key);
+    if (stored || !key.endsWith(STORAGE_ARCHIVE_SUFFIX)) {
+      return stored;
+    }
+    const storageName = await readSystemStorageVersionNameByS3KeyFixture({
+      s3Key: key.slice(0, -STORAGE_ARCHIVE_SUFFIX.length),
+      storageNames: systemSkillStorageNames,
+    });
+    const skillName =
+      storageName === undefined
+        ? undefined
+        : systemSkillNameByStorageName.get(storageName);
+    if (skillName === undefined) {
+      return undefined;
+    }
+    const archive = createTarGz([
+      {
+        path: "SKILL.md",
+        content: `---\nname: ${skillName}\ndescription: Test fixture for the default ${skillName} Skill.\n---\n`,
+      },
+    ]);
+    seededObjects.set(key, archive);
+    return archive;
+  };
+  context.mocks.s3.send.mockImplementation(async (command: unknown) => {
     const input = commandInput(command);
     const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
     const key = typeof input.Key === "string" ? input.Key : "";
@@ -413,29 +456,26 @@ function acceptPiStorageObjects(): PiStorageObjects {
     switch (commandName(command)) {
       case "PutObjectCommand": {
         objects.set(objectKey, bodyBuffer(input.Body));
-        return Promise.resolve({});
+        return {};
       }
       case "GetObjectCommand": {
-        const body = objects.get(objectKey) ?? seededObjects.get(key);
-        return Promise.resolve(
-          body
-            ? { Body: streamBody(body), ContentLength: body.byteLength }
-            : { Body: undefined },
-        );
+        const body = await resolveBody(objectKey, key);
+        return body
+          ? { Body: streamBody(body), ContentLength: body.byteLength }
+          : { Body: undefined };
       }
       case "HeadObjectCommand": {
-        const body = objects.get(objectKey) ?? seededObjects.get(key);
-        return body
-          ? Promise.resolve({ ContentLength: body.byteLength })
-          : Promise.reject(
-              Object.assign(new Error(`Missing S3 object ${objectKey}`), {
-                name: "NotFound",
-                $metadata: { httpStatusCode: 404 },
-              }),
-            );
+        const body = await resolveBody(objectKey, key);
+        if (!body) {
+          throw Object.assign(new Error(`Missing S3 object ${objectKey}`), {
+            name: "NotFound",
+            $metadata: { httpStatusCode: 404 },
+          });
+        }
+        return { ContentLength: body.byteLength };
       }
       default: {
-        return Promise.resolve({});
+        return {};
       }
     }
   });
@@ -786,165 +826,107 @@ async function outputMessages(actor: ApiTestUser, threadId: string) {
   });
 }
 
-describe("PiLoop edge turn", () => {
-  it("rejects saturated Pi launches while ordinary launches still queue", async () => {
-    const fixture = await piEdgeFixture();
-    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-    const kms = useSecretKmsProbe();
-    const blocker = await sendChatRun(
-      fixture,
-      "occupy the only organization concurrency slot",
-    );
-    expect((await api.readRun(fixture.actor, blocker.runId)).status).toBe(
-      "pending",
-    );
-    const targetThread = await chat.createThread(fixture.actor, {
-      agentId: fixture.agentId,
-      model: MODEL,
-    });
-    let completionRequests = 0;
-    server.use(
-      http.post(COMPLETIONS_URL, () => {
-        completionRequests += 1;
-        return assistantTextStream("unexpected answer", "unexpected turn");
-      }),
-    );
-    const jobNotificationCount = (): number => {
-      return context.mocks.ably.publish.mock.calls.filter(([topic]) => {
-        return topic === "job";
-      }).length;
-    };
-    const baselineDataKeys = kms.generateDataKeyCalls;
-    const baselineJobNotifications = jobNotificationCount();
-    const queueBeforePi = await api.readRunQueue(fixture.actor);
-    expect(queueBeforePi.body.concurrency).toMatchObject({
-      active: 1,
-      limit: 1,
-    });
+async function expectQueuedPiEdgePromotion(args: {
+  readonly fixture: PiEdgeFixture;
+  readonly model: SupportedRunModel;
+  readonly completionsUrl: string;
+  readonly completionResponse: () => Response;
+}): Promise<{ readonly runId: string; readonly threadId: string }> {
+  const occupyingRun = await sendChatRun(
+    args.fixture,
+    "occupy the only concurrency slot",
+    undefined,
+    args.model,
+  );
+  expect(
+    (await api.readRun(args.fixture.actor, occupyingRun.runId)).status,
+  ).toBe("pending");
 
-    await enablePiLoop(fixture);
-    const rejectedEventId = randomUUID();
-    const rejected = await chat.requestSendEvent(
-      fixture.actor,
-      {
-        agentId: fixture.agentId,
-        threadId: targetThread.id,
-        prompt: "reject this Pi turn instead of queuing it",
-        model: MODEL,
-        clientEventId: rejectedEventId,
-      },
-      [429],
-    );
-    if (rejected.status !== 429) {
-      throw new Error("Expected the saturated Pi launch to return 429");
+  await enablePiLoop(args.fixture);
+  const modelStarted = createDeferredPromise<void>(context.signal);
+  const releaseModel = createDeferredPromise<void>(context.signal);
+  onTestFinished(() => {
+    if (!releaseModel.settled()) {
+      releaseModel.resolve();
     }
-    expect(rejected.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
-    await flushWaitUntilForTest();
+  });
+  server.use(
+    http.post(args.completionsUrl, async () => {
+      modelStarted.resolve();
+      await releaseModel.promise;
+      return args.completionResponse();
+    }),
+  );
 
-    const rejectedQueue = await api.readRunQueue(fixture.actor);
-    expect(rejectedQueue.body.concurrency.active).toBe(1);
-    expect(rejectedQueue.body.queue).toStrictEqual([]);
-    expect(
-      (
-        await api.listAgentRuns(fixture.actor, {
-          status: "queued,pending,running,completed,failed,timeout,cancelled",
-          limit: 100,
-        })
-      ).runs.map((run) => {
-        return run.id;
-      }),
-    ).toStrictEqual([blocker.runId]);
-    const rejectedEvents = await chat.listThreadEvents(
-      fixture.actor,
-      targetThread.id,
-    );
-    expect(rejectedEvents.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "control.revoke",
-        revokesEventId: rejectedEventId,
-      }),
-    );
-    expect(completionRequests).toBe(0);
-    expect(jobNotificationCount()).toBe(baselineJobNotifications);
-    expect(kms.generateDataKeyCalls).toBe(baselineDataKeys + 1);
+  const queuedRun = await sendChatRun(
+    args.fixture,
+    "start Pi after the queue picks this run",
+    undefined,
+    args.model,
+  );
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "queued",
+  );
+  expect(modelStarted.settled()).toBeFalsy();
 
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: fixture.switchOwner.userId,
-        orgId: fixture.orgId,
-        orgRole: fixture.switchOwner.orgRole,
-      },
-      { [FeatureSwitchKey.PiLoop]: false },
-    );
-    const ordinary = await chat.requestSendEvent(
-      fixture.actor,
-      {
-        agentId: fixture.agentId,
-        threadId: targetThread.id,
-        prompt: "queue this ordinary launch behind the active run",
-        model: MODEL,
-        clientEventId: randomUUID(),
-      },
-      [201],
-    );
-    if (ordinary.status !== 201 || ordinary.body.runId === null) {
-      throw new Error("Expected the ordinary launch to create a queued run");
+  const promotionController = new AbortController();
+  context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+    if (topic === "queue:changed" && !promotionController.signal.aborted) {
+      const error = new Error("abort after queued run promotion commit");
+      error.name = "AbortError";
+      promotionController.abort(error);
     }
-    expect(ordinary.body.status).toBe("queued");
-    expect(kms.generateDataKeyCalls).toBe(baselineDataKeys + 3);
-    const ordinaryQueue = await api.readRunQueue(fixture.actor);
-    expect(ordinaryQueue.body.queue).toHaveLength(1);
-    expect(ordinaryQueue.body.queue[0]).toMatchObject({
-      runId: ordinary.body.runId,
-    });
-    expect(jobNotificationCount()).toBe(baselineJobNotifications);
-    expect(completionRequests).toBe(0);
+    return Promise.resolve(undefined);
+  });
+  const completed = await webhooks.requestAgentComplete(
+    {
+      runId: occupyingRun.runId,
+      exitCode: 1,
+      error: "release the concurrency slot for promotion",
+    },
+    {
+      authorization: `Bearer ${generateSandboxToken(
+        args.fixture.actor.userId,
+        occupyingRun.runId,
+        args.fixture.orgId,
+      )}`,
+    },
+    [200],
+    promotionController.signal,
+  );
+  expect(completed.status).toBe(200);
+  await modelStarted.promise;
+  expect(promotionController.signal.aborted).toBeTruthy();
 
-    await api.requestCancelRun(fixture.actor, blocker.runId, [200]);
-    await flushWaitUntilForTest();
-    const poll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [DEFAULT_PROFILE],
-      },
-      [200],
-    );
-    if (poll.status !== 200) {
-      throw new Error("Expected the runner poll to return 200");
-    }
-    expect(poll.body.job?.runId).toBe(ordinary.body.runId);
-    expect(jobNotificationCount()).toBe(baselineJobNotifications + 1);
-    const ordinaryNotification = context.mocks.ably.publish.mock.calls.find(
-      ([topic, payload]) => {
-        return (
-          topic === "job" && recordOf(payload)?.runId === ordinary.body.runId
-        );
-      },
-    );
-    const ordinaryNotificationPayload = recordOf(ordinaryNotification?.[1]);
-    if (!ordinaryNotificationPayload) {
-      throw new Error("Expected an ordinary Runner job notification");
-    }
-    expect(ordinaryNotificationPayload).not.toHaveProperty("piExecutionMode");
-    expect(completionRequests).toBe(0);
-    const ordinaryContext = await api.claimRunnerJob(ordinary.body.runId);
-    expect(ordinaryContext).not.toHaveProperty("piExecutionMode");
-    const duplicateOrdinaryClaim = await api.requestClaimRunnerJob(
-      true,
-      ordinary.body.runId,
-      [404],
-    );
-    if (duplicateOrdinaryClaim.status !== 404) {
-      throw new Error("Expected the duplicate ordinary claim to return 404");
-    }
-    expect(duplicateOrdinaryClaim.body.error.message).toBe(
-      "Job not found in queue",
-    );
-    await api.requestCancelRun(fixture.actor, ordinary.body.runId, [200]);
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "pending",
+  );
+  const standbyPoll = await api.requestPollRunner(
+    true,
+    {
+      group: args.fixture.runnerGroup,
+      supportedProfiles: [args.fixture.runnerProfile],
+    },
+    [200],
+  );
+  if (standbyPoll.status !== 200) {
+    throw new Error("Expected promoted Pi standby poll to return 200");
+  }
+  expect(standbyPoll.body.job).toMatchObject({
+    runId: queuedRun.runId,
+    experimentalProfile: args.fixture.runnerProfile,
+    piExecutionMode: "standby",
   });
 
+  releaseModel.resolve();
+  await flushWaitUntilForTest();
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "completed",
+  );
+  return queuedRun;
+}
+
+describe("PiLoop edge turn", () => {
   it("uses the org gate, migrates legacy memory into Pi, and completes in the API", async () => {
     const fixture = await piEdgeFixture();
     const legacyPrompt = "legacy context must not enter the Pi transcript";
@@ -2000,6 +1982,113 @@ describe("PiLoop edge turn", () => {
         creditsCharged: 2,
       },
     );
+  });
+
+  it("continues direct Pi activation when the request aborts after commit", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const modelStarted = createDeferredPromise<void>(context.signal);
+    const releaseModel = createDeferredPromise<void>(context.signal);
+    onTestFinished(() => {
+      if (!releaseModel.settled()) {
+        releaseModel.resolve();
+      }
+    });
+    server.use(
+      http.post(COMPLETIONS_URL, async () => {
+        modelStarted.resolve();
+        await releaseModel.promise;
+        return assistantTextStream(
+          "committed edge answer",
+          "committed edge reasoning",
+        );
+      }),
+    );
+
+    const controller = new AbortController();
+    context.mocks.axiom.ingest.mockImplementation((dataset: unknown) => {
+      if (
+        typeof dataset === "string" &&
+        dataset.includes("run-context") &&
+        !controller.signal.aborted
+      ) {
+        const error = new Error("abort after direct run commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return true;
+    });
+
+    const clientThreadId = randomUUID();
+    const clientEventId = randomUUID();
+    const request = {
+      agentId: fixture.agentId,
+      prompt: "finish Pi activation after the request aborts",
+      model: MODEL,
+      clientThreadId,
+      clientEventId,
+    } as const;
+    await expect(
+      chat.requestSendEvent(fixture.actor, request, [201], controller.signal),
+    ).rejects.toThrow();
+    expect(controller.signal.aborted).toBeTruthy();
+    await modelStarted.promise;
+
+    const retried = await chat.requestSendEvent(fixture.actor, request, [201]);
+    if (retried.status !== 201 || retried.body.runId === null) {
+      throw new Error("Expected the committed chat run to be recoverable");
+    }
+    releaseModel.resolve();
+    await flushWaitUntilForTest();
+    expect((await api.readRun(fixture.actor, retried.body.runId)).status).toBe(
+      "completed",
+    );
+  });
+
+  it("starts and bills a concurrency-queued managed OpenAI-compatible Pi run when promoted", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    const queuedRun = await expectQueuedPiEdgePromotion({
+      fixture,
+      model: fixture.model,
+      completionsUrl: OPENAI_COMPLETIONS_URL,
+      completionResponse: () => {
+        return assistantTextStream(
+          "promoted edge answer",
+          "promoted edge reasoning",
+          {
+            usage: {
+              prompt_tokens: 16,
+              completion_tokens: 3,
+              prompt_tokens_details: { cached_tokens: 2 },
+            },
+          },
+        );
+      },
+    });
+    await expect(
+      usageRun(fixture.actor, queuedRun.runId),
+    ).resolves.toMatchObject({
+      model: MANAGED_MODEL,
+      inputTokens: 14,
+      outputTokens: 3,
+      cacheTokens: 2,
+      creditsCharged: 19,
+    });
+  });
+
+  it("starts the Pi edge turn when a concurrency-queued Codex run is promoted", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const fixture = await codexPiEdgeFixture();
+    await expectQueuedPiEdgePromotion({
+      fixture,
+      model: CODEX_MODEL,
+      completionsUrl: CODEX_RESPONSES_URL,
+      completionResponse: () => {
+        return codexTextSseStream("promoted codex edge answer");
+      },
+    });
   });
 
   it("requeues an expired standby onto the cold-start lane without settling the run", async () => {

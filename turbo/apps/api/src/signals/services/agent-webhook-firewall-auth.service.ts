@@ -104,7 +104,8 @@ import {
 } from "./connector-credential-access.service";
 import {
   CustomConnectorOAuth2TokenRefreshError,
-  resolveLiveCustomConnectorOAuth2AccessToken,
+  resolveCurrentCustomConnectorOAuth2AccessToken,
+  resolveRevisionPinnedCustomConnectorOAuth2AccessToken,
 } from "./custom-connector-oauth2.service";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
@@ -3074,6 +3075,18 @@ async function syncCustomConnectorRuntimeSecrets(args: {
       ),
     );
 
+  if (rows.length > 0) {
+    L.debug("Revision-pinned custom connector auth references remain in use", {
+      runId: args.runId,
+      connectorCount: new Set(
+        rows.map((row) => {
+          return row.connectorId;
+        }),
+      ).size,
+      authRefCount: rows.length,
+    });
+  }
+
   for (const row of rows) {
     if (Object.hasOwn(args.secrets, row.secretName)) {
       continue;
@@ -3081,7 +3094,7 @@ async function syncCustomConnectorRuntimeSecrets(args: {
     let encryptedValue = row.encryptedValue;
     if (row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY) {
       const accessToken = await tapError(
-        resolveLiveCustomConnectorOAuth2AccessToken(
+        resolveRevisionPinnedCustomConnectorOAuth2AccessToken(
           {
             db: args.db,
             orgId: args.orgId,
@@ -4185,7 +4198,6 @@ function hasEmptyAwsSigv4Credential(
 interface CurrentCustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
-  readonly connectorRevision: number;
   readonly key: string;
   readonly encryptedValue: string | null;
   readonly required: boolean;
@@ -4203,6 +4215,9 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     connectorIds: [args.customConnectorId],
   });
   if (!runtime) {
+    return undefined;
+  }
+  if (runtime.credentialAccess.kind === "incompatible") {
     return undefined;
   }
 
@@ -4232,7 +4247,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
-      connectorRevision: runtime.connector.revision,
       key: value.key,
       encryptedValue: value.encryptedValue,
       required: field.required,
@@ -4245,7 +4259,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
-      connectorRevision: runtime.connector.revision,
       key: field.key,
       encryptedValue: null,
       required: field.required,
@@ -4260,7 +4273,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
-      connectorRevision: runtime.connector.revision,
       key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
       encryptedValue: null,
       required: true,
@@ -4329,13 +4341,12 @@ async function resolveCurrentCustomConnectorSecrets(args: {
       ref.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
     ) {
       const accessToken = await settle(
-        resolveLiveCustomConnectorOAuth2AccessToken(
+        resolveCurrentCustomConnectorOAuth2AccessToken(
           {
             db: args.db,
             orgId: args.auth.orgId,
             userId: args.auth.userId,
             connectorId: ref.connectorId,
-            connectorRevision: ref.connectorRevision,
             featureContext: featureSwitchContext,
             forceRefresh: args.forceRefresh,
           },

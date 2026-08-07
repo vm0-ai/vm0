@@ -47,6 +47,7 @@ import {
   downgradeCustomConnectorOAuthStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
+  setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
 
@@ -1661,6 +1662,51 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),
     ).resolves.toContain(created.id);
 
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(member),
+      userId: member.userId,
+      customConnectorId: created.id,
+      authMethod: "manual",
+      storageVersion: 1,
+    });
+    const authMethodMismatch = await connectorsApi.listCustomConnectors(member);
+    expect(
+      authMethodMismatch.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+    const rejectedGrant =
+      await connectorsApi.requestUpdateAgentCustomConnectors(
+        member,
+        agent.agentId,
+        [created.id],
+        [400],
+      );
+    expectApiError(rejectedGrant.body);
+    expect(rejectedGrant.body.error.message).toContain(
+      "not configured for this user",
+    );
+    await expect(
+      connectorsApi.readAgentCustomConnectors(member, agent.agentId),
+    ).resolves.toContain(created.id);
+
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(member),
+      userId: member.userId,
+      customConnectorId: created.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    const restoredConnection = await connectorsApi.listCustomConnectors(member);
+    expect(
+      restoredConnection.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({ connected: true });
+
     await connectorsApi.deleteCustomConnector(admin, created.id);
     await bdd.deleteAgent(member, agent.agentId);
   });
@@ -2144,6 +2190,39 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       configuredFieldKeys: ["api_key", "subdomain"],
     });
     expectNoVisibleSecret(listed, "configured-secret");
+
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: created.id,
+      authMethod: "manual",
+      storageVersion: 2,
+    });
+    const storageVersionMismatch =
+      await connectorsApi.listCustomConnectors(admin);
+    expect(
+      storageVersionMismatch.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key", "subdomain"],
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key", "subdomain"],
+    });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: created.id,
+      authMethod: "manual",
+      storageVersion: 1,
+    });
 
     await connectorsApi.deleteCustomConnectorSecret(admin, created.id);
     await expect(

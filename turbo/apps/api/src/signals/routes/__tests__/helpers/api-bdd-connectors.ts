@@ -1806,6 +1806,25 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body.connectors;
     },
 
+    async readCustomConnector(
+      actor: ApiTestUser,
+      connectorId: string,
+    ): Promise<CustomConnectorResponse> {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorByIdTestRoutes,
+      })(zeroCustomConnectorByIdContract);
+      const response = await accept(
+        client.get({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+        }),
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async requestCustomConnectorPermissions(
       actor: ApiTestUser | null,
       connectorId: string,

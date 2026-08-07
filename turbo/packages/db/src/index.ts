@@ -100,6 +100,7 @@ import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatEventSchema from "./schema/chat-event";
+import * as chatEventSearchSchema from "./schema/chat-event-search";
 import * as chatThreadEventSchema from "./schema/chat-thread-event";
 import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as runOutputMaterializationSchema from "./schema/run-output-materialization";
@@ -229,6 +230,7 @@ export const schema = {
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
   ...chatEventSchema,
+  ...chatEventSearchSchema,
   ...chatThreadEventSchema,
   ...chatThreadSnapshotSchema,
   ...runOutputMaterializationSchema,

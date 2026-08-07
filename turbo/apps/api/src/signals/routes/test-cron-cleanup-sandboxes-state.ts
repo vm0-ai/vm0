@@ -5,6 +5,7 @@ import {
   testCronCleanupSandboxesStateContract,
 } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
+import { MIN_EPOCH_MS_TIMESTAMP } from "@vm0/api-contracts/contracts/runners";
 import {
   agentComposeVersions,
   agentComposes,
@@ -33,6 +34,10 @@ import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
+import {
+  encryptQueuedRunnerJobPayload,
+  queuedRunnerJobPayload,
+} from "../services/agent-run-queue-payload.service";
 import { insertChatEvent } from "../services/zero-chat-event.service";
 import {
   isTestEndpointAllowed,
@@ -670,13 +675,33 @@ async function seedQueueEntryForAction(
   if (!run) {
     return actionBadRequest("run not found");
   }
+  const encryptedParams =
+    readOptionalString(body, "encrypted_params") ??
+    (await encryptQueuedRunnerJobPayload(
+      queuedRunnerJobPayload({
+        runnerGroup: "vm0/test",
+        profile: "vm0/default",
+        cliAgentSessionId: null,
+        reuseKey: null,
+        executionContext: {
+          storageMounts: [],
+          environment: null,
+          secretValueEnvironmentKeys: null,
+          resumeSession: null,
+          encryptedSecrets: null,
+          cliAgentType: "claude-code",
+          apiStartTime: MIN_EPOCH_MS_TIMESTAMP,
+        },
+      }),
+    ));
+  signal.throwIfAborted();
   await db.insert(agentRunQueue).values({
     runId,
     userId: run.userId,
     orgId: run.orgId,
     createdAt: run.createdAt,
     expiresAt,
-    encryptedParams: readOptionalString(body, "encrypted_params"),
+    encryptedParams,
   });
   signal.throwIfAborted();
   return actionOk();

@@ -30,6 +30,7 @@ import { generateSandboxToken } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { registerKnownSessionHistoryBlob } from "./api-bdd-session-history";
 import { webhooksAgentCheckpointsRoutes } from "../../webhooks-agent-checkpoints";
 import { webhooksAgentCompleteRoutes } from "../../webhooks-agent-complete";
@@ -570,11 +571,19 @@ export function createWebhookCallbackApi(context: TestContext) {
       body: AgentCompleteBody,
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+      signal?: AbortSignal,
     ) {
+      const client = signal
+        ? setupAppWithRoutes({
+            context,
+            routes: webhooksAgentCompleteRoutes,
+            signal,
+          })(webhookCompleteContract)
+        : setupApp({ context, routes: webhooksAgentCompleteRoutes })(
+            webhookCompleteContract,
+          );
       return await accept(
-        setupApp({ context, routes: webhooksAgentCompleteRoutes })(
-          webhookCompleteContract,
-        ).complete({
+        client.complete({
           headers,
           body,
         }),

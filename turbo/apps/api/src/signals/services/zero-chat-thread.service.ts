@@ -38,6 +38,7 @@ import {
   type ChatEventUserMessage,
   type ChatEventGoalEvent,
 } from "@vm0/db/schema/chat-event";
+import { chatEventSearchDocs } from "@vm0/db/schema/chat-event-search";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import {
@@ -68,6 +69,7 @@ import {
   sql,
 } from "drizzle-orm";
 
+import { chatSearchBigramTsquery } from "../../lib/chat-search-bigram";
 import {
   pgBooleanDecoder,
   pgIntegerDecoder,
@@ -1215,6 +1217,39 @@ function chatSearchKeywordCondition(pattern: string): SQL {
   ) as SQL;
 }
 
+/**
+ * Index-backed keyword condition over the chat_event_search_docs projection.
+ * Returns null when the keyword has no bigram-indexable form (for example a
+ * single CJK character), in which case the caller falls back to the legacy
+ * ILIKE condition.
+ */
+function chatSearchIndexCondition(
+  db: ReadonlyDb,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly keyword: string;
+  },
+): SQL | null {
+  const tsquery = chatSearchBigramTsquery(args.keyword);
+  if (tsquery === null) {
+    return null;
+  }
+  return inArray(
+    chatEvents.id,
+    db
+      .select({ eventId: chatEventSearchDocs.eventId })
+      .from(chatEventSearchDocs)
+      .where(
+        and(
+          eq(chatEventSearchDocs.userId, args.userId),
+          eq(chatEventSearchDocs.orgId, args.orgId),
+          sql`to_tsvector('simple', ${chatEventSearchDocs.textBigram}) @@ to_tsquery('simple', ${tsquery})`,
+        ),
+      ),
+  );
+}
+
 function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
   return sql`unnest(${sql.param([...messageIds])}::uuid[])
     WITH ORDINALITY AS chat_search_matches(message_id, result_ordinality)`;
@@ -1343,6 +1378,7 @@ export function zeroChatSearch(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly keyword: string;
+  readonly useSearchIndex: boolean;
   readonly agentId?: string;
   readonly since?: number;
   readonly limit: number;
@@ -1359,13 +1395,16 @@ export function zeroChatSearch(args: {
     const pattern = `%${escapeLikePattern(args.keyword)}%`;
     const sinceDate = args.since ? new Date(args.since) : undefined;
 
+    const indexCondition = args.useSearchIndex
+      ? chatSearchIndexCondition(db, args)
+      : null;
     const matchConditions = [
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
       chatSearchMessageTextCondition(),
       visibleChatEventCondition(db),
       excludeGoalMarkerCondition(),
-      chatSearchKeywordCondition(pattern),
+      indexCondition ?? chatSearchKeywordCondition(pattern),
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatEvents.createdAt, sinceDate));
