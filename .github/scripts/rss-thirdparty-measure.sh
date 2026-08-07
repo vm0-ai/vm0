@@ -20,6 +20,8 @@ NODE_OPTIONS=--max-old-space-size=3072 \
   -- pnpm exec tsc -p tsconfig.core.json >"$log" 2>&1
 
 errors=$(grep -c "error TS" "$log" || true)
+echo "--- first 25 diagnostics [$variant]"
+grep "error TS" "$log" | head -25 || true
 node -e '
   const fs = require("node:fs");
   const [file, variant, errors] = process.argv.slice(1);

@@ -139,6 +139,34 @@ case "$variant" in
     stub_pkg "signal-timers"
     stub_pkg "@t3-oss/env-core"
     ;;
+  stub-all-sdks)
+    stub_pkg "stripe"
+    stub_glob "@clerk/*"
+    stub_glob "@slack/*"
+    stub_glob "@aws-sdk/*"
+    stub_glob "@smithy/*"
+    stub_glob "@sentry/*"
+    stub_glob "@sentry-internal/*"
+    stub_glob "@opentelemetry/*"
+    stub_glob "@vercel/otel"
+    stub_glob "@team-plain/*"
+    stub_pkg "ably"
+    stub_pkg "svix"
+    stub_pkg "google-auth-library"
+    stub_pkg "music-metadata"
+    stub_pkg "gpt-tokenizer"
+    stub_pkg "resend"
+    stub_pkg "archiver"
+    stub_pkg "tar"
+    stub_pkg "web-push"
+    stub_pkg "html-to-text"
+    stub_pkg "croner"
+    stub_pkg "uuid"
+    stub_pkg "pg"
+    stub_pkg "@types/pg"
+    stub_pkg "signal-timers"
+    stub_pkg "@t3-oss/env-core"
+    ;;
   no-vitest-globals)
     patch_tsconfig 'c.types = ["node"]'
     ;;

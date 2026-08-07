@@ -24,9 +24,8 @@ jobs:
       matrix:
         variant:
           - head
-          - no-vitest-globals
+          - stub-all-sdks
           - no-dom-lib
-          - no-vitest-and-dom
     steps:
       - uses: actions/checkout@v7.0.1
         with:
