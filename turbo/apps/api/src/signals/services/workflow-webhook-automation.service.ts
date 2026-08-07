@@ -17,7 +17,7 @@ import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
@@ -328,7 +328,7 @@ async function loadWebhookAutomationForToken(
 ): Promise<WorkflowWebhookAutomationDispatchRow | null> {
   const [row] = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       webhook: zeroWorkflowWebhookAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,

@@ -1,10 +1,7 @@
 import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
 import { and, eq, gt, sql, sum } from "drizzle-orm";
 
-import {
-  pgBooleanDecoder,
-  pgInt8ToSafeIntegerDecoder,
-} from "../../lib/db-structured-result";
+import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 
@@ -23,23 +20,6 @@ interface UsagePackCreditGrantResult {
 }
 
 type UsagePackCreditGrantStore = Pick<Db, "insert" | "select">;
-
-export async function usagePackCreditGrantSchemaAvailable(
-  db: Pick<Db, "select">,
-): Promise<boolean> {
-  // Keep the API safe while it can run before migration 0845. Remove this
-  // probe after 0845 is guaranteed everywhere and the rollback window closes.
-  const [state] = await db
-    .select({
-      available:
-        sql`to_regclass('public.usage_pack_credit_grants') IS NOT NULL`.mapWith(
-          pgBooleanDecoder,
-        ),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  return state?.available ?? false;
-}
 
 export async function createUsagePackCreditGrant(
   db: UsagePackCreditGrantStore,
@@ -98,9 +78,6 @@ export async function getSpendableUsagePackCredits(
   },
 ): Promise<number> {
   const at = args.at ?? nowDate();
-  if (!(await usagePackCreditGrantSchemaAvailable(db))) {
-    return 0;
-  }
   const [row] = await db
     .select({
       total:

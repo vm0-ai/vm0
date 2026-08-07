@@ -50,10 +50,6 @@ import {
 import { isQueueFirstRunClaimLost } from "./agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
-import {
-  autonomyBudgetSchemaAvailable,
-  rolloutCompatibleAutonomyBudgetColumn,
-} from "./autonomy-budget-schema.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { loadPendingChatQueueEvent } from "./chat-event-queue.service";
 import {
@@ -250,22 +246,17 @@ async function resolveChatAgentRunSource(
 ): Promise<{
   readonly annotation: ChatAgentRunSourceAnnotation | null;
   readonly autonomyBudget: number;
-  readonly schemaAvailable: boolean;
 } | null> {
   if (auth.tokenType !== "zero") {
     return null;
   }
-  const schemaAvailable = await autonomyBudgetSchemaAvailable(db);
   const [source] = await db
     .select({
       runId: zeroRuns.id,
       threadId: chatThreads.id,
       agentId: chatThreads.agentComposeId,
       title: chatThreads.title,
-      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
-        schemaAvailable,
-        zeroRuns.autonomyBudget,
-      ),
+      autonomyBudget: zeroRuns.autonomyBudget,
     })
     .from(zeroRuns)
     .innerJoin(
@@ -300,7 +291,6 @@ async function resolveChatAgentRunSource(
   return {
     annotation,
     autonomyBudget: source.autonomyBudget,
-    schemaAvailable,
   };
 }
 
@@ -349,8 +339,7 @@ async function resolveNormalSendAgentRunSource(params: {
       ),
     };
   }
-  const source = resolved.schemaAvailable ? resolved.annotation : null;
-  return { source };
+  return { source: resolved.annotation };
 }
 
 function normalSendBodyWithAgentRunSource(

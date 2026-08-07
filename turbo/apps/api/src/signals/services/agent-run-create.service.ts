@@ -182,11 +182,6 @@ import {
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
 import {
-  autonomyBudgetSchemaAvailable,
-  insertRolloutCompatibleZeroRun,
-  rolloutLegacyZeroRuns,
-} from "./autonomy-budget-schema.service";
-import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
@@ -5330,7 +5325,6 @@ function launchRunValues(
 
 function launchZeroRunValues(
   args: LaunchRunRowsArgs,
-  autonomyBudgetAvailable: boolean,
 ): typeof zeroRuns.$inferInsert {
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   return {
@@ -5340,7 +5334,7 @@ function launchZeroRunValues(
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
-    ...(metadata.autonomyBudget === undefined || !autonomyBudgetAvailable
+    ...(metadata.autonomyBudget === undefined
       ? {}
       : { autonomyBudget: metadata.autonomyBudget }),
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
@@ -5359,12 +5353,7 @@ async function insertLaunchRunRows(
 
   const createdAt = nowDate();
   await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(tx);
-  await insertRolloutCompatibleZeroRun(
-    tx,
-    launchZeroRunValues(args, autonomyBudgetAvailable),
-    autonomyBudgetAvailable,
-  );
+  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -6288,10 +6277,7 @@ function launchThreadBindingCte(args: {
   );
 }
 
-function buildAtomicLaunchCteContext(
-  args: PersistAtomicLaunchRowsArgs,
-  autonomyBudgetAvailable: boolean,
-) {
+function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
   const rowsArgs = preparedLaunchRowsArgs({
     commit: args.commit,
     status: args.status,
@@ -6327,16 +6313,12 @@ function buildAtomicLaunchCteContext(
   ctes.push(insertedRun);
 
   const zeroRunValues = {
-    ...launchZeroRunValues(rowsArgs, autonomyBudgetAvailable),
+    ...launchZeroRunValues(rowsArgs),
     id: returnedCteId(insertedRun),
   };
   const insertedZeroRun = args.tx
     .$with("inserted_launch_zero_run")
-    .as(
-      autonomyBudgetAvailable
-        ? args.tx.insert(zeroRuns).values(zeroRunValues)
-        : args.tx.insert(rolloutLegacyZeroRuns).values(zeroRunValues),
-    );
+    .as(args.tx.insert(zeroRuns).values(zeroRunValues));
   ctes.push(insertedZeroRun);
 
   appendLaunchCallbackCte({
@@ -6517,8 +6499,7 @@ async function persistQueuedAtomicLaunch(
 async function persistAtomicLaunchRows(
   args: PersistAtomicLaunchRowsArgs,
 ): Promise<PersistedAtomicLaunchRows> {
-  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(args.tx);
-  const context = buildAtomicLaunchCteContext(args, autonomyBudgetAvailable);
+  const context = buildAtomicLaunchCteContext(args);
   const persisted = await args.commit.timing.measure(
     "api_dispatch_persist_atomic_launch",
     "nested",

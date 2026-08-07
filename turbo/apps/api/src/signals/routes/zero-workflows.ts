@@ -62,9 +62,8 @@ import {
 } from "../services/workflow-webhook-automation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
-  autonomyBudgetSchemaAvailable,
-  insertRolloutCompatibleWorkflowAutomation,
-  rolloutCompatibleWorkflowAutomationColumns,
+  insertWorkflowAutomation,
+  workflowAutomationColumns,
 } from "../services/autonomy-budget-schema.service";
 import {
   childAutonomyBudget,
@@ -716,7 +715,6 @@ interface CopyWorkflowRuntimeArgs {
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
   readonly currentTime: Date;
-  readonly autonomyBudgetAvailable: boolean;
   readonly autonomyBudgetLimit?: number;
 }
 
@@ -726,7 +724,6 @@ interface CopyWorkflowScopedRowsArgs {
   readonly sourceWorkflowId: string;
   readonly targetWorkflowId: string;
   readonly currentTime: Date;
-  readonly autonomyBudgetAvailable: boolean;
   readonly autonomyBudgetLimit?: number;
 }
 
@@ -814,34 +811,30 @@ async function copyWorkflowAutomationRow(
     readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   },
 ): Promise<void> {
-  const copiedAutomation = await insertRolloutCompatibleWorkflowAutomation(
-    tx,
-    {
-      orgId: args.orgId,
-      workflowId: args.targetWorkflowId,
-      ownerUserId: args.userId,
-      kind: args.automation.kind,
-      eventType: args.automation.eventType,
-      eventConfig: args.automation.eventConfig,
-      scheduleType: args.automation.scheduleType,
-      cronExpression: args.automation.cronExpression,
-      intervalSeconds: args.automation.intervalSeconds,
-      atTime: args.automation.atTime,
-      timezone: args.automation.timezone,
-      enabled: args.automation.enabled,
-      nextRunAt: args.automation.nextRunAt,
-      lastRunAt: null,
-      lastRunId: null,
-      consecutiveFailures: 0,
-      autonomyBudget: Math.min(
-        args.automation.autonomyBudget,
-        args.autonomyBudgetLimit ?? args.automation.autonomyBudget,
-      ),
-      createdAt: args.currentTime,
-      updatedAt: args.currentTime,
-    },
-    args.autonomyBudgetAvailable,
-  );
+  const copiedAutomation = await insertWorkflowAutomation(tx, {
+    orgId: args.orgId,
+    workflowId: args.targetWorkflowId,
+    ownerUserId: args.userId,
+    kind: args.automation.kind,
+    eventType: args.automation.eventType,
+    eventConfig: args.automation.eventConfig,
+    scheduleType: args.automation.scheduleType,
+    cronExpression: args.automation.cronExpression,
+    intervalSeconds: args.automation.intervalSeconds,
+    atTime: args.automation.atTime,
+    timezone: args.automation.timezone,
+    enabled: args.automation.enabled,
+    nextRunAt: args.automation.nextRunAt,
+    lastRunAt: null,
+    lastRunId: null,
+    consecutiveFailures: 0,
+    autonomyBudget: Math.min(
+      args.automation.autonomyBudget,
+      args.autonomyBudgetLimit ?? args.automation.autonomyBudget,
+    ),
+    createdAt: args.currentTime,
+    updatedAt: args.currentTime,
+  });
   if (!copiedAutomation) {
     throw new Error("Failed to copy workflow automation");
   }
@@ -865,9 +858,7 @@ async function copyWorkflowUserAutomations(
   args: CopyWorkflowAutomationRowsArgs,
 ): Promise<void> {
   const rows = await tx
-    .select(
-      rolloutCompatibleWorkflowAutomationColumns(args.autonomyBudgetAvailable),
-    )
+    .select(workflowAutomationColumns())
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -908,7 +899,6 @@ async function copyWorkflowRuntimeConfiguration(
     sourceWorkflowId: args.sourceWorkflow.id,
     targetWorkflowId: workflow.id,
     currentTime: args.currentTime,
-    autonomyBudgetAvailable: args.autonomyBudgetAvailable,
     ...(args.autonomyBudgetLimit === undefined
       ? {}
       : { autonomyBudgetLimit: args.autonomyBudgetLimit }),
@@ -933,11 +923,8 @@ const copyWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const autonomyBudgetAvailable =
-      await autonomyBudgetSchemaAvailable(writeDb);
-    signal.throwIfAborted();
     let autonomyBudgetLimit: number | undefined;
-    if (auth.tokenType === "zero" && autonomyBudgetAvailable) {
+    if (auth.tokenType === "zero") {
       const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(writeDb, {
         runId: auth.runId,
         orgId: auth.orgId,
@@ -1003,7 +990,6 @@ const copyWorkflowInner$ = command(
         sourceWorkflow: source.workflow,
         targetAgentId: targetAgent.id,
         currentTime,
-        autonomyBudgetAvailable,
         ...(autonomyBudgetLimit === undefined ? {} : { autonomyBudgetLimit }),
       });
     });

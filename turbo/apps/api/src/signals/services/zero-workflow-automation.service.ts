@@ -72,8 +72,8 @@ import { nowDate } from "../../lib/time";
 import { isValidTimeZone, onRejection, safeSync } from "../utils";
 import { calculateNextRun } from "./time-automation";
 import {
-  insertRolloutCompatibleWorkflowAutomation,
-  rolloutCompatibleWorkflowAutomationColumns,
+  insertWorkflowAutomation,
+  workflowAutomationColumns,
 } from "./autonomy-budget-schema.service";
 import {
   loadVisibleWorkflowById,
@@ -111,7 +111,6 @@ import {
   validateStripeInvoicePaidAutomationBinding,
 } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
-import { stripeWorkflowEventSchemaAvailable } from "./stripe-workflow-event-schema.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -723,14 +722,6 @@ async function loadStripeWorkflowAutomationHealth(
   db: ReadonlyDb,
   automationId: string,
 ): Promise<StripeWorkflowAutomationHealth> {
-  if (!(await stripeWorkflowEventSchemaAvailable(db))) {
-    return {
-      lastMatchingEventReceivedAt: null,
-      lastDeliveryStatus: null,
-      lastDeliveryStatusAt: null,
-      warning: null,
-    };
-  }
   const [health] = await db
     .select({
       lastMatchingEventReceivedAt:
@@ -1026,7 +1017,7 @@ async function loadAutomationRow(
   args: { readonly orgId: string; readonly automationId: string },
 ): Promise<AutomationRow | null> {
   const [row] = await db
-    .select(rolloutCompatibleWorkflowAutomationColumns(false))
+    .select(workflowAutomationColumns())
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -1070,7 +1061,7 @@ export async function loadWorkflowAutomations(
   },
 ): Promise<readonly ZeroWorkflowAutomationSummary[]> {
   const rows = await db
-    .select(rolloutCompatibleWorkflowAutomationColumns(false))
+    .select(workflowAutomationColumns())
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -1109,7 +1100,7 @@ export async function listWorkspaceWorkflowAutomations(
 ): Promise<readonly ZeroWorkflowAutomationsListEntry[]> {
   const rows = await db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       workflow: zeroWorkflows,
       agent: {
         id: zeroAgents.id,
@@ -1213,7 +1204,7 @@ export async function listThreadBoundWorkflowAutomations(
 ): Promise<readonly ChatThreadWorkflowAutomation[]> {
   const rows = await db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       workflow: zeroWorkflows,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
@@ -1592,7 +1583,7 @@ async function insertWorkflowEventAutomation(
       currentTime: args.currentTime,
     });
 
-    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+    const row = await insertWorkflowAutomation(tx, {
       orgId: args.input.orgId,
       workflowId: args.workflowId,
       ownerUserId: args.input.member.userId,
@@ -1649,7 +1640,7 @@ async function insertWebhookEventAutomation(
       currentTime: args.currentTime,
     });
 
-    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+    const row = await insertWorkflowAutomation(tx, {
       orgId: args.input.orgId,
       workflowId: args.workflowId,
       ownerUserId: args.input.member.userId,
@@ -1862,7 +1853,7 @@ async function insertScheduleAutomation(
       currentTime: args.currentTime,
     });
 
-    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+    const row = await insertWorkflowAutomation(tx, {
       orgId: args.input.orgId,
       workflowId: args.workflowId,
       ownerUserId: args.input.member.userId,
@@ -2414,7 +2405,7 @@ async function createStrapiEventAutomationForWorkflow(
       workflowTitle: args.context.workflowTitle,
       currentTime,
     });
-    const row = await insertRolloutCompatibleWorkflowAutomation(tx, {
+    const row = await insertWorkflowAutomation(tx, {
       orgId: args.input.orgId,
       workflowId: args.context.workflowId,
       ownerUserId: args.input.member.userId,
@@ -2848,7 +2839,7 @@ async function updateAutomationEventConfig(
       updatedAt: nowDate(),
     })
     .where(eq(zeroWorkflowAutomations.id, args.automationId))
-    .returning(rolloutCompatibleWorkflowAutomationColumns(false));
+    .returning(workflowAutomationColumns());
   signal.throwIfAborted();
   if (!row) {
     throw new Error("Failed to update workflow automation");
@@ -3108,7 +3099,7 @@ export const updateWorkflowAutomation$ = command(
           updatedAt: now,
         })
         .where(eq(zeroWorkflowAutomations.id, automation.id))
-        .returning(rolloutCompatibleWorkflowAutomationColumns(false));
+        .returning(workflowAutomationColumns());
       if (!updated) {
         throw new Error("Failed to update workflow automation");
       }
@@ -3567,7 +3558,7 @@ async function persistEnabledWorkflowAutomation(
             }),
       })
       .where(eq(zeroWorkflowAutomations.id, args.automation.id))
-      .returning(rolloutCompatibleWorkflowAutomationColumns(false));
+      .returning(workflowAutomationColumns());
     if (
       enabledRow &&
       args.automation.kind === "event" &&
@@ -3793,7 +3784,7 @@ export const disableWorkflowAutomation$ = command(
       .update(zeroWorkflowAutomations)
       .set({ enabled: false, nextRunAt, updatedAt: now })
       .where(eq(zeroWorkflowAutomations.id, owned.automation.id))
-      .returning(rolloutCompatibleWorkflowAutomationColumns(false));
+      .returning(workflowAutomationColumns());
     signal.throwIfAborted();
     if (!row) {
       throw new Error("Failed to disable workflow automation");

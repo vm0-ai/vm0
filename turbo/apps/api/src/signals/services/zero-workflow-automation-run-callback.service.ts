@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { advanceTimeAutomationAfterCompletion } from "./time-automation";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
@@ -74,7 +74,7 @@ export async function handleWorkflowAutomationInternalCallback(
   }
 
   const [automation] = await db
-    .select(rolloutCompatibleWorkflowAutomationColumns(false))
+    .select(workflowAutomationColumns())
     .from(zeroWorkflowAutomations)
     .where(eq(zeroWorkflowAutomations.id, payload.data.automationId))
     .limit(1);

@@ -8,10 +8,10 @@ export const featureSwitchesResponseSchema = z.object({
   switches: z.record(z.string(), z.boolean()),
   effectiveSwitches: z.record(z.string(), z.boolean()),
   /**
-   * Capability handshakes the pre-cleanup Platform bundle still reads to gate
-   * inline templates, image recognition, and avatar templates. Current clients
-   * ignore them. Remove these three together with the deferred schema
-   * contraction, once that frontend release has drained.
+   * The Platform bundle deployed 2026-08-07 14:02 Asia/Shanghai reads these
+   * capability handshakes and old web/app clients can remain open for about two
+   * days. Current clients ignore them. Remove all three after 2026-08-09 14:02,
+   * once that client window drains; follow-up issue: #25762.
    */
   supportsStructuredInlineTemplates: z.boolean().optional(),
   supportsImageRecognition: z.boolean().optional(),

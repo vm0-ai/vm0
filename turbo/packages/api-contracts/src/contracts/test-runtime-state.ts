@@ -35,9 +35,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("read-browser-screenshot-schema-state"),
   }),
   z.object({
-    action: z.literal("read-chat-agent-run-context-schema-state"),
-  }),
-  z.object({
     action: z.literal("set-run-autonomy-budget"),
     run_id: z.uuid(),
     autonomy_budget: z.int().min(0).max(10),
@@ -191,7 +188,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
   selected_model: z.string().optional(),
   decrypt_call_count: z.number().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
-  chat_agent_run_context_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),
   workflow_automation_state: z
     .object({
