@@ -7,6 +7,11 @@ Flow-terminal reporters aggregate usage stored in
 response-id sources can also be buffered incrementally with their source
 idempotency keys preserved.
 
+Extractor metadata uses only the base categories in ``MODEL_USAGE_CATEGORIES``.
+Billing tier selection may remap those keys to reporter-owned
+``.long_context`` categories only while building billable usage events. Model
+usage observations retain the base categories.
+
 Model-provider usage reporting is separate from platform billing. Run contexts
 set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the canonical model
 id the proxy should report for model token usage. Billable rows go to
@@ -42,13 +47,9 @@ from ..idempotency import (
 from ..model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
-    MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
     MODEL_USAGE_CATEGORY_CACHE_READ,
-    MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
     MODEL_USAGE_CATEGORY_INPUT,
-    MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
     MODEL_USAGE_CATEGORY_OUTPUT,
-    MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT,
 )
 from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
@@ -57,6 +58,10 @@ MODEL_USAGE_KIND = "model"
 type _ModelUsageTier = Literal["base", "long_context"]
 _MODEL_USAGE_TIER_BASE: _ModelUsageTier = "base"
 _MODEL_USAGE_TIER_LONG_CONTEXT: _ModelUsageTier = "long_context"
+_MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT = "tokens.input.long_context"
+_MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT = "tokens.output.long_context"
+_MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT = "tokens.cache_read.long_context"
+_MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT = "tokens.cache_creation.long_context"
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,10 +78,10 @@ _MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS = {
     "MiniMax-M3": 512_001,
 }
 _MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE = {
-    MODEL_USAGE_CATEGORY_INPUT: MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
-    MODEL_USAGE_CATEGORY_OUTPUT: MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT,
-    MODEL_USAGE_CATEGORY_CACHE_READ: MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
-    MODEL_USAGE_CATEGORY_CACHE_CREATION: MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
+    MODEL_USAGE_CATEGORY_INPUT: _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
+    MODEL_USAGE_CATEGORY_OUTPUT: _MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT,
+    MODEL_USAGE_CATEGORY_CACHE_READ: _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
+    MODEL_USAGE_CATEGORY_CACHE_CREATION: _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
 }
 _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT = 100
 _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
@@ -84,9 +89,9 @@ _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
         MODEL_USAGE_CATEGORY_INPUT,
         MODEL_USAGE_CATEGORY_CACHE_READ,
         MODEL_USAGE_CATEGORY_CACHE_CREATION,
-        MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
-        MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
-        MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
+        _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
+        _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
+        _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
     )
 )
 

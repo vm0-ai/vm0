@@ -37,6 +37,7 @@ from .json_selective import (
     ScalarField,
 )
 from .model_tokens import (
+    MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
     MODEL_USAGE_CATEGORY_CACHE_READ,
     MODEL_USAGE_CATEGORY_INPUT,
@@ -151,13 +152,6 @@ class OpenAIResponsesEvent:
     _classification: _ResponsesEventTypeClassification
 
 
-_OPENAI_RESPONSES_USAGE_CATEGORIES = (
-    MODEL_USAGE_CATEGORY_INPUT,
-    MODEL_USAGE_CATEGORY_OUTPUT,
-    MODEL_USAGE_CATEGORY_CACHE_READ,
-    MODEL_USAGE_CATEGORY_CACHE_CREATION,
-)
-
 _RESPONSES_RESPONSE_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
     ("model",): ScalarField("string", max_bytes=1024),
@@ -268,7 +262,7 @@ def _store_quantity(target: dict, category: str, value: object) -> None:
 
 
 def _has_positive_usage_quantity(values: dict) -> bool:
-    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
+    for category in MODEL_USAGE_CATEGORIES:
         value = values.get(category)
         if _is_usage_quantity(value) and value > 0:
             return True
@@ -276,10 +270,7 @@ def _has_positive_usage_quantity(values: dict) -> bool:
 
 
 def _has_usage_quantity(values: dict) -> bool:
-    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
-        if _is_usage_quantity(values.get(category)):
-            return True
-    return False
+    return any(_is_usage_quantity(values.get(category)) for category in MODEL_USAGE_CATEGORIES)
 
 
 def _partition_input_tokens(
@@ -749,7 +740,7 @@ class OpenAIResponsesJsonUsageExtractor:
         usage: dict = {}
         _store_response_values(result.values, usage)
 
-        if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
+        if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
             return None, None
         return usage, None
 
@@ -848,6 +839,6 @@ def extract_openai_responses_usage_from_event(
         event_name=None,
         data_event_type=data_event_type,
     )
-    if not any(category in usage for category in _OPENAI_RESPONSES_USAGE_CATEGORIES):
+    if not any(category in usage for category in MODEL_USAGE_CATEGORIES):
         return None, None
     return usage, None
