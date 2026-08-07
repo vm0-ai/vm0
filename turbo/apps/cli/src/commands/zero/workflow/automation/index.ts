@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import chalk from "chalk";
 import type {
   ChatRunFinishedRunStatus,
@@ -6,6 +6,7 @@ import type {
   GithubLabelAppliedSubjectFilter,
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
+  StripeInvoiceBillingReason,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -85,6 +86,7 @@ interface AddOptions extends GmailAutomationOptions {
   readonly chatThreadId?: string;
   readonly runStatus?: string;
   readonly outputPattern?: string;
+  readonly billingReason?: string;
 }
 
 interface UpdateOptions extends GmailAutomationOptions {
@@ -139,11 +141,23 @@ const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-issue-comment-created",
 ] as const;
 const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
+const STRIPE_EVENT_KINDS = ["stripe-invoice-paid"] as const;
 const CHAT_RUN_FINISHED_STATUSES = [
   "completed",
   "failed",
   "cancelled",
 ] as const;
+const STRIPE_INVOICE_BILLING_REASONS: readonly StripeInvoiceBillingReason[] = [
+  "automatic_pending_invoice_item_invoice",
+  "manual",
+  "quote_accept",
+  "subscription",
+  "subscription_create",
+  "subscription_cycle",
+  "subscription_threshold",
+  "subscription_update",
+  "upcoming",
+];
 
 function githubWebhookAutomationsEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
@@ -161,12 +175,26 @@ function strapiIntegrationEnabled(): boolean {
   });
 }
 
+function stripeInvoicePaidWorkflowAutomationsEnabled(): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(
+    FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations,
+    {
+      userId: payload?.userId,
+      orgId: payload?.orgId,
+    },
+  );
+}
+
 function automationKinds(): readonly string[] {
   return [
     ...SCHEDULE_KINDS,
     ...EVENT_KINDS,
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
+    ...(stripeInvoicePaidWorkflowAutomationsEnabled()
+      ? STRIPE_EVENT_KINDS
+      : []),
   ];
 }
 
@@ -1673,6 +1701,61 @@ function buildStrapiEntryPublishedCreateRequest(
   };
 }
 
+function parseStripeInvoiceBillingReasons(
+  value: string,
+): StripeInvoiceBillingReason[] {
+  const values = value.split(",").map((billingReason) => {
+    return billingReason.trim();
+  });
+  if (
+    values.some((billingReason) => {
+      return billingReason.length === 0;
+    })
+  ) {
+    throw new Error("--billing-reason cannot contain empty values");
+  }
+
+  const billingReasons: StripeInvoiceBillingReason[] = [];
+  for (const value of values) {
+    const billingReason = STRIPE_INVOICE_BILLING_REASONS.find((candidate) => {
+      return candidate === value;
+    });
+    if (!billingReason) {
+      throw new Error(
+        `Invalid --billing-reason value "${value}"; expected one of: ${STRIPE_INVOICE_BILLING_REASONS.join(", ")}`,
+      );
+    }
+    if (!billingReasons.includes(billingReason)) {
+      billingReasons.push(billingReason);
+    }
+  }
+  return billingReasons;
+}
+
+function buildStripeInvoicePaidCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error(
+      "Only --billing-reason applies to stripe-invoice-paid automations",
+    );
+  }
+  const billingReasons =
+    options.billingReason === undefined
+      ? undefined
+      : parseStripeInvoiceBillingReasons(options.billingReason);
+  return {
+    kind: "event",
+    eventType: "stripe-invoice-paid",
+    eventConfig: {
+      provider: "stripe",
+      event: "invoice_paid",
+      ...(billingReasons ? { billingReasons } : {}),
+    },
+  };
+}
+
 function buildScheduleCreateRequest(
   kind: string,
   options: AddOptions,
@@ -1683,7 +1766,7 @@ function buildScheduleCreateRequest(
   return { schedule: buildSchedule(kind, options) };
 }
 
-function buildCreateRequest(
+function buildNonStripeCreateRequest(
   kind: string,
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1729,6 +1812,21 @@ function buildCreateRequest(
     default:
       return buildScheduleCreateRequest(kind, options);
   }
+}
+
+function buildCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  if (kind === "stripe-invoice-paid") {
+    return buildStripeInvoicePaidCreateRequest(options);
+  }
+  if (options.billingReason !== undefined) {
+    throw new Error(
+      "--billing-reason only applies to stripe-invoice-paid automations",
+    );
+  }
+  return buildNonStripeCreateRequest(kind, options);
 }
 
 function buildGithubWorkflowEventUpdate(
@@ -1880,6 +1978,12 @@ function buildEventUpdate(
     );
   }
 
+  if (existing.eventType === "stripe-invoice-paid") {
+    throw new Error(
+      "Stripe billing reasons cannot be updated; delete and recreate the automation",
+    );
+  }
+
   if (existing.eventType === "github-label-applied") {
     if (hasGmailOptions) {
       throw new Error(
@@ -1992,6 +2096,17 @@ function buildUpdate(
   return buildScheduleUpdate(options);
 }
 
+function stripeBillingReasonOption(): Option {
+  const option = new Option(
+    "--billing-reason <reasons>",
+    "Comma-separated Stripe invoice billing reasons (default: any)",
+  );
+  if (!stripeInvoicePaidWorkflowAutomationsEnabled()) {
+    option.hideHelp();
+  }
+  return option;
+}
+
 const addCommand = addGithubAutomationOptions(
   addGmailAutomationOptions(
     new Command()
@@ -2052,6 +2167,7 @@ const addCommand = addGithubAutomationOptions(
     "--output-pattern <pattern>",
     "Optional * wildcard matched against the finished run's final assistant text",
   )
+  .addOption(stripeBillingReasonOption())
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -2075,7 +2191,11 @@ Examples:
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
-  zero workflow automation add triage --agent <agent-id> webhook
+  ${
+    stripeInvoicePaidWorkflowAutomationsEnabled()
+      ? "zero workflow automation add invoice-follow-up --agent <agent-id> stripe-invoice-paid --billing-reason subscription_create,subscription_cycle\n  "
+      : ""
+  }zero workflow automation add triage --agent <agent-id> webhook
   zero workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
 
 Notes:
@@ -2101,6 +2221,14 @@ Notes:
         if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
           throw new Error(
             "Strapi workflow automations are not enabled for this workspace",
+          );
+        }
+        if (
+          kind === "stripe-invoice-paid" &&
+          !stripeInvoicePaidWorkflowAutomationsEnabled()
+        ) {
+          throw new Error(
+            "Stripe invoice-paid workflow automations are not enabled for this workspace",
           );
         }
         if (

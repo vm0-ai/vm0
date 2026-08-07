@@ -65,6 +65,10 @@ type WorkflowStrapiAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "strapi-entry-published" }
 >;
+type WorkflowStripeInvoicePaidAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
+  { readonly kind: "event"; readonly eventType: "stripe-invoice-paid" }
+>;
 type WorkflowGoogleFormsAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   {
@@ -144,6 +148,76 @@ function isGoogleFormsAutomation(
     automation.kind === "event" &&
     automation.eventType === "google-forms-response-submitted"
   );
+}
+
+function isStripeInvoicePaidAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is WorkflowStripeInvoicePaidAutomationSummary {
+  return (
+    automation.kind === "event" &&
+    automation.eventType === "stripe-invoice-paid"
+  );
+}
+
+function stripeBillingReasons(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+): string {
+  const billingReasons = automation.eventConfig.billingReasons;
+  return billingReasons && billingReasons.length > 0
+    ? billingReasons.join(", ")
+    : "any";
+}
+
+const STRIPE_DELIVERY_FAILURE_WARNING =
+  "The latest Stripe workflow delivery failed.";
+
+function formatStripeInvoicePaidAutomationEntry(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+): string {
+  const billingReasons = stripeBillingReasons(automation);
+  const billingReasonSummary =
+    billingReasons === "any"
+      ? "any billing reason"
+      : `billing reasons: ${billingReasons}`;
+  return [
+    `Stripe invoice paid: ${automation.eventConfig.stripeAccountId} (${automation.eventConfig.mode})`,
+    billingReasonSummary,
+    `last matched: ${formatRelativeTime(automation.health.lastMatchingEventReceivedAt)}`,
+    `delivery: ${automation.health.lastDeliveryStatus ?? "-"} at ${formatRelativeTime(automation.health.lastDeliveryStatusAt)}`,
+  ].join("; ");
+}
+
+function printStripeDeliveryWarning(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+): void {
+  if (automation.health.warning === "delivery_failed") {
+    console.warn(chalk.yellow(STRIPE_DELIVERY_FAILURE_WARNING));
+  }
+}
+
+function printStripeInvoicePaidAutomationDetails(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (!isStripeInvoicePaidAutomation(automation)) {
+    return;
+  }
+  console.log(
+    `${"Stripe account ID:".padEnd(20)}${automation.eventConfig.stripeAccountId}`,
+  );
+  console.log(`${"Mode:".padEnd(20)}${automation.eventConfig.mode}`);
+  console.log(
+    `${"Billing reasons:".padEnd(20)}${stripeBillingReasons(automation)}`,
+  );
+  console.log(
+    `${"Last matched:".padEnd(20)}${formatRunTime(automation.health.lastMatchingEventReceivedAt)}`,
+  );
+  console.log(
+    `${"Delivery:".padEnd(20)}${automation.health.lastDeliveryStatus ?? chalk.dim("-")}`,
+  );
+  console.log(
+    `${"Delivery at:".padEnd(20)}${formatRunTime(automation.health.lastDeliveryStatusAt)}`,
+  );
+  printStripeDeliveryWarning(automation);
 }
 
 function quote(value: string): string {
@@ -293,6 +367,9 @@ function formatWorkflowAutomationEntry(
   if (isWebhookAutomation(automation)) {
     return formatWebhookAutomationEntry(automation);
   }
+  if (isStripeInvoicePaidAutomation(automation)) {
+    return formatStripeInvoicePaidAutomationEntry(automation);
+  }
 
   if (automation.kind !== "schedule") {
     return workflowAutomationKindLabel(automation);
@@ -434,6 +511,18 @@ export function printWorkflowAutomationsTable(
       ].join("  "),
     );
   }
+  for (const automation of automations) {
+    if (
+      isStripeInvoicePaidAutomation(automation) &&
+      automation.health.warning === "delivery_failed"
+    ) {
+      console.warn(
+        chalk.yellow(
+          `Warning for automation ${automation.id}: ${STRIPE_DELIVERY_FAILURE_WARNING}`,
+        ),
+      );
+    }
+  }
 }
 
 function printGithubFilters(automation: ZeroWorkflowAutomationSummary): void {
@@ -516,10 +605,22 @@ function printCommand(lines: readonly string[]): void {
   }
 }
 
-function automationUpdateGuidance(automation: ZeroWorkflowAutomationSummary): {
+function automationUpdateGuidance(
+  automation: ZeroWorkflowAutomationSummary,
+  workflowId: string,
+): {
   readonly label: string;
   readonly command: readonly string[];
 } {
+  if (isStripeInvoicePaidAutomation(automation)) {
+    return {
+      label: "Change billing reasons (delete and recreate)",
+      command: [
+        `zero workflow automation rm ${automation.id}`,
+        `zero workflow automation add ${workflowId} stripe-invoice-paid --billing-reason <billing-reasons>`,
+      ],
+    };
+  }
   if (automation.kind !== "schedule") {
     return {
       label: "Edit automation",
@@ -566,7 +667,7 @@ function printManagementCommands(
     return;
   }
 
-  const update = automationUpdateGuidance(automation);
+  const update = automationUpdateGuidance(automation, options.workflowId);
   const statusAction = automation.enabled
     ? {
         label: "Pause automation",
@@ -752,6 +853,7 @@ export function printWorkflowAutomationDetails(
       console.log(signedCurlExample(automation));
     }
   }
+  printStripeInvoicePaidAutomationDetails(automation);
   console.log(`${"Owner:".padEnd(14)}${automation.ownerUserId}`);
   console.log(
     `${"Chat thread:".padEnd(14)}${automation.chatThreadId ?? chalk.dim("-")}`,
