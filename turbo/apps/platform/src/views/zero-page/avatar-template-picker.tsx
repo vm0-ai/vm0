@@ -158,7 +158,7 @@ function CatalogFilterField<T extends string>({
       >
         <SelectTrigger
           aria-label={`${label}: ${selectedLabel}`}
-          className="h-9 w-full rounded-lg bg-background text-sm"
+          className="h-9 w-full rounded-lg text-sm"
         >
           <SelectValue />
         </SelectTrigger>
@@ -194,7 +194,7 @@ function CatalogFiltersPopover({
           type="button"
           variant="outline"
           size="sm"
-          className="h-9 gap-2 rounded-full bg-background px-3 shadow-none"
+          className="h-9 gap-2 rounded-full bg-card px-3 shadow-none"
         >
           <IconAdjustmentsHorizontal size={15} stroke={1.7} />
           {t(($) => {
@@ -254,7 +254,7 @@ function AvatarAspectRatioPicker({
         className={cn(
           "flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-all",
           value === "portrait"
-            ? "bg-background text-foreground shadow-sm"
+            ? "bg-card text-foreground shadow-sm"
             : "text-muted-foreground hover:text-foreground",
         )}
         onClick={() => {
@@ -271,7 +271,7 @@ function AvatarAspectRatioPicker({
         className={cn(
           "flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-all",
           value === "landscape"
-            ? "bg-background text-foreground shadow-sm"
+            ? "bg-card text-foreground shadow-sm"
             : "text-muted-foreground hover:text-foreground",
         )}
         onClick={() => {
@@ -501,7 +501,7 @@ function AvatarCatalogFilters({
   return (
     <div
       data-avatar-catalog-toolbar=""
-      className="sticky top-0 z-10 mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-background pb-4"
+      className="sticky top-0 z-10 mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-card pb-4"
     >
       <AvatarAspectRatioPicker
         value={filters.aspectRatio}
@@ -738,7 +738,7 @@ function CatalogLoadingSpinner() {
 function AvatarTemplateEmpty({ error }: { readonly error: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
+    <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-card px-6 py-10 text-center">
       <p className="text-sm font-semibold text-muted-foreground">
         {error
           ? t(($) => {
