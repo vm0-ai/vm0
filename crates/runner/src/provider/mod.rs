@@ -44,6 +44,55 @@ pub(crate) enum RunnerPreferenceReason {
     FinalizingPredecessor,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum RunnerPreferenceTier {
+    ExactSandbox,
+    FinalizingPredecessor,
+    ReusableSandbox,
+    WorkspaceCache,
+}
+
+impl RunnerPreferenceTier {
+    pub(crate) fn rank(self) -> u8 {
+        match self {
+            Self::WorkspaceCache => 1,
+            Self::ReusableSandbox => 2,
+            Self::FinalizingPredecessor => 3,
+            Self::ExactSandbox => 4,
+        }
+    }
+
+    fn resolution(self) -> RunnerPreferenceResolution {
+        match self {
+            Self::ExactSandbox => RunnerPreferenceResolution::ExactHistoryGeneration,
+            Self::FinalizingPredecessor => RunnerPreferenceResolution::FinalizingPredecessor,
+            Self::ReusableSandbox => RunnerPreferenceResolution::MatchingReusableSandbox,
+            Self::WorkspaceCache => RunnerPreferenceResolution::MatchingWorkspaceCache,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+enum RunnerNoPreferenceReason {
+    NoReuseKey,
+    Expired,
+    NoViableHolder,
+    LookupError,
+}
+
+impl RunnerNoPreferenceReason {
+    fn resolution(self) -> RunnerPreferenceResolution {
+        match self {
+            Self::NoReuseKey => RunnerPreferenceResolution::NoReuseKey,
+            Self::Expired => RunnerPreferenceResolution::Expired,
+            Self::NoViableHolder => RunnerPreferenceResolution::NoViableHolder,
+            Self::LookupError => RunnerPreferenceResolution::LookupError,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RunnerPreferenceResolution {
@@ -109,16 +158,37 @@ struct RunnerPreferencePayload {
     expires_at: DateTime<FixedOffset>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+enum RunnerPreferenceDecisionPayload {
+    #[serde(rename = "preference")]
+    Preference {
+        #[serde(rename = "runnerIdentity")]
+        runner_identity: RunnerProcessIdentity,
+        tier: RunnerPreferenceTier,
+        #[serde(rename = "expiresAt")]
+        expires_at: DateTime<FixedOffset>,
+    },
+    #[serde(rename = "noPreference")]
+    NoPreference { reason: RunnerNoPreferenceReason },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RunnerPreferenceAdmission {
+    Ranked(RunnerPreferenceTier),
+    Legacy(RunnerPreferenceReason),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunnerPreference {
     runner_identity: RunnerProcessIdentity,
-    reason: RunnerPreferenceReason,
+    admission: RunnerPreferenceAdmission,
     deadline: Instant,
 }
 
 impl RunnerPreference {
-    pub(crate) fn reason(&self) -> RunnerPreferenceReason {
-        self.reason
+    pub(crate) fn admission(&self) -> RunnerPreferenceAdmission {
+        self.admission
     }
 
     pub(crate) fn deadline(&self) -> Instant {
@@ -150,7 +220,24 @@ impl RunnerPreference {
                 runner_id,
                 heartbeat_generation,
             },
-            reason,
+            admission: RunnerPreferenceAdmission::Legacy(reason),
+            deadline,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ranked_for_test(
+        runner_id: Uuid,
+        heartbeat_generation: u64,
+        tier: RunnerPreferenceTier,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            runner_identity: RunnerProcessIdentity {
+                runner_id,
+                heartbeat_generation,
+            },
+            admission: RunnerPreferenceAdmission::Ranked(tier),
             deadline,
         }
     }
@@ -172,18 +259,86 @@ pub(crate) fn parse_runner_preference(
         return Ok(None);
     };
     let payload: RunnerPreferencePayload = serde_json::from_value(value)?;
-    let now = Instant::now();
-    let remaining = (payload.expires_at.with_timezone(&Utc) - Utc::now())
-        .to_std()
-        .unwrap_or_default();
-    let deadline = now
-        .checked_add(remaining)
-        .ok_or_else(|| serde_json::Error::custom("runner preference expiry is out of range"))?;
     Ok(Some(RunnerPreference {
         runner_identity: payload.runner_identity,
-        reason: payload.reason,
-        deadline,
+        admission: RunnerPreferenceAdmission::Legacy(payload.reason),
+        deadline: preference_deadline(payload.expires_at)?,
     }))
+}
+
+pub(crate) fn parse_runner_preference_decision(
+    value: Option<serde_json::Value>,
+) -> Result<Option<RunnerPreferenceContext>, serde_json::Error> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let payload: RunnerPreferenceDecisionPayload = serde_json::from_value(value)?;
+    let context = match payload {
+        RunnerPreferenceDecisionPayload::Preference {
+            runner_identity,
+            tier,
+            expires_at,
+        } => RunnerPreferenceContext::atomic_positive(
+            runner_identity,
+            tier,
+            preference_deadline(expires_at)?,
+        ),
+        RunnerPreferenceDecisionPayload::NoPreference { reason } => {
+            RunnerPreferenceContext::atomic_negative(reason.resolution())
+        }
+    };
+    Ok(Some(context))
+}
+
+pub(crate) struct ParsedRunnerPreferenceContext {
+    pub(crate) context: Option<RunnerPreferenceContext>,
+    pub(crate) decision_error: Option<serde_json::Error>,
+    pub(crate) legacy_preference_error: Option<serde_json::Error>,
+    pub(crate) legacy_resolution_error: Option<serde_json::Error>,
+}
+
+pub(crate) fn parse_runner_preference_context(
+    decision: Option<serde_json::Value>,
+    legacy_preference: Option<serde_json::Value>,
+    legacy_resolution: Option<serde_json::Value>,
+) -> ParsedRunnerPreferenceContext {
+    let decision_error = match parse_runner_preference_decision(decision) {
+        Ok(Some(context)) => {
+            return ParsedRunnerPreferenceContext {
+                context: Some(context),
+                decision_error: None,
+                legacy_preference_error: None,
+                legacy_resolution_error: None,
+            };
+        }
+        Ok(None) => None,
+        Err(error) => Some(error),
+    };
+
+    let (preference, legacy_preference_error) = match parse_runner_preference(legacy_preference) {
+        Ok(preference) => (preference, None),
+        Err(error) => (None, Some(error)),
+    };
+    let (resolution, legacy_resolution_error) =
+        match parse_runner_preference_resolution(legacy_resolution) {
+            Ok(resolution) => (resolution, None),
+            Err(error) => (None, Some(error)),
+        };
+    ParsedRunnerPreferenceContext {
+        context: RunnerPreferenceContext::legacy(preference, resolution),
+        decision_error,
+        legacy_preference_error,
+        legacy_resolution_error,
+    }
+}
+
+fn preference_deadline(expires_at: DateTime<FixedOffset>) -> Result<Instant, serde_json::Error> {
+    let now = Instant::now();
+    let remaining = (expires_at.with_timezone(&Utc) - Utc::now())
+        .to_std()
+        .unwrap_or_default();
+    now.checked_add(remaining)
+        .ok_or_else(|| serde_json::Error::custom("runner preference expiry is out of range"))
 }
 
 fn deserialize_heartbeat_generation<'de, D>(deserializer: D) -> Result<u64, D::Error>
@@ -212,7 +367,7 @@ pub(crate) enum JobDiscoverySource {
 /// observation must continue to follow the selected candidate and must never
 /// influence admission itself.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct RunnerPreferenceObservation {
+pub(crate) struct RunnerPreferenceObservation {
     resolution: RunnerPreferenceResolution,
     runner_identity: Option<RunnerProcessIdentity>,
     removal_reason: Option<RunnerPreferenceRemovalReason>,
@@ -221,12 +376,116 @@ struct RunnerPreferenceObservation {
 impl RunnerPreferenceObservation {
     fn new(
         resolution: RunnerPreferenceResolution,
-        runner_preference: Option<&RunnerPreference>,
+        runner_identity: Option<RunnerProcessIdentity>,
     ) -> Self {
         Self {
             resolution,
-            runner_identity: runner_preference.map(|preference| preference.runner_identity),
+            runner_identity,
             removal_reason: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RunnerPreferenceContext {
+    Atomic {
+        preference: Option<RunnerPreference>,
+        observation: RunnerPreferenceObservation,
+    },
+    Legacy {
+        preference: Option<RunnerPreference>,
+        observation: Option<RunnerPreferenceObservation>,
+    },
+}
+
+impl RunnerPreferenceContext {
+    fn atomic_positive(
+        runner_identity: RunnerProcessIdentity,
+        tier: RunnerPreferenceTier,
+        deadline: Instant,
+    ) -> Self {
+        Self::Atomic {
+            preference: Some(RunnerPreference {
+                runner_identity,
+                admission: RunnerPreferenceAdmission::Ranked(tier),
+                deadline,
+            }),
+            observation: RunnerPreferenceObservation::new(tier.resolution(), Some(runner_identity)),
+        }
+    }
+
+    fn atomic_negative(resolution: RunnerPreferenceResolution) -> Self {
+        Self::Atomic {
+            preference: None,
+            observation: RunnerPreferenceObservation::new(resolution, None),
+        }
+    }
+
+    pub(crate) fn legacy(
+        preference: Option<RunnerPreference>,
+        resolution: Option<RunnerPreferenceResolution>,
+    ) -> Option<Self> {
+        if preference.is_none() && resolution.is_none() {
+            return None;
+        }
+        let runner_identity = preference
+            .as_ref()
+            .map(|preference| preference.runner_identity);
+        Some(Self::Legacy {
+            preference,
+            observation: resolution
+                .map(|resolution| RunnerPreferenceObservation::new(resolution, runner_identity)),
+        })
+    }
+
+    pub(crate) fn preference(&self) -> Option<&RunnerPreference> {
+        match self {
+            Self::Atomic { preference, .. } | Self::Legacy { preference, .. } => {
+                preference.as_ref()
+            }
+        }
+    }
+
+    fn preference_mut(&mut self) -> &mut Option<RunnerPreference> {
+        match self {
+            Self::Atomic { preference, .. } | Self::Legacy { preference, .. } => preference,
+        }
+    }
+
+    fn observation(&self) -> Option<RunnerPreferenceObservation> {
+        match self {
+            Self::Atomic { observation, .. } => Some(*observation),
+            Self::Legacy { observation, .. } => *observation,
+        }
+    }
+
+    fn observation_mut(&mut self) -> Option<&mut RunnerPreferenceObservation> {
+        match self {
+            Self::Atomic { observation, .. } => Some(observation),
+            Self::Legacy { observation, .. } => observation.as_mut(),
+        }
+    }
+
+    pub(crate) fn is_atomic(&self) -> bool {
+        matches!(self, Self::Atomic { .. })
+    }
+
+    fn remove_preference(&mut self, removal_reason: RunnerPreferenceRemovalReason) {
+        *self.preference_mut() = None;
+        if let Some(observation) = self.observation_mut() {
+            observation.removal_reason = Some(removal_reason);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn atomic_for_test(preference: RunnerPreference) -> Self {
+        let RunnerPreferenceAdmission::Ranked(tier) = preference.admission else {
+            panic!("atomic test preference must be ranked");
+        };
+        let runner_identity = preference.runner_identity;
+        Self::Atomic {
+            preference: Some(preference),
+            observation: RunnerPreferenceObservation::new(tier.resolution(), Some(runner_identity)),
         }
     }
 }
@@ -267,8 +526,7 @@ pub struct JobCandidate {
     poll_http_request_elapsed: Option<Duration>,
     reuse_key: Option<String>,
     history_generation_run_id: Option<RunId>,
-    runner_preference: Option<RunnerPreference>,
-    runner_preference_observation: Option<RunnerPreferenceObservation>,
+    runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
 impl JobCandidate {
@@ -299,8 +557,7 @@ impl JobCandidate {
             poll_http_request_elapsed: None,
             reuse_key: None,
             history_generation_run_id: None,
-            runner_preference: None,
-            runner_preference_observation: None,
+            runner_preference_context: None,
         }
     }
 
@@ -395,16 +652,17 @@ impl JobCandidate {
     }
 
     pub(crate) fn runner_preference(&self) -> Option<&RunnerPreference> {
-        self.runner_preference.as_ref()
+        self.runner_preference_context
+            .as_ref()
+            .and_then(RunnerPreferenceContext::preference)
     }
 
     pub(crate) fn without_runner_preference(
         mut self,
         removal_reason: RunnerPreferenceRemovalReason,
     ) -> Self {
-        self.runner_preference = None;
-        if let Some(observation) = &mut self.runner_preference_observation {
-            observation.removal_reason = Some(removal_reason);
+        if let Some(context) = &mut self.runner_preference_context {
+            context.remove_preference(removal_reason);
         }
         self
     }
@@ -414,15 +672,28 @@ impl JobCandidate {
         self
     }
 
+    #[cfg(test)]
     pub(crate) fn with_runner_preference_context(
         mut self,
         runner_preference: Option<RunnerPreference>,
         resolution: Option<RunnerPreferenceResolution>,
     ) -> Self {
-        self.runner_preference_observation = resolution.map(|resolution| {
-            RunnerPreferenceObservation::new(resolution, runner_preference.as_ref())
-        });
-        self.runner_preference = runner_preference;
+        self.runner_preference_context =
+            RunnerPreferenceContext::legacy(runner_preference, resolution);
+        self
+    }
+
+    pub(crate) fn with_parsed_runner_preference_context(
+        mut self,
+        context: Option<RunnerPreferenceContext>,
+    ) -> Self {
+        self.runner_preference_context = context;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_atomic_runner_preference(mut self, preference: RunnerPreference) -> Self {
+        self.runner_preference_context = Some(RunnerPreferenceContext::atomic_for_test(preference));
         self
     }
 
@@ -439,8 +710,9 @@ impl JobCandidate {
         runner_id: &str,
         heartbeat_generation: u64,
     ) -> Option<RunnerPreferenceClaimTelemetry> {
-        let observation = self.runner_preference_observation?;
-        let state = match &self.runner_preference {
+        let context = self.runner_preference_context.as_ref()?;
+        let observation = context.observation()?;
+        let state = match context.preference() {
             Some(preference) if preference.is_expired() => RunnerPreferenceClaimState::Expired,
             Some(_) => RunnerPreferenceClaimState::Active,
             None => match observation.removal_reason {

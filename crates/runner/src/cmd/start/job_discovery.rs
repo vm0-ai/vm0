@@ -40,7 +40,8 @@ use crate::ids::RunId;
 use crate::lifecycle::RunnerMode;
 use crate::paths::short_digest;
 use crate::provider::{
-    ClaimedJob, JobCandidate, RunnerPreferenceReason, RunnerPreferenceRemovalReason,
+    ClaimedJob, JobCandidate, RunnerPreferenceAdmission, RunnerPreferenceReason,
+    RunnerPreferenceRemovalReason, RunnerPreferenceTier,
 };
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{
@@ -169,6 +170,17 @@ struct ClaimAdmissionRequest<'a> {
     job_memory: u32,
     workspace_disk_mb: u32,
     device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+}
+
+struct PreferenceCandidateRequest<'a> {
+    candidate: JobCandidate,
+    preference: &'a crate::provider::RunnerPreference,
+    reuse_key: &'a str,
+    profile_name: &'a str,
+    job_vcpu: u32,
+    job_memory: u32,
+    device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
+    ctx: &'a DiscoveredJobContext<'a>,
 }
 
 struct ReservedActivationRequest<'a> {
@@ -776,7 +788,41 @@ async fn prepare_preference_candidate(
         );
     };
 
-    match preference.reason() {
+    let request = PreferenceCandidateRequest {
+        candidate,
+        preference: &preference,
+        reuse_key: &reuse_key,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    };
+    match preference.admission() {
+        RunnerPreferenceAdmission::Legacy(reason) => {
+            prepare_legacy_preference_candidate(request, reason).await
+        }
+        RunnerPreferenceAdmission::Ranked(tier) => {
+            prepare_ranked_preference_candidate(request, tier).await
+        }
+    }
+}
+
+async fn prepare_legacy_preference_candidate(
+    request: PreferenceCandidateRequest<'_>,
+    reason: RunnerPreferenceReason,
+) -> PreferencePreparation {
+    let PreferenceCandidateRequest {
+        candidate,
+        preference,
+        reuse_key,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    } = request;
+    match reason {
         RunnerPreferenceReason::ExactHistoryGeneration => {
             let Some(history_generation_run_id) = candidate.history_generation_run_id() else {
                 return ordinary_preparation(
@@ -784,7 +830,7 @@ async fn prepare_preference_candidate(
                 );
             };
             if let Some(reservation) = reserve_reusable_idle(
-                &reuse_key,
+                reuse_key,
                 profile_name,
                 device_rate_limits,
                 Some(history_generation_run_id),
@@ -801,7 +847,7 @@ async fn prepare_preference_candidate(
         }
         RunnerPreferenceReason::MatchingReuseKey => {
             if let Some(reservation) =
-                reserve_reusable_idle(&reuse_key, profile_name, device_rate_limits, None, ctx).await
+                reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx).await
             {
                 return reusable_preparation(candidate, reservation);
             }
@@ -832,7 +878,7 @@ async fn prepare_preference_candidate(
                 );
             };
             if let Some(reservation) = reserve_reusable_idle(
-                &reuse_key,
+                reuse_key,
                 profile_name,
                 device_rate_limits,
                 Some(history_generation_run_id),
@@ -844,18 +890,113 @@ async fn prepare_preference_candidate(
             }
 
             if preference.targets(ctx.runner_id, ctx.heartbeat_generation) {
-                if !contains_active_reuse_key(&ctx.spawn_ctx.active_reuse_keys, &reuse_key) {
+                if !contains_active_reuse_key(&ctx.spawn_ctx.active_reuse_keys, reuse_key) {
                     return ordinary_preparation(
                         candidate.without_runner_preference(RunnerPreferenceRemovalReason::Cleared),
                     );
                 }
-                return defer_preference_candidate(candidate, &preference, &reuse_key, ctx, true)
+                return defer_preference_candidate(candidate, preference, reuse_key, ctx, true)
                     .await;
             }
         }
     }
 
-    defer_preference_candidate(candidate, &preference, &reuse_key, ctx, false).await
+    defer_preference_candidate(candidate, preference, reuse_key, ctx, false).await
+}
+
+async fn prepare_ranked_preference_candidate(
+    request: PreferenceCandidateRequest<'_>,
+    advertised_tier: RunnerPreferenceTier,
+) -> PreferencePreparation {
+    let PreferenceCandidateRequest {
+        candidate,
+        preference,
+        reuse_key,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    } = request;
+    let selected = preference.targets(ctx.runner_id, ctx.heartbeat_generation);
+    let history_generation_run_id = candidate.history_generation_run_id();
+
+    if ranked_preference_allows(
+        advertised_tier,
+        RunnerPreferenceTier::ExactSandbox,
+        selected,
+    ) && let Some(history_generation_run_id) = history_generation_run_id
+        && let Some(reservation) = reserve_reusable_idle(
+            reuse_key,
+            profile_name,
+            device_rate_limits,
+            Some(history_generation_run_id),
+            ctx,
+        )
+        .await
+    {
+        return if reservation.guest_timezone_intent().is_usable_prediction() {
+            exact_speculative_preparation(candidate, reservation)
+        } else {
+            reusable_preparation(candidate, reservation)
+        };
+    }
+
+    if advertised_tier == RunnerPreferenceTier::FinalizingPredecessor && selected {
+        return defer_preference_candidate(candidate, preference, reuse_key, ctx, true).await;
+    }
+
+    if ranked_preference_allows(
+        advertised_tier,
+        RunnerPreferenceTier::ReusableSandbox,
+        selected,
+    ) && let Some(reservation) =
+        reserve_reusable_idle(reuse_key, profile_name, device_rate_limits, None, ctx).await
+    {
+        return reusable_preparation(candidate, reservation);
+    }
+
+    if ranked_preference_allows(
+        advertised_tier,
+        RunnerPreferenceTier::WorkspaceCache,
+        selected,
+    ) && has_compatible_workspace(reuse_key, profile_name, ctx)
+        && let Some(lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+    {
+        return PreferencePreparation::Ready(PreparedCandidate {
+            candidate,
+            resource: Some(LocalAdmissionResource::Fresh(lease)),
+        });
+    }
+
+    defer_preference_candidate(candidate, preference, reuse_key, ctx, false).await
+}
+
+fn ranked_preference_allows(
+    advertised_tier: RunnerPreferenceTier,
+    local_tier: RunnerPreferenceTier,
+    selected: bool,
+) -> bool {
+    if selected {
+        local_tier.rank() >= advertised_tier.rank()
+    } else {
+        local_tier.rank() > advertised_tier.rank()
+    }
+}
+
+fn has_compatible_workspace(
+    reuse_key: &str,
+    profile_name: &str,
+    ctx: &DiscoveredJobContext<'_>,
+) -> bool {
+    current_local_held_workspace_states(ctx)
+        .iter()
+        .filter(|state| state.reuse_key == reuse_key)
+        .flat_map(|state| &state.workspace_caches)
+        .any(|workspace| {
+            workspace.profile == profile_name
+                && workspace.workspace_affinity_version == WORKSPACE_AFFINITY_VERSION
+        })
 }
 
 fn ordinary_preparation(candidate: JobCandidate) -> PreferencePreparation {
@@ -904,7 +1045,7 @@ async fn defer_preference_candidate(
         run_id = %candidate.run_id(),
         reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
         reuse_key_kind = reuse_key_kind(reuse_key),
-        preference_reason = ?preference.reason(),
+        preference_admission = ?preference.admission(),
         delay_ms = delay.as_millis(),
         retained = retain,
         "runner preference has no qualifying local resource, deferring claim"
@@ -1854,6 +1995,51 @@ mod tests {
                 reuse_key: "sess-removed-from-pool".into(),
                 sandbox_id: SandboxId::new_v4(),
             }],
+        }
+    }
+
+    #[test]
+    fn ranked_preference_admission_matrix() {
+        use RunnerPreferenceTier::{
+            ExactSandbox, FinalizingPredecessor, ReusableSandbox, WorkspaceCache,
+        };
+
+        let tiers = [
+            WorkspaceCache,
+            ReusableSandbox,
+            FinalizingPredecessor,
+            ExactSandbox,
+        ];
+        let selected = [
+            [true, true, true, true],
+            [false, true, true, true],
+            [false, false, true, true],
+            [false, false, false, true],
+        ];
+        let unselected = [
+            [false, true, true, true],
+            [false, false, true, true],
+            [false, false, false, true],
+            [false, false, false, false],
+        ];
+
+        for ((advertised_tier, selected_row), unselected_row) in
+            tiers.into_iter().zip(selected).zip(unselected)
+        {
+            for ((local_tier, selected_expected), unselected_expected) in
+                tiers.into_iter().zip(selected_row).zip(unselected_row)
+            {
+                assert_eq!(
+                    ranked_preference_allows(advertised_tier, local_tier, true),
+                    selected_expected,
+                    "selected runner: advertised={advertised_tier:?}, local={local_tier:?}"
+                );
+                assert_eq!(
+                    ranked_preference_allows(advertised_tier, local_tier, false),
+                    unselected_expected,
+                    "unselected runner: advertised={advertised_tier:?}, local={local_tier:?}"
+                );
+            }
         }
     }
 
