@@ -950,14 +950,20 @@ describe("chat composer templates", () => {
             },
           ]),
         );
+        const avatarOptions = {
+          titleSnapshot: selectedAvatar.name,
+          previewUrl: selectedAvatar.coverUrl,
+          voiceId: selectedVoice.id,
+          aspectRatio: "landscape" as const,
+        };
+        // Nested options carry the selection; the flat fields are mirrored for
+        // readers that predate avatarOptions.
         expect(submittedTemplate).toStrictEqual({
           type: "video",
           selection: {
             stylePresetId: avatarTemplateStylePresetId(selectedAvatar.id),
-            titleSnapshot: selectedAvatar.name,
-            previewUrl: selectedAvatar.coverUrl,
-            voiceId: selectedVoice.id,
-            aspectRatio: "landscape",
+            avatarOptions,
+            ...avatarOptions,
           },
         });
       });
