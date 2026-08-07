@@ -129,7 +129,7 @@ impl WsTransport {
             mut ws_write,
         } = self;
         drop(ws_read);
-        tokio::time::timeout(close_timeout, ws_write.close())
+        tokio::time::timeout(close_timeout, close_websocket_sink(&mut ws_write))
             .await
             .map_err(|_| Error::Protocol {
                 code: error_code::TIMEOUT,
@@ -144,6 +144,16 @@ impl WsTransport {
         tracker: &TransportCloseTracker,
     ) {
         tracker.spawn(self, close_timeout);
+    }
+}
+
+pub(super) async fn close_websocket_sink(ws_write: &mut WsWrite) -> Result<(), Error> {
+    match ws_write.close().await {
+        Ok(()) => Ok(()),
+        Err(tungstenite::Error::Io(error)) if error.kind() == std::io::ErrorKind::BrokenPipe => {
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
     }
 }
 

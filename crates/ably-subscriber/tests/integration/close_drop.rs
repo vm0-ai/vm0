@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::tungstenite;
+use tracing_subscriber::prelude::*;
+use tracing_test_support::CapturedEvents;
 
 #[tokio::test]
 async fn websocket_close_assertion_preserves_protocol_error() {
@@ -78,6 +80,62 @@ async fn close_subscription() {
     sub.close_and_wait().await.unwrap();
 
     join_server_task(server_task, "mock server").await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn peer_reset_during_transport_cleanup_is_idempotent() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (reset_tx, reset_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        reset_rx.await.unwrap();
+        conn.get_ref().set_zero_linger().unwrap();
+        drop(conn);
+    });
+
+    let captured = CapturedEvents::default();
+    let subscriber = tracing_subscriber::registry().with(captured.clone());
+    let _guard = tracing::subscriber::set_default(subscriber);
+    let mut timing = TimingConfig::default();
+    timing.min_reconnect_interval = Duration::from_secs(30);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    expect_connected(&mut sub, "Connected event").await.unwrap();
+    reset_tx.send(()).unwrap();
+    let event = expect_event(&mut sub, "peer reset").await.unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+
+    let close_result = sub.close_and_wait().await;
+    join_server_task(server_task, "resetting mock server")
+        .await
+        .unwrap();
+    let events = captured.entries();
+    assert!(
+        close_result.is_ok(),
+        "peer-already-gone transport cleanup failed: {close_result:?}; events={events:#?}"
+    );
+    assert!(
+        !events.iter().any(|event| {
+            event
+                .fields
+                .get("message")
+                .is_some_and(|message| message == "Failed to close websocket transport")
+                && event
+                    .fields
+                    .get("error")
+                    .is_some_and(|error| error.contains("Broken pipe"))
+        }),
+        "peer-already-gone transport cleanup emitted a BrokenPipe warning: {events:#?}"
+    );
 }
 
 #[tokio::test]

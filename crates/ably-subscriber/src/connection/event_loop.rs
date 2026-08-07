@@ -19,8 +19,8 @@ use super::message::{decode_data, message_targets_channel};
 use super::session::{SessionState, TokenRenewalFailure};
 use super::state::{ChannelLifecycleState, reconnect_spacing_delay, retry_delay};
 use super::transport::{
-    TransportCloseTracker, WsTransport, connect_pending, websocket_close_frame_reason,
-    websocket_close_reason, websocket_error_reason,
+    TransportCloseTracker, WsTransport, close_websocket_sink, connect_pending,
+    websocket_close_frame_reason, websocket_close_reason, websocket_error_reason,
 };
 use crate::Error;
 use crate::protocol::{
@@ -145,7 +145,7 @@ async fn send_close_message(p: &mut EventLoopState) -> Result<(), Error> {
                     .map_err(Error::from),
                 Err(error) => Err(error),
             };
-            let websocket_result = ws_write.close().await.map_err(Error::from);
+            let websocket_result = close_websocket_sink(&mut ws_write).await;
             match (protocol_result, websocket_result) {
                 (Ok(()), result) | (result, Ok(())) => result,
                 (Err(error), Err(close_error)) => {
