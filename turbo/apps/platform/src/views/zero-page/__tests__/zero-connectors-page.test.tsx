@@ -3181,6 +3181,11 @@ describe("connectors page", () => {
         ),
       ).toBeInTheDocument();
     });
+    expect(
+      within(connectorCardByLabel("AWS")).getByTitle(
+        "@arn:aws:iam::000000000000:user/mock-aws",
+      ),
+    ).toHaveTextContent("@arn:aws:iam::000000000000:user/mock-aws");
   });
 
   it("keeps external-code validation inline and toasts unexpected HTTP errors", async () => {
