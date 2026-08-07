@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.396.0](https://github.com/vm0-ai/vm0/compare/api-v1.395.0...api-v1.396.0) (2026-08-07)
+
+
+### Features
+
+* **api:** publish atomic runner preference decisions ([#25585](https://github.com/vm0-ai/vm0/issues/25585)) ([7a9126f](https://github.com/vm0-ai/vm0/commit/7a9126fd1270356a7cd662193eedf9f1115253f4))
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+* give cross-thread agent runs their source context ([#25581](https://github.com/vm0-ai/vm0/issues/25581)) ([f0753a0](https://github.com/vm0-ai/vm0/commit/f0753a088cb1a0817210e98cc1dee5bc6fed7c13))
+
+
+### Bug Fixes
+
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
+
+### Refactoring
+
+* remove deployed test routes ([#25550](https://github.com/vm0-ai/vm0/issues/25550)) ([7ae186e](https://github.com/vm0-ai/vm0/commit/7ae186e0c9b04199101dd052459062e4dc916d09))
+* remove sidebar auto-open compatibility ([#25509](https://github.com/vm0-ai/vm0/issues/25509)) ([458edc4](https://github.com/vm0-ai/vm0/commit/458edc4fed35313dde53c14a853a101146608464))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.288.0
+    * @vm0/connectors bumped to 1.204.1
+    * @vm0/core bumped to 8.526.0
+    * @vm0/db bumped to 1.176.0
+    * @vm0/pi-agent-runtime bumped to 1.0.0
+
 ## [1.395.0](https://github.com/vm0-ai/vm0/compare/api-v1.394.0...api-v1.395.0) (2026-08-07)
 
 

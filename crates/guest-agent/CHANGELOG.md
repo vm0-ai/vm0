@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.65.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.9...guest-agent-v0.65.0) (2026-08-07)
+
+
+### Features
+
+* complete pi agent handoff end to end ([#25489](https://github.com/vm0-ai/vm0/issues/25489)) ([feeb1cb](https://github.com/vm0-ai/vm0/commit/feeb1cbc8e838b844945cf5efc3ed7e9820c10a4))
+
+
+### Bug Fixes
+
+* **guest-agent:** classify credit error envelopes ([#25580](https://github.com/vm0-ai/vm0/issues/25580)) ([61475bf](https://github.com/vm0-ai/vm0/commit/61475bf97e6750715d4db0115444219f16636fe5))
+* **runner:** materialize prune-eligible codex zstd history ([#25582](https://github.com/vm0-ai/vm0/issues/25582)) ([44df9f2](https://github.com/vm0-ai/vm0/commit/44df9f2c4dc9ec5640cc54316c944a8164f54a3f))
+
 ## [0.64.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.64.8...guest-agent-v0.64.9) (2026-08-07)
 
 

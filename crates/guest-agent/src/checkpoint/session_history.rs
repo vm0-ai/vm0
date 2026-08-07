@@ -15,7 +15,9 @@ use api_contracts::generated::constants::runners::{
     SESSION_HISTORY_GZIP_MIN_BYTES,
 };
 use bytes::Bytes;
-use guest_common::telemetry::record_sandbox_op;
+use guest_common::telemetry::{
+    SandboxOpDimensions, record_sandbox_op, record_sandbox_op_with_dimensions,
+};
 use guest_common::{log_info, log_warn};
 use guest_session_prune::{
     ClaudeHistorySelection, CodexHistorySelection, select_claude_compact_generation,
@@ -30,6 +32,59 @@ use std::time::Duration;
 
 const SESSION_HISTORY_ZSTD_LEVEL: i32 = 3;
 const SESSION_HISTORY_COMPRESSION_MIN_BYTES: usize = SESSION_HISTORY_GZIP_MIN_BYTES as usize;
+
+#[derive(Clone, Copy)]
+enum SessionHistoryPruneOutcome {
+    Selected,
+    Ineligible,
+    Error,
+}
+
+impl SessionHistoryPruneOutcome {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Selected => "selected",
+            Self::Ineligible => "ineligible",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SessionHistoryPruneReason {
+    Selector(&'static str),
+    CompressedSource,
+    SelectorIo,
+}
+
+impl SessionHistoryPruneReason {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Selector(reason) => reason,
+            Self::CompressedSource => "compressed_source",
+            Self::SelectorIo => "selector_io",
+        }
+    }
+}
+
+fn record_session_history_prune(
+    started: std::time::Instant,
+    outcome: SessionHistoryPruneOutcome,
+    reason: Option<SessionHistoryPruneReason>,
+) {
+    let reason = reason.map(SessionHistoryPruneReason::as_str);
+    let error = matches!(outcome, SessionHistoryPruneOutcome::Error).then_some("selector_io");
+    record_sandbox_op_with_dimensions(
+        "session_history_prune",
+        started.elapsed(),
+        !matches!(outcome, SessionHistoryPruneOutcome::Error),
+        error,
+        SandboxOpDimensions {
+            outcome: Some(outcome.as_str()),
+            reason,
+        },
+    );
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum CheckpointSessionHistoryLimits {
@@ -439,7 +494,11 @@ fn prepare_session_history(
                     "Selected Claude compact generation for checkpoint \
                      (source_size={source_size}, candidate_size={candidate_size})"
                 );
-                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Selected,
+                    None,
+                );
                 let mut prepared =
                     prepare_raw_session_history(mode, history_read_start, candidate)?;
                 prepared.live_history = PreparedLiveHistory::NativeCandidate {
@@ -454,18 +513,21 @@ fn prepare_session_history(
                     "Claude session history not eligible for pruning: {}",
                     reason.as_str()
                 );
-                record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Ineligible,
+                    Some(SessionHistoryPruneReason::Selector(reason.as_str())),
+                );
             }
             Err(error) => {
                 log_warn!(
                     LOG_TAG,
                     "Claude session history selector failed; using ordinary checkpoint path: {error}"
                 );
-                record_sandbox_op(
-                    "session_history_prune",
-                    prune_start.elapsed(),
-                    false,
-                    Some("selector_io"),
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Error,
+                    Some(SessionHistoryPruneReason::SelectorIo),
                 );
             }
         }
@@ -493,10 +555,9 @@ fn prepare_session_history(
                                 "Selected Codex compact generation for checkpoint \
                              (source_size={source_size}, candidate_size={candidate_size})"
                             );
-                            record_sandbox_op(
-                                "session_history_prune",
-                                prune_start.elapsed(),
-                                true,
+                            record_session_history_prune(
+                                prune_start,
+                                SessionHistoryPruneOutcome::Selected,
                                 None,
                             );
                             let mut prepared =
@@ -513,11 +574,10 @@ fn prepare_session_history(
                                 "Codex session history not eligible for pruning: {}",
                                 reason.as_str()
                             );
-                            record_sandbox_op(
-                                "session_history_prune",
-                                prune_start.elapsed(),
-                                true,
-                                None,
+                            record_session_history_prune(
+                                prune_start,
+                                SessionHistoryPruneOutcome::Ineligible,
+                                Some(SessionHistoryPruneReason::Selector(reason.as_str())),
                             );
                         }
                         Err(error) => {
@@ -526,11 +586,10 @@ fn prepare_session_history(
                                 "Codex session history selector failed; using ordinary checkpoint \
                              path: {error}"
                             );
-                            record_sandbox_op(
-                                "session_history_prune",
-                                prune_start.elapsed(),
-                                false,
-                                Some("selector_io"),
+                            record_session_history_prune(
+                                prune_start,
+                                SessionHistoryPruneOutcome::Error,
+                                Some(SessionHistoryPruneReason::SelectorIo),
                             );
                         }
                     }
@@ -539,7 +598,11 @@ fn prepare_session_history(
                         LOG_TAG,
                         "Codex session history not eligible for pruning: compressed_source"
                     );
-                    record_sandbox_op("session_history_prune", prune_start.elapsed(), true, None);
+                    record_session_history_prune(
+                        prune_start,
+                        SessionHistoryPruneOutcome::Ineligible,
+                        Some(SessionHistoryPruneReason::CompressedSource),
+                    );
                 }
                 resolved_codex_history = Some(source);
             }
@@ -549,11 +612,10 @@ fn prepare_session_history(
                     "Codex session history selector failed; using ordinary checkpoint path: \
                      {error}"
                 );
-                record_sandbox_op(
-                    "session_history_prune",
-                    prune_start.elapsed(),
-                    false,
-                    Some("selector_io"),
+                record_session_history_prune(
+                    prune_start,
+                    SessionHistoryPruneOutcome::Error,
+                    Some(SessionHistoryPruneReason::SelectorIo),
                 );
             }
         }

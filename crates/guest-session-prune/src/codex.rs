@@ -1,15 +1,13 @@
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 
+pub use guest_contracts::session_history::CODEX_COMPACT_GENERATION_MAX_BYTES;
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use super::{
     BoundedRecord, READ_BUFFER_BYTES, SelectionLimits, read_bounded_record, strip_jsonl_line_ending,
 };
-
-/// Maximum decoded size of an accepted Codex compact generation.
-pub const CODEX_COMPACT_GENERATION_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Maximum size of one Codex JSONL record inspected by the selector.
 pub const CODEX_JSONL_RECORD_MAX_BYTES: usize = 16 * 1024 * 1024;

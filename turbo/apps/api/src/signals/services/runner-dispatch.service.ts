@@ -4,8 +4,10 @@ import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {
+  runnerPreferenceDecisionTelemetryDimensions,
+  runnerPreferenceDeliveryFields,
   runnerReuseKeyTelemetryKind,
-  runnerReusePreferenceLookupError,
+  runnerReusePreferenceLookupErrorDecision,
   resolveRunnerReusePreference,
 } from "./runner-reuse-preference";
 import { tapError } from "../utils";
@@ -27,7 +29,7 @@ export async function notifyRunnerJob(
   const notificationEnteredAt = now();
   const currentDate = new Date(notificationEnteredAt);
   let preferenceLookupSucceeded = true;
-  const reusePreference =
+  const runnerPreferenceDecision =
     (await tapError(
       resolveRunnerReusePreference({
         db,
@@ -50,7 +52,10 @@ export async function notifyRunnerJob(
           },
         );
       },
-    )) ?? runnerReusePreferenceLookupError();
+    )) ?? runnerReusePreferenceLookupErrorDecision();
+  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
+    runnerPreferenceDecision,
+  );
   const preferenceFinishedAt = now();
   const publishStartedAt = now();
   const published = await publishRunnerJobNotification(
@@ -61,8 +66,7 @@ export async function notifyRunnerJob(
       reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
       historyGenerationRunId: args.historyGenerationRunId,
-      runnerPreference: reusePreference.runnerPreference,
-      runnerPreferenceResolution: reusePreference.outcome,
+      ...runnerPreferenceFields,
     },
   );
   const publishFinishedAt = now();
@@ -71,8 +75,8 @@ export async function notifyRunnerJob(
     runner_group: args.runnerGroup,
     profile: args.profile,
     notification_target: "broadcast",
-    runner_preference_resolution: reusePreference.outcome,
     reuse_key_kind: runnerReuseKeyTelemetryKind(args.reuseKey),
+    ...runnerPreferenceDecisionTelemetryDimensions(runnerPreferenceDecision),
   };
   if (args.historyGenerationRunId) {
     dimensions.history_generation_run_id = args.historyGenerationRunId;

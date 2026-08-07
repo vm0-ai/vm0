@@ -16,5 +16,6 @@ pub mod pi_standby;
 pub mod process_containment;
 pub mod reuse_preparation;
 pub mod runtime_paths;
+pub mod session_history;
 pub mod session_history_identity;
 pub mod storage_manifest;

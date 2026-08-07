@@ -44,12 +44,31 @@ function chatAgentRunSourceHref(
   return `/chats/${source.threadId}#run-${source.runId}`;
 }
 
+/**
+ * Recover the provenance a send route wrote into the persisted document. The
+ * annotation is the only place a claimed queue item still carries its source
+ * run, because the queue head is read back as a document, not as a send body.
+ */
+export function agentRunSourceAnnotation(
+  document: UserMessageDocument,
+): ChatAgentRunSourceAnnotation | null {
+  for (const part of document.parts) {
+    if (part.type === "source" && part.kind === "agent") {
+      return {
+        runId: part.runId,
+        threadId: part.threadId,
+        agentId: part.agentId,
+        titleSnapshot: part.titleSnapshot,
+      };
+    }
+  }
+  return null;
+}
+
 export function hasAgentRunSourceAnnotation(
   document: UserMessageDocument,
 ): boolean {
-  return document.parts.some((part) => {
-    return part.type === "source" && part.kind === "agent";
-  });
+  return agentRunSourceAnnotation(document) !== null;
 }
 
 /** Project the persisted document for clients that predate agent sources. */
