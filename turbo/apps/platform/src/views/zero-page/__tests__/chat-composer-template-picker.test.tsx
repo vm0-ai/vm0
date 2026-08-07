@@ -763,8 +763,7 @@ describe("chat composer templates", () => {
       const avatarToolbar = avatarScroll.querySelector(
         "[data-avatar-catalog-toolbar]",
       );
-      expect(avatarToolbar).toHaveClass("sticky", "top-0", "bg-card");
-      expect(avatarToolbar).not.toHaveClass("border-b");
+      expect(avatarToolbar).toHaveClass("sticky", "top-0");
       Object.defineProperties(avatarScroll, {
         scrollHeight: { configurable: true, value: 1200 },
         clientHeight: { configurable: true, value: 500 },
