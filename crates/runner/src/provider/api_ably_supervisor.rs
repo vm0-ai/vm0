@@ -27,10 +27,7 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
-use super::{
-    RunnerPreference, RunnerPreferenceResolution, parse_runner_preference,
-    parse_runner_preference_resolution,
-};
+use super::{RunnerPreferenceContext, parse_runner_preference_context};
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
@@ -733,17 +730,16 @@ async fn handle_ably_message_with_network_policy_refresh(
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(
+                JobNotificationAction::Direct(Box::new(
                     DirectJobCandidate::new_with_routing_metadata(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
                         notif.reuse_key.map(str::to_owned),
-                        notif.runner_preference,
+                        notif.runner_preference_context,
                     )
-                    .with_runner_preference_resolution(notif.runner_preference_resolution)
                     .with_history_generation_run_id(notif.history_generation_run_id),
-                )
+                ))
             } else {
                 info!(
                     run_id = %notif.run_id,
@@ -766,14 +762,14 @@ async fn handle_ably_message_with_network_policy_refresh(
             poll_wakeups.request_immediate_poll().await;
         }
         JobNotificationAction::Direct(candidate) => {
-            enqueue_direct_candidate(candidate, direct_candidates, poll_wakeups).await;
+            enqueue_direct_candidate(*candidate, direct_candidates, poll_wakeups).await;
         }
         JobNotificationAction::Ignore => {}
     }
 }
 
 enum JobNotificationAction {
-    Direct(DirectJobCandidate),
+    Direct(Box<DirectJobCandidate>),
     Ignore,
     WakeNow,
 }
@@ -783,8 +779,7 @@ struct JobNotification<'a> {
     profile: Option<&'a str>,
     reuse_key: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
-    runner_preference: Option<RunnerPreference>,
-    runner_preference_resolution: Option<RunnerPreferenceResolution>,
+    runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
 struct NetworkPolicyRefreshNotification {
@@ -1035,38 +1030,38 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
-    let runner_preference = match parse_runner_preference(msg.data.get("runnerPreference").cloned())
-    {
-        Ok(runner_preference) => runner_preference,
-        Err(error) => {
-            warn!(
-                run_id = %run_id,
-                error = %error,
-                "ably: invalid runner preference, using ordinary admission"
-            );
-            None
-        }
-    };
-    let runner_preference_resolution = match parse_runner_preference_resolution(
+    let parsed_preference = parse_runner_preference_context(
+        msg.data.get("runnerPreferenceDecision").cloned(),
+        msg.data.get("runnerPreference").cloned(),
         msg.data.get("runnerPreferenceResolution").cloned(),
-    ) {
-        Ok(resolution) => resolution,
-        Err(error) => {
-            warn!(
-                run_id = %run_id,
-                error = %error,
-                "ably: invalid runner preference resolution, omitting telemetry context"
-            );
-            None
-        }
-    };
+    );
+    if let Some(error) = parsed_preference.decision_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference decision, falling back to legacy preference"
+        );
+    }
+    if let Some(error) = parsed_preference.legacy_preference_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference, using ordinary admission"
+        );
+    }
+    if let Some(error) = parsed_preference.legacy_resolution_error {
+        warn!(
+            run_id = %run_id,
+            error = %error,
+            "ably: invalid runner preference resolution, omitting telemetry context"
+        );
+    }
     Some(JobNotification {
         run_id,
         profile,
         reuse_key,
         history_generation_run_id,
-        runner_preference,
-        runner_preference_resolution,
+        runner_preference_context: parsed_preference.context,
     })
 }
 
@@ -1214,7 +1209,9 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::RunnerPreferenceReason;
+    use crate::provider::{
+        RunnerPreferenceAdmission, RunnerPreferenceResolution, RunnerPreferenceTier,
+    };
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -2007,13 +2004,22 @@ mod tests {
                 "profile": "vm0/default",
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
-                "runnerPreferenceResolution": "matching_reusable_sandbox",
-                "runnerPreference": {
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
                         "heartbeatGeneration": 7
                     },
-                    "reason": "matchingReuseKey",
+                    "tier": "reusableSandbox",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
+                "runnerPreferenceResolution": "matching_workspace_cache",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000099",
+                        "heartbeatGeneration": 9
+                    },
+                    "reason": "exactHistoryGeneration",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
                 }
             }),
@@ -2037,8 +2043,8 @@ mod tests {
             .runner_preference()
             .expect("canonical preference should be parsed");
         assert_eq!(
-            preference.reason(),
-            RunnerPreferenceReason::MatchingReuseKey
+            preference.admission(),
+            RunnerPreferenceAdmission::Ranked(RunnerPreferenceTier::ReusableSandbox)
         );
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_eq!(
@@ -2054,7 +2060,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_optional_preference_preserves_direct_candidate() {
+    async fn malformed_atomic_and_bridge_preferences_preserve_direct_candidate() {
         let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
@@ -2072,6 +2078,15 @@ mod tests {
                 "runId": "00000000-0000-0000-0000-000000000011",
                 "profile": "vm0/default",
                 "reuseKey": "thread:malformed-preference",
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 0
+                    },
+                    "tier": "workspaceCache",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
                 "runnerPreferenceResolution": "future_resolution",
                 "runnerPreference": {
                     "runnerIdentity": {
@@ -2095,6 +2110,64 @@ mod tests {
             candidate
                 .runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,)
                 .is_none()
+        );
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn malformed_atomic_ably_decision_falls_back_to_valid_bridge() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000012",
+                "profile": "vm0/default",
+                "reuseKey": "thread:bridge-fallback",
+                "runnerPreferenceDecision": {
+                    "kind": "futureDecision"
+                },
+                "runnerPreferenceResolution": "matching_reusable_sandbox",
+                "runnerPreference": {
+                    "runnerIdentity": {
+                        "runnerId": "00000000-0000-0000-0000-000000000005",
+                        "heartbeatGeneration": 7
+                    },
+                    "reason": "matchingReuseKey",
+                    "expiresAt": "2999-01-01T00:00:00.000Z"
+                }
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(
+            candidate
+                .runner_preference()
+                .map(crate::provider::RunnerPreference::admission),
+            Some(RunnerPreferenceAdmission::Legacy(
+                crate::provider::RunnerPreferenceReason::MatchingReuseKey
+            ))
+        );
+        assert_eq!(
+            candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
+            Some(super::super::RunnerPreferenceClaimTelemetry {
+                resolution: RunnerPreferenceResolution::MatchingReusableSandbox,
+                state: super::super::RunnerPreferenceClaimState::Active,
+                targeted_self: Some(true),
+            })
         );
         assert_no_direct_candidate(&direct_candidates).await;
     }

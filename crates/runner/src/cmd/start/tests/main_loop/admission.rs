@@ -11,8 +11,8 @@ use std::sync::Arc;
 use super::super::super::active_reuse_keys::ActiveReuseKeyGuard;
 use crate::paths::RunnerPaths;
 use crate::provider::{
-    RunnerPreference, RunnerPreferenceClaimState, RunnerPreferenceReason,
-    RunnerPreferenceResolution,
+    RunnerPreference, RunnerPreferenceAdmission, RunnerPreferenceClaimState,
+    RunnerPreferenceReason, RunnerPreferenceResolution, RunnerPreferenceTier,
 };
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::WorkspaceImageCache;
@@ -60,6 +60,41 @@ fn preferred_candidate_until(
             )),
             Some(resolution),
         )
+}
+
+fn ranked_candidate(
+    run_id: RunId,
+    reuse_key: Option<&str>,
+    tier: RunnerPreferenceTier,
+    runner_id: &str,
+    heartbeat_generation: u64,
+) -> crate::provider::JobCandidate {
+    ranked_candidate_until(
+        run_id,
+        reuse_key,
+        tier,
+        runner_id,
+        heartbeat_generation,
+        std::time::Instant::now() + Duration::from_secs(30),
+    )
+}
+
+fn ranked_candidate_until(
+    run_id: RunId,
+    reuse_key: Option<&str>,
+    tier: RunnerPreferenceTier,
+    runner_id: &str,
+    heartbeat_generation: u64,
+    deadline: std::time::Instant,
+) -> crate::provider::JobCandidate {
+    crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+        .with_reuse_key(reuse_key.map(str::to_owned))
+        .with_atomic_runner_preference(RunnerPreference::ranked_for_test(
+            runner_id.parse().unwrap(),
+            heartbeat_generation,
+            tier,
+            deadline,
+        ))
 }
 
 fn matching_preference_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
@@ -359,11 +394,16 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     env.provider.set_claim_result(conflict_run_id, None);
     env.handle
         .discover_tx
-        .send(exact_generation_preference_candidate(
-            conflict_run_id,
-            session_id,
-            reserved_generation_run_id,
-        ))
+        .send(
+            ranked_candidate(
+                conflict_run_id,
+                Some(session_id),
+                RunnerPreferenceTier::ExactSandbox,
+                TEST_RUNNER_ID,
+                TEST_HEARTBEAT_GENERATION,
+            )
+            .with_history_generation_run_id(Some(reserved_generation_run_id)),
+        )
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
@@ -448,6 +488,75 @@ async fn matching_preference_reservation_is_restored_after_claim_conflict() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn unselected_reusable_sandbox_preempts_workspace_preference() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:reusable-preempts-workspace";
+    seed_idle_pool(&env.idle_pool, &budget, reuse_key, "vm0/default", 2, 4096).await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(ranked_candidate(
+            run_id,
+            Some(reuse_key),
+            RunnerPreferenceTier::WorkspaceCache,
+            &uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID).to_string(),
+            1,
+        ))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("strictly better reusable sandbox should preempt workspace preference");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert!(env.handle.deferred_poll_deadlines().is_empty());
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn equal_unselected_reusable_sandbox_defers() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:equal-reusable-defers";
+    seed_idle_pool(&env.idle_pool, &budget, reuse_key, "vm0/default", 2, 4096).await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(ranked_candidate(
+            run_id,
+            Some(reuse_key),
+            RunnerPreferenceTier::ReusableSandbox,
+            &uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID).to_string(),
+            1,
+        ))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(env.handle.claim_candidates().is_empty());
+    assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
+    assert_eq!(
+        env.idle_pool.lock().await.held_reuse_keys(),
+        vec![reuse_key.to_string()],
+        "equal-tier unselected admission must not reserve the sandbox"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn reusable_claim_without_generation_target_reuses_sandbox() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
@@ -487,8 +596,12 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
         .find(|candidate| candidate.run_id() == run_id)
         .expect("missing-target reusable candidate should reach claim");
     assert_eq!(
-        candidate.runner_preference().map(RunnerPreference::reason),
-        Some(RunnerPreferenceReason::MatchingReuseKey)
+        candidate
+            .runner_preference()
+            .map(RunnerPreference::admission),
+        Some(RunnerPreferenceAdmission::Legacy(
+            RunnerPreferenceReason::MatchingReuseKey
+        ))
     );
 
     shutdown(&env, run_handle).await;
@@ -666,6 +779,73 @@ async fn selected_finalizing_candidate_keeps_reactor_live_and_claims_after_key_r
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn selected_ranked_finalizing_candidate_does_not_downgrade_after_key_release() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let reuse_key = "thread:ranked-finalizing-retained";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = ActiveReuseKeyGuard::new(
+        env.active_reuse_keys.clone(),
+        Arc::clone(&env.reuse_state_notify),
+        Some(reuse_key.to_owned()),
+    );
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    let deadline = std::time::Instant::now() + Duration::from_millis(100);
+    env.handle
+        .discover_tx
+        .send(
+            ranked_candidate_until(
+                run_id,
+                Some(reuse_key),
+                RunnerPreferenceTier::FinalizingPredecessor,
+                TEST_RUNNER_ID,
+                TEST_HEARTBEAT_GENERATION,
+                deadline,
+            )
+            .with_history_generation_run_id(Some(history_generation_run_id)),
+        )
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    assert!(env.handle.claim_candidates().is_empty());
+
+    drop(predecessor_guard);
+    tokio::task::yield_now().await;
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "canonical finalizing selection must not downgrade when the active key disappears"
+    );
+
+    tokio::time::advance(Duration::from_millis(101)).await;
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("expired finalizing preference should enter ordinary admission");
+    assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    let claimed = env
+        .handle
+        .claim_candidates()
+        .into_iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("expired candidate should reach claim");
+    let telemetry = claimed
+        .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+        .expect("atomic observation should survive expiry");
+    assert_eq!(
+        telemetry.resolution,
+        RunnerPreferenceResolution::FinalizingPredecessor
+    );
+    assert_eq!(telemetry.state, RunnerPreferenceClaimState::Expired);
+    assert_eq!(telemetry.targeted_self, Some(true));
+
+    shutdown(&env, run_handle).await;
+}
+
 #[tokio::test]
 async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wakeup() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
@@ -685,13 +865,16 @@ async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wake
         .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
     env.handle
         .discover_tx
-        .send(finalizing_candidate(
-            run_id,
-            reuse_key,
-            history_generation_run_id,
-            TEST_RUNNER_ID,
-            TEST_HEARTBEAT_GENERATION,
-        ))
+        .send(
+            ranked_candidate(
+                run_id,
+                Some(reuse_key),
+                RunnerPreferenceTier::FinalizingPredecessor,
+                TEST_RUNNER_ID,
+                TEST_HEARTBEAT_GENERATION,
+            )
+            .with_history_generation_run_id(Some(history_generation_run_id)),
+        )
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
@@ -714,6 +897,53 @@ async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wake
         .expect("exact resource state should wake the retained candidate");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
     drop(predecessor_guard);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn unselected_exact_sandbox_preempts_finalizing_preference() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let reuse_key = "thread:exact-preempts-finalizing";
+    let history_generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_history_generation(
+        &env.idle_pool,
+        &budget,
+        reuse_key,
+        "vm0/default",
+        2,
+        4096,
+        history_generation_run_id,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(
+            ranked_candidate(
+                run_id,
+                Some(reuse_key),
+                RunnerPreferenceTier::FinalizingPredecessor,
+                &uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID).to_string(),
+                1,
+            )
+            .with_history_generation_run_id(Some(history_generation_run_id)),
+        )
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("strictly better exact sandbox should preempt finalizing preference");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert!(env.handle.deferred_poll_deadlines().is_empty());
 
     shutdown(&env, run_handle).await;
 }
@@ -1337,7 +1567,7 @@ async fn expired_generation_protection_preserves_local_session_claim() {
 }
 
 #[tokio::test]
-async fn exact_preference_defers_for_cache_then_matching_preference_claims_it() {
+async fn selected_reusable_defers_for_cache_then_selected_workspace_claims_it() {
     let reuse_key = "thread:cache-local";
     let provider_session_id = "provider-session-cache-local";
     let image_size_bytes = 1024 * 1024;
@@ -1365,23 +1595,25 @@ async fn exact_preference_defers_for_cache_then_matching_preference_claims_it() 
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
-    let exact_run_id = RunId::new_v4();
-    let mut exact_context = context_with_session(exact_run_id, provider_session_id);
-    exact_context.reuse_key = Some(reuse_key.into());
+    let reusable_run_id = RunId::new_v4();
+    let mut reusable_context = context_with_session(reusable_run_id, provider_session_id);
+    reusable_context.reuse_key = Some(reuse_key.into());
     env.provider
-        .set_claim_result(exact_run_id, Some(exact_context));
+        .set_claim_result(reusable_run_id, Some(reusable_context));
     env.handle
         .discover_tx
-        .send(exact_generation_preference_candidate(
-            exact_run_id,
-            reuse_key,
-            RunId::new_v4(),
+        .send(ranked_candidate(
+            reusable_run_id,
+            Some(reuse_key),
+            RunnerPreferenceTier::ReusableSandbox,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
         ))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     assert!(
         env.handle.claim_candidates().is_empty(),
-        "workspace-cache state must not impersonate an exact reusable generation"
+        "workspace-cache state must not satisfy a selected reusable preference"
     );
     assert_eq!(env.handle.deferred_poll_deadlines().len(), 1);
 
@@ -1392,7 +1624,13 @@ async fn exact_preference_defers_for_cache_then_matching_preference_claims_it() 
         .set_claim_result(run_id, Some(workspace_context));
     env.handle
         .discover_tx
-        .send(matching_preference_candidate(run_id, reuse_key))
+        .send(ranked_candidate(
+            run_id,
+            Some(reuse_key),
+            RunnerPreferenceTier::WorkspaceCache,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
         .unwrap();
 
     let completion = env
@@ -1459,7 +1697,13 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
     env.provider.set_claim_result(run_id, Some(context));
     env.handle
         .discover_tx
-        .send(matching_preference_candidate(run_id, reuse_key))
+        .send(ranked_candidate(
+            run_id,
+            Some(reuse_key),
+            RunnerPreferenceTier::WorkspaceCache,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
