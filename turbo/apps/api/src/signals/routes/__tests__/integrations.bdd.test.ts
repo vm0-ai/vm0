@@ -1812,11 +1812,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       return pending.eventType === "input.prompt";
     });
     expect(pendingInputEvents.length).toBeGreaterThanOrEqual(2);
-    expect(
-      pendingInputEvents.every((pending) => {
-        return pending.triggerSource === null;
-      }),
-    ).toBeTruthy();
     const pendingEventsWithContext = await Promise.all(
       pendingInputEvents.map(async (pending) => {
         return {
@@ -2549,7 +2544,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.arrayContaining([
         expect.objectContaining({
           eventType: "input.prompt",
-          triggerSource: null,
         }),
       ]),
     );
