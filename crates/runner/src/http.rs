@@ -20,6 +20,8 @@ use crate::error::{
 /// Default timeout for API requests (covers large claim payloads).
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const VERCEL_BYPASS_HEADER: &str = "x-vercel-protection-bypass";
+const CF_ACCESS_CLIENT_ID_HEADER: &str = "cf-access-client-id";
+const CF_ACCESS_CLIENT_SECRET_HEADER: &str = "cf-access-client-secret";
 const RUNNER_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const API_ERROR_SUMMARY_MAX_CHARS: usize = 512;
 const API_ERROR_SUMMARY_TRUNCATION_MARKER: &str = "...";
@@ -43,7 +45,38 @@ struct Inner {
     client: Client,
     api_url: String,
     vercel_bypass: Option<String>,
+    cloudflare_access: Option<CloudflareAccess>,
     client_headers: ClientHeaders,
+}
+
+struct CloudflareAccess {
+    client_id: String,
+    client_secret: String,
+}
+
+fn cloudflare_access_from_env() -> RunnerResult<Option<CloudflareAccess>> {
+    let client_id = std::env::var("CF_ACCESS_CLIENT_ID").ok();
+    let client_secret = std::env::var("CF_ACCESS_CLIENT_SECRET").ok();
+    match (client_id, client_secret) {
+        (None, None) => Ok(None),
+        (Some(client_id), Some(client_secret))
+            if !client_id.is_empty() && !client_secret.is_empty() =>
+        {
+            HeaderValue::from_str(&client_id).map_err(|e| {
+                RunnerError::Internal(format!("invalid Cloudflare Access client id: {e}"))
+            })?;
+            HeaderValue::from_str(&client_secret).map_err(|e| {
+                RunnerError::Internal(format!("invalid Cloudflare Access client secret: {e}"))
+            })?;
+            Ok(Some(CloudflareAccess {
+                client_id,
+                client_secret,
+            }))
+        }
+        _ => Err(RunnerError::Internal(
+            "Cloudflare Access credentials must be configured together".into(),
+        )),
+    }
 }
 
 #[derive(Clone)]
@@ -235,6 +268,7 @@ impl HttpClient {
             client_session_id,
         } = config;
         let api_url = normalize_api_base_url(&raw_api_url)?;
+        let cloudflare_access = cloudflare_access_from_env()?;
 
         let client = Client::builder()
             .timeout(DEFAULT_TIMEOUT)
@@ -244,6 +278,7 @@ impl HttpClient {
         info!(
             api_url = %api_url,
             vercel_bypass = vercel_bypass.is_some(),
+            cloudflare_access = cloudflare_access.is_some(),
             "http client initialized"
         );
 
@@ -252,6 +287,7 @@ impl HttpClient {
                 client,
                 api_url,
                 vercel_bypass,
+                cloudflare_access,
                 client_headers: ClientHeaders::new(client_session_id)?,
             }),
         })
@@ -289,6 +325,11 @@ impl HttpClient {
 
         if let Some(bypass) = &self.inner.vercel_bypass {
             req = req.header(VERCEL_BYPASS_HEADER, bypass);
+        }
+        if let Some(access) = &self.inner.cloudflare_access {
+            req = req
+                .header(CF_ACCESS_CLIENT_ID_HEADER, &access.client_id)
+                .header(CF_ACCESS_CLIENT_SECRET_HEADER, &access.client_secret);
         }
 
         ApiRequestBuilder {

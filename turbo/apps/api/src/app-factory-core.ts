@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import { httpInstrumentationMiddleware } from "@hono/otel";
-import * as Sentry from "@sentry/node";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_PRODUCT_HEADER,
@@ -20,12 +19,15 @@ import { HTTPException } from "hono/http-exception";
 import { matchedRoutes } from "hono/route";
 
 import { corsMiddleware } from "./lib/cors";
-import { env } from "./lib/env";
+import { verifyCloudflareAccessAssertion } from "./lib/cloudflare-access-jwt";
+import { env, optionalEnv } from "./lib/env";
+import { captureException } from "./lib/error-reporter";
+import { currentInvocation } from "./lib/invocation-context";
 import { flushLogs, logger } from "./lib/log";
 import {
   cookieHeaderValue,
-  previewAutomationBypassSecret,
   requestHasPreviewAutomationBypassHeaderOrCookie,
+  vercelPreviewAutomationBypassSecret,
   VERCEL_PROTECTION_BYPASS_HEADER,
 } from "./lib/preview-automation-bypass";
 import { now } from "./lib/time";
@@ -48,6 +50,7 @@ import {
   normalizeThrown,
   safeSync,
   safeUrlParse,
+  settle,
 } from "./signals/utils";
 
 const L = logger("App");
@@ -99,7 +102,7 @@ function shouldCaptureError(error: unknown): boolean {
 
 function captureError(error: unknown): void {
   if (shouldCaptureError(error)) {
-    Sentry.captureException(error);
+    captureException(error);
   }
 }
 
@@ -340,6 +343,31 @@ function isPreviewAutomationBypassExemptPath(context: Context): boolean {
   return context.req.path.startsWith("/api/webhooks/");
 }
 
+async function cloudflareAccessAssertionMiddleware(
+  context: Context,
+  next: Next,
+): Promise<Response | void> {
+  if (
+    !currentInvocation() ||
+    isCorsPreflightRequest(context) ||
+    isPreviewAutomationBypassExemptPath(context)
+  ) {
+    await next();
+    return;
+  }
+
+  const assertion = requestHeader(context, "cf-access-jwt-assertion");
+  if (!assertion) {
+    return context.json({ error: "Cloudflare Access assertion required" }, 401);
+  }
+  const verified = await settle(verifyCloudflareAccessAssertion(assertion));
+  if (!verified.ok) {
+    L.warn("Cloudflare Access assertion rejected", { error: verified.error });
+    return context.json({ error: "Invalid Cloudflare Access assertion" }, 401);
+  }
+  await next();
+}
+
 function bypassFingerprint(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
@@ -374,7 +402,7 @@ async function previewAutomationBypassMiddleware(
   context: Context,
   next: Next,
 ): Promise<Response | void> {
-  const secret = previewAutomationBypassSecret();
+  const secret = vercelPreviewAutomationBypassSecret();
   if (
     !secret ||
     isCorsPreflightRequest(context) ||
@@ -480,6 +508,9 @@ function axiomRequestLogEvent(
   const bodyBytes = responseBodyBytes(response);
   const remoteAddress = requestRemoteAddress(context);
   const userAgent = requestHeader(context, "user-agent");
+  const jobRef = optionalEnv("VM0_PREVIEW_JOB_REF");
+  const prNumber = jobRef?.match(/^pr-(\d+)$/)?.[1];
+  const workerVersion = currentInvocation()?.metadata.workerVersion;
 
   return {
     _time: new Date(startedAt).toISOString(),
@@ -488,6 +519,11 @@ function axiomRequestLogEvent(
     host: requestHost(context),
     path_template: requestRouteTemplate(context) ?? requestPathname(context),
     request_time_ms: Math.max(0, now() - startedAt),
+    environment: env("ENV"),
+    git_commit_sha: env("GIT_COMMIT_SHA"),
+    ...(jobRef ? { preview_job_ref: jobRef } : {}),
+    ...(prNumber ? { pr_number: Number(prNumber) } : {}),
+    ...(workerVersion ? { worker_version: workerVersion } : {}),
     ...(bodyBytes !== undefined ? { body_bytes_sent: bodyBytes } : {}),
     ...(remoteAddress ? { remote_addr: remoteAddress } : {}),
     ...(userAgent ? { user_agent: userAgent } : {}),
@@ -509,7 +545,7 @@ function scheduleAxiomRequestLog(context: Context, startedAt: number): void {
     return flushAxiom({ client: "telemetry" });
   });
   if ("ok" in flushed) {
-    waitUntil(Promise.resolve(flushed.ok));
+    waitUntil("flush-request-log", Promise.resolve(flushed.ok));
   }
 }
 
@@ -547,7 +583,7 @@ function handleError(error: unknown, context: Context): Response {
 }
 
 interface CreateAppWithRoutesOptions {
-  readonly signal: AbortSignal;
+  readonly signal?: AbortSignal;
   readonly routes: readonly RouteEntry[];
   readonly usagePricingResolution?: UsagePricingResolution;
 }
@@ -578,6 +614,7 @@ export function createAppWithRoutes({
     scheduleAxiomRequestLog(c, startedAt);
   });
 
+  app.use("*", cloudflareAccessAssertionMiddleware);
   app.use("*", previewAutomationBypassMiddleware);
 
   // Browser cross-origin requests (e.g. https://app.vm0.ai -> api.vm0.ai). Must
@@ -590,7 +627,7 @@ export function createAppWithRoutes({
   // add latency to the user-visible request.
   app.use("*", async (c, next) => {
     await next();
-    waitUntil(flushLogs());
+    waitUntil("flush-application-logs", flushLogs());
   });
 
   app.use("*", webClientCompatibilityMiddleware);

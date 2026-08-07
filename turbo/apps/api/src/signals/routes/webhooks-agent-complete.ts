@@ -39,6 +39,7 @@ const completeAgentRunRoute$ = command(
 
     if (result.sideEffects) {
       waitUntil(
+        "webhooks-agent-complete:tap-error",
         tapError(
           set(
             dispatchCompleteSideEffects$,

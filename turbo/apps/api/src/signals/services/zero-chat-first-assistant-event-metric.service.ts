@@ -102,6 +102,7 @@ async function publishFirstAssistantEventCreated(args: {
   );
   const acknowledgedAt = now();
   waitUntil(
+    "zero-chat-first-assistant-event-metric:tap-error",
     tapError(
       recordFirstAssistantEventAcknowledgement({
         db: args.db,

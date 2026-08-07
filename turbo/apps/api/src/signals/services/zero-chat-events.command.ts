@@ -2011,6 +2011,7 @@ const handleInterruptSend$ = command(
     if (shouldDispatchCancelSideEffects(cancelResult)) {
       const backgroundSignal = new AbortController().signal;
       waitUntil(
+        "zero-chat-events-command:best-effort",
         bestEffort(
           set(dispatchCancelSideEffects$, cancelResult, backgroundSignal),
         ),
@@ -2457,6 +2458,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly triggerSource: "web" | "agent";
 }): void {
   waitUntil(
+    "zero-chat-events-command:background-work",
     (async () => {
       const inserted = await appendAssociatedUserMessage({
         db: params.db,
@@ -2573,6 +2575,7 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
   readonly appendInitialThinking: boolean;
 }): void {
   waitUntil(
+    "zero-chat-events-command:background-work",
     (async () => {
       if (params.appendQueueMarker) {
         await params.db.transaction(async (tx) => {

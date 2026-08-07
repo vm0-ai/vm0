@@ -18,6 +18,8 @@ beforeEach(() => {
   vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
   vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
   vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", undefined);
+  vi.stubEnv("CF_ACCESS_CLIENT_ID", undefined);
+  vi.stubEnv("CF_ACCESS_CLIENT_SECRET", undefined);
 
   vi.stubEnv("SENTRY_DSN", "");
 });

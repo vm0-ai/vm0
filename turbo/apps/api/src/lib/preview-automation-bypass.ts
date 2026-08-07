@@ -1,4 +1,4 @@
-import { env } from "./env";
+import { env, optionalEnv } from "./env";
 import { safeUriComponentDecode } from "../signals/utils";
 
 export const VERCEL_AUTOMATION_BYPASS_ENV = "VERCEL_AUTOMATION_BYPASS_SECRET";
@@ -9,6 +9,13 @@ export function previewAutomationBypassSecret(): string | undefined {
     return undefined;
   }
   return env("VERCEL_AUTOMATION_BYPASS_SECRET");
+}
+
+export function vercelPreviewAutomationBypassSecret(): string | undefined {
+  if (!optionalEnv("VERCEL") && !optionalEnv("VERCEL_ENV")) {
+    return undefined;
+  }
+  return previewAutomationBypassSecret();
 }
 
 function unquoteCookieValue(value: string): string {

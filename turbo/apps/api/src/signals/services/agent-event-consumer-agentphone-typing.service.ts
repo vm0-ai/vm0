@@ -94,6 +94,7 @@ export const refreshAgentPhoneTypingEvents$ = command(
     signal.throwIfAborted();
 
     waitUntil(
+      "agent-event-consumer-agentphone-typing:tap-error",
       tapError(
         set(refreshAgentPhoneTypingForRun$, payload.runId, signal),
         (error) => {

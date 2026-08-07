@@ -1,0 +1,31 @@
+export const WORKER_CRON_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  "* * * * *": [
+    "/api/cron/cleanup-sandboxes",
+    "/api/cron/monitor-chat-event-queue",
+    "/api/cron/execute-workflow-automations",
+    "/api/cron/execute-morning-briefs",
+    "/api/cron/compact-usage-events",
+    "/api/cron/drain-email-outbox",
+    "/api/cron/sync-skills",
+    "/api/cron/sync-connector-catalog",
+    "/api/cron/process-usage-events",
+    "/api/cron/refresh-storage-presigned-urls",
+    "/api/cron/reconcile-browsers",
+  ],
+  "0 */12 * * *": [
+    "/api/cron/renew-gmail-watches",
+    "/api/cron/renew-google-forms-watches",
+    "/api/cron/renew-google-calendar-watches",
+    "/api/cron/renew-google-workspace-event-subscriptions",
+  ],
+  "5 0 * * *": ["/api/cron/aggregate-usage"],
+  "0 * * * *": [
+    "/api/cron/aggregate-insights",
+    "/api/cron/compact-chat-thread-snapshots",
+  ],
+  "0 1 * * *": ["/api/cron/telegram-cleanup"],
+  "15 * * * *": ["/api/cron/connector-oauth-state-cleanup"],
+  "0 0,12 * * *": ["/api/cron/reconcile-billing-entitlements"],
+  "30 2 * * *": ["/api/cron/computer-use-screenshot-cleanup"],
+  "12 * * * *": ["/api/cron/aggregate-model-stats"],
+};

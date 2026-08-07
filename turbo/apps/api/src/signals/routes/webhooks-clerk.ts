@@ -123,6 +123,7 @@ function enqueueOrgBootstrap(args: {
   readonly task: Promise<unknown>;
 }): void {
   waitUntil(
+    "webhooks-clerk:tap-error",
     tapError(args.task, (error) => {
       L.error(`${args.eventType} bootstrap failed`, {
         orgId: args.orgId,
@@ -314,6 +315,7 @@ const handleOrganizationDeletedWebhook$ = command(
     }
 
     waitUntil(
+      "webhooks-clerk:tap-error",
       tapError(set(cleanupClerkDeletedOrg$, orgId, signal), (error) => {
         L.error("organization.deleted cleanup failed", { orgId, error });
       }),
@@ -321,7 +323,6 @@ const handleOrganizationDeletedWebhook$ = command(
     return new Response("OK", { status: 200 });
   },
 );
-
 const postClerkWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const event = await verifiedClerkWebhook(get(request$).raw);
@@ -396,10 +397,11 @@ const postClerkWebhook$ = command(
         return new Response("OK", { status: 200 });
       }
 
-      waitUntil(
-        tapError(set(cleanupClerkDeletedUser$, userId, signal), (error) => {
+      enqueueClerkTask(
+        set(cleanupClerkDeletedUser$, userId, signal),
+        (error) => {
           L.error("user.deleted cleanup failed", { userId, error });
-        }),
+        },
       );
       return new Response("OK", { status: 200 });
     }
@@ -412,10 +414,11 @@ const postClerkWebhook$ = command(
         return new Response("OK", { status: 200 });
       }
 
-      waitUntil(
-        tapError(set(cleanupClerkBannedUser$, userId, signal), (error) => {
+      enqueueClerkTask(
+        set(cleanupClerkBannedUser$, userId, signal),
+        (error) => {
           L.error("user.banned cleanup failed", { userId, error });
-        }),
+        },
       );
       return new Response("OK", { status: 200 });
     }
@@ -429,16 +432,14 @@ const postClerkWebhook$ = command(
         return new Response("OK", { status: 200 });
       }
 
-      waitUntil(
-        tapError(
-          set(cleanupClerkDeletedOrgMembership$, identity, signal),
-          (error) => {
-            L.error("organizationMembership.deleted cleanup failed", {
-              ...identity,
-              error,
-            });
-          },
-        ),
+      enqueueClerkTask(
+        set(cleanupClerkDeletedOrgMembership$, identity, signal),
+        (error) => {
+          L.error("organizationMembership.deleted cleanup failed", {
+            ...identity,
+            error,
+          });
+        },
       );
       return new Response("OK", { status: 200 });
     }

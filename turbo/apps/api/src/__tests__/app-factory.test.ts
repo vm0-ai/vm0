@@ -16,7 +16,8 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { vi } from "vitest";
 import { createApp } from "../app-factory";
-import { mockEnv } from "../lib/env";
+import { mockEnv, mockOptionalEnv } from "../lib/env";
+import { runInvocation } from "../lib/invocation-context";
 import webClientCompatibility from "../lib/web-client-compatibility.json";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
 import { healthRoutes } from "../signals/routes/health";
@@ -633,6 +634,7 @@ describe("createApp", () => {
   describe("preview automation bypass", () => {
     it("rejects preview requests without the Vercel bypass header or cookie", async () => {
       mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL", "1");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({
         signal: context.signal,
@@ -653,6 +655,7 @@ describe("createApp", () => {
 
     it("allows preview requests with the matching Vercel bypass header", async () => {
       mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL", "1");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({
         signal: context.signal,
@@ -669,6 +672,7 @@ describe("createApp", () => {
 
     it("allows preview requests with a matching Vercel bypass cookie", async () => {
       mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL", "1");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({
         signal: context.signal,
@@ -687,6 +691,7 @@ describe("createApp", () => {
 
     it("rejects preview requests with the bypass secret in an unrelated cookie", async () => {
       mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL", "1");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({
         signal: context.signal,
@@ -703,6 +708,7 @@ describe("createApp", () => {
 
     it("allows preview requests with the matching Vercel bypass query", async () => {
       mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL", "1");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({
         signal: context.signal,
@@ -719,6 +725,7 @@ describe("createApp", () => {
 
     it("exempts external webhook paths from the guard without the bypass secret", async () => {
       mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL", "1");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({
         signal: context.signal,
@@ -742,6 +749,41 @@ describe("createApp", () => {
       await expect(webhook.json()).resolves.toStrictEqual({
         error: "Not found",
       });
+    });
+  });
+
+  describe("Cloudflare Access assertion", () => {
+    async function requestInWorkerInvocation(path: string): Promise<Response> {
+      const pending: Promise<unknown>[] = [];
+      const app = createApp({ routes: TEST_APP_ROUTES });
+      const response = await runInvocation(
+        {
+          waitUntil(work) {
+            pending.push(work);
+          },
+        },
+        { kind: "fetch", requestId: "test-request" },
+        async () => {
+          return await app.request(path);
+        },
+      );
+      await Promise.allSettled(pending);
+      return response;
+    }
+
+    it("rejects protected Worker requests without an Access assertion", async () => {
+      const response = await requestInWorkerInvocation("/health");
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: "Cloudflare Access assertion required",
+      });
+    });
+
+    it("keeps signed webhook paths reachable without an Access assertion", async () => {
+      const response = await requestInWorkerInvocation("/api/webhooks/clerk");
+
+      expect(response.status).toBe(404);
     });
   });
 
@@ -859,6 +901,8 @@ describe("createApp", () => {
         response.headers.get("access-control-allow-headers") ?? "";
       expect(allowHeaders).toContain("Authorization");
       expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
+      expect(allowHeaders).toContain("CF-Access-Client-Id");
+      expect(allowHeaders).toContain("CF-Access-Client-Secret");
       expect(allowHeaders).toContain("X-Client-Version");
       expect(allowHeaders).toContain("X-Client-Type");
       expect(allowHeaders).toContain("X-Client-Product");
@@ -868,6 +912,7 @@ describe("createApp", () => {
 
     it("answers preview preflight before enforcing the automation bypass", async () => {
       mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL", "1");
       mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
       const app = createApp({
         signal: context.signal,

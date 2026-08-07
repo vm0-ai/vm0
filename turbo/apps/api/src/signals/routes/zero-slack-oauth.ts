@@ -257,6 +257,7 @@ const notifyAfterConnect$ = command(
     signal: AbortSignal,
   ): void => {
     waitUntil(
+      "zero-slack-oauth:tap-error",
       tapError(
         Promise.resolve(
           set(

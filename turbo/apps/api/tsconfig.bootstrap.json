@@ -15,6 +15,7 @@
     "src/index.ts",
     "src/production-bootstrap.ts",
     "src/server.ts",
+    "src/worker.ts",
     "src/signals/route.ts"
   ],
   "exclude": ["node_modules", "dist"],

@@ -132,6 +132,7 @@ export const refreshTelegramTypingEvents$ = command(
     signal.throwIfAborted();
 
     waitUntil(
+      "agent-event-consumer-telegram-typing:tap-error",
       tapError(
         set(refreshTelegramTypingForRun$, payload.runId, signal),
         (error) => {

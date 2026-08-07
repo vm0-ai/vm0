@@ -15,6 +15,7 @@ import { server } from "../../../mocks/server";
 import {
   cliClientHeaderApi,
   createCliClientHeaderInjector,
+  headersWithCliClientHeaders,
 } from "../client-headers";
 
 function uuidSequence(...values: readonly string[]): () => string {
@@ -66,6 +67,8 @@ describe("CLI client headers", () => {
 
   it("overrides spoofed headers after contract-client header merging", async () => {
     vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-bypass");
+    vi.stubEnv("CF_ACCESS_CLIENT_ID", "access-client-id");
+    vi.stubEnv("CF_ACCESS_CLIENT_SECRET", "access-client-secret");
     const contract = initContract();
     const testContract = contract.router({
       get: {
@@ -121,6 +124,14 @@ describe("CLI client headers", () => {
     expect(secondHeaders.get("x-vercel-protection-bypass")).toBe(
       "preview-bypass",
     );
+    expect(firstHeaders.get("cf-access-client-id")).toBe("access-client-id");
+    expect(firstHeaders.get("cf-access-client-secret")).toBe(
+      "access-client-secret",
+    );
+    expect(secondHeaders.get("cf-access-client-id")).toBe("access-client-id");
+    expect(secondHeaders.get("cf-access-client-secret")).toBe(
+      "access-client-secret",
+    );
     expect(firstHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
     expect(firstHeaders.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
     expect(secondHeaders.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
@@ -139,5 +150,13 @@ describe("CLI client headers", () => {
     expect(firstHeaders.get(CLIENT_REQUEST_ID_HEADER)).not.toBe(
       "caller-request-id",
     );
+  });
+
+  it("rejects partial Cloudflare Access credentials", () => {
+    vi.stubEnv("CF_ACCESS_CLIENT_ID", "access-client-id");
+
+    expect(() => {
+      headersWithCliClientHeaders();
+    }).toThrow("Cloudflare Access credentials must be configured together");
   });
 });

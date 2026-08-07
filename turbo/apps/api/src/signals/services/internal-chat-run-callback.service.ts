@@ -1969,6 +1969,7 @@ async function handleCompletedChatCallback(
   signal.throwIfAborted();
 
   waitUntil(
+    "internal-chat-run-callback:tap-error",
     tapError(recordLastEventToComplete(args.db, args.runId), (error) => {
       log.warn("Failed to record last_event_to_complete", {
         runId: args.runId,
@@ -4912,6 +4913,7 @@ async function handleChatInternalCallback(
     if (payload.data.slackDelivery) {
       const backgroundSignal = new AbortController().signal;
       waitUntil(
+        "internal-chat-run-callback:tap-error",
         tapError(
           args.dependencies.refreshSlackThreadStatus(
             {
@@ -4957,6 +4959,7 @@ async function handleChatInternalCallback(
   // marker -> queued auto-send sequence after the callback is acknowledged.
   const backgroundSignal = new AbortController().signal;
   waitUntil(
+    "internal-chat-run-callback:tap-error",
     tapError(
       processTerminalChatCallback(
         {

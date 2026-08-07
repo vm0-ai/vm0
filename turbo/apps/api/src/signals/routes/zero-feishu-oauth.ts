@@ -502,6 +502,7 @@ async function finishFeishuOAuthConnection(
   if (connection.shouldNotify) {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
+      "zero-feishu-oauth:tap-error",
       tapError(
         notifyFeishuConnect(
           {

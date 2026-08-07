@@ -730,6 +730,7 @@ const resolveSlackRouteCompose$ = command(
       return effectiveCompose;
     }
     waitUntil(
+      "zero-slack-webhooks:tap-error",
       tapError(
         set(postSlackAgentAdmissionNotice$, {
           kind: effectiveCompose.status,
@@ -892,6 +893,7 @@ const resolveSlackAgentRouteAdmission$ = command(
     if (!connection) {
       if (!args.isRetry) {
         waitUntil(
+          "zero-slack-webhooks:tap-error",
           tapError(
             set(postSlackAgentAdmissionNotice$, {
               kind: "not_connected",
@@ -1349,6 +1351,7 @@ export const handleZeroSlackCommands$ = command(
       await disconnect(db, connection.id);
       signal.throwIfAborted();
       waitUntil(
+        "zero-slack-webhooks:tap-error",
         tapError(
           set(refreshOrgAppHome$, db, installation, payload.user_id),
           (error) => {
@@ -1554,6 +1557,7 @@ const scheduleSlackAppHomeEvent$ = command(
   ): void => {
     if (args.event.tab === "home") {
       waitUntil(
+        "zero-slack-webhooks:tap-error",
         tapError(
           set(
             handleAppHomeOpened$,
@@ -1570,6 +1574,7 @@ const scheduleSlackAppHomeEvent$ = command(
 
     if (args.event.tab === "messages") {
       waitUntil(
+        "zero-slack-webhooks:tap-error",
         tapError(
           set(
             handleMessagesTabOpened$,
@@ -1596,6 +1601,7 @@ const scheduleSlackInstallationCleanup$ = command(
     },
   ): void => {
     waitUntil(
+      "zero-slack-webhooks:tap-error",
       tapError(
         set(
           cleanupWorkspaceInstallation$,
@@ -1726,6 +1732,7 @@ export const handleZeroSlackEvents$ = command(
             // processor alive if the request signal is cancelled afterward.
             const backgroundSignal = new AbortController().signal;
             waitUntil(
+              "zero-slack-webhooks:tap-error",
               tapError(
                 set(
                   processCanonicalSlackIngress$,
@@ -1862,7 +1869,10 @@ const handleAgentPickerSubmit$ = command(
           text: `Switched to *${defaultName}* for new Slack threads.`,
         });
       }
-      waitUntil(set(refreshOrgAppHome$, db, ctx.installation, payload.user.id));
+      waitUntil(
+        "zero-slack-webhooks:refresh-org-app-home",
+        set(refreshOrgAppHome$, db, ctx.installation, payload.user.id),
+      );
       return emptyResponse();
     }
 
@@ -1894,7 +1904,10 @@ const handleAgentPickerSubmit$ = command(
         text: `Switched to *${agent.displayName ?? agent.name}* for new Slack threads.`,
       });
     }
-    waitUntil(set(refreshOrgAppHome$, db, ctx.installation, payload.user.id));
+    waitUntil(
+      "zero-slack-webhooks:refresh-org-app-home",
+      set(refreshOrgAppHome$, db, ctx.installation, payload.user.id),
+    );
     return emptyResponse();
   },
 );

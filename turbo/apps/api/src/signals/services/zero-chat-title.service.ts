@@ -394,7 +394,10 @@ export function scheduleChatThreadTitleGeneration(args: {
   if (!isChatTitleGenerationConfigured() || args.prompt.trim().length === 0) {
     return;
   }
-  waitUntil(generateAndPersistChatThreadTitle(args));
+  waitUntil(
+    "zero-chat-title:generate-and-persist-chat-thread-title",
+    generateAndPersistChatThreadTitle(args),
+  );
 }
 
 export function generateChatNotificationSummary(

@@ -6,6 +6,66 @@ export interface ResolvedFetchAddress {
   readonly family: 4 | 6;
 }
 
+interface DnsJsonAnswer {
+  readonly data: string;
+  readonly type: number;
+}
+
+interface DnsJsonResponse {
+  readonly Answer?: readonly DnsJsonAnswer[];
+}
+
+export function isCloudflareWorkerRuntime(): boolean {
+  return globalThis.navigator?.userAgent === "Cloudflare-Workers";
+}
+
+function isDnsJsonResponse(value: unknown): value is DnsJsonResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const answer = (value as { readonly Answer?: unknown }).Answer;
+  return (
+    answer === undefined ||
+    (Array.isArray(answer) &&
+      answer.every((entry) => {
+        return (
+          entry !== null &&
+          typeof entry === "object" &&
+          typeof entry.data === "string" &&
+          typeof entry.type === "number"
+        );
+      }))
+  );
+}
+
+async function resolveWithDnsOverHttps(
+  hostname: string,
+  type: "A" | "AAAA",
+): Promise<ResolvedFetchAddress[]> {
+  const url = new URL("https://cloudflare-dns.com/dns-query");
+  url.searchParams.set("name", hostname);
+  url.searchParams.set("type", type);
+  const response = await fetch(url, {
+    headers: { accept: "application/dns-json" },
+    redirect: "error",
+  });
+  if (!response.ok) {
+    throw new Error(`DNS over HTTPS returned ${response.status}`);
+  }
+  const payload: unknown = await response.json();
+  if (!isDnsJsonResponse(payload)) {
+    throw new Error("DNS over HTTPS returned an invalid response");
+  }
+  const expectedType = type === "A" ? 1 : 28;
+  return (payload.Answer ?? [])
+    .filter((answer) => {
+      return answer.type === expectedType;
+    })
+    .map((answer) => {
+      return { address: answer.data, family: type === "A" ? 4 : 6 };
+    });
+}
+
 // Non-public and address-translation ranges we must never fetch from.
 const BLOCKED_IPV4_RANGES: Readonly<BlockList> = (() => {
   const ranges = new BlockList();
@@ -62,6 +122,13 @@ function fetchAddressIsBlocked({ address, family }: ResolvedFetchAddress) {
 export async function resolveFetchHostAddresses(
   hostname: string,
 ): Promise<ResolvedFetchAddress[]> {
+  if (isCloudflareWorkerRuntime()) {
+    const [ipv4, ipv6] = await Promise.all([
+      resolveWithDnsOverHttps(hostname, "A"),
+      resolveWithDnsOverHttps(hostname, "AAAA"),
+    ]);
+    return [...ipv4, ...ipv6];
+  }
   const addresses = await lookup(hostname, { all: true });
   return addresses.map(({ address, family }) => {
     return { address, family: family === 6 ? 6 : 4 };

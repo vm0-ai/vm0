@@ -5,6 +5,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";
+import { cloudflareAccessHeadersForApiUrl } from "../../lib/cloudflare-access";
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$ } from "../external/db";
@@ -141,12 +142,14 @@ export const dispatchProgressCallbacks$ = command(
           timestamp,
         );
 
-        return fetch(resolveCallbackUrl(callback.url), {
+        const callbackUrl = resolveCallbackUrl(callback.url);
+        return fetch(callbackUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-VM0-Signature": signature,
             "X-VM0-Timestamp": timestamp.toString(),
+            ...cloudflareAccessHeadersForApiUrl(callbackUrl),
           },
           body,
           signal,

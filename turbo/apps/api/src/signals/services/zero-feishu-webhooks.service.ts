@@ -332,6 +332,7 @@ async function admitInboundFeishuMessage(
   }
   const backgroundSignal = new AbortController().signal;
   waitUntil(
+    "zero-feishu-webhooks:tap-error",
     tapError(args.processIngress(ingress.id, backgroundSignal), (error) => {
       L.error("Canonical Feishu ingress processing failed", {
         ingressId: ingress.id,

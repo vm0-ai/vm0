@@ -11,7 +11,7 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import { createStore, state } from "ccstate";
-import type { Pool, PoolClient } from "pg";
+import type { Client, Pool, PoolClient } from "pg";
 
 import { deriveSqlSpanName } from "./sql-span-name";
 
@@ -44,6 +44,11 @@ type PoolConnectCallback = (
   release?: PoolRelease,
 ) => void;
 type LookupSource = "primary" | "secondary";
+
+interface PgQueryObservation {
+  readonly durationMs: number;
+  readonly error?: unknown;
+}
 
 interface InstrumentedPgStreamOptions {
   lookup?: LookupFunction;
@@ -399,6 +404,7 @@ function instrumentQuery(
   original: PgQuery,
   tracer: Tracer,
   markPoolQuery: boolean,
+  observe?: (observation: PgQueryObservation) => void,
 ): PgQuery {
   return function instrumentedQuery(this: unknown, ...args: AnyArgs): unknown {
     // pg query is overloaded: when the caller passes a trailing callback
@@ -412,6 +418,7 @@ function instrumentQuery(
 
     const sql = extractSql(args);
     const spanName = deriveSqlSpanName(sql) ?? "pg.query";
+    const startedAt = performance.now();
     return tracer.startActiveSpan(
       spanName,
       {
@@ -448,6 +455,7 @@ function instrumentQuery(
           .then(
             (result) => {
               span.setStatus({ code: SpanStatusCode.OK });
+              observe?.({ durationMs: performance.now() - startedAt });
               return result;
             },
             (error: unknown) => {
@@ -458,6 +466,10 @@ function instrumentQuery(
               span.recordException(
                 error instanceof Error ? error : String(error),
               );
+              observe?.({
+                durationMs: performance.now() - startedAt,
+                error,
+              });
               throw error;
             },
           )
@@ -523,4 +535,20 @@ export function instrumentPgPool(pool: Pool, tracer: Tracer): Pool {
   } as Pool["connect"];
 
   return pool;
+}
+
+export function instrumentPgClient(
+  client: Client,
+  tracer: Tracer,
+  observe?: (observation: PgQueryObservation) => void,
+): Client {
+  const originalQuery = client.query.bind(client) as PgQuery;
+  client.query = instrumentQuery(
+    client,
+    originalQuery,
+    tracer,
+    false,
+    observe,
+  ) as Client["query"];
+  return client;
 }

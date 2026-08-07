@@ -10,10 +10,10 @@ use super::super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::super::env::{
-    HostEnv, build_env_json_with_host_env, build_run_payload_for_run, build_user_env_json,
-    guest_run_payload_file_path, guest_user_env_file_path, is_runner_owned_env_key,
-    validate_execution_context_before_sandbox, validate_model_provider_env_placeholders,
-    write_run_payload_file, write_user_env_file,
+    CloudflareAccess, HostEnv, build_env_json_with_host_env, build_run_payload_for_run,
+    build_user_env_json, guest_run_payload_file_path, guest_user_env_file_path,
+    is_runner_owned_env_key, validate_execution_context_before_sandbox,
+    validate_model_provider_env_placeholders, write_run_payload_file, write_user_env_file,
 };
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
@@ -572,6 +572,14 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
             "user-bypass".into(),
         ),
         (
+            guest_contracts::env::CF_ACCESS_CLIENT_ID_ENV.into(),
+            "user-access-client-id".into(),
+        ),
+        (
+            guest_contracts::env::CF_ACCESS_CLIENT_SECRET_ENV.into(),
+            "user-access-client-secret".into(),
+        ),
+        (
             guest_contracts::env::DISALLOWED_TOOLS_ENV.into(),
             "CronCreate".into(),
         ),
@@ -629,6 +637,8 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+        guest_contracts::env::CF_ACCESS_CLIENT_ID_ENV,
+        guest_contracts::env::CF_ACCESS_CLIENT_SECRET_ENV,
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
         guest_contracts::env::TOOLS_ENV,
         guest_contracts::env::SETTINGS_ENV,
@@ -680,6 +690,10 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
         "http://localhost",
         &HostEnv {
             vercel_automation_bypass_secret: Some("bypass".into()),
+            cloudflare_access: Some(CloudflareAccess {
+                client_id: "access-client-id".into(),
+                client_secret: "access-client-secret".into(),
+            }),
             use_mock_claude: Some("true".into()),
             ..HostEnv::default()
         },
@@ -696,6 +710,8 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
         guest_contracts::env::USE_MOCK_CLAUDE_ENV,
         guest_contracts::env::USE_MOCK_CODEX_ENV,
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+        guest_contracts::env::CF_ACCESS_CLIENT_ID_ENV,
+        guest_contracts::env::CF_ACCESS_CLIENT_SECRET_ENV,
     ] {
         assert!(
             is_runner_owned_env_key(key),

@@ -49,6 +49,7 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   for (const cancelled of result.cancelledRuns) {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
+      "zero-chat-threads-delete:tap-error",
       tapError(
         set(dispatchCancelSideEffects$, cancelled, backgroundSignal),
         (error) => {

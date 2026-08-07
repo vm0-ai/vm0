@@ -76,6 +76,7 @@ export function recordSandboxOperations(
   }
 
   waitUntil(
+    "sandbox-op-log:tap-error",
     tapError(Promise.resolve(ingestResult.ok), (error) => {
       L.warn("Failed to ingest sandbox operation log", { error });
     }),

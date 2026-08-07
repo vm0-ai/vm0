@@ -81,6 +81,18 @@ if readiness_source.include?("2>/dev/null || true")
   raise "Pages readiness must not ignore curl transfer failures"
 end
 
+prepare_step = find_step.call("Prepare Cloudflare Pages preview")
+prepare_run = prepare_step.fetch("run")
+unless deploy_app.fetch("env").key?("CF_WORKERS_SUBDOMAIN")
+  raise "Pages build must receive the Worker preview subdomain"
+end
+unless prepare_run.include?("-vm0-api-preview.${CF_WORKERS_SUBDOMAIN}.workers.dev")
+  raise "Pages build must embed the stable API Worker preview alias"
+end
+if prepare_run.include?("-api.${PREVIEW_DOMAIN}")
+  raise "Pages build still embeds the retired Vercel API preview origin"
+end
+
 preview_step = find_step.call("Resolve app preview gateway URL")
 raise "app preview step id changed" unless preview_step["id"] == "app-preview"
 if preview_step.key?("if")

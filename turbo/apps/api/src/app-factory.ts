@@ -4,7 +4,7 @@ import { createAppWithRoutes } from "./app-factory-core";
 import type { RouteEntry } from "./signals/route-entry";
 
 interface CreateAppOptions {
-  readonly signal: AbortSignal;
+  readonly signal?: AbortSignal;
   readonly routes: readonly RouteEntry[];
 }
 

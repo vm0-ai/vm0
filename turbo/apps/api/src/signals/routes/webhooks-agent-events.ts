@@ -54,6 +54,7 @@ const receiveEvents$ = command(async ({ get, set }, signal: AbortSignal) => {
   const result = deadlineResult.value;
   if ("acceptedEvents" in result && result.acceptedEvents !== undefined) {
     waitUntil(
+      "webhooks-agent-events:dispatch-optional-agent-event-consumers",
       set(dispatchOptionalAgentEventConsumers$, result.acceptedEvents, signal),
     );
   }

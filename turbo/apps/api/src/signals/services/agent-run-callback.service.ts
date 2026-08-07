@@ -5,6 +5,7 @@ import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { and, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { env, optionalEnv } from "../../lib/env";
 import { computeHmacSignature } from "../../lib/event-consumer/hmac";
+import { cloudflareAccessHeadersForApiUrl } from "../../lib/cloudflare-access";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
@@ -673,6 +674,7 @@ async function dispatchHttpCallback(
   });
   const timestamp = Math.floor(now() / 1000);
   const signature = computeHmacSignature(body, secret, timestamp);
+  const callbackUrl = resolveCallbackUrl(callback.url);
 
   await markCallbackAttemptStarted(db, callback.id);
 
@@ -685,9 +687,10 @@ async function dispatchHttpCallback(
   if (bypass) {
     headers["x-vercel-protection-bypass"] = bypass;
   }
+  Object.assign(headers, cloudflareAccessHeadersForApiUrl(callbackUrl));
 
   const responseResult = await settle(
-    fetch(resolveCallbackUrl(callback.url), {
+    fetch(callbackUrl, {
       method: "POST",
       headers,
       body,

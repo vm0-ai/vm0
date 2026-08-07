@@ -19,6 +19,7 @@ import { secrets } from "@vm0/db/schema/secret";
 
 import {
   fetchHostHasBlockedAddress,
+  isCloudflareWorkerRuntime,
   resolveFetchHostAddresses,
   type ResolvedFetchAddress,
 } from "../../lib/blocked-fetch-host";
@@ -164,6 +165,47 @@ async function postPublicHttpsForm(
   const address = await resolvePublicHttpsAddress(url);
   signal.throwIfAborted();
   const body = form.toString();
+  if (isCloudflareWorkerRuntime()) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+        ...(authorization ? { authorization } : {}),
+      },
+      body,
+      redirect: "error",
+      signal,
+    });
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    if (reader) {
+      while (true) {
+        const read = await reader.read();
+        if (read.done) {
+          break;
+        }
+        size += read.value.byteLength;
+        if (size > MAX_TOKEN_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw new Error("OAuth token response is too large");
+        }
+        chunks.push(read.value);
+      }
+    }
+    const payload = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      payload.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type") ?? "",
+      body: new TextDecoder().decode(payload),
+    };
+  }
   const deferred = createDeferredPromise<PublicHttpsResponse>(signal);
   const request = httpsRequest(
     url,

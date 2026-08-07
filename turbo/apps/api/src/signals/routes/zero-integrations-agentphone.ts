@@ -956,6 +956,7 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   waitUntil(
+    "zero-integrations-agentphone:tap-error",
     tapError(
       set(handleAgentPhoneMessage$, { event, userLink, apiStartTime }, signal),
       (error) => {

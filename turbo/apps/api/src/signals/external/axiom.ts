@@ -2,6 +2,7 @@ import { computed, type Computed } from "ccstate";
 import { Axiom } from "@axiomhq/js";
 
 import { env, optionalEnv } from "../../lib/env";
+import { invocationResource } from "../../lib/invocation-context";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import { startUntrackedBestEffortCleanup } from "../utils";
@@ -19,23 +20,62 @@ function logClientError(client: "sessions" | "telemetry", error: Error): void {
   L.error("Axiom client operation failed", { client, error });
 }
 
-const sessionsAxiomClient = singleton(() => {
+const SESSIONS_AXIOM_RESOURCE = Symbol("sessions-axiom-client");
+const TELEMETRY_AXIOM_RESOURCE = Symbol("telemetry-axiom-client");
+
+function createSessionsAxiomClient(): Axiom {
   return new Axiom({
     token: env("AXIOM_TOKEN_SESSIONS"),
     onError: (error) => {
       logClientError("sessions", error);
     },
   });
-});
+}
 
-const telemetryAxiomClient = singleton(() => {
+function createTelemetryAxiomClient(): Axiom {
   return new Axiom({
     token: env("AXIOM_TOKEN_TELEMETRY"),
     onError: (error) => {
       logClientError("telemetry", error);
     },
   });
-});
+}
+
+const fallbackSessionsAxiomClient = singleton(createSessionsAxiomClient);
+const fallbackTelemetryAxiomClient = singleton(createTelemetryAxiomClient);
+
+function invocationAxiomClient(
+  key: symbol,
+  create: () => Axiom,
+  fallback: () => Axiom,
+): Axiom {
+  const resource = invocationResource(key, () => {
+    const value = create();
+    return {
+      value,
+      async dispose(): Promise<void> {
+        await value.flush();
+      },
+    };
+  });
+  return resource?.value ?? fallback();
+}
+
+function sessionsAxiomClient(): Axiom {
+  return invocationAxiomClient(
+    SESSIONS_AXIOM_RESOURCE,
+    createSessionsAxiomClient,
+    fallbackSessionsAxiomClient,
+  );
+}
+
+function telemetryAxiomClient(): Axiom {
+  return invocationAxiomClient(
+    TELEMETRY_AXIOM_RESOURCE,
+    createTelemetryAxiomClient,
+    fallbackTelemetryAxiomClient,
+  );
+}
 
 export function getDatasetName(base: string): string {
   return `vm0-${base}-${env("AXIOM_DATASET_SUFFIX")}`;

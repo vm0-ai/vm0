@@ -157,7 +157,10 @@ const heartbeat$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Agent run not found");
   }
 
-  waitUntil(set(dispatchProgressCallbacks$, body.runId, signal));
+  waitUntil(
+    "webhooks-agent-health-usage-telemetry:dispatch-progress-callbacks",
+    set(dispatchProgressCallbacks$, body.runId, signal),
+  );
 
   return {
     status: 200 as const,

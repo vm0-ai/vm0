@@ -1,5 +1,5 @@
-name: "Web/API Vercel Environment"
-description: "Render the shared Web and API Vercel environment into a key=value file"
+name: "Web/API Deployment Environment"
+description: "Render the shared Web and API deployment environment into a key=value file"
 
 outputs:
   file:
@@ -222,10 +222,8 @@ runs:
             add_env VM0_MACHINE_SECRET_KEY "$machine_secret_key"
           fi
         fi
-        # Inject the checked-out build commit explicitly so OTel / Sentry can
-        # tag service.version and release on every deploy. Vercel CLI prebuilt
-        # deploys do not reliably populate Vercel's own VERCEL_GIT_* system
-        # vars, and we don't want runtime to depend on Vercel auto-injection.
+        # Inject the checked-out build commit explicitly so telemetry can tag
+        # service.version and release consistently across deployment runtimes.
         build_commit_sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
         add_env GIT_COMMIT_SHA "$build_commit_sha"
         add_env BLOG_BASE_URL "$web_url"
@@ -432,6 +430,12 @@ runs:
         add_var GCP_WORKLOAD_IDENTITY_POOL_ID GCP_WORKLOAD_IDENTITY_POOL_ID
         add_var GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID
         add_secret VERCEL_AUTOMATION_BYPASS_SECRET VERCEL_AUTOMATION_BYPASS_SECRET
+        if [[ "$INPUT_APP" == "api" && "$INPUT_ENVIRONMENT" == "preview" ]]; then
+          add_var CF_ACCESS_AUD CF_API_PREVIEW_ACCESS_AUD
+          add_var CF_ACCESS_TEAM_DOMAIN CF_ACCESS_TEAM_DOMAIN
+          add_secret CF_ACCESS_CLIENT_ID CF_API_PREVIEW_ACCESS_CLIENT_ID
+          add_secret CF_ACCESS_CLIENT_SECRET CF_API_PREVIEW_ACCESS_CLIENT_SECRET
+        fi
 
         echo "file=$env_file" >> "$GITHUB_OUTPUT"
         echo "Rendered $(wc -l < "$env_file") Web/API environment variables to $env_file"

@@ -2,6 +2,9 @@ import { createEnv } from "@t3-oss/env-core";
 import { z, type ZodType } from "zod";
 
 import { testOverride } from "./singleton";
+import { resolveRuntimeEnv } from "./worker-env";
+
+const runtimeEnv = resolveRuntimeEnv(process.env);
 
 const priceIdsSchema = z
   .string()
@@ -58,6 +61,8 @@ const SCHEMA = {
   VITEST: z.enum(["true", "false"]).default("false"),
   VM0_DEBUG: z.string().default(""),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
+  CF_ACCESS_AUD: z.string().min(1).optional(),
+  CF_ACCESS_TEAM_DOMAIN: z.string().min(1).optional(),
   // Direct origin of the API backend for self-dispatched internal callbacks
   // (`/api/internal/**`). Optional; when unset, production defaults to the API
   // backend origin and other environments fall back to VM0_WEB_URL.
@@ -186,9 +191,8 @@ const SCHEMA = {
 const baseEnv = createEnv<undefined, typeof SCHEMA>({
   server: SCHEMA,
   runtimeEnv: {
-    ...process.env,
-    S3_PUBLIC_ENDPOINT:
-      process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT,
+    ...runtimeEnv,
+    S3_PUBLIC_ENDPOINT: runtimeEnv.S3_PUBLIC_ENDPOINT || runtimeEnv.S3_ENDPOINT,
   },
   emptyStringAsUndefined: true,
 });
@@ -263,7 +267,7 @@ export function optionalEnv(name: string): string | undefined {
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name];
   }
-  return process.env[name] || undefined;
+  return runtimeEnv[name] || undefined;
 }
 
 export function mockEnv<K extends EnvName>(

@@ -10,6 +10,7 @@
 # Optional env vars:
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
 #   VERCEL_AUTOMATION_BYPASS_SECRET — Seed preview bypass cookies
+#   CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET — Authorize API preview calls
 
 # ---------------------------------------------------------------------------
 # url_is_on_app — Check if a URL's hostname matches the expected app hostname
@@ -56,6 +57,26 @@ browser_setup() {
     agent-browser set viewport 1920 1080 || return
 
   seed_preview_bypass_cookies || return
+  seed_cloudflare_access_headers || return
+}
+
+seed_cloudflare_access_headers() {
+  if [[ -z "${CF_ACCESS_CLIENT_ID:-}" && -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+    return
+  fi
+  if [[ -z "${CF_ACCESS_CLIENT_ID:-}" || -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+    echo "Cloudflare Access credentials must be configured together" >&2
+    return 1
+  fi
+
+  local headers
+  headers="$(jq -nc \
+    --arg client_id "$CF_ACCESS_CLIENT_ID" \
+    --arg client_secret "$CF_ACCESS_CLIENT_SECRET" \
+    '{"CF-Access-Client-Id": $client_id, "CF-Access-Client-Secret": $client_secret}')"
+  AGENT_BROWSER_IGNORE_HTTPS_ERRORS=true \
+    agent-browser --headers "$headers" open "${VM0_API_BACKEND_URL%/}/health" \
+    >/dev/null || return
 }
 
 # ---------------------------------------------------------------------------

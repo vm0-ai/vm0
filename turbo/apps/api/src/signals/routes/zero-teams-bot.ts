@@ -387,6 +387,7 @@ const handleZeroTeamsBot$ = command(
     );
     if (normalized.activity.kind === "message") {
       waitUntil(
+        "zero-teams-bot:tap-error",
         tapError(
           set(
             dispatchTeamsMessageAndReply$,
@@ -407,6 +408,7 @@ const handleZeroTeamsBot$ = command(
 
     if (teamsInstallWelcomeActivity(normalized.activity)) {
       waitUntil(
+        "zero-teams-bot:tap-error",
         tapError(
           set(sendTeamsInstallWelcome$, normalized.activity, signal),
           (error) => {

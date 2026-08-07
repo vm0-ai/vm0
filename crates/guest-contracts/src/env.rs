@@ -60,6 +60,12 @@ pub const APPEND_SYSTEM_PROMPT_ENV: &str = "VM0_APPEND_SYSTEM_PROMPT";
 /// secret is configured.
 pub const VERCEL_PROTECTION_BYPASS_ENV: &str = "VERCEL_PROTECTION_BYPASS";
 
+/// Cloudflare Access service-token client id for guest API calls.
+pub const CF_ACCESS_CLIENT_ID_ENV: &str = "CF_ACCESS_CLIENT_ID";
+
+/// Cloudflare Access service-token client secret for guest API calls.
+pub const CF_ACCESS_CLIENT_SECRET_ENV: &str = "CF_ACCESS_CLIENT_SECRET";
+
 /// Optional CLI session or thread identifier used when resuming a prior agent
 /// session.
 ///
@@ -377,6 +383,8 @@ const NON_VM0_RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     USE_MOCK_CLAUDE_ENV,
     USE_MOCK_CODEX_ENV,
     VERCEL_PROTECTION_BYPASS_ENV,
+    CF_ACCESS_CLIENT_ID_ENV,
+    CF_ACCESS_CLIENT_SECRET_ENV,
 ];
 
 const USER_ENV_KEY_DIAGNOSTIC_MAX_CHARS: usize = 128;

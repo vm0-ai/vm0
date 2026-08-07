@@ -163,6 +163,7 @@ function sendConnectSuccessMessage(args: {
     : "✅ Account linked.\nSend me a message to start chatting with your agent.";
 
   waitUntil(
+    "integrations-telegram-link:tap-error",
     tapError(
       deliverConnectSuccessMessage({
         botToken: args.botToken,

@@ -300,6 +300,7 @@ checkImporters(resolve(sourceRoot, "signals/route.ts"), [
 checkImporters(resolve(sourceRoot, "production-bootstrap.ts"), [
   "src/index.ts",
   "src/server.ts",
+  "src/worker.ts",
 ]);
 
 const dbSource = fs.readFileSync(resolve(sourceRoot, "lib/db.ts"), "utf8");
@@ -370,5 +371,5 @@ const programSummary = programConfigs
   })
   .join(", ");
 process.stdout.write(
-  `TypeScript boundaries: roots=${baselineRoots.size}; ${programSummary}; missing=0; extra=0; overlaps=0; setupApp=${setupAppCalls}; createApp=${createAppCalls}; aggregate-importers=2; bootstrap-importers=2; drizzle-schema=erased\n`,
+  `TypeScript boundaries: roots=${baselineRoots.size}; ${programSummary}; missing=0; extra=0; overlaps=0; setupApp=${setupAppCalls}; createApp=${createAppCalls}; aggregate-importers=2; bootstrap-importers=3; drizzle-schema=erased\n`,
 );

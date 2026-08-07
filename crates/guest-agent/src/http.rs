@@ -99,7 +99,13 @@ struct ApiHttpConfig {
     urls: ApiUrls,
     token: String,
     vercel_bypass: String,
+    cloudflare_access: Option<CloudflareAccess>,
     client_session_id: String,
+}
+
+struct CloudflareAccess {
+    client_id: String,
+    client_secret: String,
 }
 
 #[derive(Clone)]
@@ -315,8 +321,34 @@ impl ApiHttpConfig {
             urls: ApiUrls::new(&base_url),
             token,
             vercel_bypass,
+            cloudflare_access: cloudflare_access_from_env()?,
             client_session_id,
         })
+    }
+}
+
+fn cloudflare_access_from_env() -> Result<Option<CloudflareAccess>, AgentError> {
+    let client_id = std::env::var(guest_contracts::env::CF_ACCESS_CLIENT_ID_ENV).ok();
+    let client_secret = std::env::var(guest_contracts::env::CF_ACCESS_CLIENT_SECRET_ENV).ok();
+    match (client_id, client_secret) {
+        (None, None) => Ok(None),
+        (Some(client_id), Some(client_secret))
+            if !client_id.is_empty() && !client_secret.is_empty() =>
+        {
+            reqwest::header::HeaderValue::from_str(&client_id).map_err(|e| {
+                AgentError::Http(format!("invalid Cloudflare Access client id: {e}"))
+            })?;
+            reqwest::header::HeaderValue::from_str(&client_secret).map_err(|e| {
+                AgentError::Http(format!("invalid Cloudflare Access client secret: {e}"))
+            })?;
+            Ok(Some(CloudflareAccess {
+                client_id,
+                client_secret,
+            }))
+        }
+        _ => Err(AgentError::Http(
+            "Cloudflare Access credentials must be configured together".into(),
+        )),
     }
 }
 
@@ -481,6 +513,71 @@ impl HttpClient {
         self.post_json_bytes(url, body, max_attempts).await
     }
 
+    /// Read the next Pi transcript page after the standby's current cursor.
+    ///
+    /// The sandbox token remains inside guest-agent; the zero child receives
+    /// only the parsed response through its local JSONL protocol.
+    pub async fn get_pi_transcript(
+        &self,
+        run_id: &str,
+        after_ordinal: u32,
+        max_attempts: u32,
+    ) -> Result<PiTranscriptResponse, AgentError> {
+        let client = self.inner()?;
+        let api = self.api_config()?;
+        let url = self.pi_transcript_url()?;
+        let mut transcript_url = Url::parse(url)
+            .map_err(|error| AgentError::Http(format!("invalid Pi transcript URL: {error}")))?;
+        transcript_url
+            .query_pairs_mut()
+            .append_pair("runId", run_id)
+            .append_pair("afterOrdinal", &after_ordinal.to_string());
+        let response = send_with_retry(
+            "GET Pi transcript",
+            max_attempts,
+            self.retry_delay,
+            format!("GET Pi transcript failed after {max_attempts} attempts"),
+            || {
+                let request_id = Uuid::new_v4().to_string();
+                let mut request = client
+                    .get(transcript_url.clone())
+                    .header("Authorization", format!("Bearer {}", api.token))
+                    .header(CLIENT_VERSION_HEADER, GUEST_AGENT_CLIENT_VERSION)
+                    .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
+                    .header(CLIENT_SESSION_ID_HEADER, api.client_session_id.as_str())
+                    .header(CLIENT_REQUEST_ID_HEADER, &request_id);
+                if !api.vercel_bypass.is_empty() {
+                    request =
+                        request.header("x-vercel-protection-bypass", &api.vercel_bypass);
+                }
+                if let Some(access) = &api.cloudflare_access {
+                    request = request
+                        .header("cf-access-client-id", &access.client_id)
+                        .header("cf-access-client-secret", &access.client_secret);
+                }
+                std::future::ready(Ok(RetryRequest::observed(request, request_id)))
+            },
+            |response, attempt, max_attempts| async move {
+                let status = response.status();
+                log_warn!(
+                    LOG_TAG,
+                    "HTTP GET Pi transcript failed (attempt {attempt}/{max_attempts}): HTTP {status}",
+                );
+                AgentError::HttpStatus {
+                    status: status.as_u16(),
+                    message: format!("GET Pi transcript: HTTP {status}"),
+                }
+            },
+            None,
+        )
+        .await?;
+
+        response
+            .json::<PiTranscriptResponse>()
+            .await
+            .map_err(|error| AgentError::Http(format_reqwest_error(error)))
+    }
+
     pub(crate) async fn post_json_bytes(
         &self,
         url: &str,
@@ -572,6 +669,11 @@ impl HttpClient {
 
                 if !api.vercel_bypass.is_empty() {
                     req = req.header("x-vercel-protection-bypass", &api.vercel_bypass);
+                }
+                if let Some(access) = &api.cloudflare_access {
+                    req = req
+                        .header("cf-access-client-id", &access.client_id)
+                        .header("cf-access-client-secret", &access.client_secret);
                 }
 
                 req = req

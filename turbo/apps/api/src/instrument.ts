@@ -1,13 +1,21 @@
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 import {
+  captureException,
   httpIntegration,
   init,
   nativeNodeFetchIntegration,
 } from "@sentry/node";
+import {
+  attachDatabasePool,
+  waitUntil as vercelWaitUntil,
+} from "@vercel/functions";
 import { registerOTel } from "@vercel/otel";
 
+import { configureErrorReporter } from "./lib/error-reporter";
+import { configureDatabasePoolAttachment } from "./lib/db";
 import { env } from "./lib/env";
+import { configureWaitUntilAdapter } from "./signals/context/wait-until";
 
 const OTEL_SERVICE_NAME = "vm0-api";
 
@@ -60,6 +68,9 @@ function setupSentry() {
 }
 
 function instrument() {
+  configureWaitUntilAdapter(vercelWaitUntil);
+  configureDatabasePoolAttachment(attachDatabasePool);
+  configureErrorReporter(captureException);
   setupOpenTelemetry();
   setupSentry();
 }

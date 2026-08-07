@@ -326,26 +326,27 @@ jobs:
 
       - name: Set preview URLs
         id: preview-urls
+        env:
+          CF_WORKERS_SUBDOMAIN: ${{ vars.CF_WORKERS_SUBDOMAIN }}
         run: |
           JOB_REF="${{ steps.set-job-ref.outputs.job-ref }}"
-          PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
           CF_PAGES_PREVIEW_DOMAIN="${{ vars.CF_PAGES_PREVIEW_DOMAIN }}"
 
-          if [ -n "$PREVIEW_DOMAIN" ] && [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
+          if [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$CF_WORKERS_SUBDOMAIN" ] && [ -n "$JOB_REF" ]; then
             APP_URL="$(bash .github/scripts/resolve-app-preview-url.sh \
               "$JOB_REF" \
               "$CF_PAGES_PREVIEW_DOMAIN")"
             {
               echo "app-url=${APP_URL}"
-              echo "api-url=https://${JOB_REF}-api.${PREVIEW_DOMAIN}"
+              echo "api-url=https://${JOB_REF}-vm0-api-preview.${CF_WORKERS_SUBDOMAIN}.workers.dev"
             } >> "$GITHUB_OUTPUT"
-            echo "App preview URL uses ${CF_PAGES_PREVIEW_DOMAIN}; API preview uses ${PREVIEW_DOMAIN}"
+            echo "App preview URL uses ${CF_PAGES_PREVIEW_DOMAIN}; API preview uses the Worker alias"
           else
             {
               echo "app-url="
               echo "api-url="
             } >> "$GITHUB_OUTPUT"
-            echo "Preview URL not set (preview domain or job-ref is empty)"
+            echo "Preview URL not set (preview domain, Worker subdomain, or job-ref is empty)"
           fi
 
   file-size-check:
@@ -894,7 +895,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       )
     outputs:
-      preview-url: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
+      preview-url: ${{ steps.api-deploy.outputs.url }}
     permissions:
       contents: read
       pull-requests: write
@@ -1074,30 +1075,104 @@ jobs:
           API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
 
-      - name: Deploy API to Vercel
-        id: api-deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
-          environment: preview
-          deployment-env: api
-          prebuilt: "true"
-          prebuilt-build-command: |
-            pnpm --dir turbo/apps/api build
-            rm -rf .vercel/output
-            cp -R turbo/apps/api/.vercel/output .vercel/output
-          environment-file: ${{ steps.api-deploy-env.outputs.file }}
-          meta-branch: ${{ github.head_ref || github.ref_name }}
-          meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-start: ${{ github.event_name == 'merge_group' }}
-          skip-finish: ${{ github.event_name == 'merge_group' || (github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '') }}
-
-      - name: Check API health
+      - name: Build Worker secret shards
+        id: worker-secrets
+        env:
+          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
         run: |
           set -euo pipefail
-          vercel curl /health --deployment "$API_DEPLOYMENT_URL" --token "$VERCEL_TOKEN" -- \
+          grep -q '^CF_ACCESS_CLIENT_ID=.' "$API_ENV_FILE" || {
+            echo "::error::CF_API_PREVIEW_ACCESS_CLIENT_ID secret is required"
+            exit 1
+          }
+          grep -q '^CF_ACCESS_CLIENT_SECRET=.' "$API_ENV_FILE" || {
+            echo "::error::CF_API_PREVIEW_ACCESS_CLIENT_SECRET secret is required"
+            exit 1
+          }
+          grep -q '^CF_ACCESS_AUD=.' "$API_ENV_FILE" || {
+            echo "::error::CF_API_PREVIEW_ACCESS_AUD variable is required"
+            exit 1
+          }
+          grep -q '^CF_ACCESS_TEAM_DOMAIN=.' "$API_ENV_FILE" || {
+            echo "::error::CF_ACCESS_TEAM_DOMAIN variable is required"
+            exit 1
+          }
+          pnpm --dir turbo --filter api worker:secrets:test
+          secrets_file="${RUNNER_TEMP}/vm0-api-worker-secrets.json"
+          node turbo/apps/api/scripts/build-worker-secrets.mjs "$API_ENV_FILE" "$secrets_file"
+          echo "file=$secrets_file" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy API Worker Preview
+        id: api-deploy
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
+          CF_WORKERS_SUBDOMAIN: ${{ vars.CF_WORKERS_SUBDOMAIN }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.file }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.json
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+          : "${CF_WORKERS_SUBDOMAIN:?CF_WORKERS_SUBDOMAIN variable is required}"
+
+          upload_log="${RUNNER_TEMP}/vm0-api-worker-upload.log"
+          pnpm --dir turbo --filter api exec wrangler versions upload \
+            --env preview \
+            --preview-alias "$JOB_REF" \
+            --secrets-file "$WORKER_SECRETS_FILE" \
+            --upload-source-maps 2>&1 | tee "$upload_log"
+
+          version_id="$(jq -rs '[.[] | select(.type == "version-upload")][0].version_id // empty' "$WRANGLER_OUTPUT_FILE_PATH")"
+          if [[ -z "$version_id" ]]; then
+            echo "::error::Wrangler did not report an uploaded Worker version id"
+            cat "$WRANGLER_OUTPUT_FILE_PATH"
+            exit 1
+          fi
+          startup_time_ms="$(grep -oE 'Worker Startup Time: [0-9]+ ms' "$upload_log" | tail -1 | grep -oE '[0-9]+' || true)"
+          if [[ -z "$startup_time_ms" || "$startup_time_ms" -ge 1000 ]]; then
+            echo "::error::Worker startup time must be reported below 1000 ms; got ${startup_time_ms:-missing}"
+            exit 1
+          fi
+          expected_url="https://${JOB_REF}-vm0-api-preview.${CF_WORKERS_SUBDOMAIN}.workers.dev"
+          url="$(jq -rs '[.[] | select(.type == "version-upload")][0].preview_alias_url // empty' "$WRANGLER_OUTPUT_FILE_PATH")"
+          if [[ "$url" != "$expected_url" ]]; then
+            echo "::error::Wrangler preview alias URL mismatch: expected ${expected_url}, got ${url:-missing}"
+            exit 1
+          fi
+          {
+            echo "url=$url"
+            echo "version-id=$version_id"
+            echo "startup-time-ms=$startup_time_ms"
+          } >> "$GITHUB_OUTPUT"
+          echo "Uploaded vm0-api-preview version ${version_id} at ${url} (startup ${startup_time_ms} ms)"
+
+      - name: Check API Worker Access and health
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+          : "${CF_ACCESS_CLIENT_ID:?CF_API_PREVIEW_ACCESS_CLIENT_ID secret is required}"
+          : "${CF_ACCESS_CLIENT_SECRET:?CF_API_PREVIEW_ACCESS_CLIENT_SECRET secret is required}"
+
+          unauthenticated_status="$(curl \
+            --output /dev/null \
+            --silent \
+            --max-time 20 \
+            --write-out '%{http_code}' \
+            "${API_DEPLOYMENT_URL}/health")"
+          if [[ "$unauthenticated_status" == "200" ]]; then
+            echo "::error::Worker Preview health is reachable without Cloudflare Access"
+            exit 1
+          fi
+
+          curl "${API_DEPLOYMENT_URL}/health" \
+            -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
             --fail \
             --show-error \
             --silent \
@@ -1105,17 +1180,54 @@ jobs:
             --retry 3 \
             --retry-delay 2 \
             --retry-all-errors
+
+          webhook_status="$(curl \
+            --output /dev/null \
+            --silent \
+            --max-time 20 \
+            --write-out '%{http_code}' \
+            "${API_DEPLOYMENT_URL}/api/webhooks/clerk")"
+          if [[ "$webhook_status" == "302" || "$webhook_status" == "403" ]]; then
+            echo "::error::Webhook path is unexpectedly blocked by Cloudflare Access"
+            exit 1
+          fi
+
+      - name: Probe Worker outbound safety
         env:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+          TEST_ENDPOINT_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
 
-      # Vercel does not run cron schedules for preview deployments. Reconcile
-      # through the unique deployment URL before exposing it through an alias or
-      # allowing downstream runner and E2E consumers to start.
+          response="$(curl "${API_DEPLOYMENT_URL}/api/test/runtime-state/action" \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 30 \
+            -H 'Content-Type: application/json' \
+            -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
+            -H "x-vm0-test-endpoint-bypass: ${TEST_ENDPOINT_BYPASS_SECRET}" \
+            --data '{"action":"probe-worker-outbound-safety"}')"
+          jq -e '
+            .ok == true and
+            .dns_private_address_blocked == true and
+            .native_private_fetch_blocked == true
+          ' <<< "$response" >/dev/null || {
+            echo "::error::Worker outbound safety probe failed: ${response}"
+            exit 1
+          }
+
+      # Worker preview aliases do not run cron schedules. Reconcile directly
+      # before allowing downstream runner and E2E consumers to start.
       - name: Reconcile preview connector catalog
         env:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
@@ -1128,7 +1240,8 @@ jobs:
               --silent \
               --max-time 120 \
               -H "Authorization: Bearer ${CRON_SECRET}" \
-              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
               "${API_DEPLOYMENT_URL}/api/cron/sync-connector-catalog"); then
               echo "::warning::Connector catalog reconcile request failed (attempt ${attempt}/3)"
             elif summary=$(jq -c '{
@@ -1165,19 +1278,55 @@ jobs:
           echo "::error::Connector catalog reconcile did not produce a current accepted snapshot"
           exit 1
 
-      - name: Create API Vercel Alias
-        id: api-alias
-        if: vars.PREVIEW_DOMAIN != ''
-        uses: ./.github/actions/vercel-alias
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          deployment-url: ${{ steps.api-deploy.outputs.url }}
-          app-name: api
-          job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
-          deployment-id: ${{ steps.api-deploy.outputs.deployment-id }}
-          deployment-env: ${{ steps.api-deploy.outputs.deployment-env }}
+      - name: Simulate Worker cron routes
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t cron_routes < <(
+            pnpm --dir turbo --filter api worker:cron-routes |
+              grep '^/api/cron/' |
+              grep -v '^/api/cron/sync-connector-catalog$'
+          )
+          if [[ "${#cron_routes[@]}" -ne 22 ]]; then
+            echo "::error::Expected 22 remaining cron routes, found ${#cron_routes[@]}"
+            exit 1
+          fi
+
+          failures=0
+          for ((offset = 0; offset < ${#cron_routes[@]}; offset += 6)); do
+            pids=()
+            paths=()
+            for path in "${cron_routes[@]:offset:6}"; do
+              echo "Simulating ${path}"
+              curl "${API_DEPLOYMENT_URL}${path}" \
+                --fail \
+                --show-error \
+                --silent \
+                --output /dev/null \
+                --max-time 180 \
+                -H "Authorization: Bearer ${CRON_SECRET}" \
+                -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+                -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" &
+              pids+=("$!")
+              paths+=("$path")
+            done
+            for index in "${!pids[@]}"; do
+              if ! wait "${pids[$index]}"; then
+                echo "::error::Cron simulation failed for ${paths[$index]}"
+                failures=$((failures + 1))
+              fi
+            done
+          done
+
+          if [[ "$failures" -ne 0 ]]; then
+            echo "::error::${failures} Worker cron route simulations failed"
+            exit 1
+          fi
 
       - name: Post API preview URL
         if: github.event_name == 'pull_request'
@@ -1185,7 +1334,7 @@ jobs:
         with:
           header: api-preview
           message: |
-            API preview: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
+            API Worker preview: ${{ steps.api-deploy.outputs.url }}
 
   # Build the canonical Cloudflare app artifact independently of Vercel, then
   # deploy the verified R2 artifact to a Pages preview branch. The shared
@@ -1216,8 +1365,8 @@ jobs:
       AWS_DEFAULT_REGION: auto
       CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
+      CF_WORKERS_SUBDOMAIN: ${{ vars.CF_WORKERS_SUBDOMAIN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
-      PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
@@ -1414,13 +1563,13 @@ jobs:
 
           : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
           : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
+          : "${CF_WORKERS_SUBDOMAIN:?CF_WORKERS_SUBDOMAIN variable is required}"
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
           pages_dist="$(mktemp -d)"
           job_ref="${PAGES_BRANCH%-app}"
-          api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
+          api_origin="https://${job_ref}-vm0-api-preview.${CF_WORKERS_SUBDOMAIN}.workers.dev"
 
           if [[ "$ARTIFACT_EXISTS" == "true" ]]; then
             canonical_dist="$(mktemp -d)"
@@ -1709,7 +1858,6 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           cd ansible
@@ -1733,11 +1881,6 @@ jobs:
           fi
 
           FORWARD_URL="${API_PREVIEW_URL%/}/api/webhooks/stripe"
-          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-            encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
-            echo "::add-mask::$encoded_bypass"
-            FORWARD_URL="${FORWARD_URL}?x-vercel-protection-bypass=${encoded_bypass}"
-          fi
           EXTRA_VARS="$(jq -nc \
             --arg ansible_user "$METAL_USER" \
             --arg job_ref "$JOB_REF" \
@@ -1794,9 +1937,11 @@ jobs:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
           VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
-          VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
+          VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-vm0-api-preview.{1}.workers.dev', needs.prepare.outputs.job-ref, vars.CF_WORKERS_SUBDOMAIN) || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai
       - name: Cleanup browser E2E account
@@ -1870,11 +2015,6 @@ jobs:
           echo "::add-mask::$stripe_webhook_secret"
 
           forward_url="${API_PREVIEW_URL%/}/api/webhooks/stripe"
-          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-            encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
-            echo "::add-mask::$encoded_bypass"
-            forward_url="${forward_url}?x-vercel-protection-bypass=${encoded_bypass}"
-          fi
           stripe listen \
             --api-key "$STRIPE_SECRET_KEY" \
             --events checkout.session.completed,payment_intent.succeeded,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
@@ -1901,7 +2041,6 @@ jobs:
         env:
           API_PREVIEW_URL: ${{ needs.deploy-api.outputs.preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Run Playwright E2E tests
         continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
@@ -1912,6 +2051,8 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Cleanup Playwright E2E accounts
         if: always()
@@ -2342,6 +2483,8 @@ jobs:
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
           SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
@@ -2407,6 +2550,8 @@ jobs:
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
+              --env CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID} \
+              --env CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET} \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
               --env USE_MOCK_CLAUDE=true \
               --env USE_MOCK_CODEX=true"

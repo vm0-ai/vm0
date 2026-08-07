@@ -2938,6 +2938,7 @@ export const telegramWebhook$ = command(
         return okText();
       }
       waitUntil(
+        "zero-telegram-post:tap-error",
         tapError(
           set(
             processOfficialWebhookMessage$,
@@ -2981,6 +2982,7 @@ export const telegramWebhook$ = command(
     }
 
     waitUntil(
+      "zero-telegram-post:tap-error",
       tapError(
         set(
           processCustomWebhookMessage$,

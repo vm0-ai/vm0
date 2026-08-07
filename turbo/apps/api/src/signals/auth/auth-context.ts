@@ -71,7 +71,10 @@ const cliAuth$ = command(
       return null;
     }
 
-    waitUntil(set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal));
+    waitUntil(
+      "auth-context:update-cli-token-last-used-at",
+      set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal),
+    );
 
     const membership = await set(
       getMemberRoleAndUpdateCache$,

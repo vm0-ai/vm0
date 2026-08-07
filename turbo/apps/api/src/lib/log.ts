@@ -8,6 +8,7 @@ import { Axiom } from "@axiomhq/js";
 import { formatMessage, extractFields } from "@vm0/core/log-utils";
 
 import { env } from "./env";
+import { invocationResource } from "./invocation-context";
 import { singleton } from "./singleton";
 
 type LogMethod = (...args: unknown[]) => void;
@@ -119,7 +120,9 @@ function writeError(...args: unknown[]): void {
 
 // ── Axiom integration ────────────────────────────────────────────────────
 
-const getAxiomLogger = singleton((): AxiomLogger | null => {
+const AXIOM_LOGGER_RESOURCE = Symbol("axiom-logger");
+
+function createAxiomLogger(): AxiomLogger | null {
   const token = env("AXIOM_TOKEN_TELEMETRY");
   if (!token) {
     return null;
@@ -134,7 +137,22 @@ const getAxiomLogger = singleton((): AxiomLogger | null => {
       }),
     ],
   });
-});
+}
+
+const getFallbackAxiomLogger = singleton(createAxiomLogger);
+
+function getAxiomLogger(): AxiomLogger | null {
+  const resource = invocationResource(AXIOM_LOGGER_RESOURCE, () => {
+    const value = createAxiomLogger();
+    return {
+      value,
+      async dispose(): Promise<void> {
+        await value?.flush();
+      },
+    };
+  });
+  return resource?.value ?? getFallbackAxiomLogger();
+}
 
 type UsageUnderbillingClass = "confirmed" | "risk";
 
@@ -323,6 +341,6 @@ export function logger(name: string): Logger {
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export function __resetForTest(): void {
-  getAxiomLogger.reset();
+  getFallbackAxiomLogger.reset();
   loggerRegistry.reset();
 }

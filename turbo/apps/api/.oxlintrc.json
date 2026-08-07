@@ -14,11 +14,29 @@
         "eslint.config.mjs",
         "scripts/bench-p90-reporter.ts",
         "src/index.ts",
+        "src/worker.ts",
         "vite.config.ts",
         "vitest.config.ts"
       ],
       "rules": {
         "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": ["src/instrument.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "deny",
+          {
+            "paths": [
+              {
+                "name": "hono",
+                "allowTypeImports": true,
+                "message": "Only signals/context/hono.ts may import hono. Other signals files must use the wrappers from signals/context/hono."
+              }
+            ]
+          }
+        ]
       }
     },
     {

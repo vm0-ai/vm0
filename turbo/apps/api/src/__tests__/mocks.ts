@@ -891,6 +891,15 @@ vi.mock("@sentry/node", () => {
   return apiTestMocks.sentry;
 });
 
+vi.mock("../lib/error-reporter", () => {
+  return {
+    captureException: (...args: unknown[]) => {
+      apiTestMocks.sentry.captureException(...args);
+    },
+    configureErrorReporter: vi.fn(),
+  };
+});
+
 vi.mock("@vercel/otel", () => {
   return apiTestMocks.otel;
 });

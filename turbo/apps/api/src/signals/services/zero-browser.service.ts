@@ -562,6 +562,7 @@ async function restoreBrowserTabSnapshot(
 
 function stopProviderSessionLater(providerSessionId: string): void {
   waitUntil(
+    "zero-browser:background-work",
     (async () => {
       const result = await settleIncludingAbort(
         stopBrowserUseSession(
@@ -897,6 +898,7 @@ const captureAndStoreBrowserScreenshot$ = command(
 const scheduleBrowserScreenshotCapture$ = command(
   ({ set }, browser: BrowserSessionRow): void => {
     waitUntil(
+      "zero-browser:tap-error",
       tapError(
         set(
           captureAndStoreBrowserScreenshot$,
@@ -1309,6 +1311,7 @@ function cleanupBrowserProfileLater(
 ): void {
   const backgroundSignal = new AbortController().signal;
   waitUntil(
+    "zero-browser:background-work",
     (async () => {
       const result = await settleIncludingAbort(
         cleanupBrowserProfile(db, target, backgroundSignal, providerSessionIds),

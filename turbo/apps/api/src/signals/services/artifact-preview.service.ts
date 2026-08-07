@@ -269,6 +269,7 @@ export const scheduleArtifactPreviewRender$ = command(
       return;
     }
     waitUntil(
+      "artifact-preview:tap-error",
       tapError(
         set(renderAndStoreArtifactPreview$, args, new AbortController().signal),
         (error) => {

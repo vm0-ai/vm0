@@ -82,6 +82,7 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   waitUntil(
+    "zero-slack-connect:tap-error",
     tapError(
       set(
         notifySlackConnect$,

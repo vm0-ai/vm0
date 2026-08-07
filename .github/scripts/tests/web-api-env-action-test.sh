@@ -186,8 +186,8 @@ run_action() {
   local repo_secrets_json
 
   repo_vars_json='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_BACKEND_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id","POSTHOG_KEY":"github-posthog-key","POSTHOG_HOST":"https://posthog.github.test","ATOM_URL":"https://atom.github.test","STRIPE_OAUTH_CLIENT_ID":"ca_test_connect_client","STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID":"bpc_test_concurrency","MICROSOFT_TEAMS_BOT_APP_ID":"github-teams-bot-app-id","MICROSOFT_TEAMS_APP_TENANT_ID":"github-teams-app-tenant-id","ZERO_PRICE_PRO":"price_test_pro","ZERO_PRICE_TEAM":"price_test_team","ZERO_PRICE_USAGE_PACK_PLAN_PRO":"price_test_usage_pack_plan_pro","ZERO_PRICE_USAGE_PACK_PLAN_TEAM":"price_test_usage_pack_plan_team","ZERO_PRICE_USAGE_PACK_20":"price_test_usage_pack_20","ZERO_PRICE_USAGE_PACK_50":"price_test_usage_pack_50","ZERO_PRICE_USAGE_PACK_100":"price_test_usage_pack_100","ZERO_PRICE_USAGE_PACK_200":"price_test_usage_pack_200","ATOM_GRANT_PRICE":"price_test_atom_grant","ZERO_PRICE_CUSTOM_CREDITS":"price_test_custom_credits","ZERO_PRICE_CUSTOM_CREDIT_UNIT":"price_test_custom_credit_unit","ZERO_PRICE_CONCURRENCY":"price_test_concurrency","GMAIL_PUBSUB_TOPIC_NAME":"projects/github/topics/gmail","GMAIL_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/gmail","GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"gmail-push@github.test","GOOGLE_WORKSPACE_EVENTS_PUBSUB_TOPIC_NAME":"projects/github/topics/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_AUDIENCE":"https://api.github.test/api/webhooks/google-workspace-events","GOOGLE_WORKSPACE_EVENTS_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL":"workspace-events-push@github.test"}'
-  repo_vars_json="$(jq -c '. + {ZERO_HOST_DOMAIN: "zero-sites.test", ZERO_HOST_SCHEME: "https", ZERO_ONE_TIME_CAMPAIGN: "zero-campaign"}' <<< "$repo_vars_json")"
-  repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","ZERO_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","ZERO_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","ZERO_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","ZERO_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","ZERO_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","ZERO_BROWSER_USE_API_KEY":"github-browser-use-api-key","ZERO_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","ZERO_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
+  repo_vars_json="$(jq -c '. + {ZERO_HOST_DOMAIN: "zero-sites.test", ZERO_HOST_SCHEME: "https", ZERO_ONE_TIME_CAMPAIGN: "zero-campaign", CF_API_PREVIEW_ACCESS_AUD: "github-preview-access-aud", CF_ACCESS_TEAM_DOMAIN: "vm0.cloudflareaccess.com"}' <<< "$repo_vars_json")"
+  repo_secrets_json='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","ZERO_MAPS_GOOGLE_MAPS_TOKEN":"github-google-maps-token","ZERO_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","ZERO_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","ZERO_SEO_DATAFORSEO_LOGIN":"github-dataforseo-login","ZERO_SEO_DATAFORSEO_PASSWORD":"github-dataforseo-password","ZERO_BROWSER_USE_API_KEY":"github-browser-use-api-key","ZERO_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","ZERO_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CF_API_PREVIEW_ACCESS_CLIENT_ID":"github-preview-access-client-id","CF_API_PREVIEW_ACCESS_CLIENT_SECRET":"github-preview-access-client-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}'
   if [[ "$branded_config" == "both" ]]; then
     repo_vars_json="$(jq -c '. + {OKOU_HOST_DOMAIN: "okou-sites.test", OKOU_HOST_SCHEME: "http", OKOU_PRICE_PRO: "price_okou_pro", OKOU_ONE_TIME_CAMPAIGN: "okou-campaign"}' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c '. + {OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: "okou-google-weather-token", OKOU_SEO_DATAFORSEO_LOGIN: "okou-dataforseo-login", OKOU_BROWSER_USE_API_KEY: "okou-browser-use-api-key"}' <<< "$repo_secrets_json")"
@@ -259,6 +259,10 @@ assert_env_value "$success_env_file" UNSPLASH_ACCESS_KEY "github-unsplash-access
 assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
 assert_env_value "$success_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$success_env_file" VERCEL_AUTOMATION_BYPASS_SECRET "github-vercel-bypass-secret"
+assert_env_value "$success_env_file" CF_ACCESS_CLIENT_ID "github-preview-access-client-id"
+assert_env_value "$success_env_file" CF_ACCESS_CLIENT_SECRET "github-preview-access-client-secret"
+assert_env_value "$success_env_file" CF_ACCESS_AUD "github-preview-access-aud"
+assert_env_value "$success_env_file" CF_ACCESS_TEAM_DOMAIN "vm0.cloudflareaccess.com"
 assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
 assert_env_value "$success_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
@@ -325,6 +329,23 @@ assert_env_value "$empty_env_file" OKOU_SEO_DATAFORSEO_LOGIN ""
 assert_env_value "$empty_env_file" OKOU_PRICE_PRO ""
 assert_env_value "$empty_env_file" OKOU_ONE_TIME_CAMPAIGN ""
 
+worker_secrets_file="${success_dir}/worker-secrets.json"
+node "${REPO_ROOT}/turbo/apps/api/scripts/build-worker-secrets.mjs" \
+  "$success_env_file" \
+  "$worker_secrets_file"
+if [[ "$(jq 'length' "$worker_secrets_file")" != "32" ]]; then
+  fail "expected exactly 32 Worker environment shards"
+fi
+if ! jq -e '
+  [to_entries[].value | fromjson] | add |
+  .CF_ACCESS_CLIENT_ID == "github-preview-access-client-id" and
+  .CF_ACCESS_CLIENT_SECRET == "github-preview-access-client-secret" and
+  .CF_ACCESS_AUD == "github-preview-access-aud" and
+  .CF_ACCESS_TEAM_DOMAIN == "vm0.cloudflareaccess.com"
+' "$worker_secrets_file" >/dev/null; then
+  fail "expected Worker shards to retain Cloudflare Access credentials"
+fi
+
 production_web_dir="$(mktemp -d)"
 TEMP_DIRS+=("$production_web_dir")
 production_web_output="$(run_action "$(build_doppler_secrets_json)" "$production_web_dir" web production 2>&1)"
@@ -380,6 +401,10 @@ assert_env_value "$production_api_env_file" STRIPE_WEBHOOK_SECRET "github-stripe
 assert_env_value "$production_api_env_file" STRIPE_AUTOMATION_WEBHOOK_SECRET "github-stripe-automation-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-billing-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-automation-webhook-secret"
+assert_env_absent_value "$production_api_env_file" "CF_ACCESS_CLIENT_ID="
+assert_env_absent_value "$production_api_env_file" "CF_ACCESS_CLIENT_SECRET="
+assert_env_absent_value "$production_api_env_file" "CF_ACCESS_AUD="
+assert_env_absent_value "$production_api_env_file" "CF_ACCESS_TEAM_DOMAIN="
 
 missing_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_dir")

@@ -83,6 +83,7 @@ const postGithubWorkflowRunWebhook$ = command(
 
     const backgroundScheduledAt = now();
     waitUntil(
+      "webhooks-github:tap-error",
       tapError(
         set(
           handleGithubWorkflowRunEvent$,
@@ -112,6 +113,7 @@ const postGithubInstallationWebhook$ = command(
     }
 
     waitUntil(
+      "webhooks-github:tap-error",
       tapError(
         set(handleGithubInstallationEvent$, parsed.data, signal),
         (error) => {
@@ -141,6 +143,7 @@ const postGithubPullRequestWebhook$ = command(
       return jsonError("Invalid payload structure", 400);
     }
     waitUntil(
+      "webhooks-github:tap-error",
       tapError(
         set(
           handleGithubPullRequestEvent$,
@@ -173,6 +176,7 @@ const postGithubIssueCommentWebhook$ = command(
       return jsonError("Invalid payload structure", 400);
     }
     waitUntil(
+      "webhooks-github:tap-error",
       tapError(
         set(
           handleGithubIssueCommentEvent$,
@@ -205,6 +209,7 @@ const postGithubWorkflowJobWebhook$ = command(
       return jsonError("Invalid payload structure", 400);
     }
     waitUntil(
+      "webhooks-github:tap-error",
       tapError(
         set(
           handleGithubWorkflowJobEvent$,
@@ -239,6 +244,7 @@ const postGithubPullRequestReviewWebhook$ = command(
       return jsonError("Invalid payload structure", 400);
     }
     waitUntil(
+      "webhooks-github:tap-error",
       tapError(
         set(
           handleGithubPullRequestReviewEvent$,
@@ -273,6 +279,7 @@ const postGithubDeploymentStatusWebhook$ = command(
       return jsonError("Invalid payload structure", 400);
     }
     waitUntil(
+      "webhooks-github:tap-error",
       tapError(
         set(
           handleGithubDeploymentStatusEvent$,

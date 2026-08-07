@@ -472,6 +472,16 @@ fn build_env_json_with_host_env_inner(
             bypass.clone(),
         );
     }
+    if let Some(access) = &host_env.cloudflare_access {
+        env.insert(
+            guest_contracts::env::CF_ACCESS_CLIENT_ID_ENV.into(),
+            access.client_id.clone(),
+        );
+        env.insert(
+            guest_contracts::env::CF_ACCESS_CLIENT_SECRET_ENV.into(),
+            access.client_secret.clone(),
+        );
+    }
 
     // Resume session ID
     if let Some(session) = &context.resume_session {
@@ -667,14 +677,35 @@ pub(super) fn insert_guest_agent_tuning_env(
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct HostEnv {
     pub(super) vercel_automation_bypass_secret: Option<String>,
+    pub(super) cloudflare_access: Option<CloudflareAccess>,
     pub(super) use_mock_claude: Option<String>,
     pub(super) use_mock_codex: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct CloudflareAccess {
+    pub(super) client_id: String,
+    pub(super) client_secret: String,
+}
+
 impl HostEnv {
     pub(super) fn from_process() -> Self {
+        let client_id = std::env::var(guest_contracts::env::CF_ACCESS_CLIENT_ID_ENV).ok();
+        let client_secret = std::env::var(guest_contracts::env::CF_ACCESS_CLIENT_SECRET_ENV).ok();
+        let cloudflare_access = match (client_id, client_secret) {
+            (Some(client_id), Some(client_secret))
+                if !client_id.is_empty() && !client_secret.is_empty() =>
+            {
+                Some(CloudflareAccess {
+                    client_id,
+                    client_secret,
+                })
+            }
+            _ => None,
+        };
         Self {
             vercel_automation_bypass_secret: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+            cloudflare_access,
             use_mock_claude: std::env::var(guest_contracts::env::USE_MOCK_CLAUDE_ENV).ok(),
             use_mock_codex: std::env::var(guest_contracts::env::USE_MOCK_CODEX_ENV).ok(),
         }

@@ -93,6 +93,8 @@ export const corsMiddleware: MiddlewareHandler = cors({
     "Authorization",
     "Range",
     "X-Vercel-Protection-Bypass",
+    "CF-Access-Client-Id",
+    "CF-Access-Client-Secret",
     ...CLIENT_HEADER_NAMES,
   ],
   maxAge: 86_400,

@@ -58,7 +58,10 @@ export const runnerAuth$ = command(
         return null;
       }
 
-      waitUntil(set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal));
+      waitUntil(
+        "runner-auth:update-cli-token-last-used-at",
+        set(updateCliTokenLastUsedAt$, cliAuth.tokenId, signal),
+      );
       return { type: "user", userId: resolved.userId };
     }
 

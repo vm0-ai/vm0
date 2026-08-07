@@ -51,6 +51,7 @@ const cancelInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (shouldDispatchCancelSideEffects(result)) {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
+      "zero-runs-cancel:tap-error",
       tapError(
         set(dispatchCancelSideEffects$, result, backgroundSignal),
         (error) => {

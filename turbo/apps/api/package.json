@@ -7,6 +7,9 @@
     "build": "vite build",
     "dev": "bash scripts/dev.sh",
     "start": "tsx src/server.ts",
+    "worker:cron-routes": "tsx scripts/print-worker-cron-routes.ts",
+    "worker:secrets:test": "node --test scripts/build-worker-secrets-node-test.mjs",
+    "worker:build": "wrangler versions upload --dry-run --env preview",
     "db:dev-seed": "dotenv -e .env.local -- tsx src/scripts/dev-seed.ts",
     "db:dev-bench-seed": "dotenv -e .env.local -- tsx src/scripts/dev-bench-seed.ts",
     "test": "vitest run",
@@ -30,6 +33,7 @@
     "@clerk/backend": "^3.13.1",
     "@hono/node-server": "^2.0.10",
     "@hono/otel": "^1.1.2",
+    "@microlabs/otel-cf-workers": "1.0.0-rc.52",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
     "@opentelemetry/semantic-conventions": "^1.40.0",
@@ -53,6 +57,7 @@
     "gpt-tokenizer": "^3.4.0",
     "hono": "^4.13.0",
     "html-to-text": "^10.0.0",
+    "jose": "^6.2.3",
     "music-metadata": "^11.13.0",
     "pg": "^8.20.0",
     "resend": "^6.12.4",
@@ -86,6 +91,7 @@
     "tsx": "^4.19.0",
     "typescript": "6.0.3",
     "vite": "^8.0.16",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.0"
   }
 }

@@ -14,6 +14,8 @@ import {
 declare const __CLI_VERSION__: string;
 
 const VERCEL_PROTECTION_BYPASS_HEADER = "x-vercel-protection-bypass";
+const CF_ACCESS_CLIENT_ID_HEADER = "cf-access-client-id";
+const CF_ACCESS_CLIENT_SECRET_HEADER = "cf-access-client-secret";
 
 type CliClientHeaderInjector = (headers: Headers) => void;
 
@@ -41,6 +43,17 @@ function addCliClientHeaders(headers: Headers): void {
   const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypassSecret) {
     headers.set(VERCEL_PROTECTION_BYPASS_HEADER, bypassSecret);
+  }
+  const accessClientId = process.env.CF_ACCESS_CLIENT_ID;
+  const accessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET;
+  if (Boolean(accessClientId) !== Boolean(accessClientSecret)) {
+    throw new Error(
+      "Cloudflare Access credentials must be configured together",
+    );
+  }
+  if (accessClientId && accessClientSecret) {
+    headers.set(CF_ACCESS_CLIENT_ID_HEADER, accessClientId);
+    headers.set(CF_ACCESS_CLIENT_SECRET_HEADER, accessClientSecret);
   }
 }
 

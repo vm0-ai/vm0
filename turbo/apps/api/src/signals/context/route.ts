@@ -6,6 +6,7 @@ import { createStore, type Command, type Computed } from "ccstate";
 import type { Handler } from "hono";
 import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 
+import { currentInvocationSignal } from "../../lib/invocation-context";
 import { now } from "../../lib/time";
 import {
   setUsagePricingResolution$,
@@ -99,10 +100,14 @@ function isContentlessStatus(status: StatusCode): boolean {
 export function honoSignalHandler(
   handler$: SignalRouteHandler<unknown>,
   contract: AppRoute,
-  signal: AbortSignal,
+  fallbackSignal?: AbortSignal,
   usagePricingResolution?: UsagePricingResolution,
 ): Handler {
   return async (context) => {
+    const signal = currentInvocationSignal() ?? fallbackSignal;
+    if (!signal) {
+      throw new Error("Route handler is outside an API invocation");
+    }
     const apiStartTime = now();
     const store = createStore();
     store.set(setRootSignal$, signal);

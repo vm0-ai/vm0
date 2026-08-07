@@ -2034,6 +2034,7 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   waitUntil(
+    "runners:tap-error",
     tapError(recordClaimTimingMetrics(args), (error) => {
       L.warn("recordSandboxOperation failed", { runId: args.runId, error });
     }),
@@ -2241,6 +2242,7 @@ const scheduleClaimFailedSideEffects$ = command(
   ({ set }, args: ClaimFailedSideEffectArgs): void => {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
+      "runners:tap-error",
       tapError(
         set(
           dispatchCompleteSideEffects$,

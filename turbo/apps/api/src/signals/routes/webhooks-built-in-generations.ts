@@ -1233,6 +1233,7 @@ const postJoggAiBuiltInGenerationWebhook$ = command(
     }
 
     waitUntil(
+      "webhooks-built-in-generations:tap-error",
       tapError(
         set(handleJoggAiAvatarVideoCompletion$, { job, payload }, signal),
         (error) => {

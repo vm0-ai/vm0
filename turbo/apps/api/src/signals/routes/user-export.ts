@@ -50,6 +50,7 @@ const postUserExportInner$ = command(
     if (result.shouldExecute) {
       const backgroundSignal = new AbortController().signal;
       waitUntil(
+        "user-export:tap-error",
         tapError(
           set(
             executeUserExportJob$,
