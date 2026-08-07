@@ -14,7 +14,7 @@ import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.se
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const DEFAULT_SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const DEFAULT_BOT_ID = "28:e2e-zero-bot";

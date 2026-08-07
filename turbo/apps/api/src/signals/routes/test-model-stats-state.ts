@@ -19,7 +19,7 @@ import { createDeferredPromise, onRejection } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
-} from "./test-oauth-provider-helpers";
+} from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(testModelStatsStateContract.action);
 const OBSERVATION_FIXTURE_INSERT_BATCH_SIZE = 5000;

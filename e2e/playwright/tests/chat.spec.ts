@@ -159,6 +159,24 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
+test("send a message through the deployed runner", async ({ page }) => {
+  test.setTimeout(120_000);
+  const marker = `PRODUCT_CHAT_E2E_${Date.now()}`;
+
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  const composer = page.locator(".zero-composer");
+  const editor = composer.getByRole("textbox", { name: "Message" });
+  await expect(editor).toBeVisible();
+  await editor.fill(`printf ${marker}`);
+  await composer.getByRole("button", { name: "Send" }).click();
+
+  await expect(
+    page.locator('[data-role="assistant"]').filter({ hasText: marker }).first(),
+  ).toBeVisible({ timeout: 90_000 });
+});
+
 test("chat composer keeps the Send button inside on narrow screens", async ({
   page,
 }) => {

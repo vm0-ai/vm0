@@ -139,9 +139,9 @@ the invalid-or-expired guidance.
 ## What belongs elsewhere
 
 - API route behavior belongs in API integration tests.
-- Multi-service lifecycle behavior belongs in runner E2E tests.
+- Multi-service lifecycle behavior belongs in product-surface E2E tests.
 - Pure internal unit tests are reserved for security-critical logic,
   algorithmically complex parsers, or state-transition matrices.
 
-See [CLI E2E Testing](./cli-e2e-testing.md) for the E2E-only credential and
-fixture boundary.
+See [CLI and Runner E2E Testing](./cli-e2e-testing.md) for the deployed-test
+boundary.
