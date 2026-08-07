@@ -25,20 +25,22 @@ def _single_firewall_vm(
     network_policy: dict[str, object] | None,
     billable_firewalls: list[str] | None = None,
     include_encrypted_secrets: bool = True,
+    custom_connector_id: str | None = None,
     vm_fields: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    firewall_entry: dict[str, object] = {
+        "kind": "inline",
+        "firewall": {"name": firewall_name, "apis": [api_entry]},
+    }
+    if custom_connector_id is not None:
+        firewall_entry["customConnectorId"] = custom_connector_id
     vm_info: dict[str, object] = {
         "runId": run_id,
         "billableFirewalls": billable_firewalls or [],
         "sandboxToken": sandbox_marker,
         "networkLogPath": str(tmp_path / "net.jsonl"),
         "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-        "firewalls": [
-            {
-                "kind": "inline",
-                "firewall": {"name": firewall_name, "apis": [api_entry]},
-            }
-        ],
+        "firewalls": [firewall_entry],
     }
     if network_policy is not None:
         vm_info["networkPolicies"] = {firewall_name: network_policy}

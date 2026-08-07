@@ -172,6 +172,14 @@ def _build_firewall_auth_context(
     firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
     api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
     run_id = flow_metadata.run_id(flow.metadata)
+    custom_connector_id = api_entry.get("customConnectorId")
+    matched_firewall: dict | None = None
+    if isinstance(custom_connector_id, str):
+        matched_firewall = {
+            "name": allow.name,
+            "apiId": api_id,
+            "customConnectorId": custom_connector_id,
+        }
     auth_request = FirewallAuthRequest(
         sandbox_token=vm_info.get("sandboxToken", ""),
         encrypted_secrets=vm_info.get("encryptedSecrets") or "",
@@ -183,6 +191,7 @@ def _build_firewall_auth_context(
         secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
         vars_map=vm_info.get("vars"),
         firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+        matched_firewall=matched_firewall,
     )
     auth_cache_key = FirewallAuthCacheKey(
         run_id=run_id,
