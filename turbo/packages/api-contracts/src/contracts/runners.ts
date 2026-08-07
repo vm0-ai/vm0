@@ -743,7 +743,7 @@ export const piModelConfigSchema = z
   })
   .readonly();
 
-function requireCompletePiExecutionContext(
+function requireValidPiExecutionContext(
   context: {
     readonly piExecutionMode?: PiExecutionMode;
     readonly piSystemPrompt?: unknown;
@@ -752,15 +752,19 @@ function requireCompletePiExecutionContext(
   },
   refinement: z.RefinementCtx,
 ): void {
-  if (context.piExecutionMode === undefined) {
-    return;
-  }
   for (const field of [
     "piSystemPrompt",
     "piModelConfig",
     "runSkillSnapshot",
   ] as const) {
-    if (context[field] === undefined) {
+    const fieldPresent = context[field] !== undefined;
+    if (context.piExecutionMode === undefined && fieldPresent) {
+      refinement.addIssue({
+        code: "custom",
+        path: [field],
+        message: `${field} requires Pi execution mode`,
+      });
+    } else if (context.piExecutionMode !== undefined && !fieldPresent) {
       refinement.addIssue({
         code: "custom",
         path: [field],
@@ -853,7 +857,7 @@ const storedExecutionContextObjectSchema = z.object({
 
 export const storedExecutionContextSchema =
   storedExecutionContextObjectSchema.superRefine(
-    requireCompletePiExecutionContext,
+    requireValidPiExecutionContext,
   );
 
 /**
@@ -867,7 +871,7 @@ export const compatibleStoredExecutionContextSchema =
     .extend({
       connectorPermissionBaseline: z.unknown().optional(),
     })
-    .superRefine(requireCompletePiExecutionContext);
+    .superRefine(requireValidPiExecutionContext);
 
 /**
  * Execution context returned when claiming a job.
@@ -949,7 +953,7 @@ const executionContextObjectSchema = z.object({
 });
 
 export const executionContextSchema = executionContextObjectSchema.superRefine(
-  requireCompletePiExecutionContext,
+  requireValidPiExecutionContext,
 );
 
 /**
