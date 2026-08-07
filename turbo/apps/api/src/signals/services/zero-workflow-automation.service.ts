@@ -111,7 +111,6 @@ import {
   validateStripeInvoicePaidAutomationBinding,
 } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
-import { stripeWorkflowEventSchemaAvailable } from "./stripe-workflow-event-schema.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -723,14 +722,6 @@ async function loadStripeWorkflowAutomationHealth(
   db: ReadonlyDb,
   automationId: string,
 ): Promise<StripeWorkflowAutomationHealth> {
-  if (!(await stripeWorkflowEventSchemaAvailable(db))) {
-    return {
-      lastMatchingEventReceivedAt: null,
-      lastDeliveryStatus: null,
-      lastDeliveryStatusAt: null,
-      warning: null,
-    };
-  }
   const [health] = await db
     .select({
       lastMatchingEventReceivedAt:

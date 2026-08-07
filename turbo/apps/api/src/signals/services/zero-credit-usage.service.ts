@@ -20,7 +20,6 @@ import {
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
 import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
 import type { Tx } from "../../lib/db-types";
-import { usagePackCreditGrantSchemaAvailable } from "./usage-pack-credit.service";
 
 const L = logger("CreditUsage");
 
@@ -158,9 +157,6 @@ async function deductFromUsagePackCredits(
     return 0;
   }
 
-  if (!(await usagePackCreditGrantSchemaAvailable(tx))) {
-    return args.amount;
-  }
   const grants = await tx
     .select({
       id: usagePackCreditGrants.id,

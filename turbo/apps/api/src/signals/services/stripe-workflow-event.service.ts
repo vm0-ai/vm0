@@ -32,7 +32,6 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { ORG_SENTINEL_USER_ID } from "./feature-switches.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwnerInDb } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
-import { stripeWorkflowEventSchemaAvailable } from "./stripe-workflow-event-schema.service";
 import { validateStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { storedWorkflowAutomationContext } from "./workflow-automation-context.service";
@@ -1427,11 +1426,6 @@ async function executeDueStripeWorkflowEvents(
     failed: 0,
     retried: 0,
   };
-  if (!(await stripeWorkflowEventSchemaAvailable(args.db))) {
-    signal.throwIfAborted();
-    return result;
-  }
-  signal.throwIfAborted();
   for (let index = 0; index < STRIPE_DELIVERY_BATCH_SIZE; index += 1) {
     const delivery = await claimDueDelivery(args, signal);
     signal.throwIfAborted();
