@@ -16,7 +16,13 @@ interface DnsJsonResponse {
 }
 
 export function isCloudflareWorkerRuntime(): boolean {
-  return globalThis.navigator?.userAgent === "Cloudflare-Workers";
+  const runtimeNavigator: unknown = Reflect.get(globalThis, "navigator");
+  return (
+    runtimeNavigator !== null &&
+    typeof runtimeNavigator === "object" &&
+    "userAgent" in runtimeNavigator &&
+    runtimeNavigator.userAgent === "Cloudflare-Workers"
+  );
 }
 
 function isDnsJsonResponse(value: unknown): value is DnsJsonResponse {
