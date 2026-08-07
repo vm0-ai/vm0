@@ -23,6 +23,7 @@ import {
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
@@ -43,6 +44,7 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { backdateRunStartedAtFixture } from "../../../test-fixtures/agent-runs";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import {
@@ -95,6 +97,7 @@ import {
   replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-events";
+import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroMailRoutes } from "../zero-mail";
@@ -443,6 +446,28 @@ async function claimChatRun(
     claim,
     sandboxHeaders,
   };
+}
+
+/**
+ * The time-budget sweep is global, so it can only be driven from a file that
+ * ages its own runs through `backdateRunStartedAtFixture`. Every other suite
+ * claims runs at the current time and therefore stays outside the window.
+ */
+async function runSteerRunTimeBudgetCron(): Promise<void> {
+  await accept(
+    setupApp({ context, routes: cronSteerRunTimeBudgetRoutes })(
+      cronSteerRunTimeBudgetContract,
+    ).steer({ headers: { authorization: "Bearer test-cron-secret" } }),
+    [200],
+  );
+}
+
+/** Age one claimed run to the given elapsed runtime. */
+async function ageClaimedRun(runId: string, elapsedMs: number): Promise<void> {
+  await backdateRunStartedAtFixture({
+    runId,
+    startedAt: new Date(now() - elapsedMs),
+  });
 }
 
 function claimEnvironment(claim: RunnerClaim): Record<string, string> {
@@ -1636,7 +1661,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
-  it("steers a run once when assistant output reaches its time budget", async () => {
+  it("steers a run once when it reaches its time budget", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1645,55 +1670,15 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "run until the time budget warning",
     });
     const claimed = await claimChatRun(runnerGroup, active.runId);
-    const running = await api.readRun(actor, active.runId);
-    if (!running.startedAt) {
-      throw new Error("Expected the claimed run to have a start time");
-    }
-    const startedAt = Date.parse(running.startedAt);
-    onTestFinished(() => {
-      clearMockNow();
-    });
 
-    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS - 1);
-    await webhooks.requestAgentEvents(
-      {
-        runId: active.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              content: [{ type: "text", text: "still below the threshold" }],
-            },
-          },
-        ],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS - 60_000);
+    await runSteerRunTimeBudgetCron();
     await expect(
       api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual([]);
 
-    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS);
-    await webhooks.requestAgentEvents(
-      {
-        runId: active.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 1,
-            message: {
-              content: [{ type: "text", text: "threshold reached" }],
-            },
-          },
-        ],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
+    await runSteerRunTimeBudgetCron();
     const budgetEventIds = await api.listRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
@@ -1724,29 +1709,11 @@ describe("CHAT-02: queueing and recalling messages", () => {
       }),
     ).toBeFalsy();
 
-    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
-    await webhooks.requestAgentEvents(
-      {
-        runId: active.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 2,
-            message: {
-              content: [{ type: "text", text: "another assistant event" }],
-            },
-          },
-        ],
-      },
-      claimed.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await runSteerRunTimeBudgetCron();
     await expect(
       api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual([]);
 
-    clearMockNow();
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
@@ -1759,36 +1726,12 @@ describe("CHAT-02: queueing and recalling messages", () => {
       prompt: "leave the budget input unclaimed",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
-    const running = await api.readRun(actor, first.runId);
-    if (!running.startedAt) {
-      throw new Error("Expected the claimed run to have a start time");
-    }
-    onTestFinished(() => {
-      clearMockNow();
-    });
-    mockNow(Date.parse(running.startedAt) + RUN_TIME_BUDGET_STEER_AT_MS);
-    await webhooks.requestAgentEvents(
-      {
-        runId: first.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              content: [{ type: "text", text: "leave this warning pending" }],
-            },
-          },
-        ],
-      },
-      firstClaim.sandboxHeaders,
-      [200],
-    );
-    await flushWaitUntilForTest();
+    await ageClaimedRun(first.runId, RUN_TIME_BUDGET_STEER_AT_MS);
+    await runSteerRunTimeBudgetCron();
     await expect(
       api.listRunnerActiveInputs(firstClaim.claim.sandboxToken, first.runId),
     ).resolves.toHaveLength(1);
 
-    clearMockNow();
     await cancelChatRun(actor, first.runId, firstClaim.sandboxHeaders);
     const second = await sendChatRun(actor, {
       agentId,

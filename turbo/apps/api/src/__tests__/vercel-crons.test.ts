@@ -23,6 +23,7 @@ import {
   cronRenewGoogleWorkspaceEventSubscriptionsContract,
   cronReconcileBillingEntitlementsContract,
   cronRefreshStoragePresignedUrlsContract,
+  cronSteerRunTimeBudgetContract,
   cronSyncSkillsContract,
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
@@ -138,6 +139,10 @@ const expectedVercelCrons = [
   {
     path: cronAggregateModelStatsContract.aggregate.path,
     schedule: "12 * * * *",
+  },
+  {
+    path: cronSteerRunTimeBudgetContract.steer.path,
+    schedule: "* * * * *",
   },
 ] satisfies readonly VercelCron[];
 
