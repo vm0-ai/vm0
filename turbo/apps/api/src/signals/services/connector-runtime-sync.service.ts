@@ -140,6 +140,7 @@ async function resolveCustomTarget(args: {
     return customAbsentResult(args.target, "connector-unavailable");
   }
   if (custom.row.credentialAccess.kind === "incompatible") {
+    // Credential compatibility gates auth resolution, not definition-owned policy.
     L.debug("Custom connector credential storage is incompatible", {
       customConnectorId: args.target.customConnectorId,
       memberConnectorId: custom.row.credentialAccess.memberConnectorId,
@@ -152,7 +153,6 @@ async function resolveCustomTarget(args: {
       definitionStorageVersion:
         custom.row.credentialAccess.definitionStorageVersion,
     });
-    return customAbsentResult(args.target, "connector-unavailable");
   }
   if (!custom.grant) {
     return customAbsentResult(args.target, "grant-unavailable");

@@ -8489,11 +8489,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const [incompatibleRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
-    expect(incompatibleRuntime).toMatchObject({
-      target,
-      state: "absent",
-      reason: "connector-unavailable",
-    });
+    const incompatibleAvailable =
+      availableCustomConnectorRuntime(incompatibleRuntime);
+    expect(incompatibleAvailable.firewall).toStrictEqual(
+      updatedAvailable.firewall,
+    );
+    expect(incompatibleAvailable.networkPolicy).toStrictEqual(
+      updatedAvailable.networkPolicy,
+    );
     const incompatibleAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       currentAuthBody,
@@ -8503,6 +8506,38 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       throw new Error("Expected incompatible custom connector credentials");
     }
     expect(incompatibleAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    const [incompatibleAuthMethodRuntime] = await api.syncConnectorRuntime(
+      run.runId,
+      { targets: [target] },
+    );
+    const incompatibleAuthMethodAvailable = availableCustomConnectorRuntime(
+      incompatibleAuthMethodRuntime,
+    );
+    expect(incompatibleAuthMethodAvailable.firewall).toStrictEqual(
+      updatedAvailable.firewall,
+    );
+    expect(incompatibleAuthMethodAvailable.networkPolicy).toStrictEqual(
+      updatedAvailable.networkPolicy,
+    );
+    const incompatibleAuthMethod = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (incompatibleAuthMethod.status !== 424) {
+      throw new Error("Expected incompatible custom connector auth method");
+    }
+    expect(incompatibleAuthMethod.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
 
     await setCustomConnectorCredentialStorageState(context, {
       orgId: actor.orgId,
@@ -9501,7 +9536,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("omits incompatible custom credentials from initial and synced runtime", async () => {
+  it("omits incompatible custom credentials initially while sync preserves firewall", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -9562,10 +9597,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
     });
-    expect(runtimeResult).toMatchObject({
-      state: "absent",
-      reason: "connector-unavailable",
-    });
+    const availableRuntime = availableCustomConnectorRuntime(runtimeResult);
+    expect(availableRuntime.firewall.customConnectorId).toBe(
+      saved.connector.id,
+    );
+    expect(availableRuntime.networkPolicy.unknownPolicy).toBe("allow");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await connectors.deleteCustomConnector(actor, saved.connector.id);

@@ -3891,7 +3891,10 @@ export async function buildCustomConnectorRuntimeContext(
   );
   const stats = new CustomConnectorRuntimeBuildStats(args.rows);
   for (const row of args.rows) {
-    if (row.credentialAccess.kind === "incompatible") {
+    if (
+      row.credentialAccess.kind === "incompatible" &&
+      !args.preserveFirewallWithoutCredentials
+    ) {
       continue;
     }
     const missingRequiredStartedAt = now();
