@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.706.3](https://github.com/vm0-ai/vm0/compare/app-v0.706.2...app-v0.706.3) (2026-08-07)
+
+
+### Refactoring
+
+* **chat:** prepare content-based events ([#25748](https://github.com/vm0-ai/vm0/issues/25748)) ([aa5fd7b](https://github.com/vm0-ai/vm0/commit/aa5fd7b5da87a3fe21f45e54bae1d1fea9d56ab2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.2
+    * @vm0/core bumped to 8.530.2
+
 ## [0.706.2](https://github.com/vm0-ai/vm0/compare/app-v0.706.1...app-v0.706.2) (2026-08-07)
 
 
