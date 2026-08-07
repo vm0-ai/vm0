@@ -1600,7 +1600,9 @@
       "videoOptionsLabel": "Videooptionen {{spec}}",
       "videoOptionsModel": "Modell",
       "videoOptionsRatio": "Seitenverhältnis",
-      "videoOptionsResolution": "Auflösung"
+      "videoOptionsResolution": "Auflösung",
+      "videoSpecAudioOff": "Stumm",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Chat-Thread",

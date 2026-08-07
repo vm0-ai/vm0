@@ -1599,7 +1599,9 @@
       "videoOptionsLabel": "動画オプション {{spec}}",
       "videoOptionsModel": "モデル",
       "videoOptionsRatio": "比率",
-      "videoOptionsResolution": "解像度"
+      "videoOptionsResolution": "解像度",
+      "videoSpecAudioOff": "音声なし",
+      "videoSpecAudioOn": "音声あり"
     },
     "thread": {
       "ariaLabel": "チャットスレッド",

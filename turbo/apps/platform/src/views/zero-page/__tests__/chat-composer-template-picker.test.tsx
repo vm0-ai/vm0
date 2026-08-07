@@ -202,8 +202,11 @@ describe("chat composer templates", () => {
       await screen.findByLabelText(`Select video template ${template.title}`),
     );
 
-    // Catalog defaults are shown even though nothing is stored yet.
-    const spec = await screen.findByLabelText("Video options 16:9 \u00b7 8s");
+    // Every parameter is shown, with catalog defaults filled in even though
+    // nothing is stored yet.
+    const spec = await screen.findByLabelText(
+      "Video options Seedance 2.0 fast \u00b7 16:9 \u00b7 8s \u00b7 720p \u00b7 Audio",
+    );
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
@@ -229,7 +232,9 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 8s"),
+        screen.getByLabelText(
+          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -240,7 +245,9 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 6s"),
+        screen.getByLabelText(
+          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 6s \u00b7 720p \u00b7 Audio",
+        ),
       ).toBeInTheDocument();
     });
     expect(
