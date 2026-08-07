@@ -17,10 +17,7 @@ import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import {
-  createSlackClient,
-  postMessage,
-} from "../external/slack-message-client";
+import { createSlackClient } from "../external/slack-message-client";
 import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
@@ -241,8 +238,7 @@ async function deliverClaimedSlackChatCallback(args: {
   ]);
   args.signal.throwIfAborted();
 
-  const postResult = await postMessage(
-    createSlackClient(botToken),
+  const postResult = await createSlackClient(botToken).postMessage(
     payload.channelId,
     messageContent,
     {
@@ -419,8 +415,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
     featureContext,
   );
   args.signal.throwIfAborted();
-  const result = await postMessage(
-    createSlackClient(botToken),
+  const result = await createSlackClient(botToken).postMessage(
     args.channelId,
     event.content,
     {

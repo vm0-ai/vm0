@@ -18,8 +18,7 @@ import { clerk$ } from "../external/clerk";
 import { publishUserSignal } from "../external/realtime";
 import {
   createSlackClient,
-  postEphemeral,
-  postMessage,
+  type SlackClient,
 } from "../external/slack-message-client";
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type Db } from "../external/db";
@@ -27,7 +26,6 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
-type SlackClient = ReturnType<typeof createSlackClient>;
 
 type ConnectResult =
   | { readonly kind: "not_found"; readonly message: string }
@@ -196,9 +194,9 @@ async function refreshSlackAppHome(args: {
     .limit(1);
 
   if (!connection) {
-    await args.client.views.publish({
-      user_id: args.slackUserId,
-      view: buildAppHomeView({
+    await args.client.publishAppHome(
+      args.slackUserId,
+      buildAppHomeView({
         appUrl: env("APP_URL"),
         isLinked: false,
         loginUrl: buildSlackConnectUrl(
@@ -206,7 +204,7 @@ async function refreshSlackAppHome(args: {
           args.slackUserId,
         ),
       }),
-    });
+    );
     return;
   }
 
@@ -238,9 +236,9 @@ async function refreshSlackAppHome(args: {
     canSwitch = Boolean(defaultComposeId);
   }
 
-  await args.client.views.publish({
-    user_id: args.slackUserId,
-    view: buildAppHomeView({
+  await args.client.publishAppHome(
+    args.slackUserId,
+    buildAppHomeView({
       appUrl: env("APP_URL"),
       isLinked: true,
       vm0UserId: connection.vm0UserId,
@@ -252,7 +250,7 @@ async function refreshSlackAppHome(args: {
       isOverrideActive,
       canSwitch,
     }),
-  });
+  );
 }
 
 export function zeroSlackConnectStatus(args: {
@@ -492,7 +490,7 @@ export const notifySlackConnect$ = command(
 
     let sentEphemeral = false;
     if (args.channelId) {
-      const result = await postEphemeral(client, {
+      const result = await client.postEphemeral({
         channel: args.channelId,
         user: args.slackUserId,
         text: "You're connected!",
@@ -504,15 +502,14 @@ export const notifySlackConnect$ = command(
     }
 
     if (!sentEphemeral) {
-      const connectMessage = await postMessage(
-        client,
+      const connectMessage = await client.postMessage(
         args.slackUserId,
         "You're connected!",
         { blocks },
       );
       signal.throwIfAborted();
       if (connectMessage.kind === "ok") {
-        await postMessage(client, args.slackUserId, "Hi! I'm Zero.", {
+        await client.postMessage(args.slackUserId, "Hi! I'm Zero.", {
           threadTs: connectMessage.ts,
           blocks: buildWelcomeMessage(agentName),
         });
@@ -520,8 +517,7 @@ export const notifySlackConnect$ = command(
 
         if (args.pendingPrompt) {
           const safePrompt = `\`\`\`${args.pendingPrompt.replaceAll("`", "'")}\`\`\``;
-          await postMessage(
-            client,
+          await client.postMessage(
             args.slackUserId,
             `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
             { threadTs: connectMessage.ts },

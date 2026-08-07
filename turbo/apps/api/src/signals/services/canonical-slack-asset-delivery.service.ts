@@ -5,13 +5,8 @@ import {
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
 import { and, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
-import type { WebClient } from "@slack/web-api";
 
-import {
-  completeUploadExternal,
-  getFileInfo,
-  getUploadUrlExternal,
-} from "../external/slack-message-client";
+import type { SlackClient } from "../external/slack-message-client";
 import { type Db, writeDb$ } from "../external/db";
 import { settle } from "../utils";
 
@@ -132,7 +127,7 @@ interface CanonicalSlackDeliveryFailure {
 }
 
 function resolveSlackFilePermalink(
-  info: Awaited<ReturnType<typeof getFileInfo>>,
+  info: Awaited<ReturnType<SlackClient["getFileInfo"]>>,
 ):
   | { readonly ok: true; readonly permalink: string }
   | { readonly ok: false; readonly error: CanonicalSlackDeliveryFailure } {
@@ -296,13 +291,13 @@ async function reservePreparedSlackFile(
 
 async function completeExistingSlackFile(
   db: Db,
-  client: WebClient,
+  client: SlackClient,
   row: CanonicalSlackDeliveryRow,
 ): Promise<CanonicalSlackDeliveryResult | null> {
   if (!row.externalId) {
     return null;
   }
-  const completed = await completeUploadExternal(client, {
+  const completed = await client.completeUploadExternal({
     fileId: row.externalId,
     channel: row.destination.channelId,
     threadTs: row.destination.threadTs,
@@ -322,7 +317,7 @@ async function completeExistingSlackFile(
       retryable: true,
     });
   }
-  const info = await getFileInfo(client, row.externalId);
+  const info = await client.getFileInfo(row.externalId);
   const permalinkResult = resolveSlackFilePermalink(info);
   if (!permalinkResult.ok) {
     return await markDeliveryFailed(db, row, permalinkResult.error);
@@ -338,7 +333,7 @@ export const prepareCanonicalSlackDelivery$ = command(
       readonly operationId: string;
       readonly runId: string;
       readonly userId: string;
-      readonly client: WebClient;
+      readonly client: SlackClient;
     },
     signal: AbortSignal,
   ): Promise<CanonicalSlackDeliveryResult | null> => {
@@ -377,7 +372,7 @@ export const prepareCanonicalSlackDelivery$ = command(
     }
 
     const preparation = await settle(
-      getUploadUrlExternal(args.client, {
+      args.client.getUploadUrlExternal({
         filename: row.filename,
         length: row.sizeBytes,
       }),
@@ -419,7 +414,7 @@ export const completeCanonicalSlackDelivery$ = command(
       readonly userId: string;
       readonly fileId: string;
       readonly uploadError?: string;
-      readonly client: WebClient;
+      readonly client: SlackClient;
     },
     signal: AbortSignal,
   ): Promise<CanonicalSlackDeliveryResult | null> => {
@@ -444,7 +439,7 @@ export const completeCanonicalSlackDelivery$ = command(
     }
 
     const completion = await settle(
-      completeUploadExternal(args.client, {
+      args.client.completeUploadExternal({
         fileId: args.fileId,
         channel: row.destination.channelId,
         threadTs: row.destination.threadTs,
@@ -471,7 +466,7 @@ export const completeCanonicalSlackDelivery$ = command(
     }
 
     const infoResult = await settle(
-      getFileInfo(args.client, args.fileId),
+      args.client.getFileInfo(args.fileId),
       signal,
     );
     signal.throwIfAborted();
