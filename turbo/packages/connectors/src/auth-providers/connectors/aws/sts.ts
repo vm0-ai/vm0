@@ -23,11 +23,13 @@ const AWS_STS_IDENTITY_XML_TAGS = {
 
 type AwsStsIdentityXmlTag = keyof typeof AWS_STS_IDENTITY_XML_TAGS;
 
-export async function getAwsCallerIdentity(args: {
-  readonly credentials: AwsSigV4Credentials;
-  readonly region: string;
-  readonly signal: AbortSignal;
-}): Promise<AwsCallerIdentity> {
+export async function getAwsCallerIdentity(
+  args: {
+    readonly credentials: AwsSigV4Credentials;
+    readonly region: string;
+  },
+  signal: AbortSignal,
+): Promise<AwsCallerIdentity> {
   const host = `sts.${args.region}.amazonaws.com`;
   const query = canonicalQuery({
     Action: AWS_STS_ACTION,
@@ -45,7 +47,7 @@ export async function getAwsCallerIdentity(args: {
   const response = await fetch(url, {
     method: "GET",
     headers,
-    signal: args.signal,
+    signal,
   });
   if (!response.ok) {
     throw new ProviderHttpError(

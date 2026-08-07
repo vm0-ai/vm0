@@ -92,32 +92,34 @@ const upsertModelProviderInner$ = command(
       if (!raw) {
         return badRequestMessage("Missing CODEX_AUTH_JSON secret");
       }
-      return await handleCodexAuthJsonPaste({
-        scope: "org",
-        orgId: auth.orgId,
-        rawAuthJson: raw,
-        selectedModel: undefined,
-        signal,
-        upsert: async (pasteArgs) => {
-          const result = await set(
-            upsertOrgMultiAuthModelProvider$,
-            {
-              orgId: auth.orgId,
-              type: "codex-oauth-token",
-              authMethod: pasteArgs.authMethod,
-              secretValues: pasteArgs.secretValues,
-              metadata: pasteArgs.metadata,
-            },
-            signal,
-          );
-          if ("status" in result) {
-            throw new Error(
-              "upsertOrgMultiAuthModelProvider$ unexpectedly returned BAD_REQUEST during codex paste",
+      return await handleCodexAuthJsonPaste(
+        {
+          scope: "org",
+          orgId: auth.orgId,
+          rawAuthJson: raw,
+          selectedModel: undefined,
+          upsert: async (pasteArgs) => {
+            const result = await set(
+              upsertOrgMultiAuthModelProvider$,
+              {
+                orgId: auth.orgId,
+                type: "codex-oauth-token",
+                authMethod: pasteArgs.authMethod,
+                secretValues: pasteArgs.secretValues,
+                metadata: pasteArgs.metadata,
+              },
+              signal,
             );
-          }
-          return result;
+            if ("status" in result) {
+              throw new Error(
+                "upsertOrgMultiAuthModelProvider$ unexpectedly returned BAD_REQUEST during codex paste",
+              );
+            }
+            return result;
+          },
         },
-      });
+        signal,
+      );
     }
 
     if (type === "vm0") {

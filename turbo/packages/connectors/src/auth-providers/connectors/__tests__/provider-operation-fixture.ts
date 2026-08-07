@@ -57,13 +57,15 @@ export function providerOperationFixture(fixture: ProviderMethodFixture) {
       readonly signal: AbortSignal;
     }) {
       assertFixtureSelection(fixture, args);
-      return completeConnectorExternalCodeAuthorizationWithMethod({
-        ...selection,
-        authClient: args.authClient,
-        code: args.code,
-        providerState: args.providerState,
-        signal: args.signal,
-      });
+      return completeConnectorExternalCodeAuthorizationWithMethod(
+        {
+          ...selection,
+          authClient: args.authClient,
+          code: args.code,
+          providerState: args.providerState,
+        },
+        args.signal,
+      );
     },
     refreshConnectorAuthProviderAccessToken(args: {
       readonly connectorSlug: string;
@@ -73,14 +75,16 @@ export function providerOperationFixture(fixture: ProviderMethodFixture) {
       readonly signal: AbortSignal;
     }) {
       assertFixtureSelection(fixture, args);
-      return refreshConnectorAuthProviderAccessTokenWithMethod({
-        ...selection,
-        ...(args.authClient === undefined
-          ? {}
-          : { authClient: args.authClient }),
-        inputs: args.inputs,
-        signal: args.signal,
-      });
+      return refreshConnectorAuthProviderAccessTokenWithMethod(
+        {
+          ...selection,
+          ...(args.authClient === undefined
+            ? {}
+            : { authClient: args.authClient }),
+          inputs: args.inputs,
+        },
+        args.signal,
+      );
     },
     revokeConnectorAuthMethodAccessToken(args: {
       readonly connectorSlug: string;
@@ -92,12 +96,14 @@ export function providerOperationFixture(fixture: ProviderMethodFixture) {
         | Promise<Readonly<Record<string, string>>>;
     }) {
       assertFixtureSelection(fixture, args);
-      return revokeConnectorAuthMethodAccessTokenWithMethod({
-        ...selection,
-        readEnv: args.readEnv,
-        signal: args.signal,
-        loadInputs: args.loadInputs,
-      });
+      return revokeConnectorAuthMethodAccessTokenWithMethod(
+        {
+          ...selection,
+          readEnv: args.readEnv,
+          loadInputs: args.loadInputs,
+        },
+        args.signal,
+      );
     },
   };
 }

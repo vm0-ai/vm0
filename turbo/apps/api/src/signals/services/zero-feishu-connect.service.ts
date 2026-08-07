@@ -253,11 +253,13 @@ async function prepareFeishuInstallation(
   input: ConfigureFeishuArgs,
   signal: AbortSignal,
 ): Promise<PreparedFeishuInstallation> {
-  const tenantToken = await fetchFeishuTenantAccessToken({
-    appId: input.appId,
-    appSecret: input.appSecret,
+  const tenantToken = await fetchFeishuTenantAccessToken(
+    {
+      appId: input.appId,
+      appSecret: input.appSecret,
+    },
     signal,
-  });
+  );
   const context = {
     orgId: input.orgId,
     userId: input.userId,
@@ -285,13 +287,15 @@ async function prepareFeishuInstallation(
   };
 }
 
-async function persistFeishuInstallation(args: {
-  readonly db: Pick<Db, "insert" | "update">;
-  readonly input: ConfigureFeishuArgs;
-  readonly prepared: PreparedFeishuInstallation;
-  readonly targetInstallationId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<ConfigureFeishuResult> {
+async function persistFeishuInstallation(
+  args: {
+    readonly db: Pick<Db, "insert" | "update">;
+    readonly input: ConfigureFeishuArgs;
+    readonly prepared: PreparedFeishuInstallation;
+    readonly targetInstallationId: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<ConfigureFeishuResult> {
   if (args.targetInstallationId) {
     await args.db
       .update(feishuOrgInstallations)
@@ -314,7 +318,7 @@ async function persistFeishuInstallation(args: {
         updatedAt: nowDate(),
       })
       .where(eq(feishuOrgInstallations.id, args.targetInstallationId));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return {
       kind: "ok",
       installationId: args.targetInstallationId,
@@ -337,7 +341,7 @@ async function persistFeishuInstallation(args: {
       target: feishuOrgInstallations.appId,
     })
     .returning({ id: feishuOrgInstallations.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return created
     ? { kind: "ok", installationId: created.id }
     : { kind: "app_in_use" };
@@ -445,13 +449,15 @@ export const configureFeishuInstallation$ = command(
       if (target.kind !== "target") {
         return target;
       }
-      return await persistFeishuInstallation({
-        db: tx,
-        input: args,
-        prepared,
-        targetInstallationId: target.installationId,
+      return await persistFeishuInstallation(
+        {
+          db: tx,
+          input: args,
+          prepared,
+          targetInstallationId: target.installationId,
+        },
         signal,
-      });
+      );
     });
     signal.throwIfAborted();
     if (result.kind === "ok") {
@@ -592,14 +598,18 @@ export const updateFeishuInstallationAgent$ = command(
     const botInfo = args.setupCompleted
       ? await tapError(
           (async () => {
-            return await fetchFeishuBotInfo({
-              tenantAccessToken: await getFeishuTenantAccessToken({
-                db,
-                installationId: args.installationId,
-                signal,
-              }),
+            return await fetchFeishuBotInfo(
+              {
+                tenantAccessToken: await getFeishuTenantAccessToken(
+                  {
+                    db,
+                    installationId: args.installationId,
+                  },
+                  signal,
+                ),
+              },
               signal,
-            });
+            );
           })(),
           (error) => {
             L.warn("Failed to load Feishu bot profile", {

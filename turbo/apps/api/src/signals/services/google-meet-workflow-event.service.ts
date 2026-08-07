@@ -221,16 +221,18 @@ function googleWorkspaceEventsTopicName():
       };
 }
 
-async function resolveGoogleMeetAccess(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId?: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleMeetAccessResult> {
+async function resolveGoogleMeetAccess(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId?: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleMeetAccessResult> {
   const currentTime = nowDate();
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const loaded = await loadConnectorCredentialConnection({
     db: args.db,
     snapshot,
@@ -241,7 +243,7 @@ async function resolveGoogleMeetAccess(args: {
       ? {}
       : { connectorId: args.connectorId }),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (loaded.kind === "missing") {
     return {
       kind: "bad_request",
@@ -273,7 +275,7 @@ async function resolveGoogleMeetAccess(args: {
     db: args.db,
     valueRefs: [accessTokenValueRef],
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const accessToken = values.get(accessTokenValueRef);
   if (!accessToken) {
     return {
@@ -293,15 +295,17 @@ async function resolveGoogleMeetAccess(args: {
       },
     };
   }
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: GOOGLE_MEET_ACCESS_TOKEN_ENVIRONMENT_NAME,
-    signal: args.signal,
-    persist: { db: args.db, markNeedsReconnectOnFailure: true },
-  });
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: GOOGLE_MEET_ACCESS_TOKEN_ENVIRONMENT_NAME,
+      persist: { db: args.db, markNeedsReconnectOnFailure: true },
+    },
+    signal,
+  );
   if (refreshed.kind === "configuration-unavailable") {
     return {
       kind: "bad_request",
@@ -402,14 +406,16 @@ function subscriptionNeedsRenewal(
   );
 }
 
-async function loadWorkspaceSubscriptionState(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly targetResource: string;
-  readonly eventTypes: readonly string[];
-  readonly topicName: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleWorkspaceSubscriptionStateRow | null> {
+async function loadWorkspaceSubscriptionState(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly targetResource: string;
+    readonly eventTypes: readonly string[];
+    readonly topicName: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleWorkspaceSubscriptionStateRow | null> {
   const [state] = await args.db
     .select()
     .from(googleWorkspaceEventSubscriptionStates)
@@ -432,22 +438,24 @@ async function loadWorkspaceSubscriptionState(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return state ?? null;
 }
 
-async function persistWorkspaceSubscriptionState(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId: string;
-  readonly targetResource: string;
-  readonly eventTypes: readonly string[];
-  readonly topicName: string;
-  readonly subscription: z.infer<typeof workspaceSubscriptionSchema>;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<GoogleWorkspaceSubscriptionStateRow> {
+async function persistWorkspaceSubscriptionState(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly targetResource: string;
+    readonly eventTypes: readonly string[];
+    readonly topicName: string;
+    readonly subscription: z.infer<typeof workspaceSubscriptionSchema>;
+    readonly currentTime: Date;
+  },
+  signal: AbortSignal,
+): Promise<GoogleWorkspaceSubscriptionStateRow> {
   const expireTime = subscriptionExpireTime(
     args.subscription,
     args.currentTime,
@@ -490,20 +498,22 @@ async function persistWorkspaceSubscriptionState(args: {
       },
     })
     .returning();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!state) {
     throw new Error("Failed to persist Google Workspace subscription state");
   }
   return state;
 }
 
-async function createWorkspaceSubscription(args: {
-  readonly accessToken: string;
-  readonly targetResource: string;
-  readonly eventTypes: readonly string[];
-  readonly topicName: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function createWorkspaceSubscription(
+  args: {
+    readonly accessToken: string;
+    readonly targetResource: string;
+    readonly eventTypes: readonly string[];
+    readonly topicName: string;
+  },
+  signal: AbortSignal,
+): Promise<
   WorkspaceEventsFetchResult<z.infer<typeof workspaceSubscriptionSchema>>
 > {
   const operation = await workspaceEventsFetchJson(
@@ -521,9 +531,9 @@ async function createWorkspaceSubscription(args: {
         ttl: `${GOOGLE_WORKSPACE_SUBSCRIPTION_TTL_SECONDS}s`,
       }),
     },
-    args.signal,
+    signal,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (operation.kind !== "ok") {
     return operation;
   }
@@ -537,11 +547,13 @@ async function createWorkspaceSubscription(args: {
       };
 }
 
-async function renewWorkspaceSubscription(args: {
-  readonly accessToken: string;
-  readonly subscriptionName: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function renewWorkspaceSubscription(
+  args: {
+    readonly accessToken: string;
+    readonly subscriptionName: string;
+  },
+  signal: AbortSignal,
+): Promise<
   WorkspaceEventsFetchResult<z.infer<typeof workspaceSubscriptionSchema>>
 > {
   const url = new URL(workspaceEventsApiUrl(`/${args.subscriptionName}`));
@@ -557,9 +569,9 @@ async function renewWorkspaceSubscription(args: {
         ttl: `${GOOGLE_WORKSPACE_SUBSCRIPTION_TTL_SECONDS}s`,
       }),
     },
-    args.signal,
+    signal,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (operation.kind !== "ok") {
     return operation;
   }
@@ -573,11 +585,13 @@ async function renewWorkspaceSubscription(args: {
       };
 }
 
-async function reactivateWorkspaceSubscription(args: {
-  readonly accessToken: string;
-  readonly subscriptionName: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function reactivateWorkspaceSubscription(
+  args: {
+    readonly accessToken: string;
+    readonly subscriptionName: string;
+  },
+  signal: AbortSignal,
+): Promise<
   WorkspaceEventsFetchResult<z.infer<typeof workspaceSubscriptionSchema>>
 > {
   const operation = await workspaceEventsFetchJson(
@@ -585,9 +599,9 @@ async function reactivateWorkspaceSubscription(args: {
     args.accessToken,
     workspaceEventsApiUrl(`/${args.subscriptionName}:reactivate`),
     { method: "POST", body: JSON.stringify({}) },
-    args.signal,
+    signal,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (operation.kind !== "ok") {
     return operation;
   }
@@ -601,12 +615,14 @@ async function reactivateWorkspaceSubscription(args: {
       };
 }
 
-async function listWorkspaceSubscriptions(args: {
-  readonly accessToken: string;
-  readonly targetResource: string;
-  readonly eventTypes: readonly string[];
-  readonly signal: AbortSignal;
-}): Promise<
+async function listWorkspaceSubscriptions(
+  args: {
+    readonly accessToken: string;
+    readonly targetResource: string;
+    readonly eventTypes: readonly string[];
+  },
+  signal: AbortSignal,
+): Promise<
   WorkspaceEventsFetchResult<
     readonly z.infer<typeof workspaceSubscriptionSchema>[]
   >
@@ -631,9 +647,9 @@ async function listWorkspaceSubscriptions(args: {
       args.accessToken,
       url.toString(),
       { method: "GET" },
-      args.signal,
+      signal,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (result.kind !== "ok") {
       return result;
     }
@@ -660,17 +676,19 @@ function workspaceSubscriptionMatches(args: {
   );
 }
 
-async function adoptExistingWorkspaceSubscription(args: {
-  readonly accessToken: string;
-  readonly targetResource: string;
-  readonly eventTypes: readonly string[];
-  readonly topicName: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function adoptExistingWorkspaceSubscription(
+  args: {
+    readonly accessToken: string;
+    readonly targetResource: string;
+    readonly eventTypes: readonly string[];
+    readonly topicName: string;
+  },
+  signal: AbortSignal,
+): Promise<
   WorkspaceEventsFetchResult<z.infer<typeof workspaceSubscriptionSchema>>
 > {
-  const list = await listWorkspaceSubscriptions(args);
-  args.signal.throwIfAborted();
+  const list = await listWorkspaceSubscriptions(args, signal);
+  signal.throwIfAborted();
   if (list.kind !== "ok") {
     return list;
   }
@@ -692,32 +710,36 @@ async function adoptExistingWorkspaceSubscription(args: {
       };
 }
 
-async function createOrAdoptWorkspaceSubscription(args: {
-  readonly accessToken: string;
-  readonly targetResource: string;
-  readonly eventTypes: readonly string[];
-  readonly topicName: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function createOrAdoptWorkspaceSubscription(
+  args: {
+    readonly accessToken: string;
+    readonly targetResource: string;
+    readonly eventTypes: readonly string[];
+    readonly topicName: string;
+  },
+  signal: AbortSignal,
+): Promise<
   WorkspaceEventsFetchResult<z.infer<typeof workspaceSubscriptionSchema>>
 > {
-  const created = await createWorkspaceSubscription(args);
-  args.signal.throwIfAborted();
+  const created = await createWorkspaceSubscription(args, signal);
+  signal.throwIfAborted();
   if (created.kind === "ok") {
     return created;
   }
   if (created.status !== 409) {
     return created;
   }
-  return await adoptExistingWorkspaceSubscription(args);
+  return await adoptExistingWorkspaceSubscription(args, signal);
 }
 
-export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<
+export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "ok" }
   | { readonly kind: "bad_request"; readonly message: string }
 > {
@@ -725,8 +747,8 @@ export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(arg
   if (topicResult.kind !== "ok") {
     return topicResult;
   }
-  const accessResult = await resolveGoogleMeetAccess(args);
-  args.signal.throwIfAborted();
+  const accessResult = await resolveGoogleMeetAccess(args, signal);
+  signal.throwIfAborted();
   if (accessResult.kind !== "ok") {
     return accessResult;
   }
@@ -742,14 +764,16 @@ export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(arg
   const targetResource = googleMeetUserTargetResource(
     accessResult.access.externalId,
   );
-  const existing = await loadWorkspaceSubscriptionState({
-    db: args.db,
-    connectorId: accessResult.access.connectorId,
-    targetResource,
-    eventTypes,
-    topicName: topicResult.topicName,
-    signal: args.signal,
-  });
+  const existing = await loadWorkspaceSubscriptionState(
+    {
+      db: args.db,
+      connectorId: accessResult.access.connectorId,
+      targetResource,
+      eventTypes,
+      topicName: topicResult.topicName,
+    },
+    signal,
+  );
   const currentTime = nowDate();
   if (existing && !subscriptionNeedsRenewal(existing, currentTime)) {
     return { kind: "ok" };
@@ -760,39 +784,47 @@ export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(arg
   >;
   if (existing) {
     if (existing.needsRepair) {
-      await reactivateWorkspaceSubscription({
+      await reactivateWorkspaceSubscription(
+        {
+          accessToken: accessResult.access.accessToken,
+          subscriptionName: existing.subscriptionName,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+    subscription = await renewWorkspaceSubscription(
+      {
         accessToken: accessResult.access.accessToken,
         subscriptionName: existing.subscriptionName,
-        signal: args.signal,
-      });
-      args.signal.throwIfAborted();
-    }
-    subscription = await renewWorkspaceSubscription({
-      accessToken: accessResult.access.accessToken,
-      subscriptionName: existing.subscriptionName,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (subscription.kind !== "ok" && subscription.status === 404) {
-      subscription = await createOrAdoptWorkspaceSubscription({
+      subscription = await createOrAdoptWorkspaceSubscription(
+        {
+          accessToken: accessResult.access.accessToken,
+          targetResource,
+          eventTypes,
+          topicName: topicResult.topicName,
+        },
+        signal,
+      );
+    }
+  } else {
+    subscription = await createOrAdoptWorkspaceSubscription(
+      {
         accessToken: accessResult.access.accessToken,
         targetResource,
         eventTypes,
         topicName: topicResult.topicName,
-        signal: args.signal,
-      });
-    }
-  } else {
-    subscription = await createOrAdoptWorkspaceSubscription({
-      accessToken: accessResult.access.accessToken,
-      targetResource,
-      eventTypes,
-      topicName: topicResult.topicName,
-      signal: args.signal,
-    });
+      },
+      signal,
+    );
   }
 
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (subscription.kind !== "ok") {
     return {
       kind: "bad_request",
@@ -800,18 +832,20 @@ export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(arg
     };
   }
 
-  await persistWorkspaceSubscriptionState({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorId: accessResult.access.connectorId,
-    targetResource,
-    eventTypes,
-    topicName: topicResult.topicName,
-    subscription: subscription.value,
-    currentTime,
-    signal: args.signal,
-  });
+  await persistWorkspaceSubscriptionState(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: accessResult.access.connectorId,
+      targetResource,
+      eventTypes,
+      topicName: topicResult.topicName,
+      subscription: subscription.value,
+      currentTime,
+    },
+    signal,
+  );
   return { kind: "ok" };
 }
 
@@ -833,10 +867,12 @@ async function defaultPubSubOidcVerifier(
   };
 }
 
-async function verifyGoogleWorkspacePubSubOidc(args: {
-  readonly authorization: string | null;
-  readonly signal: AbortSignal;
-}): Promise<
+async function verifyGoogleWorkspacePubSubOidc(
+  args: {
+    readonly authorization: string | null;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "ok" }
   | { readonly kind: "unauthorized" }
   | { readonly kind: "config_error"; readonly message: string }
@@ -859,9 +895,9 @@ async function verifyGoogleWorkspacePubSubOidc(args: {
 
   const token = args.authorization.slice("Bearer ".length);
   const claims = await tapError(
-    defaultPubSubOidcVerifier(token, audience, args.signal),
+    defaultPubSubOidcVerifier(token, audience, signal),
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!claims) {
     return { kind: "unauthorized" };
   }
@@ -1051,11 +1087,13 @@ function googleMeetTranscriptEventContext(
   };
 }
 
-async function loadWorkspaceSubscriptionStateByName(args: {
-  readonly db: Db;
-  readonly subscriptionName: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleWorkspaceSubscriptionStateRow | null> {
+async function loadWorkspaceSubscriptionStateByName(
+  args: {
+    readonly db: Db;
+    readonly subscriptionName: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleWorkspaceSubscriptionStateRow | null> {
   const [state] = await args.db
     .select()
     .from(googleWorkspaceEventSubscriptionStates)
@@ -1066,15 +1104,17 @@ async function loadWorkspaceSubscriptionStateByName(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return state ?? null;
 }
 
-async function handleWorkspaceLifecycleEvent(args: {
-  readonly db: Db;
-  readonly decoded: DecodedWorkspacePubSubPush;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function handleWorkspaceLifecycleEvent(
+  args: {
+    readonly db: Db;
+    readonly decoded: DecodedWorkspacePubSubPush;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const subscriptionName = subscriptionNameFromCloudEvent(
     args.decoded.cloudEvent,
   );
@@ -1123,14 +1163,16 @@ async function handleWorkspaceLifecycleEvent(args: {
         subscriptionName,
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function loadGoogleMeetEventAutomations(args: {
-  readonly db: Db;
-  readonly state: GoogleWorkspaceSubscriptionStateRow;
-  readonly signal: AbortSignal;
-}): Promise<GoogleMeetEventAutomationRow[]> {
+async function loadGoogleMeetEventAutomations(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleWorkspaceSubscriptionStateRow;
+  },
+  signal: AbortSignal,
+): Promise<GoogleMeetEventAutomationRow[]> {
   const automationRows = await args.db
     .select({
       automation: rolloutCompatibleWorkflowAutomationColumns(false),
@@ -1170,7 +1212,7 @@ async function loadGoogleMeetEventAutomations(args: {
         ),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const currentTime = nowDate();
   const automations: GoogleMeetEventAutomationRow[] = [];
@@ -1193,7 +1235,7 @@ async function loadGoogleMeetEventAutomations(args: {
           currentTime,
         });
       }));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     automations.push({
       automation: row.automation,
       agentId: row.agentId,
@@ -1205,14 +1247,16 @@ async function loadGoogleMeetEventAutomations(args: {
   return automations;
 }
 
-async function insertWorkspaceProcessedEvent(args: {
-  readonly db: Db;
-  readonly state: GoogleWorkspaceSubscriptionStateRow;
-  readonly automation: GoogleMeetEventAutomationRow;
-  readonly decoded: DecodedWorkspacePubSubPush;
-  readonly event: GoogleMeetTranscriptEventContext;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function insertWorkspaceProcessedEvent(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleWorkspaceSubscriptionStateRow;
+    readonly automation: GoogleMeetEventAutomationRow;
+    readonly decoded: DecodedWorkspacePubSubPush;
+    readonly event: GoogleMeetTranscriptEventContext;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   const [processed] = await args.db
     .insert(googleWorkspaceProcessedEvents)
     .values({
@@ -1227,7 +1271,7 @@ async function insertWorkspaceProcessedEvent(args: {
     })
     .onConflictDoNothing()
     .returning({ id: googleWorkspaceProcessedEvents.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return processed?.id ?? null;
 }
 
@@ -1264,19 +1308,21 @@ function googleMeetTriggerContext(args: {
   };
 }
 
-async function dispatchGoogleMeetTranscriptEventForState(args: {
-  readonly db: Db;
-  readonly state: GoogleWorkspaceSubscriptionStateRow;
-  readonly decoded: DecodedWorkspacePubSubPush;
-  readonly event: GoogleMeetTranscriptEventContext;
-  readonly startRun: (args: {
-    readonly automation: GoogleMeetEventAutomationRow;
+async function dispatchGoogleMeetTranscriptEventForState(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleWorkspaceSubscriptionStateRow;
+    readonly decoded: DecodedWorkspacePubSubPush;
     readonly event: GoogleMeetTranscriptEventContext;
-    readonly timing: WorkflowEventRunTiming;
-  }) => Promise<"ok" | "error">;
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly signal: AbortSignal;
-}): Promise<
+    readonly startRun: (args: {
+      readonly automation: GoogleMeetEventAutomationRow;
+      readonly event: GoogleMeetTranscriptEventContext;
+      readonly timing: WorkflowEventRunTiming;
+    }) => Promise<"ok" | "error">;
+    readonly sourceTiming: WorkflowEventSourceTiming;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly kind: "ok";
       readonly dispatched: number;
@@ -1287,11 +1333,13 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
   const automations = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_automations",
     async () => {
-      return await loadGoogleMeetEventAutomations({
-        db: args.db,
-        state: args.state,
-        signal: args.signal,
-      });
+      return await loadGoogleMeetEventAutomations(
+        {
+          db: args.db,
+          state: args.state,
+        },
+        signal,
+      );
     },
   );
   let dispatched = 0;
@@ -1302,14 +1350,16 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
     const processedId = await runTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
       async () => {
-        return await insertWorkspaceProcessedEvent({
-          db: args.db,
-          state: args.state,
-          automation,
-          decoded: args.decoded,
-          event: args.event,
-          signal: args.signal,
-        });
+        return await insertWorkspaceProcessedEvent(
+          {
+            db: args.db,
+            state: args.state,
+            automation,
+            decoded: args.decoded,
+            event: args.event,
+          },
+          signal,
+        );
       },
     );
     if (!processedId) {
@@ -1322,12 +1372,12 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
       event: args.event,
       timing: runTiming,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (started !== "ok") {
       await args.db
         .delete(googleWorkspaceProcessedEvents)
         .where(eq(googleWorkspaceProcessedEvents.id, processedId));
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       return {
         kind: "run_error",
         message: "Failed to start Google Meet transcript workflow run",
@@ -1349,10 +1399,12 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
     },
     signal: AbortSignal,
   ): Promise<GoogleWorkspaceWebhookResult> => {
-    const auth = await verifyGoogleWorkspacePubSubOidc({
-      authorization: args.authorization,
+    const auth = await verifyGoogleWorkspacePubSubOidc(
+      {
+        authorization: args.authorization,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (auth.kind !== "ok") {
       return auth;
@@ -1369,7 +1421,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
         "google.workspace.events.subscription.v1.",
       )
     ) {
-      await handleWorkspaceLifecycleEvent({ db, decoded, signal });
+      await handleWorkspaceLifecycleEvent({ db, decoded }, signal);
       return { kind: "ok", watchStates: 0, dispatched: 0, duplicates: 0 };
     }
 
@@ -1388,11 +1440,13 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
     const state = await sourceTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
       async () => {
-        return await loadWorkspaceSubscriptionStateByName({
-          db,
-          subscriptionName: event.context.subscriptionName,
+        return await loadWorkspaceSubscriptionStateByName(
+          {
+            db,
+            subscriptionName: event.context.subscriptionName,
+          },
           signal,
-        });
+        );
       },
     );
     signal.throwIfAborted();
@@ -1400,51 +1454,53 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
       return { kind: "ok", watchStates: 0, dispatched: 0, duplicates: 0 };
     }
 
-    const result = await dispatchGoogleMeetTranscriptEventForState({
-      db,
-      state,
-      decoded,
-      event: event.context,
-      sourceTiming,
-      startRun: async ({ automation, event, timing }) => {
-        const runInput = await timing.measure(
-          "api_dispatch_pre_create_zero_workflow_event_build_run_input",
-          () => {
-            const context = googleMeetTriggerContext({
-              workflowName: automation.workflowName,
-              automationId: automation.automation.id,
-              event,
-            });
-            return {
-              context,
-              triggerBrief: buildGoogleMeetWorkflowAutomationBrief(event),
-            };
-          },
-        );
-        const result = await set(
-          runWorkflowAutomationNow$,
-          {
-            due: {
-              automation: automation.automation,
-              agentId: automation.agentId,
-              chatThreadId: automation.chatThreadId,
+    const result = await dispatchGoogleMeetTranscriptEventForState(
+      {
+        db,
+        state,
+        decoded,
+        event: event.context,
+        sourceTiming,
+        startRun: async ({ automation, event, timing }) => {
+          const runInput = await timing.measure(
+            "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+            () => {
+              const context = googleMeetTriggerContext({
+                workflowName: automation.workflowName,
+                automationId: automation.automation.id,
+                event,
+              });
+              return {
+                context,
+                triggerBrief: buildGoogleMeetWorkflowAutomationBrief(event),
+              };
             },
-            automationContext: runInput.context,
-            apiStartTime: args.apiStartTime,
-            triggerSource: "workflow-event",
-            triggerBrief: runInput.triggerBrief,
-            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-            timing: timing.collectorForRunStart(),
-          },
-          signal,
-        );
-        signal.throwIfAborted();
-        return result.kind === "ok" || result.kind === "enqueued"
-          ? "ok"
-          : "error";
+          );
+          const result = await set(
+            runWorkflowAutomationNow$,
+            {
+              due: {
+                automation: automation.automation,
+                agentId: automation.agentId,
+                chatThreadId: automation.chatThreadId,
+              },
+              automationContext: runInput.context,
+              apiStartTime: args.apiStartTime,
+              triggerSource: "workflow-event",
+              triggerBrief: runInput.triggerBrief,
+              dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+              timing: timing.collectorForRunStart(),
+            },
+            signal,
+          );
+          signal.throwIfAborted();
+          return result.kind === "ok" || result.kind === "enqueued"
+            ? "ok"
+            : "error";
+        },
       },
       signal,
-    });
+    );
     if (result.kind !== "ok") {
       return result;
     }
@@ -1458,10 +1514,12 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
   },
 );
 
-async function repairEnabledGoogleMeetAutomations(args: {
-  readonly db: Db;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly repaired: number; readonly failed: number }> {
+async function repairEnabledGoogleMeetAutomations(
+  args: {
+    readonly db: Db;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly repaired: number; readonly failed: number }> {
   const automationRows = await args.db
     .select({
       orgId: zeroWorkflowAutomations.orgId,
@@ -1478,7 +1536,7 @@ async function repairEnabledGoogleMeetAutomations(args: {
         ),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const seen = new Set<string>();
   let repaired = 0;
@@ -1490,13 +1548,15 @@ async function repairEnabledGoogleMeetAutomations(args: {
     }
     seen.add(key);
     const ensured =
-      await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser({
-        db: args.db,
-        orgId: automation.orgId,
-        userId: automation.userId,
-        signal: args.signal,
-      });
-    args.signal.throwIfAborted();
+      await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(
+        {
+          db: args.db,
+          orgId: automation.orgId,
+          userId: automation.userId,
+        },
+        signal,
+      );
+    signal.throwIfAborted();
     if (ensured.kind === "ok") {
       repaired++;
     } else {
@@ -1545,13 +1605,15 @@ export const renewGoogleWorkspaceEventSubscriptions$ = command(
     let renewed = 0;
     let failed = 0;
     for (const state of states) {
-      const access = await resolveGoogleMeetAccess({
-        db,
-        orgId: state.orgId,
-        userId: state.userId,
-        connectorId: state.connectorId,
+      const access = await resolveGoogleMeetAccess(
+        {
+          db,
+          orgId: state.orgId,
+          userId: state.userId,
+          connectorId: state.connectorId,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
       if (access.kind !== "ok") {
         failed++;
@@ -1562,51 +1624,59 @@ export const renewGoogleWorkspaceEventSubscriptions$ = command(
         z.infer<typeof workspaceSubscriptionSchema>
       >;
       if (state.needsRepair) {
-        await reactivateWorkspaceSubscription({
-          accessToken: access.access.accessToken,
-          subscriptionName: state.subscriptionName,
+        await reactivateWorkspaceSubscription(
+          {
+            accessToken: access.access.accessToken,
+            subscriptionName: state.subscriptionName,
+          },
           signal,
-        });
+        );
         signal.throwIfAborted();
       }
-      subscription = await renewWorkspaceSubscription({
-        accessToken: access.access.accessToken,
-        subscriptionName: state.subscriptionName,
+      subscription = await renewWorkspaceSubscription(
+        {
+          accessToken: access.access.accessToken,
+          subscriptionName: state.subscriptionName,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
 
       if (subscription.kind !== "ok" && subscription.status === 404) {
-        subscription = await createOrAdoptWorkspaceSubscription({
-          accessToken: access.access.accessToken,
-          targetResource: state.targetResource,
-          eventTypes: state.eventTypes,
-          topicName: state.pubsubTopic,
+        subscription = await createOrAdoptWorkspaceSubscription(
+          {
+            accessToken: access.access.accessToken,
+            targetResource: state.targetResource,
+            eventTypes: state.eventTypes,
+            topicName: state.pubsubTopic,
+          },
           signal,
-        });
+        );
       }
 
       if (subscription.kind !== "ok") {
         failed++;
         continue;
       }
-      await persistWorkspaceSubscriptionState({
-        db,
-        orgId: state.orgId,
-        userId: state.userId,
-        connectorId: state.connectorId,
-        targetResource: state.targetResource,
-        eventTypes: state.eventTypes,
-        topicName: state.pubsubTopic,
-        subscription: subscription.value,
-        currentTime,
+      await persistWorkspaceSubscriptionState(
+        {
+          db,
+          orgId: state.orgId,
+          userId: state.userId,
+          connectorId: state.connectorId,
+          targetResource: state.targetResource,
+          eventTypes: state.eventTypes,
+          topicName: state.pubsubTopic,
+          subscription: subscription.value,
+          currentTime,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
       renewed++;
     }
 
-    const repair = await repairEnabledGoogleMeetAutomations({ db, signal });
+    const repair = await repairEnabledGoogleMeetAutomations({ db }, signal);
     return {
       renewed,
       repaired: repair.repaired,

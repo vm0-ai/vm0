@@ -25,10 +25,12 @@ export async function loadActiveGithubInstallationForOrg(args: {
   return installation ?? null;
 }
 
-export async function getGithubIntegrationAccessToken(args: {
-  readonly installation: ActiveGithubInstallation;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+export async function getGithubIntegrationAccessToken(
+  args: {
+    readonly installation: ActiveGithubInstallation;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   if (!args.installation.installationId) {
     return null;
   }
@@ -39,11 +41,13 @@ export async function getGithubIntegrationAccessToken(args: {
     throw new Error("GitHub App credentials are not configured");
   }
 
-  const { token } = await getGithubInstallationAccessToken({
-    appId,
-    privateKey,
-    installationId: args.installation.installationId,
-    signal: args.signal,
-  });
+  const { token } = await getGithubInstallationAccessToken(
+    {
+      appId,
+      privateKey,
+      installationId: args.installation.installationId,
+    },
+    signal,
+  );
   return token;
 }

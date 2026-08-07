@@ -1738,16 +1738,18 @@ function telegramChatMessageId(args: {
   );
 }
 
-async function persistTelegramChatMessage(args: {
-  readonly source: TelegramAgentMessageArgs;
-  readonly chatId: string;
-  readonly rootMessageId: string | undefined;
-  readonly context: string;
-  readonly prompt: string;
-  readonly userInfoExtras: TelegramUserInfoExtras;
-  readonly modelRoute: ModelRoutePin | undefined;
-  readonly signal: AbortSignal;
-}): Promise<
+async function persistTelegramChatMessage(
+  args: {
+    readonly source: TelegramAgentMessageArgs;
+    readonly chatId: string;
+    readonly rootMessageId: string | undefined;
+    readonly context: string;
+    readonly prompt: string;
+    readonly userInfoExtras: TelegramUserInfoExtras;
+    readonly modelRoute: ModelRoutePin | undefined;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
@@ -1762,7 +1764,7 @@ async function persistTelegramChatMessage(args: {
     .from(chatEvents)
     .where(eq(chatEvents.id, chatEventId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (existingMessage) {
     return { inserted: false };
   }
@@ -1782,7 +1784,7 @@ async function persistTelegramChatMessage(args: {
           chatId: args.chatId,
           rootMessageId: args.rootMessageId,
         });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const inserted = await args.source.db.transaction(async (tx) => {
     const event = await insertChatEvent(
@@ -1807,7 +1809,7 @@ async function persistTelegramChatMessage(args: {
       },
       "id",
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!event) {
       return false;
     }
@@ -1819,7 +1821,7 @@ async function persistTelegramChatMessage(args: {
     );
     return true;
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return inserted
     ? {
         inserted: true,
@@ -1898,10 +1900,12 @@ const runAgentForTelegram$ = command(
     },
     signal: AbortSignal,
   ): Promise<TelegramMessageDispatchResult> => {
-    const persisted = await persistTelegramChatMessage({
-      ...args,
+    const persisted = await persistTelegramChatMessage(
+      {
+        ...args,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (!persisted.inserted) {
       return { kind: "ignored" };
@@ -2758,16 +2762,21 @@ const processCustomWebhookMessage$ = command(
   },
 );
 
-async function storeUnaddressedOfficialMessage(args: {
-  readonly db: Db;
-  readonly userLink:
-    | { readonly id: string; readonly orgId: string }
-    | null
-    | undefined;
-  readonly chatId: string;
-  readonly message: TelegramMessage;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function storeUnaddressedOfficialMessage(
+  args: {
+    readonly db: Db;
+    readonly userLink:
+      | {
+          readonly id: string;
+          readonly orgId: string;
+        }
+      | null
+      | undefined;
+    readonly chatId: string;
+    readonly message: TelegramMessage;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (!args.userLink) {
     return;
   }
@@ -2781,7 +2790,7 @@ async function storeUnaddressedOfficialMessage(args: {
     chatId: args.chatId,
     message: args.message,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 const processOfficialWebhookMessage$ = command(
@@ -2834,13 +2843,15 @@ const processOfficialWebhookMessage$ = command(
       hasBotMention(args.message, config.botUsername) ||
       isTelegramReplyToBotUsername(args.message, config.botUsername);
     if (!isAddressed) {
-      await storeUnaddressedOfficialMessage({
-        db,
-        userLink,
-        chatId,
-        message: args.message,
+      await storeUnaddressedOfficialMessage(
+        {
+          db,
+          userLink,
+          chatId,
+          message: args.message,
+        },
         signal,
-      });
+      );
       return;
     }
 

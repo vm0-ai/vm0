@@ -223,14 +223,16 @@ export function parseNintendoAccountSessionTokenCode(args: {
   return sessionTokenCode;
 }
 
-export async function exchangeNintendoAccountSessionTokenCode(args: {
-  readonly clientId: string;
-  readonly sessionTokenCode: string;
-  readonly codeVerifier: string;
-  readonly userAgent: string;
-  readonly providerLabel: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoAccountSessionToken> {
+export async function exchangeNintendoAccountSessionTokenCode(
+  args: {
+    readonly clientId: string;
+    readonly sessionTokenCode: string;
+    readonly codeVerifier: string;
+    readonly userAgent: string;
+    readonly providerLabel: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoAccountSessionToken> {
   const response = await fetch(NINTENDO_ACCOUNT_SESSION_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -244,7 +246,7 @@ export async function exchangeNintendoAccountSessionTokenCode(args: {
       session_token_code: args.sessionTokenCode,
       session_token_code_verifier: args.codeVerifier,
     }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -266,13 +268,15 @@ function normalizeScopes(
   });
 }
 
-export async function exchangeNintendoAccountSessionToken(args: {
-  readonly clientId: string;
-  readonly sessionToken: string;
-  readonly userAgent: string;
-  readonly providerLabel: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoAccountToken> {
+export async function exchangeNintendoAccountSessionToken(
+  args: {
+    readonly clientId: string;
+    readonly sessionToken: string;
+    readonly userAgent: string;
+    readonly providerLabel: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoAccountToken> {
   const response = await fetch(NINTENDO_ACCOUNT_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -285,7 +289,7 @@ export async function exchangeNintendoAccountSessionToken(args: {
       session_token: args.sessionToken,
       grant_type: NINTENDO_SESSION_TOKEN_GRANT_TYPE,
     }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -302,19 +306,21 @@ export async function exchangeNintendoAccountSessionToken(args: {
   };
 }
 
-export async function fetchNintendoAccountProfile(args: {
-  readonly accessToken: string;
-  readonly userAgent: string;
-  readonly providerLabel: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoAccountProfile> {
+export async function fetchNintendoAccountProfile(
+  args: {
+    readonly accessToken: string;
+    readonly userAgent: string;
+    readonly providerLabel: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoAccountProfile> {
   const response = await fetch(NINTENDO_ACCOUNT_PROFILE_URL, {
     headers: {
       Authorization: `Bearer ${args.accessToken}`,
       "User-Agent": args.userAgent,
       Accept: "application/json",
     },
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {

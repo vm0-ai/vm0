@@ -54,19 +54,19 @@ export const directedConnectAgentName$ = computed(async (get) => {
   return { agentId, displayName: agent?.displayName ?? null };
 });
 
-export type DirectedConnectManualGrantDialogKey = {
+type DirectedConnectManualGrantDialogKey = {
   readonly connectorSlug: ConnectorSlug;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };
 
-export type DirectedConnectModalKey = {
+type DirectedConnectModalKey = {
   readonly connectorSlug: ConnectorSlug;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };
 
-export type DirectedConnectCustomDialogKey = {
+type DirectedConnectCustomDialogKey = {
   readonly connectorSlug: CustomConnectorSlug;
   readonly agentId: string | null;
   readonly signal: AbortSignal;

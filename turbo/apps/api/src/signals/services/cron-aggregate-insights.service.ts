@@ -1227,14 +1227,16 @@ async function upsertWindowInsights(
   return upserted;
 }
 
-function processWindowGroup(args: {
-  readonly db: Db;
-  readonly clerk: ClerkLike;
-  readonly group: WindowGroup;
-  readonly currentOrgMembers: CurrentOrgMemberScope;
-  readonly catalog: ConnectorServerFirewallCatalog;
-  readonly signal: AbortSignal;
-}): Computed<
+function processWindowGroup(
+  args: {
+    readonly db: Db;
+    readonly clerk: ClerkLike;
+    readonly group: WindowGroup;
+    readonly currentOrgMembers: CurrentOrgMemberScope;
+    readonly catalog: ConnectorServerFirewallCatalog;
+  },
+  signal: AbortSignal,
+): Computed<
   Promise<{ readonly upserted: number; readonly networkRows: number }>
 > {
   return computed(
@@ -1246,17 +1248,17 @@ function processWindowGroup(args: {
         args.db,
         args.clerk,
         scope,
-        args.signal,
+        signal,
       );
       const networkData = await get(
-        queryWindowNetworkData(args.db, scope, args.catalog, args.signal),
+        queryWindowNetworkData(args.db, scope, args.catalog, signal),
       );
       const upserted = await upsertWindowInsights(
         args.db,
         args.group,
         usageData,
         networkData,
-        args.signal,
+        signal,
       );
       return { upserted, networkRows: networkData.networkRows };
     },
@@ -1370,14 +1372,16 @@ export const aggregateInsights$ = command(
     let totalNetworkRows = 0;
     for (const group of windowGroups.values()) {
       const result = await get(
-        processWindowGroup({
-          db,
-          clerk,
-          group,
-          currentOrgMembers,
-          catalog: connectorCatalogSnapshot.serverFirewalls,
+        processWindowGroup(
+          {
+            db,
+            clerk,
+            group,
+            currentOrgMembers,
+            catalog: connectorCatalogSnapshot.serverFirewalls,
+          },
           signal,
-        }),
+        ),
       );
       signal.throwIfAborted();
       upserted += result.upserted;

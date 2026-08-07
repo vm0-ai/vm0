@@ -593,6 +593,13 @@ const doSomething$ = command(async ({ set }, signal: AbortSignal) => {
 
 **Pass `signal` explicitly and use `fetchOptions: { signal }` for HTTP calls.** This ensures the request is cancelled when the caller's signal aborts.
 
+Keep `AbortSignal` out of args objects, options objects, and React props. For
+repository-owned functions, pass it as the final positional parameter. React
+components should read the lifecycle signal from its owning ccstate signal
+(for example, `useGet(pageSignal$)`) instead of receiving it as a prop. Object
+members remain appropriate only at fixed boundaries such as `fetchOptions` or
+third-party SDK request options.
+
 ```typescript
 const sendRequest$ = command(
   async (

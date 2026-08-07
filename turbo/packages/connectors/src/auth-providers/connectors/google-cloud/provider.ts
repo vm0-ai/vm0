@@ -51,7 +51,7 @@ export const googleCloudProvider: AuthCodeConnectorAuthProvider<"google-cloud"> 
     },
     access: {
       kind: "refresh-token",
-      refresh: async (args) => {
+      refresh: async (args, signal: AbortSignal) => {
         const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.inputs.refreshToken;
         return oauthRefreshResultToProviderResult(
@@ -60,7 +60,7 @@ export const googleCloudProvider: AuthCodeConnectorAuthProvider<"google-cloud"> 
             clientId,
             clientSecret,
             refreshToken,
-            args.signal,
+            signal,
           ),
         );
       },

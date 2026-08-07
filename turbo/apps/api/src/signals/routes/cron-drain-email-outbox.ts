@@ -15,10 +15,10 @@ const drainEmailOutboxRoute$ = command(
       return cronUnauthorized();
     }
 
-    const drainContext = { currentTimeMs: now(), signal };
-    const drained = await set(drainEmailOutboxBatch$, drainContext);
+    const drainContext = { currentTimeMs: now() };
+    const drained = await set(drainEmailOutboxBatch$, drainContext, signal);
     signal.throwIfAborted();
-    const cleaned = await set(cleanupExpiredEmailOutbox$, drainContext);
+    const cleaned = await set(cleanupExpiredEmailOutbox$, drainContext, signal);
     signal.throwIfAborted();
 
     return {

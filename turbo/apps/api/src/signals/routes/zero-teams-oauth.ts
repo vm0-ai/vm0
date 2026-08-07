@@ -195,15 +195,17 @@ async function fetchMicrosoftMe(
   };
 }
 
-async function exchangeMicrosoftTeamsOAuthCode(args: {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly code: string;
-  readonly redirectUri: string;
-  readonly signal: AbortSignal;
-}): Promise<MicrosoftTeamsOAuthResult> {
+async function exchangeMicrosoftTeamsOAuthCode(
+  args: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly code: string;
+    readonly redirectUri: string;
+  },
+  signal: AbortSignal,
+): Promise<MicrosoftTeamsOAuthResult> {
   const response = await fetch(MICROSOFT_TOKEN_URL, {
-    signal: args.signal,
+    signal,
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -246,7 +248,7 @@ async function exchangeMicrosoftTeamsOAuthCode(args: {
 
   return {
     tenantId,
-    user: await fetchMicrosoftMe(data.access_token, args.signal),
+    user: await fetchMicrosoftMe(data.access_token, signal),
   };
 }
 
@@ -349,13 +351,15 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const exchange = await tapError(
-    exchangeMicrosoftTeamsOAuthCode({
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
-      code: query.code,
-      redirectUri: callbackRedirectUri(origin),
+    exchangeMicrosoftTeamsOAuthCode(
+      {
+        clientId: credentials.clientId,
+        clientSecret: credentials.clientSecret,
+        code: query.code,
+        redirectUri: callbackRedirectUri(origin),
+      },
       signal,
-    }),
+    ),
     (error) => {
       L.error("Microsoft Teams OAuth exchange failed", { error });
     },

@@ -161,12 +161,14 @@ function authorizationCodeFromRedirect(location: string | null): string | null {
   }
 }
 
-export async function exchangePlaystationNpssoForAccessCode(args: {
-  readonly npsso: string;
-  readonly clientId: string;
-  readonly grant: ConnectorExternalCodeGrantConfig;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+export async function exchangePlaystationNpssoForAccessCode(
+  args: {
+    readonly npsso: string;
+    readonly clientId: string;
+    readonly grant: ConnectorExternalCodeGrantConfig;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const npsso = normalizePlaystationNpsso(args.npsso);
   const response = await fetch(
     buildPlaystationAuthorizationUrl({
@@ -178,7 +180,7 @@ export async function exchangePlaystationNpssoForAccessCode(args: {
         Cookie: `npsso=${npsso}`,
       },
       redirect: "manual",
-      signal: args.signal,
+      signal,
     },
   );
   const code = authorizationCodeFromRedirect(response.headers.get("location"));
@@ -218,11 +220,13 @@ async function tokenResponseJson(
   return await response.json();
 }
 
-export async function exchangePlaystationAccessCodeForAuthTokens(args: {
-  readonly accessCode: string;
-  readonly clientId: string;
-  readonly signal: AbortSignal;
-}): Promise<PlaystationAuthToken> {
+export async function exchangePlaystationAccessCodeForAuthTokens(
+  args: {
+    readonly accessCode: string;
+    readonly clientId: string;
+  },
+  signal: AbortSignal,
+): Promise<PlaystationAuthToken> {
   const response = await fetch(`${PLAYSTATION_AUTH_BASE_URL}/token`, {
     method: "POST",
     headers: {
@@ -235,7 +239,7 @@ export async function exchangePlaystationAccessCodeForAuthTokens(args: {
       grant_type: "authorization_code",
       token_format: "jwt",
     }),
-    signal: args.signal,
+    signal,
   });
 
   return playstationTokenFromResponse(
@@ -245,11 +249,13 @@ export async function exchangePlaystationAccessCodeForAuthTokens(args: {
   );
 }
 
-export async function refreshPlaystationAuthTokens(args: {
-  readonly refreshToken: string;
-  readonly clientId: string;
-  readonly signal: AbortSignal;
-}): Promise<PlaystationAuthToken> {
+export async function refreshPlaystationAuthTokens(
+  args: {
+    readonly refreshToken: string;
+    readonly clientId: string;
+  },
+  signal: AbortSignal,
+): Promise<PlaystationAuthToken> {
   const response = await fetch(`${PLAYSTATION_AUTH_BASE_URL}/token`, {
     method: "POST",
     headers: {
@@ -262,7 +268,7 @@ export async function refreshPlaystationAuthTokens(args: {
       token_format: "jwt",
       scope: "psn:mobile.v2.core psn:clientapp",
     }),
-    signal: args.signal,
+    signal,
   });
 
   const raw = playstationRefreshTokenSchema.parse(
@@ -293,18 +299,20 @@ function parsePlaystationIdToken(idToken: string): PlaystationIdentity {
   };
 }
 
-async function fetchPlaystationProfile(args: {
-  readonly accessToken: string;
-  readonly accountId: string;
-  readonly signal: AbortSignal;
-}): Promise<PlaystationProfile> {
+async function fetchPlaystationProfile(
+  args: {
+    readonly accessToken: string;
+    readonly accountId: string;
+  },
+  signal: AbortSignal,
+): Promise<PlaystationProfile> {
   const response = await fetch(
     `${PLAYSTATION_PROFILE_USERS_URL}/${encodeURIComponent(args.accountId)}/profiles`,
     {
       headers: {
         Authorization: `Bearer ${args.accessToken}`,
       },
-      signal: args.signal,
+      signal,
     },
   );
   if (!response.ok) {
@@ -313,17 +321,21 @@ async function fetchPlaystationProfile(args: {
   return playstationProfileSchema.parse(await response.json());
 }
 
-export async function fetchPlaystationIdentity(args: {
-  readonly accessToken: string;
-  readonly idToken: string;
-  readonly signal: AbortSignal;
-}): Promise<PlaystationIdentity> {
+export async function fetchPlaystationIdentity(
+  args: {
+    readonly accessToken: string;
+    readonly idToken: string;
+  },
+  signal: AbortSignal,
+): Promise<PlaystationIdentity> {
   const tokenIdentity = parsePlaystationIdToken(args.idToken);
-  const profile = await fetchPlaystationProfile({
-    accessToken: args.accessToken,
-    accountId: tokenIdentity.accountId,
-    signal: args.signal,
-  });
+  const profile = await fetchPlaystationProfile(
+    {
+      accessToken: args.accessToken,
+      accountId: tokenIdentity.accountId,
+    },
+    signal,
+  );
   return {
     accountId: profile.accountId ?? tokenIdentity.accountId,
     onlineId: profile.onlineId ?? tokenIdentity.onlineId,

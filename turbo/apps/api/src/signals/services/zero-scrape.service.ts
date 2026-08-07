@@ -147,7 +147,6 @@ interface CompleteScrapeAfterProviderArgs {
   readonly request: ZeroScrapeRequest;
   readonly requestedUrl: URL;
   readonly recordUsage: () => Promise<number>;
-  readonly providerSignal: AbortSignal;
 }
 
 function errorBody(message: string, code: string) {
@@ -587,12 +586,13 @@ async function completeScrapeSuccess(
 
 async function completeScrapeAfterProvider(
   args: CompleteScrapeAfterProviderArgs,
+  providerSignal: AbortSignal,
 ): Promise<ZeroScrapeCommandResponse> {
   const firecrawlResult = await fetchFirecrawlScrape(
     args.apiKey,
     args.request,
     args.requestedUrl,
-    args.providerSignal,
+    providerSignal,
   );
 
   return await completeScrapeSuccess({
@@ -657,32 +657,34 @@ export const zeroScrape$ = command(
     }
 
     const runId = runIdForUsage(args.auth);
-    return completeScrapeAfterProvider({
-      apiKey,
-      request: args.body,
-      requestedUrl: target.url,
-      providerSignal: requestSignal,
-      recordUsage: () => {
-        // Firecrawl has completed successfully, so a client disconnect must not
-        // skip billing. The instance lifecycle still owns the usage commit.
-        return set(
-          recordManagedUsage$,
-          {
-            actor: {
-              orgId: args.auth.orgId,
-              userId: args.auth.userId,
-              ...(runId ? { runId } : {}),
+    return completeScrapeAfterProvider(
+      {
+        apiKey,
+        request: args.body,
+        requestedUrl: target.url,
+        recordUsage: () => {
+          // Firecrawl has completed successfully, so a client disconnect must not
+          // skip billing. The instance lifecycle still owns the usage commit.
+          return set(
+            recordManagedUsage$,
+            {
+              actor: {
+                orgId: args.auth.orgId,
+                userId: args.auth.userId,
+                ...(runId ? { runId } : {}),
+              },
+              resource: {
+                kind: USAGE_KIND,
+                provider: PROVIDER,
+                category,
+              },
+              label: "scrape",
             },
-            resource: {
-              kind: USAGE_KIND,
-              provider: PROVIDER,
-              category,
-            },
-            label: "scrape",
-          },
-          signal,
-        );
+            signal,
+          );
+        },
       },
-    });
+      requestSignal,
+    );
   },
 );

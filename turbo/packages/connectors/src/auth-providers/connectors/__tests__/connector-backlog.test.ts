@@ -104,12 +104,14 @@ describe("connector backlog auth providers", () => {
     expect(meVersion).toBe("2024-08-13");
 
     await expect(
-      refreshCalComToken({
-        clientId: "client-id",
-        clientSecret: "client-secret",
-        refreshToken: "cal-refresh-token",
+      refreshCalComToken(
+        {
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          refreshToken: "cal-refresh-token",
+        },
         signal,
-      }),
+      ),
     ).resolves.toMatchObject({
       accessToken: "cal-refreshed-token",
       refreshToken: "cal-rotated-refresh-token",
@@ -204,13 +206,15 @@ describe("connector backlog auth providers", () => {
     });
 
     await expect(
-      refreshDatadogToken({
-        clientId: "client-id",
-        clientSecret: "client-secret",
-        refreshToken: "datadog-refresh-token",
-        domain: "us2.ddog-gov.com",
+      refreshDatadogToken(
+        {
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          refreshToken: "datadog-refresh-token",
+          domain: "us2.ddog-gov.com",
+        },
         signal,
-      }),
+      ),
     ).resolves.toMatchObject({ accessToken: "datadog-refreshed-token" });
   });
 
@@ -244,13 +248,15 @@ describe("connector backlog auth providers", () => {
     );
 
     await expect(
-      refreshNetSuiteAccessToken({
-        accountSubdomain: "1234567-SB1",
-        clientId: "client-id",
-        clientSecret: "client-secret",
-        refreshToken: "refresh-token",
+      refreshNetSuiteAccessToken(
+        {
+          accountSubdomain: "1234567-SB1",
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          refreshToken: "refresh-token",
+        },
         signal,
-      }),
+      ),
     ).resolves.toMatchObject({ accessToken: "netsuite-access-token" });
     expect(authorization).toBe(
       `Basic ${Buffer.from("client-id:client-secret").toString("base64")}`,
@@ -268,11 +274,13 @@ describe("connector backlog auth providers", () => {
     );
 
     await expect(
-      fetchPayPalAccessToken({
-        clientId: "client-id",
-        clientSecret: "client-secret",
+      fetchPayPalAccessToken(
+        {
+          clientId: "client-id",
+          clientSecret: "client-secret",
+        },
         signal,
-      }),
+      ),
     ).resolves.toEqual({ accessToken: "paypal-token", expiresIn: 3600 });
   });
 
@@ -292,12 +300,14 @@ describe("connector backlog auth providers", () => {
     );
 
     await expect(
-      fetchRampAccessToken({
-        clientId: "client-id",
-        clientSecret: "client-secret",
-        scope: "transactions:read users:read",
+      fetchRampAccessToken(
+        {
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          scope: "transactions:read users:read",
+        },
         signal,
-      }),
+      ),
     ).resolves.toEqual({ accessToken: "ramp-token", expiresIn: 864000 });
     expect(scope).toBe("transactions:read users:read");
   });
@@ -317,14 +327,16 @@ describe("connector backlog auth providers", () => {
     );
 
     await expect(
-      refreshWorkdayAccessToken({
-        host: "wd5-services1.myworkday.com",
-        tenant: "acme",
-        clientId: "client-id",
-        clientSecret: "client-secret",
-        refreshToken: "refresh-token",
+      refreshWorkdayAccessToken(
+        {
+          host: "wd5-services1.myworkday.com",
+          tenant: "acme",
+          clientId: "client-id",
+          clientSecret: "client-secret",
+          refreshToken: "refresh-token",
+        },
         signal,
-      }),
+      ),
     ).resolves.toEqual({
       accessToken: "workday-token",
       refreshToken: "workday-refresh-token",

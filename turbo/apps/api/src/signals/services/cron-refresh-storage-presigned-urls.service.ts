@@ -14,20 +14,24 @@ export const refreshStoragePresignedUrls$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const db = set(writeDb$);
     const [system, workflowSkill] = await Promise.all([
-      refreshDueSystemStoragePresignedUrls({
-        db,
-        get,
+      refreshDueSystemStoragePresignedUrls(
+        {
+          db,
+          get,
+          limit: SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
+          pruneLimit: SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+        },
         signal,
-        limit: SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
-        pruneLimit: SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
-      }),
-      refreshDueWorkflowSkillStoragePresignedUrls({
-        db,
-        get,
+      ),
+      refreshDueWorkflowSkillStoragePresignedUrls(
+        {
+          db,
+          get,
+          limit: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
+          pruneLimit: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+        },
         signal,
-        limit: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
-        pruneLimit: WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
-      }),
+      ),
     ]);
     signal.throwIfAborted();
     return { system, workflowSkill };

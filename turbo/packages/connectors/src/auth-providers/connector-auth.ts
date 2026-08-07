@@ -167,7 +167,10 @@ type RuntimeOpenIdAuthGrantProvider = {
   buildAuthUrl(
     args: never,
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
-  verifyCallback(args: never): Promise<ConnectorAuthProviderGrantResult>;
+  verifyCallback(
+    args: never,
+    signal: AbortSignal,
+  ): Promise<ConnectorAuthProviderGrantResult>;
 };
 
 type RuntimeExternalCodeGrantProvider = {
@@ -177,6 +180,7 @@ type RuntimeExternalCodeGrantProvider = {
   ): Promise<ExternalCodeAuthorizationStartResult>;
   completeExternalCodeAuthorization(
     args: never,
+    signal: AbortSignal,
   ): Promise<ConnectorAuthProviderGrantResult>;
 };
 
@@ -188,12 +192,15 @@ type RuntimeGrantProvider =
 
 type RuntimeRefreshTokenAccessProvider = {
   readonly kind: "refresh-token";
-  refresh(args: never): Promise<ConnectorAuthProviderRefreshResultBase>;
+  refresh(
+    args: never,
+    signal: AbortSignal,
+  ): Promise<ConnectorAuthProviderRefreshResultBase>;
 };
 
 type RuntimeTokenRevokeProvider = {
   readonly kind: "token-revoke";
-  revokeToken(args: never): Promise<void>;
+  revokeToken(args: never, signal: AbortSignal): Promise<void>;
 };
 
 type RuntimeAuthProviderEntry = {
@@ -864,6 +871,19 @@ function invokeRuntimeProvider<Args, Result>(
   return (handler as (input: Args) => Result)(args);
 }
 
+function invokeRuntimeProviderWithSignal<Args, Result>(
+  handler: (args: never, signal: AbortSignal) => Result,
+  args: Args,
+  signal: AbortSignal,
+): Result {
+  // Typed registry builders establish the handler/method relation. Exact
+  // runtime contract validation restores it after the open-key lookup.
+  return (handler as (input: Args, signal: AbortSignal) => Result)(
+    args,
+    signal,
+  );
+}
+
 function assertConnectorAuthClientMatchesMethod(args: {
   readonly selection: ConnectorAuthProviderMethodSelection;
   readonly authClient: ConnectorAuthClient;
@@ -1129,7 +1149,6 @@ interface RuntimeOpenIdVerifyArgs {
   readonly callbackParams: Readonly<Record<string, string>>;
   readonly expectedReturnTo: string;
   readonly expectedRealm: string;
-  readonly signal: AbortSignal;
 }
 
 interface RuntimeExternalCodeStartArgs {
@@ -1142,7 +1161,6 @@ interface RuntimeExternalCodeCompleteArgs {
   readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
   readonly code: string;
   readonly providerState: string;
-  readonly signal: AbortSignal;
 }
 
 interface RuntimeDeviceAuthorizationStartArgs {
@@ -1160,13 +1178,11 @@ interface RuntimeDeviceAuthorizationPollArgs {
 interface RuntimeRefreshTokenAccessArgs {
   readonly authClient?: ConnectorAuthClient;
   readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
 }
 
 interface RuntimeTokenRevokeArgs {
   readonly authClient: StaticConnectorAuthClient;
   readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
 }
 
 function assertGrantOutputs(args: {
@@ -1308,8 +1324,8 @@ export async function verifyConnectorOpenIdAuthCallbackWithMethod(
     readonly callbackParams: Readonly<Record<string, string>>;
     readonly expectedReturnTo: string;
     readonly expectedRealm: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<ConnectorAuthProviderGrantResult> {
   const provider = connectorOpenIdAuthGrantProviderFor(args);
   if (args.method.grant.kind !== "openid-auth") {
@@ -1317,16 +1333,19 @@ export async function verifyConnectorOpenIdAuthCallbackWithMethod(
       `OpenID grant required for ${args.connectorSlug}:${args.authMethodId}`,
     );
   }
-  const result = await invokeRuntimeProvider<
+  const result = await invokeRuntimeProviderWithSignal<
     RuntimeOpenIdVerifyArgs,
     Promise<ConnectorAuthProviderGrantResult>
-  >(provider.verifyCallback, {
-    openIdAuthGrant: args.method.grant,
-    callbackParams: args.callbackParams,
-    expectedReturnTo: args.expectedReturnTo,
-    expectedRealm: args.expectedRealm,
-    signal: args.signal,
-  });
+  >(
+    provider.verifyCallback,
+    {
+      openIdAuthGrant: args.method.grant,
+      callbackParams: args.callbackParams,
+      expectedReturnTo: args.expectedReturnTo,
+      expectedRealm: args.expectedRealm,
+    },
+    signal,
+  );
   assertGrantOutputs({ selection: args, result });
   return result;
 }
@@ -1360,8 +1379,8 @@ export async function completeConnectorExternalCodeAuthorizationWithMethod(
     readonly authClient: ConnectorAuthClient;
     readonly code: string;
     readonly providerState: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<ConnectorAuthProviderGrantResult> {
   const provider = connectorExternalCodeGrantProviderFor(args);
   if (args.method.grant.kind !== "external-code") {
@@ -1373,16 +1392,19 @@ export async function completeConnectorExternalCodeAuthorizationWithMethod(
     selection: args,
     authClient: args.authClient,
   });
-  const result = await invokeRuntimeProvider<
+  const result = await invokeRuntimeProviderWithSignal<
     RuntimeExternalCodeCompleteArgs,
     Promise<ConnectorAuthProviderGrantResult>
-  >(provider.completeExternalCodeAuthorization, {
-    authClient: args.authClient,
-    externalCodeGrant: args.method.grant,
-    code: args.code,
-    providerState: args.providerState,
-    signal: args.signal,
-  });
+  >(
+    provider.completeExternalCodeAuthorization,
+    {
+      authClient: args.authClient,
+      externalCodeGrant: args.method.grant,
+      code: args.code,
+      providerState: args.providerState,
+    },
+    signal,
+  );
   assertGrantOutputs({ selection: args, result });
   return result;
 }
@@ -1457,8 +1479,8 @@ export async function refreshConnectorAuthProviderAccessTokenWithMethod(
   args: ConnectorAuthProviderMethodSelection & {
     readonly authClient?: ConnectorAuthClient;
     readonly inputs: Readonly<Record<string, string>>;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<ConnectorAuthProviderRefreshResultBase> {
   const access = connectorRefreshTokenAccessProviderFor(args);
   const accessMetadata = connectorAuthMethodAccessMetadata(args.method);
@@ -1477,14 +1499,17 @@ export async function refreshConnectorAuthProviderAccessTokenWithMethod(
     declaredInputNames: Object.keys(accessMetadata.inputs),
     inputs: args.inputs,
   });
-  const result = await invokeRuntimeProvider<
+  const result = await invokeRuntimeProviderWithSignal<
     RuntimeRefreshTokenAccessArgs,
     Promise<ConnectorAuthProviderRefreshResultBase>
-  >(access.refresh, {
-    ...(args.authClient === undefined ? {} : { authClient: args.authClient }),
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+  >(
+    access.refresh,
+    {
+      ...(args.authClient === undefined ? {} : { authClient: args.authClient }),
+      inputs: args.inputs,
+    },
+    signal,
+  );
   assertDeclaredProviderOutputs({
     selection: args,
     operation: "refresh",
@@ -1497,11 +1522,11 @@ export async function refreshConnectorAuthProviderAccessTokenWithMethod(
 export async function revokeConnectorAuthMethodAccessTokenWithMethod(
   args: ConnectorAuthProviderMethodSelection & {
     readonly readEnv: ConnectorEnvReader;
-    readonly signal: AbortSignal;
     readonly loadInputs: () =>
       | Readonly<Record<string, string>>
       | Promise<Readonly<Record<string, string>>>;
   },
+  signal: AbortSignal,
 ): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
   if (args.method.revoke.kind !== "token-revoke") {
     return { status: "unsupported" };
@@ -1522,9 +1547,10 @@ export async function revokeConnectorAuthMethodAccessTokenWithMethod(
     declaredInputNames: Object.keys(args.method.revoke.inputs),
     inputs,
   });
-  await invokeRuntimeProvider<RuntimeTokenRevokeArgs, Promise<void>>(
+  await invokeRuntimeProviderWithSignal<RuntimeTokenRevokeArgs, Promise<void>>(
     revoke.revokeToken,
-    { authClient, inputs, signal: args.signal },
+    { authClient, inputs },
+    signal,
   );
   return { status: "revoked" };
 }

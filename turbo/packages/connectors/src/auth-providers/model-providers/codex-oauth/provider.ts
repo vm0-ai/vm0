@@ -30,13 +30,13 @@ const codexOauthProviderDefinition = {
         clientId: CHATGPT_OAUTH_CLIENT_ID,
       };
     },
-    refresh: async (args) => {
+    refresh: async (args, signal: AbortSignal) => {
       const refreshToken = args.inputs.refreshToken;
       return oauthRefreshResultToProviderResult(
         await refreshChatgptToken(
           args.authClient.clientId,
           refreshToken,
-          args.signal,
+          signal,
         ),
       );
     },

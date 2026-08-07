@@ -227,16 +227,18 @@ function revokeUnusedTemplateDetailFrameUrls(
   }
 }
 
-async function loadPresentationTemplateHtmlPreview(params: {
-  readonly item: PresentationTemplateItem;
-  readonly signal: AbortSignal;
-}): Promise<PresentationPreviewDraft | null> {
+async function loadPresentationTemplateHtmlPreview(
+  params: {
+    readonly item: PresentationTemplateItem;
+  },
+  signal: AbortSignal,
+): Promise<PresentationPreviewDraft | null> {
   const response = await fetch(
     readableAttachmentResourceUrl(params.item.embedUrl),
     {
       credentials: "omit",
       mode: "cors",
-      signal: params.signal,
+      signal,
     },
   );
   if (!response.ok) {
@@ -758,10 +760,12 @@ function createOpenPresentationTemplateDetailPreviewSignal(
 
       let pendingLoad = cache.pendingLoads.get(params.item.embedUrl);
       if (pendingLoad === undefined) {
-        pendingLoad = loadPresentationTemplateHtmlPreview({
-          item: params.item,
+        pendingLoad = loadPresentationTemplateHtmlPreview(
+          {
+            item: params.item,
+          },
           signal,
-        });
+        );
         cache.pendingLoads.set(params.item.embedUrl, pendingLoad);
       }
 

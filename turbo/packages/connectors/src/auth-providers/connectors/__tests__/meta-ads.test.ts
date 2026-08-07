@@ -268,13 +268,15 @@ describe("connector/providers/meta-ads", () => {
       server.use(handler);
 
       await expect(
-        metaAdsProvider.access.refresh({
-          authClient: testAuthClient,
-          inputs: {
-            refreshToken: "current-long-lived-token",
+        metaAdsProvider.access.refresh(
+          {
+            authClient: testAuthClient,
+            inputs: {
+              refreshToken: "current-long-lived-token",
+            },
           },
-          signal: new AbortController().signal,
-        }),
+          new AbortController().signal,
+        ),
       ).resolves.toStrictEqual({
         outputs: {
           accessToken: "provider-refreshed-token",

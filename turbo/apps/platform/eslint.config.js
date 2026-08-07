@@ -77,6 +77,23 @@ export default [
   },
   {
     files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/test/**",
+      "src/**/tests/**",
+      "src/**/mocks/**",
+      "src/**/test-fixtures/**",
+      "src/**/*.test.{ts,tsx}",
+      "src/**/*.spec.{ts,tsx}",
+      "src/**/test-context.{ts,tsx}",
+      "src/signals/fetch.ts",
+    ],
+    rules: {
+      "vm0/no-abort-signal-in-object-params": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/lib/time.ts"],
     rules: {
       "no-restricted-properties": [

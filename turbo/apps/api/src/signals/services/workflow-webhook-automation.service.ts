@@ -319,11 +319,13 @@ function workflowWebhookTriggerContext(args: {
   };
 }
 
-async function loadWebhookAutomationForToken(args: {
-  readonly db: Db;
-  readonly token: string;
-  readonly signal: AbortSignal;
-}): Promise<WorkflowWebhookAutomationDispatchRow | null> {
+async function loadWebhookAutomationForToken(
+  args: {
+    readonly db: Db;
+    readonly token: string;
+  },
+  signal: AbortSignal,
+): Promise<WorkflowWebhookAutomationDispatchRow | null> {
   const [row] = await args.db
     .select({
       automation: rolloutCompatibleWorkflowAutomationColumns(false),
@@ -371,7 +373,7 @@ async function loadWebhookAutomationForToken(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!row) {
     return null;
   }
@@ -379,16 +381,19 @@ async function loadWebhookAutomationForToken(args: {
     args.db,
     row.automation.orgId,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (capabilities?.workflowWebhookAutomationAllowed !== true) {
     return null;
   }
-  const canFire = await workflowAutomationCanFire(args.db, {
-    automation: row.automation,
-    agentId: row.agentId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const canFire = await workflowAutomationCanFire(
+    args.db,
+    {
+      automation: row.automation,
+      agentId: row.agentId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (!canFire) {
     return null;
   }
@@ -405,7 +410,7 @@ async function loadWebhookAutomationForToken(args: {
         currentTime,
       });
     }));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return {
     automation: row.automation,
     webhook: row.webhook,
@@ -538,26 +543,30 @@ function webhookSignatureValid(args: {
   ).valid;
 }
 
-async function prepareWorkflowWebhookDispatch(args: {
-  readonly db: Db;
-  readonly token: string;
-  readonly rawBody: string;
-  readonly signature: string;
-  readonly timestamp: string;
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly signal: AbortSignal;
-}): Promise<PreparedWorkflowWebhookDispatch> {
+async function prepareWorkflowWebhookDispatch(
+  args: {
+    readonly db: Db;
+    readonly token: string;
+    readonly rawBody: string;
+    readonly signature: string;
+    readonly timestamp: string;
+    readonly sourceTiming: WorkflowEventSourceTiming;
+  },
+  signal: AbortSignal,
+): Promise<PreparedWorkflowWebhookDispatch> {
   const row = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_source_state",
     async () => {
-      return await loadWebhookAutomationForToken({
-        db: args.db,
-        token: args.token,
-        signal: args.signal,
-      });
+      return await loadWebhookAutomationForToken(
+        {
+          db: args.db,
+          token: args.token,
+        },
+        signal,
+      );
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!row) {
     return { kind: "not_found" };
   }
@@ -571,7 +580,7 @@ async function prepareWorkflowWebhookDispatch(args: {
       });
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const signatureValid = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_match_automations",
@@ -602,7 +611,7 @@ async function prepareWorkflowWebhookDispatch(args: {
   if (limited) {
     return { kind: "rate_limited" };
   }
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return {
     kind: "ok",
@@ -729,15 +738,17 @@ export const dispatchWorkflowWebhook$ = command(
       args.apiStartTime,
     );
     const db = set(writeDb$);
-    const prepared = await prepareWorkflowWebhookDispatch({
-      db,
-      token: args.token,
-      rawBody: args.rawBody,
-      signature,
-      timestamp,
-      sourceTiming,
+    const prepared = await prepareWorkflowWebhookDispatch(
+      {
+        db,
+        token: args.token,
+        rawBody: args.rawBody,
+        signature,
+        timestamp,
+        sourceTiming,
+      },
       signal,
-    });
+    );
     if (prepared.kind !== "ok") {
       return prepared;
     }

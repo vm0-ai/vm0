@@ -343,15 +343,17 @@ const mintOptimisticThreadWithEvent$ = command(
   },
 );
 
-async function createChatThread(args: {
-  readonly createClient: ZeroClientFactory;
-  readonly agentId: string;
-  readonly signal: AbortSignal;
-  readonly title: string | undefined;
-  readonly clientThreadId: string;
-  readonly eventId: string;
-  readonly modelSelection: ModelProviderSelection;
-}): Promise<void> {
+async function createChatThread(
+  args: {
+    readonly createClient: ZeroClientFactory;
+    readonly agentId: string;
+    readonly title: string | undefined;
+    readonly clientThreadId: string;
+    readonly eventId: string;
+    readonly modelSelection: ModelProviderSelection;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const client = args.createClient(chatThreadsContract);
   await accept(
     client.create({
@@ -362,11 +364,11 @@ async function createChatThread(args: {
         model: args.modelSelection.selectedModel,
         ...(args.title ? { title: args.title } : {}),
       },
-      fetchOptions: { signal: args.signal },
+      fetchOptions: { signal },
     }),
     [201],
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (args.modelSelection.codexServiceTier === "fast") {
     const modelSelectionClient = args.createClient(
       chatThreadModelSelectionContract,
@@ -379,7 +381,7 @@ async function createChatThread(args: {
           codexServiceTier: "fast",
           eventId: crypto.randomUUID(),
         },
-        fetchOptions: { signal: args.signal },
+        fetchOptions: { signal },
       }),
       [204],
     );
@@ -432,15 +434,17 @@ const startNewChatThreadCreate$ = command(
     const createClient = get(zeroClient$);
     L.debug("startNewChatThreadCreate$ POST chat-threads start", { threadId });
     const createResult = (async (): Promise<void> => {
-      await createChatThread({
-        createClient,
-        agentId,
+      await createChatThread(
+        {
+          createClient,
+          agentId,
+          title: undefined,
+          clientThreadId: threadId,
+          eventId,
+          modelSelection,
+        },
         signal,
-        title: undefined,
-        clientThreadId: threadId,
-        eventId,
-        modelSelection,
-      });
+      );
       L.debug("startNewChatThreadCreate$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
     })();
@@ -539,15 +543,17 @@ const sendNewThreadMessage$ = command(
     const createClient = get(zeroClient$);
     L.debug("sendNewThreadMessage$ POST chat-threads start", { threadId });
     const createResult = (async (): Promise<void> => {
-      await createChatThread({
-        createClient,
-        agentId,
+      await createChatThread(
+        {
+          createClient,
+          agentId,
+          title: undefined,
+          clientThreadId: threadId,
+          eventId: chatThreadEventId,
+          modelSelection: resolvedModelSelection,
+        },
         signal,
-        title: undefined,
-        clientThreadId: threadId,
-        eventId: chatThreadEventId,
-        modelSelection: resolvedModelSelection,
-      });
+      );
       L.debug("sendNewThreadMessage$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
     })();

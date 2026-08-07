@@ -453,14 +453,16 @@ async function loadLinkedDraft(args: {
   return row?.chatThreadId ? { ...row, chatThreadId: row.chatThreadId } : null;
 }
 
-async function resolveMailAccessToken(args: {
-  readonly connection: MailConnection;
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-}): Promise<MailAccessTokenResult> {
+async function resolveMailAccessToken(
+  args: {
+    readonly connection: MailConnection;
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly writeDb: Db;
+  },
+  signal: AbortSignal,
+): Promise<MailAccessTokenResult> {
   if (args.connection.needsReconnect || !args.connection.scopesReady) {
     return { kind: "error", message: "Reconnect Gmail before continuing" };
   }
@@ -484,18 +486,20 @@ async function resolveMailAccessToken(args: {
   ) {
     return { kind: "ok", accessToken };
   }
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection: args.connection,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: GMAIL_ACCESS_TOKEN_ENV,
-    signal: args.signal,
-    persist: {
-      db: args.writeDb,
-      defaultExpiresInMs: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection: args.connection,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: GMAIL_ACCESS_TOKEN_ENV,
+      persist: {
+        db: args.writeDb,
+        defaultExpiresInMs: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
+      },
     },
-  });
+    signal,
+  );
   if (refreshed.kind === "configuration-unavailable") {
     return { kind: "error", message: "Gmail OAuth is not configured" };
   }
@@ -751,15 +755,17 @@ function findAttachmentPart(
   return null;
 }
 
-async function gmailGetDraftResource(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly signal: AbortSignal;
-}): Promise<z.infer<typeof gmailDraftResourceSchema> | null> {
+async function gmailGetDraftResource(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+  },
+  signal: AbortSignal,
+): Promise<z.infer<typeof gmailDraftResourceSchema> | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/drafts/${encodeURIComponent(args.gmailDraftId)}?format=full`,
     {
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -775,16 +781,18 @@ async function gmailGetDraftResource(args: {
   return gmailDraftResourceSchema.parse(await response.json());
 }
 
-async function gmailGetDraft(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly fallbackSender: {
-    readonly address: string;
-    readonly name: string | null;
-  };
-  readonly signal: AbortSignal;
-}): Promise<GmailDraftValue | null> {
-  const draft = await gmailGetDraftResource(args);
+async function gmailGetDraft(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+    readonly fallbackSender: {
+      readonly address: string;
+      readonly name: string | null;
+    };
+  },
+  signal: AbortSignal,
+): Promise<GmailDraftValue | null> {
+  const draft = await gmailGetDraftResource(args, signal);
   if (!draft) {
     return null;
   }
@@ -796,14 +804,16 @@ async function gmailGetDraft(args: {
   };
 }
 
-async function gmailSendLinkedDraft(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly messageId: string; readonly threadId: string } | null> {
+async function gmailSendLinkedDraft(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly messageId: string; readonly threadId: string } | null> {
   const response = await fetch(`${GMAIL_API_BASE}/drafts/send`, {
     method: "POST",
-    signal: args.signal,
+    signal,
     headers: {
       Authorization: `Bearer ${args.accessToken}`,
       "Content-Type": "application/json",
@@ -823,15 +833,17 @@ async function gmailSendLinkedDraft(args: {
   return { messageId: message.id, threadId: message.threadId };
 }
 
-async function gmailGetMessageResource(args: {
-  readonly accessToken: string;
-  readonly gmailMessageId: string;
-  readonly signal: AbortSignal;
-}): Promise<z.infer<typeof gmailMessageResourceSchema> | null> {
+async function gmailGetMessageResource(
+  args: {
+    readonly accessToken: string;
+    readonly gmailMessageId: string;
+  },
+  signal: AbortSignal,
+): Promise<z.infer<typeof gmailMessageResourceSchema> | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/messages/${encodeURIComponent(args.gmailMessageId)}?format=full`,
     {
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -849,16 +861,18 @@ async function gmailGetMessageResource(args: {
   return gmailMessageResourceSchema.parse(await response.json());
 }
 
-async function gmailGetMessage(args: {
-  readonly accessToken: string;
-  readonly gmailMessageId: string;
-  readonly fallbackSender: {
-    readonly address: string;
-    readonly name: string | null;
-  };
-  readonly signal: AbortSignal;
-}): Promise<GmailSentValue | null> {
-  const message = await gmailGetMessageResource(args);
+async function gmailGetMessage(
+  args: {
+    readonly accessToken: string;
+    readonly gmailMessageId: string;
+    readonly fallbackSender: {
+      readonly address: string;
+      readonly name: string | null;
+    };
+  },
+  signal: AbortSignal,
+): Promise<GmailSentValue | null> {
+  const message = await gmailGetMessageResource(args, signal);
   if (!message) {
     return null;
   }
@@ -869,16 +883,18 @@ async function gmailGetMessage(args: {
   };
 }
 
-async function gmailGetAttachment(args: {
-  readonly accessToken: string;
-  readonly gmailMessageId: string;
-  readonly attachmentId: string;
-  readonly signal: AbortSignal;
-}): Promise<Uint8Array | null> {
+async function gmailGetAttachment(
+  args: {
+    readonly accessToken: string;
+    readonly gmailMessageId: string;
+    readonly attachmentId: string;
+  },
+  signal: AbortSignal,
+): Promise<Uint8Array | null> {
   const response = await fetch(
     `${GMAIL_API_BASE}/messages/${encodeURIComponent(args.gmailMessageId)}/attachments/${encodeURIComponent(args.attachmentId)}`,
     {
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -897,16 +913,18 @@ async function gmailGetAttachment(args: {
   return new Uint8Array(Buffer.from(attachment.data, "base64url"));
 }
 
-async function gmailDeleteDraft(args: {
-  readonly accessToken: string;
-  readonly gmailDraftId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function gmailDeleteDraft(
+  args: {
+    readonly accessToken: string;
+    readonly gmailDraftId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const response = await fetch(
     `${GMAIL_API_BASE}/drafts/${encodeURIComponent(args.gmailDraftId)}`,
     {
       method: "DELETE",
-      signal: args.signal,
+      signal,
       headers: { Authorization: `Bearer ${args.accessToken}` },
     },
   );
@@ -986,18 +1004,20 @@ async function markGmailNeedsReconnect(args: {
     .where(eq(connectors.id, args.connectorId));
 }
 
-async function runGmailOperation<T>(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly operation: () => Promise<T>;
-  readonly signal: AbortSignal;
-}): Promise<
+async function runGmailOperation<T>(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly operation: () => Promise<T>;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "ok"; readonly value: T }
   | { readonly kind: "reconnect" }
   | { readonly kind: "error"; readonly error: unknown }
 > {
-  const result = await settle(args.operation(), args.signal);
-  args.signal.throwIfAborted();
+  const result = await settle(args.operation(), signal);
+  signal.throwIfAborted();
   if (result.ok) {
     return { kind: "ok", value: result.value };
   }
@@ -1005,7 +1025,7 @@ async function runGmailOperation<T>(args: {
     return { kind: "error", error: result.error };
   }
   await markGmailNeedsReconnect(args);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "reconnect" };
 }
 
@@ -1049,27 +1069,31 @@ async function connectionForRow(args: {
   );
 }
 
-async function accessForRow(args: {
-  readonly db: ReadonlyDb;
-  readonly writeDb: Db;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly row: MailDraftRow;
-  readonly signal: AbortSignal;
-}): Promise<MailAccess | MailDraftErrorResult> {
+async function accessForRow(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly writeDb: Db;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly row: MailDraftRow;
+  },
+  signal: AbortSignal,
+): Promise<MailAccess | MailDraftErrorResult> {
   const connection = await connectionForRow(args);
   if (!connection) {
     return { kind: "conflict", message: "Reconnect Gmail before continuing" };
   }
-  const access = await resolveMailAccessToken({
-    connection,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    signal: args.signal,
-    writeDb: args.writeDb,
-  });
+  const access = await resolveMailAccessToken(
+    {
+      connection,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      writeDb: args.writeDb,
+    },
+    signal,
+  );
   return access.kind === "ok"
     ? { ...access, connection }
     : { kind: "conflict", message: access.message };
@@ -1174,22 +1198,24 @@ async function updateRowFromDraft(args: {
   };
 }
 
-async function getMailDraft(args: {
-  readonly db: ReadonlyDb;
-  readonly writeDb: Db;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly row: MailDraftRow;
-  readonly signal: AbortSignal;
-}): Promise<ZeroMailDraftMutationResult> {
+async function getMailDraft(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly writeDb: Db;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly row: MailDraftRow;
+  },
+  signal: AbortSignal,
+): Promise<ZeroMailDraftMutationResult> {
   if (args.row.status === "deleted") {
     return okResult(
       args.row.id,
       responseDraft({ row: args.row, details: null, detailAvailable: false }),
     );
   }
-  const access = await accessForRow(args);
+  const access = await accessForRow(args, signal);
   if (args.row.status === "sent") {
     const sentGmailMessageId = args.row.sentGmailMessageId;
     const stored = okResult(
@@ -1200,23 +1226,27 @@ async function getMailDraft(args: {
       return access.kind === "ok" ? stored : reconnectDraftResult(args.row);
     }
     let sent: GmailSentValue | null = null;
-    const sentResult = await runGmailOperation({
-      db: args.writeDb,
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        return await gmailGetMessage({
-          accessToken: access.accessToken,
-          gmailMessageId: sentGmailMessageId,
-          fallbackSender: {
-            address: access.connection.externalEmail,
-            name: access.connection.externalUsername,
-          },
-          signal: args.signal,
-        });
+    const sentResult = await runGmailOperation(
+      {
+        db: args.writeDb,
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          return await gmailGetMessage(
+            {
+              accessToken: access.accessToken,
+              gmailMessageId: sentGmailMessageId,
+              fallbackSender: {
+                address: access.connection.externalEmail,
+                name: access.connection.externalUsername,
+              },
+            },
+            signal,
+          );
+        },
       },
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+      signal,
+    );
+    signal.throwIfAborted();
     if (sentResult.kind === "reconnect") {
       return reconnectDraftResult(args.row);
     }
@@ -1243,23 +1273,27 @@ async function getMailDraft(args: {
   if (access.kind !== "ok") {
     return reconnectDraftResult(args.row);
   }
-  const gmailResult = await runGmailOperation({
-    db: args.writeDb,
-    connectorId: access.connection.connectorId,
-    operation: async () => {
-      return await gmailGetDraft({
-        accessToken: access.accessToken,
-        gmailDraftId: args.row.gmailDraftId,
-        fallbackSender: {
-          address: access.connection.externalEmail,
-          name: access.connection.externalUsername,
-        },
-        signal: args.signal,
-      });
+  const gmailResult = await runGmailOperation(
+    {
+      db: args.writeDb,
+      connectorId: access.connection.connectorId,
+      operation: async () => {
+        return await gmailGetDraft(
+          {
+            accessToken: access.accessToken,
+            gmailDraftId: args.row.gmailDraftId,
+            fallbackSender: {
+              address: access.connection.externalEmail,
+              name: access.connection.externalUsername,
+            },
+          },
+          signal,
+        );
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   if (gmailResult.kind === "reconnect") {
     return reconnectDraftResult(args.row);
   }
@@ -1289,12 +1323,14 @@ async function getMailDraft(args: {
   );
 }
 
-async function gmailAttachmentSource(args: {
-  readonly accessToken: string;
-  readonly row: MailDraftRow;
-  readonly partId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
+async function gmailAttachmentSource(
+  args: {
+    readonly accessToken: string;
+    readonly row: MailDraftRow;
+    readonly partId: string;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly messageId: string;
   readonly part: GmailMessagePart;
 } | null> {
@@ -1305,11 +1341,13 @@ async function gmailAttachmentSource(args: {
     if (!args.row.sentGmailMessageId) {
       return null;
     }
-    const message = await gmailGetMessageResource({
-      accessToken: args.accessToken,
-      gmailMessageId: args.row.sentGmailMessageId,
-      signal: args.signal,
-    });
+    const message = await gmailGetMessageResource(
+      {
+        accessToken: args.accessToken,
+        gmailMessageId: args.row.sentGmailMessageId,
+      },
+      signal,
+    );
     const part = message
       ? findAttachmentPart(message.payload, args.partId)
       : null;
@@ -1322,11 +1360,13 @@ async function gmailAttachmentSource(args: {
         }
       : null;
   }
-  const draft = await gmailGetDraftResource({
-    accessToken: args.accessToken,
-    gmailDraftId: args.row.gmailDraftId,
-    signal: args.signal,
-  });
+  const draft = await gmailGetDraftResource(
+    {
+      accessToken: args.accessToken,
+      gmailDraftId: args.row.gmailDraftId,
+    },
+    signal,
+  );
   const part = draft
     ? findAttachmentPart(draft.message.payload, args.partId)
     : null;
@@ -1340,12 +1380,14 @@ async function gmailAttachmentSource(args: {
     : null;
 }
 
-async function gmailAttachmentContent(args: {
-  readonly accessToken: string;
-  readonly messageId: string;
-  readonly part: GmailMessagePart;
-  readonly signal: AbortSignal;
-}): Promise<Uint8Array | null> {
+async function gmailAttachmentContent(
+  args: {
+    readonly accessToken: string;
+    readonly messageId: string;
+    readonly part: GmailMessagePart;
+  },
+  signal: AbortSignal,
+): Promise<Uint8Array | null> {
   if (args.part.body.data !== undefined) {
     return new Uint8Array(Buffer.from(args.part.body.data, "base64url"));
   }
@@ -1353,20 +1395,24 @@ async function gmailAttachmentContent(args: {
   if (!attachmentId) {
     return null;
   }
-  return await gmailGetAttachment({
-    accessToken: args.accessToken,
-    gmailMessageId: args.messageId,
-    attachmentId,
-    signal: args.signal,
-  });
+  return await gmailGetAttachment(
+    {
+      accessToken: args.accessToken,
+      gmailMessageId: args.messageId,
+      attachmentId,
+    },
+    signal,
+  );
 }
 
-async function sendGmailDraftWithAccess(args: {
-  readonly access: MailAccess;
-  readonly db: Db;
-  readonly row: MailDraftRow;
-  readonly signal: AbortSignal;
-}): Promise<
+async function sendGmailDraftWithAccess(
+  args: {
+    readonly access: MailAccess;
+    readonly db: Db;
+    readonly row: MailDraftRow;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly kind: "ok";
       readonly current: GmailDraftValue;
@@ -1375,23 +1421,27 @@ async function sendGmailDraftWithAccess(args: {
   | { readonly kind: "missing" }
   | { readonly kind: "reconnect" }
 > {
-  const currentResult = await runGmailOperation({
-    db: args.db,
-    connectorId: args.access.connection.connectorId,
-    operation: async () => {
-      return await gmailGetDraft({
-        accessToken: args.access.accessToken,
-        gmailDraftId: args.row.gmailDraftId,
-        fallbackSender: {
-          address: args.access.connection.externalEmail,
-          name: args.access.connection.externalUsername,
-        },
-        signal: args.signal,
-      });
+  const currentResult = await runGmailOperation(
+    {
+      db: args.db,
+      connectorId: args.access.connection.connectorId,
+      operation: async () => {
+        return await gmailGetDraft(
+          {
+            accessToken: args.access.accessToken,
+            gmailDraftId: args.row.gmailDraftId,
+            fallbackSender: {
+              address: args.access.connection.externalEmail,
+              name: args.access.connection.externalUsername,
+            },
+          },
+          signal,
+        );
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   if (currentResult.kind === "reconnect") {
     return currentResult;
   }
@@ -1401,19 +1451,23 @@ async function sendGmailDraftWithAccess(args: {
   if (!currentResult.value) {
     return { kind: "missing" };
   }
-  const sentResult = await runGmailOperation({
-    db: args.db,
-    connectorId: args.access.connection.connectorId,
-    operation: async () => {
-      return await gmailSendLinkedDraft({
-        accessToken: args.access.accessToken,
-        gmailDraftId: args.row.gmailDraftId,
-        signal: args.signal,
-      });
+  const sentResult = await runGmailOperation(
+    {
+      db: args.db,
+      connectorId: args.access.connection.connectorId,
+      operation: async () => {
+        return await gmailSendLinkedDraft(
+          {
+            accessToken: args.access.accessToken,
+            gmailDraftId: args.row.gmailDraftId,
+          },
+          signal,
+        );
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   if (sentResult.kind === "reconnect") {
     return sentResult;
   }
@@ -1481,33 +1535,39 @@ export const linkZeroMailDraft$ = command(
             message: "This Gmail draft is already linked to another chat",
           };
     }
-    const access = await resolveMailAccessToken({
-      connection,
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
+    const access = await resolveMailAccessToken(
+      {
+        connection,
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        writeDb: set(writeDb$),
+      },
       signal,
-      writeDb: set(writeDb$),
-    });
+    );
     if (access.kind !== "ok") {
       return { kind: "conflict", message: access.message };
     }
-    const gmailResult = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: connection.connectorId,
-      operation: async () => {
-        return await gmailGetDraft({
-          accessToken: access.accessToken,
-          gmailDraftId: args.gmailDraftId,
-          fallbackSender: {
-            address: connection.externalEmail,
-            name: connection.externalUsername,
-          },
-          signal,
-        });
+    const gmailResult = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: connection.connectorId,
+        operation: async () => {
+          return await gmailGetDraft(
+            {
+              accessToken: access.accessToken,
+              gmailDraftId: args.gmailDraftId,
+              fallbackSender: {
+                address: connection.externalEmail,
+                name: connection.externalUsername,
+              },
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (gmailResult.kind === "reconnect") {
       return reconnectMailError;
@@ -1557,15 +1617,17 @@ export const getZeroMailDraft$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    return await getMailDraft({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    return await getMailDraft(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
   },
 );
 
@@ -1588,31 +1650,37 @@ export const getZeroMailDraftAttachment$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const access = await accessForRow({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    const access = await accessForRow(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
     if (access.kind !== "ok") {
       return access;
     }
-    const sourceResult = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        return await gmailAttachmentSource({
-          accessToken: access.accessToken,
-          row,
-          partId: args.partId,
-          signal,
-        });
+    const sourceResult = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          return await gmailAttachmentSource(
+            {
+              accessToken: access.accessToken,
+              row,
+              partId: args.partId,
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (sourceResult.kind === "reconnect") {
       return reconnectMailError;
@@ -1627,19 +1695,23 @@ export const getZeroMailDraftAttachment$ = command(
         message: "Mail draft attachment not found",
       };
     }
-    const contentResult = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        return await gmailAttachmentContent({
-          accessToken: access.accessToken,
-          messageId: source.messageId,
-          part: source.part,
-          signal,
-        });
+    const contentResult = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          return await gmailAttachmentContent(
+            {
+              accessToken: access.accessToken,
+              messageId: source.messageId,
+              part: source.part,
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (contentResult.kind === "reconnect") {
       return reconnectMailError;
@@ -1687,30 +1759,36 @@ export const deleteZeroMailDraft$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const access = await accessForRow({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    const access = await accessForRow(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
     if (access.kind !== "ok") {
       return access;
     }
-    const deletion = await runGmailOperation({
-      db: set(writeDb$),
-      connectorId: access.connection.connectorId,
-      operation: async () => {
-        await gmailDeleteDraft({
-          accessToken: access.accessToken,
-          gmailDraftId: row.gmailDraftId,
-          signal,
-        });
+    const deletion = await runGmailOperation(
+      {
+        db: set(writeDb$),
+        connectorId: access.connection.connectorId,
+        operation: async () => {
+          await gmailDeleteDraft(
+            {
+              accessToken: access.accessToken,
+              gmailDraftId: row.gmailDraftId,
+            },
+            signal,
+          );
+        },
       },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (deletion.kind === "reconnect") {
       return reconnectMailError;
@@ -1751,24 +1829,28 @@ export const sendZeroMailDraft$ = command(
     }
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-    const access = await accessForRow({
-      db,
-      writeDb: set(writeDb$),
-      snapshot,
-      orgId: args.orgId,
-      userId: args.userId,
-      row,
+    const access = await accessForRow(
+      {
+        db,
+        writeDb: set(writeDb$),
+        snapshot,
+        orgId: args.orgId,
+        userId: args.userId,
+        row,
+      },
       signal,
-    });
+    );
     if (access.kind !== "ok") {
       return access;
     }
-    const gmail = await sendGmailDraftWithAccess({
-      access,
-      db: set(writeDb$),
-      row,
+    const gmail = await sendGmailDraftWithAccess(
+      {
+        access,
+        db: set(writeDb$),
+        row,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (gmail.kind === "reconnect") {
       return reconnectMailError;

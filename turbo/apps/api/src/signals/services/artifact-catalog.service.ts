@@ -324,12 +324,14 @@ async function upsertArtifact(args: UpsertArtifactArgs): Promise<void> {
     });
 }
 
-async function upsertGeneratedMediaEntity(args: {
-  readonly db: Db;
-  readonly kind: "image" | "video";
-  readonly row: CatalogFileRow;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function upsertGeneratedMediaEntity(
+  args: {
+    readonly db: Db;
+    readonly kind: "image" | "video";
+    readonly row: CatalogFileRow;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   const model = metadataString(args.row.metadata, "model");
   if (args.kind === "image") {
     const [entity] = await args.db
@@ -348,7 +350,7 @@ async function upsertGeneratedMediaEntity(args: {
         },
       })
       .returning({ id: imageArtifacts.id });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return entity?.id ?? null;
   }
 
@@ -375,15 +377,17 @@ async function upsertGeneratedMediaEntity(args: {
       },
     })
     .returning({ id: videoArtifacts.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return entity?.id ?? null;
 }
 
-async function upsertPresentationEntity(args: {
-  readonly db: Pick<Db, "insert">;
-  readonly hostedSiteId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function upsertPresentationEntity(
+  args: {
+    readonly db: Pick<Db, "insert">;
+    readonly hostedSiteId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   const [entity] = await args.db
     .insert(presentationArtifacts)
     .values({ hostedSiteId: args.hostedSiteId })
@@ -392,7 +396,7 @@ async function upsertPresentationEntity(args: {
       set: { updatedAt: nowDate() },
     })
     .returning({ id: presentationArtifacts.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return entity?.id ?? null;
 }
 
@@ -401,14 +405,16 @@ interface HostedArtifactSyncResult {
   readonly affectedAuthorUserIds: readonly string[];
 }
 
-async function syncHostedArtifact(args: {
-  readonly db: Db;
-  readonly kind: "hosted-site" | "presentation";
-  readonly row: CatalogFileRow;
-  readonly orgId: string;
-  readonly authorUserId: string;
-  readonly signal: AbortSignal;
-}): Promise<HostedArtifactSyncResult> {
+async function syncHostedArtifact(
+  args: {
+    readonly db: Db;
+    readonly kind: "hosted-site" | "presentation";
+    readonly row: CatalogFileRow;
+    readonly orgId: string;
+    readonly authorUserId: string;
+  },
+  signal: AbortSignal,
+): Promise<HostedArtifactSyncResult> {
   const siteId = metadataString(args.row.metadata, "siteId");
   if (!siteId) {
     return { complete: true, affectedAuthorUserIds: [] };
@@ -429,7 +435,7 @@ async function syncHostedArtifact(args: {
       .where(and(eq(hostedSites.id, siteId), eq(hostedSites.orgId, args.orgId)))
       .for("update")
       .limit(1);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!site) {
       return { complete: false, affectedAuthorUserIds: [] };
     }
@@ -453,15 +459,17 @@ async function syncHostedArtifact(args: {
       )
       .for("update")
       .limit(1);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     const entityId =
       args.kind === "presentation"
-        ? await upsertPresentationEntity({
-            db: tx,
-            hostedSiteId: site.id,
-            signal: args.signal,
-          })
+        ? await upsertPresentationEntity(
+            {
+              db: tx,
+              hostedSiteId: site.id,
+            },
+            signal,
+          )
         : site.id;
     if (!entityId) {
       return { complete: false, affectedAuthorUserIds: [] };
@@ -487,7 +495,7 @@ async function syncHostedArtifact(args: {
         logicalKey,
         createdAt: site.createdAt,
       });
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       return {
         complete: true,
         affectedAuthorUserIds: [args.authorUserId],
@@ -507,7 +515,7 @@ async function syncHostedArtifact(args: {
         ),
       )
       .returning({ id: artifacts.id });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!updated) {
       return { complete: true, affectedAuthorUserIds: [] };
     }
@@ -546,13 +554,15 @@ async function runHasHostedProjection(
   return Boolean(hosted);
 }
 
-async function removeHostedRunShadowArtifacts(args: {
-  readonly db: Db;
-  readonly row: CatalogFileRow;
-  readonly orgId: string;
-  readonly authorUserId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function removeHostedRunShadowArtifacts(
+  args: {
+    readonly db: Db;
+    readonly row: CatalogFileRow;
+    readonly orgId: string;
+    readonly authorUserId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (!args.row.runId) {
     return;
   }
@@ -566,7 +576,7 @@ async function removeHostedRunShadowArtifacts(args: {
         sql`${runUploadedFiles.metadata} ->> 'artifactKind' IS DISTINCT FROM 'presentation-html'`,
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const shadowIds = shadowRows.map((shadow) => {
     return shadow.id;
   });
@@ -582,7 +592,7 @@ async function removeHostedRunShadowArtifacts(args: {
         inArray(artifacts.projectionFileId, shadowIds),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 async function finishPendingArtifactFile(
@@ -610,21 +620,25 @@ async function syncArtifactCatalogFile(
   const authorUserId = await resolveAuthorUserId(db, row, signal);
   const hostedKind = hostedArtifactKind(row);
   if (hostedKind) {
-    await removeHostedRunShadowArtifacts({
-      db,
-      row,
-      orgId: row.orgId,
-      authorUserId,
+    await removeHostedRunShadowArtifacts(
+      {
+        db,
+        row,
+        orgId: row.orgId,
+        authorUserId,
+      },
       signal,
-    });
-    const result = await syncHostedArtifact({
-      db,
-      kind: hostedKind,
-      row,
-      orgId: row.orgId,
-      authorUserId,
+    );
+    const result = await syncHostedArtifact(
+      {
+        db,
+        kind: hostedKind,
+        row,
+        orgId: row.orgId,
+        authorUserId,
+      },
       signal,
-    });
+    );
     if (!result.complete) {
       return [];
     }
@@ -652,7 +666,7 @@ async function syncArtifactCatalogFile(
   const entityId =
     kind === "file"
       ? row.id
-      : await upsertGeneratedMediaEntity({ db, kind, row, signal });
+      : await upsertGeneratedMediaEntity({ db, kind, row }, signal);
   if (!entityId) {
     return [];
   }

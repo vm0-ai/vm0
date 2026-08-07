@@ -133,12 +133,14 @@ function parseSteamOpenIdVerificationResponse(
   );
 }
 
-export async function verifySteamOpenIdCallback(args: {
-  readonly callbackParams: Readonly<Record<string, string>>;
-  readonly expectedReturnTo: string;
-  readonly expectedRealm: string;
-  readonly signal: AbortSignal;
-}): Promise<SteamOpenIdVerificationResult> {
+export async function verifySteamOpenIdCallback(
+  args: {
+    readonly callbackParams: Readonly<Record<string, string>>;
+    readonly expectedReturnTo: string;
+    readonly expectedRealm: string;
+  },
+  signal: AbortSignal,
+): Promise<SteamOpenIdVerificationResult> {
   const steamId = validateSteamOpenIdCallback({
     params: args.callbackParams,
     expectedReturnTo: args.expectedReturnTo,
@@ -159,7 +161,7 @@ export async function verifySteamOpenIdCallback(args: {
       Accept: "text/plain",
     },
     body,
-    signal: args.signal,
+    signal,
   });
   if (!response.ok) {
     throw new Error(`Steam OpenID verification failed: ${response.status}`);

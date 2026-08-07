@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "scripts": {
+    "test": "node --test no-abort-signal-in-object-params.test.js"
+  },
   "exports": {
     "./base": "./base.js",
     "./react-internal": "./react-internal.js"

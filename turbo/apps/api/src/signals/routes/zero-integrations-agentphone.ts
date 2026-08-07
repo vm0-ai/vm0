@@ -167,12 +167,14 @@ function truncateForLog(value: string): string {
   return value.length > 500 ? `${value.slice(0, 500)}...` : value;
 }
 
-async function sendAgentPhoneVerificationMessage(params: {
-  readonly config: ConfiguredAgentPhoneConfig;
-  readonly toNumber: string;
-  readonly body: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function sendAgentPhoneVerificationMessage(
+  params: {
+    readonly config: ConfiguredAgentPhoneConfig;
+    readonly toNumber: string;
+    readonly body: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const response = await fetch(`${params.config.apiBaseUrl}/v1/messages`, {
     method: "POST",
     headers: {
@@ -184,7 +186,7 @@ async function sendAgentPhoneVerificationMessage(params: {
       to_number: params.toNumber,
       body: params.body,
     }),
-    signal: params.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -295,12 +297,14 @@ const sendAgentPhoneVerificationText$ = command(
 
       const sent =
         (await tapError(
-          sendAgentPhoneVerificationMessage({
-            config: params.config,
-            toNumber: params.phoneHandle,
-            body: `Confirm this phone number for VM0: ${params.connectUrl}`,
+          sendAgentPhoneVerificationMessage(
+            {
+              config: params.config,
+              toNumber: params.phoneHandle,
+              body: `Confirm this phone number for VM0: ${params.connectUrl}`,
+            },
             signal,
-          }),
+          ),
           (error) => {
             log.error("AgentPhone verification text send failed", {
               agentphoneAgentId: params.config.agentphoneAgentId,

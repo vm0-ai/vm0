@@ -494,14 +494,16 @@ async function resolveStoragePresignedUrls<TRequest>(args: {
   return results;
 }
 
-async function refreshDueStoragePresignedUrls(args: {
-  readonly db: Db;
-  readonly get: ComputedGetter;
-  readonly scope: StoragePresignedUrlCacheScope;
-  readonly limit: number;
-  readonly pruneLimit: number;
-  readonly signal?: AbortSignal;
-}): Promise<{
+async function refreshDueStoragePresignedUrls(
+  args: {
+    readonly db: Db;
+    readonly get: ComputedGetter;
+    readonly scope: StoragePresignedUrlCacheScope;
+    readonly limit: number;
+    readonly pruneLimit: number;
+  },
+  signal?: AbortSignal,
+): Promise<{
   readonly due: number;
   readonly refreshed: number;
   readonly pruned: number;
@@ -535,7 +537,7 @@ async function refreshDueStoragePresignedUrls(args: {
       asc(systemStoragePresignedUrlCache.expiresAt),
     )
     .limit(args.limit + 1);
-  args.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const rowsToRefresh = rows.slice(0, args.limit);
   const freshValues = await Promise.all(
@@ -557,18 +559,18 @@ async function refreshDueStoragePresignedUrls(args: {
       });
     }),
   );
-  args.signal?.throwIfAborted();
+  signal?.throwIfAborted();
   await upsertCacheValues(args.db, freshValues, {
     updateLastRequestedAt: false,
   });
-  args.signal?.throwIfAborted();
+  signal?.throwIfAborted();
 
   const pruned = await pruneInactiveExpiredCacheRows(
     args.db,
     args.scope,
     issuedAt,
     args.pruneLimit,
-    args.signal,
+    signal,
   );
 
   return { due: rows.length, refreshed: freshValues.length, pruned };
@@ -588,25 +590,29 @@ export async function resolveSystemStoragePresignedUrls(args: {
   });
 }
 
-export async function refreshDueSystemStoragePresignedUrls(args: {
-  readonly db: Db;
-  readonly get: ComputedGetter;
-  readonly limit?: number;
-  readonly pruneLimit?: number;
-  readonly signal?: AbortSignal;
-}): Promise<{
+export async function refreshDueSystemStoragePresignedUrls(
+  args: {
+    readonly db: Db;
+    readonly get: ComputedGetter;
+    readonly limit?: number;
+    readonly pruneLimit?: number;
+  },
+  signal?: AbortSignal,
+): Promise<{
   readonly due: number;
   readonly refreshed: number;
   readonly pruned: number;
 }> {
-  return await refreshDueStoragePresignedUrls({
-    db: args.db,
-    get: args.get,
-    scope: "system_storage",
-    limit: args.limit ?? SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
-    pruneLimit: args.pruneLimit ?? SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
-    signal: args.signal,
-  });
+  return await refreshDueStoragePresignedUrls(
+    {
+      db: args.db,
+      get: args.get,
+      scope: "system_storage",
+      limit: args.limit ?? SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
+      pruneLimit: args.pruneLimit ?? SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+    },
+    signal,
+  );
 }
 
 export async function resolveWorkflowSkillStoragePresignedUrls(args: {
@@ -623,24 +629,28 @@ export async function resolveWorkflowSkillStoragePresignedUrls(args: {
   });
 }
 
-export async function refreshDueWorkflowSkillStoragePresignedUrls(args: {
-  readonly db: Db;
-  readonly get: ComputedGetter;
-  readonly limit?: number;
-  readonly pruneLimit?: number;
-  readonly signal?: AbortSignal;
-}): Promise<{
+export async function refreshDueWorkflowSkillStoragePresignedUrls(
+  args: {
+    readonly db: Db;
+    readonly get: ComputedGetter;
+    readonly limit?: number;
+    readonly pruneLimit?: number;
+  },
+  signal?: AbortSignal,
+): Promise<{
   readonly due: number;
   readonly refreshed: number;
   readonly pruned: number;
 }> {
-  return await refreshDueStoragePresignedUrls({
-    db: args.db,
-    get: args.get,
-    scope: "workflow_skill_storage",
-    limit: args.limit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
-    pruneLimit:
-      args.pruneLimit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
-    signal: args.signal,
-  });
+  return await refreshDueStoragePresignedUrls(
+    {
+      db: args.db,
+      get: args.get,
+      scope: "workflow_skill_storage",
+      limit: args.limit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
+      pruneLimit:
+        args.pruneLimit ?? WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+    },
+    signal,
+  );
 }

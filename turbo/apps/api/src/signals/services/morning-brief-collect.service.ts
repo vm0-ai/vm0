@@ -74,17 +74,19 @@ type ConnectorAccessResult =
   | { readonly kind: "ok"; readonly access: ConnectorAccess }
   | { readonly kind: "unavailable"; readonly message: string };
 
-async function resolveMorningBriefConnectorAccess(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorSlug: MorningBriefConnectorSlug;
-  readonly signal: AbortSignal;
-}): Promise<ConnectorAccessResult> {
+async function resolveMorningBriefConnectorAccess(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: MorningBriefConnectorSlug;
+  },
+  signal: AbortSignal,
+): Promise<ConnectorAccessResult> {
   const environmentName = connectorTokenEnvironmentName(args.connectorSlug);
   const currentTime = nowDate();
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const loaded = await loadConnectorCredentialConnection({
     db: args.db,
     snapshot,
@@ -92,7 +94,7 @@ async function resolveMorningBriefConnectorAccess(args: {
     userId: args.userId,
     connectorSlug: args.connectorSlug,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (loaded.kind !== "ok") {
     return {
       kind: "unavailable",
@@ -116,15 +118,17 @@ async function resolveMorningBriefConnectorAccess(args: {
       tokenExpiresAt.getTime() <=
         currentTime.getTime() + TOKEN_REFRESH_BUFFER_MS);
   if (needsRefresh) {
-    const refreshed = await refreshConnectorCredentialAccess({
-      connection,
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      runtimeEnvironmentName: environmentName,
-      signal: args.signal,
-      persist: { db: args.db, markNeedsReconnectOnFailure: true },
-    });
+    const refreshed = await refreshConnectorCredentialAccess(
+      {
+        connection,
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        runtimeEnvironmentName: environmentName,
+        persist: { db: args.db, markNeedsReconnectOnFailure: true },
+      },
+      signal,
+    );
     if (refreshed.kind === "ok") {
       return {
         kind: "ok",
@@ -157,7 +161,7 @@ async function resolveMorningBriefConnectorAccess(args: {
     db: args.db,
     valueRefs: [valueRef],
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const accessToken = values.get(valueRef);
   if (!accessToken) {
     return {
@@ -691,20 +695,22 @@ interface CollectMorningBriefInputArgs {
   readonly dayEnd: Date;
   /** The member's Morning Brief thread; never reported as unread. */
   readonly excludeChatThreadId: string | null;
-  readonly signal: AbortSignal;
 }
 
 export async function collectMorningBriefInput(
   args: CollectMorningBriefInputArgs,
+  signal: AbortSignal,
 ): Promise<MorningBriefInput> {
   const accessFor = (connectorSlug: MorningBriefConnectorSlug) => {
-    return resolveMorningBriefConnectorAccess({
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorSlug,
-      signal: args.signal,
-    });
+    return resolveMorningBriefConnectorAccess(
+      {
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug,
+      },
+      signal,
+    );
   };
 
   const withAccess = async <T>(
@@ -722,13 +728,13 @@ export async function collectMorningBriefInput(
 
   const [github, gmail, calendar, chatThreadsSource] = await Promise.all([
     withAccess("github", (access) => {
-      return collectGithub(access, args.since, args.signal);
+      return collectGithub(access, args.since, signal);
     }),
     withAccess("gmail", (access) => {
-      return collectGmail(access, args.since, args.signal);
+      return collectGmail(access, args.since, signal);
     }),
     withAccess("google-calendar", (access) => {
-      return collectCalendar(access, args.dayStart, args.dayEnd, args.signal);
+      return collectCalendar(access, args.dayStart, args.dayEnd, signal);
     }),
     collectSource(() => {
       return collectUnreadChatThreads({

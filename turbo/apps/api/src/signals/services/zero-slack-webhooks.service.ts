@@ -264,7 +264,6 @@ interface CommandModelResponseArgs {
   readonly payload: SlackCommandPayload;
   readonly installation: SlackInstallation;
   readonly connection: SlackConnection;
-  readonly signal: AbortSignal;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -1188,7 +1187,11 @@ const commandSwitchResponse$ = command(
 );
 
 const commandModelResponse$ = command(
-  async ({ get, set }, args: CommandModelResponseArgs): Promise<Response> => {
+  async (
+    { get, set },
+    args: CommandModelResponseArgs,
+    signal: AbortSignal,
+  ): Promise<Response> => {
     if (!args.installation.orgId) {
       return ephemeral(
         buildErrorMessage(
@@ -1207,7 +1210,7 @@ const commandModelResponse$ = command(
       slackModelPickerState$,
       args.installation.orgId,
       args.connection.vm0UserId,
-      args.signal,
+      signal,
     );
     if (!picker.enabled) {
       return ephemeral(
@@ -1229,6 +1232,7 @@ const commandModelResponse$ = command(
         }),
       ),
     );
+    signal.throwIfAborted();
     const result = await tapError(
       client.openView(
         args.payload.trigger_id,
@@ -1244,6 +1248,7 @@ const commandModelResponse$ = command(
         L.warn("Failed to open model picker modal", { error });
       },
     );
+    signal.throwIfAborted();
     if (!result) {
       return ephemeral(
         buildErrorMessage(
@@ -1362,12 +1367,11 @@ export const handleZeroSlackCommands$ = command(
     }
 
     if (subCommand === "model") {
-      return set(commandModelResponse$, {
-        payload,
-        installation,
-        connection,
+      return set(
+        commandModelResponse$,
+        { payload, installation, connection },
         signal,
-      });
+      );
     }
 
     return ephemeral(

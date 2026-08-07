@@ -225,6 +225,36 @@ export default [
     },
   },
   {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/test/**",
+      "src/**/tests/**",
+      "src/**/mocks/**",
+      "src/**/test-fixtures/**",
+      "src/**/*.test.ts",
+      "src/**/*.spec.ts",
+      "src/**/test-context.ts",
+      "src/signals/routes/test-*.ts",
+    ],
+    rules: {
+      "vm0/no-abort-signal-in-object-params": [
+        "error",
+        {
+          allowedFunctions: [
+            "createApp",
+            "createAppWithRoutes",
+            "readTextLines",
+            "createDir",
+            "remove",
+            "createTempFile",
+            "exec",
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/scripts/dev-seed.ts"],
     rules: {
       // PostgreSQL's DO statement requires a code literal, so this local-only

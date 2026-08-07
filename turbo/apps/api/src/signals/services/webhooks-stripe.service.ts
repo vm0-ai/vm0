@@ -4025,10 +4025,13 @@ export const handleStripeWebhookEvent$ = command(
 
     signal.throwIfAborted();
     for (const orgId of billingChangedOrgIds) {
-      await disableIneligibleWorkflowWebhookAutomationsForOrg(db, {
-        orgId,
+      await disableIneligibleWorkflowWebhookAutomationsForOrg(
+        db,
+        {
+          orgId,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
       await publishBillingChangedForOrg(db, orgId);
       signal.throwIfAborted();

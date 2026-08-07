@@ -100,17 +100,19 @@ async function resolveConnectedTeamsUser(args: {
   };
 }
 
-async function resolveTeamsMessageTarget(args: {
-  readonly db: ReadonlyDb;
-  readonly installation: TeamsInstallation;
-  readonly userId: string;
-  readonly body: {
-    readonly conversationId?: string;
-    readonly user?: string;
-    readonly activityId?: string;
-  };
-  readonly signal: AbortSignal;
-}): Promise<TeamsMessageTarget | ReturnType<typeof routeError>> {
+async function resolveTeamsMessageTarget(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly installation: TeamsInstallation;
+    readonly userId: string;
+    readonly body: {
+      readonly conversationId?: string;
+      readonly user?: string;
+      readonly activityId?: string;
+    };
+  },
+  signal: AbortSignal,
+): Promise<TeamsMessageTarget | ReturnType<typeof routeError>> {
   if (args.body.conversationId) {
     return {
       conversationId: args.body.conversationId,
@@ -148,7 +150,7 @@ async function resolveTeamsMessageTarget(args: {
           teamsUserId: args.body.user,
           teamsUserDisplayName: null,
         };
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (targetUser.kind === "not_found") {
     return routeError(
@@ -158,16 +160,18 @@ async function resolveTeamsMessageTarget(args: {
     );
   }
 
-  const conversation = await createTeamsPersonalConversation({
-    serviceUrl: args.installation.serviceUrl,
-    tenantId: args.installation.teamsTenantId,
-    botId: args.installation.botId,
-    botName: args.installation.botName,
-    teamsUserId: targetUser.teamsUserId,
-    teamsUserDisplayName: targetUser.teamsUserDisplayName,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const conversation = await createTeamsPersonalConversation(
+    {
+      serviceUrl: args.installation.serviceUrl,
+      tenantId: args.installation.teamsTenantId,
+      botId: args.installation.botId,
+      botName: args.installation.botName,
+      teamsUserId: targetUser.teamsUserId,
+      teamsUserDisplayName: targetUser.teamsUserDisplayName,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   if (conversation.kind === "teams-error") {
     return teamsErrorResponse(conversation);
@@ -208,27 +212,31 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
     );
   }
 
-  const target = await resolveTeamsMessageTarget({
-    db,
-    installation,
-    userId: auth.userId,
-    body,
+  const target = await resolveTeamsMessageTarget(
+    {
+      db,
+      installation,
+      userId: auth.userId,
+      body,
+    },
     signal,
-  });
+  );
   signal.throwIfAborted();
   if ("status" in target) {
     return target;
   }
 
-  const result = await sendTeamsMessage({
-    serviceUrl: installation.serviceUrl,
-    conversationId: target.conversationId,
-    activityId: target.activityId,
-    tenantId: installation.teamsTenantId,
-    text: body.text ?? "Adaptive card",
-    card: body.card,
+  const result = await sendTeamsMessage(
+    {
+      serviceUrl: installation.serviceUrl,
+      conversationId: target.conversationId,
+      activityId: target.activityId,
+      tenantId: installation.teamsTenantId,
+      text: body.text ?? "Adaptive card",
+      card: body.card,
+    },
     signal,
-  });
+  );
   signal.throwIfAborted();
   if (result.kind === "teams-error") {
     return teamsErrorResponse(result);

@@ -231,14 +231,16 @@ const sendTeamsInstallWelcome$ = command(
     }
 
     const welcome = buildTeamsInstallWelcomeContent(welcomeActivity);
-    const reply = await sendTeamsMessage({
-      serviceUrl: welcomeActivity.serviceUrl,
-      conversationId: welcomeActivity.conversationId,
-      tenantId: welcomeActivity.tenantId,
-      text: welcome.text,
-      ...(welcome.entities ? { entities: welcome.entities } : {}),
+    const reply = await sendTeamsMessage(
+      {
+        serviceUrl: welcomeActivity.serviceUrl,
+        conversationId: welcomeActivity.conversationId,
+        tenantId: welcomeActivity.tenantId,
+        text: welcome.text,
+        ...(welcome.entities ? { entities: welcome.entities } : {}),
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (reply.kind === "teams-error") {
@@ -280,15 +282,17 @@ const dispatchTeamsMessageAndReply$ = command(
       return;
     }
 
-    const reply = await sendTeamsMessageReply({
-      serviceUrl: args.activity.serviceUrl,
-      conversationId: args.activity.conversationId,
-      activityId: args.activity.activityId ?? undefined,
-      tenantId: args.activity.tenantId,
-      text: replyText,
-      ...(card ? { card } : {}),
+    const reply = await sendTeamsMessageReply(
+      {
+        serviceUrl: args.activity.serviceUrl,
+        conversationId: args.activity.conversationId,
+        activityId: args.activity.activityId ?? undefined,
+        tenantId: args.activity.tenantId,
+        text: replyText,
+        ...(card ? { card } : {}),
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (reply.kind === "teams-error") {
