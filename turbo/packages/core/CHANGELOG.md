@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.528.1](https://github.com/vm0-ai/vm0/compare/core-v8.528.0...core-v8.528.1) (2026-08-07)
+
+
+### Refactoring
+
+* remove the templatePickerGlobalSearch feature switch ([#25686](https://github.com/vm0-ai/vm0/issues/25686)) ([b427e71](https://github.com/vm0-ai/vm0/commit/b427e716c76ad5cfa9372ef09f52d622e6443b57))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.291.0
+
 ## [8.528.0](https://github.com/vm0-ai/vm0/compare/core-v8.527.0...core-v8.528.0) (2026-08-07)
 
 

@@ -708,6 +708,7 @@ export const secretConnectorMetadataMapSchema = z.record(
   secretConnectorMetadataSchema,
 );
 
+export const PI_MEMORY_ROOT = "/home/user/.pi/agent/memory";
 export const PI_SKILLS_ROOT = "/home/user/.pi/agent/skills";
 
 export const runSkillSnapshotEntrySchema = z
@@ -750,10 +751,15 @@ export const piModelConfigSchema = z
       "openai",
       "openrouter",
       "vercel-ai-gateway",
+      "codex",
     ]),
     baseUrl: z.url(),
     model: z.string().min(1),
-    apiKeyEnv: z.enum(["ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"]),
+    apiKeyEnv: z.enum([
+      "ANTHROPIC_AUTH_TOKEN",
+      "OPENAI_API_KEY",
+      "CHATGPT_ACCESS_TOKEN",
+    ]),
   })
   .readonly();
 
