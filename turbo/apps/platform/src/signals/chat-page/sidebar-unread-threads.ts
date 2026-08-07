@@ -87,6 +87,18 @@ export const unreadAgentIds$ = computed(
   },
 );
 
+export const allUnreadThreadIds$ = computed(
+  async (get): Promise<ReadonlySet<string>> => {
+    get(reloadChatUnreadStateCounter$);
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await accept(client.unreadIds(), [200, 404]);
+    // A newly promoted app can briefly reach an API version from before this
+    // additive route existed. Remove after that API is outside the production
+    // rollback window.
+    return new Set(result.status === 200 ? result.body.threadIds : []);
+  },
+);
+
 export const markAgentThreadsRead$ = command(
   async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(chatThreadMarkAgentReadContract);
