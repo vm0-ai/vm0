@@ -32,6 +32,23 @@ import {
   workflowSummary,
 } from "./chat-composer-test-helpers.ts";
 
+// The composer editor is mounted on first paint and mounted again once page
+// bootstrap settles, so an element captured too early is detached by the time a
+// test asserts on it. Read whichever editor is currently mounted.
+function mountedComposer(): HTMLElement {
+  const editor = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(editor instanceof HTMLElement)) {
+    throw new Error("Composer editor is not mounted");
+  }
+  return editor;
+}
+
+function mountedComposerText(): string {
+  return mountedComposer().textContent ?? "";
+}
+
 function suggestionAgent({
   id,
   displayName,
@@ -301,7 +318,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor.textContent).toContain("/sales-research");
+      expect(mountedComposerText()).toContain("/sales-research");
     });
     // The colored token is a real inline decoration in the same layer as the
     // text (no overlay), so it stays aligned when the composer scrolls.
@@ -370,7 +387,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor.textContent).toContain("/release-production");
+      expect(mountedComposerText()).toContain("/release-production");
     });
   });
 
@@ -398,7 +415,7 @@ describe("chat composer models", () => {
     await user.click(editor);
     await user.keyboard("https://www.vm0.ai/en/use-cases/pr-review");
 
-    expect(editor).toHaveTextContent(
+    expect(mountedComposerText()).toContain(
       "https://www.vm0.ai/en/use-cases/pr-review",
     );
     expect(editor.querySelector("span.text-primary")).not.toBeInTheDocument();
@@ -477,7 +494,7 @@ describe("chat composer models", () => {
     await user.click(otherAgentThread);
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent("Review Other Alpha");
+      expect(mountedComposerText()).toContain("Review Other Alpha");
     });
     expect(
       editor.querySelector(
@@ -746,7 +763,7 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent("/new-chat-workflow");
+      expect(mountedComposerText()).toContain("/new-chat-workflow");
     });
     const highlightedWorkflow = screen
       .getAllByText("/new-chat-workflow")
@@ -979,8 +996,8 @@ describe("chat composer models", () => {
         screen.queryByTestId("slash-workflow-menu"),
       ).not.toBeInTheDocument();
     });
-    expect(editor).toHaveTextContent("/sales");
-    expect(editor).toHaveFocus();
+    expect(mountedComposerText()).toContain("/sales");
+    expect(mountedComposer()).toHaveFocus();
   });
 
   it("does not suggest workflows that are not attached to the current agent", async () => {
@@ -1015,7 +1032,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
     });
-    expect(editor.textContent).toContain("/");
+    expect(mountedComposerText()).toContain("/");
   });
 
   it("links to the workflows page from the slash workflow menu footer", async () => {
@@ -1114,28 +1131,41 @@ describe("chat composer models", () => {
         path: `/agents/${AGENT_ID}/chat`,
       });
 
-      const editor = await findComposerEditor();
-      await user.click(editor);
-      await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
+      await findComposerEditor();
+      // Select-all before typing so a retry against a freshly mounted editor
+      // replaces the draft instead of appending to it.
+      await waitFor(async () => {
+        const composer = mountedComposer();
+        await user.click(composer);
+        await user.keyboard("{Control>}a{/Control}");
+        await user.keyboard("first line{Shift>}{Enter}{/Shift}second line");
+        if (
+          !mountedComposer().innerHTML.includes(
+            "<p>first line</p><p>second line</p>",
+          )
+        ) {
+          throw new Error("Composer did not accept the typed lines");
+        }
+      });
       await user.keyboard("{Control>}a{/Control}X");
 
       await waitFor(() => {
-        expect(editor.innerHTML).toContain(
+        expect(mountedComposer().innerHTML).toContain(
           "<p>first line</p><p>Xsecond line</p>",
         );
-        expect(editor.innerHTML).not.toContain("<br>");
+        expect(mountedComposer().innerHTML).not.toContain("<br>");
       });
 
-      placeCaretAfterText(editor, "Xsecond line");
+      placeCaretAfterText(mountedComposer(), "Xsecond line");
       await user.keyboard("{Shift>}{Enter}{/Shift}third line");
-      placeCaretAfterText(editor, "Xsecond line");
+      placeCaretAfterText(mountedComposer(), "Xsecond line");
       await user.keyboard("{Control>}e{/Control}Y");
 
       await waitFor(() => {
-        expect(editor.innerHTML).toContain(
+        expect(mountedComposer().innerHTML).toContain(
           "<p>first line</p><p>Xsecond lineY</p><p>third line</p>",
         );
-        expect(editor.innerHTML).not.toContain("<br>");
+        expect(mountedComposer().innerHTML).not.toContain("<br>");
       });
     } finally {
       restoreUserAgent();

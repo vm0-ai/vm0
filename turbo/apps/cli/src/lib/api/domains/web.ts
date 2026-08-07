@@ -749,7 +749,6 @@ export async function uploadWebFile(
       filename,
       contentType,
       size: stats.size,
-      supportsUploadHeaders: true,
     }),
   });
 

@@ -985,6 +985,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -1017,6 +1020,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -1055,6 +1061,9 @@ describe("chat composer templates", () => {
     });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -1103,6 +1112,9 @@ describe("chat composer templates", () => {
     });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -1476,6 +1488,9 @@ describe("chat composer templates", () => {
     });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -1921,6 +1936,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -2505,6 +2523,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -2969,6 +2990,9 @@ describe("chat composer templates", () => {
     mockActiveTemplateThread();
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -3106,6 +3130,9 @@ describe("chat composer templates", () => {
     mockActiveTemplateThread();
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -3150,6 +3177,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -3213,6 +3243,9 @@ describe("chat composer templates", () => {
     });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -3302,6 +3335,9 @@ describe("chat composer templates", () => {
     });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -3486,6 +3522,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -3508,6 +3547,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });
@@ -3572,6 +3614,9 @@ describe("chat composer templates", () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${THREAD_ID}`,
     });

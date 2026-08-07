@@ -750,7 +750,6 @@ interface PrepareCanonicalPublishedAssetArgs {
   readonly contentType: string;
   readonly size: number;
   readonly checksumSha256: string;
-  readonly allowV2: boolean;
   readonly destination: {
     readonly channelId: string;
     readonly threadTs?: string;
@@ -908,7 +907,6 @@ export const prepareCanonicalPublishedAsset$ = command(
       {
         userId: args.userId,
         filename: args.filename,
-        allowV2: args.allowV2,
       },
       signal,
     );

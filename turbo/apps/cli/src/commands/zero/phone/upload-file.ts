@@ -83,7 +83,6 @@ Output:
           filename,
           contentType,
           length: fileSize,
-          supportsUploadHeaders: true,
         });
 
         const fileContent = readFileSync(options.file);

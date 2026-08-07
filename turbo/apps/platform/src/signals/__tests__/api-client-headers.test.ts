@@ -1,19 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
-import {
-  addClientCapabilityToVersion,
-  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-  CLIENT_CAPABILITY_ES_ES_LOCALE,
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-  CLIENT_CAPABILITY_HI_IN_LOCALE,
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-  CLIENT_CAPABILITY_JA_JP_LOCALE,
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
-  CLIENT_CAPABILITY_ID_ID_LOCALE,
-  CLIENT_CAPABILITY_DE_DE_LOCALE,
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
-  CLIENT_FORCE_UPGRADE_STATUS,
-} from "@vm0/api-contracts/contracts/client-headers";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import {
@@ -38,48 +25,13 @@ const resetAuthRecoverySignal$ = resetSignal();
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const EXPECTED_CLIENT_VERSION_WITHOUT_FRENCH = addClientCapabilityToVersion(
-  addClientCapabilityToVersion(
-    addClientCapabilityToVersion(
-      addClientCapabilityToVersion(
-        addClientCapabilityToVersion(
-          addClientCapabilityToVersion(
-            addClientCapabilityToVersion(
-              "0.540.0",
-              CLIENT_CAPABILITY_PT_BR_LOCALE,
-            ),
-            CLIENT_CAPABILITY_JA_JP_LOCALE,
-          ),
-          CLIENT_CAPABILITY_KO_KR_LOCALE,
-        ),
-        CLIENT_CAPABILITY_ID_ID_LOCALE,
-      ),
-      CLIENT_CAPABILITY_DE_DE_LOCALE,
-    ),
-    CLIENT_CAPABILITY_ES_ES_LOCALE,
-  ),
-  CLIENT_CAPABILITY_IT_IT_LOCALE,
-);
-const EXPECTED_CLIENT_VERSION_WITHOUT_HINDI = addClientCapabilityToVersion(
-  EXPECTED_CLIENT_VERSION_WITHOUT_FRENCH,
-  CLIENT_CAPABILITY_FR_FR_LOCALE,
-);
-const EXPECTED_CLIENT_VERSION_WITHOUT_AGENT_RUN_SOURCE =
-  addClientCapabilityToVersion(
-    EXPECTED_CLIENT_VERSION_WITHOUT_HINDI,
-    CLIENT_CAPABILITY_HI_IN_LOCALE,
-  );
-const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
-  EXPECTED_CLIENT_VERSION_WITHOUT_AGENT_RUN_SOURCE,
-  CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-);
+const EXPECTED_CLIENT_VERSION = "0.540.0";
 
 interface ObservedClientHeaders {
   readonly requestId: string | null;
   readonly sessionId: string | null;
   readonly type: string | null;
   readonly version: string | null;
-  readonly zeroMailVersion: string | null;
 }
 
 function observedClientHeaders(request: Request): ObservedClientHeaders {
@@ -88,7 +40,6 @@ function observedClientHeaders(request: Request): ObservedClientHeaders {
     sessionId: request.headers.get("x-client-session-id"),
     type: request.headers.get("x-client-type"),
     version: request.headers.get("x-client-version"),
-    zeroMailVersion: request.headers.get("x-zero-mail-client-version"),
   };
 }
 
@@ -151,8 +102,6 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe(EXPECTED_CLIENT_VERSION);
     expect(second.version).toBe(EXPECTED_CLIENT_VERSION);
-    expect(first.zeroMailVersion).toBe("3");
-    expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);
@@ -188,8 +137,6 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe(EXPECTED_CLIENT_VERSION);
     expect(second.version).toBe(EXPECTED_CLIENT_VERSION);
-    expect(first.zeroMailVersion).toBe("3");
-    expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);

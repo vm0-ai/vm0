@@ -11,7 +11,10 @@ import {
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { describe, expect, onTestFinished, test as vitestTest } from "vitest";
 import { createApp } from "../../../app-factory";
@@ -205,7 +208,7 @@ async function sendChatRun(
     readonly prompt: string;
     readonly threadId?: string;
     readonly chatThreadSortEventId?: string;
-    readonly model?: string;
+    readonly model?: SupportedRunModel;
   },
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const sent = await chat.requestSendEvent(actor, body, [201]);
@@ -842,19 +845,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ]),
     );
 
-    const afterLegacyCursor = await chat.requestThreadEvents(
-      actor,
-      { sinceEventId: createEventId },
-      [200],
-    );
-    expect(afterLegacyCursor.status).toBe(200);
-    if (afterLegacyCursor.status !== 200) {
-      throw new Error("Expected legacy thread event cursor to load");
-    }
-    expect(afterLegacyCursor.body.events).toStrictEqual(
-      afterCreate.body.events,
-    );
-
     const expired = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: 999_999 },
@@ -1147,15 +1137,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(detail).not.toHaveProperty("modelProviderId");
     expect(detail).not.toHaveProperty("modelProviderType");
     expect(detail).not.toHaveProperty("modelProviderCredentialScope");
-
-    const invalidSelection = await chat.requestUpdateThreadModelSelection(
-      actor,
-      run.threadId,
-      "not-a-supported-model",
-      [400],
-    );
-    expectApiError(invalidSelection.body);
-    expect(invalidSelection.body.error.code).toBe("BAD_REQUEST");
 
     await cancelChatRun(actor, run.runId);
     await expect(chat.listActiveChatThreadIds(actor)).resolves.not.toContain(
@@ -1976,15 +1957,6 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
-    const legacySince = await chat.listThreadEvents(owner, threadId, {
-      sinceId: firstAssistant,
-    });
-    expect(
-      legacySince.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
-
     // Backward pagination strictly before the cursor.
     const before = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondQueuedUserSeqId,
@@ -1996,17 +1968,6 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(before.events[0]?.seqId).toBe(1);
-    const legacyBefore = await chat.listThreadEvents(owner, threadId, {
-      beforeId: secondQueuedUser,
-      limit: 3,
-    });
-    expect(
-      legacyBefore.events.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
-    expect(legacyBefore.events[0]?.seqId).toBe(1);
-
     const beforeOverflow = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondAssistantSeqId,
       limit: 2,

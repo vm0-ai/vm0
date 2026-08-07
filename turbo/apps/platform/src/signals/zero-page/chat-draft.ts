@@ -237,7 +237,6 @@ function createChatAttachment(file: File): ZeroChatAttachment {
             filename: file.name,
             contentType,
             size: file.size,
-            supportsUploadHeaders: true,
             ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
               ? { multipart: true as const }
               : {}),

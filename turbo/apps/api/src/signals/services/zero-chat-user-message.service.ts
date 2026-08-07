@@ -71,21 +71,6 @@ export function hasAgentRunSourceAnnotation(
   return agentRunSourceAnnotation(document) !== null;
 }
 
-/** Project the persisted document for clients that predate agent sources. */
-export function withoutAgentRunSourceAnnotation(
-  document: UserMessageDocument,
-): UserMessageDocument {
-  if (!hasAgentRunSourceAnnotation(document)) {
-    return document;
-  }
-  return {
-    version: 1,
-    parts: document.parts.filter((part) => {
-      return !(part.type === "source" && part.kind === "agent");
-    }),
-  };
-}
-
 /** Replace client-owned annotations with authoritative agent-run provenance. */
 export function withAgentRunSourceAnnotation(
   document: UserMessageInputDocument,

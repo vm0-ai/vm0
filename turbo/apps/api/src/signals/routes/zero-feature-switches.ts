@@ -18,14 +18,11 @@ const featureSwitchesAuthOptions = {
 } as const;
 
 const LEGACY_MAIL_REPLY_FOLLOW_UP_SWITCH = "zeroMailReplyFollowUp";
+
 function featureSwitchResponseBody(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly switches: Record<string, boolean>;
-  readonly supportsStructuredInlineTemplates: boolean;
-  readonly supportsCustomConnectorOAuth2: boolean;
-  readonly supportsImageRecognition: boolean;
-  readonly supportsAvatarTemplates: boolean;
 }) {
   const registeredEffectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
@@ -43,10 +40,13 @@ function featureSwitchResponseBody(params: {
   return {
     switches: params.switches,
     effectiveSwitches,
-    supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
-    supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
-    supportsImageRecognition: params.supportsImageRecognition,
-    supportsAvatarTemplates: params.supportsAvatarTemplates,
+    // The pre-cleanup Platform bundle gates inline templates, image
+    // recognition, and avatar templates on these handshakes and disables each
+    // feature when the field is absent. Keep returning them until that
+    // frontend release has drained.
+    supportsStructuredInlineTemplates: true,
+    supportsImageRecognition: true,
+    supportsAvatarTemplates: true,
   };
 }
 
@@ -61,10 +61,6 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       orgId: auth.orgId,
       userId: auth.userId,
       switches,
-      supportsStructuredInlineTemplates: true,
-      supportsCustomConnectorOAuth2: true,
-      supportsImageRecognition: true,
-      supportsAvatarTemplates: true,
     }),
   };
 });
@@ -98,10 +94,6 @@ const updateFeatureSwitchesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         switches,
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-        supportsImageRecognition: true,
-        supportsAvatarTemplates: true,
       }),
     };
   },

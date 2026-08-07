@@ -1,9 +1,10 @@
 import { command, computed, type Computed } from "ccstate";
-import type {
-  SendMode,
-  UserLocale,
-  UpdateUserPreferencesRequest,
-  UserPreferencesResponse,
+import {
+  SUPPORTED_USER_LOCALES,
+  type SendMode,
+  type UserLocale,
+  type UpdateUserPreferencesRequest,
+  type UserPreferencesResponse,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import type {
   UpdateUserModelPreferenceRequest,
@@ -64,10 +65,6 @@ function parseUserLocale(value: unknown): UserLocale | null {
   ) {
     return value;
   }
-  // TODO(#23508): remove after persisted legacy values are migrated.
-  if (value === "zh-CN") {
-    return "en-US";
-  }
   throw new Error(`Unexpected user locale: ${String(value)}`);
 }
 
@@ -125,6 +122,7 @@ export function userPreferences({
       return {
         timezone: null,
         locale: null,
+        supportedLocales: [...SUPPORTED_USER_LOCALES],
         pinnedAgentIds: [],
         sendMode: "enter",
         morningBriefEnabled: false,
@@ -136,6 +134,7 @@ export function userPreferences({
     return {
       timezone: row.timezone,
       locale: parseUserLocale(row.locale),
+      supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: normalizePinnedAgentIds(
         toStringArray(row.pinnedAgentIds),
       ),
@@ -179,19 +178,11 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
-  readonly allowedLocales?: readonly UserLocale[];
 }
 
 type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
-
-function isPreferenceLocaleAllowed(
-  locale: UserLocale | undefined,
-  allowedLocales: readonly UserLocale[] | undefined,
-): boolean {
-  return locale === undefined || (allowedLocales ?? ["en-US"]).includes(locale);
-}
 
 export const updateUserPreferences$ = command(
   async (
@@ -200,12 +191,6 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
-    if (!isPreferenceLocaleAllowed(preferences.locale, args.allowedLocales)) {
-      return {
-        ok: false,
-        message: "Invalid request",
-      };
-    }
     if (
       preferences.timezone !== undefined &&
       !isValidTimeZone(preferences.timezone)
@@ -232,6 +217,7 @@ export const updateUserPreferences$ = command(
         preferences.locale !== undefined
           ? preferences.locale
           : (existing.locale ?? null),
+      supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds:
         preferences.pinnedAgentIds !== undefined
           ? normalizePinnedAgentIds(preferences.pinnedAgentIds)

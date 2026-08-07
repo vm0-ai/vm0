@@ -1380,6 +1380,9 @@ describe("chat inline feedback", () => {
     });
 
     detachedSetupPage({
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: false,
+      },
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });

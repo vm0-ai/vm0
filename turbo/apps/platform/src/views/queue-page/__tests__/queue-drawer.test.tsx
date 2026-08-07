@@ -85,12 +85,7 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 
 function mockQueuedThread(): void {
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (
-      query.sinceSeqId !== undefined ||
-      query.beforeSeqId !== undefined ||
-      query.sinceId !== undefined ||
-      query.beforeId !== undefined
-    ) {
+    if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
       return respond(200, { events: [] });
     }
 
@@ -135,6 +130,7 @@ function mockQueuedThread(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
 }

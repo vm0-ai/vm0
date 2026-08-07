@@ -317,6 +317,7 @@ async function runPreAgentRunContextRouteProbe(
         clientEventId: targetEventId,
         threadId: target.id,
         prompt: "pre-migration delegated prompt",
+        hasTextContent: true,
         userMessage: {
           version: 1,
           parts: [{ type: "text", text: "pre-migration delegated prompt" }],

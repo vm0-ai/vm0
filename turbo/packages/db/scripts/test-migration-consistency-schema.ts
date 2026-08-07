@@ -204,25 +204,10 @@ async function runMigrationsUpToTag(
   }
 }
 
-async function validateThreadBrowserIdentityAfterMigration(
-  dbUrl: string,
-): Promise<void> {
-  console.log(
-    "=== Phase 2.4: Validate thread browser rollout compatibility ===\n",
-  );
+async function validateExpandedBrowserSchema(dbUrl: string): Promise<void> {
+  console.log("=== Phase 2.4: Validate expanded browser schema ===\n");
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
-
-  const legacyBrowserProfileId = "00000000-0000-4000-8000-000000073501";
-  const legacyProviderProfileId = "00000000-0000-4000-8000-000000073502";
-  const legacyBrowserSessionId = "00000000-0000-4000-8000-000000073503";
-  const legacyProviderSessionId = "00000000-0000-4000-8000-000000073504";
-  const legacyChatThreadId = "00000000-0000-4000-8000-000000073505";
-  const legacyRunId = "00000000-0000-4000-8000-000000073506";
-  const threadProviderProfileId = "00000000-0000-4000-8000-000000077201";
-  const threadChatThreadId = "00000000-0000-4000-8000-000000077202";
-  const threadProviderSessionId = "00000000-0000-4000-8000-000000077203";
-  const threadRunId = "00000000-0000-4000-8000-000000077204";
 
   try {
     const tables = await client.query<{
@@ -236,6 +221,8 @@ async function validateThreadBrowserIdentityAfterMigration(
             AS "tabSnapshots"
       `,
     );
+    // The retired browser table stays until the pre-cleanup API drains; the
+    // follow-up contraction release drops it together with its declaration.
     assert.deepEqual(tables.rows, [
       {
         browserProfiles: "browser_profiles",
@@ -243,37 +230,22 @@ async function validateThreadBrowserIdentityAfterMigration(
       },
     ]);
 
-    const columns = await client.query<{
-      columnName: string;
-      isNullable: string;
-      tableName: string;
-    }>(
+    const retiredColumns = await client.query<{ count: number }>(
       `
-        SELECT
-          "table_name" AS "tableName",
-          "column_name" AS "columnName",
-          "is_nullable" AS "isNullable"
+        SELECT count(*)::integer AS "count"
         FROM "information_schema"."columns"
         WHERE "table_schema" = 'public'
           AND ("table_name", "column_name") IN (
+            ('browser_sessions', 'id'),
             ('browser_sessions', 'browser_profile_id'),
-            ('browser_session_instances', 'browser_session_id')
+            ('browser_session_instances', 'browser_session_id'),
+            ('browser_thread_profiles', 'id')
           )
-        ORDER BY "table_name", "column_name"
       `,
     );
-    assert.deepEqual(columns.rows, [
-      {
-        tableName: "browser_session_instances",
-        columnName: "browser_session_id",
-        isNullable: "YES",
-      },
-      {
-        tableName: "browser_sessions",
-        columnName: "browser_profile_id",
-        isNullable: "YES",
-      },
-    ]);
+    // Same two-release contract: the declarations and physical columns are
+    // dropped together only after this release has drained.
+    assert.deepEqual(retiredColumns.rows, [{ count: 4 }]);
 
     const primaryKeys = await client.query<{
       columnName: string;
@@ -296,168 +268,12 @@ async function validateThreadBrowserIdentityAfterMigration(
         ORDER BY "tc"."table_name", "kcu"."ordinal_position"
       `,
     );
+    // Current code keys every lookup by chat_thread_id, but the physical
+    // primary key stays on the retired identity column for this release.
     assert.deepEqual(primaryKeys.rows, [
       { tableName: "browser_sessions", columnName: "id" },
       { tableName: "browser_thread_profiles", columnName: "id" },
     ]);
-
-    const pricing = await client.query<{ count: number }>(
-      `
-        SELECT count(*)::integer AS "count"
-        FROM "usage_pricing"
-        WHERE "kind" = 'browser'
-          AND "provider" = 'browser-use'
-          AND "category" = 'provider_cost_usd_micros'
-      `,
-    );
-    assert.deepEqual(pricing.rows, [{ count: 0 }]);
-
-    // The declaration-first API statement shapes must remain legal after the
-    // physical billing contraction.
-    await client.query(
-      `
-        INSERT INTO "browser_profiles" (
-          "id",
-          "org_id",
-          "user_id",
-          "provider_profile_id"
-        )
-        VALUES ($1, 'browser-drain-org', 'browser-drain-user', $2)
-      `,
-      [legacyBrowserProfileId, legacyProviderProfileId],
-    );
-    await client.query(
-      `
-        INSERT INTO "browser_sessions" (
-          "id",
-          "chat_thread_id",
-          "run_id",
-          "org_id",
-          "user_id",
-          "name",
-          "browser_profile_id",
-          "status",
-          "proxy_country_code",
-          "timeout_minutes"
-        )
-        VALUES (
-          $1,
-          $2,
-          NULL,
-          'browser-drain-org',
-          'browser-drain-user',
-          'declaration-first-api-start',
-          $3,
-          'creating',
-          NULL,
-          240
-        )
-      `,
-      [legacyBrowserSessionId, legacyChatThreadId, legacyBrowserProfileId],
-    );
-    const declarationFirstInstance = await client.query<{
-      browserSessionId: string | null;
-    }>(
-      `
-        INSERT INTO "browser_session_instances" (
-          "provider_session_id",
-          "browser_session_id",
-          "chat_thread_id",
-          "run_id",
-          "status",
-          "timeout_at",
-          "started_at",
-          "last_touched_at",
-          "idle_expires_at"
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          'active',
-          now() + interval '240 minutes',
-          now(),
-          now(),
-          now() + interval '10 minutes'
-        )
-        RETURNING "browser_session_id" AS "browserSessionId"
-      `,
-      [
-        legacyProviderSessionId,
-        legacyBrowserSessionId,
-        legacyChatThreadId,
-        legacyRunId,
-      ],
-    );
-    assert.deepEqual(declarationFirstInstance.rows, [
-      { browserSessionId: legacyBrowserSessionId },
-    ]);
-
-    // Current thread-keyed inserts intentionally omit compatibility identity
-    // fields while those separate objects remain available to the prior API.
-    await client.query(
-      `
-        INSERT INTO "browser_thread_profiles" (
-          "chat_thread_id",
-          "org_id",
-          "user_id",
-          "provider_profile_id"
-        )
-        VALUES ($1, 'thread-browser-org', 'thread-browser-user', $2)
-      `,
-      [threadChatThreadId, threadProviderProfileId],
-    );
-    await client.query(
-      `
-        INSERT INTO "browser_sessions" (
-          "chat_thread_id",
-          "run_id",
-          "org_id",
-          "user_id",
-          "name",
-          "status",
-          "proxy_country_code",
-          "timeout_minutes"
-        )
-        VALUES (
-          $1,
-          NULL,
-          'thread-browser-org',
-          'thread-browser-user',
-          'thread-browser-start',
-          'creating',
-          NULL,
-          240
-        )
-      `,
-      [threadChatThreadId],
-    );
-    await client.query(
-      `
-        INSERT INTO "browser_session_instances" (
-          "provider_session_id",
-          "chat_thread_id",
-          "run_id",
-          "status",
-          "timeout_at",
-          "started_at",
-          "last_touched_at",
-          "idle_expires_at"
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          'active',
-          now() + interval '240 minutes',
-          now(),
-          now(),
-          now() + interval '10 minutes'
-        )
-      `,
-      [threadProviderSessionId, threadChatThreadId, threadRunId],
-    );
 
     const lifecycleConstraint = await client.query<{ definition: string }>(
       `
@@ -467,35 +283,20 @@ async function validateThreadBrowserIdentityAfterMigration(
       `,
     );
     assert.equal(lifecycleConstraint.rows.length, 1);
-    assert.match(
-      lifecycleConstraint.rows[0]?.definition ?? "",
-      /browser\.started/u,
-    );
-    assert.match(
-      lifecycleConstraint.rows[0]?.definition ?? "",
-      /browser\.stopped/u,
-    );
-    console.log("   ✅ declaration-first browser API statements remain valid");
-    console.log("   ✅ current thread-keyed browser inserts omit legacy IDs");
+    const lifecycleDefinition = lifecycleConstraint.rows[0]?.definition ?? "";
+    // Both generations must be accepted: the new API writes the canonical
+    // values while the draining pre-cleanup API still writes the retired ones.
+    assert.match(lifecycleDefinition, /browser\.open/u);
+    assert.match(lifecycleDefinition, /browser\.close/u);
+    assert.match(lifecycleDefinition, /browser\.started/u);
+    assert.match(lifecycleDefinition, /browser\.stopped/u);
     console.log(
-      "   ✅ browser lifecycle events and tab snapshots are available\n",
+      "   ✅ retired browser tables and identity columns still exist",
+    );
+    console.log(
+      "   ✅ both browser lifecycle event generations are accepted\n",
     );
   } finally {
-    await client.query(
-      `DELETE FROM "browser_session_instances" WHERE "provider_session_id" IN ($1, $2)`,
-      [legacyProviderSessionId, threadProviderSessionId],
-    );
-    await client.query(
-      `DELETE FROM "browser_sessions" WHERE "chat_thread_id" IN ($1, $2)`,
-      [legacyChatThreadId, threadChatThreadId],
-    );
-    await client.query(
-      `DELETE FROM "browser_thread_profiles" WHERE "chat_thread_id" = $1`,
-      [threadChatThreadId],
-    );
-    await client.query(`DELETE FROM "browser_profiles" WHERE "id" = $1`, [
-      legacyBrowserProfileId,
-    ]);
     await client.end();
   }
 }
@@ -4352,7 +4153,7 @@ async function main(): Promise<void> {
 
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
-    await validateThreadBrowserIdentityAfterMigration(dbUrl1);
+    await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
@@ -4385,7 +4186,7 @@ async function main(): Promise<void> {
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
       console.log(
-        "   ✅ Thread browser identity keeps previous-API rollout compatibility",
+        "   ✅ Browser state uses canonical thread identity and lifecycle events",
       );
       console.log("   ✅ Chat event source tables reject UPDATE");
       console.log(

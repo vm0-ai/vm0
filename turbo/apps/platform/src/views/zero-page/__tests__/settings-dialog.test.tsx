@@ -49,9 +49,8 @@ async function openDialog(
   detachedSetupPage({
     context,
     path: `/?settings=${section}`,
-    featureSwitches: {
-      ...(section === "debug" ? { [FeatureSwitchKey.ZeroDebug]: true } : {}),
-    },
+    featureSwitches:
+      section === "debug" ? { [FeatureSwitchKey.ZeroDebug]: true } : {},
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -758,36 +757,6 @@ describe("settings dialog", () => {
       expect(submittedLocales).not.toContain("es-ES");
       expect(document.documentElement.lang).toBe("en-US");
       expect(cachedLocale()).toBe("en-US");
-    });
-  });
-
-  it("hides the language entry when the deployed API predates locale support", async () => {
-    const oldApiPreferences = createPreferences(null);
-    delete oldApiPreferences.locale;
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
-      return respond(200, oldApiPreferences);
-    });
-
-    await openDialog("admin", "preference");
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-      expect(screen.queryByText("Language")).not.toBeInTheDocument();
-    });
-  });
-
-  it("hides the language entry when the API omits the locale capability handshake", async () => {
-    const oldApiPreferences = createPreferences("en-US");
-    delete oldApiPreferences.supportedLocales;
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
-      return respond(200, oldApiPreferences);
-    });
-
-    await openDialog("admin", "preference");
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-      expect(screen.queryByText("Language")).not.toBeInTheDocument();
     });
   });
 

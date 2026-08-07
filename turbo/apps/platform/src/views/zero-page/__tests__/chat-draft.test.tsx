@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -24,7 +25,7 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const THREAD_ONE_ID = "b0000000-0000-4000-a000-000000000801";
@@ -97,6 +98,7 @@ function mockThreadDetails(): void {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -292,13 +294,15 @@ describe("chat drafts", () => {
     await waitFor(() => {
       expect(draftRequested).toBeTruthy();
     });
-    await fill(editor, "Local draft created while loading");
+    await fillComposer(editor, "Local draft created while loading");
     draftResponse.resolve();
 
     await screen.findByRole("heading", {
       name: "Your agent is waiting in line",
     });
-    expect(editor).toHaveTextContent("Local draft created while loading");
+    await expect(findComposerEditor()).resolves.toHaveTextContent(
+      "Local draft created while loading",
+    );
     expect(screen.queryByLabelText("Remove lightbox.svg")).toBeNull();
   });
 
@@ -582,6 +586,7 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -646,7 +651,10 @@ describe("chat drafts", () => {
       },
     };
 
-    mockChatLifecycle(context, { threadId });
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "claude-sonnet-4-6",
+    });
     context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
       return HttpResponse.json({
         draftUserMessage: {
@@ -700,6 +708,9 @@ describe("chat drafts", () => {
 
     detachedSetupPage({
       context,
+      featureSwitches: {
+        [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+      },
       path: `/chats/${threadId}`,
     });
 
@@ -712,8 +723,8 @@ describe("chat drafts", () => {
         ),
       ).toHaveTextContent("Launch research");
       expect(
-        screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
-      ).toBeInTheDocument();
+        editor.querySelector("[data-composer-inline-template]"),
+      ).toHaveTextContent(illustrationTemplate.title);
       const feedbackItem = editor.querySelector("[data-feedback-item]");
       expect(feedbackItem).toHaveTextContent("The launch sequence is vague");
       expect(feedbackItem).toHaveTextContent(
@@ -745,15 +756,15 @@ describe("chat drafts", () => {
           version: 1,
           parts: [
             {
-              type: "template",
-              titleSnapshot: illustrationTemplate.title,
-              template,
-            },
-            {
               type: "file",
               fileId: secondAttachment.id,
               filenameSnapshot: secondAttachment.filename,
               contentType: secondAttachment.contentType,
+            },
+            {
+              type: "template",
+              titleSnapshot: illustrationTemplate.title,
+              template,
             },
             { type: "text", text: "Review " },
             {
@@ -794,6 +805,7 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
@@ -924,7 +936,6 @@ describe("chat drafts", () => {
       async ({ request }) => {
         await expect(request.json()).resolves.toMatchObject({
           filename: "photo.png",
-          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           id: "upload-photo",
@@ -1008,6 +1019,7 @@ describe("chat drafts", () => {
             contentType: "text/plain",
             size: 2,
             uploadUrl: "https://mock-upload.example.com/ok.txt",
+            uploadHeaders: {},
             url: "https://example.com/ok.txt",
           });
         }
@@ -1017,6 +1029,7 @@ describe("chat drafts", () => {
           contentType: "text/plain",
           size: 6,
           uploadUrl: "https://mock-upload.example.com/failed.txt",
+          uploadHeaders: {},
           url: "https://example.com/failed.txt",
         });
       },
@@ -1141,7 +1154,6 @@ describe("chat drafts", () => {
           contentType: "video/mp4",
           size: 5 * 1024 * 1024 + 1,
           multipart: true,
-          supportsUploadHeaders: true,
         },
       ]);
       expect(firstPartAttempts).toBe(2);
@@ -1152,60 +1164,6 @@ describe("chat drafts", () => {
         uploadId: "multipart-upload-1",
         partCount: 2,
       });
-    });
-  });
-
-  it("falls back to a legacy single PUT response during API rollout", async () => {
-    const user = userEvent.setup({ delay: null });
-    let prepareBody: unknown = null;
-    let uploadedSize = 0;
-
-    context.mocks.data.userModelPreference({
-      selectedModel: "claude-sonnet-4-6",
-      updatedAt: "2026-03-10T00:00:00Z",
-    });
-    mockThreadDetails();
-    context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
-      async ({ request }) => {
-        prepareBody = await request.json();
-        return HttpResponse.json({
-          id: "3b649e8a-c608-4355-a7d9-12e21af26df5",
-          filename: "legacy.mp4",
-          contentType: "video/mp4",
-          size: 5 * 1024 * 1024 + 1,
-          uploadUrl: "https://mock-upload.example.com/legacy.mp4",
-          url: "https://example.com/legacy.mp4",
-        });
-      },
-    );
-    context.mocks.http.put(
-      "https://mock-upload.example.com/legacy.mp4",
-      async ({ request }) => {
-        uploadedSize = (await request.arrayBuffer()).byteLength;
-        return new HttpResponse(null, { status: 200 });
-      },
-    );
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
-
-    await waitFor(() => {
-      expect(textarea()).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    await user.upload(
-      fileInput,
-      new File([new Uint8Array(5 * 1024 * 1024 + 1)], "legacy.mp4", {
-        type: "video/mp4",
-      }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove legacy.mp4")).toBeInTheDocument();
-      expect(prepareBody).toMatchObject({ multipart: true });
-      expect(uploadedSize).toBe(5 * 1024 * 1024 + 1);
     });
   });
 
@@ -1405,6 +1363,7 @@ describe("chat drafts", () => {
           contentType: "application/pdf",
           size: 11,
           uploadUrl: "https://mock-upload.example.com/launch-plan.pdf",
+          uploadHeaders: {},
           url: "https://example.com/launch-plan.pdf",
         });
       },

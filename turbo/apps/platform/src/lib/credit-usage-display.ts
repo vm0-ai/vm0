@@ -53,7 +53,6 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
     finance: USAGE_DISPLAY_NAMES.finance,
     weather: USAGE_DISPLAY_NAMES.weather,
     "image-recognition": USAGE_DISPLAY_NAMES.imageRecognize,
-    "image-interpret-marks": USAGE_DISPLAY_NAMES.imageRecognize,
     translation: USAGE_DISPLAY_NAMES.translation,
   };
 

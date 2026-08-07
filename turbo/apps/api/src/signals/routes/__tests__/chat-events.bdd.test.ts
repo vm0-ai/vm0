@@ -28,6 +28,7 @@ import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroModelProviderConnectionsByIdContract,
@@ -304,7 +305,7 @@ interface ChatRunSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientEventId?: string;
-  readonly model?: string;
+  readonly model?: SupportedRunModel;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
@@ -326,7 +327,15 @@ async function entitledChatActor(
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   chatCallbacks.disableVapid();
   const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(actor);
+  await api.grantProEntitlement(
+    actor,
+    options.orgId === STAFF_ORG_ID
+      ? {
+          customerId: "cus_bdd_chat_events_staff",
+          subscriptionId: "sub_bdd_chat_events_staff",
+        }
+      : {},
+  );
   const { providerId } = await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName: "BDD chat messages agent",
@@ -952,7 +961,10 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
  */
 async function requestSendEventRaw(
   actor: ApiTestUser,
-  body: ChatRunSendBody & { readonly userMessage: UserMessageInputDocument },
+  body: ChatRunSendBody & {
+    readonly userMessage: UserMessageInputDocument;
+    readonly hasTextContent: boolean;
+  },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
   const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
@@ -982,10 +994,13 @@ async function requestSendEventWithBearer(
       headers: { authorization: `Bearer ${token}` },
       body: {
         ...body,
-        userMessage: body.userMessage ?? {
-          version: 1,
-          parts: [{ type: "text", text: body.prompt }],
-        },
+        hasTextContent: true,
+        userMessage:
+          body.userMessage ??
+          ({
+            version: 1,
+            parts: [{ type: "text", text: body.prompt }],
+          } satisfies UserMessageInputDocument),
       },
     }),
     statuses,
@@ -1011,6 +1026,7 @@ describe("CHAT-02: web chat send and client ids", () => {
             version: 1,
             parts: [{ type: "text", text: prompt }],
           },
+          hasTextContent: true,
           clientThreadId,
           clientEventId,
           model,
@@ -2809,6 +2825,7 @@ describe("CHAT-02: model-first provider policies", () => {
         parts: [{ type: "text", text: vm0Prompt }],
       },
       model: "claude-sonnet-4-6",
+      hasTextContent: true,
     });
     expect([201, 503]).toContain(vm0Send.status);
     if (vm0Send.status === 503) {
@@ -4617,6 +4634,7 @@ describe("CHAT-02: run-level model overrides", () => {
         version: 1,
         parts: [{ type: "text", text: retryPrompt }],
       },
+      hasTextContent: true,
     });
 
     for (let attempt = 0; attempt < preparationAttempts; attempt += 1) {
@@ -5039,7 +5057,7 @@ describe("CHAT-02: run-level model overrides", () => {
         agentId: agent.agentId,
         prompt: "use an unsupported vm0 model",
         clientThreadId: vm0ThreadId,
-        model: "codex",
+        model: "codex" as never,
       },
       [400],
     );
@@ -5076,7 +5094,7 @@ describe("CHAT-02: run-level model overrides", () => {
           agentId: agent.agentId,
           prompt: `removed ${selectedModel}`,
           clientThreadId: removedThreadId,
-          model: selectedModel,
+          model: selectedModel as never,
         },
         [400],
       );
@@ -7252,32 +7270,6 @@ describe("CHAT-02: shared user message queue", () => {
       },
     });
     expect(firstInput?.runId).toBeUndefined();
-    const legacyFirstMessages = await chat.listThreadEvents(
-      actor,
-      firstTargetThread.id,
-      {},
-      "0.636.1",
-    );
-    const legacyFirstInput = userMessages(legacyFirstMessages.events).find(
-      (event): event is PromptMessage => {
-        return event.eventType === "input.prompt" && event.id === firstEventId;
-      },
-    );
-    expect(legacyFirstInput?.userMessage.parts).toStrictEqual([
-      { type: "text", text: "first delegated prompt" },
-    ]);
-    const legacyFirstById = await chat.getThreadEvent(
-      actor,
-      firstTargetThread.id,
-      firstEventId,
-      "0.636.1",
-    );
-    expect(
-      legacyFirstById.eventType === "input.prompt"
-        ? legacyFirstById.userMessage.parts
-        : null,
-    ).toStrictEqual([{ type: "text", text: "first delegated prompt" }]);
-
     await chat.renameThread(actor, source.threadId, "Delegation source");
     const secondEventId = randomUUID();
     const secondSend = await requestSendEventWithBearer(

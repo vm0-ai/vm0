@@ -1180,6 +1180,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = {
     prompt,
     userMessage: createUserMessageDocument({ text: prompt }),
+    hasTextContent: true,
     agentId: agent.id,
     threadId: chatThreadId,
   };

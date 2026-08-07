@@ -11,6 +11,7 @@ import {
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
@@ -6330,7 +6331,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       },
     ]);
 
-    async function claimModel(model: string) {
+    async function claimModel(model: SupportedRunModel) {
       const sent = await chat.requestSendEvent(
         actor,
         {

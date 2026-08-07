@@ -1,5 +1,4 @@
 import {
-  canonicalChatEvent,
   chatEventsContract,
   chatThreadEventsContract,
   type ChatEvent,
@@ -12,8 +11,6 @@ import type { ZeroClientFactory } from "../api-client.ts";
 interface ChatEventListQuery {
   readonly sinceSeqId?: number;
   readonly beforeSeqId?: number;
-  readonly sinceId?: string;
-  readonly beforeId?: string;
   readonly limit?: number;
 }
 
@@ -48,5 +45,5 @@ export async function listChatEvents(
     [200],
     signal,
   );
-  return result.body.events.map(canonicalChatEvent);
+  return result.body.events;
 }

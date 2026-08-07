@@ -8,6 +8,7 @@ import {
 } from "ccstate";
 import { delay, timeout } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
 import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
@@ -513,7 +514,7 @@ function createModelSelectionForSend({
     ): Promise<ModelProviderSelection | null> => {
       const selectedModel = await get(selectedModel$);
       signal.throwIfAborted();
-      if (!selectedModel) {
+      if (!isSupportedRunModel(selectedModel)) {
         return null;
       }
       const codexFastModeActive = await get(codexFastModeActive$);
@@ -3597,7 +3598,7 @@ function createChatThreadComposerSignals(
   const composerModelSelection$ = computed(
     async (get): Promise<ModelProviderSelection | null> => {
       const selectedModel = get(modelSelection.selectedModel$);
-      if (!selectedModel) {
+      if (!isSupportedRunModel(selectedModel)) {
         return null;
       }
       return (await get(modelSelection.codexFastModeActive$))

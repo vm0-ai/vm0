@@ -143,7 +143,7 @@ describe("chat event persistence", () => {
             ],
           });
         }
-        if (query.sinceSeqId || query.sinceId) {
+        if (query.sinceSeqId) {
           return respond(200, { events: [] });
         }
         return respond(200, {
