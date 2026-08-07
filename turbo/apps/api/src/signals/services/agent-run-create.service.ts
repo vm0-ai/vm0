@@ -261,6 +261,7 @@ import type {
 } from "./chat-session-continuity.service";
 import {
   claimQueueFirstRunAssociation,
+  lockGoalQueueFirstRunSource,
   recordQueueFirstClaimedRun,
   recordQueueFirstFailedRun,
   resolveQueueFirstRunAdmission,
@@ -6505,6 +6506,16 @@ async function resolveQueueFirstAdmissionForLaunch(args: {
   });
 }
 
+async function lockQueueFirstRunSourceForLaunch(args: {
+  readonly tx: DbTransaction;
+  readonly createArgs: CreateAgentRunArgs;
+}): Promise<void> {
+  const association = args.createArgs.queueFirstAssociation;
+  if (association?.kind === "goal_event") {
+    await lockGoalQueueFirstRunSource(args.tx, association);
+  }
+}
+
 async function claimQueueFirstAssociationForLaunch(args: {
   readonly tx: DbTransaction;
   readonly admission: QueueFirstRunAdmission | undefined;
@@ -6543,6 +6554,10 @@ async function commitFailedLaunch(args: {
   const message = runFailureMessage(args.error);
   const committed = await args.db.transaction(
     async (tx): Promise<FailedLaunchCommitResult> => {
+      await lockQueueFirstRunSourceForLaunch({
+        tx,
+        createArgs: args.createArgs,
+      });
       const queueFirstAdmission = await resolveQueueFirstAdmissionForLaunch({
         tx,
         createArgs: args.createArgs,
@@ -7022,6 +7037,10 @@ async function commitPreparedLaunch(
       },
     );
     const admissionLockHeldStartedAt = now();
+    await lockQueueFirstRunSourceForLaunch({
+      tx,
+      createArgs: args.createArgs,
+    });
     return {
       result: await commitPreparedLaunchUnderLock(tx, args, payload),
       admissionLockHeldStartedAt,

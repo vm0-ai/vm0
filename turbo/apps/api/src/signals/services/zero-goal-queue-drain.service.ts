@@ -28,6 +28,7 @@ import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero-goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
+const GOAL_CONTINUATION_PROMPT = "Continue the active thread goal.";
 
 type GoalDrainAttempt = "initial" | "retry";
 type GoalDrainTimingRole = "waiting" | "phase" | "aggregate";
@@ -80,9 +81,10 @@ type ModelContext =
       readonly failure: Extract<RunGoalResult, { readonly kind: "run_error" }>;
     };
 
-function buildGoalContinuationPrompt(goal: {
+function buildGoalAppendSystemPrompt(goal: {
   readonly objective: string;
   readonly objectiveBrief: string;
+  readonly autonomyBudget: number;
 }): string {
   const lines = [
     "# Current context",
@@ -96,6 +98,7 @@ function buildGoalContinuationPrompt(goal: {
   if (goal.objectiveBrief !== goal.objective) {
     lines.push("", "# User-visible objective brief", "", goal.objectiveBrief);
   }
+  lines.push("", `Autonomy budget: ${goal.autonomyBudget}`);
   lines.push(
     "",
     "# How to operate",
@@ -142,7 +145,8 @@ function buildQueueFirstGoalRunInput(args: {
       objectiveBrief: args.goal.objectiveBrief,
     }),
   };
-  const prompt = buildGoalContinuationPrompt(normalizedGoal);
+  const prompt = GOAL_CONTINUATION_PROMPT;
+  const appendSystemPrompt = buildGoalAppendSystemPrompt(normalizedGoal);
   const { modelPin, effectiveModelProvider, cliAgentType, codexServiceTier } =
     args.modelContext;
   return {
@@ -161,6 +165,7 @@ function buildQueueFirstGoalRunInput(args: {
     },
     apiStartTime: args.apiStartTime,
     triggerSource: "workflow-event",
+    appendSystemPrompt,
     chatThreadId: normalizedGoal.threadId,
     modelProviderId: modelPin.modelProviderId ?? undefined,
     modelProviderCredentialScope:
@@ -187,6 +192,8 @@ function buildQueueFirstGoalRunInput(args: {
       eventId: args.event.id,
       prompt,
       goalId: normalizedGoal.goalId,
+      goalObjectiveBrief: normalizedGoal.objectiveBrief,
+      goalStateRevision: normalizedGoal.stateRevision,
       orgId: normalizedGoal.orgId,
       userId: normalizedGoal.userId,
     },
@@ -449,15 +456,23 @@ export const drainGoalQueueForThread$ = command(
         signal.throwIfAborted();
         if (!stillValid) {
           await revokeGoalEvent(db, event, signal);
+          return;
+        }
+        if (stillValid.stateRevision !== goal.stateRevision) {
+          continue;
         }
         return;
       }
 
       const settlement = await settleFailedGoalQueueEvent(db, {
         event,
+        expectedGoalStateRevision: goal.stateRevision,
         reason: result.response.body.error.message,
       });
       signal.throwIfAborted();
+      if (settlement.kind === "stale") {
+        continue;
+      }
       if (settlement.kind !== "not_pending") {
         await publishGoalQueueChanged(event, signal);
       }
