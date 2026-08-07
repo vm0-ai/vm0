@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
 import type { ArtifactRefInput } from "../chat-page/thread-sidebar.ts";
+import { previewAttachmentFromUrl } from "../chat-page/parse-body-blocks.ts";
 import {
   createTextPreviewComputed,
   isTextPreviewKind,
@@ -177,10 +178,13 @@ export function attachmentSidebarRef(
     return { file: value.file, url: value.url, ...share };
   }
   if (value.filename) {
+    const contentType =
+      value.contentType ??
+      previewAttachmentFromUrl(value.url, value.filename).contentType;
     return {
       url: value.url,
       filename: value.filename,
-      ...(value.contentType ? { contentType: value.contentType } : {}),
+      ...(contentType ? { contentType } : {}),
       ...share,
     };
   }
