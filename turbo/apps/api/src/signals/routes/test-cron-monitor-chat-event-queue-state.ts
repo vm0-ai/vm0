@@ -48,62 +48,46 @@ const STALE_CONTEXT_FIXTURES = [
   {
     contextType: "web",
     eventType: "input.prompt",
-    triggerSource: "web",
-  },
-  {
-    contextType: "web",
-    eventType: "input.prompt",
-    triggerSource: "test",
   },
   {
     contextType: "agent_run",
     eventType: "input.prompt",
-    triggerSource: "agent",
   },
   {
     contextType: "slack",
     eventType: "input.prompt",
-    triggerSource: "slack",
   },
   {
     contextType: "feishu",
     eventType: "input.prompt",
-    triggerSource: "feishu",
   },
   {
     contextType: "teams",
     eventType: "input.prompt",
-    triggerSource: "teams",
   },
   {
     contextType: "telegram",
     eventType: "input.prompt",
-    triggerSource: "telegram",
   },
   {
     contextType: "github",
     eventType: "input.prompt",
-    triggerSource: "github",
   },
   {
     contextType: "agentphone",
     eventType: "input.prompt",
-    triggerSource: "agentphone",
   },
   {
     contextType: "automation",
     eventType: "input.automation",
-    triggerSource: "workflow-event",
   },
   {
     contextType: "goal",
     eventType: "input.goal",
-    triggerSource: null,
   },
   {
     contextType: "morning_brief",
     eventType: "input.prompt",
-    triggerSource: "workflow-schedule",
   },
 ] as const;
 
@@ -240,7 +224,6 @@ async function seedQueuedIntegrationEvent(tx: DbTransaction, threadId: string) {
       contextType: "slack",
       contextId: randomUUID(),
       eventType: "input.prompt",
-      triggerSource: "slack",
       userMessage: createUserMessageDocument({
         text: "orphan monitor fixture",
       }),
@@ -328,7 +311,6 @@ async function seedFixture(
         eventType: "input.automation",
         createdAt: new Date(0),
         automationId: randomUUID(),
-        triggerSource: "workflow-event",
         triggerBrief: null,
       });
       return [automation];
@@ -358,7 +340,6 @@ async function seedFixture(
             ...baseEvent,
             contextType: "web",
             eventType: "input.prompt",
-            triggerSource: "web",
           });
     return [event];
   });

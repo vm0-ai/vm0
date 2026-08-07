@@ -301,7 +301,6 @@ async function persistMorningBriefQueueEvent(
         },
       }),
       runId: null,
-      triggerSource: "workflow-schedule",
       morningBriefContext: {
         deliveryId: claimed.deliveryId,
         timezone: claimed.timezone,

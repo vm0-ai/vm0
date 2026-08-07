@@ -153,7 +153,6 @@ async function attemptWorkflowQueueAdmission(
       workflowName: args.workflowName,
       workflowAutomationEventType: args.workflowAutomationEventType,
       workflowAutomationEventPayload: args.workflowAutomationEventPayload,
-      triggerSource: args.triggerSource,
       triggerBrief: args.triggerBrief ?? null,
     });
     if (!inserted) {
@@ -356,7 +355,6 @@ export async function rejectWorkflowQueueEvent(
       runId: null,
       error: args.reason,
       automationId: payload.automationId,
-      triggerSource: manualTriggerSource({ kind: payload.automationKind }),
       triggerBrief: payload.triggerBrief,
     });
     return rejected !== null;

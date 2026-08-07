@@ -67,7 +67,6 @@ export async function insertQueuedWebUserMessageFixture(args: {
       eventType: "input.prompt",
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,
-      triggerSource: "web",
       createdAt: args.createdAt,
     });
     if (!inserted) {

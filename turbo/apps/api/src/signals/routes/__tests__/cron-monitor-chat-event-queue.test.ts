@@ -125,7 +125,7 @@ describe("cron monitor chat event queue", () => {
 
     const response = await accept(
       stateClient().monitor({
-        body: { event_ids: fixture.eventIds.slice(0, 3) },
+        body: { event_ids: fixture.eventIds.slice(0, 2) },
       }),
       [200],
     );
@@ -141,7 +141,7 @@ describe("cron monitor chat event queue", () => {
     const fixture = await trackFixture(seedFixture("orphan"));
 
     const response = await accept(
-      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(3) } }),
+      stateClient().monitor({ body: { event_ids: fixture.eventIds.slice(2) } }),
       [500],
     );
 
