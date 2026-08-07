@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
-use crate::provider::{JobCandidate, RunnerPreference, RunnerPreferenceTier};
+use crate::provider::{ActiveRunnerPreference, JobCandidate, RunnerPreferenceTier};
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
 fn exact_generation_candidate(
@@ -21,7 +21,7 @@ fn exact_generation_candidate(
     JobCandidate::new(run_id, "vm0/default".into())
         .with_reuse_key(Some(reuse_key.to_owned()))
         .with_history_generation_run_id(Some(history_generation_run_id))
-        .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
+        .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
             TEST_RUNNER_ID.parse().unwrap(),
             TEST_HEARTBEAT_GENERATION,
             RunnerPreferenceTier::ExactSandbox,

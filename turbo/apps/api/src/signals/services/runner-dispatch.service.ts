@@ -6,9 +6,9 @@ import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {
-  runnerPreferenceDecisionTelemetryDimensions,
+  runnerPreferenceTelemetryDimensions,
   runnerReuseKeyTelemetryKind,
-  runnerReusePreferenceLookupErrorDecision,
+  runnerReusePreferenceLookupError,
   resolveRunnerReusePreference,
 } from "./runner-reuse-preference";
 import { tapError } from "../utils";
@@ -33,7 +33,7 @@ export async function notifyRunnerJob(
   const notificationEnteredAt = now();
   const currentDate = new Date(notificationEnteredAt);
   let preferenceLookupSucceeded = true;
-  const runnerPreferenceDecision =
+  const runnerPreference =
     (await tapError(
       resolveRunnerReusePreference({
         db,
@@ -56,7 +56,7 @@ export async function notifyRunnerJob(
           },
         );
       },
-    )) ?? runnerReusePreferenceLookupErrorDecision();
+    )) ?? runnerReusePreferenceLookupError();
   const preferenceFinishedAt = now();
   const publishStartedAt = now();
   const published = await publishRunnerJobNotification({
@@ -64,7 +64,7 @@ export async function notifyRunnerJob(
     runId: args.runId,
     profile: args.profile,
     piExecutionMode: args.piExecutionMode,
-    runnerPreferenceDecision,
+    runnerPreference,
     metadata: {
       reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
@@ -78,7 +78,7 @@ export async function notifyRunnerJob(
     profile: args.profile,
     notification_target: "broadcast",
     reuse_key_kind: runnerReuseKeyTelemetryKind(args.reuseKey),
-    ...runnerPreferenceDecisionTelemetryDimensions(runnerPreferenceDecision),
+    ...runnerPreferenceTelemetryDimensions(runnerPreference),
   };
   if (args.historyGenerationRunId) {
     dimensions.history_generation_run_id = args.historyGenerationRunId;

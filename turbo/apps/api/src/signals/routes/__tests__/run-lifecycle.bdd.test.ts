@@ -138,6 +138,10 @@ function runnerPreferenceDecision(job: RunnerJob | null | undefined) {
   return job?.runnerPreferenceDecision;
 }
 
+function runnerPreference(job: RunnerJob | null | undefined) {
+  return job?.runnerPreference;
+}
+
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_atomic_launch",
@@ -3850,10 +3854,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (reusableDecision?.kind !== "preference") {
       throw new Error("Expected a reusable sandbox preference decision");
     }
+    expect(runnerPreference(reusableOverWorkspace.job)).toStrictEqual(
+      reusableDecision,
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: reusableOverWorkspace.run.runId,
+        runnerPreference: reusableDecision,
         runnerPreferenceDecision: {
           kind: "preference",
           runnerIdentity: reusableDecision.runnerIdentity,
@@ -4013,6 +4021,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runId: successor.runId,
         reuseKey,
         historyGenerationRunId: first.runId,
+        runnerPreference: finalizingDecision,
         runnerPreferenceDecision: finalizingDecision,
       }),
     );
@@ -4081,9 +4090,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runnerIdentity: sourceRunnerIdentity,
         telemetry: {
           discoverySource: "ably",
-          runnerPreferenceResolution: "finalizing_predecessor",
+          runnerPreference: finalizingDecision,
+          runnerPreferenceResolution: "no_reuse_key",
           runnerPreferenceClaimState: "expired",
-          runnerPreferenceTargetedSelf: true,
+          runnerPreferenceTargetedSelf: false,
         },
       },
     );
@@ -4177,6 +4187,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "job",
       expect.objectContaining({
         runId: successor.runId,
+        runnerPreference: exactDecision,
         runnerPreferenceDecision: exactDecision,
       }),
     );
@@ -4443,7 +4454,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await releaseOrgAdmissionLock(context);
     await admissionLockRequest;
     const protectedFollowUp = await protectedFollowUpRequest;
-    const exactRunnerPreferenceDecision = {
+    const exactRunnerPreference = {
       kind: "preference" as const,
       runnerIdentity: preferredExactRunner,
       tier: "exactSandbox" as const,
@@ -4455,7 +4466,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runId: protectedFollowUp.runId,
         reuseKey,
         historyGenerationRunId: first.runId,
-        runnerPreferenceDecision: exactRunnerPreferenceDecision,
+        runnerPreference: exactRunnerPreference,
+        runnerPreferenceDecision: exactRunnerPreference,
       }),
     );
 
@@ -4471,7 +4483,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(protectedPoll.body.job?.reuseKey).toBe(reuseKey);
     expect(runnerPreferenceDecision(protectedPoll.body.job)).toStrictEqual(
-      exactRunnerPreferenceDecision,
+      exactRunnerPreference,
     );
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
@@ -4593,14 +4605,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected expired reuse-preference poll to return 200");
     }
     expect(expiredPoll.body.job?.runId).toBe(expiredFollowUp.runId);
-    expect(runnerPreferenceDecision(expiredPoll.body.job)).toStrictEqual({
+    const expiredPreference = {
       kind: "noPreference",
       reason: "expired",
-    });
+    } as const;
+    expect(runnerPreference(expiredPoll.body.job)).toStrictEqual(
+      expiredPreference,
+    );
+    expect(runnerPreferenceDecision(expiredPoll.body.job)).toStrictEqual(
+      expiredPreference,
+    );
     const expiredClaim = await api.requestClaimRunnerJob(
       true,
       expiredFollowUp.runId,
       [200],
+      {
+        runnerIdentity: preferredExactRunner,
+        telemetry: {
+          runnerPreference: expiredPreference,
+          runnerPreferenceResolution: "no_reuse_key",
+          runnerPreferenceClaimState: "active",
+          runnerPreferenceTargetedSelf: true,
+        },
+      },
     );
     if (expiredClaim.status !== 200) {
       throw new Error("Expected expired reuse-preference claim to succeed");
@@ -4608,6 +4635,23 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(expiredClaim.body.prompt).toBe(
       "continue after reuse-preference protection expires",
     );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        expiredFollowUp.runId,
+        "claim_request_to_running",
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        runner_preference_resolution: "expired",
+        runner_preference_claim_state: "absent",
+      }),
+    );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        expiredFollowUp.runId,
+        "claim_request_to_running",
+      )[0],
+    ).not.toHaveProperty("runner_preference_targeted_self");
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
   });
 

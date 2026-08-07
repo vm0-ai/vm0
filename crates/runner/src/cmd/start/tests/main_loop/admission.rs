@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
 use crate::provider::{
-    RunnerPreference, RunnerPreferenceClaimState, RunnerPreferenceResolution, RunnerPreferenceTier,
+    ActiveRunnerPreference, RunnerPreference, RunnerPreferenceClaimState, RunnerPreferenceTier,
 };
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::WorkspaceImageCache;
@@ -45,7 +45,7 @@ fn ranked_candidate_until(
 ) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
         .with_reuse_key(reuse_key.map(str::to_owned))
-        .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
+        .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
             runner_id.parse().unwrap(),
             heartbeat_generation,
             tier,
@@ -106,7 +106,7 @@ fn finalizing_candidate_until(
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
         .with_reuse_key(Some(reuse_key.to_owned()))
         .with_history_generation_run_id(Some(history_generation_run_id))
-        .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
+        .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
             runner_id.parse().unwrap(),
             heartbeat_generation,
             RunnerPreferenceTier::FinalizingPredecessor,
@@ -553,7 +553,9 @@ async fn reusable_claim_without_generation_target_reuses_sandbox() {
         .find(|candidate| candidate.run_id() == run_id)
         .expect("missing-target reusable candidate should reach claim");
     assert_eq!(
-        candidate.runner_preference().map(RunnerPreference::tier),
+        candidate
+            .runner_preference()
+            .map(ActiveRunnerPreference::tier),
         Some(RunnerPreferenceTier::ReusableSandbox)
     );
 
@@ -749,17 +751,19 @@ async fn selected_finalizing_candidate_claims_while_predecessor_is_running() {
         .find(|candidate| candidate.run_id() == pending_run_id)
         .expect("finalizing candidate should already be claimed");
     let preference_telemetry = claimed
-        .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+        .runner_preference_claim_telemetry()
         .expect("finalizing observation should be recorded at claim");
-    assert_eq!(
-        preference_telemetry.resolution,
-        RunnerPreferenceResolution::FinalizingPredecessor
-    );
+    assert!(matches!(
+        preference_telemetry.runner_preference,
+        RunnerPreference::Preference {
+            tier: RunnerPreferenceTier::FinalizingPredecessor,
+            ..
+        }
+    ));
     assert_eq!(
         preference_telemetry.state,
-        RunnerPreferenceClaimState::Active
+        Some(RunnerPreferenceClaimState::Active)
     );
-    assert_eq!(preference_telemetry.targeted_self, Some(true));
 
     shutdown(&env, run_handle).await;
 }
@@ -818,14 +822,16 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
         .find(|candidate| candidate.run_id() == run_id)
         .expect("expired candidate should reach claim");
     let telemetry = claimed
-        .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+        .runner_preference_claim_telemetry()
         .expect("decision observation should survive expiry");
-    assert_eq!(
-        telemetry.resolution,
-        RunnerPreferenceResolution::FinalizingPredecessor
-    );
-    assert_eq!(telemetry.state, RunnerPreferenceClaimState::Active);
-    assert_eq!(telemetry.targeted_self, Some(true));
+    assert!(matches!(
+        telemetry.runner_preference,
+        RunnerPreference::Preference {
+            tier: RunnerPreferenceTier::FinalizingPredecessor,
+            ..
+        }
+    ));
+    assert_eq!(telemetry.state, Some(RunnerPreferenceClaimState::Active));
 
     drop(predecessor_guard);
     shutdown(&env, run_handle).await;
@@ -1424,17 +1430,19 @@ async fn same_run_duplicate_does_not_renew_claimed_finalizing_deadline() {
         .find(|candidate| candidate.run_id() == run_id)
         .expect("expired pending candidate should reach claim");
     let preference_telemetry = claimed
-        .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+        .runner_preference_claim_telemetry()
         .expect("finalizing observation should survive expiry");
-    assert_eq!(
-        preference_telemetry.resolution,
-        RunnerPreferenceResolution::FinalizingPredecessor
-    );
+    assert!(matches!(
+        preference_telemetry.runner_preference,
+        RunnerPreference::Preference {
+            tier: RunnerPreferenceTier::FinalizingPredecessor,
+            ..
+        }
+    ));
     assert_eq!(
         preference_telemetry.state,
-        RunnerPreferenceClaimState::Active
+        Some(RunnerPreferenceClaimState::Active)
     );
-    assert_eq!(preference_telemetry.targeted_self, Some(true));
 
     drop(predecessor_guard);
     shutdown(&env, run_handle).await;
@@ -1630,7 +1638,7 @@ async fn selected_finalizing_candidate_without_reuse_key_uses_ordinary_admission
         .send(
             crate::provider::JobCandidate::new(run_id, "vm0/default".into())
                 .with_history_generation_run_id(Some(RunId::new_v4()))
-                .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
+                .with_runner_preference_for_test(ActiveRunnerPreference::ranked_for_test(
                     TEST_RUNNER_ID.parse().unwrap(),
                     TEST_HEARTBEAT_GENERATION,
                     RunnerPreferenceTier::FinalizingPredecessor,
@@ -1658,17 +1666,19 @@ async fn selected_finalizing_candidate_without_reuse_key_uses_ordinary_admission
         "ordinary admission should clear the incomplete advisory preference"
     );
     let preference_telemetry = claimed
-        .runner_preference_claim_telemetry(TEST_RUNNER_ID, TEST_HEARTBEAT_GENERATION)
+        .runner_preference_claim_telemetry()
         .expect("incomplete finalizing metadata should preserve its observation");
-    assert_eq!(
-        preference_telemetry.resolution,
-        RunnerPreferenceResolution::FinalizingPredecessor
-    );
+    assert!(matches!(
+        preference_telemetry.runner_preference,
+        RunnerPreference::Preference {
+            tier: RunnerPreferenceTier::FinalizingPredecessor,
+            ..
+        }
+    ));
     assert_eq!(
         preference_telemetry.state,
-        RunnerPreferenceClaimState::Cleared
+        Some(RunnerPreferenceClaimState::Cleared)
     );
-    assert_eq!(preference_telemetry.targeted_self, Some(true));
 
     shutdown(&env, run_handle).await;
 }

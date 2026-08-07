@@ -324,7 +324,7 @@ async function tryReleasePiStandbyForColdStart(
       runId: input.body.runId,
       profile: requeued.profile,
       piExecutionMode: "cold-start",
-      runnerPreferenceDecision: {
+      runnerPreference: {
         kind: "noPreference",
         reason: "noReuseKey",
       },
@@ -423,7 +423,7 @@ const activatePiColdStartForHandoff$ = command(
         runId: input.runId,
         profile: activation.profile,
         piExecutionMode: "cold-start",
-        runnerPreferenceDecision: {
+        runnerPreference: {
           kind: "noPreference",
           reason: "noReuseKey",
         },
