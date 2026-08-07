@@ -876,6 +876,8 @@ impl NetworkPolicyRefreshCore {
             let Some(snapshot) = self.active_snapshot_for_target(run_id, target).await else {
                 continue;
             };
+            // Missing metadata is the old-API compatibility shape. #25351
+            // removes this acceptance after the producer and old APIs drain.
             if let Some(candidate) = &candidate_base_url_vars {
                 let Some(matches_pinned_values) = self
                     .custom_base_url_vars_match(run_id, target, candidate)
