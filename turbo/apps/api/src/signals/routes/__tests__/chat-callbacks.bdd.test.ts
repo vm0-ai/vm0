@@ -20,10 +20,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import {
-  appendGoalMarkerFixture,
-  readGoalQueueStateFixture,
-} from "../../../test-fixtures/goal-queue";
+import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
@@ -1738,7 +1735,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("sources the goal system prompt from thread goals and ignores later UI markers", async () => {
+  it("sources the goal system prompt from thread goals", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     await enableGoalWorkflows(actor);
@@ -1757,19 +1754,6 @@ ${noisySeparator}
 
 Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
     await createGoalForRun(actor, first.runId, goalObjective);
-    const goalRunPreparationStarted = createDeferredPromise<void>(
-      context.signal,
-    );
-    const releaseGoalRunPreparation = deferredGate();
-    useSecretKmsProbe((command) => {
-      if (!goalRunPreparationStarted.settled()) {
-        goalRunPreparationStarted.resolve(undefined);
-      }
-      return releaseGoalRunPreparation.wait().then(() => {
-        return generateDataKeyOutput(command);
-      });
-    });
-
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "completed before goal continuation"),
     ]);
@@ -1778,12 +1762,6 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await goalRunPreparationStarted.promise;
-    await appendGoalMarkerFixture({
-      threadId: first.threadId,
-      objectiveBrief: "Display-only marker must not invalidate this run",
-    });
-    releaseGoalRunPreparation.release();
 
     const messages = await waitForThreadMessages(
       actor,
@@ -1839,9 +1817,6 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(appendSystemPrompt).toContain(goalBrief);
     expect(appendSystemPrompt).toContain("Autonomy budget: 9");
     expect(appendSystemPrompt).toContain("# How to operate");
-    expect(appendSystemPrompt).not.toContain(
-      "Display-only marker must not invalidate this run",
-    );
     expect(goalContext.body.sessionId).toBe(
       cliAgentSessionIdForChatRun(first.runId),
     );
@@ -1857,7 +1832,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("rebuilds a preparing goal run from the latest thread goal row", async () => {
+  it("rebuilds a preparing goal run from the latest row despite its UI marker", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
