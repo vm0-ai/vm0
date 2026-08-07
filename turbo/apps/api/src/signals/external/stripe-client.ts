@@ -73,6 +73,37 @@ export function clearMockListStripeInvoices(): void {
   clearMockedListInvoices();
 }
 
+type StripeWebhookEventConstructor = (
+  rawBody: string,
+  signature: string,
+  secret: string,
+) => unknown;
+
+const {
+  get: getMockedStripeWebhookEventConstructor,
+  set: setMockedStripeWebhookEventConstructor,
+} = testOverride<StripeWebhookEventConstructor | undefined>(() => {
+  return undefined;
+});
+
+export function constructStripeWebhookEvent(
+  rawBody: string,
+  signature: string,
+  secret: string,
+): unknown {
+  const mocked = getMockedStripeWebhookEventConstructor();
+  if (mocked) {
+    return mocked(rawBody, signature, secret);
+  }
+  return getStripeClient().webhooks.constructEvent(rawBody, signature, secret);
+}
+
+export function mockStripeWebhookEventConstructor(
+  constructor: StripeWebhookEventConstructor,
+): void {
+  setMockedStripeWebhookEventConstructor(constructor);
+}
+
 const { get: getMockedStripeClient, set: setMockedStripeClient } = testOverride<
   StripeSDK | undefined
 >(() => {

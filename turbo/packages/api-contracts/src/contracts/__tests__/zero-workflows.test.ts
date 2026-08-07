@@ -343,6 +343,12 @@ describe("Stripe invoice-paid workflow automation contract", () => {
       eventConfig,
       schedule: null,
       scheduleSummary: null,
+      health: {
+        lastMatchingEventReceivedAt: null,
+        lastDeliveryStatus: null,
+        lastDeliveryStatusAt: null,
+        warning: null,
+      },
     } as const;
 
     expect(zeroWorkflowAutomationSummarySchema.parse(summary)).toStrictEqual(

@@ -56,6 +56,7 @@ import { webhooksGoogleWorkspaceEventsRoutes } from "./routes/webhooks-google-wo
 import { webhooksNotionRoutes } from "./routes/webhooks-notion";
 import { webhooksWorkflowAutomationsRoutes } from "./routes/webhooks-workflow-automations";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
+import { webhooksStripeWorkflowEventsRoutes } from "./routes/webhooks-stripe-workflow-events";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
@@ -214,6 +215,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksWorkflowAutomationsRoutes,
   ...zeroStrapiEventsRoutes,
   ...webhooksStripeRoutes,
+  ...webhooksStripeWorkflowEventsRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
   ...webhooksAgentCheckpointsRoutes,
   ...webhooksAgentCompleteRoutes,

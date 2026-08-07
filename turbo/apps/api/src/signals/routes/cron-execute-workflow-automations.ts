@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import type { RouteEntry } from "../route-entry";
 import { executeDueNotionWorkflowEvents$ } from "../services/notion-workflow-event.service";
 import { executeDueStrapiWorkflowEvents$ } from "../services/strapi-workflow-event.service";
+import { executeDueStripeWorkflowEvents$ } from "../services/stripe-workflow-event.service";
 import { executeDueWorkflowAutomations$ } from "../services/zero-workflow-automation-poller.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
@@ -18,6 +19,7 @@ const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
     const result = await set(executeDueWorkflowAutomations$, signal);
     const notionResult = await set(executeDueNotionWorkflowEvents$, signal);
     const strapiResult = await set(executeDueStrapiWorkflowEvents$, signal);
+    const stripeResult = await set(executeDueStripeWorkflowEvents$, signal);
     signal.throwIfAborted();
 
     return {
@@ -25,8 +27,17 @@ const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
       body: {
         success: true as const,
         executed:
-          result.executed + notionResult.executed + strapiResult.executed,
-        skipped: result.skipped + notionResult.skipped + strapiResult.skipped,
+          result.executed +
+          notionResult.executed +
+          strapiResult.executed +
+          stripeResult.executed,
+        skipped:
+          result.skipped +
+          notionResult.skipped +
+          strapiResult.skipped +
+          stripeResult.skipped +
+          stripeResult.failed +
+          stripeResult.retried,
       },
     };
   },
