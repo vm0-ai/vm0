@@ -967,6 +967,71 @@ export async function holdModelPolicyReadsFixture(args: {
 }
 
 /**
+ * Holds the production per-thread goal lifecycle lock so a route test can
+ * order one user lifecycle change ahead of a concurrent queue settlement.
+ * The lock key is scoped to the test's unique thread id, so unrelated API
+ * tests cannot satisfy the waiter barrier.
+ */
+export async function holdGoalThreadLockFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly waiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(hashtext('goal:' || ${args.threadId}))
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the goal thread lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    waiterCount: async () => {
+      const rows = await executeRawRows(
+        db(),
+        sql`
+          SELECT ${count()}::int AS "waiterCount"
+          FROM pg_locks AS waiting
+          WHERE waiting.locktype = 'advisory'
+            AND NOT waiting.granted
+            AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+              SELECT held.classid, held.objid, held.objsubid
+              FROM pg_locks AS held
+              WHERE held.locktype = 'advisory'
+                AND held.pid = ${holderPid}
+                AND held.granted
+            )
+        `,
+        waiterCountRowSchema,
+      );
+      return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
  * Reproduces a crash after the canonical chat callback was acknowledged but
  * before its detached terminal processing became durable. Product APIs cannot
  * delete append-only events, so this fixture removes only the exact cancelled
@@ -1145,11 +1210,10 @@ async function pidIsBlocked(waiterPid: number): Promise<boolean> {
   return rows[0]?.blocked ?? false;
 }
 
-function bddVm0ApiKeyFilter(vendor: string, model: string) {
+function bddVm0ApiKeyFilter(vendor: string) {
   const [fakePrefix, devSeedPrefix] = VM0_BDD_API_KEY_PREFIXES;
   return and(
     eq(vm0ApiKeys.vendor, vendor),
-    eq(vm0ApiKeys.model, model),
     or(
       like(vm0ApiKeys.apiKey, `${fakePrefix}%`),
       like(vm0ApiKeys.apiKey, `${devSeedPrefix}%`),
@@ -1158,85 +1222,45 @@ function bddVm0ApiKeyFilter(vendor: string, model: string) {
 }
 
 /**
- * Replaces the bdd-scoped rows of the platform-managed vm0 API key pool for
- * one vendor/model.
+ * Replaces the bdd-scoped row of the platform-managed vm0 API key pool for one
+ * vendor.
  *
  * Why product APIs cannot construct this state: vm0_api_keys is a
  * platform-operations table with no product write surface — keys are
  * provisioned out of band. Keys passed here must carry a
  * VM0_BDD_API_KEY_PREFIXES prefix so only bdd rows are touched.
  */
-export async function replaceBddVm0ApiKeys(args: {
+export async function replaceBddVm0ApiKey(args: {
   readonly vendor: string;
-  readonly model: string;
-  readonly keys: readonly { readonly apiKey: string; readonly label: string }[];
+  readonly apiKey: string;
+  readonly label: string;
 }): Promise<void> {
-  for (const key of args.keys) {
-    const scoped = VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
-      return key.apiKey.length > prefix.length && key.apiKey.startsWith(prefix);
-    });
-    if (!scoped) {
-      throw new Error(
-        `replaceBddVm0ApiKeys: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
-      );
-    }
+  const scoped = VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
+    return args.apiKey.length > prefix.length && args.apiKey.startsWith(prefix);
+  });
+  if (!scoped) {
+    throw new Error(
+      `replaceBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
+    );
   }
   await db().transaction(async (tx) => {
-    await tx
-      .delete(vm0ApiKeys)
-      .where(bddVm0ApiKeyFilter(args.vendor, args.model));
-    if (args.keys.length > 0) {
-      await tx.insert(vm0ApiKeys).values(
-        args.keys.map((key) => {
-          return {
-            vendor: args.vendor,
-            model: args.model,
-            apiKey: key.apiKey,
-            label: key.label,
-          };
-        }),
-      );
-    }
+    await tx.delete(vm0ApiKeys).where(bddVm0ApiKeyFilter(args.vendor));
+    await tx.insert(vm0ApiKeys).values({
+      vendor: args.vendor,
+      apiKey: args.apiKey,
+      label: args.label,
+    });
   });
 }
 
 /**
- * Deletes the bdd-scoped rows of the platform-managed vm0 API key pool for
- * one vendor/model. See replaceBddVm0ApiKeys for why no product API exists.
+ * Deletes the bdd-scoped row of the platform-managed vm0 API key pool for one
+ * vendor. See replaceBddVm0ApiKey for why no product API exists.
  */
-export async function deleteBddVm0ApiKeys(args: {
+export async function deleteBddVm0ApiKey(args: {
   readonly vendor: string;
-  readonly model: string;
 }): Promise<void> {
-  await db()
-    .delete(vm0ApiKeys)
-    .where(bddVm0ApiKeyFilter(args.vendor, args.model));
-}
-
-/**
- * Checks the operator-managed label for a key returned through a public test
- * entry point. The key pool has no product read surface, and local dev seeds
- * may contain additional valid keys for the same vendor and model.
- */
-export async function hasVm0ApiKeyLabel(args: {
-  readonly vendor: string;
-  readonly model: string;
-  readonly apiKey: string;
-  readonly label: string;
-}): Promise<boolean> {
-  const rows = await db()
-    .select({ id: vm0ApiKeys.id })
-    .from(vm0ApiKeys)
-    .where(
-      and(
-        eq(vm0ApiKeys.vendor, args.vendor),
-        eq(vm0ApiKeys.model, args.model),
-        eq(vm0ApiKeys.apiKey, args.apiKey),
-        eq(vm0ApiKeys.label, args.label),
-      ),
-    )
-    .limit(1);
-  return rows.length === 1;
+  await db().delete(vm0ApiKeys).where(bddVm0ApiKeyFilter(args.vendor));
 }
 
 /**

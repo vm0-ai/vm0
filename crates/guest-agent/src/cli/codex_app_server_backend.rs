@@ -1,8 +1,4 @@
-//! Experimental Codex app-server execution backend.
-//!
-//! This module owns only the experimental app-server runtime path. Ordinary
-//! Codex execution continues to use `codex exec --json` unless the explicit
-//! guest env flag selects this backend.
+//! Codex app-server execution backend.
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -28,7 +24,8 @@ use super::codex_app_server_events::{
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
     AgentExecutionDeadline, CliEventIngestor, CliExecutionControls, CliExecutionResult,
-    CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
+    CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction,
+    codex_runtime_config,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
@@ -487,9 +484,9 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
         .with_config_overrides(config_overrides)
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
-    if runtime.use_mock_codex
-        && let Ok(scenario) = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
-    {
+    if runtime.use_mock_codex {
+        let scenario = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
+            .unwrap_or_else(|_| "runtime-turn-complete".to_string());
         config = config.with_env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
     }
     if runtime.codex_oauth_mode {
@@ -608,7 +605,7 @@ fn turn_start_params(thread_id: &str, runtime: &CliRuntimeConfig<'_>) -> Value {
         );
     }
     if let Some(effort) =
-        command::default_codex_reasoning_effort_for_model(runtime.openai_model.as_ref())
+        codex_runtime_config::default_reasoning_effort_for_model(runtime.openai_model.as_ref())
     {
         params.insert("effort".to_string(), Value::String(effort.to_string()));
     }
@@ -1008,7 +1005,7 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_, '_>) -> Resul
             raw_line,
             &event,
             sink.masker,
-            super::framework::CliFrameworkBehavior::new(Framework::Codex),
+            Framework::Codex,
         )
         .await?
     {

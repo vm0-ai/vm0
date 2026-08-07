@@ -65,7 +65,7 @@ use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{
     ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobCandidate, JobProvider,
-    LocalProvider, NetworkPolicyRefreshHandle,
+    LocalProvider, NetworkPolicyRefreshHandle, RunnerPreferenceRemovalReason,
 };
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
@@ -465,7 +465,7 @@ async fn run_start_with_home(
     let mut memory_prefetch = prefetch::MemoryPrefetchTasks::spawn(
         resource_locks
             .profile_paths()
-            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory_bin()),
+            .map(|(_, profile_paths)| profile_paths.snapshot_paths().memory()),
     );
 
     // Compute the smallest profile resources for budget pre-check.
@@ -594,7 +594,6 @@ async fn run_start_with_home(
             .create_runtime(sandbox::RuntimeConfig {
                 proxy_port: Some(mitm.port()),
                 dns_port: Some(dns_port),
-                guest_dns_netfilter_trace: args.local,
             })
             .await
             .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
@@ -1855,7 +1854,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = pending_finalizing_candidate.take() else {
                     continue;
                 };
-                let candidate = candidate.without_runner_preference();
+                let candidate = candidate
+                    .without_runner_preference(RunnerPreferenceRemovalReason::Expired);
                 let result = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {

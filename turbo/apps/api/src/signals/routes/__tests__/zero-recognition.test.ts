@@ -26,6 +26,8 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroRecognitionRoutes } from "../zero-recognition";
+import { zeroUsageRunsRoutes } from "../zero-usage-runs";
 
 const context = testContext();
 const store = createStore();
@@ -141,7 +143,9 @@ function requestRecognition(args: {
       ? { "x-vm0-client-request-id": args.clientRequestId }
       : {}),
   };
-  return setupApp({ context })(zeroRecognitionContract).recognize({
+  return setupApp({ context, routes: zeroRecognitionRoutes })(
+    zeroRecognitionContract,
+  ).recognize({
     headers,
     body: {
       fileId: args.fileId,
@@ -167,7 +171,9 @@ async function readRunUsage(actor: RecognitionActor) {
   mockClerkUserLookup();
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
   const response = await accept(
-    setupApp({ context })(zeroUsageRunsContract).get({
+    setupApp({ context, routes: zeroUsageRunsRoutes })(
+      zeroUsageRunsContract,
+    ).get({
       headers: { authorization: "Bearer clerk-session" },
       query: { runId: actor.runId },
     }),

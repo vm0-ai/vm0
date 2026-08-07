@@ -145,6 +145,43 @@ const checkoutRequestSchema = z.object({
   adAttribution: adAttributionMetadataSchema.optional(),
 });
 
+export const USAGE_PACKS_USD = [20, 50, 100, 200] as const;
+export type UsagePackUsd = (typeof USAGE_PACKS_USD)[number];
+
+export const usagePackUsdSchema: z.ZodType<UsagePackUsd> = z.union([
+  z.literal(20),
+  z.literal(50),
+  z.literal(100),
+  z.literal(200),
+]);
+
+const usagePackCatalogItemSchema = z.object({
+  usagePackUsd: usagePackUsdSchema,
+  priceUsd: z.number().positive(),
+  purchasedCredits: z.number().int().positive(),
+  bonusCredits: z.number().int().positive(),
+  totalCredits: z.number().int().positive(),
+});
+
+const usagePackCatalogResponseSchema = z.object({
+  usagePacks: z.array(usagePackCatalogItemSchema),
+});
+
+const memberUsagePackSchema = z.object({
+  memberId: z.string().min(1),
+  usagePackUsd: usagePackUsdSchema,
+});
+export type MemberUsagePack = z.infer<typeof memberUsagePackSchema>;
+export type UsagePackCatalogItem = z.infer<typeof usagePackCatalogItemSchema>;
+
+const usagePackCheckoutRequestSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+  successUrl: z.string().url(),
+  cancelUrl: z.string().url(),
+  adAttribution: adAttributionMetadataSchema.optional(),
+});
+
 const checkoutCompleteRequestSchema = z.object({
   sessionId: z.string().min(1),
 });
@@ -290,6 +327,49 @@ export const zeroBillingCheckoutContract = c.router({
 export type ZeroBillingCheckoutContract = typeof zeroBillingCheckoutContract;
 
 /**
+ * Zero contract for POST /api/zero/billing/usage-pack-checkout
+ */
+export const zeroBillingUsagePackCheckoutContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-checkout",
+    headers: authHeadersSchema,
+    body: usagePackCheckoutRequestSchema,
+    responses: {
+      200: checkoutResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Create Stripe checkout session for a plan with usage packs",
+  },
+});
+
+export type ZeroBillingUsagePackCheckoutContract =
+  typeof zeroBillingUsagePackCheckoutContract;
+
+export const zeroBillingUsagePackCatalogContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/billing/usage-pack-catalog",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackCatalogResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get the validated Stripe usage pack catalog",
+  },
+});
+
+export type ZeroBillingUsagePackCatalogContract =
+  typeof zeroBillingUsagePackCatalogContract;
+
+/**
  * Zero contract for POST /api/zero/billing/concurrency-checkout
  */
 export const zeroBillingConcurrencyCheckoutContract = c.router({
@@ -306,7 +386,7 @@ export const zeroBillingConcurrencyCheckoutContract = c.router({
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Create Stripe checkout session for concurrency add-on",
+    summary: "Start a Stripe purchase for concurrency add-on slots",
   },
 });
 

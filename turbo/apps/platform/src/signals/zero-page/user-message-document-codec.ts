@@ -3,10 +3,12 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   generationTemplateRequestSchema,
   userMessageDocumentSchema,
+  userMessageInputDocumentSchema,
   type FeedbackNotePart,
   type GenerationTemplateRequest,
   type PersistedAttachment,
   type UserMessageDocument,
+  type UserMessageInputDocument,
   type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
@@ -34,7 +36,7 @@ export interface EditorDocumentSnapshot {
   readonly toEditorDocument: () => JSONContent;
   readonly toMessageDocument: (
     context?: EditorDocumentContext,
-  ) => UserMessageDocument | null;
+  ) => UserMessageInputDocument | null;
 }
 
 export function shouldUseUserMessage(
@@ -308,7 +310,7 @@ function appendFeedbackGroup(
 export function editorDocToMessageDocument(
   document: ProseMirrorNode,
   context: EditorDocumentContext = {},
-): UserMessageDocument | null {
+): UserMessageInputDocument | null {
   if (document.type.name !== "doc") {
     return null;
   }
@@ -362,7 +364,10 @@ export function editorDocToMessageDocument(
     return null;
   }
 
-  const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
+  const parsed = userMessageInputDocumentSchema.safeParse({
+    version: 1,
+    parts,
+  });
   return parsed.success ? parsed.data : null;
 }
 
@@ -389,7 +394,7 @@ export function textToMessageDocument(
   text: string,
   template?: TextMessageTemplateSnapshot,
   attachments: readonly PersistedAttachment[] = [],
-): UserMessageDocument | null {
+): UserMessageInputDocument | null {
   const parts: UserMessagePart[] = [];
   if (template) {
     parts.push({
@@ -400,7 +405,10 @@ export function textToMessageDocument(
   }
   appendFileParts(parts, attachments);
   appendTextPart(parts, text);
-  const parsed = userMessageDocumentSchema.safeParse({ version: 1, parts });
+  const parsed = userMessageInputDocumentSchema.safeParse({
+    version: 1,
+    parts,
+  });
   return parsed.success ? parsed.data : null;
 }
 
@@ -763,7 +771,8 @@ export function messageDocumentToDisplayText(value: unknown): string | null {
       part.type === "source" ||
       part.type === "automation" ||
       part.type === "goal" ||
-      part.type === "morning_brief"
+      part.type === "morning_brief" ||
+      part.type === "model"
     ) {
       continue;
     }

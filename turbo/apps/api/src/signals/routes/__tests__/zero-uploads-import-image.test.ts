@@ -10,6 +10,17 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroUploadsCompleteRoutes } from "../zero-uploads-complete";
+import { zeroUploadsImportImageRoutes } from "../zero-uploads-import-image";
+import { zeroUploadsMultipartRoutes } from "../zero-uploads-multipart";
+import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
+
+const zeroUploadsTestRoutes = Object.freeze([
+  ...zeroUploadsCompleteRoutes,
+  ...zeroUploadsImportImageRoutes,
+  ...zeroUploadsMultipartRoutes,
+  ...zeroUploadsPrepareRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -42,7 +53,9 @@ function commandName(command: unknown): string {
 }
 
 function client() {
-  return setupApp({ context })(zeroUploadsContract);
+  return setupApp({ context, routes: zeroUploadsTestRoutes })(
+    zeroUploadsContract,
+  );
 }
 
 describe("POST /api/zero/uploads/import-image", () => {

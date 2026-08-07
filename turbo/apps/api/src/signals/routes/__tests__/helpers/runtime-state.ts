@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   TestRuntimeStateActionBody,
   TestRuntimeStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-runtime-state";
+import { onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";
@@ -49,36 +52,59 @@ async function postAction(
   return await readJson<TestRuntimeStateActionResponse>(response);
 }
 
+interface Vm0ManagedModelKeyFixture {
+  readonly selectedModel: string;
+  release(): Promise<void>;
+}
+
+function vm0ManagedModelKeyFixture(
+  context: TestContext,
+  fixtureId: string,
+  selectedModel: string,
+): Vm0ManagedModelKeyFixture {
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) {
+      return;
+    }
+    await postAction(context, {
+      action: "delete-vm0-managed-model-key",
+      fixture_id: fixtureId,
+    });
+    released = true;
+  };
+  onTestFinished(release);
+  return { selectedModel, release };
+}
+
 export async function seedVm0ManagedDefaultModelKey(
   context: TestContext,
-): Promise<string> {
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-managed-default-model-key",
+    fixture_id: fixtureId,
   });
   if (!response.selected_model) {
     throw new Error("seedVm0ManagedDefaultModelKey missing selected_model");
   }
-  return response.selected_model;
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function seedVm0ManagedModelKey(
   context: TestContext,
   selectedModel: string,
-): Promise<string> {
+): Promise<Vm0ManagedModelKeyFixture> {
+  const fixtureId = randomUUID();
   const response = await postAction(context, {
     action: "seed-vm0-managed-model-key",
+    fixture_id: fixtureId,
     selected_model: selectedModel,
   });
   if (!response.selected_model) {
     throw new Error("seedVm0ManagedModelKey missing selected_model");
   }
-  return response.selected_model;
-}
-
-export async function deleteVm0ManagedDefaultModelKey(
-  context: TestContext,
-): Promise<void> {
-  await postAction(context, { action: "delete-vm0-managed-default-model-key" });
+  return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
 export async function enableFakeKms(context: TestContext): Promise<void> {

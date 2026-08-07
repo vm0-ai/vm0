@@ -9,6 +9,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroBillingAutoRechargeRoutes } from "../zero-billing-auto-recharge";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -25,7 +26,9 @@ const defaultAutoRechargeConfig = Object.freeze({
 type AutoRechargeActor = ApiTestUser & { readonly orgId: string };
 
 function autoRechargeClient() {
-  return setupApp({ context })(zeroBillingAutoRechargeContract);
+  return setupApp({ context, routes: zeroBillingAutoRechargeRoutes })(
+    zeroBillingAutoRechargeContract,
+  );
 }
 
 function createActor(

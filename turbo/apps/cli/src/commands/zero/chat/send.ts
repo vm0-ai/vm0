@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import { Command } from "commander";
 import {
-  type UserMessageDocument,
-  userMessageDocumentSchema,
+  type UserMessageInputDocument,
+  userMessageInputDocumentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import {
@@ -47,7 +47,7 @@ interface SendOptions {
 }
 
 interface ResolvedUserMessage {
-  readonly userMessage: UserMessageDocument;
+  readonly userMessage: UserMessageInputDocument;
   readonly prompt: string;
   readonly hasTextContent: boolean;
 }
@@ -73,7 +73,7 @@ function readMessageText(optionText: string | undefined): string {
   return trimmed;
 }
 
-function documentText(document: UserMessageDocument): string {
+function documentText(document: UserMessageInputDocument): string {
   return document.parts
     .map((part) => {
       return part.type === "text" ? part.text : "";
@@ -82,7 +82,7 @@ function documentText(document: UserMessageDocument): string {
     .trim();
 }
 
-function promptForDocument(document: UserMessageDocument): string {
+function promptForDocument(document: UserMessageInputDocument): string {
   const text = documentText(document);
   if (text) {
     return text;
@@ -93,7 +93,7 @@ function promptForDocument(document: UserMessageDocument): string {
   return hasFilePart ? ATTACHED_FILES_PROMPT : MESSAGE_PARTS_PROMPT;
 }
 
-function readUserMessageDocument(path: string): UserMessageDocument {
+function readUserMessageDocument(path: string): UserMessageInputDocument {
   let content: string;
   try {
     content = readFileSync(path, "utf8");
@@ -116,7 +116,7 @@ function readUserMessageDocument(path: string): UserMessageDocument {
     );
   }
 
-  const result = userMessageDocumentSchema.safeParse(parsed);
+  const result = userMessageInputDocumentSchema.safeParse(parsed);
   if (!result.success) {
     printChatUsageError(
       `User message file "${path}" is not a valid UserMessageDocument`,

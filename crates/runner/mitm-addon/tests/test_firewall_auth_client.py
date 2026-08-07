@@ -5,6 +5,7 @@ import base64
 import datetime
 import json
 import os
+import socket
 import ssl
 import time
 import urllib.error
@@ -1097,6 +1098,59 @@ class TestFirewallAuthAsyncTransport:
         assert len(requests) == 1
         assert requests[0].method == "POST"
         assert requests[0].target == "/api/webhooks/agent/firewall/auth"
+
+    async def test_retries_next_resolved_address_after_connect_failure(self, mitm_ctx):
+        class OrderedResolver:
+            async def lookup_ip(self, host: str) -> list[str]:
+                assert host == "firewall-auth.invalid"
+                return ["127.0.0.2", "127.0.0.1"]
+
+        requests: list[_RawHttpRequest] = []
+        client_sockets: list[socket.socket] = []
+        real_socket = socket.socket
+
+        def create_socket(
+            family: int = -1,
+            socket_type: int = -1,
+            proto: int = -1,
+            fileno: int | None = None,
+        ) -> socket.socket:
+            created = real_socket(family, socket_type, proto, fileno)
+            if fileno is None:
+                client_sockets.append(created)
+            return created
+
+        async def handle_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            requests.append(await _read_raw_http_request(reader))
+            await _write_success_response(writer)
+
+        proxy_environment = {
+            "http_proxy": "",
+            "HTTP_PROXY": "",
+            "https_proxy": "",
+            "HTTPS_PROXY": "",
+            "all_proxy": "",
+            "ALL_PROXY": "",
+            "no_proxy": "",
+            "NO_PROXY": "",
+        }
+        async with _run_test_server(handle_client) as port:
+            with (
+                patch.dict(os.environ, proxy_environment),
+                patch.object(auth_client, "_dns_resolver", OrderedResolver()),
+                patch.object(auth_client.socket, "socket", side_effect=create_socket),
+                patch.object(platform_api, "VERCEL_BYPASS", ""),
+                mitm_ctx(api_url=f"http://firewall-auth.invalid:{port}"),
+            ):
+                result = await auth_client.fetch_firewall_headers(firewall_auth_request())
+
+        assert result.payload.headers == {}
+        assert len(requests) == 1
+        assert len(client_sockets) == 2
+        assert client_sockets[0].fileno() == -1
 
     async def test_protocol_error_does_not_expose_response_bytes(self, mitm_ctx):
         sensitive_response_bytes = b"sensitive-resolved-auth-value"

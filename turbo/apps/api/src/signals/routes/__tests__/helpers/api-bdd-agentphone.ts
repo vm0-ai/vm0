@@ -26,6 +26,21 @@ import {
 } from "./api-bdd-integrations";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { zeroIntegrationsPhoneUploadCompleteRoutes } from "../../zero-integrations-phone-upload-complete";
+import { zeroIntegrationsPhoneUploadInitRoutes } from "../../zero-integrations-phone-upload-init";
+import { zeroIntegrationsPhoneDownloadFileRoutes } from "../../zero-integrations-phone-download-file";
+import { zeroLogsRoutes } from "../../zero-logs";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroIntegrationsPhoneDownloadFileRoutes,
+  ...zeroIntegrationsPhoneUploadCompleteRoutes,
+  ...zeroIntegrationsPhoneUploadInitRoutes,
+  ...zeroLogsRoutes,
+  ...zeroModelPoliciesRoutes,
+  ...zeroModelProvidersRoutes,
+]);
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
 export const AGENTPHONE_BDD_PHONE_NUMBER = "+19039853128";
@@ -283,7 +298,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       body: PhoneUploadInitBody,
       statuses: readonly Status[],
     ) {
-      const client = setupApp({ context })(integrationsPhoneUploadInitContract);
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsPhoneUploadInitRoutes,
+      })(integrationsPhoneUploadInitContract);
       return await accept(
         client.init({
           headers: { authorization: `Bearer ${token}` },
@@ -300,9 +318,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       body: PhoneUploadCompleteBody,
       statuses: readonly Status[],
     ) {
-      const client = setupApp({ context })(
-        integrationsPhoneUploadCompleteContract,
-      );
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsPhoneUploadCompleteRoutes,
+      })(integrationsPhoneUploadCompleteContract);
       return await accept(
         client.complete({
           headers: { authorization: `Bearer ${token}` },
@@ -318,7 +337,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
      * checkpoints.
      */
     async readRunSessionId(actor: ApiTestUser, runId: string): Promise<string> {
-      const client = setupApp({ context })(logsByIdContract);
+      const client = setupApp({ context, routes: zeroLogsRoutes })(
+        logsByIdContract,
+      );
       const response = await accept(
         client.getById({
           headers: authenticate(context, actor),
@@ -340,7 +361,10 @@ export function createAgentPhoneBddApi(context: TestContext) {
       readonly headers: Headers;
       readonly text: string;
     }> {
-      const response = await createApp({ signal: context.signal }).request(
+      const response = await createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      }).request(
         `/api/zero/integrations/phone/download-file?file_id=${encodeURIComponent(fileId)}`,
         {
           method: "GET",
@@ -421,7 +445,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
     async switchDefaultModelRouteToOpenRouter(
       actor: ApiTestUser,
     ): Promise<void> {
-      const providers = setupApp({ context })(zeroModelProvidersMainContract);
+      const providers = setupApp({ context, routes: zeroModelProvidersRoutes })(
+        zeroModelProvidersMainContract,
+      );
       const upserted = await accept(
         providers.upsert({
           headers: authenticate(context, actor),
@@ -439,7 +465,9 @@ export function createAgentPhoneBddApi(context: TestContext) {
         },
       ];
       await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
+        setupApp({ context, routes: zeroModelPoliciesRoutes })(
+          zeroModelPoliciesMainContract,
+        ).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),

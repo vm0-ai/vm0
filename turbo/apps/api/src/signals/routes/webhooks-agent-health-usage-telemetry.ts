@@ -4,6 +4,8 @@ import {
   webhookModelUsageObservationContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
+  type RunnerStartupPath,
+  type SandboxReuseResult,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
@@ -45,6 +47,8 @@ const L = logger("webhooks:agent");
 
 interface SandboxOperationDimensionInput {
   readonly error?: string;
+  readonly runner_startup_path?: RunnerStartupPath;
+  readonly sandbox_reuse_result?: SandboxReuseResult;
   readonly encoding?: string;
   readonly session_history_raw_size_bucket?: string;
   readonly session_history_encoded_size_bucket?: string;
@@ -63,6 +67,12 @@ function sandboxOperationDimensions(
   return {
     source: "sandbox",
     ...(op.error ? { error: op.error } : {}),
+    ...(op.runner_startup_path
+      ? { runner_startup_path: op.runner_startup_path }
+      : {}),
+    ...(op.sandbox_reuse_result
+      ? { sandbox_reuse_result: op.sandbox_reuse_result }
+      : {}),
     ...(op.encoding ? { encoding: op.encoding } : {}),
     ...(op.session_history_raw_size_bucket
       ? {

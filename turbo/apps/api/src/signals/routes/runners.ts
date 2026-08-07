@@ -2,10 +2,12 @@ import { command } from "ccstate";
 import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   compatibleStoredExecutionContextSchema,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersActiveInputsContract,
+  runnersConnectorRuntimeSyncContract,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -13,9 +15,12 @@ import {
   runnersPollContract,
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
+  type ConnectorRuntimeTarget,
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
+  type RunnerPreferenceClaimState,
+  type RunnerPreferenceResolution,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -91,11 +96,13 @@ import {
 } from "../services/active-input-prompt.service";
 import {
   lockChatQueueThread,
-  pendingActiveInputPromptCondition,
+  pendingActiveInputCondition,
 } from "../services/chat-event-queue.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
+import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
 import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
+import { withRunModelAnnotation } from "../services/zero-chat-user-message.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -111,7 +118,6 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  type RunnerPreferenceResolutionOutcome,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupError,
   runnerReusePreferencePollPriority,
@@ -545,7 +551,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolutionOutcome;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution;
   readonly reuseKeyKind: "thread" | "session" | "none";
   readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
@@ -766,6 +772,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         runnerPreference: reusePreference.runnerPreference ?? undefined,
+        runnerPreferenceResolution: reusePreference.outcome,
       },
     },
   };
@@ -774,6 +781,9 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
 const networkPolicyRefreshBody$ = bodyResultOf(
   runnersNetworkPolicyRefreshContract.refresh,
+);
+const connectorRuntimeSyncBody$ = bodyResultOf(
+  runnersConnectorRuntimeSyncContract.sync,
 );
 const builtinFirewallsResolveBody$ = bodyResultOf(
   runnersBuiltinFirewallsResolveContract.resolve,
@@ -1316,6 +1326,36 @@ function connectorPermissionBaselineMatchesStoredContext(
   );
 }
 
+function connectorRuntimeTargetsForClaim(
+  storedContext: StoredExecutionContext,
+): ConnectorRuntimeTarget[] | undefined {
+  if (storedContext.connectorRuntimeTargets !== undefined) {
+    return storedContext.connectorRuntimeTargets;
+  }
+  const networkPolicies = storedContext.networkPolicies ?? {};
+  const seenConnectorSlugs = new Set<string>();
+  const targets = (storedContext.firewalls ?? []).flatMap((firewall) => {
+    if (
+      firewall.kind !== "builtin" ||
+      !Object.hasOwn(networkPolicies, firewall.name)
+    ) {
+      return [];
+    }
+    const connectorSlug = connectorSlugSchema.safeParse(firewall.name);
+    if (!connectorSlug.success || seenConnectorSlugs.has(connectorSlug.data)) {
+      return [];
+    }
+    seenConnectorSlugs.add(connectorSlug.data);
+    return [
+      {
+        kind: "builtin" as const,
+        connectorSlug: connectorSlug.data,
+      },
+    ];
+  });
+  return targets.length > 0 ? targets : undefined;
+}
+
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
@@ -1822,6 +1862,9 @@ async function buildClaimResponseBody(args: {
         resumeSession,
         sandboxToken,
         secretValues,
+        connectorRuntimeTargets: connectorRuntimeTargetsForClaim(
+          args.storedContext,
+        ),
         networkPolicies: refreshedPolicies.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
@@ -1887,6 +1930,9 @@ interface ClaimTimingTelemetry {
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
+  readonly runnerPreferenceResolution?: RunnerPreferenceResolution;
+  readonly runnerPreferenceClaimState?: RunnerPreferenceClaimState;
+  readonly runnerPreferenceTargetedSelf?: boolean;
 }
 
 function scheduleSuccessfulClaimSideEffects(args: {
@@ -1942,6 +1988,9 @@ function scheduleSuccessfulClaimSideEffects(args: {
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
+    runnerPreferenceResolution: args.telemetry?.runnerPreferenceResolution,
+    runnerPreferenceClaimState: args.telemetry?.runnerPreferenceClaimState,
+    runnerPreferenceTargetedSelf: args.telemetry?.runnerPreferenceTargetedSelf,
     historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
       args.storedContext,
     ),
@@ -1970,6 +2019,9 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
+  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
+  readonly runnerPreferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
@@ -2006,6 +2058,9 @@ interface ClaimTimingMetricArgs {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
+  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
+  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
+  readonly runnerPreferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }
@@ -2111,16 +2166,54 @@ function claimTimingOperations(
   args: ClaimTimingMetricArgs,
   dimensions: Record<string, string>,
 ): SandboxOperationAttrs[] {
+  const successfulClaimDimensions = claimSuccessfulPreferenceDimensions(
+    args,
+    dimensions,
+  );
   return CLAIM_TIMING_METRIC_FIELDS.map(({ actionType, valueKey }) => {
     return claimTimingOperation(
       args.runId,
       actionType,
       args[valueKey],
-      dimensions,
+      actionType === "claim_request_to_running"
+        ? successfulClaimDimensions
+        : dimensions,
     );
   }).filter((operation): operation is SandboxOperationAttrs => {
     return operation !== undefined;
   });
+}
+
+function claimSuccessfulPreferenceDimensions(
+  args: ClaimTimingMetricArgs,
+  dimensions: Record<string, string>,
+): Record<string, string> {
+  if (
+    args.runnerPreferenceResolution === undefined &&
+    args.runnerPreferenceClaimState === undefined &&
+    args.runnerPreferenceTargetedSelf === undefined
+  ) {
+    return dimensions;
+  }
+
+  return {
+    ...dimensions,
+    ...(args.runnerPreferenceResolution
+      ? {
+          runner_preference_resolution: args.runnerPreferenceResolution,
+        }
+      : {}),
+    ...(args.runnerPreferenceClaimState
+      ? { runner_preference_claim_state: args.runnerPreferenceClaimState }
+      : {}),
+    ...(args.runnerPreferenceTargetedSelf !== undefined
+      ? {
+          runner_preference_targeted_self: String(
+            args.runnerPreferenceTargetedSelf,
+          ),
+        }
+      : {}),
+  };
 }
 
 function claimTimingOperation(
@@ -2507,6 +2600,69 @@ const networkPolicyRefreshInner$ = command(
   },
 );
 
+const connectorRuntimeSyncInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = await set(runnerAuth$, get(authorization$), signal);
+    signal.throwIfAborted();
+    if (!auth) {
+      return unauthorizedAuthenticationRequired;
+    }
+
+    const body = await get(connectorRuntimeSyncBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const runId = get(
+      pathParamsOf(runnersConnectorRuntimeSyncContract.sync),
+    ).runId;
+    const db = set(writeDb$);
+    const run = await getRunNetworkPolicyScope(db, runId, signal);
+    if (!run) {
+      return notFound("Run not found");
+    }
+
+    const authError = runnerRunAuthorizationError(auth, run);
+    if (run.status !== "running") {
+      if (authError || !isTerminalRunStatus(run.status)) {
+        return notFound("Run not found");
+      }
+      return {
+        status: 409 as const,
+        body: {
+          error: {
+            code: CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+            message: "Run is terminal",
+          },
+        },
+      };
+    }
+    if (authError) {
+      return authError;
+    }
+
+    const resolutions = await resolveConnectorRuntimeTargets({
+      db,
+      scope: {
+        orgId: run.orgId,
+        userId: run.userId,
+        agentId: run.agentId,
+      },
+      targets: body.data.targets,
+    });
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: {
+        results: resolutions.map((resolution) => {
+          return resolution.result;
+        }),
+      },
+    };
+  },
+);
+
 const runnerRealtimeTokenInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -2579,16 +2735,6 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
-function pendingActiveInputCondition(
-  db: Pick<Db, "select">,
-  chatThreadId: string,
-) {
-  return and(
-    eq(chatEvents.chatThreadId, chatThreadId),
-    pendingActiveInputPromptCondition(db),
-  );
-}
-
 async function loadRunningActiveInputRun(
   db: ReadonlyDb,
   args: {
@@ -2598,7 +2744,10 @@ async function loadRunningActiveInputRun(
   },
 ) {
   const [run] = await db
-    .select({ chatThreadId: zeroRuns.chatThreadId })
+    .select({
+      chatThreadId: zeroRuns.chatThreadId,
+      selectedModel: zeroRuns.selectedModel,
+    })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
@@ -2613,12 +2762,16 @@ async function loadRunningActiveInputRun(
   if (!run?.chatThreadId) {
     return null;
   }
-  return { chatThreadId: run.chatThreadId };
+  return {
+    chatThreadId: run.chatThreadId,
+    selectedModel: run.selectedModel,
+  };
 }
 
 function pendingActiveInputRows(
   db: Pick<Db, "select">,
   chatThreadId: string,
+  runId: string,
   eventIds?: readonly string[],
 ) {
   return db
@@ -2638,7 +2791,8 @@ function pendingActiveInputRows(
     .from(chatEvents)
     .where(
       and(
-        pendingActiveInputCondition(db, chatThreadId),
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingActiveInputCondition(db, runId),
         eventIds ? inArray(chatEvents.id, eventIds) : undefined,
       ),
     )
@@ -2648,6 +2802,60 @@ function pendingActiveInputRows(
 type PendingActiveInputRow = Awaited<
   ReturnType<typeof pendingActiveInputRows>
 >[number];
+type ActiveInputClaimTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
+
+async function claimPendingActiveInputEvent(
+  tx: ActiveInputClaimTransaction,
+  event: PendingActiveInputRow,
+  runId: string,
+  selectedModel: string | null,
+): Promise<void> {
+  if (!event.userMessage) {
+    throw new Error("Pending active input has invalid prompt data");
+  }
+  if (
+    event.eventType !== "input.prompt" &&
+    event.eventType !== "input.budget"
+  ) {
+    throw new Error("Pending active input has invalid event type");
+  }
+  const target = {
+    id: event.id,
+    chatThreadId: event.chatThreadId,
+    createdAt: event.createdAt,
+    eventType: event.eventType,
+    contextType: event.contextType,
+    contextId: event.contextId,
+  };
+  const userMessage =
+    selectedModel === null
+      ? event.userMessage
+      : withRunModelAnnotation(event.userMessage, selectedModel);
+  const replacement =
+    event.eventType === "input.budget"
+      ? await replaceLoadedChatEvent(tx, target, {
+          chatThreadId: event.chatThreadId,
+          eventType: "input.budget",
+          runId,
+          userMessage,
+        })
+      : await replaceLoadedChatEvent(tx, target, {
+          chatThreadId: event.chatThreadId,
+          eventType: "input.prompt",
+          runId,
+          userMessage,
+          attachFiles: event.attachFiles,
+          generationTemplate: event.generationTemplate,
+          ...(event.triggerSource
+            ? { triggerSource: event.triggerSource }
+            : {}),
+        });
+  if (!replacement) {
+    throw new Error("Active input claim lost after locking the thread");
+  }
+}
 
 async function materializePendingActiveInputPrompts(
   db: Db,
@@ -2657,7 +2865,10 @@ async function materializePendingActiveInputPrompts(
 ): Promise<Map<string, string> | null> {
   const prompts = new Map<string, string>();
   for (const event of candidates) {
-    if (!event.userMessage) {
+    if (
+      !event.userMessage ||
+      (event.eventType !== "input.prompt" && event.eventType !== "input.budget")
+    ) {
       return null;
     }
     prompts.set(
@@ -2666,6 +2877,7 @@ async function materializePendingActiveInputPrompts(
         event: {
           id: event.id,
           chatThreadId: event.chatThreadId,
+          eventType: event.eventType,
           triggerSource: event.triggerSource,
           userMessage: event.userMessage,
           generationTemplate: event.generationTemplate,
@@ -2697,7 +2909,7 @@ const listActiveInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
   if (!run) {
     return notFound("Run not found");
   }
-  const rows = await pendingActiveInputRows(db, run.chatThreadId);
+  const rows = await pendingActiveInputRows(db, run.chatThreadId, runId);
   signal.throwIfAborted();
   return {
     status: 200 as const,
@@ -2739,6 +2951,7 @@ const claimActiveInputsInner$ = command(
     const candidates = await pendingActiveInputRows(
       db,
       run.chatThreadId,
+      runId,
       uniqueEventIds,
     );
     signal.throwIfAborted();
@@ -2792,40 +3005,14 @@ const claimActiveInputsInner$ = command(
       const events = await pendingActiveInputRows(
         tx,
         run.chatThreadId,
+        runId,
         uniqueEventIds,
       );
       if (events.length !== uniqueEventIds.length) {
         return null;
       }
       for (const event of events) {
-        if (!event.userMessage) {
-          throw new Error("Pending active input has invalid prompt data");
-        }
-        const replacement = await replaceLoadedChatEvent(
-          tx,
-          {
-            id: event.id,
-            chatThreadId: event.chatThreadId,
-            createdAt: event.createdAt,
-            eventType: event.eventType,
-            contextType: event.contextType,
-            contextId: event.contextId,
-          },
-          {
-            chatThreadId: event.chatThreadId,
-            eventType: "input.prompt",
-            runId,
-            userMessage: event.userMessage,
-            attachFiles: event.attachFiles,
-            generationTemplate: event.generationTemplate,
-            ...(event.triggerSource
-              ? { triggerSource: event.triggerSource }
-              : {}),
-          },
-        );
-        if (!replacement) {
-          throw new Error("Active input claim lost after locking the thread");
-        }
+        await claimPendingActiveInputEvent(tx, event, runId, run.selectedModel);
       }
       return true;
     });
@@ -2872,6 +3059,10 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersNetworkPolicyRefreshContract.refresh,
     handler: networkPolicyRefreshInner$,
+  },
+  {
+    route: runnersConnectorRuntimeSyncContract.sync,
+    handler: connectorRuntimeSyncInner$,
   },
   {
     route: runnersBuiltinFirewallsResolveContract.resolve,

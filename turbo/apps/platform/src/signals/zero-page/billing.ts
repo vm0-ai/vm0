@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
+  zeroBillingUsagePackCatalogContract,
+  zeroBillingUsagePackCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -11,9 +13,11 @@ import {
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
   type BillingStatusResponse,
+  type MemberUsagePack,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
+import { replaceSearchParams$, searchParams$ } from "../route.ts";
 import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { tapError } from "../utils.ts";
@@ -284,6 +288,13 @@ export const billingStatusAsync$ = computed(async (get) => {
   return result.body;
 });
 
+export const usagePackCatalogAsync$ = computed(async (get) => {
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingUsagePackCatalogContract);
+  const result = await accept(client.get(), [200]);
+  return result.body.usagePacks;
+});
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -293,6 +304,61 @@ export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => {
     return x + 1;
   });
+});
+
+export const handleBillingRedirect$ = command(({ get, set }) => {
+  const searchParams = new URLSearchParams(get(searchParams$));
+  const billing = searchParams.get("billing");
+  const credits = searchParams.get("credits");
+  const concurrency = searchParams.get("concurrency");
+  if (!billing && !credits && !concurrency) {
+    return;
+  }
+
+  searchParams.delete("billing");
+  searchParams.delete("billing_session_id");
+  searchParams.delete("credits");
+  searchParams.delete("credit_checkout_session_id");
+  searchParams.delete("concurrency");
+  set(replaceSearchParams$, searchParams);
+
+  if (billing === "pro" || billing === "team") {
+    const label =
+      billing === "pro"
+        ? i18n.t(($) => {
+            return $.billing.plans.pro.name;
+          })
+        : i18n.t(($) => {
+            return $.billing.plans.team.name;
+          });
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.billing.toasts.checkoutCompleted;
+        },
+        { plan: label },
+      ),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (credits === "purchased") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.creditsAdded;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
+
+  if (concurrency === "purchased") {
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyAdded;
+      }),
+    );
+    set(reloadBillingStatus$);
+  }
 });
 
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
@@ -369,6 +435,56 @@ export const startCheckout$ = command(
   },
 );
 
+export const startUsagePackCheckout$ = command(
+  async (
+    { get },
+    args: {
+      readonly tier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
+    const currentUrl = window.location.href;
+    const successUrl = new URL(currentUrl);
+    successUrl.searchParams.set("billing", args.tier);
+    successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
+    applyStoredAdAttribution(successUrl);
+    const stripeSuccessUrl = successUrl
+      .toString()
+      .replace(
+        "billing_session_id=%7BCHECKOUT_SESSION_ID%7D",
+        "billing_session_id={CHECKOUT_SESSION_ID}",
+      );
+    const cancelUrl = new URL(currentUrl);
+    cancelUrl.searchParams.set("billing", "canceled");
+    applyStoredAdAttribution(cancelUrl);
+    const adAttribution = getStoredAdAttributionMetadata();
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackCheckoutContract);
+    const result = await accept(
+      client.create({
+        body: {
+          tier: args.tier,
+          memberUsagePacks: [...args.memberUsagePacks],
+          successUrl: stripeSuccessUrl,
+          cancelUrl: cancelUrl.toString(),
+          ...(adAttribution === undefined ? {} : { adAttribution }),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+    }
+  },
+);
+
 export const startCreditCheckout$ = command(
   async (
     { get },
@@ -416,7 +532,7 @@ export const startCreditCheckout$ = command(
 
 export const startConcurrencyCheckout$ = command(
   async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
-    const successUrl = checkoutReturnUrl();
+    const successUrl = new URL("/", window.location.origin);
     successUrl.searchParams.set("concurrency", "purchased");
     const cancelUrl = checkoutReturnUrl();
     cancelUrl.searchParams.set("concurrency", "canceled");

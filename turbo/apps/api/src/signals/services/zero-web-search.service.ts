@@ -424,6 +424,7 @@ export const zeroWebSearch$ = command(
       checkManagedCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         resource: {
           kind: USAGE_KIND,
           provider: PROVIDER,

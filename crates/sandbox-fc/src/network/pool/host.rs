@@ -17,18 +17,14 @@ use crate::command::{
     CommandError, IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
     exec_with_timeout,
 };
-use crate::guest_dns_netfilter_trace::{
-    GuestDnsNetfilterTraceAttachment, GuestDnsNetfilterTraceReader,
-};
 use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
 use super::super::{GUEST_NETWORK, GuestNetwork};
 use super::HOST_NETWORK_COMMAND_TIMEOUT;
 use super::firewall::{
-    FirewallSnapshot, NamespaceFirewallConfig, apply_namespace_guest_dns_trace_rules,
-    apply_namespace_rules, delete_ipv4_rules_by_comment, delete_rules_with_comments,
-    setup_namespace_masquerade,
+    FirewallSnapshot, NamespaceFirewallConfig, apply_namespace_rules, delete_ipv4_rules_by_comment,
+    delete_rules_with_comments, setup_namespace_masquerade,
 };
 use super::naming::{
     MAX_NAMESPACES, MAX_POOLS, format_hex_index, generate_veth_ip_pair, make_host_device,
@@ -595,8 +591,6 @@ pub(super) async fn create_single_namespace(
     default_iface: String,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
-    guest_dns_netfilter_trace_requested: bool,
-    guest_dns_netfilter_trace_reader: Option<GuestDnsNetfilterTraceReader>,
 ) -> Result<NetnsInfo> {
     if ns_index >= MAX_NAMESPACES {
         return Err(NetworkError::NamespaceLimitReached {
@@ -633,35 +627,8 @@ pub(super) async fn create_single_namespace(
 
     match result {
         Ok(()) => {
-            let trace = match (
-                guest_dns_netfilter_trace_requested,
-                guest_dns_netfilter_trace_reader,
-                dns_port,
-            ) {
-                (false, _, _) => GuestDnsNetfilterTraceAttachment::Disabled,
-                (true, None, _) => {
-                    GuestDnsNetfilterTraceAttachment::unavailable("monitor_unavailable")
-                }
-                (true, Some(_), None) => {
-                    GuestDnsNetfilterTraceAttachment::unavailable("dns_proxy_disabled")
-                }
-                (true, Some(reader), Some(_))
-                    if apply_namespace_guest_dns_trace_rules(
-                        "iptables-restore",
-                        &ns_name,
-                        &host_device,
-                        &peer_ip,
-                    )
-                    .await =>
-                {
-                    GuestDnsNetfilterTraceAttachment::enabled(reader)
-                }
-                (true, Some(_), Some(_)) => {
-                    GuestDnsNetfilterTraceAttachment::unavailable("rule_install_failed")
-                }
-            };
             info!(name = %ns_name, "namespace created");
-            Ok(NetnsInfo::new(ns_name, host_device, peer_ip).with_guest_dns_netfilter_trace(trace))
+            Ok(NetnsInfo::new(ns_name, host_device, peer_ip))
         }
         Err(e) => {
             error!(name = %ns_name, error = %e, "failed to create namespace, cleaning up");

@@ -27,6 +27,7 @@ import {
   type GenerationTemplateRequest,
   type PersistedAttachment,
   type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   artifactCatalogContract,
@@ -109,7 +110,7 @@ type BddSendEventBody =
       readonly clientThreadId?: string;
       readonly model?: string;
       readonly runOptions?: ChatRunOptionsRequest;
-      readonly userMessage?: UserMessageDocument;
+      readonly userMessage?: UserMessageInputDocument;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
       readonly attachFiles?: readonly AttachFile[];
@@ -627,7 +628,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       body: {
-        readonly draftUserMessage: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageInputDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
@@ -656,7 +657,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       body: {
-        readonly draftUserMessage: UserMessageDocument | null;
+        readonly draftUserMessage: UserMessageInputDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
       statuses: readonly (204 | 400 | 401 | 404)[],
@@ -1003,7 +1004,6 @@ export function createChatFilesBddApi(context: TestContext) {
     ): Promise<{
       readonly artifacts: readonly ArtifactSummary[];
       readonly nextCursor: string | null;
-      readonly supportedKinds?: readonly ArtifactCatalogKind[];
     }> {
       const response = await accept(
         artifactCatalogClient().list({

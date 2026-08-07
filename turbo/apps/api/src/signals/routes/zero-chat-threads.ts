@@ -110,6 +110,7 @@ function projectChatEventForClient(
   }
   if (
     event.eventType === "input.prompt" ||
+    event.eventType === "input.budget" ||
     event.eventType === "input.goal" ||
     event.eventType === "input.rejected"
   ) {
@@ -218,9 +219,8 @@ const listChatEventsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
-  const supportsAgentRunSource = clientSupportsAgentRunSource(
-    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
-  );
+  const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
+  const supportsAgentRunSource = clientSupportsAgentRunSource(clientVersion);
 
   const events = await get(
     zeroChatThreadEventsPage({
@@ -255,9 +255,8 @@ const listChatEventsInner$ = computed(async (get) => {
 const getChatThreadEventInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.get));
-  const supportsAgentRunSource = clientSupportsAgentRunSource(
-    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
-  );
+  const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
+  const supportsAgentRunSource = clientSupportsAgentRunSource(clientVersion);
 
   const event = await get(
     zeroChatThreadEventById({

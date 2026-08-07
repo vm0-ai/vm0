@@ -6,9 +6,15 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { IconMenu2, IconPackage, IconUserPlus } from "@tabler/icons-react";
+import {
+  IconMenu2,
+  IconPackage,
+  IconShare3,
+  IconUserPlus,
+} from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { AutomationMenuButton } from "./zero-chat-thread-page.tsx";
 import { currentChatAgent$ } from "../../signals/agent-chat.ts";
@@ -42,6 +48,7 @@ import {
 } from "../pwa-install/install-banner.tsx";
 import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -147,11 +154,94 @@ function MobileAutomationButtonLeaf() {
   );
 }
 
+function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const start = useSet(thread.sharing.start$);
+  const pageSignal = useGet(pageSignal$);
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
+  if (!enabled || phase !== "idle") {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        detach(
+          start(pageSignal),
+          Reason.DomCallback,
+          "start shared thread selection",
+        );
+      }}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+      aria-label={t(($) => {
+        return $.chat.sharing.start;
+      })}
+    >
+      <IconShare3 size={16} stroke={1.5} />
+    </button>
+  );
+}
+
+function MobileShareButtonLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+  return thread ? <MobileShareButtonInner thread={thread} /> : null;
+}
+
+function MobileSharingOverlayInner({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const close = useSet(thread.sharing.close$);
+  const pageSignal = useGet(pageSignal$);
+  if (phase === "idle") {
+    return null;
+  }
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-between bg-background px-4">
+      <span className="text-sm font-medium text-foreground">
+        {t(
+          ($) => {
+            return $.chat.sharing.selectedCount;
+          },
+          { count: selectedCount },
+        )}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          detach(
+            close(pageSignal),
+            Reason.DomCallback,
+            "close shared thread selection",
+          );
+        }}
+      >
+        {t(($) => {
+          return $.chat.sharing.cancel;
+        })}
+      </Button>
+    </div>
+  );
+}
+
+function MobileSharingOverlayLeaf() {
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const thread = leftThread ?? rightThread;
+  return thread ? <MobileSharingOverlayInner thread={thread} /> : null;
+}
+
 function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   const inChatRoute = isChatRoute(activeId);
   const showInviteFallback = inChatRoute && activeId !== "chat";
   return (
     <>
+      {inChatRoute && <MobileShareButtonLeaf />}
       {inChatRoute && <MobileAutomationButtonLeaf />}
       {inChatRoute && <MobileArtifactsButtonLeaf />}
       {showInviteFallback && <InviteButtonLeaf />}
@@ -170,7 +260,8 @@ function MobileTopBar() {
   const activeId = useGet(activeRoute$);
 
   return (
-    <div className="md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+    <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+      <MobileSharingOverlayLeaf />
       <button
         type="button"
         onClick={() => {

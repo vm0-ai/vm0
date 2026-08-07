@@ -41,6 +41,7 @@ import {
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
+  attachmentSidebarRef,
   lightboxUrl$,
   closeLightboxWithDialogExit$,
   lightboxDialogFullscreen$,
@@ -1140,7 +1141,7 @@ function ArtifactPreviewDialogActions({
         zoomableArtifactImageKey("artifact-sidebar", preview.url, "sidebar"),
       );
     }
-    openArtifactSidebarPreview(preview.url);
+    openArtifactSidebarPreview(attachmentSidebarRef(preview));
     closeLightboxWithDialogExit(rootSignal);
   };
   return (

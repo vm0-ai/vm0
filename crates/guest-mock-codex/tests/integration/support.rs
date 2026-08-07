@@ -1,4 +1,4 @@
-use std::io::{Read, Seek, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -20,57 +20,10 @@ pub(crate) struct RunOutput {
 }
 
 pub(crate) fn run(codex_home: &Path, args: &[&str]) -> std::io::Result<RunOutput> {
-    run_with_env(codex_home, args, &[])
-}
-
-pub(crate) fn run_with_stdin(
-    codex_home: &Path,
-    args: &[&str],
-    stdin: &str,
-) -> std::io::Result<RunOutput> {
-    run_with_env_and_stdin(codex_home, args, &[], Some(stdin))
-}
-
-pub(crate) fn run_with_stdin_and_env(
-    codex_home: &Path,
-    args: &[&str],
-    stdin: &str,
-    env: &[(&str, &str)],
-) -> std::io::Result<RunOutput> {
-    run_with_env_and_stdin(codex_home, args, env, Some(stdin))
-}
-
-pub(crate) fn run_with_env(
-    codex_home: &Path,
-    args: &[&str],
-    env: &[(&str, &str)],
-) -> std::io::Result<RunOutput> {
-    run_with_env_and_stdin(codex_home, args, env, None)
-}
-
-fn run_with_env_and_stdin(
-    codex_home: &Path,
-    args: &[&str],
-    env: &[(&str, &str)],
-    stdin: Option<&str>,
-) -> std::io::Result<RunOutput> {
     let mut cmd = Command::new(BIN);
-    cmd.env("CODEX_HOME", codex_home).args(args);
-    cmd.env_remove("MOCK_CODEX_FIXTURE");
-    for (k, v) in env {
-        cmd.env(k, v);
-    }
-    match stdin {
-        Some(stdin) => {
-            let mut file = tempfile::tempfile()?;
-            file.write_all(stdin.as_bytes())?;
-            file.rewind()?;
-            cmd.stdin(Stdio::from(file));
-        }
-        None => {
-            cmd.stdin(Stdio::null());
-        }
-    }
+    cmd.env("CODEX_HOME", codex_home)
+        .args(args)
+        .stdin(Stdio::null());
     let output = output_with_timeout(cmd, args)?;
 
     let stdout = String::from_utf8(output.stdout)

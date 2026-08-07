@@ -30,6 +30,9 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { zeroConnectorCheckRoutes } from "../zero-connector-check";
+
+const TEST_APP_ROUTES = Object.freeze([...zeroConnectorCheckRoutes]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -59,7 +62,9 @@ const trackOrgMembershipFixture = createFixtureTracker<OrgMembershipFixture>(
 );
 
 function client() {
-  return setupApp({ context })(zeroConnectorCheckContract);
+  return setupApp({ context, routes: zeroConnectorCheckRoutes })(
+    zeroConnectorCheckContract,
+  );
 }
 
 function currentSecond(): number {
@@ -288,22 +293,22 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
   it("enforces strict bodies and returns sanitized unsafe-input outcomes", async () => {
     const actor = bdd.user();
     mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const malformed = await createApp({ signal: context.signal }).request(
-      "/api/zero/connectors/diagnostics/check",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          mode: "url",
-          method: "GET",
-          url: "https://api.github.com/repos/vm0-ai/vm0",
-          unexpected: true,
-        }),
+    const malformed = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request("/api/zero/connectors/diagnostics/check", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        mode: "url",
+        method: "GET",
+        url: "https://api.github.com/repos/vm0-ai/vm0",
+        unexpected: true,
+      }),
+    });
     expect(malformed.status).toBe(400);
 
     const invalidMethod = await checkWithSession(actor, {

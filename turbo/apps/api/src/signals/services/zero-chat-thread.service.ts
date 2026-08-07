@@ -15,6 +15,7 @@ import {
   type PersistedAttachment,
   type ResolvedAttachFile,
   type UserMessageDocument,
+  type UserMessageInputDocument,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -136,7 +137,7 @@ type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
   readonly agentComposeId: string;
-  readonly draftUserMessage: UserMessageDocument | null;
+  readonly draftUserMessage: UserMessageInputDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: ModelProviderType | null;
@@ -556,6 +557,18 @@ const chatEventBuilders = {
       ),
       seqId: event.seqId,
       createdAt: event.createdAt,
+    };
+  },
+  "input.budget": (row, event) => {
+    return {
+      ...event,
+      eventType: "input.budget",
+      content: null,
+      userMessage: requiredChatEventField(
+        row.userMessage,
+        row.eventType,
+        "userMessage",
+      ),
     };
   },
   "input.rejected": (row, event, attachFiles) => {
@@ -1746,7 +1759,7 @@ export const updateChatThreadDraft$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly draftUserMessage: UserMessageDocument | null;
+      readonly draftUserMessage: UserMessageInputDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,

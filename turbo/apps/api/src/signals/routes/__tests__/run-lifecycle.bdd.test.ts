@@ -13,7 +13,9 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -89,7 +91,6 @@ import {
 import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
-  deleteVm0ManagedDefaultModelKey,
   enableFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobConnectorPermissionBaseline,
@@ -488,17 +489,13 @@ function findFirewallEntry(
 }
 
 async function seedVm0ManagedDefaultModelKey(): Promise<string> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
-  return await seedVm0ManagedDefaultModelKeyState(context);
+  const fixture = await seedVm0ManagedDefaultModelKeyState(context);
+  return fixture.selectedModel;
 }
 
 async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
-  return await seedVm0ManagedModelKeyState(context, selectedModel);
+  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+  return fixture.selectedModel;
 }
 
 function useSecretKmsClientForTests(args: {
@@ -565,6 +562,50 @@ function inlineFirewallApis(
     throw new Error(`Expected inline firewall entry: ${name}`);
   }
   return entry.firewall.apis;
+}
+
+type AvailableCustomConnectorRuntime = Extract<
+  ConnectorRuntimeSyncResult,
+  { readonly state: "available"; readonly target: { readonly kind: "custom" } }
+>;
+
+function availableCustomConnectorRuntime(
+  result: ConnectorRuntimeSyncResult | undefined,
+): AvailableCustomConnectorRuntime {
+  if (
+    !result ||
+    result.state !== "available" ||
+    result.target.kind !== "custom" ||
+    !("firewall" in result)
+  ) {
+    throw new Error("Expected the custom runtime target to be available");
+  }
+  return result;
+}
+
+function customConnectorRuntimeAuthBody(
+  runtime: AvailableCustomConnectorRuntime,
+  encryptedSecrets: string,
+) {
+  const api = runtime.firewall.firewall.apis[0];
+  if (!api) {
+    throw new Error("Expected the synced custom firewall API");
+  }
+  return {
+    api,
+    body: {
+      encryptedSecrets,
+      authHeaders: api.auth.headers ?? {},
+      ...(api.auth.base ? { authBase: api.auth.base } : {}),
+      ...(api.auth.query ? { authQuery: api.auth.query } : {}),
+      ...(api.auth.awsSigv4 ? { authAwsSigv4: api.auth.awsSigv4 } : {}),
+      matchedFirewall: {
+        name: runtime.firewall.firewall.name,
+        apiId: api.id,
+        customConnectorId: runtime.firewall.customConnectorId,
+      },
+    },
+  };
 }
 
 async function waitForRunStatus(
@@ -3725,6 +3766,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expect(canonicalHeartbeatHolder.job?.reuseKey).toBe(reuseKey);
     expect(runnerPreference(canonicalHeartbeatHolder.job)).toBeUndefined();
+    expect(canonicalHeartbeatHolder.job?.runnerPreferenceResolution).toBe(
+      "no_viable_holder",
+    );
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reuseRunnerId,
@@ -3755,6 +3799,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "matchingReuseKey",
       expiresAt: expect.any(String),
     });
+    expect(workspaceOnlyHolder.job?.runnerPreferenceResolution).toBe(
+      "matching_workspace_cache",
+    );
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [
@@ -3767,6 +3814,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(runnerPreference(capableWorkspaceHolder.job)).toMatchObject({
       reason: "matchingReuseKey",
     });
+    expect(capableWorkspaceHolder.job?.runnerPreferenceResolution).toBe(
+      "matching_workspace_cache",
+    );
 
     const reusableRunnerId = randomUUID();
     await api.requestHeartbeatRunner(true, [200], {
@@ -3797,11 +3847,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(runnerPreference(reusableOverWorkspace.job)).toStrictEqual(
       reusablePreference,
     );
+    expect(reusableOverWorkspace.job?.runnerPreferenceResolution).toBe(
+      "matching_reusable_sandbox",
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: reusableOverWorkspace.run.runId,
         runnerPreference: reusablePreference,
+        runnerPreferenceResolution: "matching_reusable_sandbox",
       }),
     );
     await api.requestHeartbeatRunner(true, [200], {
@@ -3821,6 +3875,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue with a mismatched capable workspace",
     );
     expect(runnerPreference(mismatchedCapableWorkspace.job)).toBeUndefined();
+    expect(mismatchedCapableWorkspace.job?.runnerPreferenceResolution).toBe(
+      "no_viable_holder",
+    );
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3840,6 +3897,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "matchingReuseKey",
       expiresAt: expect.any(String),
     });
+    expect(differentGenerationHolder.job?.runnerPreferenceResolution).toBe(
+      "matching_reusable_sandbox",
+    );
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3859,6 +3919,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "exactHistoryGeneration",
       expiresAt: expect.any(String),
     });
+    expect(exactGenerationHolder.job?.runnerPreferenceResolution).toBe(
+      "exact_history_generation",
+    );
 
     for (const { runId, resolution } of [
       {
@@ -3942,6 +4005,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         reuseKey,
         historyGenerationRunId: first.runId,
         runnerPreference: finalizingPreference,
+        runnerPreferenceResolution: "finalizing_predecessor",
       }),
     );
 
@@ -3960,6 +4024,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(sourcePoll.body.job?.runId).toBe(successor.runId);
     expect(runnerPreference(sourcePoll.body.job)).toStrictEqual(
       finalizingPreference,
+    );
+    expect(sourcePoll.body.job?.runnerPreferenceResolution).toBe(
+      "finalizing_predecessor",
     );
     for (const actionType of [
       "runner_notification_affinity_lookup",
@@ -3997,6 +4064,50 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       reason: "matchingReuseKey",
       expiresAt: new Date(successorCreatedAt + 2000).toISOString(),
     });
+    expect(genericPoll.body.job?.runnerPreferenceResolution).toBe(
+      "matching_reusable_sandbox",
+    );
+
+    const claimed = await api.requestClaimRunnerJob(
+      true,
+      successor.runId,
+      [200],
+      {
+        runnerIdentity: sourceRunnerIdentity,
+        telemetry: {
+          discoverySource: "ably",
+          runnerPreferenceResolution: "finalizing_predecessor",
+          runnerPreferenceClaimState: "expired",
+          runnerPreferenceTargetedSelf: true,
+        },
+      },
+    );
+    expect(claimed.status).toBe(200);
+    const successfulClaim = sandboxOperationEventsForRunByAction(
+      successor.runId,
+      "claim_request_to_running",
+    );
+    expect(successfulClaim).toHaveLength(1);
+    expect(successfulClaim[0]).toStrictEqual(
+      expect.objectContaining({
+        runner_preference_resolution: "finalizing_predecessor",
+        runner_preference_claim_state: "expired",
+        runner_preference_targeted_self: "true",
+      }),
+    );
+    for (const event of sandboxOperationEventsForRun(successor.runId)) {
+      if (event.op_type === "claim_request_to_running") {
+        continue;
+      }
+      if (
+        event.op_type === "runner_notification_affinity_lookup" ||
+        event.op_type === "runner_poll_pending_job_lookup"
+      ) {
+        continue;
+      }
+      expect(event).not.toHaveProperty("runner_preference_claim_state");
+      expect(event).not.toHaveProperty("runner_preference_targeted_self");
+    }
 
     await api.requestCancelRun(actor, successor.runId, [200]);
     await flushWaitUntilForTest();
@@ -4054,7 +4165,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const exactPreference = {
       runnerIdentity: exactRunnerIdentity,
       reason: "exactHistoryGeneration" as const,
-      expiresAt: new Date(successorCreatedAt + 500).toISOString(),
+      expiresAt: new Date(successorCreatedAt + 1000).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
@@ -4312,7 +4423,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const exactRunnerPreference = {
       runnerIdentity: preferredExactRunner,
       reason: "exactHistoryGeneration" as const,
-      expiresAt: new Date(queueInsertedAt + 500).toISOString(),
+      expiresAt: new Date(queueInsertedAt + 1000).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
@@ -4420,7 +4531,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       threadId: first.threadId,
       prompt: "continue after exact generation protection expires",
     });
-    mockNow(generationExpiredAt + 600);
+    mockNow(generationExpiredAt + 1100);
     const generationExpiredPoll = await api.requestPollRunner(
       true,
       { group: runnerGroup, supportedProfiles: ["vm0/default"] },
@@ -8028,6 +8139,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
     expect(claim.secretValues).not.toContain("custom-secret-value");
+    expect(claim.connectorRuntimeTargets ?? []).not.toContainEqual({
+      kind: "custom",
+      customConnectorId: custom.id,
+    });
+    const legacyCustomFirewall = findFirewallEntry(
+      claim.firewalls,
+      internalName,
+    );
+    if (!legacyCustomFirewall || legacyCustomFirewall.kind !== "inline") {
+      throw new Error("Expected the legacy custom firewall snapshot");
+    }
+    expect(legacyCustomFirewall.customConnectorId).toBeUndefined();
 
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -8044,6 +8167,86 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer custom-secret-value",
+    });
+
+    const target = { kind: "custom" as const, customConnectorId: custom.id };
+    const [initialRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
+    expect(initialAvailable.nextSyncAt).toBeUndefined();
+    const { api: initialApi, body: currentAuthBody } =
+      customConnectorRuntimeAuthBody(
+        initialAvailable,
+        fw.encryptedSecretsBody({}),
+      );
+    expect(initialApi.id).toBe(`${internalName}:0`);
+    expect(initialAvailable.firewall.customConnectorId).toBe(custom.id);
+    expect(initialAvailable.networkPolicy.unknownPolicy).toBe("allow");
+    const initialCurrentAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(initialCurrentAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-secret-value" },
+      expiresAt: null,
+    });
+
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "updated-custom-secret-value",
+    );
+    const currentUpdatedAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(currentUpdatedAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer updated-custom-secret-value" },
+      expiresAt: null,
+    });
+
+    const [updatedRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const updatedAvailable = availableCustomConnectorRuntime(updatedRuntime);
+    expect(updatedAvailable.firewall.customConnectorId).toBe(custom.id);
+    const { body: updatedAuthBody } = customConnectorRuntimeAuthBody(
+      updatedAvailable,
+      fw.encryptedSecretsBody({}),
+    );
+    const updatedCurrentAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      updatedAuthBody,
+      [200],
+    );
+    expect(updatedCurrentAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer updated-custom-secret-value" },
+    });
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, []);
+    const [absentRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    if (!absentRuntime) {
+      throw new Error("Expected an absent custom connector runtime result");
+    }
+    expect(absentRuntime).toMatchObject({
+      target,
+      state: "absent",
+      reason: "grant-unavailable",
+    });
+    expect(absentRuntime.nextSyncAt).toBeUndefined();
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(restoredRuntime).toMatchObject({
+      target,
+      state: "available",
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -8124,12 +8327,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: (attempt) => {
-        if (attempt > 1) {
-          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        if (attempt > 2) {
+          return HttpResponse.json(
+            { error: "temporarily_unavailable" },
+            { status: 503 },
+          );
         }
         return HttpResponse.json({
-          access_token: "custom-oauth-refreshed-access-token",
-          refresh_token: "custom-oauth-rotated-refresh-token",
+          access_token:
+            attempt === 1
+              ? "custom-oauth-refreshed-access-token"
+              : "custom-oauth-force-refreshed-access-token",
+          refresh_token:
+            attempt === 1
+              ? "custom-oauth-rotated-refresh-token"
+              : "custom-oauth-force-rotated-refresh-token",
           token_type: "Bearer",
           expires_in: 3600,
         });
@@ -8140,9 +8352,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-    });
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD OAuth 2.0 Runtime API",
       prefixTemplates: ["https://oauth-runtime.example.test/api/"],
@@ -8207,41 +8416,56 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.secretValues).not.toContain(
       "Bearer custom-oauth-initial-access-token",
     );
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "custom", customConnectorId: custom.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
 
-    mockNow(now() + 2 * 3_600_000);
+    const firstRefreshAt = now() + 2 * 3_600_000;
+    mockNow(firstRefreshAt);
     onTestFinished(() => {
       clearMockNow();
     });
     const [firstResolved, secondResolved] = await Promise.all([
       fw.requestFirewallAuth(
         { authorization: `Bearer ${claim.sandboxToken}` },
-        {
-          encryptedSecrets: fw.encryptedSecretsBody({}),
-          authHeaders: {
-            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-          },
-        },
+        currentAuthBody,
         [200],
       ),
       fw.requestFirewallAuth(
         { authorization: `Bearer ${claim.sandboxToken}` },
-        {
-          encryptedSecrets: fw.encryptedSecretsBody({}),
-          authHeaders: {
-            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-          },
-        },
+        currentAuthBody,
         [200],
       ),
     ]);
-    for (const resolved of [firstResolved, secondResolved]) {
-      if (resolved.status !== 200) {
-        throw new Error("Expected custom OAuth firewall auth to resolve");
-      }
-      expect(resolved.body.headers).toStrictEqual({
-        Authorization: "Bearer custom-oauth-refreshed-access-token",
-      });
-    }
+    const concurrentResolvedBodies = [firstResolved, secondResolved].map(
+      (resolved) => {
+        if (resolved.status !== 200) {
+          throw new Error("Expected custom OAuth firewall auth to resolve");
+        }
+        expect(resolved.body.headers).toStrictEqual({
+          Authorization: "Bearer custom-oauth-refreshed-access-token",
+        });
+        expect(resolved.body.expiresAt).toBe(
+          Math.floor((firstRefreshAt + 3_600_000) / 1000),
+        );
+        return resolved.body;
+      },
+    );
+    expect(
+      concurrentResolvedBodies.flatMap((body) => {
+        return body.refreshedConnectors;
+      }),
+    ).toStrictEqual([custom.id]);
+    expect(
+      concurrentResolvedBodies.flatMap((body) => {
+        return body.refreshedSecrets;
+      }),
+    ).toStrictEqual([secretKey]);
     expect(
       provider.tokenBodies.map((body) => {
         return body.get("grant_type");
@@ -8255,22 +8479,79 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedBasicAuthorization,
     ]);
 
+    const currentResolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(currentResolved.body).toMatchObject({
+      headers: {
+        Authorization: "Bearer custom-oauth-refreshed-access-token",
+      },
+      expiresAt: Math.floor((firstRefreshAt + 3_600_000) / 1000),
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    const forceRefreshAt = firstRefreshAt + 10 * 60_000;
+    mockNow(forceRefreshAt);
+    const forceResolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      { ...currentAuthBody, forceRefresh: true },
+      [200],
+    );
+    expect(forceResolved.body).toMatchObject({
+      headers: {
+        Authorization: "Bearer custom-oauth-force-refreshed-access-token",
+      },
+      expiresAt: Math.floor((forceRefreshAt + 3_600_000) / 1000),
+      refreshedConnectors: [custom.id],
+      refreshedSecrets: [secretKey],
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
+    expect(provider.tokenBodies[2]?.get("refresh_token")).toBe(
+      "custom-oauth-rotated-refresh-token",
+    );
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+    ]);
+
+    const failedRefresh = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      { ...currentAuthBody, forceRefresh: true },
+      [502],
+    );
+    if (failedRefresh.status !== 502) {
+      throw new Error("Expected custom OAuth refresh failure");
+    }
+    expect(failedRefresh.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "upstream_provider",
+    });
+
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("marks a custom OAuth connection for reconnect after invalid_grant", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
       refreshResponse: () => {
         return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
       },
     });
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId } = await entitledRunActor();
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-    });
     const custom = await connectors.createCustomConnector(actor, {
       displayName: "BDD Revoked OAuth 2.0 Runtime API",
       prefixTemplates: ["https://revoked-oauth.example.test/api/"],
@@ -8313,6 +8594,52 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       agentId,
       prompt: "use the revoked OAuth custom connector",
       modelProvider: "anthropic-api-key",
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code"]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(firstRun.runId);
+    const [runtimeResult] = await api.syncConnectorRuntime(firstRun.runId, {
+      targets: [{ kind: "custom", customConnectorId: custom.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: currentAuthBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    mockNow(now() + 2 * 3_600_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const reconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [502],
+    );
+    if (reconnectRequired.status !== 502) {
+      throw new Error("Expected custom OAuth reconnect requirement");
+    }
+    expect(reconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
+    });
+    const stillReconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [502],
+    );
+    if (stillReconnectRequired.status !== 502) {
+      throw new Error("Expected persisted custom OAuth reconnect requirement");
+    }
+    expect(stillReconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
     });
     expect(
       provider.tokenBodies.map((body) => {
@@ -9247,6 +9574,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(grantedContext.claim.networkPolicyRefreshes).not.toHaveProperty(
       "model-provider:anthropic-api-key",
     );
+    expect(grantedContext.claim.connectorRuntimeTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "slack",
+    });
     expect(granted.allow).toContain("chat:write");
     expect(granted.allow).toContain("files:read");
     expect(granted.deny).not.toContain("chat:write");
@@ -9311,6 +9642,27 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
     });
+    const sameUserRuntime = await api.requestSyncConnectorRuntimeAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [
+          { kind: "builtin", connectorSlug: "missing-builtin" },
+          { kind: "builtin", connectorSlug: "slack" },
+        ],
+      },
+      [200],
+    );
+    expect(sameUserRuntime.body.results[0]).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "missing-builtin" },
+      state: "unresolved",
+      reason: "connector-unavailable",
+    });
+    expect(sameUserRuntime.body.results[1]).toMatchObject({
+      target: { kind: "builtin", connectorSlug: "slack" },
+      state: "available",
+      nextSyncAt: expect.any(String),
+    });
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
@@ -9323,6 +9675,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       );
     }
     expect(otherUserRefresh.body.error.message).toBe(
+      "Run does not belong to user",
+    );
+    const otherUserRuntime = await api.requestSyncConnectorRuntimeAs(
+      `Bearer ${memberRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      },
+      [403],
+    );
+    expect(otherUserRuntime.body.error.message).toBe(
       "Run does not belong to user",
     );
     context.mocks.ably.publish.mockClear();
@@ -9372,6 +9735,17 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(cancelledRefresh.body.error.code).toBe(
       NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+    const cancelledRuntime = await api.requestSyncConnectorRuntimeAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      {
+        targets: [{ kind: "builtin", connectorSlug: "slack" }],
+      },
+      [409],
+    );
+    expect(cancelledRuntime.body.error.code).toBe(
+      CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
     );
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
@@ -9911,9 +10285,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await bdd.readMe(actor);
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.Translation]: true,
-    });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
       description: "Finds release details",
@@ -10157,60 +10528,35 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("gates translation guidance while advertising managed search tools", async () => {
+  it("advertises managed search and translation tools for regular runs", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const defaultRun = await api.createRun(actor, {
+    const run = await api.createRun(actor, {
       agentId,
       prompt: "find current public information",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
-    const defaultClaim = await api.claimRunnerJob(defaultRun.runId);
+    const claim = await api.claimRunnerJob(run.runId);
 
-    expect(defaultClaim.featureFlags).not.toHaveProperty("zeroWebSearch");
-    expect(defaultClaim.disallowedTools).toStrictEqual(
+    expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
+    expect(claim.disallowedTools).toStrictEqual(
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
-    expect(defaultClaim.appendSystemPrompt ?? "").toContain(
-      "zero web-search --help",
-    );
-    expect(defaultClaim.appendSystemPrompt ?? "").toContain(
-      "zero finance --help",
-    );
-    expect(defaultClaim.appendSystemPrompt ?? "").toContain(
-      "zero scrape --help",
-    );
-    expect(defaultClaim.appendSystemPrompt ?? "").not.toContain(
+    expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
+    expect(claim.appendSystemPrompt ?? "").toContain(
       'zero translate "<text>" --to <language> [--from <language>]',
     );
-    expect(defaultClaim.appendSystemPrompt ?? "").toContain(
+    expect(claim.appendSystemPrompt ?? "").toContain(
       "zero people-search <query>",
     );
-    expect(defaultClaim.appendSystemPrompt ?? "").toContain("model-extracted");
-    expect(defaultClaim.appendSystemPrompt ?? "").toContain(
-      "provider-backed sources",
-    );
+    expect(claim.appendSystemPrompt ?? "").toContain("model-extracted");
+    expect(claim.appendSystemPrompt ?? "").toContain("provider-backed sources");
 
-    await api.requestCancelRun(actor, defaultRun.runId, [200]);
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.Translation]: true,
-    });
-
-    const enabledRun = await api.createRun(actor, {
-      agentId,
-      prompt: "translate a product update",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const enabledClaim = await api.claimRunnerJob(enabledRun.runId);
-    expect(enabledClaim.appendSystemPrompt ?? "").toContain(
-      'zero translate "<text>" --to <language> [--from <language>]',
-    );
-
-    await api.requestCancelRun(actor, enabledRun.runId, [200]);
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("mounts the caller's private workflow over same-slug visible workflows", async () => {
@@ -10751,6 +11097,19 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(serialized).not.toContain(apiKey.token);
     }
     const timingEvents = sandboxOperationEventsForRun(first.runId);
+    const oldRunnerClaimEvent = singleSandboxOperationEvent(
+      timingEvents,
+      "claim_request_to_running",
+    );
+    expect(oldRunnerClaimEvent).not.toHaveProperty(
+      "runner_preference_resolution",
+    );
+    expect(oldRunnerClaimEvent).not.toHaveProperty(
+      "runner_preference_claim_state",
+    );
+    expect(oldRunnerClaimEvent).not.toHaveProperty(
+      "runner_preference_targeted_self",
+    );
     expect(
       timingEvents.find((event) => {
         return event.op_type === "job_discovered_to_claim_request";
@@ -10911,6 +11270,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           directCandidateInboxWaitMs: 34,
           providerDiscoveryToMainLoopMs: 45,
           mainLoopToLocalAdmissionMs: 67,
+          runnerPreferenceResolution: "matching_workspace_cache",
+          runnerPreferenceClaimState: "active",
+          runnerPreferenceTargetedSelf: false,
         },
       },
     );
@@ -10929,6 +11291,19 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         apiKey.token,
       ],
     });
+    const directClaimEvents = sandboxOperationEventsForRun(second.runId);
+    expect(
+      singleSandboxOperationEvent(
+        directClaimEvents,
+        "claim_request_to_running",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        runner_preference_resolution: "matching_workspace_cache",
+        runner_preference_claim_state: "active",
+        runner_preference_targeted_self: "false",
+      }),
+    );
 
     const tokenRequest = {
       keyName: "bdd-key",
@@ -12692,6 +13067,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             session_history_download_source: "configured_public_endpoint",
             session_history_ref_hash: "should-not-forward",
           },
+          {
+            ts: nowDate().toISOString(),
+            action_type: "api_to_spawn",
+            duration_ms: 125,
+            success: true,
+            runner_startup_path: "workspace",
+            sandbox_reuse_result: "poolMiss",
+          },
         ],
       },
       sandboxHeaders,
@@ -12790,6 +13173,20 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         }),
       ],
     );
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          op_type: "api_to_spawn",
+          run_id: created.runId,
+          duration_ms: 125,
+          success: true,
+          runner_startup_path: "workspace",
+          sandbox_reuse_result: "poolMiss",
+          source: "sandbox",
+        }),
+      ],
+    );
     const sessionHistoryDownloadEvents = sandboxOperationEventsForRunByAction(
       created.runId,
       "session_history_download",
@@ -12797,6 +13194,12 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     expect(sessionHistoryDownloadEvents).toHaveLength(1);
     expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
       "session_history_ref_hash",
+    );
+    expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
+      "runner_startup_path",
+    );
+    expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
+      "sandbox_reuse_result",
     );
 
     const observed = await webhooks.requestAgentModelUsageObservationV2(

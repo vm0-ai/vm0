@@ -1,6 +1,14 @@
 import { z } from "zod";
+
 import { authHeadersSchema, initContract } from "./base";
-import { apiErrorSchema } from "./errors";
+import { apiErrorSchema, type ApiErrorResponse } from "./errors";
+import type {
+  AnyRouteTypeSlots,
+  AppRoute,
+  AppRouteSpec,
+  ZodLikeSchema,
+  ZodSchema,
+} from "./trpc-contract";
 
 const c = initContract();
 
@@ -11,7 +19,172 @@ export const ARTIFACT_CATALOG_KINDS = [
   "video",
   "avatar",
   "presentation",
+  "shared-thread",
 ] as const;
+
+export type ArtifactCatalogKind = (typeof ARTIFACT_CATALOG_KINDS)[number];
+
+interface ArtifactThumbnail {
+  url: string;
+}
+
+export interface ArtifactSummary {
+  id: string;
+  kind: ArtifactCatalogKind;
+  title: string;
+  thumbnail: ArtifactThumbnail | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ArtifactFile {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+  previewImageUrl: string | null;
+}
+
+interface ArtifactHostedSite {
+  id: string;
+  slug: string;
+  publicSlug: string;
+  url: string;
+  deploymentVersion: number | null;
+  entrypoint: string;
+  spaFallback: boolean;
+}
+
+interface FileArtifactDetail extends ArtifactSummary {
+  kind: "file";
+  file: ArtifactFile;
+}
+
+interface ImageArtifactDetail extends ArtifactSummary {
+  kind: "image";
+  file: ArtifactFile;
+  model: string | null;
+  provider: string | null;
+}
+
+interface VideoArtifactDetail extends ArtifactSummary {
+  kind: "video";
+  file: ArtifactFile;
+  model: string | null;
+  durationSeconds: number | null;
+}
+
+interface AvatarArtifactDetail extends ArtifactSummary {
+  kind: "avatar";
+  file: ArtifactFile;
+  model: string | null;
+  durationSeconds: number | null;
+}
+
+interface HostedSiteArtifactDetail extends ArtifactSummary {
+  kind: "hosted-site";
+  site: ArtifactHostedSite;
+}
+
+interface PresentationArtifactDetail extends ArtifactSummary {
+  kind: "presentation";
+  site: ArtifactHostedSite;
+}
+
+interface SharedThreadArtifactDetail extends ArtifactSummary {
+  kind: "shared-thread";
+  sharedThread: { id: string };
+}
+
+export type ArtifactDetail =
+  | FileArtifactDetail
+  | ImageArtifactDetail
+  | VideoArtifactDetail
+  | AvatarArtifactDetail
+  | HostedSiteArtifactDetail
+  | PresentationArtifactDetail
+  | SharedThreadArtifactDetail;
+
+export interface ArtifactCatalogAuthHeaders {
+  readonly authorization?: string;
+}
+
+export interface ArtifactCatalogListQuery {
+  readonly limit?: number;
+  readonly cursor?: string;
+  readonly kind?: ArtifactCatalogKind;
+  readonly chatThreadId?: string;
+}
+
+export interface ArtifactCatalogListClientQuery {
+  readonly limit?: unknown;
+  readonly cursor?: string;
+  readonly kind?: ArtifactCatalogKind;
+  readonly chatThreadId?: string;
+}
+
+export interface ArtifactIdPathParams {
+  readonly artifactId: string;
+}
+
+export interface ArtifactCatalogListResponse {
+  artifacts: ArtifactSummary[];
+  nextCursor: string | null;
+}
+
+export interface ArtifactCatalogRequestOptions {
+  readonly extraHeaders?: Record<string, string>;
+  readonly fetchOptions?: RequestInit;
+}
+
+export interface ArtifactCatalogListServerRequest extends ArtifactCatalogRequestOptions {
+  readonly headers: ArtifactCatalogAuthHeaders;
+  readonly query: ArtifactCatalogListQuery;
+}
+
+export interface ArtifactCatalogListClientRequest extends ArtifactCatalogRequestOptions {
+  readonly headers?: ArtifactCatalogAuthHeaders;
+  readonly query?: ArtifactCatalogListClientQuery;
+}
+
+export interface ArtifactCatalogGetServerRequest extends ArtifactCatalogRequestOptions {
+  readonly headers: ArtifactCatalogAuthHeaders;
+  readonly params: ArtifactIdPathParams;
+}
+
+export interface ArtifactCatalogGetClientRequest extends ArtifactCatalogRequestOptions {
+  readonly headers?: ArtifactCatalogAuthHeaders;
+  readonly params: ArtifactIdPathParams;
+}
+
+export type ArtifactCatalogApiErrorRouteResponse<TStatus extends number> = {
+  readonly status: TStatus;
+  readonly body: ApiErrorResponse;
+};
+
+export type ArtifactCatalogListRouteResponse =
+  | { readonly status: 200; readonly body: ArtifactCatalogListResponse }
+  | ArtifactCatalogApiErrorRouteResponse<401>
+  | ArtifactCatalogApiErrorRouteResponse<403>;
+
+export type ArtifactCatalogGetRouteResponse =
+  | { readonly status: 200; readonly body: ArtifactDetail }
+  | ArtifactCatalogApiErrorRouteResponse<401>
+  | ArtifactCatalogApiErrorRouteResponse<403>
+  | ArtifactCatalogApiErrorRouteResponse<404>;
+
+export interface ArtifactCatalogListRouteTypes extends AnyRouteTypeSlots {
+  readonly serverRequest: ArtifactCatalogListServerRequest;
+  readonly clientRequest: ArtifactCatalogListClientRequest | undefined;
+  readonly response: ArtifactCatalogListRouteResponse;
+}
+
+export interface ArtifactCatalogGetRouteTypes extends AnyRouteTypeSlots {
+  readonly serverRequest: ArtifactCatalogGetServerRequest;
+  readonly clientRequest: ArtifactCatalogGetClientRequest;
+  readonly response: ArtifactCatalogGetRouteResponse;
+}
 
 const artifactKindSchema = z.enum(ARTIFACT_CATALOG_KINDS);
 
@@ -55,9 +228,6 @@ const artifactCatalogListQuerySchema = z.object({
 const artifactCatalogListResponseSchema = z.object({
   artifacts: z.array(artifactSummarySchema),
   nextCursor: z.string().nullable(),
-  // Optional while the frontend and API can be on adjacent deploys. New
-  // clients only expose filters that the serving API advertises.
-  supportedKinds: z.array(artifactKindSchema).optional(),
 });
 
 /**
@@ -119,37 +289,94 @@ const artifactDetailSchema = z.discriminatedUnion("kind", [
     kind: z.literal("presentation"),
     site: artifactHostedSiteSchema,
   }),
+  artifactDetailBaseSchema.extend({
+    kind: z.literal("shared-thread"),
+    sharedThread: z.object({ id: z.string().uuid() }),
+  }),
 ]);
 
-export const artifactCatalogContract = c.router({
+const artifactCatalogAuthHeadersSchema =
+  authHeadersSchema as unknown as ZodSchema<
+    ArtifactCatalogAuthHeaders,
+    ArtifactCatalogAuthHeaders
+  >;
+const artifactCatalogQuerySchema =
+  artifactCatalogListQuerySchema as unknown as ZodSchema<
+    ArtifactCatalogListQuery,
+    ArtifactCatalogListClientQuery
+  >;
+const artifactCatalogPathParamsSchema =
+  artifactIdPathParamsSchema as unknown as ZodSchema<
+    ArtifactIdPathParams,
+    ArtifactIdPathParams
+  >;
+const artifactCatalogListResultSchema =
+  artifactCatalogListResponseSchema as unknown as ZodLikeSchema<ArtifactCatalogListResponse>;
+const artifactCatalogDetailResultSchema =
+  artifactDetailSchema as unknown as ZodLikeSchema<ArtifactDetail>;
+const artifactCatalogApiErrorSchema =
+  apiErrorSchema as unknown as ZodLikeSchema<ApiErrorResponse>;
+
+const artifactCatalogRuntimeSpec: Record<"list" | "get", AppRouteSpec> = {
   list: {
     method: "GET",
     path: "/api/zero/artifacts/catalog",
-    headers: authHeadersSchema,
-    query: artifactCatalogListQuerySchema,
+    headers: artifactCatalogAuthHeadersSchema,
+    query: artifactCatalogQuerySchema,
     responses: {
-      200: artifactCatalogListResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
+      200: artifactCatalogListResultSchema,
+      401: artifactCatalogApiErrorSchema,
+      403: artifactCatalogApiErrorSchema,
     },
     summary: "List the caller's artifacts from the artifact catalog",
   },
   get: {
     method: "GET",
     path: "/api/zero/artifacts/catalog/:artifactId",
-    headers: authHeadersSchema,
-    pathParams: artifactIdPathParamsSchema,
+    headers: artifactCatalogAuthHeadersSchema,
+    pathParams: artifactCatalogPathParamsSchema,
     responses: {
-      200: artifactDetailSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
+      200: artifactCatalogDetailResultSchema,
+      401: artifactCatalogApiErrorSchema,
+      403: artifactCatalogApiErrorSchema,
+      404: artifactCatalogApiErrorSchema,
     },
     summary: "Get one artifact with its kind-specific detail",
   },
-});
+};
 
-export type ArtifactCatalogContract = typeof artifactCatalogContract;
-export type ArtifactCatalogKind = z.infer<typeof artifactKindSchema>;
-export type ArtifactSummary = z.infer<typeof artifactSummarySchema>;
-export type ArtifactDetail = z.infer<typeof artifactDetailSchema>;
+const artifactCatalogRuntimeContract = c.router(artifactCatalogRuntimeSpec);
+
+export type ArtifactCatalogListRoute =
+  AppRoute<ArtifactCatalogListRouteTypes> & {
+    readonly method: "GET";
+    readonly path: "/api/zero/artifacts/catalog";
+    readonly headers: ZodSchema<
+      ArtifactCatalogAuthHeaders,
+      ArtifactCatalogAuthHeaders
+    >;
+    readonly query: ZodSchema<
+      ArtifactCatalogListQuery,
+      ArtifactCatalogListClientQuery
+    >;
+  };
+
+export type ArtifactCatalogGetRoute = AppRoute<ArtifactCatalogGetRouteTypes> & {
+  readonly method: "GET";
+  readonly path: "/api/zero/artifacts/catalog/:artifactId";
+  readonly headers: ZodSchema<
+    ArtifactCatalogAuthHeaders,
+    ArtifactCatalogAuthHeaders
+  >;
+  readonly pathParams: ZodSchema<ArtifactIdPathParams, ArtifactIdPathParams>;
+};
+
+export type ArtifactCatalogContract = {
+  readonly list: ArtifactCatalogListRoute;
+  readonly get: ArtifactCatalogGetRoute;
+};
+
+// Keep runtime validation from the Zod-backed router while exposing compact,
+// explicit request and response slots to downstream API and app typechecks.
+export const artifactCatalogContract =
+  artifactCatalogRuntimeContract as unknown as ArtifactCatalogContract;

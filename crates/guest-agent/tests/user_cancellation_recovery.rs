@@ -3,7 +3,6 @@
 
 mod common;
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -63,14 +62,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     let home = tmp.path().join("home");
     let runtime_dir = tmp.path().join("runtime");
     std::fs::create_dir_all(&home)?;
-    let history = format!(
-        "{{\"type\":\"thread.started\",\"thread_id\":\"{}\"}}\n\
-         {{\"type\":\"turn.started\"}}\n",
-        scenario.thread_id
-    );
-    let child_pid_file = tmp.path().join("codex.pid");
-    let mock_codex =
-        write_stalled_codex(tmp.path(), scenario.thread_id, &history, &child_pid_file)?;
+    let mock_codex = common::build_and_locate_mock_codex()?;
     let run_payload_file = common::write_run_payload_file_for_test(
         &runtime_dir,
         &guest_contracts::env::RunPayload {
@@ -114,8 +106,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     let upload = server.mock(|when, then| {
         when.method(PUT)
             .path("/test/user-cancellation-history")
-            .header("Content-Type", "application/octet-stream")
-            .body(history.as_str());
+            .header("Content-Type", "application/octet-stream");
         then.status(200);
     });
     let checkpoint_order = Arc::clone(&request_order);
@@ -161,12 +152,10 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     let listener = bind_abstract_listener(&endpoint)?;
     let control_paths = guest_agent::paths::GuestPaths::from_runtime_dir(runtime_dir.clone());
     let session_id_file = PathBuf::from(control_paths.session_id_file());
-    let control_pid_file = child_pid_file.clone();
     let control = tokio::task::spawn_blocking(move || {
         let mut stream = accept_with_timeout(&listener, Duration::from_secs(5))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         read_hello(&mut stream)?;
-        wait_for_file(&control_pid_file, Duration::from_secs(5))?;
         wait_for_file(&session_id_file, Duration::from_secs(5))?;
         write_request(
             &mut stream,
@@ -199,6 +188,14 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             .env(guest_contracts::env::CLI_AGENT_TYPE_ENV, "codex")
             .env(guest_contracts::env::USE_MOCK_CODEX_ENV, "true")
             .env(guest_contracts::env::MOCK_CODEX_PATH_ENV, &mock_codex)
+            .env(
+                guest_contracts::env::RESUME_SESSION_ID_ENV,
+                scenario.thread_id,
+            )
+            .env(
+                "MOCK_CODEX_APP_SERVER_SCENARIO",
+                "runtime-turn-started-before-steer",
+            )
             .env(
                 guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
                 "1",
@@ -270,12 +267,6 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
         std::fs::read_to_string(paths.session_id_file())?.trim(),
         scenario.thread_id
     );
-    let child_pid = std::fs::read_to_string(child_pid_file)?;
-    assert!(
-        !Path::new(&format!("/proc/{}", child_pid.trim())).exists(),
-        "cancelled Codex process should be gone before guest-agent exits"
-    );
-
     Ok(())
 }
 
@@ -291,31 +282,4 @@ fn wait_for_file(path: &Path, timeout: Duration) -> std::io::Result<()> {
         std::thread::sleep(Duration::from_millis(10));
     }
     Ok(())
-}
-
-fn write_stalled_codex(
-    root: &Path,
-    thread_id: &str,
-    history: &str,
-    child_pid_file: &Path,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let path = root.join("stalled-codex");
-    let script = format!(
-        "#!/bin/sh\n\
-         set -eu\n\
-         history_dir=\"$HOME/.codex/sessions/2026/07/30\"\n\
-         mkdir -p \"$history_dir\"\n\
-         printf '%s' '{}' > \"$history_dir/{thread_id}.jsonl\"\n\
-         printf '%s\\n' '{{\"type\":\"thread.started\",\"thread_id\":\"{thread_id}\"}}'\n\
-         printf '%s\\n' '{{\"type\":\"turn.started\"}}'\n\
-         printf '%s\\n' \"$$\" > '{}'\n\
-         while :; do sleep 1; done\n",
-        history.replace('\'', "'\\''"),
-        child_pid_file.display(),
-    );
-    std::fs::write(&path, script)?;
-    let mut permissions = std::fs::metadata(&path)?.permissions();
-    permissions.set_mode(0o700);
-    std::fs::set_permissions(&path, permissions)?;
-    Ok(path)
 }

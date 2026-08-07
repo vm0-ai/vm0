@@ -252,6 +252,18 @@ pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<boo
     unit_active_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
 }
 
+/// Check normal service activity while bounding the systemd query itself.
+pub(super) async fn is_unit_active_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<bool> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "ActiveState"];
+    let output = run_systemctl_show_bounded(svc, &properties, duration).await?;
+    let values = parse_systemctl_show_output(svc, &properties, &output)?;
+    unit_active_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SystemdUnitLoadState {
     Stub,

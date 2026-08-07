@@ -83,6 +83,7 @@ interface CompleteGoogleMapsResultArgs {
 
 interface MapsCreditCheckArgs {
   readonly orgId: string;
+  readonly userId: string;
   readonly provider?: string;
   readonly category: string;
 }
@@ -302,6 +303,7 @@ export const checkMapsCredits$ = command(
       checkManagedCredits$,
       {
         orgId: args.orgId,
+        userId: args.userId,
         resource: {
           kind: USAGE_KIND,
           provider,
@@ -383,6 +385,7 @@ export const zeroMapsGeocode$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         category: GEOCODING_CATEGORY,
       },
       signal,
@@ -434,6 +437,7 @@ export const zeroMapsReverseGeocode$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         category: GEOCODING_CATEGORY,
       },
       signal,
@@ -488,6 +492,7 @@ export const zeroMapsDirections$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         category: billingCategory,
       },
       signal,
@@ -555,6 +560,7 @@ export const zeroMapsPlacesSearch$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         category: billingCategory,
       },
       signal,
@@ -621,6 +627,7 @@ export const zeroMapsPlacesDetails$ = command(
       checkMapsCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         category: billingCategory,
       },
       signal,

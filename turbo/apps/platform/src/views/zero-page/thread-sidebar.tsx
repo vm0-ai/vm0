@@ -2,6 +2,7 @@ import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   IconArrowLeft,
+  IconExternalLink,
   IconMaximize,
   IconMinimize,
   IconX,
@@ -326,6 +327,31 @@ function ThreadArtifactDetail({
     // 404 (or a load error) keeps the sidebar mounted so the page layout does
     // not jump; the list stays one Back away.
     return <ThreadArtifactUnavailable thread={thread} showBack />;
+  }
+
+  if (detail.kind === "shared-thread") {
+    return (
+      <aside className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0">
+        <ThreadSidebarHeader
+          title={detail.title}
+          onBack={backToArtifacts}
+          onClose={close}
+        />
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <a
+            href={`/share/threads/${encodeURIComponent(detail.sharedThread.id)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <IconExternalLink size={16} stroke={1.7} />
+            {t(($) => {
+              return $.artifacts.sidebar.openSharedConversation;
+            })}
+          </a>
+        </div>
+      </aside>
+    );
   }
 
   const preview = artifactDetailPreview(detail);

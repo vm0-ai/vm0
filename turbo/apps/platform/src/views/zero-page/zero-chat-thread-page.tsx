@@ -52,12 +52,14 @@ import {
   IconCoins,
   IconHourglass,
   IconBrandSlack,
+  IconShare3,
 } from "@tabler/icons-react";
 import {
   cn,
   getShortcutLabel,
   getShortcutParts,
   Button,
+  Checkbox,
   Input,
   Skeleton,
   Dialog,
@@ -114,12 +116,10 @@ import type {
 } from "../../signals/connector-domain.ts";
 import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  mermaidDiagramsEnabled$,
-  pwaChatKeyboardGesturesEnabled$,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -191,7 +191,10 @@ import {
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
-import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
+import {
+  writeToClipboard,
+  type ChatClipboardAttachment,
+} from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type {
   HeaderAutomationSignals,
@@ -320,6 +323,19 @@ function isUserMessageNonContentPart(
     part.type === "goal" ||
     part.type === "morning_brief"
   );
+}
+
+type UserMessageHiddenPart = Extract<
+  UserMessagePart,
+  {
+    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+  }
+>;
+
+function isUserMessageHiddenPart(
+  part: UserMessagePart,
+): part is UserMessageHiddenPart {
+  return isUserMessageNonContentPart(part) || part.type === "model";
 }
 
 function isInputChatEvent(event: ChatEvent): event is ChatInputEvent {
@@ -521,7 +537,11 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
+const CHAT_THREAD_HEADER_CLASS =
+  "hidden h-14 shrink-0 items-center justify-between bg-transparent px-6 sm:flex";
+
 function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
   const threadTitle = useGet(thread.threadTitle$)?.trim() ?? "";
   const threadTitleEmoji = useGet(thread.threadTitleEmoji$);
   const threadTitleText = useGet(thread.threadTitleText$);
@@ -529,6 +549,12 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     openRenameChatThreadDialogForThreadId$,
   );
   const pageSignal = useGet(pageSignal$);
+  const sharingPhase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const startSharing = useSet(thread.sharing.start$);
+  const closeSharing = useSet(thread.sharing.close$);
+  const sharingEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.SharedThreadSharing] ?? false;
   function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
     event.preventDefault();
     detach(
@@ -537,8 +563,38 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
     );
   }
 
+  if (sharingPhase !== "idle") {
+    return (
+      <header className={CHAT_THREAD_HEADER_CLASS}>
+        <span className="text-sm font-medium text-foreground">
+          {t(
+            ($) => {
+              return $.chat.sharing.selectedCount;
+            },
+            { count: selectedCount },
+          )}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            detach(
+              closeSharing(pageSignal),
+              Reason.DomCallback,
+              "close shared thread selection",
+            );
+          }}
+        >
+          {t(($) => {
+            return $.chat.sharing.cancel;
+          })}
+        </Button>
+      </header>
+    );
+  }
+
   return (
-    <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
+    <header className={CHAT_THREAD_HEADER_CLASS}>
       <div className="flex min-w-0 items-center gap-2">
         <ChatThreadEmojiMenuButton
           threadId={thread.threadId}
@@ -556,6 +612,35 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
+        {sharingEnabled ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    detach(
+                      startSharing(pageSignal),
+                      Reason.DomCallback,
+                      "start shared thread selection",
+                    );
+                  }}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+                  aria-label={t(($) => {
+                    return $.chat.sharing.start;
+                  })}
+                >
+                  <IconShare3 size={18} stroke={1.5} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t(($) => {
+                  return $.chat.sharing.start;
+                })}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
         <AutomationMenuButton key={thread.threadId} thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
@@ -2635,19 +2720,17 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const scrollContentOnRef = useSet(thread.scrollContentOnRef$);
-  // Following content that grows after its scroll was committed rides with the
-  // diagrams that made it necessary: a diagram is the only chat content that
-  // settles long after its message, and one switch keeps the rollback single.
-  // Without the ref the message container is never observed, which is exactly
-  // how the thread behaved before #24658.
-  const followContentGrowth = useGet(mermaidDiagramsEnabled$);
+  const sharingPhase = useGet(thread.sharing.phase$);
 
   return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
       <div
-        ref={followContentGrowth ? scrollContentOnRef : undefined}
+        ref={scrollContentOnRef}
         data-message-container
-        className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
+        className={cn(
+          "w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible",
+          sharingPhase !== "idle" && "pr-10 lg:pr-0",
+        )}
         style={{ visibility: renderedGroupsReady ? "visible" : "hidden" }}
       >
         <ChatThreadSessionError thread={thread} />
@@ -2712,7 +2795,7 @@ function ChatThreadEventGroups({
                 />
               );
             })}
-            <PagedGroupRow
+            <SelectablePagedGroupRow
               group={group}
               thread={thread}
               runGroupFolds={embeddedFolds}
@@ -3559,8 +3642,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
   const scrollContainerOnRef = useSet(thread.scrollContainerOnRef$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
-  const pwaChatKeyboardGesturesEnabled =
-    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
+  const standalonePwa = isStandalonePwa();
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (
@@ -3580,7 +3662,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
         onScroll={handleScroll}
         className={cn(
           "absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]",
-          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+          standalonePwa && "overscroll-contain",
         )}
       >
         <ChatThreadEventsMain
@@ -3630,12 +3712,134 @@ function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
           <ChatThreadEventsPane thread={thread} />
           {/* Command loadables are hook-owned, so keep their identity boundary
               narrower than the persistent thread and event owners. */}
-          <ChatThreadComposer key={thread.threadId} thread={thread} />
+          <ChatThreadBottomBar key={thread.threadId} thread={thread} />
         </div>
       </div>
 
       <ChatFeedbackSelection feedback={thread.feedback} />
     </>
+  );
+}
+
+function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const selectedCount = useGet(thread.sharing.selectedCount$);
+  const sharedThreadId = useGet(thread.sharing.createdSharedThreadId$);
+  const close = useSet(thread.sharing.close$);
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createSharedThread] = useLoadableSet(
+    thread.sharing.create$,
+  );
+  if (phase === "idle") {
+    return <ChatThreadComposer thread={thread} />;
+  }
+
+  const creating = createLoadable.state === "loading";
+  const shareUrl = sharedThreadId
+    ? `${window.location.origin}/share/threads/${sharedThreadId}`
+    : null;
+  return (
+    <footer className="relative shrink-0 border-t border-border/60 bg-background px-4 py-3 sm:px-6">
+      <div className="mx-auto flex w-full max-w-[900px] flex-col gap-2">
+        {shareUrl ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              readOnly
+              value={shareUrl}
+              aria-label={t(($) => {
+                return $.chat.sharing.shareLink;
+              })}
+              className="min-w-0 flex-1"
+            />
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                onClick={() => {
+                  detach(
+                    (async () => {
+                      const copied = await writeToClipboard(shareUrl);
+                      if (copied) {
+                        toast.success(
+                          t(($) => {
+                            return $.chat.sharing.linkCopied;
+                          }),
+                        );
+                        return;
+                      }
+                      toast.error(
+                        t(($) => {
+                          return $.chat.sharing.copyFailed;
+                        }),
+                      );
+                    })(),
+                    Reason.DomCallback,
+                    "copy shared thread link",
+                  );
+                }}
+              >
+                <IconCopy size={16} stroke={1.7} />
+                {t(($) => {
+                  return $.chat.sharing.copyLink;
+                })}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  detach(
+                    close(pageSignal),
+                    Reason.DomCallback,
+                    "close shared thread selection",
+                  );
+                }}
+              >
+                {t(($) => {
+                  return $.chat.sharing.close;
+                })}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {t(
+                  ($) => {
+                    return $.chat.sharing.selectedCount;
+                  },
+                  { count: selectedCount },
+                )}
+              </p>
+              {createLoadable.state === "hasError" ? (
+                <p className="mt-0.5 text-xs text-destructive">
+                  {t(($) => {
+                    return $.chat.sharing.createFailed;
+                  })}
+                </p>
+              ) : null}
+            </div>
+            <Button
+              disabled={selectedCount === 0 || creating}
+              onClick={() => {
+                detach(
+                  createSharedThread(pageSignal),
+                  Reason.DomCallback,
+                  "create shared thread",
+                );
+              }}
+            >
+              {creating ? (
+                <IconLoader2 size={16} stroke={1.7} className="animate-spin" />
+              ) : (
+                <IconShare3 size={16} stroke={1.7} />
+              )}
+              {t(($) => {
+                return $.chat.sharing.create;
+              })}
+            </Button>
+          </div>
+        )}
+      </div>
+    </footer>
   );
 }
 
@@ -3916,8 +4120,7 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
 }
 
 function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
-  const pwaChatKeyboardGesturesEnabled =
-    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
+  const standalonePwa = isStandalonePwa();
 
   return (
     <footer
@@ -3928,7 +4131,7 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
       <div
         className={cn(
           "overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
-          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+          standalonePwa && "overscroll-contain",
         )}
       >
         <div className="mx-auto max-w-[900px]">
@@ -4338,12 +4541,14 @@ function parseInlineAttachments(content: string): {
 
 function BodyContentBlocks({
   blocks,
+  mermaidScope,
   openLightbox,
   hardBreaks,
   escapeMarkdownHtml = false,
   markdownMediaPreview = true,
 }: {
   blocks: BodyRenderBlock[];
+  mermaidScope: string;
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
   escapeMarkdownHtml?: boolean;
@@ -4358,6 +4563,7 @@ function BodyContentBlocks({
           <BodyRenderBlockView
             key={bodyRenderBlockKey(block, cardOccurrences)}
             block={block}
+            mermaidScope={mermaidScope}
             openLightbox={openLightbox}
             openVideoLightbox={openVideoLightbox}
             hardBreaks={hardBreaks}
@@ -4385,6 +4591,7 @@ function bodyRenderBlockKey(
 
 function BodyRenderBlockView({
   block,
+  mermaidScope,
   openLightbox,
   openVideoLightbox,
   hardBreaks,
@@ -4392,6 +4599,7 @@ function BodyRenderBlockView({
   markdownMediaPreview,
 }: {
   block: BodyRenderBlock;
+  mermaidScope: string;
   openLightbox: (url: string) => void;
   openVideoLightbox: (value: { url: string; filename: string }) => void;
   hardBreaks: boolean;
@@ -4402,6 +4610,7 @@ function BodyRenderBlockView({
     case "markdown": {
       return (
         <Markdown
+          mermaidScope={mermaidScope}
           source={
             hardBreaks ? block.content.replace(/\n/g, "  \n") : block.content
           }
@@ -6126,6 +6335,129 @@ function PagedGroupRow({
   );
 }
 
+function shareableEventFromChatEvent(
+  event: EnrichedChatEvent,
+): { readonly id: string; readonly text: string } | null {
+  if (event.seqId === undefined) {
+    return null;
+  }
+  if (event.eventType === "output.message") {
+    return event.content && event.content.length > 0
+      ? { id: event.id, text: event.content }
+      : null;
+  }
+  if (
+    event.eventType !== "input.prompt" &&
+    event.eventType !== "input.automation"
+  ) {
+    return null;
+  }
+  const displayText = messageDocumentToDisplayText(event.userMessage)?.trim();
+  if (displayText) {
+    return { id: event.id, text: displayText };
+  }
+  const automation = eventNonContentPart(event);
+  if (automation?.type !== "automation") {
+    return null;
+  }
+  const automationText =
+    automation.automationBrief?.trim() || automation.workflowName.trim();
+  return automationText.length > 0
+    ? { id: event.id, text: automationText }
+    : null;
+}
+
+function clickTargetsExistingInteraction(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'a, button, input, textarea, select, [role="button"], [contenteditable="true"]',
+    ) !== null
+  );
+}
+
+function SelectablePagedGroupRow({
+  group,
+  thread,
+  runGroupFolds,
+  completedWorkFold,
+}: Parameters<typeof PagedGroupRow>[0]) {
+  const { t } = useTranslation();
+  const phase = useGet(thread.sharing.phase$);
+  const selectedEventIds = useGet(thread.sharing.selectedEventIds$);
+  const toggle = useSet(thread.sharing.toggle$);
+  const events = group.events.flatMap((event) => {
+    const shareable = shareableEventFromChatEvent(event);
+    return shareable ? [shareable] : [];
+  });
+  if (phase === "idle" || events.length === 0) {
+    return (
+      <PagedGroupRow
+        group={group}
+        thread={thread}
+        runGroupFolds={runGroupFolds}
+        completedWorkFold={completedWorkFold}
+      />
+    );
+  }
+  const selectedCount = events.filter((event) => {
+    return selectedEventIds.has(event.id);
+  }).length;
+  const allSelected = selectedCount === events.length;
+  const checked =
+    selectedCount === 0 ? false : allSelected ? true : "indeterminate";
+
+  const toggleGroup = () => {
+    if (phase !== "selecting") {
+      return;
+    }
+    const result = toggle(events);
+    if (result === "too-large") {
+      toast.error(
+        t(($) => {
+          return $.chat.sharing.tooLarge;
+        }),
+      );
+    }
+  };
+
+  return (
+    <div
+      data-chat-share-selectable-group
+      className={cn(
+        "relative -my-1 rounded-lg py-1 transition-colors",
+        phase === "selecting" && "cursor-pointer hover:bg-gray-50",
+      )}
+      onClick={(event) => {
+        if (!clickTargetsExistingInteraction(event.target)) {
+          toggleGroup();
+        }
+      }}
+    >
+      <PagedGroupRow
+        group={group}
+        thread={thread}
+        runGroupFolds={runGroupFolds}
+        completedWorkFold={completedWorkFold}
+      />
+      <Checkbox
+        checked={checked}
+        disabled={phase !== "selecting"}
+        aria-label={t(($) => {
+          return allSelected
+            ? $.chat.sharing.deselectGroup
+            : $.chat.sharing.selectGroup;
+        })}
+        className="absolute -right-9 top-1/2 -translate-y-1/2 lg:-right-10"
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+        onCheckedChange={toggleGroup}
+      />
+    </div>
+  );
+}
+
 function PagedUserGroup({
   group,
   thread,
@@ -7242,7 +7574,9 @@ function UserMessageFeedbackGroup({
 
 type UserMessageContentPart = Exclude<
   UserMessagePart,
-  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
+  {
+    readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
+  }
 >;
 type UserMessageStandalonePart = Exclude<
   UserMessageContentPart,
@@ -7312,7 +7646,7 @@ function UserMessageView({
   const bodyParts = document.parts.filter(
     (part): part is UserMessageContentPart => {
       return (
-        !isUserMessageNonContentPart(part) &&
+        !isUserMessageHiddenPart(part) &&
         !isElevatedUserMessagePart(part, elevatedFileIds)
       );
     },
@@ -7408,7 +7742,7 @@ function UserMessageContent({
   );
   const hasBody = document.parts.some((part) => {
     return (
-      !isUserMessageNonContentPart(part) &&
+      !isUserMessageHiddenPart(part) &&
       !isElevatedUserMessagePart(part, elevatedFileIds)
     );
   });
@@ -7699,6 +8033,7 @@ function PagedUserMessage({
                   <div className="px-4 py-3">
                     <BodyContentBlocks
                       blocks={bodyBlocks}
+                      mermaidScope={thread.lifecycleId}
                       openLightbox={openLightbox}
                       hardBreaks
                       escapeMarkdownHtml
@@ -7856,6 +8191,7 @@ function PagedAssistantEventItem({
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}
+            mermaidScope={thread.lifecycleId}
             openLightbox={openLightbox}
             hardBreaks={false}
           />

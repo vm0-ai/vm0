@@ -273,36 +273,6 @@ export const deleteCustomConnector$ = command(
   },
 );
 
-export const renameCustomConnector$ = command(
-  async (
-    { get, set },
-    args: { id: string; displayName: string },
-    signal: AbortSignal,
-  ): Promise<CustomConnectorResponse> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroCustomConnectorByIdContract);
-    const result = await accept(
-      client.patch({
-        params: { id: args.id },
-        body: { displayName: args.displayName },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(bumpReload$);
-    toast.success(
-      i18n.t(
-        ($) => {
-          return $.connectors.custom.toasts.renamed;
-        },
-        { connector: result.body.displayName },
-      ),
-    );
-    return result.body;
-  },
-);
-
 const setCustomConnectorSecretForTarget$ = command(
   async (
     { get, set },
@@ -510,7 +480,6 @@ type DialogState =
   | { kind: "none" }
   | { kind: "create" }
   | { kind: "edit"; connector: CustomConnectorResponse }
-  | { kind: "rename"; connector: CustomConnectorResponse }
   | { kind: "connect"; connector: CustomConnectorResponse }
   | { kind: "access"; connector: CustomConnectorResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
@@ -552,11 +521,6 @@ export const openCustomConnectorEditConfirmationDialog$ = command(
 export const closeCustomConnectorEditConfirmationDialog$ = command(
   ({ set }) => {
     set(internalEditConfirmation$, null);
-  },
-);
-export const openCustomConnectorRenameDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
-    set(internalDialog$, { kind: "rename", connector });
   },
 );
 export const openCustomConnectorConnectDialog$ = command(
@@ -721,20 +685,6 @@ export const removeCustomConnectorAuthMethod$ = command(
 export const resetCustomConnectorCreateForm$ = command(({ set }) => {
   set(internalCreateForm$, CREATE_FORM_DEFAULTS);
 });
-
-// ---------------------------------------------------------------------------
-// Rename form state
-// ---------------------------------------------------------------------------
-
-const internalRenameInput$ = state("");
-export const customConnectorRenameInput$ = computed((get) => {
-  return get(internalRenameInput$);
-});
-export const setCustomConnectorRenameInput$ = command(
-  ({ set }, value: string) => {
-    set(internalRenameInput$, value);
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Connect form state

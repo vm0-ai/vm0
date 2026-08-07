@@ -42,6 +42,21 @@ import {
 import { chatEventAutomationPart } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { cronRenewGmailWatchesRoutes } from "../cron-renew-gmail-watches";
+import { cronRenewGoogleCalendarWatchesRoutes } from "../cron-renew-google-calendar-watches";
+import { cronRenewGoogleFormsWatchesRoutes } from "../cron-renew-google-forms-watches";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { zeroWorkflowsRoutes } from "../zero-workflows";
+import { webhooksGoogleCalendarRoutes } from "../webhooks-google-calendar";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronRenewGmailWatchesRoutes,
+  ...cronRenewGoogleCalendarWatchesRoutes,
+  ...cronRenewGoogleFormsWatchesRoutes,
+  ...webhooksGoogleCalendarRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+  ...zeroWorkflowsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -57,23 +72,33 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function detailClient() {
-  return setupApp({ context })(zeroWorkflowsDetailContract);
+  return setupApp({ context, routes: zeroWorkflowsRoutes })(
+    zeroWorkflowsDetailContract,
+  );
 }
 
 function renewGmailWatchesClient() {
-  return setupApp({ context })(cronRenewGmailWatchesContract);
+  return setupApp({ context, routes: cronRenewGmailWatchesRoutes })(
+    cronRenewGmailWatchesContract,
+  );
 }
 
 function renewGoogleCalendarWatchesClient() {
-  return setupApp({ context })(cronRenewGoogleCalendarWatchesContract);
+  return setupApp({ context, routes: cronRenewGoogleCalendarWatchesRoutes })(
+    cronRenewGoogleCalendarWatchesContract,
+  );
 }
 
 function renewGoogleFormsWatchesClient() {
-  return setupApp({ context })(cronRenewGoogleFormsWatchesContract);
+  return setupApp({ context, routes: cronRenewGoogleFormsWatchesRoutes })(
+    cronRenewGoogleFormsWatchesContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -2261,25 +2286,25 @@ describe("zero workflow automations", () => {
   it("rejects removed Gmail event automation match fields", async () => {
     const { workflowId } = await setupFixture();
 
-    const response = await createApp({ signal: context.signal }).request(
-      `/api/zero/workflows/${workflowId}/automations`,
-      {
-        method: "POST",
-        headers: {
-          ...authHeaders(),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          kind: "event",
-          eventType: "gmail-new-message",
-          eventConfig: {
-            provider: "gmail",
-            event: "new_message",
-            match: { hasAttachment: true },
-          },
-        }),
+    const response = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request(`/api/zero/workflows/${workflowId}/automations`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: { hasAttachment: true },
+        },
+      }),
+    });
 
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error?: { code?: string } };
@@ -2425,19 +2450,19 @@ describe("zero workflow automations", () => {
         },
       ],
       onWatchRegistered: async ({ channelId, channelToken, resourceId }) => {
-        const response = await createApp({ signal: context.signal }).request(
-          "/api/webhooks/google-calendar",
-          {
-            method: "POST",
-            headers: {
-              "x-goog-channel-id": channelId,
-              "x-goog-channel-token": channelToken,
-              "x-goog-resource-id": resourceId,
-              "x-goog-resource-state": "sync",
-              "x-goog-message-number": "1",
-            },
+        const response = await createApp({
+          signal: context.signal,
+          routes: TEST_APP_ROUTES,
+        }).request("/api/webhooks/google-calendar", {
+          method: "POST",
+          headers: {
+            "x-goog-channel-id": channelId,
+            "x-goog-channel-token": channelToken,
+            "x-goog-resource-id": resourceId,
+            "x-goog-resource-state": "sync",
+            "x-goog-message-number": "1",
           },
-        );
+        });
         notifications.push({
           status: response.status,
           body: await response.json(),
@@ -2898,13 +2923,13 @@ describe("zero workflow automations", () => {
       [201],
     );
 
-    const failedEnable = await createApp({ signal: context.signal }).request(
-      `/api/zero/workflow-automations/${created.body.id}/enable`,
-      {
-        method: "POST",
-        headers: authHeaders(),
-      },
-    );
+    const failedEnable = await createApp({
+      signal: context.signal,
+      routes: TEST_APP_ROUTES,
+    }).request(`/api/zero/workflow-automations/${created.body.id}/enable`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
     expect(failedEnable.status).toBe(500);
     expect(stop.requests).toStrictEqual([
       { id: watch.channelIds[0], resourceId: "calendar-resource-1" },

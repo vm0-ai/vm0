@@ -15,6 +15,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { zeroDeveloperSupportRoutes } from "../zero-developer-support";
 
 const context = testContext();
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
@@ -193,7 +194,9 @@ async function completeRunWithSession(
 }
 
 function client() {
-  return setupApp({ context })(zeroDeveloperSupportContract);
+  return setupApp({ context, routes: zeroDeveloperSupportRoutes })(
+    zeroDeveloperSupportContract,
+  );
 }
 
 function submitDeveloperSupport(

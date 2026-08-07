@@ -25,7 +25,6 @@ export function setMockFeatureSwitches(
         switches: sanitized,
         effectiveSwitches: sanitized,
         supportsCustomConnectorOAuth2: true,
-        supportsCustomModelGateways: true,
         supportsImageRecognition: true,
         supportsAvatarTemplates: true,
       });

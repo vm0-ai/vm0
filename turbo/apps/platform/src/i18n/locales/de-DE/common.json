@@ -546,6 +546,8 @@
         "label": "Filter für Artefakttypen",
         "presentation": "Präsentationen",
         "presentationAria": "Präsentationsartefakte anzeigen",
+        "sharedConversation": "Geteilte Unterhaltungen",
+        "sharedConversationAria": "Artefakte mit geteilten Unterhaltungen anzeigen",
         "video": "Videos",
         "videoAria": "Videoartefakte anzeigen",
         "website": "Websites",
@@ -591,6 +593,7 @@
       "json": "JSON",
       "markdown": "Markdown",
       "presentation": "Präsentation",
+      "sharedConversation": "Geteilte Unterhaltung",
       "text": "Text",
       "video": "Video"
     },
@@ -621,6 +624,7 @@
       "videoLabel": "Videovorschau für {{filename}}"
     },
     "sidebar": {
+      "openSharedConversation": "Geteilte Unterhaltung öffnen",
       "panelTitle": "Artefakte",
       "singularTitle": "Artefakt",
       "unavailable": "Dieses Artefakt ist nicht mehr verfügbar."
@@ -962,7 +966,6 @@
       "usagePacks": {
         "bonusCredits": "+{{value}} Bonus-Credits",
         "changePlan": "Plan ändern",
-        "checkoutComingSoon": "Checkout in Kürze verfügbar",
         "choosePlan": "Plan auswählen",
         "choosePlanDescription": "Wählen Sie zuerst den Workspace-Plan. Mitgliederpakete konfigurieren Sie im nächsten Schritt.",
         "configurePackages": "Mitgliederpakete konfigurieren",
@@ -1527,6 +1530,22 @@
       "worked": "Ausgeführt",
       "workedFor": "Ausgeführt in {{duration}}"
     },
+    "sharing": {
+      "cancel": "Abbrechen",
+      "close": "Schließen",
+      "copyFailed": "Der Link konnte nicht kopiert werden",
+      "copyLink": "Link kopieren",
+      "create": "Teilen",
+      "createFailed": "Die geteilte Unterhaltung konnte nicht erstellt werden. Versuche es erneut.",
+      "deselectGroup": "Nachrichtengruppe abwählen",
+      "linkCopied": "Link kopiert",
+      "selectedCount_one": "{{count}} ausgewählt",
+      "selectedCount_other": "{{count}} ausgewählt",
+      "selectGroup": "Nachrichtengruppe auswählen",
+      "shareLink": "Link zur geteilten Unterhaltung",
+      "start": "Nachrichten teilen",
+      "tooLarge": "Wähle weniger Nachrichten zum Teilen aus"
+    },
     "shortcuts": {
       "number": "Nummer"
     },
@@ -1653,7 +1672,6 @@
       "edit": "Bearbeiten",
       "grant": "Gewähren",
       "reconnect": "Wieder verbinden",
-      "rename": "Umbenennen",
       "revoke": "Widerrufen",
       "save": "Speichern",
       "saving": "Speichern...",
@@ -1903,17 +1921,12 @@
       "emptyAdmin": "Noch keine benutzerdefinierten Integrationen. Erstellen Sie eine, um eine API zu registrieren, die jedes Mitglied verwenden kann.",
       "emptyMember": "Ihre Organisation hat noch keine benutzerdefinierten Integrationen registriert.",
       "moreOptions": "Weitere Optionen",
-      "rename": {
-        "displayName": "Anzeigename",
-        "title": "Benutzerdefinierte Integration umbenennen"
-      },
       "statusConnected": "Verbunden",
       "toasts": {
         "connected": "Verbunden",
         "created": "Erstellt „{{connector}}“",
         "deleted": "Benutzerdefinierte Integration gelöscht",
         "disconnected": "Getrennt",
-        "renamed": "Umbenannt in „{{connector}}“",
         "updated": "Aktualisiert „{{connector}}“"
       },
       "updateConfirm": {
@@ -4593,6 +4606,12 @@
       "description": "Die gesuchte Seite existiert nicht.",
       "title": "Seite nicht gefunden"
     }
+  },
+  "sharedThread": {
+    "brand": "Okou",
+    "notFoundDescription": "Diese geteilte Unterhaltung existiert nicht.",
+    "notFoundTitle": "Geteilte Unterhaltung nicht gefunden",
+    "tryOkou": "Okou ausprobieren"
   },
   "usage": {
     "automations": {

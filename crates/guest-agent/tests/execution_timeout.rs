@@ -1,4 +1,4 @@
-//! A runner-owned execution deadline must reap the ordinary CLI process group
+//! A runner-owned execution deadline must reap the Claude Code process group
 //! through the existing bounded termination state machine.
 
 mod common;

@@ -40,6 +40,8 @@ pub struct Job {
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
     pub runner_preference: Option<serde_json::Value>,
+    #[serde(default)]
+    pub runner_preference_resolution: Option<serde_json::Value>,
 }
 
 pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
@@ -122,6 +124,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
     #[serde(default)]
+    pub connector_runtime_targets: Option<Vec<ConnectorRuntimeTarget>>,
+    #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
     pub tools: Option<Vec<String>>,
@@ -178,7 +182,11 @@ pub enum FirewallEntry {
     },
     /// Inline firewall body for org custom connectors.
     #[serde(rename = "inline", rename_all = "camelCase")]
-    Inline { firewall: Firewall },
+    Inline {
+        firewall: Firewall,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        custom_connector_id: Option<String>,
+    },
 }
 
 /// A firewall definition shared by inline execution entries and builtin catalogs.
@@ -207,15 +215,36 @@ impl Firewall {
     /// credentialed-destination and host-policy checks, matcher compilation,
     /// and request-time enforcement.
     pub(crate) fn validate_for_cache(&self) -> Result<(), String> {
+        self.validate_shape()?;
+        for (index, api) in self.apis.iter().enumerate() {
+            api.validate_for_cache()
+                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_for_connector_runtime(&self) -> Result<(), String> {
+        self.validate_shape()?;
+        let mut api_ids = HashSet::new();
+        for (index, api) in self.apis.iter().enumerate() {
+            api.validate_for_connector_runtime()
+                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
+            if !api_ids.insert(api.id.as_str()) {
+                return Err(format!(
+                    "firewall {} api id {:?} must be unique",
+                    self.name, api.id
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_shape(&self) -> Result<(), String> {
         if self.name.is_empty() {
             return Err("firewall name must be non-empty".to_string());
         }
         if self.apis.is_empty() {
             return Err(format!("firewall {} must have at least one api", self.name));
-        }
-        for (index, api) in self.apis.iter().enumerate() {
-            api.validate_for_cache()
-                .map_err(|e| format!("firewall {} apis[{index}]: {e}", self.name))?;
         }
         Ok(())
     }
@@ -225,8 +254,8 @@ impl Firewall {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallApi {
     /// Stable API identifier used as one component of mitm-addon auth cache keys.
-    /// Filled by the Python registry loader after built-in catalog entries and
-    /// inline firewalls are resolved.
+    /// Builtin catalogs leave this empty for the Python registry loader to
+    /// assign. Synced custom connector firewalls provide a stable ID.
     #[serde(default)]
     pub id: String,
     pub base: String,
@@ -246,6 +275,17 @@ impl FirewallApi {
         if !self.id.is_empty() {
             return Err("id must be empty because the runner assigns api ids".to_string());
         }
+        self.validate_shape()
+    }
+
+    fn validate_for_connector_runtime(&self) -> Result<(), String> {
+        if self.id.is_empty() {
+            return Err("id must be non-empty".to_string());
+        }
+        self.validate_shape()
+    }
+
+    fn validate_shape(&self) -> Result<(), String> {
         if self.base.is_empty() {
             return Err("base must be non-empty".to_string());
         }
@@ -1167,6 +1207,88 @@ pub struct NetworkPolicyRefreshResponse {
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicyRefreshBatchResponse {
     pub refreshes: Vec<NetworkPolicyRefreshResponse>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ConnectorRuntimeTarget {
+    #[serde(rename_all = "camelCase")]
+    Builtin { connector_slug: String },
+    #[serde(rename_all = "camelCase")]
+    Custom { custom_connector_id: String },
+}
+
+impl ConnectorRuntimeTarget {
+    pub(crate) fn log_identity(&self) -> String {
+        match self {
+            Self::Builtin { connector_slug } => format!("builtin:{connector_slug}"),
+            Self::Custom {
+                custom_connector_id,
+            } => format!("custom:{custom_connector_id}"),
+        }
+    }
+
+    pub(crate) fn builtin_connector_slug(&self) -> Option<&str> {
+        match self {
+            Self::Builtin { connector_slug } => Some(connector_slug),
+            Self::Custom { .. } => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorRuntimeSyncResult {
+    pub target: ConnectorRuntimeTarget,
+    pub next_sync_at: Option<String>,
+    #[serde(flatten)]
+    pub state: ConnectorRuntimeSyncState,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(
+    tag = "state",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ConnectorRuntimeSyncState {
+    Available {
+        network_policy: NetworkPolicy,
+        #[serde(default)]
+        firewall: Option<FirewallEntry>,
+    },
+    Unresolved {
+        reason: ConnectorRuntimeUnresolvedReason,
+    },
+    Absent {
+        reason: ConnectorRuntimeCustomAbsentReason,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum ConnectorRuntimeUnresolvedReason {
+    #[serde(rename = "connector-unavailable")]
+    Connector,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub enum ConnectorRuntimeCustomAbsentReason {
+    #[serde(rename = "connector-unavailable")]
+    Connector,
+    #[serde(rename = "grant-unavailable")]
+    Grant,
+    #[serde(rename = "credentials-unavailable")]
+    Credentials,
+    #[serde(rename = "permission-bundle-unavailable")]
+    PermissionBundle,
+    #[serde(rename = "runtime-configuration-unavailable")]
+    RuntimeConfiguration,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorRuntimeSyncBatchResponse {
+    pub results: Vec<ConnectorRuntimeSyncResult>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

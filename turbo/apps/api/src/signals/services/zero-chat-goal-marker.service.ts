@@ -1,12 +1,12 @@
 import type { ChatEventGoalEvent } from "@vm0/db/schema/chat-event";
 import { not, type SQL } from "drizzle-orm";
 
-import type { Db } from "../external/db";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
+import type { Tx } from "../../lib/db-types";
 
-type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type DbTransaction = Tx;
 
 /**
  * Goal state is published into the chat thread as assistant control messages so

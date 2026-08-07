@@ -60,6 +60,64 @@ describe("storage webhook manifest limits", () => {
 });
 
 describe("webhook telemetry contract", () => {
+  it("accepts bounded startup outcomes and keeps them optional", () => {
+    const startupOutcomes = [
+      ["sandbox", "reused"],
+      ["workspace", "noReuseKey"],
+      ["cold", "poolMiss"],
+      ["cold", "profileMismatch"],
+      ["cold", "deviceLimitMismatch"],
+      ["cold", "unparkFailed"],
+    ] as const;
+    const result = webhookTelemetryContract.send.body.parse({
+      runId: "00000000-0000-4000-8000-000000000000",
+      sandboxOperations: [
+        ...startupOutcomes.map(([runnerStartupPath, sandboxReuseResult]) => {
+          return {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "api_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_startup_path: runnerStartupPath,
+            sandbox_reuse_result: sandboxReuseResult,
+          };
+        }),
+        {
+          ts: "2026-01-15T10:00:00.000Z",
+          action_type: "vm_create",
+          duration_ms: 5,
+          success: true,
+        },
+      ],
+    });
+
+    expect(
+      result.sandboxOperations?.slice(0, startupOutcomes.length).map((op) => {
+        return [op.runner_startup_path, op.sandbox_reuse_result];
+      }),
+    ).toStrictEqual(startupOutcomes);
+    expect(result.sandboxOperations?.at(-1)).not.toHaveProperty(
+      "runner_startup_path",
+    );
+  });
+
+  it("rejects unknown startup outcomes", () => {
+    expect(
+      webhookTelemetryContract.send.body.safeParse({
+        runId: "00000000-0000-4000-8000-000000000000",
+        sandboxOperations: [
+          {
+            ts: "2026-01-15T10:00:00.000Z",
+            action_type: "api_to_spawn",
+            duration_ms: 10,
+            success: true,
+            runner_startup_path: "warm",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts known session history download sources", () => {
     const result = webhookTelemetryContract.send.body.safeParse({
       runId: "00000000-0000-4000-8000-000000000000",

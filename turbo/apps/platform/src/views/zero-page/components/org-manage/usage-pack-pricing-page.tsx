@@ -16,12 +16,24 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import type {
+  MemberUsagePack,
+  UsagePackCatalogItem,
+} from "@vm0/api-contracts/contracts/zero-billing";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { i18n } from "../../../../i18n/index.ts";
 import { currentUserInfo$ } from "../../../../signals/auth.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import {
+  startUsagePackCheckout$,
+  type BillingTier,
+  usagePackCatalogAsync$,
+} from "../../../../signals/zero-page/billing.ts";
 import {
   orgMembers$,
   orgPendingInvitations$,
@@ -39,16 +51,8 @@ import {
   type UsagePackPlanTier,
   type UsagePackUsd,
 } from "../../../../signals/zero-page/settings/usage-pack-pricing-state.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 import { planProImg, planTeamImg } from "../../platform-assets.ts";
-
-const CREDITS_PER_DOLLAR = 1000;
-
-const USAGE_PACK_PRICE_PERCENT: Readonly<Record<UsagePackUsd, number>> = {
-  20: 98,
-  50: 95,
-  100: 92,
-  200: 90,
-};
 
 interface UsagePackPlan {
   readonly tier: UsagePackPlanTier;
@@ -80,6 +84,16 @@ const USAGE_PACK_PLANS: readonly UsagePackPlan[] = [
     popular: false,
   },
 ];
+
+function canCheckoutUsagePackPlan(
+  currentTier: BillingTier,
+  targetTier: UsagePackPlanTier,
+): boolean {
+  if (currentTier === "custom" || currentTier === "team") {
+    return false;
+  }
+  return currentTier !== "pro" || targetTier === "team";
+}
 
 function planName(tier: UsagePackPlanTier): string {
   return tier === "pro"
@@ -129,28 +143,36 @@ function planFeatures(tier: UsagePackPlanTier): readonly string[] {
   ];
 }
 
-function usagePackDetails(dollars: UsagePackUsd) {
-  const baseCredits = dollars * CREDITS_PER_DOLLAR;
-  const pricePercent = USAGE_PACK_PRICE_PERCENT[dollars];
-  const rawCredits = (baseCredits * 100) / pricePercent;
-  const credits = Math.round(rawCredits / 100) * 100;
-  return {
-    bonusCredits: credits - baseCredits,
-    credits,
-    discountPercent: 100 - pricePercent,
-  };
+function usagePackCatalogItem(
+  catalog: readonly UsagePackCatalogItem[],
+  usagePackUsd: UsagePackUsd,
+): UsagePackCatalogItem {
+  const item = catalog.find((candidate) => {
+    return candidate.usagePackUsd === usagePackUsd;
+  });
+  if (!item) {
+    throw new Error(`Usage pack catalog is missing $${usagePackUsd}`);
+  }
+  return item;
 }
 
-function usageSelectionLabel(selection: MemberUsageSelection): string {
-  const details = usagePackDetails(selection);
+function usagePackDiscountPercent(item: UsagePackCatalogItem): number {
+  return Math.round((item.bonusCredits / item.totalCredits) * 100);
+}
+
+function usageSelectionLabel(
+  selection: MemberUsageSelection,
+  catalog: readonly UsagePackCatalogItem[],
+): string {
+  const item = usagePackCatalogItem(catalog, selection);
   return i18n.t(
     ($) => {
       return $.billing.plans.usagePacks.packOption;
     },
     {
-      credits: formatLocalizedNumber(details.credits),
-      discount: details.discountPercent,
-      price: formatUsd(selection, 0),
+      credits: formatLocalizedNumber(item.totalCredits),
+      discount: usagePackDiscountPercent(item),
+      price: formatUsd(item.priceUsd, 0),
     },
   );
 }
@@ -181,19 +203,32 @@ interface MemberUsageTotals {
 function memberUsageTotals(
   members: readonly MemberDisplay[],
   selections: Readonly<Record<string, MemberUsageSelection>>,
+  catalog: readonly UsagePackCatalogItem[],
 ): MemberUsageTotals {
   return members.reduce<MemberUsageTotals>(
     (totals, member) => {
       const selection = memberUsageSelection(selections, member.id);
-      const details = usagePackDetails(selection);
+      const item = usagePackCatalogItem(catalog, selection);
       return {
-        bonusCredits: totals.bonusCredits + details.bonusCredits,
-        totalCredits: totals.totalCredits + details.credits,
-        totalUsd: totals.totalUsd + selection,
+        bonusCredits: totals.bonusCredits + item.bonusCredits,
+        totalCredits: totals.totalCredits + item.totalCredits,
+        totalUsd: totals.totalUsd + item.priceUsd,
       };
     },
     { bonusCredits: 0, totalCredits: 0, totalUsd: 0 },
   );
+}
+
+function checkoutMemberUsagePacks(
+  members: readonly MemberDisplay[],
+  selections: Readonly<Record<string, MemberUsageSelection>>,
+): readonly MemberUsagePack[] {
+  return members.map((member) => {
+    return {
+      memberId: member.id,
+      usagePackUsd: memberUsageSelection(selections, member.id),
+    };
+  });
 }
 
 function memberName(member: OrgMember): string {
@@ -246,20 +281,23 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 }
 
 function MemberUsageRow({
+  catalog,
   member,
   onSelect,
   selection,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly member: MemberDisplay;
   readonly onSelect: (selection: MemberUsageSelection) => void;
   readonly selection: MemberUsageSelection;
 }) {
+  const item = usagePackCatalogItem(catalog, selection);
   const summary = i18n.t(
     ($) => {
       return $.billing.plans.usagePacks.bonusCredits;
     },
     {
-      value: formatLocalizedNumber(usagePackDetails(selection).bonusCredits),
+      value: formatLocalizedNumber(item.bonusCredits),
     },
   );
   return (
@@ -284,10 +322,13 @@ function MemberUsageRow({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {USAGE_PACKS_USD.map((pack) => {
+            {catalog.map((pack) => {
               return (
-                <SelectItem key={pack} value={String(pack)}>
-                  {usageSelectionLabel(pack)}
+                <SelectItem
+                  key={pack.usagePackUsd}
+                  value={String(pack.usagePackUsd)}
+                >
+                  {usageSelectionLabel(pack.usagePackUsd, catalog)}
                 </SelectItem>
               );
             })}
@@ -352,8 +393,10 @@ function MemberUsageFooter() {
 }
 
 function MemberUsageConfiguration({
+  catalog,
   members,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly members: readonly MemberDisplay[] | undefined;
 }) {
   const selections = useGet(memberUsageSelections$);
@@ -362,7 +405,7 @@ function MemberUsageConfiguration({
   if (!members) {
     return <div className="h-36 animate-pulse rounded-xl bg-muted/40" />;
   }
-  const { totalUsd } = memberUsageTotals(members, selections);
+  const { totalUsd } = memberUsageTotals(members, selections, catalog);
   const memberUsageLabel = i18n.t(($) => {
     return $.billing.plans.usagePacks.memberUsage;
   });
@@ -383,6 +426,7 @@ function MemberUsageConfiguration({
             className={index === 0 ? undefined : "border-t border-border/50"}
           >
             <MemberUsageRow
+              catalog={catalog}
               member={member}
               selection={selection}
               onSelect={(usage) => {
@@ -418,14 +462,18 @@ function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
 }
 
 function PlanSelectionCard({
+  disabled,
+  minimumPackagePriceUsd,
   onSelect,
   plan,
 }: {
+  readonly disabled: boolean;
+  readonly minimumPackagePriceUsd: number;
   readonly onSelect: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const name = planName(plan.tier);
-  const minimumTotalUsd = plan.basePriceUsd + MINIMUM_USAGE_PACK_USD;
+  const minimumTotalUsd = plan.basePriceUsd + minimumPackagePriceUsd;
   return (
     <article
       aria-label={i18n.t(
@@ -477,7 +525,7 @@ function PlanSelectionCard({
             },
             {
               base: formatUsd(plan.basePriceUsd, 0),
-              package: formatUsd(MINIMUM_USAGE_PACK_USD, 0),
+              package: formatUsd(minimumPackagePriceUsd, 0),
             },
           )}
         </p>
@@ -487,6 +535,7 @@ function PlanSelectionCard({
       <Button
         type="button"
         className="mt-auto h-11 w-full text-sm font-medium"
+        disabled={disabled}
         onClick={onSelect}
       >
         {i18n.t(
@@ -653,14 +702,22 @@ function SelectedPlanSummary({
 }
 
 function OrderSummary({
+  checkoutDisabled,
+  checkoutError,
+  checkoutLoading,
   memberUsageBonusCredits,
   memberUsageCredits,
   memberUsageTotalUsd,
+  onCheckout,
   plan,
 }: {
+  readonly checkoutDisabled: boolean;
+  readonly checkoutError: string | null;
+  readonly checkoutLoading: boolean;
   readonly memberUsageBonusCredits: number;
   readonly memberUsageCredits: number;
   readonly memberUsageTotalUsd: number;
+  readonly onCheckout: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly plan: UsagePackPlan;
 }) {
   const totalUsd = plan.basePriceUsd + memberUsageTotalUsd;
@@ -728,22 +785,89 @@ function OrderSummary({
           </span>
         </div>
       </div>
-      <Button className="mt-4 h-10 w-full text-sm font-medium" disabled>
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.checkoutComingSoon;
-        })}
+      {checkoutError && (
+        <p className="mt-3 text-xs text-destructive">{checkoutError}</p>
+      )}
+      <Button
+        className="mt-4 h-10 w-full text-sm font-medium"
+        disabled={checkoutDisabled || checkoutLoading}
+        onClick={onCheckout}
+      >
+        {checkoutLoading
+          ? i18n.t(($) => {
+              return $.billing.common.redirecting;
+            })
+          : i18n.t(
+              ($) => {
+                return $.billing.plans.upgradeTo;
+              },
+              { plan: planName(plan.tier) },
+            )}
       </Button>
     </section>
   );
 }
 
+function CheckoutOrderSummary({
+  members,
+  plan,
+  selections,
+  totals,
+}: {
+  readonly members: readonly MemberDisplay[] | undefined;
+  readonly plan: UsagePackPlan;
+  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly totals: MemberUsageTotals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [checkoutLoadable, checkout] = useLoadableSet(startUsagePackCheckout$);
+  const checkoutLoading = checkoutLoadable.state === "loading";
+  const checkoutError =
+    checkoutLoadable.state === "hasError"
+      ? String(checkoutLoadable.error)
+      : null;
+
+  return (
+    <OrderSummary
+      checkoutDisabled={!members}
+      checkoutError={checkoutError}
+      checkoutLoading={checkoutLoading}
+      memberUsageBonusCredits={totals.bonusCredits}
+      memberUsageCredits={totals.totalCredits}
+      memberUsageTotalUsd={totals.totalUsd}
+      onCheckout={(event) => {
+        if (!members) {
+          return;
+        }
+        detach(
+          checkout(
+            {
+              tier: plan.tier,
+              memberUsagePacks: checkoutMemberUsagePacks(members, selections),
+            },
+            event.metaKey || event.ctrlKey,
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      }}
+      plan={plan}
+    />
+  );
+}
+
 function PlanSelectionStep({
+  catalog,
+  currentTier,
   onBack,
   onSelect,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
+  readonly currentTier: BillingTier;
   readonly onBack: () => void;
   readonly onSelect: (plan: UsagePackPlanTier) => void;
 }) {
+  const minimumPackage = usagePackCatalogItem(catalog, MINIMUM_USAGE_PACK_USD);
   return (
     <>
       <PricingPageHeader onBack={onBack} step={1} />
@@ -753,6 +877,8 @@ function PlanSelectionStep({
           return (
             <PlanSelectionCard
               key={plan.tier}
+              disabled={!canCheckoutUsagePackPlan(currentTier, plan.tier)}
+              minimumPackagePriceUsd={minimumPackage.priceUsd}
               plan={plan}
               onSelect={() => {
                 onSelect(plan.tier);
@@ -766,92 +892,103 @@ function PlanSelectionStep({
 }
 
 function PackageConfigurationStep({
+  catalog,
   onBack,
   plan,
 }: {
+  readonly catalog: readonly UsagePackCatalogItem[];
   readonly onBack: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const userLoadable = useLastLoadable(currentUserInfo$);
-  const membersLoadable = useLastLoadable(orgMembers$);
-  const pendingInvitationsLoadable = useLastLoadable(orgPendingInvitations$);
+  const membersLoadable = useLoadable(orgMembers$);
+  const pendingInvitationsLoadable = useLoadable(orgPendingInvitations$);
   const selections = useGet(memberUsageSelections$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const orgMembers =
-    membersLoadable.state === "hasData" ? membersLoadable.data : [];
+    membersLoadable.state === "hasData" ? membersLoadable.data : undefined;
   const pendingInvitations =
     pendingInvitationsLoadable.state === "hasData"
       ? pendingInvitationsLoadable.data
-      : [];
-  const members: readonly MemberDisplay[] | undefined = user
-    ? [
-        {
-          id: user.id,
-          email: user.primaryEmailAddress?.emailAddress,
-          imageUrl: user.imageUrl,
-          isCurrent: true,
-          isPending: false,
-          name:
-            user.fullName ??
-            user.primaryEmailAddress?.emailAddress ??
-            i18n.t(($) => {
-              return $.billing.plans.usagePacks.currentMember;
+      : undefined;
+  const members: readonly MemberDisplay[] | undefined =
+    user && orgMembers && pendingInvitations
+      ? [
+          {
+            id: user.id,
+            email: user.primaryEmailAddress?.emailAddress,
+            imageUrl: user.imageUrl,
+            isCurrent: true,
+            isPending: false,
+            name:
+              user.fullName ??
+              user.primaryEmailAddress?.emailAddress ??
+              i18n.t(($) => {
+                return $.billing.plans.usagePacks.currentMember;
+              }),
+          },
+          ...orgMembers
+            .filter((member) => {
+              return member.userId !== user.id;
+            })
+            .map((member): MemberDisplay => {
+              return {
+                id: member.userId,
+                email: member.email,
+                imageUrl: member.imageUrl,
+                isCurrent: false,
+                isPending: false,
+                name: memberName(member),
+              };
             }),
-        },
-        ...orgMembers
-          .filter((member) => {
-            return member.userId !== user.id;
-          })
-          .map((member): MemberDisplay => {
+          ...pendingInvitations.map((invitation): MemberDisplay => {
             return {
-              id: member.userId,
-              email: member.email,
-              imageUrl: member.imageUrl,
+              id: invitation.id,
+              email: invitation.email,
+              imageUrl: undefined,
               isCurrent: false,
-              isPending: false,
-              name: memberName(member),
+              isPending: true,
+              name: invitation.email,
             };
           }),
-        ...pendingInvitations.map((invitation): MemberDisplay => {
-          return {
-            id: invitation.id,
-            email: invitation.email,
-            imageUrl: undefined,
-            isCurrent: false,
-            isPending: true,
-            name: invitation.email,
-          };
-        }),
-      ]
-    : undefined;
-  const totals = memberUsageTotals(members ?? [], selections);
+        ]
+      : undefined;
+  const totals = memberUsageTotals(members ?? [], selections, catalog);
 
   return (
     <>
       <PricingPageHeader onBack={onBack} step={2} />
       <PricingSteps current={2} />
       <SelectedPlanSummary plan={plan} onChange={onBack} />
-      <MemberUsageConfiguration members={members} />
-      <OrderSummary
-        memberUsageBonusCredits={totals.bonusCredits}
-        memberUsageCredits={totals.totalCredits}
-        memberUsageTotalUsd={totals.totalUsd}
+      <MemberUsageConfiguration catalog={catalog} members={members} />
+      <CheckoutOrderSummary
+        members={members}
         plan={plan}
+        selections={selections}
+        totals={totals}
       />
     </>
   );
 }
 
 export function UsagePackPricingPage({
+  currentTier,
   onBack,
 }: {
+  readonly currentTier: BillingTier;
   readonly onBack: () => void;
 }) {
   const selectedPlanTier = useGet(selectedUsagePackPlan$);
   const setSelectedPlan = useSet(setSelectedUsagePackPlan$);
   const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  const catalogLoadable = useLoadable(usagePackCatalogAsync$);
+  const catalog =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
   const selectedPlan = USAGE_PACK_PLANS.find((plan) => {
-    return plan.tier === selectedPlanTier;
+    return (
+      plan.tier === selectedPlanTier &&
+      canCheckoutUsagePackPlan(currentTier, plan.tier)
+    );
   });
   return (
     <div
@@ -860,8 +997,11 @@ export function UsagePackPricingPage({
       role="group"
       tabIndex={-1}
     >
-      {selectedPlan ? (
+      {!catalog ? (
+        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+      ) : selectedPlan ? (
         <PackageConfigurationStep
+          catalog={catalog}
           plan={selectedPlan}
           onBack={() => {
             setSelectedPlan(null);
@@ -869,6 +1009,8 @@ export function UsagePackPricingPage({
         />
       ) : (
         <PlanSelectionStep
+          catalog={catalog}
+          currentTier={currentTier}
           onBack={() => {
             setSelectedPlan(null);
             onBack();

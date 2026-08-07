@@ -654,6 +654,14 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_video_tokens.audio", usd(2.4), 1_000_000],
     ["output_video_tokens.silent", usd(1.2), 1_000_000],
   ]),
+  // MiniMax H3 official PAYG rates with the 2x built-in markup.
+  ...usageGroup("video", "MiniMax-H3", [
+    ["output_video_seconds.768p", usd(0.16), 1],
+    ["output_video_seconds.2k", usd(0.26), 1],
+    ["input_video_seconds.768p", usd(0.16), 1],
+    ["input_video_seconds.2k", usd(0.26), 1],
+    ["input_image.additional", usd(0.08), 1],
+  ]),
   // JoggAI Professional API cost: $399 / 800 credits, with one provider
   // credit consumed per started two minutes of talking-avatar output. Apply
   // the standard 20% vm0 markup.
@@ -691,26 +699,21 @@ type LineWriter = (message: string) => void;
 
 /**
  * Build vm0_api_keys entries from environment variables.
- * Vendor-to-model mapping is derived from VM0_MODEL_TO_PROVIDER so new models
- * are automatically picked up. Rows use upstream API model ids when configured
- * because VM0 Managed key lookup first matches vendor plus runtime model.
+ * Vendors are derived from VM0_MODEL_TO_PROVIDER so new providers are
+ * automatically picked up.
  */
 export function buildVm0ApiKeys(
   readEnv: OptionalEnvReader = optionalEnv,
   logLine: LineWriter = writeLine,
 ): (typeof vm0ApiKeys.$inferInsert)[] {
-  // Group runtime models by vendor from the canonical mapping.
-  const vendorModels = new Map<string, string[]>();
-  for (const [model, { apiModel, vendor }] of Object.entries(
-    VM0_MODEL_TO_PROVIDER,
-  )) {
-    const models = vendorModels.get(vendor) ?? [];
-    models.push(apiModel ?? model);
-    vendorModels.set(vendor, models);
-  }
+  const vendors = new Set(
+    Object.values(VM0_MODEL_TO_PROVIDER).map(({ vendor }) => {
+      return vendor;
+    }),
+  );
 
   const keys: (typeof vm0ApiKeys.$inferInsert)[] = [];
-  for (const [vendor, models] of vendorModels) {
+  for (const vendor of vendors) {
     const envVars = getVendorApiKeyEnvVars(vendor);
     const apiKey = envVars
       .map((name) => {
@@ -723,9 +726,7 @@ export function buildVm0ApiKeys(
       logLine(`Skipping ${vendor}: ${envVars.join(" or ")} is not configured`);
       continue;
     }
-    for (const model of models) {
-      keys.push({ vendor, model, apiKey, label: "dev-seed" });
-    }
+    keys.push({ vendor, apiKey, label: "dev-seed" });
   }
   return keys;
 }
@@ -762,7 +763,7 @@ async function devSeed() {
     }
   });
   for (const k of apiKeys) {
-    writeLine(`Seeded vm0 API key entry: ${k.vendor}/${k.model}`);
+    writeLine(`Seeded vm0 API key entry: ${k.vendor}`);
   }
   writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
 

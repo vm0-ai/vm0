@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.159.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.22...runner-rs-v0.159.0) (2026-08-07)
+
+
+### Features
+
+* **connectors:** sync active run connector state ([#25420](https://github.com/vm0-ai/vm0/issues/25420)) ([87e716c](https://github.com/vm0-ai/vm0/commit/87e716cdf766fb3a1af51cdd20b7833717fe1133))
+
+## [0.158.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.21...runner-rs-v0.158.22) (2026-08-06)
+
+
+### Refactoring
+
+* **mitm-addon:** share threaded http test server ([#25487](https://github.com/vm0-ai/vm0/issues/25487)) ([1295edc](https://github.com/vm0-ai/vm0/commit/1295edcf4d31beb55cb1c77ddd993f93cde696f1))
+* **runner:** use codex app-server exclusively ([#25460](https://github.com/vm0-ai/vm0/issues/25460)) ([61b623a](https://github.com/vm0-ai/vm0/commit/61b623adffb6da6d16dd01355773ea342258b894))
+
+## [0.158.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.20...runner-rs-v0.158.21) (2026-08-06)
+
+
+### Documentation
+
+* **python:** document addon load initialization contract ([#25480](https://github.com/vm0-ai/vm0/issues/25480)) ([ccac1ed](https://github.com/vm0-ai/vm0/commit/ccac1ed7bbd31cb494cd538d82f756cdcf79f04c))
+
+## [0.158.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.19...runner-rs-v0.158.20) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** centralize firecracker snapshot validation ([#25469](https://github.com/vm0-ai/vm0/issues/25469)) ([2ff4c4e](https://github.com/vm0-ai/vm0/commit/2ff4c4ecbc54f1eb2d7a65664122e489b3afc362))
+
+## [0.158.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.18...runner-rs-v0.158.19) (2026-08-06)
+
+
+### Performance Improvements
+
+* **runner:** correlate preference reuse outcomes ([#25443](https://github.com/vm0-ai/vm0/issues/25443)) ([1314003](https://github.com/vm0-ai/vm0/commit/1314003df53a575df0b20a1c4c67cc3304486199))
+
+## [0.158.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.17...runner-rs-v0.158.18) (2026-08-06)
+
+
+### Bug Fixes
+
+* **runner:** retry active input after source read failure ([#25438](https://github.com/vm0-ai/vm0/issues/25438)) ([fac4b4a](https://github.com/vm0-ai/vm0/commit/fac4b4afcb92c90a177a1e71917bd774eb053870))
+
+## [0.158.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.16...runner-rs-v0.158.17) (2026-08-06)
+
+
+### Refactoring
+
+* **runner:** remove resolved dns diagnostics ([#25426](https://github.com/vm0-ai/vm0/issues/25426)) ([a301c42](https://github.com/vm0-ai/vm0/commit/a301c42affa3da95dc3cec1b0c456acf16af2a5c))
+
 ## [0.158.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.15...runner-rs-v0.158.16) (2026-08-06)
 
 

@@ -18,6 +18,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
 /**
  * chat-run-finished workflow automations: creation validation and dispatch
@@ -33,7 +34,9 @@ const chatCallbacks = createChatCallbacksApi(context);
 const wf = createWorkflowsBddApi(context);
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function authHeaders() {

@@ -21,6 +21,15 @@ import {
 } from "../../../../test-fixtures/agent-runs";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { zeroLogsRoutes } from "../../zero-logs";
+import { zeroQueuePositionRoutes } from "../../zero-queue-position";
+import { zeroRunDetailRoutes } from "../../zero-run-detail";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroLogsRoutes,
+  ...zeroQueuePositionRoutes,
+  ...zeroRunDetailRoutes,
+]);
 
 type AuthHeaders = {
   readonly authorization?: string;
@@ -155,7 +164,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunSystemLogContract).getSystemLog({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunSystemLogContract,
+        ).getSystemLog({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -171,7 +182,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunMetricsContract).getMetrics({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunMetricsContract,
+        ).getMetrics({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -189,7 +202,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunAgentEventsContract).getAgentEvents({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunAgentEventsContract,
+        ).getAgentEvents({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -207,7 +222,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunNetworkLogsContract).getNetworkLogs({
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunNetworkLogsContract,
+        ).getNetworkLogs({
           headers: authenticate(context, actor),
           params: { id: runId },
           query,
@@ -222,7 +239,9 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(zeroQueuePositionContract).getPosition({
+        setupApp({ context, routes: zeroQueuePositionRoutes })(
+          zeroQueuePositionContract,
+        ).getPosition({
           headers: authenticate(context, actor),
           query: { runId },
         }),
@@ -236,7 +255,7 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsListContract).list({
+        setupApp({ context, routes: zeroLogsRoutes })(logsListContract).list({
           headers: authenticate(context, actor),
           query,
         }),
@@ -249,7 +268,7 @@ export function createRunReadsApi(context: TestContext) {
       actor: ApiTestUser | null,
     ) {
       return await accept(
-        setupApp({ context })(logsListContract).list({
+        setupApp({ context, routes: zeroLogsRoutes })(logsListContract).list({
           headers: authenticate(context, actor),
           query: { triggerSource: "automation" } as unknown as LogsListQuery,
         }),
@@ -264,7 +283,7 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsListContract).list({
+        setupApp({ context, routes: zeroLogsRoutes })(logsListContract).list({
           headers: { authorization },
           query,
         }),
@@ -278,10 +297,12 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsByIdContract).getById({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-        }),
+        setupApp({ context, routes: zeroLogsRoutes })(logsByIdContract).getById(
+          {
+            headers: authenticate(context, actor),
+            params: { id: runId },
+          },
+        ),
         statuses,
       );
     },
@@ -293,10 +314,12 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(logsByIdContract).getById({
-          headers: { authorization },
-          params: { id: runId },
-        }),
+        setupApp({ context, routes: zeroLogsRoutes })(logsByIdContract).getById(
+          {
+            headers: { authorization },
+            params: { id: runId },
+          },
+        ),
         statuses,
       );
     },
@@ -308,7 +331,10 @@ export function createRunReadsApi(context: TestContext) {
       path: string,
     ): Promise<{ readonly status: number; readonly body: unknown }> {
       const { authorization } = authenticate(context, actor);
-      const app = createApp({ signal: context.signal });
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
       const response = await app.request(path, {
         method: "GET",
         headers: authorization === undefined ? {} : { authorization },

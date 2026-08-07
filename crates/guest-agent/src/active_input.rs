@@ -584,8 +584,8 @@ impl ActiveInputController {
 
     /// Classifies a CLI stdout user event for replay filtering.
     ///
-    /// [`ReplayUserEventAction::External`] means the event is ordinary CLI
-    /// output and should continue through event delivery.
+    /// [`ReplayUserEventAction::External`] means the event is external Claude
+    /// Code output and should continue through event delivery.
     /// [`ReplayUserEventAction::InternalInitialPrompt`] and
     /// [`ReplayUserEventAction::InternalActiveInput`] mean the event is an
     /// internal echo of input vm0 already delivered and should be filtered.

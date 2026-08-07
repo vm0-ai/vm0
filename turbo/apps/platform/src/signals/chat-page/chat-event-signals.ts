@@ -10,7 +10,7 @@ import type {
   ChatPromptEvent,
   ChatRunOptionsRequest,
   GenerationTemplateRequest,
-  UserMessageDocument,
+  UserMessageInputDocument,
   ChatEvent as PersistedChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatEvent } from "./chat-event-types.ts";
@@ -45,7 +45,7 @@ export interface SendInputChatEvent {
   readonly attachFiles: AttachFile[] | undefined;
   readonly attachments: ChatPromptEvent["attachFiles"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
-  readonly userMessage: UserMessageDocument;
+  readonly userMessage: UserMessageInputDocument;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly realAgentInPreview?: boolean;
   readonly computerUseHostId?: string | null;

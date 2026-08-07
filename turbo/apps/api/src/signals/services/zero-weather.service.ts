@@ -192,6 +192,7 @@ const zeroWeatherRequest$ = command(
       checkManagedCredits$,
       {
         orgId: args.auth.orgId,
+        userId: args.auth.userId,
         resource: {
           kind: USAGE_KIND,
           provider: PROVIDER,

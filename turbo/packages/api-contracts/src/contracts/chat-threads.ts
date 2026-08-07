@@ -360,7 +360,7 @@ const userMessageSourcePartSchema = z.discriminatedUnion("kind", [
   userMessageAgentSourcePartSchema,
 ]);
 
-const userMessagePartSchema = z.discriminatedUnion("type", [
+const userMessageInputPartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
   userMessageAgentPartSchema,
@@ -412,11 +412,57 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
+const userMessageModelPartSchema = z
+  .object({
+    type: z.literal("model"),
+    selectedModel: z.string().min(1),
+  })
+  .strict();
+
+const userMessagePartSchema = z.discriminatedUnion("type", [
+  ...userMessageInputPartSchema.options,
+  userMessageModelPartSchema,
+]);
+
 const userMessageDocumentSchema = z
   .object({
     version: z.literal(1),
     parts: z
       .array(userMessagePartSchema)
+      .min(1)
+      .refine(
+        (parts) => {
+          return (
+            parts.filter((part) => {
+              return (
+                part.type === "source" ||
+                part.type === "automation" ||
+                part.type === "goal" ||
+                part.type === "morning_brief"
+              );
+            }).length <= 1
+          );
+        },
+        { message: "A user message may contain at most one non-content part" },
+      )
+      .refine(
+        (parts) => {
+          return (
+            parts.filter((part) => {
+              return part.type === "model";
+            }).length <= 1
+          );
+        },
+        { message: "A user message may contain at most one model part" },
+      ),
+  })
+  .strict();
+
+const userMessageInputDocumentSchema = z
+  .object({
+    version: z.literal(1),
+    parts: z
+      .array(userMessageInputPartSchema)
       .min(1)
       .refine(
         (parts) => {
@@ -500,6 +546,14 @@ const inputGoalEventSchema = chatEventBaseSchema
     runEventId: z.never().optional(),
     revokesEventId: z.never().optional(),
     sequenceNumber: z.never().optional(),
+  })
+  .strict();
+
+const inputBudgetEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.budget"),
+    content: z.null(),
+    userMessage: userMessageDocumentSchema,
   })
   .strict();
 
@@ -656,6 +710,7 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema,
   inputAutomationEventSchema,
   inputGoalEventSchema,
+  inputBudgetEventSchema,
   inputRejectedEventSchema,
   outputMessageEventSchema,
   outputErrorEventSchema,
@@ -731,7 +786,7 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z
   .object({
-    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftUserMessage: userMessageInputDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
   .superRefine(requireUserMessageForDraftAttachments);
@@ -823,7 +878,7 @@ const chatNormalSendBodyShape = {
    */
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
-  userMessage: userMessageDocumentSchema,
+  userMessage: userMessageInputDocumentSchema,
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
@@ -1019,7 +1074,7 @@ export const chatThreadByIdContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z
       .object({
-        draftUserMessage: userMessageDocumentSchema.nullable(),
+        draftUserMessage: userMessageInputDocumentSchema.nullable(),
         draftAttachments: z
           .array(persistedAttachmentSchema)
           .nullable()
@@ -1568,6 +1623,8 @@ export {
   chatThreadDraftSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
+  userMessageInputPartSchema,
+  userMessageInputDocumentSchema,
   userMessagePartSchema,
   userMessageDocumentSchema,
   presentationGenerationTemplateRequestSchema,
@@ -1596,6 +1653,10 @@ export type GenerationTemplateRequest = z.infer<
 >;
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
 export type FeedbackNotePart = z.infer<typeof feedbackNotePartSchema>;
+export type UserMessageInputPart = z.infer<typeof userMessageInputPartSchema>;
+export type UserMessageInputDocument = z.infer<
+  typeof userMessageInputDocumentSchema
+>;
 export type UserMessagePart = z.infer<typeof userMessagePartSchema>;
 export type UserMessageDocument = z.infer<typeof userMessageDocumentSchema>;
 export type LegacyThreadGenerationTemplateType = Exclude<
@@ -1665,12 +1726,13 @@ export type ChatInputEvent = Extract<
       | "input.prompt"
       | "input.automation"
       | "input.goal"
+      | "input.budget"
       | "input.rejected";
   }
 >;
 export type ChatUserMessageEvent = Extract<
   ChatEvent,
-  { eventType: "input.prompt" | "input.rejected" }
+  { eventType: "input.prompt" | "input.budget" | "input.rejected" }
 >;
 export type ChatAutomationEvent = Extract<
   ChatEvent,

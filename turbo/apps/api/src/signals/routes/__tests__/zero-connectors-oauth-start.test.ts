@@ -12,7 +12,14 @@ import {
   API_TEST_CONNECTOR_CATALOG,
   installApiTestConnectorCatalog,
 } from "../../../test-fixtures/connector-catalog";
+import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...connectorsSlugCallbackRoutes,
+  ...zeroConnectorsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -109,7 +116,7 @@ async function requestOauthStart(
     headers.set("authorization", "Bearer clerk-session");
   }
   headers.set("content-type", "application/json");
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   return await app.request(oauthStartUrl(connectorSlug, options.origin), {
     method: "POST",
     headers,
@@ -141,7 +148,7 @@ async function providerAuthorizationUrl(continuationUrl: URL): Promise<URL> {
 async function requestOauthContinuation(
   continuationUrl: URL,
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   return await app.request(continuationUrl.toString());
 }
 
@@ -175,7 +182,7 @@ async function rejectProviderAuthorization(
   callbackUrl.searchParams.set("error", "access_denied");
   callbackUrl.searchParams.set("state", state!);
 
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   await app.request(callbackUrl.toString());
 }
 
@@ -275,7 +282,7 @@ describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
     );
     continuationUrl.searchParams.set("state", "0".repeat(64));
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const response = await app.request(continuationUrl.toString());
 
     expect(response.status).toBe(404);

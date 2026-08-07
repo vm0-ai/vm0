@@ -20,6 +20,13 @@ import {
   chatEventDisplayText,
 } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { webhooksGithubRoutes } from "../webhooks-github";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...webhooksGithubRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -35,7 +42,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -168,19 +177,19 @@ async function postGithubWebhook(args: {
   const signature = `sha256=${createHmac("sha256", GITHUB_WEBHOOK_SECRET)
     .update(args.rawBody)
     .digest("hex")}`;
-  const response = await createApp({ signal: context.signal }).request(
-    "/api/webhooks/github",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-github-event": args.event,
-        "x-github-delivery": args.deliveryId,
-        "x-hub-signature-256": signature,
-      },
-      body: args.rawBody,
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request("/api/webhooks/github", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-github-event": args.event,
+      "x-github-delivery": args.deliveryId,
+      "x-hub-signature-256": signature,
     },
-  );
+    body: args.rawBody,
+  });
   return {
     status: response.status,
     text: await response.text(),
@@ -706,6 +715,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     });
     if (
       admittedEvent?.eventType !== "input.automation" ||
+      !admittedEvent.userMessage ||
       claimedEvent?.eventType !== "input.prompt"
     ) {
       throw new Error("Expected admitted and claimed workflow chat events");
@@ -714,7 +724,13 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       chatEventAutomationPart(admittedEvent)?.automationBrief,
     ).toBeUndefined();
     expect(chatEventDisplayText(admittedEvent)).toBe(displayPrompt);
-    expect(claimedEvent.userMessage).toStrictEqual(admittedEvent.userMessage);
+    expect(claimedEvent.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        ...admittedEvent.userMessage.parts,
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
     expect(chatEventDisplayText(claimedEvent)).toBe(displayPrompt);
     const claim = await runsApi.claimRunnerJob(runId);
     const zeroToken = claim.environment?.ZERO_TOKEN;

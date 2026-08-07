@@ -3,6 +3,7 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
@@ -13,7 +14,9 @@ interface FeatureSwitchActor {
 }
 
 function featureSwitchesClient(context: TestContext) {
-  return setupApp({ context })(zeroFeatureSwitchesContract);
+  return setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
 }
 
 function authHeaders() {

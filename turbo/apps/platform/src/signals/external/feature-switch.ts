@@ -77,10 +77,8 @@ export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
   );
 });
 
-export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false
-  );
+export const cjkFriendlyMarkdownEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CjkFriendlyMarkdown] ?? false;
 });
 
 export const codexFastModeEnabled$ = computed((get): boolean => {
@@ -89,14 +87,6 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
 
 export const composerUploadPopoverEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
-});
-
-export const pwaChatKeyboardGesturesEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.PwaChatKeyboardGestures] ?? false;
-});
-
-export const mermaidDiagramsEnabled$ = computed((get): boolean => {
-  return get(featureSwitch$)[FeatureSwitchKey.MermaidDiagrams] ?? false;
 });
 
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
@@ -132,12 +122,6 @@ export const reloadFeatureSwitch$ = command(
       result.body.switches,
       result.body.effectiveSwitches,
     );
-    if (result.body.supportsCustomConnectorOAuth2 !== true) {
-      combined[FeatureSwitchKey.CustomConnectorOAuth2] = false;
-    }
-    if (result.body.supportsCustomModelGateways !== true) {
-      combined[FeatureSwitchKey.CustomModelGateways] = false;
-    }
     const imageRecognitionGloballyAvailable =
       result.body.supportsImageRecognition === true;
 

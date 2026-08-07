@@ -726,6 +726,42 @@ class TestErrorHandler:
         assert "api_key=secret" not in entry["message"]
         assert "#frag" not in entry["message"]
 
+    def test_error_proxy_log_omits_retained_url_above_processing_limit(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        secret_userinfo = "proxy-error-user:proxy-error-password"
+        raw_url = f"https://{secret_userinfo}@target.example.com/path/" + ("x" * 1_000_000)
+        network_log_path = tmp_path / "network.jsonl"
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = real_flow(with_response=False, host="target.example.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(network_log_path)
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log_path)
+        flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        http_network_log.set_target(
+            flow,
+            url=raw_url,
+            host="target.example.com",
+            port=443,
+        )
+        flow.error = Error("connection reset by peer")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        [network_entry] = read_jsonl_entries_after_flush(network_log_path)
+        assert network_entry["url"] == "[truncated]"
+        [proxy_entry] = read_jsonl_entries_after_flush(proxy_log_path)
+        assert proxy_entry["message"] == "Error: connection reset by peer: [truncated]"
+        assert proxy_entry["type"] == "connection_error"
+        assert proxy_entry["error"] == "connection reset by peer"
+        assert proxy_entry["url_truncated"] is True
+        assert proxy_entry["url_original_char_count"] == len(raw_url)
+        serialized_proxy_entry = json.dumps(proxy_entry)
+        assert secret_userinfo not in serialized_proxy_entry
+        assert len(serialized_proxy_entry.encode()) < 1_000
+
     def test_full_path_error_to_webhook(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, usage_webhook_api
     ):

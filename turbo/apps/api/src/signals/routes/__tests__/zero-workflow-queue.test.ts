@@ -44,6 +44,22 @@ import {
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroModelProvidersRoutes } from "../zero-model-providers";
+import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
+import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
+import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...cronCleanupSandboxesRoutes,
+  ...testWorkflowAutomationExecutionRoutes,
+  ...webhooksWorkflowAutomationsRoutes,
+  ...zeroChatEventsRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroModelProvidersRoutes,
+  ...zeroWorkflowAutomationsRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -71,7 +87,9 @@ function authHeaders() {
 }
 
 function automationsClient() {
-  return setupApp({ context })(zeroWorkflowAutomationsContract);
+  return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
+    zeroWorkflowAutomationsContract,
+  );
 }
 
 function workflowAutomationExecutionClient() {
@@ -82,15 +100,21 @@ function workflowAutomationExecutionClient() {
 }
 
 function chatEventsClient() {
-  return setupApp({ context })(chatEventsContract);
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatEventsContract,
+  );
 }
 
 function chatThreadEventsClient() {
-  return setupApp({ context })(chatThreadEventsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadEventsContract,
+  );
 }
 
 function modelProvidersByTypeClient() {
-  return setupApp({ context })(zeroModelProvidersByTypeContract);
+  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+    zeroModelProvidersByTypeContract,
+  );
 }
 
 interface Scenario {
@@ -176,7 +200,7 @@ async function postWorkflowWebhook(
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const rawBody = JSON.stringify({ event: payload });
   const timestamp = Math.floor(now() / 1000);
-  const response = await createApp({ signal }).request(
+  const response = await createApp({ signal, routes: TEST_APP_ROUTES }).request(
     `/api/webhooks/workflow-automations/${automation.token}`,
     {
       method: "POST",
@@ -346,10 +370,12 @@ async function executeDueWorkflowAutomations(
 }
 
 async function cleanupSandboxes(): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(
-    CRON_CLEANUP_SANDBOXES_ROUTE,
-    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
-  );
+  const response = await createApp({
+    signal: context.signal,
+    routes: TEST_APP_ROUTES,
+  }).request(CRON_CLEANUP_SANDBOXES_ROUTE, {
+    headers: { authorization: `Bearer ${CRON_SECRET}` },
+  });
   expect(response.status).toBe(200);
 }
 
@@ -837,7 +863,7 @@ describe("workflow queue", () => {
       webhookAutomation.threadId,
       created.body.id,
     );
-    if (!pendingTick) {
+    if (!pendingTick?.userMessage) {
       throw new Error("Expected the schedule tick to remain pending");
     }
     const admittedTriggerBrief =
@@ -879,7 +905,13 @@ describe("workflow queue", () => {
     if (claimedTick?.eventType !== "input.prompt") {
       throw new Error("Expected the schedule tick to be claimed");
     }
-    expect(claimedTick.userMessage).toStrictEqual(pendingTick.userMessage);
+    expect(claimedTick.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        ...pendingTick.userMessage.parts,
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
     expect(chatEventDisplayText(claimedTick)).toBe(admittedDisplayPrompt);
     expect(chatEventAutomationPart(claimedTick)?.automationBrief).toBe(
       admittedTriggerBrief,

@@ -20,6 +20,15 @@ import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroIntegrationsGithubUploadCompleteRoutes } from "../zero-integrations-github-upload-complete";
+import { zeroIntegrationsGithubUploadInitRoutes } from "../zero-integrations-github-upload-init";
+import { zeroIntegrationsGithubDownloadFileRoutes } from "../zero-integrations-github-download-file";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroIntegrationsGithubDownloadFileRoutes,
+  ...zeroIntegrationsGithubUploadCompleteRoutes,
+  ...zeroIntegrationsGithubUploadInitRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -147,7 +156,7 @@ describe("GitHub zero file integration routes", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({
       url: fileUrl,
       filename: "screenshot.png",
@@ -191,7 +200,7 @@ describe("GitHub zero file integration routes", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({ url: fileUrl });
     const response = await app.request(
       `/api/zero/integrations/github/download-file?${query.toString()}`,
@@ -216,7 +225,7 @@ describe("GitHub zero file integration routes", () => {
   it("rejects non-GitHub file URLs", async () => {
     const fixture = await seedFixture();
 
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({
       url: "https://example.com/file.png",
     });
@@ -242,7 +251,7 @@ describe("GitHub zero file integration routes", () => {
 
   it("requires github read capability for context file downloads", async () => {
     const fixture = await seedFixture();
-    const app = createApp({ signal: context.signal });
+    const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
     const query = new URLSearchParams({
       url: "https://github.com/user-attachments/assets/abc123",
     });
@@ -271,7 +280,10 @@ describe("GitHub zero file integration routes", () => {
     mockEnv("S3_ENDPOINT", "http://internal-s3.test");
     mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.test");
     const fixture = await seedFixture();
-    const client = setupApp({ context })(integrationsGithubUploadInitContract);
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsGithubUploadInitRoutes,
+    })(integrationsGithubUploadInitContract);
 
     const response = await accept(
       client.init({
@@ -343,9 +355,10 @@ describe("GitHub zero file integration routes", () => {
       ),
     );
 
-    const client = setupApp({ context })(
-      integrationsGithubUploadCompleteContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroIntegrationsGithubUploadCompleteRoutes,
+    })(integrationsGithubUploadCompleteContract);
     const response = await accept(
       client.complete({
         body: {

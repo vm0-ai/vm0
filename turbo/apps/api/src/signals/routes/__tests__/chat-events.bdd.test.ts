@@ -20,7 +20,7 @@ import {
   type ChatThreadEvent,
   type GenerationTemplateRequest,
   type ChatEvent,
-  type UserMessageDocument,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
@@ -65,7 +65,6 @@ import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   clearThreadSessionBinding,
-  deleteVm0ManagedDefaultModelKey,
   readRunAutonomyBudgetFixture,
   readThreadSessionBinding,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
@@ -82,8 +81,7 @@ import {
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
   deleteAgentRunFixture,
-  deleteBddVm0ApiKeys,
-  hasVm0ApiKeyLabel,
+  deleteBddVm0ApiKey,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
@@ -93,9 +91,22 @@ import {
   holdThreadSessionConversationClearFixture,
   readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
-  replaceBddVm0ApiKeys,
+  replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-events";
+import { zeroChatEventsRoutes } from "../zero-chat-events";
+import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroMailRoutes } from "../zero-mail";
+import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
+import { zeroModelProvidersRoutes } from "../zero-model-providers";
+
+const TEST_APP_ROUTES = Object.freeze([
+  ...zeroChatEventsRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroMailRoutes,
+  ...zeroModelProviderGatewayRoutes,
+  ...zeroModelProvidersRoutes,
+]);
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -121,6 +132,14 @@ const routeMocks = createZeroRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
+const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
+const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
+
+An active goal allows unfinished work to continue in a later run. An existing goal already provides that continuity and remains unchanged. If no goal exists, the unfinished outcome needs to be captured in a new goal before this run ends.
+
+A normal completion provides a reliable handoff for the next run. The handoff includes completed work, current state, verification performed, remaining work, and blockers.
+
+Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
@@ -281,7 +300,7 @@ interface EntitledChatActor {
 interface ChatRunSendBody {
   readonly agentId: string;
   readonly prompt: string;
-  readonly userMessage?: UserMessageDocument;
+  readonly userMessage?: UserMessageInputDocument;
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientEventId?: string;
@@ -318,10 +337,8 @@ async function entitledChatActor(
 }
 
 async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
-  onTestFinished(async () => {
-    await deleteVm0ManagedDefaultModelKey(context);
-  });
-  return await seedVm0ManagedModelKeyState(context, selectedModel);
+  const fixture = await seedVm0ManagedModelKeyState(context, selectedModel);
+  return fixture.selectedModel;
 }
 
 async function sendChatRun(
@@ -785,27 +802,39 @@ function modelProviderSecretPlaceholder(
 }
 
 function modelProvidersClient() {
-  return setupApp({ context })(zeroModelProvidersMainContract);
+  return setupApp({ context, routes: zeroModelProvidersRoutes })(
+    zeroModelProvidersMainContract,
+  );
 }
 
 function modelProviderConnectionsClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsMainContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsMainContract,
+  );
 }
 
 function modelProviderConnectionsByIdClient() {
-  return setupApp({ context })(zeroModelProviderConnectionsByIdContract);
+  return setupApp({ context, routes: zeroModelProviderGatewayRoutes })(
+    zeroModelProviderConnectionsByIdContract,
+  );
 }
 
 function chatEventsClient() {
-  return setupApp({ context })(chatEventsContract);
+  return setupApp({ context, routes: zeroChatEventsRoutes })(
+    chatEventsContract,
+  );
 }
 
 function chatThreadsClient() {
-  return setupApp({ context })(chatThreadsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadsContract,
+  );
 }
 
 function chatThreadEventsClient() {
-  return setupApp({ context })(chatThreadEventsContract);
+  return setupApp({ context, routes: zeroChatThreadRoutes })(
+    chatThreadEventsContract,
+  );
 }
 
 describe("CHAT-02: thread run admission invariant", () => {
@@ -923,10 +952,10 @@ async function readThreadProjection(actor: ApiTestUser, threadId: string) {
  */
 async function requestSendEventRaw(
   actor: ApiTestUser,
-  body: ChatRunSendBody & { readonly userMessage: UserMessageDocument },
+  body: ChatRunSendBody & { readonly userMessage: UserMessageInputDocument },
 ): Promise<{ readonly status: number; readonly body: unknown }> {
   const headers = sessionHeaders(actor);
-  const app = createApp({ signal: context.signal });
+  const app = createApp({ signal: context.signal, routes: TEST_APP_ROUTES });
   const response = await app.request("/api/zero/chat/events", {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
@@ -944,7 +973,7 @@ async function requestSendEventWithBearer(
     readonly clientEventId?: string;
     readonly prompt: string;
     readonly threadId?: string;
-    readonly userMessage?: UserMessageDocument;
+    readonly userMessage?: UserMessageInputDocument;
   },
   statuses: readonly (201 | 400 | 401 | 403 | 409)[],
 ) {
@@ -1419,10 +1448,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(active.runId);
-    // The runner release before #25369 defaults a missing chatSteer field to
-    // false. Keep this wire assertion until that runner cannot drain or roll
-    // back against the current API.
-    expect(claim.featureFlags).toMatchObject({ chatSteer: true });
 
     const firstPendingEventId = randomUUID();
     const secondPendingEventId = randomUUID();
@@ -1489,12 +1514,20 @@ describe("CHAT-02: queueing and recalling messages", () => {
       contextId: null,
     });
     for (const pendingEventId of [firstPendingEventId, secondPendingEventId]) {
-      expect(userMessages(events.events)).toContainEqual(
-        expect.objectContaining({
-          runId: active.runId,
-          revokesEventId: pendingEventId,
-        }),
-      );
+      const claimedEvent = events.events.find((event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.runId === active.runId &&
+          event.revokesEventId === pendingEventId
+        );
+      });
+      if (!claimedEvent || claimedEvent.eventType !== "input.prompt") {
+        throw new Error("Expected the pending active input to be claimed");
+      }
+      expect(claimedEvent.userMessage.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-sonnet-4-6",
+      });
     }
 
     const emptyControlPayloadBytes = Buffer.byteLength(
@@ -1584,6 +1617,171 @@ describe("CHAT-02: queueing and recalling messages", () => {
     );
 
     await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("steers a run once when assistant output reaches its time budget", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "run until the time budget warning",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const running = await api.readRun(actor, active.runId);
+    if (!running.startedAt) {
+      throw new Error("Expected the claimed run to have a start time");
+    }
+    const startedAt = Date.parse(running.startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS - 1);
+    await webhooks.requestAgentEvents(
+      {
+        runId: active.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              content: [{ type: "text", text: "still below the threshold" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+
+    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS);
+    await webhooks.requestAgentEvents(
+      {
+        runId: active.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              content: [{ type: "text", text: "threshold reached" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const budgetEventIds = await api.listRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    expect(budgetEventIds).toHaveLength(1);
+    await expect(
+      api.claimRunnerActiveInputs(
+        claimed.claim.sandboxToken,
+        active.runId,
+        budgetEventIds,
+      ),
+    ).resolves.toBe(RUN_TIME_BUDGET_MESSAGE);
+
+    const publicEvents = await chat.listThreadEvents(actor, active.threadId);
+    const budgetEvent = publicEvents.events.find((event) => {
+      return (
+        event.eventType === "input.budget" &&
+        event.runId === active.runId &&
+        chatEventDisplayText(event) === RUN_TIME_BUDGET_MESSAGE
+      );
+    });
+    if (!budgetEvent || budgetEvent.eventType !== "input.budget") {
+      throw new Error("Expected the run time budget input to be claimed");
+    }
+    expect(budgetEvent.userMessage.parts).toContainEqual({
+      type: "model",
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    mockNow(startedAt + RUN_TIME_BUDGET_STEER_AT_MS + 1);
+    await webhooks.requestAgentEvents(
+      {
+        runId: active.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              content: [{ type: "text", text: "another assistant event" }],
+            },
+          },
+        ],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+
+    clearMockNow();
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("does not carry an unclaimed time budget input into a later run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "leave the budget input unclaimed",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    const running = await api.readRun(actor, first.runId);
+    if (!running.startedAt) {
+      throw new Error("Expected the claimed run to have a start time");
+    }
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockNow(Date.parse(running.startedAt) + RUN_TIME_BUDGET_STEER_AT_MS);
+    await webhooks.requestAgentEvents(
+      {
+        runId: first.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              content: [{ type: "text", text: "leave this warning pending" }],
+            },
+          },
+        ],
+      },
+      firstClaim.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.listRunnerActiveInputs(firstClaim.claim.sandboxToken, first.runId),
+    ).resolves.toHaveLength(1);
+
+    clearMockNow();
+    await cancelChatRun(actor, first.runId, firstClaim.sandboxHeaders);
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "start a later run",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    await expect(
+      api.listRunnerActiveInputs(secondClaim.claim.sandboxToken, second.runId),
+    ).resolves.toStrictEqual([]);
+    await cancelChatRun(actor, second.runId, secondClaim.sandboxHeaders);
   }, 90_000);
 
   it("queues, retries, and recalls messages behind an active run", async () => {
@@ -2370,16 +2568,18 @@ describe("CHAT-02: Zero Mail link delivery", () => {
     );
 
     const linked = await accept(
-      setupApp({ context })(zeroMailContract).linkDraft({
-        headers: {
-          authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+      setupApp({ context, routes: zeroMailRoutes })(zeroMailContract).linkDraft(
+        {
+          headers: {
+            authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+          },
+          body: {
+            threadId: run.threadId,
+            agentId,
+            gmailDraftId,
+          },
         },
-        body: {
-          threadId: run.threadId,
-          agentId,
-          gmailDraftId,
-        },
-      }),
+      ),
       [200],
     );
     const beforeReply = await chat.listThreadEvents(actor, run.threadId);
@@ -3312,15 +3512,10 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
 
-    await replaceBddVm0ApiKeys({
+    await replaceBddVm0ApiKey({
       vendor: "moonshot",
-      model: "kimi-k2.7-code",
-      keys: [
-        {
-          apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
-          label: "dev-seed",
-        },
-      ],
+      apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
+      label: "dev-seed",
     });
 
     let runId: string | null = null;
@@ -3330,10 +3525,7 @@ describe("CHAT-02: model-first provider policies", () => {
       }
     };
     const deleteVm0KimiKeys = async () => {
-      await deleteBddVm0ApiKeys({
-        vendor: "moonshot",
-        model: "kimi-k2.7-code",
-      });
+      await deleteBddVm0ApiKey({ vendor: "moonshot" });
     };
     const cleanupRunAndKeys = async () => {
       await Promise.all([deleteVm0KimiKeys(), cancelRunIfCreated()]);
@@ -3373,34 +3565,24 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
-  it("prefers dev-seed vm0 managed keys over concurrent test keys", async () => {
+  it("selects a vm0 managed key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
-    const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
-    const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
+    const apiKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
     let runId: string | null = null;
 
     onTestFinished(async () => {
       await Promise.all([
-        deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.2" }),
+        deleteBddVm0ApiKey({ vendor: "zai" }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
 
-    await replaceBddVm0ApiKeys({
+    await replaceBddVm0ApiKey({
       vendor: "zai",
-      model: "glm-5.2",
-      keys: [
-        {
-          apiKey: fakeKey,
-          label: `bdd-fake-${keySuffix}`,
-        },
-        {
-          apiKey: devSeedKey,
-          label: "dev-seed",
-        },
-      ],
+      apiKey,
+      label: "dev-seed",
     });
 
     await api.updateOrgModelPolicies(actor, [
@@ -3450,17 +3632,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected vm0 firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
-    if (!authorization?.startsWith("Bearer ")) {
-      throw new Error("Expected vm0 firewall auth to return a bearer token");
-    }
-    await expect(
-      hasVm0ApiKeyLabel({
-        vendor: "zai",
-        model: "glm-5.2",
-        apiKey: authorization.slice("Bearer ".length),
-        label: "dev-seed",
-      }),
-    ).resolves.toBeTruthy();
+    expect(authorization).toBe(`Bearer ${apiKey}`);
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
@@ -5408,7 +5580,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `> Second quote\n\nAdd supporting evidence from [Roadmap](/chats/${referencedThreadId})`;
     const prompt =
       `Review [Roadmap](/chats/${referencedThreadId}) now\n\n` + feedbackPrompt;
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -5507,7 +5679,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5529,7 +5707,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       type: "workflow",
       selection: { workflowTemplateId: workflow.id },
     };
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Use " },
@@ -5604,7 +5782,13 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
     expect(message).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
     });
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
@@ -5672,6 +5856,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             contentType: "text/plain",
           },
           { type: "text", text: "plain API attachment" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
         ],
       },
     });
@@ -6214,7 +6399,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       "queued structured text\n\n" +
       "Feedback on this part of your reply:\n\n" +
       "> Queued quote\n\nRevise after the anchor completes";
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         {
@@ -6277,7 +6462,16 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the structured queued message to auto-send");
     }
-    expect(promoted.userMessage).toStrictEqual(userMessage);
+    expect(promoted.userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        ...userMessage.parts,
+        {
+          type: "model",
+          selectedModel: "claude-sonnet-4-6",
+        },
+      ],
+    });
 
     const run = await api.readRun(actor, promoted.runId);
     expect(run.prompt).toBe(
@@ -6812,7 +7006,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     const messageId = randomUUID();
     const referencedThreadId = randomUUID();
-    const userMessage: UserMessageDocument = {
+    const userMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "queue-first " },
@@ -6858,7 +7052,16 @@ describe("CHAT-02: shared user message queue", () => {
     });
     expect(claimed).toMatchObject({
       content: null,
-      userMessage,
+      userMessage: {
+        version: 1,
+        parts: [
+          ...userMessage.parts,
+          {
+            type: "model",
+            selectedModel: "claude-sonnet-4-6",
+          },
+        ],
+      },
       runId,
       revokesEventId: messageId,
     });
@@ -7588,7 +7791,7 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected a registered illustration style");
     }
     const queuedMessageId = randomUUID();
-    const queuedUserMessage: UserMessageDocument = {
+    const queuedUserMessage: UserMessageInputDocument = {
       version: 1,
       parts: [
         { type: "text", text: "Restyle with " },
@@ -7722,6 +7925,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(second.body).toMatchObject({ runId: null });
 
     await cancelChatRun(actor, anchor.runId);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,

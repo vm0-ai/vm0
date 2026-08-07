@@ -9,6 +9,7 @@ use tracing::warn;
 use crate::duration::duration_ms;
 use crate::http::HttpClient;
 use crate::ids::RunId;
+use crate::types::SandboxReuseResult;
 pub(crate) use session_history::{
     SessionHistoryCacheProbeMetadata, SessionHistoryContentEncodingState,
     SessionHistoryContentLengthState, SessionHistoryResponseTelemetryMetadata,
@@ -23,6 +24,15 @@ const FLUSH_THRESHOLD: Duration = Duration::from_secs(30);
 
 /// Timeout for telemetry HTTP requests (shorter than default API timeout).
 const TELEMETRY_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Effective resource path once the guest process has spawned.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RunnerStartupPath {
+    Sandbox,
+    Workspace,
+    Cold,
+}
 
 /// Per-job telemetry collector. Buffers sandbox operations and flushes them
 /// periodically (auto on 30 s threshold) and at job end.
@@ -46,6 +56,10 @@ struct SandboxOp {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runner_startup_path: Option<RunnerStartupPath>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sandbox_reuse_result: Option<SandboxReuseResult>,
     #[serde(flatten)]
     session_history: Option<SessionHistoryTelemetryFields>,
 }
@@ -82,6 +96,18 @@ impl JobTelemetry {
         self.record_inner(action_type, duration, success, error, None);
     }
 
+    pub(crate) fn record_api_to_spawn(
+        &mut self,
+        duration: Duration,
+        runner_startup_path: RunnerStartupPath,
+        sandbox_reuse_result: SandboxReuseResult,
+    ) {
+        let mut op = sandbox_op("api_to_spawn", duration, true, None, None);
+        op.runner_startup_path = Some(runner_startup_path);
+        op.sandbox_reuse_result = Some(sandbox_reuse_result);
+        self.push_operation(op);
+    }
+
     /// Record a timed operation with low-cardinality session-history transport
     /// dimensions derived from the hash-backed resume history ref.
     pub fn record_with_session_history_metadata(
@@ -111,8 +137,11 @@ impl JobTelemetry {
         error: Option<&str>,
         metadata: Option<SessionHistoryTelemetryMetadata>,
     ) {
-        self.pending_ops
-            .push(sandbox_op(action_type, duration, success, error, metadata));
+        self.push_operation(sandbox_op(action_type, duration, success, error, metadata));
+    }
+
+    fn push_operation(&mut self, operation: SandboxOp) {
+        self.pending_ops.push(operation);
         if self.oldest_pending.is_none() {
             self.oldest_pending = Some(Instant::now());
         }
@@ -179,6 +208,20 @@ impl JobTelemetry {
                 success: op.success,
                 error: op.error.clone(),
                 session_history: op.session_history,
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_ops_with_runner_startup_snapshot(
+        &self,
+    ) -> Vec<RunnerStartupTelemetrySnapshot> {
+        self.pending_ops
+            .iter()
+            .map(|op| RunnerStartupTelemetrySnapshot {
+                action_type: op.action_type.clone(),
+                runner_startup_path: op.runner_startup_path,
+                sandbox_reuse_result: op.sandbox_reuse_result,
             })
             .collect()
     }
@@ -267,6 +310,14 @@ pub(crate) struct SessionHistoryTelemetrySnapshot {
     pub(crate) session_history: Option<SessionHistoryTelemetryFields>,
 }
 
+#[cfg(test)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RunnerStartupTelemetrySnapshot {
+    pub(crate) action_type: String,
+    pub(crate) runner_startup_path: Option<RunnerStartupPath>,
+    pub(crate) sandbox_reuse_result: Option<SandboxReuseResult>,
+}
+
 fn sandbox_op(
     action_type: &str,
     duration: Duration,
@@ -280,6 +331,8 @@ fn sandbox_op(
         duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
+        runner_startup_path: None,
+        sandbox_reuse_result: None,
         session_history: metadata.map(SessionHistoryTelemetryFields::from),
     }
 }
@@ -409,6 +462,8 @@ mod tests {
             duration_ms: 1500,
             success: true,
             error: None,
+            runner_startup_path: None,
+            sandbox_reuse_result: None,
             session_history: None,
         };
         let json = serde_json::to_value(&op).unwrap();
@@ -419,6 +474,28 @@ mod tests {
                 "action_type": "vm_create",
                 "duration_ms": 1500,
                 "success": true,
+            })
+        );
+    }
+
+    #[test]
+    fn api_to_spawn_serializes_bounded_startup_metadata() {
+        let mut telemetry = JobTelemetry::new(http_client(), RunId::nil(), "tok".to_string());
+        telemetry.record_api_to_spawn(
+            Duration::from_millis(125),
+            RunnerStartupPath::Workspace,
+            SandboxReuseResult::PoolMiss,
+        );
+
+        assert_eq!(
+            serde_json::to_value(&telemetry.pending_ops[0]).unwrap(),
+            serde_json::json!({
+                "ts": telemetry.pending_ops[0].ts.clone(),
+                "action_type": "api_to_spawn",
+                "duration_ms": 125,
+                "success": true,
+                "runner_startup_path": "workspace",
+                "sandbox_reuse_result": "poolMiss",
             })
         );
     }
@@ -440,6 +517,8 @@ mod tests {
                 duration_ms: 100,
                 success: true,
                 error: None,
+                runner_startup_path: None,
+                sandbox_reuse_result: None,
                 session_history: Some(metadata.into()),
             }],
         };

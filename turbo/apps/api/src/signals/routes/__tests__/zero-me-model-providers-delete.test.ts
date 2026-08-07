@@ -9,6 +9,20 @@ import {
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { zeroMeModelProvidersDeleteRoutes } from "../zero-me-model-providers-delete";
+import { zeroMeModelProvidersListRoutes } from "../zero-me-model-providers-list";
+import { zeroMeModelProvidersResetSubscriptionRoutes } from "../zero-me-model-providers-reset-subscription";
+import { zeroMeModelProvidersUpsertRoutes } from "../zero-me-model-providers-upsert";
+
+const zeroPersonalModelProvidersMainTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersListRoutes,
+  ...zeroMeModelProvidersUpsertRoutes,
+]);
+
+const zeroPersonalModelProvidersByTypeTestRoutes = Object.freeze([
+  ...zeroMeModelProvidersDeleteRoutes,
+  ...zeroMeModelProvidersResetSubscriptionRoutes,
+]);
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -30,9 +44,10 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     fixture: UserModelProviderFixture,
   ): Promise<void> {
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersMainContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersMainTestRoutes,
+    })(zeroPersonalModelProvidersMainContract);
     await accept(
       client.upsert({
         body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
@@ -43,9 +58,10 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
   }
 
   it("returns 401 when unauthenticated", async () => {
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersByTypeTestRoutes,
+    })(zeroPersonalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({ params: { type: "anthropic-api-key" }, headers: {} }),
       [401],
@@ -57,9 +73,10 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
 
   it("returns 401 when authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersByTypeTestRoutes,
+    })(zeroPersonalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({
         params: { type: "anthropic-api-key" },
@@ -76,9 +93,10 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     const fixture = uniqueOrgUser("zmmp-delete");
     await upsertPersonalProvider(fixture);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersByTypeTestRoutes,
+    })(zeroPersonalModelProvidersByTypeContract);
     const response = await client.delete({
       params: { type: "claude-code-oauth-token" },
       headers: { authorization: "Bearer clerk-session" },
@@ -101,9 +119,10 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     const fixture = uniqueOrgUser("zmmp-missing");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersByTypeTestRoutes,
+    })(zeroPersonalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({
         params: { type: "claude-code-oauth-token" },
@@ -129,9 +148,10 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     await upsertPersonalProvider(alice);
     mocks.clerk.session(bob.userId, orgId);
 
-    const client = setupApp({ context })(
-      zeroPersonalModelProvidersByTypeContract,
-    );
+    const client = setupApp({
+      context,
+      routes: zeroPersonalModelProvidersByTypeTestRoutes,
+    })(zeroPersonalModelProvidersByTypeContract);
     const response = await accept(
       client.delete({
         params: { type: "claude-code-oauth-token" },

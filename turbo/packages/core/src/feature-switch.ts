@@ -34,11 +34,6 @@ export interface FeatureSwitchContext {
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
-const CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES = [
-  ...STAFF_ORG_ID_HASHES,
-  "a6e60503", // geo rollout workspace
-] as const;
-
 /**
  * Registry of all feature switches
  */
@@ -228,13 +223,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.Translation]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the managed Zero translation command and translation:write ZERO_TOKEN capability.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",
@@ -329,19 +317,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Use the Upload popover in the chat composer instead of the legacy paperclip attachment button.",
     enabled: false,
   },
-  [FeatureSwitchKey.CustomModelGateways]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
-    enabled: false,
-    enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -370,38 +350,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
+  [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Automatically open the latest sidebar-capable card from a running or successfully completed chat run when the utility sidebar is closed and split view is available.",
+      "Create immutable public snapshots from explicitly selected chat messages.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.MermaidDiagrams]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Render ```mermaid code blocks in assistant markdown as diagrams, and tell the web chat agent that they are rendered.",
-    enabled: true,
   },
   [FeatureSwitchKey.ArtifactSidebarInlineOpen]: {
     maintainer: "bingjie@vm0.ai",
     description:
       "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
-  [FeatureSwitchKey.ImageCanvasDoubleClickZoom]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.CjkFriendlyMarkdown]: {
+    maintainer: "bingjie@vm0.ai",
     description:
-      "Enable double-click zoom toggling on the shared image canvas.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+      "Close markdown emphasis (`*`, `**`, `***`, `~~`) that sits directly against CJK punctuation, which plain CommonMark leaves as literal asterisks. Turn off to fall back to stock CommonMark parsing.",
+    enabled: true,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
@@ -450,18 +416,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
-  },
-  [FeatureSwitchKey.CustomConnectorCliCreate]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Allow Zero CLI agents to create and configure custom connectors directly.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.CustomConnectorOAuth2]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
-    enabled: true,
   },
 };
 

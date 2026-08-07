@@ -4,7 +4,7 @@ import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import {
   persistedAttachmentSchema,
-  userMessageDocumentSchema,
+  userMessageInputDocumentSchema,
 } from "./chat-threads";
 
 const c = initContract();
@@ -67,14 +67,14 @@ export const zeroAgentInstructionsRequestSchema = z.object({
 
 export const zeroAgentDraftResponseSchema = z
   .object({
-    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftUserMessage: userMessageInputDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
   .superRefine(requireUserMessageForDraftAttachments);
 
 export const zeroAgentDraftRequestSchema = z
   .object({
-    draftUserMessage: userMessageDocumentSchema.nullable(),
+    draftUserMessage: userMessageInputDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   })
   .superRefine(requireUserMessageForDraftAttachments);
