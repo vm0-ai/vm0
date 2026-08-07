@@ -4,7 +4,7 @@ import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { optionalEnv } from "../../lib/env";
 import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
-import { getStripeClient } from "../external/stripe-client";
+import { constructStripeBillingWebhookEvent } from "../external/stripe-client";
 import { safeSync } from "../utils";
 import { handleStripeWebhookEvent$ } from "../services/webhooks-stripe.service";
 
@@ -29,11 +29,7 @@ const postStripeWebhook$ = command(
     signal.throwIfAborted();
 
     const eventResult = safeSync(() => {
-      return getStripeClient().webhooks.constructEvent(
-        body,
-        signature,
-        webhookSecret,
-      );
+      return constructStripeBillingWebhookEvent(body, signature, webhookSecret);
     });
     signal.throwIfAborted();
     if ("error" in eventResult) {

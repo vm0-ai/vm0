@@ -1,4 +1,3 @@
-import type StripeSDK from "stripe";
 import { command, computed, type Computed } from "ccstate";
 import type { AutoRechargeConfig } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -7,95 +6,12 @@ import { eq } from "drizzle-orm";
 
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  ensurePaymentMethodPortalConfiguration,
+  getStripeClient,
+} from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
-
-const PAYMENT_METHOD_PORTAL_CONFIGURATION_NAME = "VM0 payment methods";
-const PAYMENT_METHOD_PORTAL_CONFIGURATION_IDEMPOTENCY_KEY =
-  "vm0-payment-method-portal-v1";
-const PAYMENT_METHOD_PORTAL_METADATA = {
-  managed_by: "vm0",
-  purpose: "payment_method_management",
-} as const;
-
-function paymentMethodPortalFeatures(): StripeSDK.BillingPortal.ConfigurationCreateParams.Features {
-  return {
-    customer_update: { enabled: false },
-    invoice_history: { enabled: false },
-    payment_method_update: { enabled: true },
-    subscription_cancel: { enabled: false },
-    subscription_update: { enabled: false },
-  };
-}
-
-function isManagedPaymentMethodPortalConfiguration(
-  configuration: StripeSDK.BillingPortal.Configuration,
-): boolean {
-  return (
-    configuration.metadata?.managed_by ===
-      PAYMENT_METHOD_PORTAL_METADATA.managed_by &&
-    configuration.metadata.purpose === PAYMENT_METHOD_PORTAL_METADATA.purpose
-  );
-}
-
-function isRestrictedPaymentMethodPortalConfiguration(
-  configuration: StripeSDK.BillingPortal.Configuration,
-): boolean {
-  return (
-    configuration.active &&
-    !configuration.features.customer_update.enabled &&
-    !configuration.features.invoice_history.enabled &&
-    configuration.features.payment_method_update.enabled &&
-    !configuration.features.subscription_cancel.enabled &&
-    !configuration.features.subscription_update.enabled &&
-    !configuration.login_page.enabled
-  );
-}
-
-async function ensurePaymentMethodPortalConfiguration(
-  stripe: StripeSDK,
-  signal: AbortSignal,
-): Promise<string> {
-  const configurations = await stripe.billingPortal.configurations.list({
-    limit: 100,
-  });
-  signal.throwIfAborted();
-
-  const existing = configurations.data.find(
-    isManagedPaymentMethodPortalConfiguration,
-  );
-  if (!existing) {
-    const created = await stripe.billingPortal.configurations.create(
-      {
-        name: PAYMENT_METHOD_PORTAL_CONFIGURATION_NAME,
-        features: paymentMethodPortalFeatures(),
-        login_page: { enabled: false },
-        metadata: PAYMENT_METHOD_PORTAL_METADATA,
-      },
-      { idempotencyKey: PAYMENT_METHOD_PORTAL_CONFIGURATION_IDEMPOTENCY_KEY },
-    );
-    signal.throwIfAborted();
-    return created.id;
-  }
-
-  if (isRestrictedPaymentMethodPortalConfiguration(existing)) {
-    return existing.id;
-  }
-
-  const updated = await stripe.billingPortal.configurations.update(
-    existing.id,
-    {
-      active: true,
-      name: PAYMENT_METHOD_PORTAL_CONFIGURATION_NAME,
-      features: paymentMethodPortalFeatures(),
-      login_page: { enabled: false },
-      metadata: PAYMENT_METHOD_PORTAL_METADATA,
-    },
-  );
-  signal.throwIfAborted();
-  return updated.id;
-}
 
 export function autoRechargeConfig(
   orgId: string,
@@ -181,10 +97,8 @@ export const createBillingPortalSession$ = command(
       return session.url;
     }
 
-    const portalConfigurationId = await ensurePaymentMethodPortalConfiguration(
-      stripe,
-      signal,
-    );
+    const portalConfigurationId =
+      await ensurePaymentMethodPortalConfiguration(signal);
     signal.throwIfAborted();
 
     const session = await stripe.billingPortal.sessions.create({

@@ -1,6 +1,7 @@
-import type { Stripe } from "stripe";
-
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  type StripeSubscriptionSchedule,
+} from "../external/stripe-client";
 
 interface SubscriptionScheduleRef {
   readonly schedule?: string | { readonly id: string } | null;
@@ -17,7 +18,7 @@ export function subscriptionScheduleId(
 }
 
 export function subscriptionScheduleFinalEnd(
-  schedule: Pick<Stripe.SubscriptionSchedule, "current_phase" | "phases">,
+  schedule: Pick<StripeSubscriptionSchedule, "current_phase" | "phases">,
 ): Date | null {
   const finalEnd = schedule.phases.reduce<number | null>((latest, phase) => {
     return latest === null || phase.end_date > latest ? phase.end_date : latest;

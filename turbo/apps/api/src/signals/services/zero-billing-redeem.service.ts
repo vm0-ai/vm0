@@ -1,13 +1,17 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import StripeSDK from "stripe";
 import { orgPromoRedemption } from "@vm0/db/schema/org-promo-redemption";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  isStripeResourceMissingError,
+  stripeErrorInfo,
+  stripeResourceMissingError,
+} from "../external/stripe-client";
 import { bestEffort, onRejection, settle } from "../utils";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { getCampaign } from "./one-time-products";
@@ -54,19 +58,20 @@ export const startOrResumeRedemption$ = command(
     if (outcome.ok) {
       return outcome.value;
     }
-    if (outcome.error instanceof StripeSDK.errors.StripeError) {
+    const stripeError = stripeErrorInfo(outcome.error);
+    if (stripeError) {
       log.error("redeem: stripe error", {
         orgId: args.orgId,
         campaignKey: args.campaignKey,
-        type: outcome.error.type,
-        code: outcome.error.code,
-        message: outcome.error.message,
+        type: stripeError.type,
+        code: stripeError.code,
+        message: stripeError.message,
       });
       return {
         kind: "stripe_error",
-        type: outcome.error.type,
-        code: outcome.error.code ?? null,
-        message: outcome.error.message,
+        type: stripeError.type,
+        code: stripeError.code,
+        message: stripeError.message,
       };
     }
     throw outcome.error;
@@ -230,11 +235,9 @@ const ensureCampaignStillAvailable$ = command(
       // Route already gated unknown campaigns; if we got here, env drifted
       // mid-request. Surfacing as misconfigured is fine.
       await set(cleanupStaleRedemption$, { args, stripeSessionId }, signal);
-      throw new StripeSDK.errors.StripeInvalidRequestError({
-        type: "invalid_request_error",
-        code: "resource_missing",
-        message: `Campaign ${args.campaignKey} is no longer configured`,
-      });
+      throw stripeResourceMissingError(
+        `Campaign ${args.campaignKey} is no longer configured`,
+      );
     }
 
     const stripe = getStripeClient();
@@ -245,16 +248,13 @@ const ensureCampaignStillAvailable$ = command(
         stripe.prices.retrieve(campaign.priceId),
       ]),
       async (error) => {
-        if (
-          error instanceof StripeSDK.errors.StripeInvalidRequestError &&
-          error.code === "resource_missing"
-        ) {
+        if (isStripeResourceMissingError(error)) {
           log.warn("one_time_purchase stripe resource missing on resume", {
             orgId: args.orgId,
             campaignKey: args.campaignKey,
             couponId: campaign.couponId,
             priceId: campaign.priceId,
-            stripeMessage: error.message,
+            stripeMessage: stripeErrorInfo(error)?.message ?? null,
           });
           await set(cleanupStaleRedemption$, { args, stripeSessionId }, signal);
         }
@@ -269,11 +269,9 @@ const ensureCampaignStillAvailable$ = command(
         couponId: campaign.couponId,
       });
       await set(cleanupStaleRedemption$, { args, stripeSessionId }, signal);
-      throw new StripeSDK.errors.StripeInvalidRequestError({
-        type: "invalid_request_error",
-        code: "resource_missing",
-        message: `Coupon ${campaign.couponId} is no longer valid`,
-      });
+      throw stripeResourceMissingError(
+        `Coupon ${campaign.couponId} is no longer valid`,
+      );
     }
 
     if (!price.active) {
@@ -283,11 +281,9 @@ const ensureCampaignStillAvailable$ = command(
         priceId: campaign.priceId,
       });
       await set(cleanupStaleRedemption$, { args, stripeSessionId }, signal);
-      throw new StripeSDK.errors.StripeInvalidRequestError({
-        type: "invalid_request_error",
-        code: "resource_missing",
-        message: `Price ${campaign.priceId} is no longer active`,
-      });
+      throw stripeResourceMissingError(
+        `Price ${campaign.priceId} is no longer active`,
+      );
     }
   },
 );
