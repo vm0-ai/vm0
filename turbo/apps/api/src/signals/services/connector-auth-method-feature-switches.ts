@@ -33,7 +33,6 @@ const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
   "neon\0oauth": FeatureSwitchKey.NeonConnector,
   "netsuite\0api-token": FeatureSwitchKey.NetSuiteConnector,
   "paypal\0api-token": FeatureSwitchKey.PayPalConnector,
-  "pexels\0api-token": FeatureSwitchKey.PexelsConnector,
   "posthog\0oauth": FeatureSwitchKey.PosthogConnector,
   "quickbooks\0oauth": FeatureSwitchKey.QuickBooksConnector,
   "ramp\0api-token": FeatureSwitchKey.RampConnector,

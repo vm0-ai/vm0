@@ -1,19 +1,14 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroAvatarVideoContract } from "@vm0/api-contracts/contracts/zero-avatar-video";
-import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { ILLUSTRATION_TEMPLATE_ITEMS, VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
 
 import {
   detachedSetupPage,
-  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { findComposerEditor } from "./chat-composer-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -77,18 +72,15 @@ describe("user messages", () => {
       expect(element).toBeInstanceOf(HTMLElement);
       return element as HTMLElement;
     });
-    const references = screen.getAllByLabelText(
-      `Message template ${templateItem.title}`,
+    const references = screen.getAllByTitle(
+      `Illustration · ${templateItem.title}`,
     );
     expect(references).toHaveLength(2);
+    const buttons = queryAllByRoleFast("button");
     for (const reference of references) {
-      expect(reference.tagName).toBe("BUTTON");
-      expect(reference).toHaveAttribute("aria-haspopup", "dialog");
-      expect(reference).toHaveAttribute(
-        "data-structured-template-reference",
-        "",
-      );
       expect(reference.textContent).toBe(templateItem.title);
+      // A sent template is a record, not a control, so it exposes no button.
+      expect(buttons).not.toContain(reference);
     }
     const feedback = document.querySelector("[data-structured-feedback-group]");
     expect(feedback).toBeInstanceOf(HTMLElement);
@@ -100,18 +92,7 @@ describe("user messages", () => {
 
     await user.click(references[0]!);
 
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog).toBeInTheDocument();
-    const illustrationTab = queryAllByRoleFast("tab").find((tab) => {
-      return tab.textContent === "Illustration";
-    });
-    expect(illustrationTab).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.getByLabelText(`Select template ${templateItem.title}`),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      document.querySelector("[data-composer-inline-template]"),
-    ).toBeNull();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("echoes the video parameters a sent template used", async () => {
@@ -158,127 +139,10 @@ describe("user messages", () => {
       },
     });
 
-    const reference = await screen.findByLabelText(
-      `Message template ${templateItem.title}`,
+    const reference = await screen.findByTitle(
+      `Video \u00b7 ${templateItem.title}`,
     );
     expect(reference).toHaveTextContent("9:16 \u00b7 8s");
-  });
-
-  it("opens avatar message templates at the voice picker", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b0000000-0000-4000-a000-000000000749";
-    const avatar = {
-      id: 81,
-      name: "Ada",
-      coverUrl: "https://example.com/ada.jpg",
-    };
-    const voice = {
-      id: "en-US-ChristopherNeural",
-      name: "Christopher",
-      sampleUrl: "https://example.com/christopher.mp3",
-      language: "English",
-      gender: "male",
-    };
-    const avatarOptions = {
-      titleSnapshot: avatar.name,
-      previewUrl: avatar.coverUrl,
-      voiceId: voice.id,
-      aspectRatio: "landscape" as const,
-    };
-    // The stored message predates avatarOptions, so it carries only the flat
-    // fields; reopening it must still resolve the avatar and its voice.
-    const template = {
-      type: "video" as const,
-      selection: {
-        stylePresetId: avatarTemplateStylePresetId(avatar.id),
-        ...avatarOptions,
-      },
-    };
-    context.mocks.api(zeroAvatarVideoContract.voices, ({ respond }) => {
-      return respond(200, {
-        voices: [voice],
-        hasMore: false,
-        filterOptions: { languages: ["english"], useCases: [] },
-      });
-    });
-    let submittedTemplate: GenerationTemplateRequest | undefined;
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Avatar template reference",
-      onRunCreate(body) {
-        const templatePart = body.userMessage?.parts.find((part) => {
-          return part.type === "template";
-        });
-        submittedTemplate =
-          templatePart?.type === "template" ? templatePart.template : undefined;
-      },
-      chatEvents: [
-        {
-          id: "00000000-0000-4000-8000-000000000749",
-          role: "user",
-          content: "Create an avatar video",
-          runId: "d0000000-0000-4000-a000-000000000749",
-          userMessage: {
-            version: 1,
-            parts: [
-              {
-                type: "template",
-                titleSnapshot: avatar.name,
-                template,
-              },
-              { type: "text", text: "Create an avatar video" },
-            ],
-          },
-          createdAt: "2026-08-05T10:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.JoggAiBuiltIn]: true,
-      },
-    });
-
-    await screen.findByLabelText("Template");
-    const editor = await findComposerEditor();
-    await fill(editor, "Reuse this avatar template");
-    await user.click(
-      await screen.findByLabelText(`Message template ${avatar.name}`),
-    );
-
-    const dialog = await screen.findByRole("dialog");
-    await expect(
-      within(dialog).findByText(`Choose a voice for ${avatar.name}`),
-    ).resolves.toBeInTheDocument();
-    expect(
-      within(dialog).getByLabelText(`Select voice ${voice.name}`),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      within(dialog).queryByLabelText(`Select template ${avatar.name}`),
-    ).not.toBeInTheDocument();
-
-    await user.click(
-      within(dialog).getByLabelText(`Select voice ${voice.name}`),
-    );
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      expect(
-        screen.getByLabelText(`Preview template ${avatar.name}`),
-      ).toBeInTheDocument();
-    });
-    await user.click(screen.getByLabelText("Send"));
-
-    // Re-selecting the voice rewrites the selection, which now nests the
-    // options and mirrors them flat.
-    await waitFor(() => {
-      expect(submittedTemplate).toStrictEqual({
-        ...template,
-        selection: { ...template.selection, avatarOptions },
-      });
-    });
   });
 
   it("renders ordered snapshots with literal Markdown text", async () => {
@@ -401,7 +265,7 @@ describe("user messages", () => {
       'a[aria-label="Open chat Archived source"]',
     );
     expect(threadLink).toHaveAttribute("href", `/chats/${referencedThreadId}`);
-    const template = screen.getByLabelText("Message template Archived deck");
+    const template = screen.getByTitle("Presentation · Archived deck");
     const image = screen.getByLabelText("Preview reference.png");
     expect(image).toBeInTheDocument();
     // Templates render inline at their position in the message, so the chip
