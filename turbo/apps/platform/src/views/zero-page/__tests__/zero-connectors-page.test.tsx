@@ -3389,6 +3389,39 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("refreshes the cached custom connector list after a realtime create event", async () => {
+    let connectors: CustomConnectorResponse[] = [];
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors });
+    });
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    const emptyState = await screen.findByText(
+      "No custom connectors yet. Create one to register an API for every member to use.",
+    );
+    expect(emptyState).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("customConnectorListChanged"),
+      ).toBeTruthy();
+    });
+    click(tabByText("Built-in"));
+
+    connectors = [customConnector({ slug: "_acme-search" })];
+    context.mocks.ably.trigger("customConnectorListChanged");
+    click(tabByText("Custom"));
+
+    await waitFor(() => {
+      expect(connectorCardByLabel("Acme Search")).toBeInTheDocument();
+    });
+  });
+
   it("localizes the custom connector OAuth entry flow in Portuguese", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000033";
     const connector = customConnector({

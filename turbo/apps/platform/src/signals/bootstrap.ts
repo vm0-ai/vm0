@@ -55,7 +55,6 @@ import {
 } from "./onboarding/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
-import { setupCustomConnectorProposalPage$ } from "./connectors-page/custom-connector-proposal-page-setup.ts";
 import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization/computer-use-authorization-page-setup.ts";
 import { setupBrowserAuthorizationPage$ } from "./browser-authorization/browser-authorization-page-setup.ts";
 import { setupBrowserSessionPage$ } from "./browser-session/browser-session-page-setup.ts";
@@ -180,10 +179,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.ideas,
     setup: setupAuthSidebarPageWrapper(setupIdeationPage$),
-  },
-  {
-    path: ROUTES.customConnectorProposal,
-    setup: setupAuthPageWrapper(setupCustomConnectorProposalPage$),
   },
   {
     path: ROUTES.computerUseAuthorize,

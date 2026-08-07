@@ -12,6 +12,7 @@ import { createCustomConnectorCommand } from "../create";
 import { customConnectorCommand } from "../index";
 
 const CONNECTOR_ID = "33333333-3333-4333-8333-333333333333";
+const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function buildZeroToken(capabilities: readonly string[]): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -91,6 +92,7 @@ describe("zero connector custom create", () => {
     tempDir = mkdtempSync(join(tmpdir(), "zero-custom-connector-create-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", buildZeroToken(["connector:write"]));
+    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
   });
 
   afterEach(() => {
@@ -139,7 +141,9 @@ describe("zero connector custom create", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain('Custom connector "Acme API" created');
     expect(output).toContain("awaiting connection");
-    expect(output).toContain("Connectors page to enter the credential");
+    expect(output).toContain(
+      `Connect it at: [Connect Acme API](http://localhost:3000/connectors/_acme-search/connect?agentId=${AGENT_ID})`,
+    );
   });
 
   it("creates only an OAuth definition and leaves authorization to Connect", async () => {
@@ -198,7 +202,9 @@ describe("zero connector custom create", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain('Custom connector "Acme OAuth API" created');
     expect(output).toContain("Authentication: oauth");
-    expect(output).toContain("Connectors page to complete OAuth authorization");
+    expect(output).toContain(
+      `Connect it at: [Connect Acme OAuth API](http://localhost:3000/connectors/_acme-search/connect?agentId=${AGENT_ID})`,
+    );
     expect(output).not.toContain("oauth-client-secret");
   });
 

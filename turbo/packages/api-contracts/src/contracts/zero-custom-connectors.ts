@@ -5,6 +5,11 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const customConnectorSlugSchema = z
+  .string()
+  .regex(/^_[a-z0-9][a-z0-9-]{0,60}[a-z0-9]$/u);
+export type CustomConnectorSlug = z.infer<typeof customConnectorSlugSchema>;
+
 export const customConnectorFieldKindSchema = z.enum(["secret", "variable"]);
 export type CustomConnectorFieldKind = z.infer<
   typeof customConnectorFieldKindSchema
