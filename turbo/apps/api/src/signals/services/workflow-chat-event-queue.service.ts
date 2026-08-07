@@ -5,14 +5,13 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
-  workflowUserAutomationThreads,
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import type { Db, ReadonlyDb } from "../external/db";
+import type { Db } from "../external/db";
 import {
   hasPendingUserChatQueueEvent,
   listPendingChatQueueEvents,
@@ -20,11 +19,7 @@ import {
   lockChatQueueThread,
   staleChatEventQueueThreadIds,
 } from "./chat-event-queue.service";
-import {
-  insertChatEvent,
-  replaceChatEvent,
-  revokeChatEvent,
-} from "./zero-chat-event.service";
+import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import type {
@@ -32,6 +27,7 @@ import type {
   WorkflowAutomationEventType,
 } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
+import { manualTriggerSource } from "./workflow-automation-trigger-source";
 
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
@@ -227,8 +223,8 @@ export async function loadNextWorkflowQueueEvent(
         id: chatEvents.id,
         userId: chatThreads.userId,
         automationId: chatAutomationContext.automationId,
+        automationKind: zeroWorkflowAutomations.kind,
         chatThreadId: chatEvents.chatThreadId,
-        triggerSource: chatEvents.triggerSource,
         triggerBrief: chatAutomationContext.triggerBrief,
         workflowName: chatAutomationContext.workflowName,
         workflowAutomationEventType: chatAutomationContext.eventType,
@@ -243,12 +239,16 @@ export async function loadNextWorkflowQueueEvent(
           eq(chatAutomationContext.id, chatEvents.contextId),
         ),
       )
+      .leftJoin(
+        zeroWorkflowAutomations,
+        eq(zeroWorkflowAutomations.id, chatAutomationContext.automationId),
+      )
       .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {
       return null;
     }
-    if (!event.automationId || !event.triggerSource) {
+    if (!event.automationId || !event.automationKind) {
       throw new Error(
         `Workflow queue event ${event.id} is missing its typed payload`,
       );
@@ -256,7 +256,7 @@ export async function loadNextWorkflowQueueEvent(
     return {
       ...event,
       automationId: event.automationId,
-      triggerSource: event.triggerSource,
+      triggerSource: manualTriggerSource({ kind: event.automationKind }),
     };
   });
 }
@@ -268,7 +268,7 @@ async function loadAutomationRejectionPayload(
   const [event] = await db
     .select({
       automationId: chatAutomationContext.automationId,
-      triggerSource: chatEvents.triggerSource,
+      automationKind: zeroWorkflowAutomations.kind,
       triggerBrief: chatAutomationContext.triggerBrief,
       userMessage: chatEvents.userMessage,
       workflowId: zeroWorkflows.id,
@@ -326,7 +326,7 @@ export async function rejectWorkflowQueueEvent(
       return false;
     }
     const payload = await loadAutomationRejectionPayload(tx, args.eventId);
-    if (!payload?.automationId || !payload.triggerSource) {
+    if (!payload?.automationId || !payload.automationKind) {
       return false;
     }
     const userMessage =
@@ -356,7 +356,7 @@ export async function rejectWorkflowQueueEvent(
       runId: null,
       error: args.reason,
       automationId: payload.automationId,
-      triggerSource: payload.triggerSource,
+      triggerSource: manualTriggerSource({ kind: payload.automationKind }),
       triggerBrief: payload.triggerBrief,
     });
     return rejected !== null;
@@ -371,200 +371,4 @@ export async function staleChatThreadQueueThreadIds(
   },
 ): Promise<readonly string[]> {
   return await staleChatEventQueueThreadIds(db, args);
-}
-
-/**
- * Minimal projection retained only for the previous frontend's queue API.
- * Current clients derive the same pending rows from canonical ChatEvents.
- */
-export interface WorkflowQueueThreadRow {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly workflowId: string;
-  readonly chatThreadId: string;
-}
-
-export async function loadWorkflowQueueThread(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly threadId: string;
-  },
-): Promise<WorkflowQueueThreadRow | null> {
-  const [row] = await db
-    .select({
-      orgId: workflowUserAutomationThreads.orgId,
-      userId: workflowUserAutomationThreads.userId,
-      workflowId: workflowUserAutomationThreads.workflowId,
-    })
-    .from(workflowUserAutomationThreads)
-    .where(
-      and(
-        eq(workflowUserAutomationThreads.chatThreadId, args.threadId),
-        eq(workflowUserAutomationThreads.orgId, args.orgId),
-        eq(workflowUserAutomationThreads.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  return row ? { ...row, chatThreadId: args.threadId } : null;
-}
-
-interface WorkflowQueueRunningRun {
-  readonly runId: string;
-  readonly status: string;
-  readonly triggerBrief: string | null;
-  readonly createdAt: Date;
-}
-
-interface PendingWorkflowQueueEventSummary {
-  readonly id: string;
-  readonly automationId: string;
-  readonly triggerSource: TriggerSource;
-  readonly triggerBrief: string | null;
-  readonly createdAt: Date;
-}
-
-export async function loadRunningWorkflowThreadRun(
-  db: ReadonlyDb,
-  threadId: string,
-): Promise<WorkflowQueueRunningRun | null> {
-  const [run] = await db
-    .select({
-      runId: zeroRuns.id,
-      status: agentRuns.status,
-      triggerBrief: zeroRuns.triggerBrief,
-      createdAt: agentRuns.createdAt,
-    })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        inArray(agentRuns.status, ["queued", "pending", "running"]),
-      ),
-    )
-    .orderBy(asc(agentRuns.createdAt))
-    .limit(1);
-  return run ?? null;
-}
-
-export async function listPendingWorkflowQueueEvents(
-  db: ReadonlyDb,
-  thread: WorkflowQueueThreadRow,
-): Promise<readonly PendingWorkflowQueueEventSummary[]> {
-  const pending = await listPendingChatQueueEvents(db, thread.chatThreadId);
-  const automationIds = pending.flatMap((event) => {
-    return event.eventType === "input.automation" ? [event.id] : [];
-  });
-  if (automationIds.length === 0) {
-    return [];
-  }
-  const rows = await db
-    .select({
-      id: chatEvents.id,
-      automationId: chatAutomationContext.automationId,
-      triggerSource: chatEvents.triggerSource,
-      triggerBrief: chatAutomationContext.triggerBrief,
-      createdAt: chatEvents.createdAt,
-    })
-    .from(chatEvents)
-    .leftJoin(
-      chatAutomationContext,
-      and(
-        eq(chatEvents.contextType, "automation"),
-        eq(chatAutomationContext.id, chatEvents.contextId),
-      ),
-    )
-    .where(inArray(chatEvents.id, automationIds));
-  const byId = new Map(
-    rows.flatMap((event) => {
-      return event.automationId && event.triggerSource
-        ? [
-            [
-              event.id,
-              {
-                ...event,
-                automationId: event.automationId,
-                triggerSource: event.triggerSource,
-              },
-            ] as const,
-          ]
-        : [];
-    }),
-  );
-  return automationIds.flatMap((id) => {
-    const event = byId.get(id);
-    return event ? [event] : [];
-  });
-}
-
-/** Append a canonical revoke for one previous-client queue Skip request. */
-export async function deleteWorkflowQueueEventById(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly eventId: string;
-  },
-): Promise<{ readonly chatThreadId: string } | null> {
-  return await db.transaction(async (tx) => {
-    const [owned] = await tx
-      .select({ chatThreadId: chatEvents.chatThreadId })
-      .from(chatEvents)
-      .innerJoin(
-        workflowUserAutomationThreads,
-        eq(workflowUserAutomationThreads.chatThreadId, chatEvents.chatThreadId),
-      )
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(workflowUserAutomationThreads.orgId, args.orgId),
-          eq(workflowUserAutomationThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
-    if (!owned || !(await lockChatQueueThread(tx, owned.chatThreadId))) {
-      return null;
-    }
-    const pending = await loadPendingChatQueueEvent(tx, {
-      chatThreadId: owned.chatThreadId,
-      eventId: args.eventId,
-    });
-    if (pending?.eventType !== "input.automation") {
-      return null;
-    }
-    const revoked = await revokeChatEvent(tx, args.eventId, {
-      chatThreadId: owned.chatThreadId,
-      eventType: "control.revoke",
-      runId: null,
-    });
-    return revoked ? { chatThreadId: owned.chatThreadId } : null;
-  });
-}
-
-/**
- * Preserve previous-client Clear during the compatibility window by appending
- * canonical revokes. The current frontend exposes only single-event Skip.
- */
-export async function clearWorkflowQueueEvents(
-  db: Db,
-  thread: WorkflowQueueThreadRow,
-): Promise<void> {
-  await db.transaction(async (tx) => {
-    if (!(await lockChatQueueThread(tx, thread.chatThreadId))) {
-      return;
-    }
-    const pending = await listPendingChatQueueEvents(tx, thread.chatThreadId);
-    for (const event of pending) {
-      if (event.eventType !== "input.automation") {
-        continue;
-      }
-      await revokeChatEvent(tx, event.id, {
-        chatThreadId: thread.chatThreadId,
-        eventType: "control.revoke",
-        runId: null,
-      });
-    }
-  });
 }

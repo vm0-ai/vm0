@@ -141,7 +141,6 @@ async function loadFeishuLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "feishu"),
-        eq(chatEvents.triggerSource, "feishu"),
       ),
     )
     .limit(1);

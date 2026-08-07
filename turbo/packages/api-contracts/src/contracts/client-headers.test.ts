@@ -3,7 +3,6 @@ import {
   addClientCapabilityToVersion,
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_AGENT_RUN_SOURCE,
-  CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
   CLIENT_CAPABILITY_FR_FR_LOCALE,
   CLIENT_CAPABILITY_HI_IN_LOCALE,
@@ -147,24 +146,5 @@ describe("client header contract", () => {
 
   it("keeps the force upgrade status stable for app clients", () => {
     expect(CLIENT_FORCE_UPGRADE_STATUS).toBe(426);
-  });
-
-  it("advertises canonical browser lifecycle event support", () => {
-    const version = addClientCapabilityToVersion(
-      "0.636.1",
-      CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-    );
-    expect(
-      clientVersionSupportsCapability(
-        version,
-        CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-      ),
-    ).toBe(true);
-    expect(
-      clientVersionSupportsCapability(
-        "0.636.1",
-        CLIENT_CAPABILITY_BROWSER_LIFECYCLE_OPEN_CLOSE,
-      ),
-    ).toBe(false);
   });
 });

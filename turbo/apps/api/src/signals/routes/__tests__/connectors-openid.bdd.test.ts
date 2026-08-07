@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { connectorsSlugCallbackContract } from "@vm0/api-contracts/contracts/connectors-slug-callback";
 import {
   zeroConnectorOpenIdStartContract,
-  zeroConnectorOauthContinueContract,
   zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -311,29 +310,6 @@ function mockSteamPlayerApis(args: { readonly privateOwnedGames?: boolean }) {
 }
 
 describe("Steam OpenID connector", () => {
-  it("rejects a legacy OAuth handoff without an authorization URL", async () => {
-    const actor = testActor();
-    mockSteamRuntimeEnv();
-    const authorizationUrl = await startSteamOpenId(actor);
-
-    const response = await accept(
-      setupApp({ context, routes: zeroConnectorsRoutes })(
-        zeroConnectorOauthContinueContract,
-      ).continue({
-        params: { connectorSlug: "steam" },
-        query: { state: stateFromSteamAuthorizationUrl(authorizationUrl) },
-      }),
-      [404],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "OAuth handoff not found",
-        code: "NOT_FOUND",
-      },
-    });
-  });
-
   it("exposes Steam in the connector catalog by default", async () => {
     const actor = testActor();
     mockSession(actor);

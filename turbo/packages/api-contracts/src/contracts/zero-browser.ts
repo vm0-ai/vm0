@@ -224,32 +224,6 @@ export const zeroBrowserContract = c.router({
     },
     summary: "Record that the managed browser sidebar was closed",
   },
-  // Compatibility aliases for browser bundles loaded before open/close.
-  // Remove after the stale web-client window has closed.
-  start: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/start",
-    headers: authHeadersSchema,
-    pathParams: browserThreadParamsSchema,
-    body: browserLifecycleRequestSchema,
-    responses: {
-      200: browserMutationResponseSchema,
-      ...commonErrorResponses,
-    },
-    summary: "Compatibility alias for opening a managed browser",
-  },
-  stop: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:threadId/browser/stop",
-    headers: authHeadersSchema,
-    pathParams: browserThreadParamsSchema,
-    body: browserLifecycleRequestSchema,
-    responses: {
-      200: browserMutationResponseSchema,
-      ...commonErrorResponses,
-    },
-    summary: "Compatibility endpoint for a stale browser viewer",
-  },
   resizeByThread: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/browser/resize",

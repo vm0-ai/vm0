@@ -124,29 +124,9 @@ describe("zero chat send command", () => {
       http.get(metadataUrl(OTHER_THREAD_ID), () => {
         return HttpResponse.json({
           id: OTHER_THREAD_ID,
+          agentId: AGENT_ID,
           title: "Busy thread",
           selectedModel: null,
-        });
-      }),
-      http.get("http://localhost:3000/api/zero/chat-threads/snapshot", () => {
-        return HttpResponse.json({
-          chatThreads: [
-            {
-              id: OTHER_THREAD_ID,
-              agentId: AGENT_ID,
-              title: "Busy thread",
-              sortAt: "2026-07-29T10:00:00.000Z",
-              createdAt: "2026-07-29T10:00:00.000Z",
-              updatedAt: "2026-07-29T10:00:00.000Z",
-              pinnedAt: null,
-              renamedAt: null,
-              selectedModel: null,
-              serviceTier: null,
-              computerUseHostId: null,
-            },
-          ],
-          latestEventId: null,
-          latestSeqId: null,
         });
       }),
       http.post(SEND_URL, async ({ request }) => {

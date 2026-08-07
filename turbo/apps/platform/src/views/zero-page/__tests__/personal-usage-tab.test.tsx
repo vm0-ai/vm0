@@ -26,8 +26,16 @@ function usageRows(): UsageRecordRow[] {
           kind: "other",
           credits: 983,
           providers: [
-            { provider: "firecrawl", credits: 180 },
-            { provider: "google-maps", credits: 200 },
+            {
+              provider: "firecrawl",
+              credits: 180,
+              usageKinds: [{ kind: "scrape", credits: 180 }],
+            },
+            {
+              provider: "google-maps",
+              credits: 200,
+              usageKinds: [{ kind: "maps", credits: 200 }],
+            },
             {
               provider: "perplexity",
               credits: 200,
@@ -36,8 +44,16 @@ function usageRows(): UsageRecordRow[] {
                 { kind: "web-search", credits: 120 },
               ],
             },
-            { provider: "apidojo", credits: 200 },
-            { provider: "google-weather", credits: 200 },
+            {
+              provider: "apidojo",
+              credits: 200,
+              usageKinds: [{ kind: "finance", credits: 200 }],
+            },
+            {
+              provider: "google-weather",
+              credits: 200,
+              usageKinds: [{ kind: "weather", credits: 200 }],
+            },
             {
               provider: "qwen/qwen-2.5-7b-instruct",
               credits: 3,

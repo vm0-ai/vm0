@@ -87,6 +87,7 @@ function selectValueRefs(
 
 function storageFromValueRefs(
   values: Readonly<Record<string, string>>,
+  version = 1,
 ): ConnectorCatalogAuthMethod["storage"] {
   const secrets = new Set<string>();
   const variables = new Set<string>();
@@ -99,7 +100,7 @@ function storageFromValueRefs(
       throw new Error(`Invalid test connector value ref: ${valueRef}`);
     }
   }
-  return { version: 1, secrets: [...secrets], variables: [...variables] };
+  return { version, secrets: [...secrets], variables: [...variables] };
 }
 
 function providerClient(
@@ -164,6 +165,7 @@ interface ProviderMethodArgs {
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly revokePreviousOnReplace?: boolean;
+  readonly storageVersion?: number;
 }
 
 function providerGrant(args: {
@@ -304,7 +306,7 @@ function providerMethod(args: ProviderMethodArgs): ConnectorCatalogAuthMethod {
         : args.description,
     visible: args.visible ?? true,
     ...(client === undefined ? {} : { client }),
-    storage: storageFromValueRefs(args.values),
+    storage: storageFromValueRefs(args.values, args.storageVersion),
     grant: providerGrant({
       capability,
       method: args,
@@ -370,6 +372,7 @@ interface StandardOauthMethodArgs {
   readonly label?: string;
   readonly callbackDescription?: string;
   readonly platformEnvironmentNames?: readonly string[];
+  readonly storageVersion?: number;
 }
 
 function standardOauthMethod(
@@ -404,6 +407,9 @@ function standardOauthMethod(
       args.callbackDescription ?? "Sign in to the test connector provider.",
     scopes: args.scopes,
     refreshableSecrets: [accessTokenName],
+    ...(args.storageVersion === undefined
+      ? {}
+      : { storageVersion: args.storageVersion }),
   });
 }
 
@@ -1520,6 +1526,7 @@ const connectors = [
         tokenEnvironmentNames: ["STRIPE_TOKEN"],
         additionalValues: { livemode: variable("STRIPE_LIVEMODE") },
         scopes: ["read_write"],
+        storageVersion: 2,
       }),
       manualMethod({
         fields: [

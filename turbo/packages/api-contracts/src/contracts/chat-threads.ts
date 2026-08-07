@@ -777,9 +777,7 @@ const chatThreadDetailSchema = z.object({
 
 const chatThreadMetadataSchema = z.object({
   id: z.string(),
-  // Optional during API/CLI rollout so a newer CLI can fall back to the
-  // compact thread snapshot when it reaches an older API.
-  agentId: z.string().uuid().optional(),
+  agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
 });
