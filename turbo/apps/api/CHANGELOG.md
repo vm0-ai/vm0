@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.395.0](https://github.com/vm0-ai/vm0/compare/api-v1.394.0...api-v1.395.0) (2026-08-07)
+
+
+### Features
+
+* **automation:** add stripe invoice-paid binding ([#25303](https://github.com/vm0-ai/vm0/issues/25303)) ([b41a772](https://github.com/vm0-ai/vm0/commit/b41a7727d8cc3d8aa63f9e38672ebd6d5d105e4d))
+* **chat:** prefetch unread and active thread events ([#25563](https://github.com/vm0-ai/vm0/issues/25563)) ([23af242](https://github.com/vm0-ai/vm0/commit/23af2422c1f9b4be544944e6cbddddc89dbeac95))
+
+
+### Refactoring
+
+* **api:** route queued chat events by context type alone ([#25559](https://github.com/vm0-ai/vm0/issues/25559)) ([5ea7f46](https://github.com/vm0-ai/vm0/commit/5ea7f4692b4487a793a2d133c4dab6715c9eda59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.287.0
+    * @vm0/core bumped to 8.525.0
+    * @vm0/db bumped to 1.175.0
+
 ## [1.394.0](https://github.com/vm0-ai/vm0/compare/api-v1.393.1...api-v1.394.0) (2026-08-07)
 
 

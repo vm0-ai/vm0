@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.159.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.159.1...runner-rs-v0.159.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** clarify execution time limit log ([#25555](https://github.com/vm0-ai/vm0/issues/25555)) ([ba61979](https://github.com/vm0-ai/vm0/commit/ba619790878fed48edd284cf208701af995a68fe))
+* **runner:** prevent drain from missing service restarts ([#25569](https://github.com/vm0-ai/vm0/issues/25569)) ([af1c12a](https://github.com/vm0-ai/vm0/commit/af1c12afa585284f0eb1dc672c67289f2c69e2b1))
+
 ## [0.159.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.159.0...runner-rs-v0.159.1) (2026-08-07)
 
 ## [0.159.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.158.22...runner-rs-v0.159.0) (2026-08-07)
