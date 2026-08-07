@@ -144,24 +144,19 @@ function resolveCard(
 function CardIcon({ kind }: { kind: CardKind }): ReactNode {
   switch (kind) {
     case "ready": {
-      return <Gift size={40} className="text-foreground opacity-80" />;
+      return <Gift size={40} />;
     }
     case "granted": {
-      return <Check size={40} className="text-green-600 opacity-80" />;
+      return <Check size={40} className="text-green-600" />;
     }
     case "processing": {
-      return (
-        <LoaderCircle
-          size={40}
-          className="animate-spin text-muted-foreground"
-        />
-      );
+      return <LoaderCircle size={40} className="animate-spin" />;
     }
     case "auth": {
-      return <Lock size={40} className="text-muted-foreground opacity-70" />;
+      return <Lock size={40} />;
     }
     case "broken": {
-      return <X size={40} className="text-destructive opacity-70" />;
+      return <X size={40} className="text-destructive" />;
     }
   }
 }

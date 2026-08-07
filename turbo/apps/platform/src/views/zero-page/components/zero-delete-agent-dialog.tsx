@@ -354,7 +354,7 @@ export function AgentDeleteDialog({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10"
                 >
                   <Trash2 size={14} />
                   {t(($) => {

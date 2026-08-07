@@ -443,7 +443,7 @@ function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
       {planFeatures(tier).map((feature) => {
         return (
           <li key={feature} className="flex items-center gap-2">
-            <Check size={14} className="shrink-0 text-muted-foreground/50" />
+            <Check size={14} className="shrink-0" />
             <span className="text-[13px] text-muted-foreground">{feature}</span>
           </li>
         );

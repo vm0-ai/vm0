@@ -929,8 +929,9 @@ function createInlineTemplateSpecZone(): {
   // stays readable inside a prompt sentence.
   const rest = document.createElement("span");
   rest.className = "hidden sm:inline";
-  const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
-  chevron.setAttribute("class", "shrink-0 opacity-70");
+  // Mirrors ChevronDown from lucide-react.
+  const chevron = createComposerIcon(11, ["m6 9 6 6 6-6"]);
+  chevron.classList.add("shrink-0");
   zone.append(lead, rest, chevron);
   return {
     zone,

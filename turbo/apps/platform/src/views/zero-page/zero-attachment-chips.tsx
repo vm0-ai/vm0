@@ -1520,7 +1520,7 @@ function ComposerImagePreviewButton({
         title={filename}
         className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
       >
-        <Image size={20} className="text-muted-foreground m-auto h-full" />
+        <Image size={20} className="m-auto h-full" />
       </button>
     );
   }
@@ -1621,10 +1621,7 @@ function AttachmentChip({
       )}
       {uploading && (
         <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
-          <LoaderCircle
-            size={10}
-            className="animate-spin text-muted-foreground"
-          />
+          <LoaderCircle size={10} className="animate-spin" />
         </span>
       )}
       <button

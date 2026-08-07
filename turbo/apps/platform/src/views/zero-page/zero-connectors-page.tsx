@@ -433,7 +433,7 @@ function ConnectorFilterOption({
   return (
     <DropdownMenuItem className="justify-between gap-2" onClick={onSelect}>
       <span className="flex min-w-0 items-center gap-2">{children}</span>
-      {active && <Check size={15} className="shrink-0 text-foreground" />}
+      {active && <Check size={15} className="shrink-0" />}
     </DropdownMenuItem>
   );
 }
@@ -480,7 +480,7 @@ function ConnectorFilterDropdown({
           })}
           className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
         >
-          <Filter size={14} className="text-muted-foreground" />
+          <Filter size={14} />
           {activeAgent && (
             <AvatarFromUrl
               avatarUrl={activeAgent.avatarUrl}
@@ -490,7 +490,7 @@ function ConnectorFilterDropdown({
             />
           )}
           <span className="max-w-[140px] truncate">{triggerLabel}</span>
-          <ChevronDown size={14} className="text-muted-foreground" />
+          <ChevronDown size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -595,7 +595,7 @@ function ConnectorsToolbarActions({
         <div className="relative w-40 sm:w-52">
           <Search
             size={15}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+            className="absolute left-3 top-1/2 -translate-y-1/2"
           />
           <input
             type="text"

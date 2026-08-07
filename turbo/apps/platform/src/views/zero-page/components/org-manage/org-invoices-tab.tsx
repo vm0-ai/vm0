@@ -412,7 +412,7 @@ export function OrgInvoicesTab() {
                       </Tooltip>
                     </TooltipProvider>
                   ) : (
-                    <span className="flex h-7 w-7 items-center justify-center text-muted-foreground/30">
+                    <span className="flex h-7 w-7 items-center justify-center text-muted-foreground">
                       <Download size={14} />
                     </span>
                   )}

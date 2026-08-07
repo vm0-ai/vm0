@@ -840,7 +840,7 @@ function SortDropdown({
           size="sm"
           className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
-          <ArrowUpDown size={15} className="text-muted-foreground" />
+          <ArrowUpDown size={15} />
           {current?.label ??
             i18n.t(($) => {
               return $.workflows.list.sort.label;
@@ -895,7 +895,7 @@ function AgentFilterDropdown({
               size={16}
             />
           ) : (
-            <User size={15} className="text-muted-foreground" />
+            <User size={15} />
           )}
           <span className="max-w-[8rem] truncate">
             {selected?.label ??
@@ -915,7 +915,7 @@ function AgentFilterDropdown({
             onChange(WORKFLOW_ALL_AGENTS);
           }}
         >
-          <User size={15} className="text-muted-foreground" />
+          <User size={15} />
           {i18n.t(($) => {
             return $.workflows.list.allAgents;
           })}

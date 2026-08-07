@@ -2205,12 +2205,9 @@ export function OrgBillingTab() {
                   {t(($) => {
                     return $.billing.plans.compareAll;
                   })}
-                  <Coins size={14} className="text-foreground/40" />
+                  <Coins size={14} />
                 </span>
-                <ChevronRight
-                  size={14}
-                  className="shrink-0 text-muted-foreground/50"
-                />
+                <ChevronRight size={14} className="shrink-0" />
               </button>
             </>
           )}

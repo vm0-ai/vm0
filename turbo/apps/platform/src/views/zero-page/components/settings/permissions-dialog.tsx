@@ -1498,7 +1498,7 @@ function LoadedPermissionsDrawerContent({
           <div className="relative w-full">
             <Search
               size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
             />
             <input
               value={search}

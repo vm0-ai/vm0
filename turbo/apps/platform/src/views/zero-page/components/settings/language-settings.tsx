@@ -144,7 +144,7 @@ export function LanguageSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <Globe size={22} className="text-muted-foreground" />
+              <Globe size={22} />
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">

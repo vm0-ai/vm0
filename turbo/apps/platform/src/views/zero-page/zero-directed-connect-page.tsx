@@ -576,10 +576,7 @@ function DirectedConnectCardContent({
         <div className="flex w-full flex-col gap-4">
           <div className="flex flex-col items-center gap-2.5">
             {isLoading ? (
-              <LoaderCircle
-                size={20}
-                className="animate-spin text-muted-foreground"
-              />
+              <LoaderCircle size={20} className="animate-spin" />
             ) : (
               <>
                 <h1 className="text-lg font-medium text-foreground">

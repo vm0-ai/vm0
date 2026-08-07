@@ -225,10 +225,7 @@ export function ComputerUseAuthorizationPage() {
   if (requestLoadable.state === "loading") {
     return (
       <div className="fixed inset-0 z-10 flex items-center justify-center">
-        <LoaderCircle
-          size={22}
-          className="animate-spin text-muted-foreground"
-        />
+        <LoaderCircle size={22} className="animate-spin" />
       </div>
     );
   }

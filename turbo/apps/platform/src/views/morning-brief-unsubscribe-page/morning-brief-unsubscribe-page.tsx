@@ -47,9 +47,9 @@ function CardIcon({
   status: MorningBriefUnsubscribeStatus;
 }): ReactNode {
   if (status === "unsubscribed") {
-    return <Check size={40} className="text-green-600 opacity-80" />;
+    return <Check size={40} className="text-green-600" />;
   }
-  return <X size={40} className="text-destructive opacity-70" />;
+  return <X size={40} className="text-destructive" />;
 }
 
 export function MorningBriefUnsubscribePage() {
@@ -59,10 +59,7 @@ export function MorningBriefUnsubscribePage() {
   if (!status) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
-        <LoaderCircle
-          size={40}
-          className="animate-spin text-muted-foreground"
-        />
+        <LoaderCircle size={40} className="animate-spin" />
         <span className="sr-only">
           {t(($) => {
             return $.lifecycle.morningBriefUnsubscribe.loadingLabel;

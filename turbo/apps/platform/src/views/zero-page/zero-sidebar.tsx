@@ -252,7 +252,7 @@ function CollapsedExpandButton() {
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
               onClick={onCollapse}
               aria-label={expandLabel}
             >
@@ -433,7 +433,7 @@ function ExpandedHeader() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
@@ -869,7 +869,7 @@ function ChatListColumn() {
                   openAgentList();
                 }}
                 aria-label={searchLabel}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
               >
                 <Search size={17} />
               </button>
@@ -891,7 +891,7 @@ function ChatListColumn() {
                 }}
                 aria-label={newChatLabel}
                 aria-current={isNewChatActive ? "page" : undefined}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground no-underline transition-colors hover:bg-sidebar-accent"
               >
                 <Edit size={17} />
               </Link>

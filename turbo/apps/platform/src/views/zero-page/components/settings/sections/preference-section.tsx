@@ -52,7 +52,7 @@ function AppearanceBlock() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <Palette size={22} className="text-muted-foreground" />
+              <Palette size={22} />
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
@@ -133,7 +133,7 @@ function EnterBlock() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <Keyboard size={22} className="text-muted-foreground" />
+              <Keyboard size={22} />
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">

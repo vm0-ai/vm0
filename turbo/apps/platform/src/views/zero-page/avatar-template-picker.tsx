@@ -391,7 +391,7 @@ function AvatarTemplateMedia({
           className="h-full w-full object-cover"
         />
       ) : (
-        <User size={40} className="text-muted-foreground" aria-hidden="true" />
+        <User size={40} aria-hidden="true" />
       )}
     </div>
   );
@@ -911,7 +911,6 @@ function AvatarVoiceCard({
               </p>
             )}
           </div>
-<<<<<<< HEAD
           <div className="flex shrink-0 items-center gap-2">
             {recommended && (
               <span
@@ -928,20 +927,10 @@ function AvatarVoiceCard({
                 className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
                 aria-hidden="true"
               >
-                <IconCheck size={13} stroke={2.2} />
+                <Check size={13} />
               </span>
             )}
           </div>
-=======
-          {selected && (
-            <span
-              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
-              aria-hidden="true"
-            >
-              <Check size={13} />
-            </span>
-          )}
->>>>>>> a8cd3a090c (refactor: replace @tabler/icons-react with lucide-react)
         </div>
         {metadata.length > 0 && (
           <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">

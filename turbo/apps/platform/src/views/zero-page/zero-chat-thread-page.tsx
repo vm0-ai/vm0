@@ -635,7 +635,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                       "start shared thread selection",
                     );
                   }}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-accent hover:text-foreground"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
                   aria-label={t(($) => {
                     return $.chat.sharing.start;
                   })}
@@ -865,7 +865,7 @@ function ChatThreadEmojiPicker({
         <div className="relative flex-1">
           <Search
             size={15}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
             aria-hidden="true"
           />
           <Input
@@ -3394,11 +3394,7 @@ function CompletedWorkFoldRow({
         onClick={onToggle}
         className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <Hourglass
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <Hourglass aria-hidden size={14} className="shrink-0" />
         <span className="text-[13px]">{label}</span>
         <ChevronRight
           aria-hidden
@@ -3607,11 +3603,7 @@ function RunGroupFoldRow({
           embedded && "mt-1.5",
         )}
       >
-        <Icon
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <Icon aria-hidden size={14} className="shrink-0" />
         <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
           {label}
         </span>
@@ -3988,7 +3980,7 @@ function RecommendedFollowupList({
             </span>
             <ArrowUpRight
               size={14}
-              className="shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
+              className="shrink-0 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
             />
           </button>
         );
@@ -6149,7 +6141,7 @@ function AssistantErrorRecoveryCard({
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <Clock size={14} className="text-muted-foreground" />
+              <Clock size={14} />
               {resetText}
             </div>
           )}
@@ -6649,7 +6641,7 @@ function AttachmentMaterializationState({
       {pending ? (
         <LoaderCircle
           aria-hidden="true"
-          className="size-4 shrink-0 animate-spin text-muted-foreground"
+          className="size-4 shrink-0 animate-spin"
         />
       ) : (
         <CircleAlert
@@ -6851,7 +6843,7 @@ function UserMessageActions({
       <button
         type="button"
         onClick={onCopy}
-        className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+        className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-150"
         aria-label={t(($) => {
           return $.chat.actions.copyMessage;
         })}
@@ -8432,7 +8424,7 @@ function PagedGroupPrimaryActions({
                 options={{
                   pathParams: { activityRunId: firstRunId },
                 }}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label={t(($) => {
                   return $.chat.run.viewLogs;
                 })}
@@ -8455,7 +8447,7 @@ function PagedGroupPrimaryActions({
               <button
                 type="button"
                 onClick={onCopy}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label={t(($) => {
                   return $.chat.actions.copyMessage;
                 })}

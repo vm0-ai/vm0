@@ -283,7 +283,7 @@ function TypeFilter({
             <Filter size={14} className="shrink-0" />
             {typeFilterLabel(typeFilter)}
           </span>
-          <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+          <ChevronDown size={14} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
@@ -1128,7 +1128,7 @@ export function NetworkContent({
       {hasMore && onLoadMore && (
         <div className="flex justify-center py-4">
           {loading ? (
-            <LoaderCircle className="h-5 w-5 animate-spin text-muted-foreground" />
+            <LoaderCircle className="h-5 w-5 animate-spin" />
           ) : (
             <button
               type="button"

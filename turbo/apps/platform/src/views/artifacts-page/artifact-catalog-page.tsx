@@ -246,7 +246,7 @@ function ArtifactSharedConversationList({
               <ChevronRight
                 size={16}
                 aria-hidden
-                className="shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
+                className="shrink-0 transition-colors group-hover:text-foreground"
               />
             </button>
           </li>

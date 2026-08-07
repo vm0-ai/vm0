@@ -115,7 +115,7 @@ function InspectEmptyState() {
         })}
       />
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <Upload size={48} className="text-muted-foreground/40" />
+        <Upload size={48} />
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
             return $.activity.inspect.noLog.title;
@@ -235,7 +235,7 @@ function StepsTab({
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="relative flex-1 sm:flex-none sm:w-44">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" />
             <Input
               placeholder={t(($) => {
                 return $.activity.detail.steps.search;

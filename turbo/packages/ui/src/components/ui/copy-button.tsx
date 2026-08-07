@@ -62,7 +62,7 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
               {copied ? (
                 <Check className="h-4 w-4 text-green-500" />
               ) : (
-                <Copy className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                <Copy className="h-4 w-4 group-hover:text-foreground transition-colors" />
               )}
             </button>
           </TooltipTrigger>

@@ -81,9 +81,7 @@ function TelegramMark({
   }
 
   if (state === "loading") {
-    return (
-      <LoaderCircle size={40} className="animate-spin text-muted-foreground" />
-    );
+    return <LoaderCircle size={40} className="animate-spin" />;
   }
 
   return (

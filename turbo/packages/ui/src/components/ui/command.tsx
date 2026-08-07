@@ -77,7 +77,7 @@ const CommandInput = React.forwardRef<
         wrapperClassName,
       )}
     >
-      <Search size={16} className="shrink-0 text-muted-foreground" />
+      <Search size={16} className="shrink-0" />
       <CommandPrimitive.Input
         ref={ref}
         className={cn(

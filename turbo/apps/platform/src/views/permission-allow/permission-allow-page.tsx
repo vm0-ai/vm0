@@ -124,9 +124,9 @@ function ConnectorPermissionCard({
         </div>
         <div className="flex items-center gap-2 py-2">
           {action === "allow" ? (
-            <Check size={20} className="shrink-0 text-green-600 opacity-70" />
+            <Check size={20} className="shrink-0 text-green-600" />
           ) : (
-            <Ban size={20} className="shrink-0 text-destructive opacity-70" />
+            <Ban size={20} className="shrink-0 text-destructive" />
           )}
           <span className="min-w-0 flex-1 text-sm text-foreground truncate">
             {permission.description ?? permission.name}
@@ -145,10 +145,7 @@ function LoadingCard() {
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
         <VM0Logo />
-        <LoaderCircle
-          size={20}
-          className="animate-spin text-muted-foreground"
-        />
+        <LoaderCircle size={20} className="animate-spin" />
       </div>
     </div>
   );
@@ -206,9 +203,9 @@ function ResultCard({
         <VM0Logo />
         <div className="flex flex-col items-center gap-4">
           {allowed ? (
-            <Check size={40} className="text-green-600 opacity-70" />
+            <Check size={40} className="text-green-600" />
           ) : (
-            <Ban size={40} className="text-destructive opacity-70" />
+            <Ban size={40} className="text-destructive" />
           )}
           <p className="text-center text-lg font-medium leading-7 text-foreground">
             {title}

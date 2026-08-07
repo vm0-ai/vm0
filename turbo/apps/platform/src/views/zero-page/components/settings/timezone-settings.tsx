@@ -125,7 +125,7 @@ export function TimezoneSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <Clock size={22} className="text-muted-foreground" />
+              <Clock size={22} />
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
@@ -162,10 +162,7 @@ export function TimezoneSettings() {
           </Select>
           {loading && (
             <div className="absolute inset-0 flex items-center justify-end pr-8">
-              <LoaderCircle
-                size={16}
-                className="animate-spin text-muted-foreground"
-              />
+              <LoaderCircle size={16} className="animate-spin" />
             </div>
           )}
         </div>

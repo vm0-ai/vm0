@@ -82,7 +82,7 @@ export function BrowserSessionNotFound() {
   return (
     <PanelFrame>
       <PanelMessage
-        icon={<AppWindowMac size={26} className="text-muted-foreground" />}
+        icon={<AppWindowMac size={26} />}
         title={t(($) => {
           return $.browserSession.notFound;
         })}
@@ -96,10 +96,7 @@ export function BrowserSessionLoading() {
   return (
     <PanelFrame>
       <div role="status" className="flex flex-1 items-center justify-center">
-        <LoaderCircle
-          className="animate-spin text-muted-foreground"
-          size={20}
-        />
+        <LoaderCircle className="animate-spin" size={20} />
         <span className="sr-only">
           {t(($) => {
             return $.browserSession.status.starting;
@@ -115,7 +112,7 @@ export function BrowserSessionUnavailable() {
   return (
     <PanelFrame>
       <PanelMessage
-        icon={<AppWindowMac size={26} className="text-muted-foreground" />}
+        icon={<AppWindowMac size={26} />}
         title={t(($) => {
           return $.browserSession.unavailable.title;
         })}
@@ -241,7 +238,7 @@ function PausedBrowserSession({
   const showScreenshot = containLiveFrame && screenshotUrl;
   const pausedMessage = (
     <PanelMessage
-      icon={<AppWindow size={26} className="text-muted-foreground" />}
+      icon={<AppWindow size={26} />}
       title={t(($) => {
         return $.browserSession.panel.notLive;
       })}

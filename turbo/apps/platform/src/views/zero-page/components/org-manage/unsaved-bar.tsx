@@ -28,7 +28,7 @@ export function UnsavedBar({
         className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg"
       >
         <div className="flex items-center gap-2 text-sm text-foreground">
-          <Pencil size={18} className="shrink-0 text-muted-foreground" />
+          <Pencil size={18} className="shrink-0" />
           <span>
             {t(($) => {
               return $.settings.workspace.unsaved.message;
@@ -40,7 +40,7 @@ export function UnsavedBar({
             data-testid="discard-button"
             variant="ghost"
             size="sm"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="text-destructive hover:bg-destructive/10"
             onClick={onDiscard}
             disabled={saving}
           >

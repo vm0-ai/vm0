@@ -134,7 +134,7 @@ function SessionStateIndicator({
       aria-label={t(($) => {
         return $.chat.sidebar.draft;
       })}
-      className="flex items-center justify-center text-sidebar-foreground/50"
+      className="flex items-center justify-center text-sidebar-foreground"
     >
       <Pencil size={16} />
     </span>
@@ -322,7 +322,7 @@ function ChatThreadSideDecorator({
                 aria-label={t(($) => {
                   return $.chat.sidebar.pinned;
                 })}
-                className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
+                className="hidden items-center justify-center text-sidebar-foreground group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
                 <Pin size={16} />
               </span>

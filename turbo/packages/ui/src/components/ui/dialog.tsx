@@ -60,7 +60,7 @@ const DialogContent = React.forwardRef<
             className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100"
             aria-label={closeLabel}
           >
-            <X size={20} className="text-foreground" />
+            <X size={20} />
           </DialogPrimitive.Close>
         </DialogPrimitive.Content>
       </DialogPortal>

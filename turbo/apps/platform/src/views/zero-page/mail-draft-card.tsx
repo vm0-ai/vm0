@@ -53,10 +53,7 @@ function MailDraftCardSkeleton() {
       )}
     >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-        <LoaderCircle
-          className="animate-spin text-muted-foreground"
-          size={16}
-        />
+        <LoaderCircle className="animate-spin" size={16} />
       </span>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="h-4 w-2/3 rounded bg-muted/70" />
@@ -136,9 +133,7 @@ function MailDraftCardContent({
                 })
               : statusLabel(draft.status)}
         </span>
-        {!deleted ? (
-          <ChevronRight size={16} className="text-muted-foreground" />
-        ) : null}
+        {!deleted ? <ChevronRight size={16} /> : null}
       </span>
     </>
   );

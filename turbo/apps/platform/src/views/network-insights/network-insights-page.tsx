@@ -366,7 +366,7 @@ function DateRangeFilter({
           className="flex items-center gap-2 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted transition-colors"
         >
           {dateRangeLabel(value)}
-          <ChevronDown size={14} className="text-muted-foreground" />
+          <ChevronDown size={14} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">

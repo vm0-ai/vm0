@@ -280,7 +280,7 @@ export function PinnedAgentListSection({
             aria-label={t(($) => {
               return $.sidebar.openConversation;
             })}
-            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <Plus size={16} />
@@ -323,7 +323,7 @@ export function PinnedAgentListSection({
                   e.stopPropagation();
                   openAgentListDialog();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent-active transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent-active transition-colors"
                 aria-label={t(($) => {
                   return $.sidebar.openConversation;
                 })}

@@ -464,7 +464,7 @@ function ConnectedConnectorPermissions({
           </div>
           {searchActive && (
             <div className="absolute inset-0 flex items-center gap-2 px-5">
-              <Search size={14} className="shrink-0 text-muted-foreground" />
+              <Search size={14} className="shrink-0" />
               <input
                 ref={(el) => {
                   return el?.focus();

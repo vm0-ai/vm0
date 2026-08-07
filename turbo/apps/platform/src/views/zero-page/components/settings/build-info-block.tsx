@@ -87,7 +87,7 @@ export function BuildInfoBlock() {
     <div className="flex items-start gap-4 rounded-xl bg-card p-4 zero-border">
       <div className="shrink-0">
         <div className="flex h-7 w-7 items-center justify-center">
-          <GitCommit size={22} className="text-muted-foreground" />
+          <GitCommit size={22} />
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">

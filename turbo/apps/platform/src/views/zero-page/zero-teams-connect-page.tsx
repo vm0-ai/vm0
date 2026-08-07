@@ -113,7 +113,7 @@ function CheckingState() {
   const { t } = useTranslation();
   return (
     <>
-      <LoaderCircle size={40} className="text-muted-foreground animate-spin" />
+      <LoaderCircle size={40} className="animate-spin" />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
           {t(($) => {
@@ -134,7 +134,7 @@ function InvalidState() {
   const { t } = useTranslation();
   return (
     <>
-      <CircleAlert size={40} className="text-muted-foreground/40" />
+      <CircleAlert size={40} />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
           {t(($) => {

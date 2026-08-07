@@ -70,10 +70,7 @@ function LoadingCard() {
         role="status"
         className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12"
       >
-        <LoaderCircle
-          size={20}
-          className="animate-spin text-muted-foreground"
-        />
+        <LoaderCircle size={20} className="animate-spin" />
         <span className="sr-only">
           {t(($) => {
             return $.reportError.loading;
@@ -148,7 +145,7 @@ function ConfirmCard({
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-6 rounded-[20px] border border-border bg-background px-8 py-10">
-        <TriangleAlert size={40} className="text-orange-500 opacity-70" />
+        <TriangleAlert size={40} className="text-orange-500" />
 
         <div className="flex flex-col items-center gap-2">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
@@ -238,7 +235,7 @@ function SuccessCard({ reference }: { reference: string }) {
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-6 rounded-[20px] border border-border bg-background px-8 py-10">
-        <Check size={40} className="text-green-600 opacity-70" />
+        <Check size={40} className="text-green-600" />
         <div className="flex flex-col items-center gap-2">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
             {t(($) => {
@@ -275,7 +272,7 @@ function ErrorCard({
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-6 rounded-[20px] border border-border bg-background px-8 py-10">
-        <X size={40} className="text-destructive opacity-70" />
+        <X size={40} className="text-destructive" />
         <div className="flex flex-col items-center gap-2">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
             {t(($) => {

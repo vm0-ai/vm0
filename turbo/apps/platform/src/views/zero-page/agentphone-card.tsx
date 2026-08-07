@@ -110,7 +110,7 @@ function PhoneNumberCopyButton({
       }}
     >
       {formatted}
-      <Copy size={13} className="shrink-0 text-muted-foreground" />
+      <Copy size={13} className="shrink-0" />
     </button>
   );
 }

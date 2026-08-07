@@ -142,7 +142,7 @@ export function MultiSelectCombobox({
               <span className="text-muted-foreground">{placeholder}</span>
             )}
           </div>
-          <ChevronDown size={16} className="shrink-0 text-muted-foreground" />
+          <ChevronDown size={16} className="shrink-0" />
         </div>
       </PopoverTrigger>
       <PopoverContent
@@ -158,7 +158,7 @@ export function MultiSelectCombobox({
         }}
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Search size={14} className="shrink-0 text-muted-foreground" />
+          <Search size={14} className="shrink-0" />
           <input
             ref={searchInputRef}
             type="text"
