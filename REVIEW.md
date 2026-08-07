@@ -247,9 +247,10 @@ Apply `docs/fallback.md`. The default is no fallback.
   or compatibility behavior the PR introduces, keeps, or removes, or an
   explicit `Fallbacks: none`. An undeclared fallback is a **P1** finding on its
   own, independent of whether the fallback itself is justified. Report it under
-  High Priority (P1) and require the author to add the missing entry to the PR
-  summary. Record it even when the fallback is correct and stays: the finding
-  is the missing declaration, not the code.
+  High Priority (P1), require the author to add the missing entry to the PR
+  summary, and set the verdict to `Changes Requested`. Record it even when the
+  fallback is correct and stays: the finding is the missing declaration, not
+  the code.
 - The review comment must itself list every fallback found in the diff, with
   its surface, window, removal condition, and a justified / not-justified
   verdict. A review that stays silent about fallbacks in a PR that has one is
@@ -325,7 +326,7 @@ The `Fallbacks` section is mandatory in every review, including when the answer
 is `None`. List each fallback the diff introduces, keeps, or removes, and mark
 whether the PR summary declares it. Every fallback missing from the summary is
 also a P1 entry under Findings, phrased as a request to add it to the PR
-summary.
+summary, and forces the `Changes Requested` verdict.
 
 Or if there are P0/P1 blockers:
 
@@ -352,8 +353,12 @@ Changes Requested
 
 **Verdict rules:**
 
-- Start with `LGTM` if there are no P0 issues and no missing tests on `feat:`/`fix:` commits
-- Start with `Changes Requested` if there are any P0 issues OR missing required tests
+- Start with `LGTM` if there are no P0 issues, no missing tests on
+  `feat:`/`fix:` commits, and every fallback in the diff is declared in the PR
+  summary
+- Start with `Changes Requested` if there are any P0 issues, OR missing required
+  tests, OR any fallback or compatibility behavior in the diff that the PR
+  summary does not declare
 
 If the caller asks for pr-auto marker-comment mode:
 

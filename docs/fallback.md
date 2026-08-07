@@ -253,10 +253,10 @@ A fallback that nobody records is a fallback that nobody removes. Declaring it
 is mandatory on both sides of the review.
 
 **Every fallback belongs in the PR summary. A fallback or compatibility
-behavior present in the diff but missing from the summary is a P1 finding**,
-and the requested fix is to add the missing entry to the summary. This holds
-even when the fallback itself is correct and stays: the defect is the
-undeclared behavior, not the branch.
+behavior present in the diff but missing from the summary is a P1 finding and
+blocks the review verdict**: the review is `Changes Requested` until the author
+adds the missing entry. This holds even when the fallback itself is correct and
+stays — the defect is the undeclared behavior, not the branch.
 
 **Author — in the PR summary.** When a PR introduces, keeps, or removes any
 fallback, the summary must contain a `Fallbacks` section listing each one. Do
@@ -286,8 +286,9 @@ reports as `none observed` after merge.
 diff introduces or keeps, in the same shape, and state whether each one is
 justified under section 6, correctly time-boxed under section 7, and declared
 in the PR summary. Raise each undeclared one as a P1 finding asking the author
-to record it in the summary. A review that says nothing about fallbacks in a PR
-that adds one is not a completed review.
+to record it in the summary, and request changes until it is recorded. A review
+that says nothing about fallbacks in a PR that adds one is not a completed
+review.
 
 ## 10. Evidence Required When Removing a Fallback
 
@@ -322,7 +323,8 @@ throw so monitoring surfaces a violation if the assumption ever breaks.
   DB window, or a client branch sized to the ~2 hour runner window, is wrong.
 - Does the PR summary contain a `Fallbacks` section, or an explicit
   `Fallbacks: none`? Every fallback in the diff that the summary omits is a P1
-  finding: ask the author to record it there.
+  finding and blocks the verdict: ask the author to record it there and request
+  changes.
 - Does the review comment list every fallback the diff introduces or keeps,
   with a justified/not-justified verdict for each?
 - Does a removal PR carry type, single-writer, production, or rollout evidence?
