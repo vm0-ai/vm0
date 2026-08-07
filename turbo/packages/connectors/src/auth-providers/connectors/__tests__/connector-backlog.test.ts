@@ -14,6 +14,7 @@ import {
   exchangeDatadogCode,
   refreshDatadogToken,
 } from "../datadog/oauth";
+import { fetchLogtoAccessToken } from "../logto/m2m";
 import { refreshNetSuiteAccessToken } from "../netsuite/api-token";
 import { fetchPayPalAccessToken } from "../paypal/api-token";
 import { fetchRampAccessToken } from "../ramp/api-token";
@@ -255,6 +256,54 @@ describe("connector backlog auth providers", () => {
     expect(authorization).toBe(
       `Basic ${Buffer.from("client-id:client-secret").toString("base64")}`,
     );
+  });
+
+  it("gets a Logto Management API token for the tenant endpoint", async () => {
+    let grantType: string | null = null;
+    let resource: string | null = null;
+    let scope: string | null = null;
+    let authorization: string | null = null;
+    server.use(
+      http.post("https://acme.logto.app/oidc/token", async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        grantType = body.get("grant_type");
+        resource = body.get("resource");
+        scope = body.get("scope");
+        authorization = request.headers.get("authorization");
+        return HttpResponse.json({
+          access_token: "logto-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+          scope: "all",
+        });
+      }),
+    );
+
+    await expect(
+      fetchLogtoAccessToken({
+        tenantId: "acme",
+        appId: "app-id",
+        appSecret: "app-secret",
+        signal,
+      }),
+    ).resolves.toEqual({ accessToken: "logto-token", expiresIn: 3600 });
+    expect(grantType).toBe("client_credentials");
+    expect(resource).toBe("https://acme.logto.app/api");
+    expect(scope).toBe("all");
+    expect(authorization).toBe(
+      `Basic ${Buffer.from("app-id:app-secret").toString("base64")}`,
+    );
+  });
+
+  it("rejects a Logto tenant ID that would redirect the token request", async () => {
+    await expect(
+      fetchLogtoAccessToken({
+        tenantId: "acme.evil.example.com",
+        appId: "app-id",
+        appSecret: "app-secret",
+        signal,
+      }),
+    ).rejects.toThrow("Invalid Logto tenant ID");
   });
 
   it("gets a PayPal client-credentials token", async () => {

@@ -1028,6 +1028,31 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     },
   },
   {
+    connectorSlug: "logto",
+    authMethodId: "m2m",
+    contract: {
+      client: {
+        kind: "none",
+      },
+      grant: {
+        kind: "manual",
+        callbackOrigin: null,
+        outputNames: [],
+        startOptionNames: [],
+      },
+      access: {
+        kind: "refresh-token",
+        inputNames: ["appId", "appSecret", "tenantId"],
+        outputNames: ["accessToken"],
+        platformSecrets: [],
+      },
+      revoke: {
+        kind: "none",
+        inputNames: [],
+      },
+    },
+  },
+  {
     connectorSlug: "mailchimp",
     authMethodId: "oauth",
     contract: {
