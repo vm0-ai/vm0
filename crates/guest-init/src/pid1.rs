@@ -423,6 +423,7 @@ mod tests {
 
     #[test]
     fn setup_ignores_inherited_signals_in_isolated_process() {
+        // Other PID 1 tests call waitpid(-1), so serialize ownership of this child.
         let _guard = PID1_TEST_LOCK.lock().unwrap();
         let output = Command::new(std::env::current_exe().unwrap())
             .arg("--exact")
