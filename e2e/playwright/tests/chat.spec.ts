@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Response } from "@playwright/test";
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
@@ -18,6 +18,34 @@ interface ConnectorCatalogStatusResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isSuccessfulAgentDraftClear(response: Response): boolean {
+  const request = response.request();
+  if (
+    !response.ok() ||
+    request.method() !== "PATCH" ||
+    !/^\/api\/zero\/agents\/[^/]+\/draft$/.test(
+      new URL(response.url()).pathname,
+    )
+  ) {
+    return false;
+  }
+  const body: unknown = request.postDataJSON();
+  return (
+    isRecord(body) &&
+    body.draftUserMessage === null &&
+    body.draftAttachments === null
+  );
+}
+
+async function waitForAgentDraftClear(
+  page: Page,
+  clearDraft: () => Promise<void>,
+): Promise<void> {
+  const draftCleared = page.waitForResponse(isSuccessfulAgentDraftClear);
+  await clearDraft();
+  await draftCleared;
 }
 
 function isConnectorCatalogStatusResponse(
@@ -198,6 +226,10 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
     connectorsButton.locator("img:visible, svg:visible"),
   ).toHaveCount(4);
   await expectInside(sendButton, composer);
+
+  await waitForAgentDraftClear(page, async () => {
+    await editor.fill("");
+  });
 });
 
 test("image lightbox centers and pans across the full viewer", async ({
@@ -314,7 +346,9 @@ test("image lightbox centers and pans across the full viewer", async ({
 
   await lightbox.getByRole("button", { name: "Close" }).click();
   await expect(lightbox).toBeHidden();
-  await page.getByRole("button", { name: "Remove lightbox.svg" }).click();
+  await waitForAgentDraftClear(page, async () => {
+    await page.getByRole("button", { name: "Remove lightbox.svg" }).click();
+  });
 });
 
 test("selected avatar and voice cards keep a single border", async ({
@@ -401,4 +435,9 @@ test("selected avatar and voice cards keep a single border", async ({
   const unselectedVoiceEdge = await cardEdgeAppearance(unselectedVoice);
   expect(selectedVoiceEdge.borderWidths).toEqual(["1px", "1px", "1px", "1px"]);
   expect(selectedVoiceEdge).toEqual(unselectedVoiceEdge);
+
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+  await waitForAgentDraftClear(page, async () => {
+    await page.getByRole("textbox", { name: "Message" }).fill("");
+  });
 });
