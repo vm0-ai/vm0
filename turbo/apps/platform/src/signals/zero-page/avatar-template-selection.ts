@@ -38,6 +38,10 @@ export function toAvatarGenerationTemplate(
       // Mirrored flat because an API or frontend bundle that predates
       // avatarOptions drops the nested object, and losing the voice would
       // silently generate the avatar with a different one.
+      //
+      // Delete once the web-client floor in web-client-compatibility.json has
+      // been raised past the app version shipping this change. Tracked in
+      // https://github.com/vm0-ai/vm0/issues/25620.
       ...avatarOptions,
     },
   };

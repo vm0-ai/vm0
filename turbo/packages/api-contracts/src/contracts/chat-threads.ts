@@ -251,7 +251,15 @@ const videoGenerationTemplateRequestSchema = z.object({
     videoOptions: videoGenerationOptionsSchema.optional(),
     avatarOptions: avatarGenerationOptionsSchema.optional(),
 
-    /** @deprecated Read-only fallback; write avatarOptions.titleSnapshot. */
+    /**
+     * The four fields below are still written alongside avatarOptions so that
+     * readers predating it do not lose the selection. Stop writing them once
+     * the web-client floor has been raised past the app version shipping this
+     * change; keep reading them until a backfill moves existing rows.
+     * Tracked in https://github.com/vm0-ai/vm0/issues/25620.
+     *
+     * @deprecated Read-only fallback; write avatarOptions.titleSnapshot.
+     */
     titleSnapshot: z.string().trim().min(1).optional(),
     /** @deprecated Read-only fallback; write avatarOptions.previewUrl. */
     previewUrl: z.url().optional(),

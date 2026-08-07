@@ -41,6 +41,11 @@ export interface AvatarTemplateOptions {
  * server-persisted drafts written by bundles deployed before the split still
  * carry them, and an older bundle re-reading a newer draft drops the nested
  * object during validation.
+ *
+ * This fallback outlives the mirrored flat write: rows persisted before the
+ * split only have the flat fields, so dropping the read without a jsonb
+ * backfill loses the voice and cover image on existing messages and drafts.
+ * See https://github.com/vm0-ai/vm0/issues/25620.
  */
 export function readAvatarTemplateOptions(
   selection: AvatarTemplateOptions & {
