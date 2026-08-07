@@ -202,8 +202,11 @@ describe("chat composer templates", () => {
       await screen.findByLabelText(`Select video template ${template.title}`),
     );
 
-    // Catalog defaults are shown even though nothing is stored yet.
-    const spec = await screen.findByLabelText("Video options 16:9 \u00b7 8s");
+    // Every parameter is shown, with catalog defaults filled in even though
+    // nothing is stored yet.
+    const spec = await screen.findByLabelText(
+      "Video options Seedance 2.0 fast \u00b7 16:9 \u00b7 8s \u00b7 720p \u00b7 Audio",
+    );
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
@@ -229,7 +232,9 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 8s"),
+        screen.getByLabelText(
+          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -240,7 +245,9 @@ describe("chat composer templates", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Video options 9:16 \u00b7 6s"),
+        screen.getByLabelText(
+          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 6s \u00b7 720p \u00b7 Audio",
+        ),
       ).toBeInTheDocument();
     });
     expect(
@@ -264,6 +271,55 @@ describe("chat composer templates", () => {
           },
         },
       });
+    });
+  });
+
+  it("opens video parameters on hover and closes them when the pointer leaves", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    await user.click(tabByText("Video"));
+    await user.click(
+      await screen.findByLabelText(`Select video template ${template.title}`),
+    );
+    const spec = await screen.findByLabelText(
+      "Video options Seedance 2.0 fast · 16:9 · 8s · 720p · Audio",
+    );
+    // Typing puts the caret back in the sentence, which pointing at the chip
+    // must not take away again.
+    await user.type(await findComposerEditor(), "make it dramatic");
+    expect(composerInlineTemplates()[0]).not.toHaveAttribute("data-selected");
+
+    await user.hover(spec);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Ratio" }),
+      ).toBeInTheDocument();
+    });
+    expect(composerInlineTemplates()[0]).not.toHaveAttribute("data-selected");
+
+    await user.unhover(spec);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("combobox", { name: "Ratio" }),
+      ).not.toBeInTheDocument();
     });
   });
 

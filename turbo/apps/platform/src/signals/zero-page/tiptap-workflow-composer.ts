@@ -82,8 +82,12 @@ import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
 import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
-import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
+import {
+  VIDEO_MODEL_CONFIGS,
+  resolveVideoGenerationOptions,
+} from "@vm0/core/video-model-catalog";
 import { videoTemplateOptionsEnabled$ } from "../external/feature-switch.ts";
+import type { TemplateOptionsSource } from "./zero-chat-composer.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -213,6 +217,10 @@ export interface WorkflowComposerSignals {
   readonly readSelectedTemplate$: Command<
     GenerationTemplateRequest | undefined,
     []
+  >;
+  readonly readTemplateAt$: Command<
+    GenerationTemplateRequest | undefined,
+    [number]
   >;
   readonly prepareTemplateInsertion$: Command<void, []>;
   readonly insertText$: Command<void, [string]>;
@@ -889,51 +897,83 @@ function createTemplateAttachmentNodeView(
 
 interface InlineTemplateNodeActions {
   readonly openTemplate: (category: string) => void;
-  readonly openOptions: (anchor: DOMRect) => void;
+  readonly openOptions: (
+    anchor: DOMRect,
+    source: TemplateOptionsSource,
+  ) => void;
+  /** Pointer left the chip; the popover decides whether that closes it. */
+  readonly endOptionsHover: () => void;
   /** Read per render so a chip picks the switch up on its next update. */
   readonly optionsEnabled: () => boolean;
 }
 
 /**
- * Aspect ratio and duration for a text-to-video template, resolved against the
- * model catalog so a chip shows the parameters the run will actually use even
- * when the user has overridden none of them. Talking-avatar templates share the
- * "video" envelope but take none of these parameters.
+ * Every parameter a text-to-video run takes, resolved against the model catalog
+ * so a chip shows what the run will actually use even when the user has
+ * overridden none of them.
  */
-function inlineTemplateSpecSegments(node: ProseMirrorNode): readonly string[] {
+interface InlineTemplateSpec {
+  readonly model: string;
+  /** Kept visible at every viewport width: aspect ratio and duration. */
+  readonly core: readonly string[];
+  readonly rest: readonly string[];
+}
+
+/**
+ * Talking-avatar templates share the "video" envelope but take none of these
+ * parameters, so they get no spec zone.
+ */
+function inlineTemplateSpec(node: ProseMirrorNode): InlineTemplateSpec | null {
   const parsed = generationTemplateRequestSchema.safeParse(node.attrs.template);
   if (!parsed.success || parsed.data.type !== "video") {
-    return [];
+    return null;
   }
   const { selection } = parsed.data;
   if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
-    return [];
+    return null;
   }
   const resolved = resolveVideoGenerationOptions(selection.videoOptions);
-  return [resolved.aspectRatio, resolved.duration];
+  const config = VIDEO_MODEL_CONFIGS[resolved.model];
+  const audio = resolved.generateAudio
+    ? i18n.t(($) => {
+        return $.chat.templates.videoSpecAudioOn;
+      })
+    : i18n.t(($) => {
+        return $.chat.templates.videoSpecAudioOff;
+      });
+  return {
+    model: config.label,
+    core: [resolved.aspectRatio, resolved.duration],
+    rest: config.supportsGenerateAudio
+      ? [resolved.resolution, audio]
+      : [resolved.resolution],
+  };
 }
 
 function createInlineTemplateSpecZone(): {
   readonly zone: HTMLButtonElement;
-  readonly render: (segments: readonly string[]) => void;
+  readonly render: (spec: InlineTemplateSpec) => void;
 } {
   const zone = document.createElement("button");
   zone.type = "button";
   zone.className = INLINE_TEMPLATE_SPEC_ZONE_CLASS;
-  const lead = document.createElement("span");
-  // Everything after the ratio is dropped on narrow viewports so the chip
-  // stays readable inside a prompt sentence.
+  // The model name and everything after the duration are dropped on narrow
+  // viewports so the chip stays readable inside a prompt sentence.
+  const model = document.createElement("span");
+  model.className = "hidden sm:inline";
+  const core = document.createElement("span");
   const rest = document.createElement("span");
   rest.className = "hidden sm:inline";
   const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
   chevron.setAttribute("class", "shrink-0 opacity-70");
-  zone.append(lead, rest, chevron);
+  zone.append(model, core, rest, chevron);
   return {
     zone,
-    render(segments) {
-      lead.textContent = segments[0] ?? "";
-      rest.textContent = segments
-        .slice(1)
+    render(spec) {
+      const segments = [spec.model, ...spec.core, ...spec.rest];
+      model.textContent = `${spec.model} \u00b7 `;
+      core.textContent = spec.core.join(" \u00b7 ");
+      rest.textContent = spec.rest
         .map((segment) => {
           return ` \u00b7 ${segment}`;
         })
@@ -984,29 +1024,29 @@ function createInlineTemplateNodeView(
   const spec = createInlineTemplateSpecZone();
 
   let currentNode = node;
-  function localize(): void {
-    openButton.setAttribute(
-      "aria-label",
-      templateAttachmentPreviewLabel(
-        templateAttachmentNodeAttributes(currentNode),
-      ),
-    );
-  }
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
     title.textContent = attachment.title;
-    const segments = actions.optionsEnabled()
-      ? inlineTemplateSpecSegments(nextNode)
-      : [];
-    if (segments.length > 0) {
-      spec.render(segments);
+    openButton.setAttribute(
+      "aria-label",
+      templateAttachmentPreviewLabel(attachment),
+    );
+    const nextSpec = actions.optionsEnabled()
+      ? inlineTemplateSpec(nextNode)
+      : null;
+    if (nextSpec) {
+      spec.render(nextSpec);
       if (spec.zone.parentNode === null) {
         dom.append(spec.zone);
       }
     } else {
       spec.zone.remove();
     }
-    localize();
+  }
+  // The spec text itself is localized, so a locale switch has to re-render the
+  // chip rather than only refresh its labels.
+  function localize(): void {
+    render(currentNode);
   }
   openButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
@@ -1016,7 +1056,13 @@ function createInlineTemplateNodeView(
   });
   spec.zone.addEventListener("mousedown", (event) => {
     event.preventDefault();
-    actions.openOptions(dom.getBoundingClientRect());
+    actions.openOptions(dom.getBoundingClientRect(), "click");
+  });
+  spec.zone.addEventListener("mouseenter", () => {
+    actions.openOptions(dom.getBoundingClientRect(), "hover");
+  });
+  spec.zone.addEventListener("mouseleave", () => {
+    actions.endOptionsHover();
   });
   localizedUi.add(localize);
   render(currentNode);
@@ -1541,7 +1587,12 @@ interface WorkflowComposerRuntime {
   openTemplate(category: string): void;
   /** Resolved when the lifecycle bridge mounts; false until then. */
   videoOptionsEnabled: boolean;
-  openTemplateOptions(anchor: DOMRect, position: number): void;
+  openTemplateOptions(
+    anchor: DOMRect,
+    position: number,
+    source: TemplateOptionsSource,
+  ): void;
+  endTemplateOptionsHover(): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
@@ -1671,11 +1722,16 @@ function createInlineTemplateNode(
                 runtime.openTemplate(category);
               }
             },
-            openOptions: (anchor) => {
+            // Deliberately does not select the node: hovering a chip must not
+            // move the caret out of the sentence being typed.
+            openOptions: (anchor, source) => {
               const position = getPos();
-              if (typeof position === "number" && selectSelf()) {
-                runtime.openTemplateOptions(anchor, position);
+              if (typeof position === "number") {
+                runtime.openTemplateOptions(anchor, position, source);
               }
+            },
+            endOptionsHover: () => {
+              runtime.endTemplateOptionsHover();
             },
             optionsEnabled: () => {
               return runtime.videoOptionsEnabled;
@@ -2450,11 +2506,26 @@ function createReadSelectedTemplateCommand(editor: Editor) {
   });
 }
 
+/** Addressed by position so reading a chip does not have to select it. */
+function createReadTemplateAtCommand(editor: Editor) {
+  return command((_context, position: number) => {
+    const node = editor.state.doc.nodeAt(position);
+    if (node?.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+      return undefined;
+    }
+    const parsed = generationTemplateRequestSchema.safeParse(
+      node.attrs.template,
+    );
+    return parsed.success ? parsed.data : undefined;
+  });
+}
+
 function createTemplateInsertionCommands(editor: Editor) {
   return {
     insertTemplate$: createInsertTemplateCommand(editor),
     updateTemplateAt$: createUpdateTemplateAtCommand(editor),
     readSelectedTemplate$: createReadSelectedTemplateCommand(editor),
+    readTemplateAt$: createReadTemplateAtCommand(editor),
     prepareTemplateInsertion$: createPrepareTemplateInsertionCommand(editor),
   };
 }
@@ -2524,7 +2595,12 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
     videoOptionsEnabled: false,
-    openTemplateOptions(_anchor: DOMRect, _position: number): void {},
+    openTemplateOptions(
+      _anchor: DOMRect,
+      _position: number,
+      _source: TemplateOptionsSource,
+    ): void {},
+    endTemplateOptionsHover(): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
@@ -2558,7 +2634,7 @@ function createTemplateAttachmentControls(
         element.click();
       };
       runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
-      runtime.openTemplateOptions = (anchor, position) => {
+      runtime.openTemplateOptions = (anchor, position, source) => {
         element.dataset.templateAction = "options";
         element.dataset.templateAnchor = [
           anchor.left,
@@ -2567,6 +2643,11 @@ function createTemplateAttachmentControls(
           anchor.height,
         ].join(",");
         element.dataset.templatePosition = String(position);
+        element.dataset.templateOptionsSource = source;
+        element.click();
+      };
+      runtime.endTemplateOptionsHover = () => {
+        element.dataset.templateAction = "options-hover-end";
         element.click();
       };
       runtime.templateRemoved = () => {
@@ -2577,6 +2658,7 @@ function createTemplateAttachmentControls(
         runtime.templateAttachment = undefined;
         runtime.openTemplate = () => {};
         runtime.openTemplateOptions = () => {};
+        runtime.endTemplateOptionsHover = () => {};
         runtime.templateRemoved = () => {};
         set(activeState$, false);
         setTemplateAttachmentNode(editor, undefined);

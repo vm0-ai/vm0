@@ -1596,7 +1596,9 @@
       "videoOptionsLabel": "Opsi video {{spec}}",
       "videoOptionsModel": "Model",
       "videoOptionsRatio": "Rasio",
-      "videoOptionsResolution": "Resolusi"
+      "videoOptionsResolution": "Resolusi",
+      "videoSpecAudioOff": "Tanpa audio",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Thread chat",

@@ -1637,7 +1637,9 @@
       "videoOptionsLabel": "Options vidéo {{spec}}",
       "videoOptionsModel": "Modèle",
       "videoOptionsRatio": "Format",
-      "videoOptionsResolution": "Résolution"
+      "videoOptionsResolution": "Résolution",
+      "videoSpecAudioOff": "Muet",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Fil de discussion",

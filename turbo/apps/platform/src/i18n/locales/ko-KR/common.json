@@ -1596,7 +1596,9 @@
       "videoOptionsLabel": "동영상 옵션 {{spec}}",
       "videoOptionsModel": "모델",
       "videoOptionsRatio": "비율",
-      "videoOptionsResolution": "해상도"
+      "videoOptionsResolution": "해상도",
+      "videoSpecAudioOff": "음소거",
+      "videoSpecAudioOn": "오디오"
     },
     "thread": {
       "ariaLabel": "채팅 스레드",

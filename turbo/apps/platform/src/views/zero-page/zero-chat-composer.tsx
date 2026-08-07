@@ -5589,7 +5589,11 @@ function ComposerTemplateAttachmentSync({
     signals.template.setTemplatePickerReferenceValue$,
   );
   const readSelectedTemplate = useSet(signals.template.readSelectedTemplate$);
+  const readTemplateAt = useSet(signals.template.readTemplateAt$);
   const openVideoOptions = useSet(signals.template.openVideoTemplateOptions$);
+  const setVideoOptionsHover = useSet(
+    signals.template.setVideoTemplateOptionsHover$,
+  );
   const videoOptionsPosition = useGet(
     signals.template.videoTemplateOptionsPosition$,
   );
@@ -5661,10 +5665,21 @@ function ComposerTemplateAttachmentSync({
             const position = Number(
               event.currentTarget.dataset.templatePosition,
             );
-            const selected = readSelectedTemplate();
-            if (anchor && selected && Number.isInteger(position)) {
-              openVideoOptions(anchor, selected, position);
+            const selected = Number.isInteger(position)
+              ? readTemplateAt(position)
+              : undefined;
+            if (anchor && selected) {
+              openVideoOptions(
+                anchor,
+                selected,
+                position,
+                event.currentTarget.dataset.templateOptionsSource === "hover"
+                  ? "hover"
+                  : "click",
+              );
             }
+          } else if (action === "options-hover-end") {
+            setVideoOptionsHover("chip", false);
           }
         }}
       />
