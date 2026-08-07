@@ -1,5 +1,5 @@
 {
-  "id": "334fe58e-1421-42de-8b6a-ee988a447fa2",
+  "id": "5d4c88ad-dac1-4543-be89-fefe9eac0337",
   "prevId": "ac63abbe-29a3-4e9d-92bf-7095e9657955",
   "version": "7",
   "dialect": "postgresql",
@@ -3121,6 +3121,95 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.browser_profiles": {
+      "name": "browser_profiles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_profile_id": {
+          "name": "provider_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "uq_browser_profiles_owner": {
+          "name": "uq_browser_profiles_owner",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_browser_profiles_provider_profile": {
+          "name": "uq_browser_profiles_provider_profile",
+          "columns": [
+            {
+              "expression": "provider_profile_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.browser_session_instances": {
       "name": "browser_session_instances",
       "schema": "",
@@ -3130,6 +3219,12 @@
           "type": "uuid",
           "primaryKey": true,
           "notNull": true
+        },
+        "browser_session_id": {
+          "name": "browser_session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "chat_thread_id": {
           "name": "chat_thread_id",
@@ -3203,6 +3298,27 @@
         }
       },
       "indexes": {
+        "idx_browser_session_instances_session": {
+          "name": "idx_browser_session_instances_session",
+          "columns": [
+            {
+              "expression": "browser_session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_browser_session_instances_thread": {
           "name": "idx_browser_session_instances_thread",
           "columns": [
@@ -3283,7 +3399,21 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "browser_session_instances_browser_session_id_browser_sessions_id_fk": {
+          "name": "browser_session_instances_browser_session_id_browser_sessions_id_fk",
+          "tableFrom": "browser_session_instances",
+          "tableTo": "browser_sessions",
+          "columnsFrom": [
+            "browser_session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -3483,10 +3613,17 @@
       "name": "browser_sessions",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "run_id": {
@@ -3512,6 +3649,18 @@
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true
+        },
+        "browser_profile_id": {
+          "name": "browser_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "browser_thread_profile_id": {
+          "name": "browser_thread_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -3627,6 +3776,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "uq_browser_sessions_thread_owned": {
+          "name": "uq_browser_sessions_thread_owned",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -3642,6 +3807,32 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "browser_sessions_browser_profile_id_browser_profiles_id_fk": {
+          "name": "browser_sessions_browser_profile_id_browser_profiles_id_fk",
+          "tableFrom": "browser_sessions",
+          "tableTo": "browser_profiles",
+          "columnsFrom": [
+            "browser_profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk": {
+          "name": "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk",
+          "tableFrom": "browser_sessions",
+          "tableTo": "browser_thread_profiles",
+          "columnsFrom": [
+            "browser_thread_profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3654,10 +3845,17 @@
       "name": "browser_thread_profiles",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "org_id": {
@@ -3694,6 +3892,21 @@
         }
       },
       "indexes": {
+        "uq_browser_thread_profiles_thread": {
+          "name": "uq_browser_thread_profiles_thread",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "uq_browser_thread_profiles_provider_profile": {
           "name": "uq_browser_thread_profiles_provider_profile",
           "columns": [
@@ -4588,7 +4801,7 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.budget',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.open',\n          'browser.close',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.budget',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.open',\n          'browser.close',\n          -- Retired physical values still written by the pre-cleanup API while\n          -- it drains. Narrow this list to open/close in a later release, once\n          -- that API is gone and the rows have been backfilled again.\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",
@@ -12112,6 +12325,92 @@
           "columns": [
             {
               "expression": "public_slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.image_artifact_edit_snapshots": {
+      "name": "image_artifact_edit_snapshots",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "artifact_url": {
+          "name": "artifact_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_image_artifact_edit_snapshots_owner_artifact": {
+          "name": "idx_image_artifact_edit_snapshots_owner_artifact",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "artifact_url",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

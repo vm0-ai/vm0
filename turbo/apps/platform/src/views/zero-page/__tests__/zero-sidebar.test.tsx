@@ -33,6 +33,19 @@ import {
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { i18n } from "../../../i18n/index.ts";
 
+// The composer editor is mounted on first paint and mounted again once page
+// bootstrap settles, so an element captured too early is detached before a test
+// can drive it. Keyboard events on a detached editor are silently dropped.
+function mountedComposer(): HTMLElement {
+  const composer = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(composer instanceof HTMLElement)) {
+    throw new Error("Composer editor is not mounted");
+  }
+  return composer;
+}
+
 const context = testContext();
 
 afterEach(async () => {
@@ -1715,17 +1728,24 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "A",
-      code: "KeyA",
-      keyCode: 65,
-      ctrlKey: true,
-      shiftKey: true,
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    await waitFor(() => {
+      if (screen.queryByRole("dialog", { name: "Talk to" })) {
+        return;
+      }
+      const composer = mountedComposer();
+      composer.focus();
+      fireEvent.keyDown(composer, {
+        key: "A",
+        code: "KeyA",
+        keyCode: 65,
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      throw new Error("Agent picker has not opened yet");
     });
 
-    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const dialog = screen.getByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
@@ -1741,17 +1761,21 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "}",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
+    await screen.findByPlaceholderText(PLACEHOLDER);
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+      if (pathname() === `/agents/${RESEARCH_AGENT_ID}/chat`) {
+        return;
+      }
+      const composer = mountedComposer();
+      composer.focus();
+      fireEvent.keyDown(composer, {
+        key: "}",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      throw new Error("Pinned agent navigation has not happened yet");
     });
+    expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
   });
 
   it("moves to an unread unpinned agent shown in the sidebar", async () => {
