@@ -24,19 +24,9 @@ jobs:
       matrix:
         variant:
           - head
-          - stub-stripe
-          - stub-clerk
-          - stub-slack
-          - stub-aws
-          - stub-drizzle
-          - stub-zod
-          - stub-hono
-          - stub-otel
-          - stub-sentry
-          - stub-plain
-          - stub-ably
-          - stub-ccstate
-          - stub-misc
+          - no-vitest-globals
+          - no-dom-lib
+          - no-vitest-and-dom
     steps:
       - uses: actions/checkout@v7.0.1
         with:

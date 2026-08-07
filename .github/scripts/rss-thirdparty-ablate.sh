@@ -55,6 +55,22 @@ count_glob() {
   echo "DTS-INVENTORY glob=$glob files=$n bytes=$bytes"
 }
 
+patch_tsconfig() {
+  # Applies a mutation to apps/api/tsconfig.json's compilerOptions. The core /
+  # bootstrap / tests projects all extend it, so this changes every api program.
+  local mutation="$1"
+  node -e '
+    const fs = require("node:fs");
+    const path = "turbo/apps/api/tsconfig.json";
+    const raw = fs.readFileSync(path, "utf8");
+    const json = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ""));
+    const c = json.compilerOptions;
+    '"$mutation"'
+    fs.writeFileSync(path, JSON.stringify(json, null, 2));
+    console.log("patched tsconfig:", JSON.stringify(c));
+  '
+}
+
 case "$variant" in
   head)
     # no stubbing; just record the declaration surface of every candidate
@@ -122,6 +138,15 @@ case "$variant" in
     stub_pkg "@types/pg"
     stub_pkg "signal-timers"
     stub_pkg "@t3-oss/env-core"
+    ;;
+  no-vitest-globals)
+    patch_tsconfig 'c.types = ["node"]'
+    ;;
+  no-dom-lib)
+    patch_tsconfig 'c.lib = ["ES2022"]'
+    ;;
+  no-vitest-and-dom)
+    patch_tsconfig 'c.types = ["node"]; c.lib = ["ES2022"]'
     ;;
   *)
     echo "unknown variant: $variant" >&2
