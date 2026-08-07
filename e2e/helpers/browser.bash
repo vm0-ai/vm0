@@ -159,6 +159,41 @@ report_auth_page_failure() {
 }
 
 # ---------------------------------------------------------------------------
+# open_browser_with_pages_deployment_retry — Open a browser URL and retry only
+# the transient Cloudflare Pages deployment-level 404 returned by immutable
+# preview hosts. Application 404s and other navigation failures are final.
+# ---------------------------------------------------------------------------
+open_browser_with_pages_deployment_retry() {
+  local url="${1:?browser URL is required}"
+  local retry_started="$SECONDS"
+  local deployment_not_found
+
+  while true; do
+    agent-browser open "$url" || return
+    deployment_not_found="$(agent-browser eval \
+      'Boolean(
+        /^[0-9a-f]{8}\.okou-app\.pages\.dev$/.test(location.hostname)
+        && performance.getEntriesByType("navigation").some(
+          (entry) => entry.responseStatus === 404
+        )
+        && document.title === "Deployment Not Found"
+        && (document.body?.innerText ?? "").includes("Nothing is here yet")
+      )')" || return
+
+    if [[ "$deployment_not_found" != "true" ]]; then
+      return 0
+    fi
+    if (( SECONDS - retry_started >= 60 )); then
+      echo "Cloudflare Pages deployment remained unavailable after 60 seconds: ${url}" >&2
+      return 1
+    fi
+
+    echo "Cloudflare Pages deployment is not visible yet; retrying navigation" >&2
+    sleep 2
+  done
+}
+
+# ---------------------------------------------------------------------------
 # generate_test_email — Generate a random test email with +clerk_test suffix
 # Format: ${JOB_REF}+clerk_test@${8_RANDOM_HEX}.ai
 # ---------------------------------------------------------------------------
