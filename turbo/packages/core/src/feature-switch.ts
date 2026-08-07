@@ -335,6 +335,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable multiple inline artifact templates in structured chat prompts.",
     enabled: true,
   },
+  [FeatureSwitchKey.TemplatePickerGlobalSearch]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Search presentation, website, illustration, and video templates from the shared template picker search field.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:
