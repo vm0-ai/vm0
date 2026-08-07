@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.700.0](https://github.com/vm0-ai/vm0/compare/app-v0.699.1...app-v0.700.0) (2026-08-07)
+
+
+### Features
+
+* **billing:** reduce concurrency subscription quantity ([#25499](https://github.com/vm0-ai/vm0/issues/25499)) ([7372235](https://github.com/vm0-ai/vm0/commit/7372235b40a6ce826b31e1da6e779ae34651e3dd))
+* replace agent thinking indicator with 3x3 ripple loader ([#25607](https://github.com/vm0-ai/vm0/issues/25607)) ([47c9970](https://github.com/vm0-ai/vm0/commit/47c9970938b8c44dcaba0f27da531c84d374d9da))
+
+
+### Bug Fixes
+
+* truncate long connector usernames in connector cards ([#25610](https://github.com/vm0-ai/vm0/issues/25610)) ([3ce7ca0](https://github.com/vm0-ai/vm0/commit/3ce7ca0a94d9178acfe97ca45ed25141e9703796))
+
+
+### Refactoring
+
+* remove ChatThreadUnifiedSearch feature switch ([#25600](https://github.com/vm0-ai/vm0/issues/25600)) ([3b6b0af](https://github.com/vm0-ai/vm0/commit/3b6b0af8818889df98b48d0713db9901b13b2e19))
+* remove graduated client compatibility ([#25545](https://github.com/vm0-ai/vm0/issues/25545)) ([df2d6e9](https://github.com/vm0-ai/vm0/commit/df2d6e9a273f3d8b40f8409e79791891e46103a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.289.0
+    * @vm0/core bumped to 8.526.1
+
 ## [0.699.1](https://github.com/vm0-ai/vm0/compare/app-v0.699.0...app-v0.699.1) (2026-08-07)
 
 
