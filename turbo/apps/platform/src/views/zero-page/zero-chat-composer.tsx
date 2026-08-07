@@ -1125,15 +1125,14 @@ const TEMPLATE_CARD_SHADOW =
   "shadow-[0_2px_12px_hsl(220_12%_50%/0.04),0_0_0_0.5px_hsl(220_12%_50%/0.02)]";
 
 /**
- * Gallery tile. The hover outline is a ring with an offset so it is drawn
- * outside the card and keeps a gap from the artwork — the card itself keeps
- * the full grid cell and never shrinks.
+ * Gallery tile. Hover feedback comes from the scrim and the Use pill alone —
+ * the card already carries a hairline border, so a hover ring only doubled it.
+ * The ring is reserved for the selected state, offset so it is drawn outside
+ * the card and keeps a gap from the artwork.
  */
 const TEMPLATE_TILE_WRAPPER = "group/tile relative cursor-pointer";
 const TEMPLATE_TILE_RING =
   "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
-const TEMPLATE_TILE_RING_HOVER = "ring-gray-400 group-hover/tile:ring-1";
-const TEMPLATE_TILE_RING_SELF_HOVER = "ring-gray-400 hover:ring-1";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
   "relative overflow-hidden border border-gray-200 bg-muted";
@@ -1164,7 +1163,7 @@ function VideoTemplateCard({
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
           "aspect-[16/9]",
-          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+          selected && TEMPLATE_TILE_RING_SELECTED,
         )}
       >
         <VideoTemplatePreview item={item} />
@@ -1272,7 +1271,7 @@ function WebsiteTemplateCard({
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
           "aspect-[16/9] group-focus-visible/tile:ring-1 group-focus-visible/tile:ring-ring",
-          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+          selected && TEMPLATE_TILE_RING_SELECTED,
         )}
       >
         <img
@@ -1441,7 +1440,7 @@ function WorkflowTemplateCard({
         "group/tile flex flex-col border border-gray-200 bg-card p-4",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -3869,7 +3868,7 @@ function PptCard({
         className={cn(
           TEMPLATE_TILE_MEDIA,
           TEMPLATE_TILE_RING,
-          selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_HOVER,
+          selected && TEMPLATE_TILE_RING_SELECTED,
         )}
       >
         <TemplatePreview
@@ -4397,7 +4396,7 @@ function IllustrationTemplateCard({
         "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
-        selected ? TEMPLATE_TILE_RING_SELECTED : TEMPLATE_TILE_RING_SELF_HOVER,
+        selected && TEMPLATE_TILE_RING_SELECTED,
       )}
     >
       <IllustrationTemplateHero
