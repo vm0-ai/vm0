@@ -3476,7 +3476,7 @@ async function validateEventAutomationEnableReadiness(args: {
     : null;
 }
 
-const validateStripeInvoicePaidEnableFeature$ = command(
+const validateStripeFeature$ = command(
   async (
     { get },
     automation: AutomationRow,
@@ -3511,14 +3511,10 @@ export const enableWorkflowAutomation$ = command(
       return owned;
     }
     const { automation } = owned;
-    const stripeFeatureFailure = await set(
-      validateStripeInvoicePaidEnableFeature$,
-      automation,
-      signal,
-    );
+    const stripeFailure = await set(validateStripeFeature$, automation, signal);
     signal.throwIfAborted();
-    if (stripeFeatureFailure) {
-      return stripeFeatureFailure;
+    if (stripeFailure) {
+      return stripeFailure;
     }
     const eventEnableFailure = await validateEventAutomationEnableReadiness({
       automation,
@@ -3529,8 +3525,7 @@ export const enableWorkflowAutomation$ = command(
     if (eventEnableFailure) {
       return eventEnableFailure;
     }
-    // The owning agent is derived from the workflow row (hard 1:N); it always
-    // exists. Re-confirm the owner can still run it before re-enabling.
+    // Re-confirm the workflow's owning agent can still be used before re-enabling.
     const agentId = await loadAutomationWorkflowAgentId(writeDb, {
       orgId: args.orgId,
       workflowId: automation.workflowId,
