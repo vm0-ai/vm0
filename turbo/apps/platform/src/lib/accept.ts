@@ -1,3 +1,4 @@
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { isAbortError, onRejection } from "../signals/utils.ts";
 import { isNetworkRequestError } from "./network-error.ts";
@@ -60,7 +61,9 @@ interface AcceptOptions {
 /**
  * Awaits a typed API response and returns it if the status code is in `codes`.
  * Otherwise throws an `ApiError` and, by default, shows a toast. A 401 is
- * never toasted because the authenticated clients own sign-in recovery.
+ * never toasted because the authenticated clients own sign-in recovery. A
+ * force-upgrade response is never toasted because the blocking dialog owns
+ * recovery.
  *
  * Browser network failures propagate without showing their raw error message.
  *
@@ -92,7 +95,11 @@ async function accept<
     return result as Extract<T, { status: S }>;
   }
   const { message, code } = extractError(result.body, result.status);
-  if (showErrorToast && result.status !== 401) {
+  if (
+    showErrorToast &&
+    result.status !== 401 &&
+    result.status !== CLIENT_FORCE_UPGRADE_STATUS
+  ) {
     toast.error(message);
   }
   throw new ApiError(message, code, result.status);
