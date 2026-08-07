@@ -349,9 +349,6 @@ describe("assistant markdown", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-markdown",
-      featureSwitches: {
-        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
-      },
     });
 
     const artifactsButton = await waitFor(() => {

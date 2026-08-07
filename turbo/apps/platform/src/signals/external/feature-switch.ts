@@ -70,12 +70,6 @@ export const videoTemplateOptionsEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VideoTemplateOptions] ?? false;
 });
 
-export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.ArtifactSidebarInlineOpen] ?? false
-  );
-});
-
 export const cjkFriendlyMarkdownEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CjkFriendlyMarkdown] ?? false;
 });
