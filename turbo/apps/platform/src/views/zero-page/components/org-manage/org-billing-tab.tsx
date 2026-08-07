@@ -84,7 +84,6 @@ import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { UsagePackPricingPage } from "./usage-pack-pricing-page.tsx";
-import { UsagePackManagementSection } from "./usage-pack-management-section.tsx";
 
 const PLANS = [
   {
@@ -163,6 +162,9 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
   const unlimitedAgents = i18n.t(($) => {
     return $.billing.plans.features.unlimitedAgents;
   });
+  const sharedAndPrivateAgents = i18n.t(($) => {
+    return $.billing.plans.features.sharedAndPrivateAgents;
+  });
   const byok = i18n.t(($) => {
     return $.billing.plans.features.byok;
   });
@@ -187,25 +189,7 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
       }),
     ];
   }
-  const credits =
-    tier === "pro"
-      ? i18n.t(
-          ($) => {
-            return $.billing.plans.features.monthlyCredits;
-          },
-          { value: formatLocalizedNumber(20_000) },
-        )
-      : i18n.t(
-          ($) => {
-            return $.billing.plans.features.monthlyCredits;
-          },
-          { value: formatLocalizedNumber(120_000) },
-        );
   return [
-    credits,
-    i18n.t(($) => {
-      return $.billing.plans.features.payAsYouGo;
-    }),
     tier === "pro"
       ? i18n.t(($) => {
           return $.billing.plans.features.twoConcurrentRuns;
@@ -213,7 +197,7 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
       : i18n.t(($) => {
           return $.billing.plans.features.tenConcurrentRuns;
         }),
-    unlimitedAgents,
+    sharedAndPrivateAgents,
     byok,
     voiceInput,
     tier === "pro"
@@ -419,7 +403,11 @@ function planCardAction(args: {
   return planButtonAction(args.plan, args.currentTier);
 }
 
-function planCardLabel(action: PlanCardAction, plan: BillingPlan): string {
+function planCardLabel(
+  action: PlanCardAction,
+  plan: BillingPlan,
+  currentTier: BillingTier,
+): string {
   if (action === "current") {
     return i18n.t(($) => {
       return $.billing.plans.currentPlan;
@@ -436,6 +424,14 @@ function planCardLabel(action: PlanCardAction, plan: BillingPlan): string {
     });
   }
   if (action === "upgrade") {
+    if (!isPaidTier(currentTier)) {
+      return i18n.t(
+        ($) => {
+          return $.billing.plans.usagePacks.selectPlan;
+        },
+        { plan: planName(plan.tier) },
+      );
+    }
     return i18n.t(
       ($) => {
         return $.billing.plans.upgradeTo;
@@ -588,7 +584,7 @@ function PlanCard({
     scheduledChange,
     restoreCurrentPlan,
   });
-  const label = planCardLabel(action, plan);
+  const label = planCardLabel(action, plan, currentTier);
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
   const buttonVariant = planCardButtonVariant({
     plan,
@@ -2027,16 +2023,6 @@ function BillingPricingPage({
   );
 }
 
-function UsagePackManagementAvailability({
-  enabled,
-  hasScheduledChange,
-}: {
-  readonly enabled: boolean;
-  readonly hasScheduledChange: boolean;
-}) {
-  return enabled && !hasScheduledChange ? <UsagePackManagementSection /> : null;
-}
-
 export function OrgBillingTab() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
@@ -2055,9 +2041,6 @@ export function OrgBillingTab() {
   const openRestore = useSet(openRestoreDialog$);
   const [portalLoadable, portal] = useLoadableSet(openBillingPortal$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
-  const featureSwitches = useGet(featureSwitch$);
-  const usagePackPlansEnabled =
-    featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const loading = portalLoadable.state === "loading";
 
   const status =
@@ -2264,11 +2247,6 @@ export function OrgBillingTab() {
           )}
         </div>
       </section>
-
-      <UsagePackManagementAvailability
-        enabled={usagePackPlansEnabled}
-        hasScheduledChange={hasScheduledChange}
-      />
 
       {showBuyCredits && (
         <div ref={buyCreditsScrollRef}>

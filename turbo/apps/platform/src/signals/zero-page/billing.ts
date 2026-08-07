@@ -15,8 +15,6 @@ import {
   zeroBillingRestoreContract,
   type BillingStatusResponse,
   type MemberUsagePack,
-  type UsagePackChangePreviewResponse,
-  type UsagePackUsd,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
@@ -30,6 +28,10 @@ import {
   getStoredAdAttributionMetadata,
 } from "../bootstrap/ad-attribution.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
+import {
+  setUsagePackSubscriptionChangePreview$,
+  usagePackSubscriptionChangePreview$,
+} from "./settings/usage-pack-pricing-state.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -211,11 +213,6 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
 
 const billingReload$ = state(0);
 const usagePackManagementReload$ = state(0);
-const internalUsagePackChangePreview$ =
-  state<UsagePackChangePreviewResponse | null>(null);
-const internalUsagePackChangeSelections$ = state<
-  Readonly<Record<string, UsagePackUsd>>
->({});
 const internalDowngradeDialogOpen$ = state(false);
 const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
@@ -254,13 +251,6 @@ export const concurrencyPurchaseDialogOpen$ = computed((get) => {
 export const concurrencyConfirmDialog$ = computed((get) => {
   return get(internalConcurrencyConfirmDialog$);
 });
-export const usagePackChangePreview$ = computed((get) => {
-  return get(internalUsagePackChangePreview$);
-});
-export const usagePackChangeSelections$ = computed((get) => {
-  return get(internalUsagePackChangeSelections$);
-});
-
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
 });
@@ -327,16 +317,6 @@ export const setConcurrencyTargetQuantity$ = command(
     });
   },
 );
-export const closeUsagePackChangePreview$ = command(({ set }) => {
-  set(internalUsagePackChangePreview$, null);
-});
-export const setUsagePackChangeSelection$ = command(
-  ({ set }, allocationId: string, usagePackUsd: UsagePackUsd) => {
-    set(internalUsagePackChangeSelections$, (selections) => {
-      return { ...selections, [allocationId]: usagePackUsd };
-    });
-  },
-);
 /**
  * Async computed signal that fetches billing status on first access.
  * Use with useLastLoadable() in views for automatic loading.
@@ -377,7 +357,7 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
-export const reloadUsagePackManagement$ = command(({ set }) => {
+const reloadUsagePackManagement$ = command(({ set }) => {
   set(usagePackManagementReload$, (value) => {
     return value + 1;
   });
@@ -571,43 +551,56 @@ export const startUsagePackCheckout$ = command(
   },
 );
 
-export const previewUsagePackChange$ = command(
+export const previewUsagePackSubscriptionChange$ = command(
   async (
     { get, set },
     args: {
-      readonly memberId: string;
-      readonly targetUsagePackUsd: UsagePackUsd;
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
     },
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingUsagePackManagementContract);
-    const result = await accept(
-      client.previewChange({ body: args, fetchOptions: { signal } }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(internalUsagePackChangePreview$, result.body);
-    return result.body;
-  },
-);
-
-export const confirmUsagePackChange$ = command(
-  async ({ get, set }, changeId: string, signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroBillingUsagePackManagementContract);
-    const result = await accept(
-      client.confirmChange({
-        params: { changeId },
-        body: {},
+    const preview = await accept(
+      client.previewSubscriptionChange({
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+        },
         fetchOptions: { signal },
       }),
       [200],
     );
     signal.throwIfAborted();
-    set(internalUsagePackChangePreview$, null);
-    set(internalUsagePackChangeSelections$, {});
+    set(setUsagePackSubscriptionChangePreview$, preview.body);
+    return preview.body;
+  },
+);
+
+export const closeUsagePackSubscriptionChangePreview$ = command(({ set }) => {
+  set(setUsagePackSubscriptionChangePreview$, null);
+});
+
+export const confirmUsagePackSubscriptionChange$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const preview = get(usagePackSubscriptionChangePreview$);
+    if (!preview) {
+      throw new Error("Usage pack subscription change preview is not open");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackManagementContract);
+    const result = await accept(
+      client.confirmSubscriptionChange({
+        body: { changeId: preview.changeId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackSubscriptionChangePreview$, null);
     set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
     return result.body;
   },
 );

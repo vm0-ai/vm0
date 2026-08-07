@@ -10,6 +10,7 @@ import {
   usagePackAllocationChanges,
   usagePackAllocations,
   usagePackInvoiceFulfillments,
+  usagePackSubscriptionChanges,
   usagePackSubscriptions,
 } from "@vm0/db/schema/usage-pack-subscription";
 import {
@@ -64,6 +65,8 @@ type UsagePackSubscriptionRow = typeof usagePackSubscriptions.$inferSelect;
 type UsagePackAllocationRow = typeof usagePackAllocations.$inferSelect;
 type UsagePackAllocationChangeRow =
   typeof usagePackAllocationChanges.$inferSelect;
+type UsagePackSubscriptionChangeRow =
+  typeof usagePackSubscriptionChanges.$inferSelect;
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type OpenUsagePackAllocationChangeStatus = Exclude<
   UsagePackAllocationChangeRow["status"],
@@ -160,7 +163,7 @@ interface UsagePackChangeInvoiceLineInput {
   } | null;
 }
 
-interface UsagePackChangeInvoiceInput {
+export interface UsagePackChangeInvoiceInput {
   readonly id: string;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
@@ -679,8 +682,6 @@ async function previewUsagePackChangeInStripe(
     preview_mode: "recurring",
     subscription_details: {
       items,
-      proration_behavior: kind === "upgrade" ? "always_invoice" : "none",
-      ...(kind === "upgrade" ? { proration_date: prorationTimestamp } : {}),
     },
   });
   const immediatePreviewPromise =
@@ -778,6 +779,23 @@ export async function previewUsagePackAllocationChange(
   db: Db,
   args: UsagePackChangePreviewArgs,
 ): Promise<UsagePackChangePreviewResult> {
+  const [openSubscriptionChange] = await db
+    .select({ id: usagePackSubscriptionChanges.id })
+    .from(usagePackSubscriptionChanges)
+    .where(
+      and(
+        eq(usagePackSubscriptionChanges.orgId, args.orgId),
+        inArray(usagePackSubscriptionChanges.status, [
+          "previewed",
+          "applying",
+          "pending_payment",
+        ]),
+      ),
+    )
+    .limit(1);
+  if (openSubscriptionChange) {
+    return { status: "conflict" };
+  }
   const context = await loadUsagePackChangeContextForOrg(db, args.orgId);
   const stripeSubscriptionId = context?.subscription.stripeSubscriptionId;
   if (!context || !stripeSubscriptionId) {
@@ -2003,7 +2021,12 @@ async function findUsagePackChangeForInvoice(
   const [bound] = await db
     .select()
     .from(usagePackAllocationChanges)
-    .where(eq(usagePackAllocationChanges.stripeInvoiceId, invoice.id))
+    .where(
+      and(
+        eq(usagePackAllocationChanges.stripeInvoiceId, invoice.id),
+        isNull(usagePackAllocationChanges.subscriptionChangeId),
+      ),
+    )
     .limit(1);
   if (bound) {
     if (bound.usagePackSubscriptionId !== usagePackSubscriptionId) {
@@ -2024,11 +2047,13 @@ async function findUsagePackChangeForInvoice(
           usagePackSubscriptionId,
         ),
         eq(usagePackAllocationChanges.kind, "upgrade"),
+        isNull(usagePackAllocationChanges.subscriptionChangeId),
         inArray(usagePackAllocationChanges.status, [
           "applying",
           "pending_payment",
           "applied",
         ]),
+        isNull(usagePackAllocationChanges.subscriptionChangeId),
         isNull(usagePackAllocationChanges.stripeInvoiceId),
       ),
     )
@@ -2118,6 +2143,193 @@ async function commitUsagePackUpgradeInvoice(
         updatedAt: completedAt,
       })
       .where(eq(usagePackAllocationChanges.id, change.id));
+  });
+}
+
+interface SubscriptionChangeFulfillmentArgs {
+  readonly subscriptionChangeId: string;
+  readonly prorationTimestamp: number;
+  readonly periodEnd: number;
+  readonly invoice: UsagePackChangeInvoiceInput;
+}
+
+interface PreparedSubscriptionChangeGrant {
+  readonly change: UsagePackAllocationChangeRow;
+  readonly purchasedCredits: number;
+  readonly bonusCredits: number;
+}
+
+async function prepareSubscriptionChangeFulfillment(
+  db: Db,
+  args: SubscriptionChangeFulfillmentArgs,
+): Promise<{
+  readonly expectedRoot: UsagePackSubscriptionChangeRow;
+  readonly preparedGrants: readonly PreparedSubscriptionChangeGrant[];
+}> {
+  const [changes, roots] = await Promise.all([
+    db
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(
+        eq(
+          usagePackAllocationChanges.subscriptionChangeId,
+          args.subscriptionChangeId,
+        ),
+      ),
+    db
+      .select()
+      .from(usagePackSubscriptionChanges)
+      .where(eq(usagePackSubscriptionChanges.id, args.subscriptionChangeId))
+      .limit(1),
+  ]);
+  const expectedRoot = roots[0];
+  if (!expectedRoot) {
+    throw new Error(
+      `Unknown usage pack subscription change: ${args.subscriptionChangeId}`,
+    );
+  }
+  if (
+    changes.length === 0 &&
+    expectedRoot.sourceTier === expectedRoot.targetTier
+  ) {
+    throw new Error(
+      `Subscription change ${expectedRoot.id} has neither a plan nor package change`,
+    );
+  }
+  const upgrades = changes.filter((change) => {
+    return change.kind === "upgrade";
+  });
+  const prorationPeriod = {
+    start: args.prorationTimestamp,
+    end: args.periodEnd,
+  };
+  const preparedGrants = await Promise.all(
+    upgrades.map(async (change) => {
+      const [sourceAllocation] = await db
+        .select()
+        .from(usagePackAllocations)
+        .where(eq(usagePackAllocations.id, change.sourceAllocationId))
+        .limit(1);
+      if (!sourceAllocation || !change.targetStripePriceId) {
+        throw new Error(
+          `Subscription change allocation ${change.id} is incomplete`,
+        );
+      }
+      const [sourceCredits, targetCredits] = await Promise.all([
+        usagePackCreditsForPrice(change.sourceStripePriceId),
+        usagePackCreditsForPrice(change.targetStripePriceId),
+      ]);
+      return {
+        change,
+        purchasedCredits: proratedCreditDelta(
+          sourceCredits.purchased,
+          targetCredits.purchased,
+          sourceAllocation,
+          prorationPeriod,
+        ),
+        bonusCredits: proratedCreditDelta(
+          sourceCredits.bonus,
+          targetCredits.bonus,
+          sourceAllocation,
+          prorationPeriod,
+        ),
+      };
+    }),
+  );
+  return { expectedRoot, preparedGrants };
+}
+
+async function fulfillPreparedSubscriptionChange(
+  tx: WriteTx,
+  args: SubscriptionChangeFulfillmentArgs,
+  expectedRoot: UsagePackSubscriptionChangeRow,
+  preparedGrants: readonly PreparedSubscriptionChangeGrant[],
+): Promise<void> {
+  await lockUsagePackBillingOrg(tx, expectedRoot.orgId);
+  const [root] = await tx
+    .select()
+    .from(usagePackSubscriptionChanges)
+    .where(eq(usagePackSubscriptionChanges.id, args.subscriptionChangeId))
+    .for("update")
+    .limit(1);
+  if (!root) {
+    throw new Error(
+      `Unknown usage pack subscription change: ${args.subscriptionChangeId}`,
+    );
+  }
+  if (
+    await usagePackInvoiceFulfillmentExists(
+      tx,
+      args.invoice.id,
+      root.usagePackSubscriptionId,
+    )
+  ) {
+    return;
+  }
+  for (const prepared of preparedGrants) {
+    const [change] = await tx
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(eq(usagePackAllocationChanges.id, prepared.change.id))
+      .for("update")
+      .limit(1);
+    if (
+      !change ||
+      change.kind !== "upgrade" ||
+      change.status !== "applied" ||
+      !change.replacementAllocationId
+    ) {
+      throw new Error(
+        `Subscription change allocation ${prepared.change.id} is not ready for fulfillment`,
+      );
+    }
+    if (prepared.purchasedCredits > 0) {
+      await createUsagePackCreditGrant(tx, {
+        orgId: change.orgId,
+        userId: change.userId,
+        grantType: "purchased",
+        idempotencyKey: `usage-pack-subscription-change:${root.id}:${change.id}:${args.invoice.id}:purchased`,
+        amount: prepared.purchasedCredits,
+        expiresAt: new Date(args.periodEnd * 1000),
+      });
+    }
+    if (prepared.bonusCredits > 0) {
+      await createUsagePackCreditGrant(tx, {
+        orgId: change.orgId,
+        userId: change.userId,
+        grantType: "bonus",
+        idempotencyKey: `usage-pack-subscription-change:${root.id}:${change.id}:${args.invoice.id}:bonus`,
+        amount: prepared.bonusCredits,
+        expiresAt: new Date(args.periodEnd * 1000),
+      });
+    }
+    const completedAt = nowDate();
+    await tx
+      .update(usagePackAllocationChanges)
+      .set({ status: "completed", completedAt, updatedAt: completedAt })
+      .where(eq(usagePackAllocationChanges.id, change.id));
+  }
+  await tx.insert(usagePackInvoiceFulfillments).values({
+    stripeInvoiceId: args.invoice.id,
+    usagePackSubscriptionId: root.usagePackSubscriptionId,
+    periodStart: new Date(args.prorationTimestamp * 1000),
+    periodEnd: new Date(args.periodEnd * 1000),
+  });
+}
+
+export async function fulfillUsagePackSubscriptionChangeInvoice(
+  db: Db,
+  args: SubscriptionChangeFulfillmentArgs,
+): Promise<void> {
+  const { expectedRoot, preparedGrants } =
+    await prepareSubscriptionChangeFulfillment(db, args);
+  await db.transaction(async (tx) => {
+    await fulfillPreparedSubscriptionChange(
+      tx,
+      args,
+      expectedRoot,
+      preparedGrants,
+    );
   });
 }
 
@@ -2303,7 +2515,11 @@ async function retryApplyingDeferredUsagePackChange(
   signal: AbortSignal,
 ): Promise<number> {
   const change = context.changes.find((candidate) => {
-    return candidate.status === "applying" && candidate.kind !== "upgrade";
+    return (
+      candidate.subscriptionChangeId === null &&
+      candidate.status === "applying" &&
+      candidate.kind !== "upgrade"
+    );
   });
   if (!change) {
     return 0;
@@ -2432,7 +2648,7 @@ export async function reconcileUsagePackAllocationChanges(
       signal,
     );
     const hasOpenUpgrade = refreshed.changes.some((change) => {
-      return change.kind === "upgrade";
+      return change.subscriptionChangeId === null && change.kind === "upgrade";
     });
     if (hasOpenUpgrade) {
       const invoice = await paidUpgradeInvoiceForSubscription(subscription);

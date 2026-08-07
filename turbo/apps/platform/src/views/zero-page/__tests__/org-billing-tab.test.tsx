@@ -340,7 +340,7 @@ describe("organization billing settings", () => {
       expect(
         screen.getByRole("heading", { name: "Comparar planos" }),
       ).toBeInTheDocument();
-      expect(screen.getByText("20.000 créditos / mês")).toBeInTheDocument();
+      expect(screen.queryByText("20.000 créditos / mês")).toBeNull();
       expect(screen.getAllByText("/mês").length).toBeGreaterThan(0);
     });
     expect(usagePackCatalogCalls).toBe(0);
@@ -430,7 +430,24 @@ describe("organization billing settings", () => {
       screen.queryByRole("group", { name: "Member usage" }),
     ).not.toBeInTheDocument();
 
-    click(buttonByText("Select Team", teamPlan));
+    expect(
+      within(proPlan).getByText(
+        "More credits and concurrency for teams running AI agents every day.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(proPlan).queryByText("20,000 credits / month")).toBeNull();
+    expect(
+      within(proPlan).getByText("7 shared agents, unlimited private"),
+    ).toBeInTheDocument();
+    expect(within(proPlan).queryByText("Pay as you go after that")).toBeNull();
+    expect(
+      within(teamPlan).getByText(
+        "Room for a team of AI employees: high credit volume and 10 agents running at once.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
+
+    click(buttonByText("Start with Team", teamPlan));
 
     const configurePackagesHeading = await screen.findByRole("heading", {
       name: "Configure member packages",
@@ -532,7 +549,7 @@ describe("organization billing settings", () => {
     const returnedTeamPlan = screen.getByRole("article", {
       name: "Team plan",
     });
-    click(buttonByText("Select Team", returnedTeamPlan));
+    click(buttonByText("Start with Team", returnedTeamPlan));
     await screen.findByRole("heading", {
       name: "Configure member packages",
     });
@@ -554,7 +571,7 @@ describe("organization billing settings", () => {
     const reopenedTeamPlan = screen.getByRole("article", {
       name: "Team plan",
     });
-    click(buttonByText("Select Team", reopenedTeamPlan));
+    click(buttonByText("Start with Team", reopenedTeamPlan));
 
     const resetMemberUsage = await screen.findByRole("group", {
       name: "Member usage",
@@ -616,8 +633,9 @@ describe("organization billing settings", () => {
     });
   });
 
-  it("previews and confirms a current member package change", async () => {
+  it("previews and confirms a current member package change inline", async () => {
     let pendingPayment = false;
+    let confirmationRequests = 0;
     context.mocks.data.org({
       id: "org_1",
       name: "Managed Usage Pack Org",
@@ -677,19 +695,18 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.previewChange,
+      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
         expect(body).toStrictEqual({
-          memberId: "user_1",
-          targetUsagePackUsd: 50,
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 50 }],
         });
         return respond(200, {
           changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-          kind: "upgrade",
-          sourceUsagePackUsd: 20,
-          targetUsagePackUsd: 50,
+          sourceTier: "pro",
+          targetTier: "pro",
           immediateAmountCents: 1500,
-          nextRecurringAmountCents: 7000,
+          nextRecurringAmountCents: 5000,
           currency: "usd",
           effectiveAt: "2026-03-16T00:00:00Z",
           prorationDate: "2026-03-16T00:00:00Z",
@@ -698,10 +715,12 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingUsagePackManagementContract.confirmChange,
-      ({ body, params, respond }) => {
-        expect(body).toStrictEqual({});
-        expect(params.changeId).toBe("ad3bd64c-7237-436d-a221-61b14ed719e7");
+      zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      ({ body, respond }) => {
+        confirmationRequests += 1;
+        expect(body).toStrictEqual({
+          changeId: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+        });
         pendingPayment = true;
         return respond(200, {
           status: "pending_payment",
@@ -722,43 +741,318 @@ describe("organization billing settings", () => {
       featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
-    const section = await screen.findByRole("heading", {
-      name: "Member packages",
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
-    const sectionContainer = section.closest("section");
-    if (!sectionContainer) {
-      throw new Error("Member packages section not found");
-    }
-    const packageSelect = await within(sectionContainer).findByRole(
-      "combobox",
-      {
-        name: "Usage for Alex Chen",
-      },
-    );
+    expect(
+      screen.queryByRole("heading", { name: "Member packages" }),
+    ).not.toBeInTheDocument();
+    click(buttonByText("Compare all plans"));
+    await screen.findByRole("heading", { name: "Choose a plan" });
+    const proPlan = screen.getByRole("article", { name: "Pro plan" });
+    const teamPlan = screen.getByRole("article", { name: "Team plan" });
+    expect(buttonByText("Manage", proPlan)).not.toBeDisabled();
+    expect(within(proPlan).getByText("$20/month")).toBeInTheDocument();
+    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    expect(
+      within(teamPlan).getByText("Existing member packages stay unchanged."),
+    ).toBeInTheDocument();
+    click(buttonByText("Manage", proPlan));
+
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    const packageSelect = await screen.findByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
     click(packageSelect);
     click(
       await screen.findByRole("option", {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
-    click(buttonByText("Review", sectionContainer));
-
-    const reviewDialog = await screen.findByRole("dialog", {
+    expect(within(orderSummary).getByText("$50/month")).toBeInTheDocument();
+    expect(screen.queryByText("Review")).not.toBeInTheDocument();
+    const locationBeforeConfirmation = window.location.href;
+    click(buttonByText("Confirm", orderSummary));
+    const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
-    expect(within(reviewDialog).getByText("Due now")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("$15.00")).toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("Due now")).toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("$15.00")).toBeInTheDocument();
     expect(
-      within(reviewDialog).getByText("Next recurring total"),
+      within(confirmationDialog).getByText("Next recurring total"),
     ).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("$70.00")).toBeInTheDocument();
-
-    click(buttonByText("Confirm", reviewDialog));
+    expect(within(confirmationDialog).getByText("$50.00")).toBeInTheDocument();
+    expect(window.location.href).toBe(locationBeforeConfirmation);
+    click(buttonByText("Cancel", confirmationDialog));
     await waitFor(() => {
-      expect(screen.getByText("Awaiting payment")).toBeInTheDocument();
       expect(
         screen.queryByRole("dialog", { name: "Review package change" }),
       ).not.toBeInTheDocument();
+    });
+    expect(confirmationRequests).toBe(0);
+    expect(window.location.href).toBe(locationBeforeConfirmation);
+
+    click(buttonByText("Confirm", orderSummary));
+    const reopenedConfirmationDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    click(buttonByText("Confirm", reopenedConfirmationDialog));
+    await screen.findByRole("heading", { name: "Choose a plan" });
+    expect(confirmationRequests).toBe(1);
+    expect(window.location.href).toBe(locationBeforeConfirmation);
+  });
+
+  it("upgrades an existing usage pack plan without buying member packages again", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Usage Pack Upgrade Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "pro",
+          currentPeriodEnd: "2026-04-01T00:00:00Z",
+          allocations: [
+            {
+              id: "b5235934-83df-4f16-bf41-f46890db7d40",
+              memberId: "user_1",
+              usagePackUsd: 20,
+              currentPeriodEnd: "2026-04-01T00:00:00Z",
+              pendingChange: null,
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          targetTier: "team",
+          memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 20 }],
+        });
+        return respond(200, {
+          changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
+          sourceTier: "pro",
+          targetTier: "team",
+          immediateAmountCents: 8000,
+          nextRecurringAmountCents: 18_000,
+          currency: "usd",
+          effectiveAt: "2026-03-16T00:00:00Z",
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:15:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
+        });
+        return respond(200, {
+          status: "pending_payment",
+          effectiveAt: "2026-03-16T00:00:00Z",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+    click(buttonByText("Compare all plans"));
+    const teamPlan = await screen.findByRole("article", { name: "Team plan" });
+    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
+    click(buttonByText("Upgrade", teamPlan));
+
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    expect(
+      screen.getByRole("list", { name: "Purchase steps" }),
+    ).toHaveTextContent("Packages");
+    const packageSelect = await screen.findByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    expect(packageSelect).toHaveTextContent("$20 · 21,234 credits · 6% off");
+    expect(packageSelect).not.toBeDisabled();
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(within(orderSummary).getByText("$160")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
+    const confirmButton = buttonByText("Confirm", orderSummary);
+
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$50 · 54,321 credits · 8% off",
+      }),
+    );
+    expect(within(orderSummary).getByText("$210/month")).toBeInTheDocument();
+    expect(confirmButton).not.toBeDisabled();
+
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$20 · 21,234 credits · 6% off",
+      }),
+    );
+    expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
+
+    const locationBeforeConfirmation = window.location.href;
+    click(confirmButton);
+    const confirmationDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    expect(within(confirmationDialog).getByText("$80.00")).toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("$180.00")).toBeInTheDocument();
+    expect(window.location.href).toBe(locationBeforeConfirmation);
+    click(buttonByText("Confirm", confirmationDialog));
+    await screen.findByRole("heading", { name: "Choose a plan" });
+    expect(window.location.href).toBe(locationBeforeConfirmation);
+  });
+
+  it("configures a Team to Pro downgrade on the same page", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Usage Pack Downgrade Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeTeamBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "team",
+          currentPeriodEnd: "2026-04-01T00:00:00Z",
+          allocations: [
+            {
+              id: "3a9138ff-bb8c-4476-95c2-64775cc50ceb",
+              memberId: "user_1",
+              usagePackUsd: 20,
+              currentPeriodEnd: "2026-04-01T00:00:00Z",
+              pendingChange: null,
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 20 }],
+        });
+        return respond(200, {
+          changeId: "667d65ac-85df-4743-b421-b9d18a3ad89b",
+          sourceTier: "team",
+          targetTier: "pro",
+          immediateAmountCents: 0,
+          nextRecurringAmountCents: 2000,
+          currency: "usd",
+          effectiveAt: "2026-04-01T00:00:00Z",
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:15:00Z",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          changeId: "667d65ac-85df-4743-b421-b9d18a3ad89b",
+        });
+        return respond(200, {
+          status: "scheduled",
+          effectiveAt: "2026-04-01T00:00:00Z",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+    click(buttonByText("Compare all plans"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Downgrade", proPlan));
+
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(within(orderSummary).getByText("$20/month")).toBeInTheDocument();
+    expect(
+      within(orderSummary).getByText(
+        "The lower package starts at the next billing date. Existing credits remain available until they expire.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(orderSummary).getByText("Scheduled for Apr 1, 2026"),
+    ).toBeInTheDocument();
+    click(buttonByText("Confirm", orderSummary));
+    const confirmationDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    expect(within(confirmationDialog).getByText("$0.00")).toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("$20.00")).toBeInTheDocument();
+    click(buttonByText("Confirm", confirmationDialog));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Choose a plan" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -914,7 +1208,7 @@ describe("organization billing settings", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Upgrade to Team"));
+    click(screen.getByText("Start with Team"));
 
     await waitFor(() => {
       expect(window.location.href).toBe(

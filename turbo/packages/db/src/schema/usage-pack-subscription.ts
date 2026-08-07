@@ -45,6 +45,17 @@ export const USAGE_PACK_ALLOCATION_CHANGE_STATUSES = [
 export type UsagePackAllocationChangeStatus =
   (typeof USAGE_PACK_ALLOCATION_CHANGE_STATUSES)[number];
 
+export const USAGE_PACK_SUBSCRIPTION_CHANGE_STATUSES = [
+  "previewed",
+  "applying",
+  "pending_payment",
+  "completed",
+  "failed",
+] as const;
+
+export type UsagePackSubscriptionChangeStatus =
+  (typeof USAGE_PACK_SUBSCRIPTION_CHANGE_STATUSES)[number];
+
 /**
  * Local correlation root for a usage-pack Stripe subscription.
  *
@@ -90,6 +101,83 @@ export const usagePackSubscriptions = pgTable(
       check(
         "chk_usage_pack_subscriptions_period",
         sql`(${table.currentPeriodStart} IS NULL AND ${table.currentPeriodEnd} IS NULL) OR (${table.currentPeriodStart} IS NOT NULL AND ${table.currentPeriodEnd} IS NOT NULL AND ${table.currentPeriodEnd} > ${table.currentPeriodStart})`,
+      ),
+    ];
+  },
+);
+
+/**
+ * One persisted plan/package operation. Stripe applies upgrades in one pending
+ * update; plan and package downgrades remain represented until the next billing
+ * boundary.
+ */
+export const usagePackSubscriptionChanges = pgTable(
+  "usage_pack_subscription_changes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    usagePackSubscriptionId: uuid("usage_pack_subscription_id")
+      .notNull()
+      .references(
+        () => {
+          return usagePackSubscriptions.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    orgId: text("org_id").notNull(),
+    sourceTier: varchar("source_tier", { length: 20 })
+      .$type<"pro" | "team">()
+      .notNull(),
+    targetTier: varchar("target_tier", { length: 20 })
+      .$type<"pro" | "team">()
+      .notNull(),
+    status: varchar("status", { length: 30 })
+      .$type<UsagePackSubscriptionChangeStatus>()
+      .notNull()
+      .default("previewed"),
+    prorationTimestamp: bigint("proration_timestamp", {
+      mode: "number",
+    }).notNull(),
+    immediateAmountCents: integer("immediate_amount_cents").notNull(),
+    nextRecurringAmountCents: integer("next_recurring_amount_cents").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    previewExpiresAt: timestamp("preview_expires_at").notNull(),
+    stripeInvoiceId: text("stripe_invoice_id"),
+    stripePendingUpdateExpiresAt: timestamp("stripe_pending_update_expires_at"),
+    effectiveAt: timestamp("effective_at").notNull(),
+    failureReason: text("failure_reason"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_usage_pack_subscription_changes_active_org")
+        .on(table.orgId)
+        .where(
+          sql`${table.status} IN ('previewed', 'applying', 'pending_payment')`,
+        ),
+      uniqueIndex("uq_usage_pack_subscription_changes_stripe_invoice")
+        .on(table.stripeInvoiceId)
+        .where(sql`${table.stripeInvoiceId} IS NOT NULL`),
+      index("idx_usage_pack_subscription_changes_subscription_status").on(
+        table.usagePackSubscriptionId,
+        table.status,
+      ),
+      index("idx_usage_pack_subscription_changes_reconcile").on(
+        table.status,
+        table.updatedAt,
+      ),
+      check(
+        "chk_usage_pack_subscription_changes_tiers",
+        sql`${table.sourceTier} IN ('pro', 'team') AND ${table.targetTier} IN ('pro', 'team')`,
+      ),
+      check(
+        "chk_usage_pack_subscription_changes_status",
+        sql`${table.status} IN ('previewed', 'applying', 'pending_payment', 'completed', 'failed')`,
+      ),
+      check(
+        "chk_usage_pack_subscription_changes_amounts",
+        sql`${table.immediateAmountCents} >= 0 AND ${table.nextRecurringAmountCents} >= 0`,
       ),
     ];
   },
@@ -188,6 +276,12 @@ export const usagePackAllocationChanges = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    subscriptionChangeId: uuid("subscription_change_id").references(
+      () => {
+        return usagePackSubscriptionChanges.id;
+      },
+      { onDelete: "cascade" },
+    ),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     sourceAllocationId: uuid("source_allocation_id")
@@ -229,7 +323,7 @@ export const usagePackAllocationChanges = pgTable(
       uniqueIndex("uq_usage_pack_changes_active_org")
         .on(table.orgId)
         .where(
-          sql`${table.status} IN ('previewed', 'applying', 'pending_payment')`,
+          sql`${table.subscriptionChangeId} IS NULL AND ${table.status} IN ('previewed', 'applying', 'pending_payment')`,
         ),
       uniqueIndex("uq_usage_pack_changes_current_user")
         .on(table.orgId, table.userId)
@@ -242,6 +336,9 @@ export const usagePackAllocationChanges = pgTable(
       index("idx_usage_pack_changes_subscription_status").on(
         table.usagePackSubscriptionId,
         table.status,
+      ),
+      index("idx_usage_pack_changes_subscription_change").on(
+        table.subscriptionChangeId,
       ),
       index("idx_usage_pack_changes_reconcile").on(
         table.status,

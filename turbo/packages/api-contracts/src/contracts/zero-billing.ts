@@ -238,6 +238,27 @@ const usagePackChangeConfirmResponseSchema = z.object({
   hostedInvoiceUrl: z.string().url().nullable(),
 });
 
+const usagePackSubscriptionChangePreviewRequestSchema = z.object({
+  targetTier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+});
+
+const usagePackSubscriptionChangePreviewResponseSchema = z.object({
+  changeId: z.uuid(),
+  sourceTier: z.enum(["pro", "team"]),
+  targetTier: z.enum(["pro", "team"]),
+  immediateAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  effectiveAt: z.iso.datetime(),
+  prorationDate: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+const usagePackSubscriptionChangeConfirmRequestSchema = z.object({
+  changeId: z.uuid(),
+});
+
 export type UsagePackManagementResponse = z.infer<
   typeof usagePackManagementResponseSchema
 >;
@@ -246,6 +267,9 @@ export type UsagePackChangePreviewResponse = z.infer<
 >;
 export type UsagePackChangeConfirmResponse = z.infer<
   typeof usagePackChangeConfirmResponseSchema
+>;
+export type UsagePackSubscriptionChangePreviewResponse = z.infer<
+  typeof usagePackSubscriptionChangePreviewResponseSchema
 >;
 
 const checkoutCompleteRequestSchema = z.object({
@@ -491,6 +515,40 @@ export const zeroBillingUsagePackManagementContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Confirm a previewed member usage pack change",
+  },
+  previewSubscriptionChange: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-subscription/subscription-change/preview",
+    headers: authHeadersSchema,
+    body: usagePackSubscriptionChangePreviewRequestSchema,
+    responses: {
+      200: usagePackSubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview an existing usage pack subscription change",
+  },
+  confirmSubscriptionChange: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-subscription/subscription-change/confirm",
+    headers: authHeadersSchema,
+    body: usagePackSubscriptionChangeConfirmRequestSchema,
+    responses: {
+      200: usagePackChangeConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Apply an existing usage pack subscription change in place",
   },
 });
 

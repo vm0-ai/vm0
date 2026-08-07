@@ -9,7 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isStaffOrg } from "@vm0/core/staff-org";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
@@ -51,6 +50,11 @@ import {
   previewUsagePackAllocationChange,
   usagePackAllocationChangeSchemaAvailable,
 } from "../services/usage-pack-allocation-change.service";
+import {
+  confirmUsagePackSubscriptionChange,
+  previewUsagePackSubscriptionChange,
+  usagePackSubscriptionChangeSchemaAvailable,
+} from "../services/usage-pack-plan-change.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -274,10 +278,6 @@ const usagePackCheckoutAuthed$ = command(
       return adminRequired;
     }
 
-    if (!isStaffOrg(auth.orgId)) {
-      return usagePackCheckoutDisabled;
-    }
-
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
     );
@@ -390,10 +390,6 @@ const usagePackCatalogAuthed$ = command(
     if (auth.orgRole !== "admin") {
       return adminRequired;
     }
-    if (!isStaffOrg(auth.orgId)) {
-      return usagePackCheckoutDisabled;
-    }
-
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
     );
@@ -447,12 +443,6 @@ const usagePackManagementAccess$ = command(
     const auth = get(organizationAuthContext$);
     if (auth.orgRole !== "admin") {
       return { allowed: false as const, response: adminRequired };
-    }
-    if (!isStaffOrg(auth.orgId)) {
-      return {
-        allowed: false as const,
-        response: usagePackManagementDisabled,
-      };
     }
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
@@ -627,6 +617,130 @@ const usagePackChangeConfirm$ = command(
   },
 );
 
+const usagePackSubscriptionChangePreviewAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const bodyResult = await get(
+      bodyResultOf(
+        zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      ),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const db = set(writeDb$);
+    const [subscriptionSchema, changeSchema, subscriptionChangeSchema] =
+      await Promise.all([
+        usagePackSubscriptionSchemaAvailable(db),
+        usagePackAllocationChangeSchemaAvailable(db),
+        usagePackSubscriptionChangeSchemaAvailable(db),
+      ]);
+    signal.throwIfAborted();
+    if (!subscriptionSchema || !changeSchema || !subscriptionChangeSchema) {
+      return providerUnavailable("Usage pack billing is not ready");
+    }
+    const result = await previewUsagePackSubscriptionChange(db, {
+      orgId: access.auth.orgId,
+      targetTier: bodyResult.data.targetTier,
+      memberUsagePacks: bodyResult.data.memberUsagePacks,
+      signal,
+    });
+    if (result.status === "not_found") {
+      return notFound("Usage pack subscription not found");
+    }
+    if (result.status === "same_configuration") {
+      return badRequestMessage("The subscription configuration is unchanged");
+    }
+    if (result.status === "invalid_members") {
+      return badRequestMessage(
+        "Organization members changed; refresh billing and try again",
+      );
+    }
+    if (result.status === "conflict") {
+      return conflict("Another usage pack billing change is in progress");
+    }
+    return { status: 200 as const, body: result.preview };
+  },
+);
+
+const usagePackSubscriptionChangeConfirmAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const access = await set(usagePackManagementAccess$, signal);
+    if (!access.allowed) {
+      return access.response;
+    }
+    const bodyResult = await get(
+      bodyResultOf(
+        zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+      ),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const db = set(writeDb$);
+    const [subscriptionSchema, changeSchema, subscriptionChangeSchema] =
+      await Promise.all([
+        usagePackSubscriptionSchemaAvailable(db),
+        usagePackAllocationChangeSchemaAvailable(db),
+        usagePackSubscriptionChangeSchemaAvailable(db),
+      ]);
+    signal.throwIfAborted();
+    if (!subscriptionSchema || !changeSchema || !subscriptionChangeSchema) {
+      return providerUnavailable("Usage pack billing is not ready");
+    }
+    const result = await confirmUsagePackSubscriptionChange(db, {
+      orgId: access.auth.orgId,
+      changeId: bodyResult.data.changeId,
+      signal,
+    });
+    if (result.status === "not_found") {
+      return notFound("Usage pack subscription not found");
+    }
+    if (result.status === "expired") {
+      return badRequestMessage("Usage pack subscription preview expired");
+    }
+    if (result.status === "conflict") {
+      return conflict("Another usage pack billing change is in progress");
+    }
+    return { status: 200 as const, body: result.response };
+  },
+);
+
+const usagePackSubscriptionChangePreview$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        usagePackSubscriptionChangePreviewAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
+const usagePackSubscriptionChangeConfirm$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+    return await set(
+      authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        usagePackSubscriptionChangeConfirmAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
 const checkoutCompleteAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -713,5 +827,13 @@ export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingUsagePackManagementContract.confirmChange,
     handler: usagePackChangeConfirm$,
+  },
+  {
+    route: zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+    handler: usagePackSubscriptionChangePreview$,
+  },
+  {
+    route: zeroBillingUsagePackManagementContract.confirmSubscriptionChange,
+    handler: usagePackSubscriptionChangeConfirm$,
   },
 ];

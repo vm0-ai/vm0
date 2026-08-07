@@ -173,6 +173,7 @@ export interface ApiTestMocks {
       readonly createPreview: AsyncMock;
       readonly finalizeInvoice: AsyncMock;
       readonly pay: AsyncMock;
+      readonly voidInvoice: AsyncMock;
     };
     readonly invoiceItems: {
       readonly create: AsyncMock;
@@ -338,6 +339,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       createPreview: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       finalizeInvoice: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       pay: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      voidInvoice: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     invoiceItems: {
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -887,6 +889,7 @@ vi.mock("stripe", async (importOriginal) => {
           createPreview: apiTestMocks.stripe.invoices.createPreview,
           finalizeInvoice: apiTestMocks.stripe.invoices.finalizeInvoice,
           pay: apiTestMocks.stripe.invoices.pay,
+          voidInvoice: apiTestMocks.stripe.invoices.voidInvoice,
         },
         invoiceItems: {
           create: apiTestMocks.stripe.invoiceItems.create,
@@ -1151,6 +1154,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.invoices.createPreview.mockReset();
   apiTestMocks.stripe.invoices.finalizeInvoice.mockReset();
   apiTestMocks.stripe.invoices.pay.mockReset();
+  apiTestMocks.stripe.invoices.voidInvoice.mockReset();
   apiTestMocks.stripe.invoiceItems.create.mockReset();
   apiTestMocks.stripe.customers.retrieve.mockReset();
   apiTestMocks.stripe.customers.create.mockReset();
