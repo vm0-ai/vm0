@@ -6,31 +6,30 @@
  * dimensions stay in the API service.
  */
 
-export const VIDEO_ASPECT_RATIOS = [
-  "21:9",
-  "16:9",
-  "4:3",
-  "1:1",
-  "3:4",
-  "9:16",
-] as const;
+import {
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_DURATIONS,
+  VIDEO_RESOLUTIONS,
+  type VideoAspectRatio,
+  type VideoDuration,
+  type VideoModelId,
+  type VideoResolution,
+} from "@vm0/api-contracts/contracts/video-models";
+
+/**
+ * Re-exported so consumers reach every video model value through one module
+ * instead of splitting imports between the catalog and the contract package.
+ */
+export {
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_DURATIONS,
+  VIDEO_RESOLUTIONS,
+  type VideoAspectRatio,
+  type VideoDuration,
+  type VideoResolution,
+};
+
 const STANDARD_VIDEO_ASPECT_RATIOS = ["16:9", "9:16"] as const;
-export const VIDEO_DURATIONS = [
-  "2s",
-  "3s",
-  "4s",
-  "5s",
-  "6s",
-  "7s",
-  "8s",
-  "9s",
-  "10s",
-  "11s",
-  "12s",
-  "13s",
-  "14s",
-  "15s",
-] as const;
 const VEO_VIDEO_DURATIONS = ["4s", "6s", "8s"] as const;
 const KLING_VIDEO_DURATIONS = [
   "3s",
@@ -86,23 +85,12 @@ const MINIMAX_H3_DURATIONS = [
   "14s",
   "15s",
 ] as const;
-export const VIDEO_RESOLUTIONS = [
-  "480p",
-  "720p",
-  "768p",
-  "1080p",
-  "2k",
-  "4k",
-] as const;
 export const SEEDANCE_RESOLUTIONS = ["480p", "720p", "1080p"] as const;
 const SEEDANCE_FAST_RESOLUTIONS = ["480p", "720p"] as const;
 const VEO_VIDEO_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
 const KLING_4K_VIDEO_RESOLUTIONS = ["4k"] as const;
 const MINIMAX_H3_RESOLUTIONS = ["768p", "2k"] as const;
 
-export type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number];
-export type VideoDuration = (typeof VIDEO_DURATIONS)[number];
-export type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number];
 export type SeedanceResolution = (typeof SEEDANCE_RESOLUTIONS)[number];
 
 export type VideoProvider = "byteplus" | "fal" | "minimax";
@@ -267,9 +255,9 @@ export const VIDEO_MODEL_CONFIGS = {
     supportsLastFrame: true,
     public: true,
   },
-} as const satisfies Record<string, VideoModelConfig>;
+} as const satisfies Record<VideoModelId, VideoModelConfig>;
 
-export type VideoModel = keyof typeof VIDEO_MODEL_CONFIGS;
+export type VideoModel = VideoModelId;
 
 export const VIDEO_MODELS = Object.keys(VIDEO_MODEL_CONFIGS) as VideoModel[];
 

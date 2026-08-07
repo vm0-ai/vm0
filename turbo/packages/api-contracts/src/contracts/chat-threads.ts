@@ -8,6 +8,12 @@ import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { supportedRunModelSchema } from "./model-providers";
 import {
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_DURATIONS,
+  VIDEO_MODEL_IDS,
+  VIDEO_RESOLUTIONS,
+} from "./video-models";
+import {
   avatarVideoAspectRatioSchema,
   avatarVideoVoiceIdSchema,
 } from "./zero-avatar-video";
@@ -210,17 +216,48 @@ const presentationGenerationTemplateRequestSchema = z.object({
     .strict(),
 });
 
+/**
+ * Text-to-video parameters the user chose explicitly. Everything is optional:
+ * an omitted field means "let the generation service pick", so the defaults can
+ * still move without rewriting messages that were authored earlier.
+ */
+const videoGenerationOptionsSchema = z
+  .object({
+    model: z.enum(VIDEO_MODEL_IDS),
+    aspectRatio: z.enum(VIDEO_ASPECT_RATIOS),
+    duration: z.enum(VIDEO_DURATIONS),
+    resolution: z.enum(VIDEO_RESOLUTIONS),
+    generateAudio: z.boolean(),
+  })
+  .partial();
+
+/**
+ * Talking-avatar parameters. Unrelated to text-to-video despite sharing the
+ * "video" envelope, which older bundles rely on to parse newer messages.
+ */
+const avatarGenerationOptionsSchema = z
+  .object({
+    titleSnapshot: z.string().trim().min(1),
+    previewUrl: z.url(),
+    voiceId: avatarVideoVoiceIdSchema,
+    aspectRatio: avatarVideoAspectRatioSchema,
+  })
+  .partial();
+
 const videoGenerationTemplateRequestSchema = z.object({
   type: z.literal("video"),
   selection: z.object({
     stylePresetId: z.string().min(1),
-    /** User-visible snapshot for API-backed avatar templates. */
+    videoOptions: videoGenerationOptionsSchema.optional(),
+    avatarOptions: avatarGenerationOptionsSchema.optional(),
+
+    /** @deprecated Read-only fallback; write avatarOptions.titleSnapshot. */
     titleSnapshot: z.string().trim().min(1).optional(),
-    /** User-visible preview snapshot for API-backed avatar templates. */
+    /** @deprecated Read-only fallback; write avatarOptions.previewUrl. */
     previewUrl: z.url().optional(),
-    /** Provider voice selected for API-backed avatar templates. */
+    /** @deprecated Read-only fallback; write avatarOptions.voiceId. */
     voiceId: avatarVideoVoiceIdSchema.optional(),
-    /** Output frame selected for API-backed avatar templates. */
+    /** @deprecated Read-only fallback; write avatarOptions.aspectRatio. */
     aspectRatio: avatarVideoAspectRatioSchema.optional(),
   }),
 });
@@ -1508,6 +1545,12 @@ export type ThreadGenerationTemplates = Partial<
 >;
 export type PresentationGenerationTemplateRequest = z.infer<
   typeof presentationGenerationTemplateRequestSchema
+>;
+export type VideoGenerationOptions = z.infer<
+  typeof videoGenerationOptionsSchema
+>;
+export type AvatarGenerationOptions = z.infer<
+  typeof avatarGenerationOptionsSchema
 >;
 export type VideoGenerationTemplateRequest = z.infer<
   typeof videoGenerationTemplateRequestSchema
