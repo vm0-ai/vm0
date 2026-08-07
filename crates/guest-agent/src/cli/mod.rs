@@ -9,12 +9,15 @@
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
 //! - `claude`: Claude result parsing and tool tracking.
+//! - `pi_agent_loop`: Pi standby child and JSONL protocol bridge.
 //! - `termination`: process-group termination FSM.
 //!
 //! `execute_cli` owns the Claude Code subprocess orchestration, while
-//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle. Each path
-//! retains ownership of its process, event delivery, heartbeat races, and
-//! child reaping until completion.
+//! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle and
+//! `pi_agent_loop` owns the Pi standby child bridge. Each path retains
+//! ownership of its process, event delivery, heartbeat races, and child
+//! reaping until completion. See [`crate::pi_standby`] for the Pi lifecycle
+//! and cross-language protocol contract.
 
 mod child_env;
 mod child_exit_notifier;
@@ -261,16 +264,33 @@ pub struct CliExecutionResult {
     pub completion_disposition: CliCompletionDisposition,
 }
 
+/// How top-level guest-agent handling should settle a finished CLI execution.
+///
+/// Pi distinguishes terminal model completion from releasing a standby
+/// allocation. See [`crate::pi_standby`] for the full lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliCompletionDisposition {
+    /// The standard terminal completion and checkpoint path used for Claude,
+    /// Codex, and CLI execution errors.
     Terminal,
+    /// A terminal Pi result that completes the run but skips the normal
+    /// successful CLI checkpoint because acknowledged Pi events persisted its
+    /// output.
     PiCompleted,
+    /// A Pi standby allocation released without checkpointing or calling
+    /// `/complete` from guest-agent.
     PiStandbyReleased(PiStandbyReleaseReason),
 }
 
+/// Why a Pi standby allocation ended without terminal run completion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PiStandbyReleaseReason {
+    /// API-side execution completed the run, so guest-agent exits successfully
+    /// without calling `/complete` again.
     ApiComplete,
+    /// The unused standby expired, so guest-agent exits with
+    /// [`guest_contracts::pi_standby::TTL_RELEASE_EXIT_CODE`] for runner
+    /// requeue instead of completing the run.
     Ttl,
 }
 
@@ -690,6 +710,11 @@ impl<'a> CliExecutionControls<'a> {
         }
     }
 
+    /// Supply the reader that connects runner handoff/release controls to the
+    /// Pi standby child.
+    ///
+    /// The default reader is closed. Non-Pi execution paths ignore this
+    /// control; see [`crate::pi_standby`] for the Pi lifecycle.
     #[must_use]
     pub fn with_pi_standby_reader(mut self, reader: crate::pi_standby::PiStandbyReader) -> Self {
         self.pi_standby = reader;
@@ -698,6 +723,11 @@ impl<'a> CliExecutionControls<'a> {
 }
 
 /// Execute the CLI while observing run-scoped controls.
+///
+/// When the config contains a system prompt, model config, and Skill snapshot,
+/// this selects the Pi standby path described in [`crate::pi_standby`]. When
+/// all three are absent it selects the configured Claude or Codex path; a
+/// partial Pi configuration returns an execution error.
 pub async fn execute_cli_with_controls_for_config_started_at(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,

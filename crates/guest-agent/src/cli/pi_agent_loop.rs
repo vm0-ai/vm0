@@ -4,6 +4,8 @@
 //! API token. Guest-agent proxies transcript reads and exact Pi event writes
 //! over a local JSONL protocol, preserving the native Pi message payload
 //! without passing it through the legacy CLI secret masker.
+//!
+//! See [`crate::pi_standby`] for the public lifecycle and protocol contract.
 
 use super::{
     CliCompletionDisposition, CliExecutionControls, CliExecutionResult, HeartbeatMonitor,

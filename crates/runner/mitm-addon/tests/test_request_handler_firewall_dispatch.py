@@ -326,6 +326,70 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
+async def test_head_firewall_permission_block_is_bodyless_and_logged(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="HEAD",
+        path="/orgs",
+    )
+    seed_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("api.github.com", 443),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    firewall_log_entry, http_error_log_entry = read_jsonl_entries_after_flush(
+        tmp_path / "proxy.jsonl"
+    )
+    assert firewall_log_entry["type"] == "firewall_block"
+    assert firewall_log_entry["name"] == "github"
+    assert firewall_log_entry["reason"] == "unknown_endpoint"
+    assert http_error_log_entry["type"] == "http_error"
+    assert http_error_log_entry["status"] == 403
+    [network_log_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert network_log_entry["action"] == "DENY"
+    assert network_log_entry["status"] == 403
+    assert network_log_entry["response_size"] == 0
+
+
 @pytest.mark.parametrize(
     "unknown_policy",
     [

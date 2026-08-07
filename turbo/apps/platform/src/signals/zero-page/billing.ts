@@ -43,7 +43,7 @@ type DowngradeTargetTier = "limited-free-1" | "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
-export type ConcurrencyCancellationMode = "reduce" | "cancel";
+export type ConcurrencyChangeMode = "quantity" | "cancel";
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
 const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
@@ -215,12 +215,12 @@ const internalFormAmountOverride$ = state<string | null>(null);
 const internalConcurrencySubscriptionQuantity$ = state<number | null>(null);
 const internalConcurrencyPurchaseDialogOpen$ = state(false);
 const internalConcurrencyConfirmDialog$ = state<{
-  readonly action: "cancel" | "restore";
+  readonly action: "change" | "restore";
   readonly subscriptionId: string;
   readonly currentQuantity: number;
   readonly canReduce: boolean;
-  readonly cancellationMode: ConcurrencyCancellationMode;
-  readonly reductionQuantity: number | null;
+  readonly changeMode: ConcurrencyChangeMode;
+  readonly targetQuantity: number | null;
 } | null>(null);
 
 // ---------------------------------------------------------------------------
@@ -274,43 +274,41 @@ export const closeConcurrencyPurchaseDialog$ = command(({ set }) => {
 export const openConcurrencyConfirmDialog$ = command(
   (
     { set },
-    action: "cancel" | "restore",
+    action: "change" | "restore",
     subscriptionId: string,
     currentQuantity: number,
     canReduce: boolean,
   ) => {
-    const reductionAvailable =
-      action === "cancel" && canReduce && currentQuantity > 1;
     set(internalConcurrencyConfirmDialog$, {
       action,
       subscriptionId,
       currentQuantity,
-      canReduce: reductionAvailable,
-      cancellationMode: reductionAvailable ? "reduce" : "cancel",
-      reductionQuantity: reductionAvailable ? currentQuantity - 1 : null,
+      canReduce: action === "change" && canReduce,
+      changeMode: "quantity",
+      targetQuantity: action === "change" ? currentQuantity : null,
     });
   },
 );
 export const closeConcurrencyConfirmDialog$ = command(({ set }) => {
   set(internalConcurrencyConfirmDialog$, null);
 });
-export const setConcurrencyCancellationMode$ = command(
-  ({ set }, mode: ConcurrencyCancellationMode) => {
+export const setConcurrencyChangeMode$ = command(
+  ({ set }, mode: ConcurrencyChangeMode) => {
     set(internalConcurrencyConfirmDialog$, (dialog) => {
-      if (!dialog || dialog.action !== "cancel" || !dialog.canReduce) {
+      if (!dialog || dialog.action !== "change") {
         return dialog;
       }
-      return { ...dialog, cancellationMode: mode };
+      return { ...dialog, changeMode: mode };
     });
   },
 );
-export const setConcurrencyReductionQuantity$ = command(
+export const setConcurrencyTargetQuantity$ = command(
   ({ set }, quantity: number | null) => {
     set(internalConcurrencyConfirmDialog$, (dialog) => {
-      if (!dialog || dialog.action !== "cancel" || !dialog.canReduce) {
+      if (!dialog || dialog.action !== "change") {
         return dialog;
       }
-      return { ...dialog, reductionQuantity: quantity };
+      return { ...dialog, targetQuantity: quantity };
     });
   },
 );

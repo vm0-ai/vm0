@@ -1,6 +1,5 @@
 import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import {
   check,
   pgTable,
@@ -127,7 +126,6 @@ export const chatEvents = pgTable(
       | "agent_run"
     >(),
     contextId: uuid("context_id"),
-    triggerSource: text("trigger_source").$type<TriggerSource>(),
     content: text("content"),
     /** Canonical rich user-message document for user input events. */
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),

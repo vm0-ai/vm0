@@ -1,4 +1,5 @@
 import type {
+  CSSProperties,
   FormEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
@@ -118,7 +119,12 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  videoTemplateOptionsEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -4268,34 +4274,24 @@ function ThinkingLabel({
   );
 }
 
-function ThinkingBlocks() {
-  return (
-    <span className="zero-blocks shrink-0">
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
-
 function InlineThinkingRow({
+  blockStyle,
   isQueued,
   thinkingLabel,
   serverThinkingLabel,
 }: {
+  blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div className="flex items-center gap-2 h-5">
-      <ThinkingBlocks />
+      <span className="zero-blocks shrink-0" style={blockStyle}>
+        <span />
+        <span />
+        <span />
+      </span>
       <ThinkingLabel
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
@@ -4353,11 +4349,13 @@ function FinishedRunRow({
 
 function WaitingForAssistantResponse({
   thread,
+  blockStyle,
   isQueued,
   thinkingLabel,
   serverThinkingLabel,
 }: {
   thread: ChatPanelSignals;
+  blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
@@ -4372,7 +4370,11 @@ function WaitingForAssistantResponse({
         <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-[0.9375rem] leading-[1.7] min-w-0 overflow-hidden">
           <div className="flex h-5 min-w-0 items-center gap-2">
-            <ThinkingBlocks />
+            <span className="zero-blocks shrink-0" style={blockStyle}>
+              <span />
+              <span />
+              <span />
+            </span>
             <ThinkingLabel
               isQueued={isQueued}
               thinkingLabel={thinkingLabel}
@@ -4394,6 +4396,7 @@ function WaitingForAssistantResponse({
 
 function AssistantThinkingStatusRow({
   running,
+  blockStyle,
   isQueued,
   thinkingLabel,
   serverThinkingLabel,
@@ -4401,6 +4404,7 @@ function AssistantThinkingStatusRow({
   recommendedFollowupSource,
 }: {
   running: boolean;
+  blockStyle: CSSProperties;
   isQueued: boolean;
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
@@ -4421,6 +4425,7 @@ function AssistantThinkingStatusRow({
       <div className="min-w-0">
         {running ? (
           <InlineThinkingRow
+            blockStyle={blockStyle}
             isQueued={isQueued}
             thinkingLabel={thinkingLabel}
             serverThinkingLabel={serverThinkingLabel}
@@ -4459,6 +4464,12 @@ function equalRecommendedFollowupSources(
 }
 
 function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
+  const [c1, c2, c3] = useGet(thread.blockColors$);
+  const blockStyle = {
+    "--zb-c1": c1,
+    "--zb-c2": c2,
+    "--zb-c3": c3,
+  } as CSSProperties;
   const mode = useLastResolved(thread.thinkingIndicatorMode$) ?? null;
   const thinkingText = useLastResolved(thread.thinkingText$);
   const recommendedFollowupSource =
@@ -4496,6 +4507,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
     return (
       <AssistantThinkingStatusRow
         running={running}
+        blockStyle={blockStyle}
         isQueued={isQueued}
         thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
@@ -4509,6 +4521,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   return (
     <WaitingForAssistantResponse
       thread={thread}
+      blockStyle={blockStyle}
       isQueued={isQueued}
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
@@ -7156,6 +7169,25 @@ const STRUCTURED_INLINE_REFERENCE_CLASS =
   "active:bg-orange-500/20 dark:bg-orange-400/15 dark:text-orange-300 " +
   "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
+/**
+ * Read-only echo of the parameters a sent video used, resolved the same way the
+ * composer chip resolves them. Talking-avatar templates share the "video"
+ * envelope but take none of these parameters.
+ */
+function sentVideoTemplateSpec(
+  template: GenerationTemplateRequest,
+): string | undefined {
+  if (template.type !== "video") {
+    return undefined;
+  }
+  const { selection } = template;
+  if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
+    return undefined;
+  }
+  const resolved = resolveVideoGenerationOptions(selection.videoOptions);
+  return `${resolved.aspectRatio} \u00b7 ${resolved.duration}`;
+}
+
 function templatePickerCategoryForReference(
   template: GenerationTemplateRequest,
 ): string {
@@ -7187,6 +7219,10 @@ function UserMessageTemplateReference({
 }) {
   const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const spec = videoOptionsEnabled
+    ? sentVideoTemplateSpec(part.template)
+    : undefined;
   const setTemplatePickerCategory = useSet(
     signals.template.setTemplatePickerCategory$,
   );
@@ -7252,6 +7288,11 @@ function UserMessageTemplateReference({
     >
       <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      {spec !== undefined && (
+        <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
+          {spec}
+        </span>
+      )}
     </button>
   );
 }

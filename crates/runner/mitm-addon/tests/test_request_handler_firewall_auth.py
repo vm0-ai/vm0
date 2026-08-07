@@ -80,6 +80,61 @@ async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
     assert flows[1].request.headers["Authorization"] == "Bearer resolved"
 
 
+async def test_head_firewall_auth_failure_is_bodyless(tmp_path, real_flow, mitm_ctx, headers):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "read-repos", "rules": ["HEAD /repos"]}],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="HEAD",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("203.0.113.10", 443),
+        peername=("203.0.113.10", 443),
+    )
+    auth_fetch = AsyncMock(side_effect=RuntimeError("auth backend unavailable"))
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", auth_fetch),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is not None
+    assert flow.response.status_code == 502
+    assert flow.response.raw_content == b""
+    assert flow.response.headers["Content-Type"] == "application/json"
+    assert flow.response.headers.get_all("Content-Length") == []
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
+    assert "Authorization" not in flow.request.headers
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["level"] == "error"
+    assert proxy_log_entry["type"] == "firewall"
+    assert proxy_log_entry["firewall_base"] == "https://api.github.com"
+
+
 async def test_custom_connector_id_is_forwarded_with_matched_firewall(
     tmp_path, real_flow, mitm_ctx
 ):

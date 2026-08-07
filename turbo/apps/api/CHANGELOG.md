@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.398.2](https://github.com/vm0-ai/vm0/compare/api-v1.398.1...api-v1.398.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* parse google forms publish state as an object ([#25675](https://github.com/vm0-ai/vm0/issues/25675)) ([dd41752](https://github.com/vm0-ai/vm0/commit/dd41752958fdcc9af412622f92bb1cff3c6f5f03))
+* **test:** preserve shared vm0 key fixtures ([#25679](https://github.com/vm0-ai/vm0/issues/25679)) ([41f5817](https://github.com/vm0-ai/vm0/commit/41f581725e7486a2453b768de1e2b8e80c2ce41f))
+
+## [1.398.1](https://github.com/vm0-ai/vm0/compare/api-v1.398.0...api-v1.398.1) (2026-08-07)
+
+
+### Refactoring
+
+* **db:** drop chat event trigger source column ([#25666](https://github.com/vm0-ai/vm0/issues/25666)) ([3bd3b38](https://github.com/vm0-ai/vm0/commit/3bd3b3838b6d1dddc92e543d89164d7d3857527c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.290.1
+    * @vm0/core bumped to 8.528.0
+    * @vm0/db bumped to 1.177.1
+    * @vm0/pi-agent-runtime bumped to 1.1.1
+
 ## [1.398.0](https://github.com/vm0-ai/vm0/compare/api-v1.397.0...api-v1.398.0) (2026-08-07)
 
 

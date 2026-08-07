@@ -69,9 +69,13 @@ const googleFormSchema = z.object({
   info: z.object({ title: z.string() }),
   publishSettings: z
     .object({
-      publishState: z.string().optional(),
-      isPublished: z.boolean().optional(),
-      isAcceptingResponses: z.boolean().optional(),
+      publishState: z
+        .object({
+          isPublished: z.boolean().optional(),
+          isAcceptingResponses: z.boolean().optional(),
+        })
+        .passthrough()
+        .optional(),
     })
     .passthrough()
     .optional(),
@@ -432,16 +436,10 @@ async function newestGoogleFormResponseTime(args: {
 function formIsNotAcceptingResponses(
   form: z.infer<typeof googleFormSchema>,
 ): boolean {
-  if (
-    form.publishSettings?.isPublished === false ||
-    form.publishSettings?.isAcceptingResponses === false
-  ) {
-    return true;
-  }
-  if (form.publishSettings?.isPublished === true) {
-    return false;
-  }
-  return form.publishSettings?.publishState !== "PUBLISHED";
+  return (
+    form.publishSettings?.publishState?.isPublished !== true ||
+    form.publishSettings?.publishState?.isAcceptingResponses !== true
+  );
 }
 
 export async function prepareGoogleFormsResponseEventConfigForPersist(

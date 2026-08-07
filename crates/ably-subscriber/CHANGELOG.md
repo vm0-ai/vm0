@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.15](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.14...ably-subscriber-v1.0.15) (2026-08-07)
+
+
+### Documentation
+
+* **ably-subscriber:** document messagepack decoder contract ([#25658](https://github.com/vm0-ai/vm0/issues/25658)) ([876bf2e](https://github.com/vm0-ai/vm0/commit/876bf2e5a3e7f9e8da9fc00492c77f4afe8a570e))
+
 ## [1.0.14](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.13...ably-subscriber-v1.0.14) (2026-08-07)
 
 

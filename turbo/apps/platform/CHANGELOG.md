@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.703.1](https://github.com/vm0-ai/vm0/compare/app-v0.703.0...app-v0.703.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **platform:** make avatar filter toolbar opaque ([#25667](https://github.com/vm0-ai/vm0/issues/25667)) ([817d11f](https://github.com/vm0-ai/vm0/commit/817d11f18af82864a61a640fd29b21750a22f045))
+
+## [0.703.0](https://github.com/vm0-ai/vm0/compare/app-v0.702.0...app-v0.703.0) (2026-08-07)
+
+
+### Features
+
+* **billing:** unify concurrency slot changes ([#25669](https://github.com/vm0-ai/vm0/issues/25669)) ([861ea6c](https://github.com/vm0-ai/vm0/commit/861ea6c027baf8449e1baeaf564cbb90e8e9a120))
+
+## [0.702.0](https://github.com/vm0-ai/vm0/compare/app-v0.701.0...app-v0.702.0) (2026-08-07)
+
+
+### Features
+
+* **app:** let a video template chip set its generation parameters ([#25624](https://github.com/vm0-ai/vm0/issues/25624)) ([e670f1e](https://github.com/vm0-ai/vm0/commit/e670f1e45271154b726df0b3d84df1bb057b2d5b))
+
+
+### Bug Fixes
+
+* **platform:** suppress force-upgrade error toast ([#25643](https://github.com/vm0-ai/vm0/issues/25643)) ([3fb5512](https://github.com/vm0-ai/vm0/commit/3fb5512a08f462df9cb09de0d77254e9909ee385))
+* restore the previous 3-block thinking indicator ([#25661](https://github.com/vm0-ai/vm0/issues/25661)) ([64fcd92](https://github.com/vm0-ai/vm0/commit/64fcd92e618c223b3bc6c7ccdf39bcad9eb016e5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.290.1
+    * @vm0/core bumped to 8.528.0
+
 ## [0.701.0](https://github.com/vm0-ai/vm0/compare/app-v0.700.0...app-v0.701.0) (2026-08-07)
 
 

@@ -98,7 +98,10 @@ type VideoModelFamily = "seedance-2" | "seedance-1-5";
 type FalRequestFormat = "veo" | "kling";
 
 interface BaseVideoModelConfig {
+  /** Value accepted by the CLI's `--model` flag. */
   readonly alias: string;
+  /** Human-facing name for pickers. */
+  readonly label: string;
   readonly aspectRatios: readonly VideoAspectRatio[];
   readonly durations: readonly VideoDuration[];
   readonly resolutions: readonly VideoResolution[];
@@ -139,6 +142,7 @@ export const VIDEO_MODEL_CONFIGS = {
   "dreamina-seedance-2-0-260128": {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0",
+    label: "Seedance 2.0",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
@@ -159,6 +163,7 @@ export const VIDEO_MODEL_CONFIGS = {
   "dreamina-seedance-2-0-fast-260128": {
     provider: "byteplus",
     alias: "dreamina-seedance-2.0-fast",
+    label: "Seedance 2.0 fast",
     family: "seedance-2",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_2_DURATIONS,
@@ -179,6 +184,7 @@ export const VIDEO_MODEL_CONFIGS = {
   "seedance-1-5-pro-251215": {
     provider: "byteplus",
     alias: "seedance-1.5-pro",
+    label: "Seedance 1.5 pro",
     family: "seedance-1-5",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: SEEDANCE_1_5_DURATIONS,
@@ -199,6 +205,7 @@ export const VIDEO_MODEL_CONFIGS = {
   "fal-ai/veo3.1/fast": {
     provider: "fal",
     alias: "veo3.1-fast",
+    label: "Veo 3.1 fast",
     requestFormat: "veo",
     aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
     durations: VEO_VIDEO_DURATIONS,
@@ -219,6 +226,7 @@ export const VIDEO_MODEL_CONFIGS = {
   "fal-ai/kling-video/v3/4k/text-to-video": {
     provider: "fal",
     alias: "kling-v3-4k",
+    label: "Kling v3 4K",
     requestFormat: "kling",
     aspectRatios: STANDARD_VIDEO_ASPECT_RATIOS,
     durations: KLING_VIDEO_DURATIONS,
@@ -239,6 +247,7 @@ export const VIDEO_MODEL_CONFIGS = {
   "MiniMax-H3": {
     provider: "minimax",
     alias: "minimax-h3",
+    label: "MiniMax H3",
     aspectRatios: VIDEO_ASPECT_RATIOS,
     durations: MINIMAX_H3_DURATIONS,
     resolutions: MINIMAX_H3_RESOLUTIONS,
@@ -281,3 +290,53 @@ export const DEFAULT_VIDEO_MODEL =
   "dreamina-seedance-2-0-fast-260128" satisfies VideoModel;
 export const DEFAULT_VIDEO_ASPECT_RATIO = "16:9" satisfies VideoAspectRatio;
 export const DEFAULT_VIDEO_DURATION = "8s" satisfies VideoDuration;
+
+export interface ResolvedVideoGenerationOptions {
+  readonly model: VideoModel;
+  readonly aspectRatio: VideoAspectRatio;
+  readonly duration: VideoDuration;
+  readonly resolution: VideoResolution;
+  readonly generateAudio: boolean;
+}
+
+/**
+ * Fills in what the user has not chosen, mirroring what the generation service
+ * would apply. Stored options are sparse and can also name a value the chosen
+ * model does not accept, which is what happens after switching model; those
+ * fall back the same way the service falls back rather than being kept.
+ */
+export function resolveVideoGenerationOptions(
+  options:
+    | {
+        readonly model?: VideoModel;
+        readonly aspectRatio?: VideoAspectRatio;
+        readonly duration?: VideoDuration;
+        readonly resolution?: VideoResolution;
+        readonly generateAudio?: boolean;
+      }
+    | undefined,
+): ResolvedVideoGenerationOptions {
+  const model = options?.model ?? DEFAULT_VIDEO_MODEL;
+  const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[model];
+  const aspectRatio = options?.aspectRatio;
+  const duration = options?.duration;
+  const resolution = options?.resolution;
+  return {
+    model,
+    aspectRatio:
+      aspectRatio !== undefined && config.aspectRatios.includes(aspectRatio)
+        ? aspectRatio
+        : DEFAULT_VIDEO_ASPECT_RATIO,
+    duration:
+      duration !== undefined && config.durations.includes(duration)
+        ? duration
+        : DEFAULT_VIDEO_DURATION,
+    resolution:
+      resolution !== undefined && config.resolutions.includes(resolution)
+        ? resolution
+        : config.defaultResolution,
+    generateAudio: config.supportsGenerateAudio
+      ? (options?.generateAudio ?? true)
+      : false,
+  };
+}

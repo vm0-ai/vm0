@@ -72,4 +72,5 @@ export enum FeatureSwitchKey {
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   CjkFriendlyMarkdown = "cjkFriendlyMarkdown",
+  VideoTemplateOptions = "videoTemplateOptions",
 }
