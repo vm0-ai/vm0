@@ -44,7 +44,7 @@ const RESTRICTED_PORTAL_CONFIGURATION = {
     managed_by: "vm0",
     purpose: "payment_method_management",
   },
-};
+} as const;
 
 describe("POST /api/zero/billing/portal", () => {
   const track = createFixtureTracker<InvoicesOrgFixture>((fixture) => {

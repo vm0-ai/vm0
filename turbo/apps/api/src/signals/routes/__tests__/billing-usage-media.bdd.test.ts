@@ -177,6 +177,12 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
       "Credit purchases are not available for this workspace",
     );
 
+    context.mocks.stripe.billingPortal.configurations.list.mockResolvedValue({
+      data: [],
+    });
+    context.mocks.stripe.billingPortal.configurations.create.mockResolvedValue({
+      id: "bpc_bdd_payment_methods",
+    });
     context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
       url: "https://billing.stripe.test/session",
     });
