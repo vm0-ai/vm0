@@ -18,7 +18,7 @@ import { command } from "ccstate";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
@@ -207,7 +207,7 @@ async function enqueueMatchingStrapiAutomations(
 ): Promise<number> {
   const rows = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
     })
     .from(zeroWorkflowStrapiAutomations)
     .innerJoin(
@@ -503,7 +503,7 @@ async function loadPendingEventTarget(
 ) {
   const [row] = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,

@@ -17,7 +17,7 @@ import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import { now, nowDate } from "../../lib/time";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { loadRunAutonomyBudget } from "./autonomy-budget.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
@@ -164,7 +164,7 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
     }
     const automationRows = await db
       .select({
-        automation: rolloutCompatibleWorkflowAutomationColumns(false),
+        automation: workflowAutomationColumns(),
         agentId: zeroWorkflows.agentId,
         workflowName: zeroWorkflows.name,
         workflowDisplayName: zeroWorkflows.displayName,

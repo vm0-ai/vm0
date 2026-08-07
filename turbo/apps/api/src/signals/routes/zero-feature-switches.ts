@@ -30,10 +30,10 @@ function featureSwitchResponseBody(params: {
   return {
     switches: params.switches,
     effectiveSwitches: registeredEffectiveSwitches,
-    // The pre-cleanup Platform bundle gates inline templates, image
-    // recognition, and avatar templates on these handshakes and disables each
-    // feature when the field is absent. Keep returning them until that
-    // frontend release has drained.
+    // Web/app clients can remain open for about two days. The Platform bundle
+    // deployed 2026-08-07 14:02 Asia/Shanghai gates these features on the
+    // handshakes, so the first daily deployment compatibility cleanup after
+    // 2026-08-09 14:02 owns their removal.
     supportsStructuredInlineTemplates: true,
     supportsImageRecognition: true,
     supportsAvatarTemplates: true,

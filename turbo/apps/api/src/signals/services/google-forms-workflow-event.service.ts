@@ -28,7 +28,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -1196,7 +1196,7 @@ async function loadGoogleFormsEventAutomations(
 ): Promise<GoogleFormsEventAutomationRow[]> {
   const rows = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,

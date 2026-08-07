@@ -53,7 +53,6 @@ import {
   releaseVm0ManagedModelKeyFixture,
 } from "../services/test-vm0-managed-model-key-fixture.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
-import { chatAgentRunContextSchemaAvailable } from "../services/chat-agent-run-context-schema.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
@@ -741,10 +740,6 @@ type ReadBrowserScreenshotSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-browser-screenshot-schema-state" }
 >;
-type ReadChatAgentRunContextSchemaStateAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "read-chat-agent-run-context-schema-state" }
->;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
   { action: "reset-database-pool" }
@@ -755,7 +750,6 @@ type PersistenceStateAction =
   | ReadRunnerJobStorageStateAction
   | ReadRunClaimOwnerAction
   | ReadBrowserScreenshotSchemaStateAction
-  | ReadChatAgentRunContextSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -771,9 +765,6 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-browser-screenshot-schema-state": {
-      return true;
-    }
-    case "read-chat-agent-run-context-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -841,17 +832,6 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           browser_screenshot_schema_available: available,
-        },
-      };
-    }
-    case "read-chat-agent-run-context-schema-state": {
-      const available = await chatAgentRunContextSchemaAvailable(db);
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          chat_agent_run_context_schema_available: available,
         },
       };
     }

@@ -33,7 +33,7 @@ import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -1120,7 +1120,7 @@ async function loadNotionChildPageAutomations(
   signal: AbortSignal,
 ): Promise<readonly AutomationRow[]> {
   const rows = await args.db
-    .select(rolloutCompatibleWorkflowAutomationColumns(false))
+    .select(workflowAutomationColumns())
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -1140,7 +1140,7 @@ async function loadNotionDatabaseItemAutomations(
   signal: AbortSignal,
 ): Promise<readonly AutomationRow[]> {
   const rows = await args.db
-    .select(rolloutCompatibleWorkflowAutomationColumns(false))
+    .select(workflowAutomationColumns())
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -1160,7 +1160,7 @@ async function loadNotionPageContentUpdatedAutomations(
   signal: AbortSignal,
 ): Promise<readonly AutomationRow[]> {
   const rows = await args.db
-    .select(rolloutCompatibleWorkflowAutomationColumns(false))
+    .select(workflowAutomationColumns())
     .from(zeroWorkflowAutomations)
     .where(
       and(
@@ -1817,7 +1817,7 @@ async function loadDueNotionAutomationRow(
 ): Promise<DueNotionAutomationRow | null> {
   const [row] = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,

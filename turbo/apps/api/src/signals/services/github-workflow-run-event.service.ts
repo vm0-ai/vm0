@@ -16,7 +16,7 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
@@ -188,7 +188,7 @@ async function loadGithubWorkflowRunAutomations(
 ): Promise<readonly GithubWorkflowRunAutomationRow[]> {
   const rows = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,

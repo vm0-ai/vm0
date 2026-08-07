@@ -48,16 +48,11 @@ import {
   type ChildAutonomyBudget,
 } from "./autonomy-budget.service";
 import { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
-import {
-  autonomyBudgetSchemaAvailable,
-  rolloutCompatibleAutonomyBudgetColumn,
-} from "./autonomy-budget-schema.service";
 import type { Tx } from "../../lib/db-types";
 import {
   createUserMessageDocument,
   withRunModelAnnotation,
 } from "./zero-chat-user-message.service";
-import { chatAgentRunContextSchemaAvailable } from "./chat-agent-run-context-schema.service";
 
 type DbTransaction = Tx;
 
@@ -82,14 +77,8 @@ function unreachableQueuedContextType(contextType: never): never {
 
 function requiredQueuedUserMessageContextType(
   contextType: QueuedUserMessageContextType | null,
-  agentRunContextAvailable: boolean,
 ): QueuedUserMessageContextType {
   if (contextType === null) {
-    // Before migration 0830, delegated agent prompts are the only queued input
-    // rows without a context type. Current schemas fail loudly on any NULL.
-    if (!agentRunContextAvailable) {
-      return "agent_run";
-    }
     throw new Error("Queued user message is missing its context type");
   }
   return contextType;
@@ -271,10 +260,6 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!head || head.eventType !== "input.prompt") {
     return null;
   }
-  const [schemaAvailable, agentRunContextAvailable] = await Promise.all([
-    autonomyBudgetSchemaAvailable(db),
-    chatAgentRunContextSchemaAvailable(db),
-  ]);
   const [event] = await db
     .select({
       id: chatEvents.id,
@@ -285,10 +270,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       contextType: chatEvents.contextType,
-      sourceAutonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
-        schemaAvailable,
-        zeroRuns.autonomyBudget,
-      ),
+      sourceAutonomyBudget: zeroRuns.autonomyBudget,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
@@ -314,12 +296,9 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!event.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  const contextType = requiredQueuedUserMessageContextType(
-    event.contextType,
-    agentRunContextAvailable,
-  );
+  const contextType = requiredQueuedUserMessageContextType(event.contextType);
   const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
-    !schemaAvailable || event.contextType !== "agent_run"
+    contextType !== "agent_run"
       ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
       : event.sourceAutonomyBudget === null
         ? {
@@ -398,10 +377,7 @@ async function resolveUserQueueFirstClaimSnapshot(
   if (!head.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  const contextType = requiredQueuedUserMessageContextType(
-    head.contextType,
-    await chatAgentRunContextSchemaAvailable(db),
-  );
+  const contextType = requiredQueuedUserMessageContextType(head.contextType);
   return {
     target: replacementTargetFromQueueHead(head),
     routingContextType: contextType,
