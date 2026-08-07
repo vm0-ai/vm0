@@ -10,11 +10,13 @@ import pytest
 from mitmproxy import http, tls
 
 import auth
+import auth_base_forwarder
 import connector_intent
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
 from body_limits import STREAM_BUFFER_LIMIT
+from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_helpers import cancel_pending_task
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import _assert_no_request_stream, await_requestheaders_result
@@ -27,6 +29,7 @@ _CLIENT_IP = "10.200.0.5"
 _FIREWALL_NAME = "model-provider:test"
 _ORIGINAL_RUN_ID = "run-before-auth-wait"
 _RESOLVED_AUTHORIZATION = "Bearer resolved-for-old-authorization"
+_RESOLVED_AUTH_BASE = "https://webhook.example.com/deliver"
 
 
 def _registry_vm(
@@ -35,6 +38,7 @@ def _registry_vm(
     run_id: str = _ORIGINAL_RUN_ID,
     allow_repos: bool = True,
     allow_unrelated_orgs: bool = False,
+    auth_base: bool = False,
 ) -> dict[str, object]:
     allowed_permissions = ["repos-write"] if allow_repos else []
     denied_permissions = [] if allow_repos else ["repos-write"]
@@ -42,16 +46,25 @@ def _registry_vm(
         allowed_permissions.append("orgs-write")
     else:
         denied_permissions.append("orgs-write")
+    auth_config: dict[str, object]
+    api_base: str
+    if auth_base:
+        auth_config = {"base": "${{ secrets.WEBHOOK_URL }}"}
+        api_base = "https://placeholder.example.com"
+    else:
+        auth_config = {
+            "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+            "query": {"managed": "${{ secrets.GITHUB_TOKEN }}"},
+        }
+        api_base = "https://api.github.com"
+
     return _single_firewall_vm(
         tmp_path,
         run_id=run_id,
         firewall_name=_FIREWALL_NAME,
         api_entry={
-            "base": "https://api.github.com",
-            "auth": {
-                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
-                "query": {"managed": "${{ secrets.GITHUB_TOKEN }}"},
-            },
+            "base": api_base,
+            "auth": auth_config,
             "permissions": [
                 {"name": "repos-write", "rules": ["POST /repos/{path+}"]},
                 {"name": "orgs-write", "rules": ["POST /orgs/{path+}"]},
@@ -114,6 +127,8 @@ def _mutate_registry(
     registry_path: Path,
     tmp_path: Path,
     mutation: RegistryMutation,
+    *,
+    auth_base: bool = False,
 ) -> None:
     if mutation == "remove":
         _publish_registry(registry_path, vm_info=None)
@@ -121,42 +136,52 @@ def _mutate_registry(
     if mutation == "replace_run":
         _publish_registry(
             registry_path,
-            vm_info=_registry_vm(tmp_path, run_id="run-replacement-after-auth-wait"),
+            vm_info=_registry_vm(
+                tmp_path,
+                run_id="run-replacement-after-auth-wait",
+                auth_base=auth_base,
+            ),
         )
         return
     _publish_registry(
         registry_path,
-        vm_info=_registry_vm(tmp_path, allow_repos=False),
+        vm_info=_registry_vm(tmp_path, allow_repos=False, auth_base=auth_base),
     )
 
 
-def _firewall_flow(real_flow, make_tls_data) -> tuple[http.HTTPFlow, tls.ClientHelloData]:
+def _firewall_flow(
+    real_flow,
+    make_tls_data,
+    *,
+    auth_base: bool = False,
+) -> tuple[http.HTTPFlow, tls.ClientHelloData]:
+    host = "placeholder.example.com" if auth_base else "api.github.com"
     flow = real_flow(
         with_response=False,
         client_ip=_CLIENT_IP,
-        host="api.github.com",
-        sni="api.github.com",
+        host=host,
+        sni=host,
         method="POST",
         path="/repos/octocat/hello?client=visible",
         request_headers=http.Headers(
             (
-                (b"Host", b"api.github.com"),
+                (b"Host", host.encode()),
                 (b"Content-Length", str(STREAM_BUFFER_LIMIT + 1).encode()),
             )
         ),
     )
-    client_id = "client-firewall-auth-revalidation"
+    client_id = f"client-firewall-auth-revalidation-{'base' if auth_base else 'ordinary'}"
     flow.client_conn.id = client_id
     upstream_endpoint = ("172.66.0.243", 443)
     mark_connected_tls_upstream(
         flow,
-        sni="api.github.com",
+        sni=host,
         server_address=upstream_endpoint,
         peername=upstream_endpoint,
     )
     tls_data = make_tls_data(
         client_ip=_CLIENT_IP,
-        sni="api.github.com",
+        sni=host,
         client_id=client_id,
         server_address=upstream_endpoint,
         server_peername=upstream_endpoint,
@@ -166,7 +191,16 @@ def _firewall_flow(real_flow, make_tls_data) -> tuple[http.HTTPFlow, tls.ClientH
     return flow, cast(tls.ClientHelloData, tls_data)
 
 
-def _resolved_firewall_auth() -> dict[str, object]:
+def _resolved_firewall_auth(*, auth_base: bool = False) -> dict[str, object]:
+    if auth_base:
+        return {
+            "headers": {},
+            "base": _RESOLVED_AUTH_BASE,
+            "resolved_secrets": ["WEBHOOK_URL"],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
     return {
         "headers": {"Authorization": _RESOLVED_AUTHORIZATION},
         "query": {"managed": "resolved-for-old-authorization"},
@@ -403,4 +437,140 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "firewall_authorization_changed"
     assert flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY) is None
+    assert "_usage_flow_tracked" not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    "registry_mutation",
+    ["remove", "replace_run", "revoke_permission"],
+)
+async def test_auth_base_registry_change_during_auth_blocks_resolved_forward(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+    monkeypatch,
+    registry_mutation: RegistryMutation,
+):
+    registry_path = _write_registry(
+        tmp_path,
+        client_ip=_CLIENT_IP,
+        vm_info=_registry_vm(tmp_path, auth_base=True),
+    )
+    flow, tls_data = _firewall_flow(real_flow, make_tls_data, auth_base=True)
+    original_path = flow.request.path
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return _resolved_firewall_auth(auth_base=True)
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    forward_request = AsyncMock()
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+    monkeypatch.setattr(auth, "forward_request", forward_request)
+
+    request_task: asyncio.Task[None] | None = None
+    with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
+        mitm_addon.tls_clienthello(tls_data)
+        assert mitm_addon.requestheaders(flow) is None
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            STREAM_BUFFER_LIMIT + 1,
+        )
+
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            assert flow.metadata["_usage_flow_tracked"] is True
+            _mutate_registry(
+                registry_path,
+                tmp_path,
+                registry_mutation,
+                auth_base=True,
+            )
+            release_auth_resolution.set()
+            await asyncio.gather(request_task)
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(request_task)
+
+    auth_fetch.assert_awaited_once()
+    forward_request.assert_not_awaited()
+    assert flow.request.headers["Host"] == "placeholder.example.com"
+    assert flow.request.headers.get("Authorization") is None
+    assert flow.request.path == original_path
+    for key in (
+        metadata_keys.AUTH_RESOLVED_SECRETS,
+        metadata_keys.AUTH_REFRESHED_CONNECTORS,
+        metadata_keys.AUTH_REFRESHED_SECRETS,
+        metadata_keys.AUTH_CACHE_HIT,
+        metadata_keys.AUTH_URL_REWRITE,
+    ):
+        assert key not in flow.metadata
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+    _assert_current_denial(flow, registry_mutation)
+
+
+async def test_auth_base_unrelated_policy_change_keeps_equivalent_authorization(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+    monkeypatch,
+):
+    registry_path = _write_registry(
+        tmp_path,
+        client_ip=_CLIENT_IP,
+        vm_info=_registry_vm(tmp_path, auth_base=True),
+    )
+    flow, tls_data = _firewall_flow(real_flow, make_tls_data, auth_base=True)
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return _resolved_firewall_auth(auth_base=True)
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+
+    request_task: asyncio.Task[None] | None = None
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        fake_forwarder_upstream(status=202, body=b"accepted") as upstream,
+    ):
+        mitm_addon.tls_clienthello(tls_data)
+        assert mitm_addon.requestheaders(flow) is None
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            _publish_registry(
+                registry_path,
+                vm_info=_registry_vm(
+                    tmp_path,
+                    allow_unrelated_orgs=True,
+                    auth_base=True,
+                ),
+            )
+            release_auth_resolution.set()
+            await asyncio.gather(request_task)
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(request_task)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 202
+        assert flow.response.content == b"accepted"
+        assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
+        assert flow.metadata[metadata_keys.VM_RUN_ID] == _ORIGINAL_RUN_ID
+        assert upstream.resolve_calls == ["webhook.example.com"]
+        assert upstream.connect_calls == [("93.184.216.34", 443)]
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+        mitm_addon.response(flow)
+
+    auth_fetch.assert_awaited_once()
     assert "_usage_flow_tracked" not in flow.metadata

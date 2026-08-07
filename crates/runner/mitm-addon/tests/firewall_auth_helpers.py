@@ -70,7 +70,7 @@ def firewall_auth_success(
     )
 
 
-def _allow_ordinary_upstream_credentials() -> bool:
+def _allow_current_firewall_authorization() -> bool:
     return True
 
 
@@ -84,7 +84,7 @@ async def handle_firewall_request_without_upstream_admission(
         flow,
         allow,
         vm_info,
-        revalidate_ordinary_upstream_credentials=_allow_ordinary_upstream_credentials,
+        revalidate_current_firewall_authorization=_allow_current_firewall_authorization,
     )
 
 
@@ -98,7 +98,7 @@ async def apply_requestheaders_auth_without_upstream_admission(
         flow,
         allow,
         vm_info,
-        revalidate_ordinary_upstream_credentials=_allow_ordinary_upstream_credentials,
+        revalidate_current_firewall_authorization=_allow_current_firewall_authorization,
     )
 
 
