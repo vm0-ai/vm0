@@ -889,6 +889,12 @@ function mockConfiguredEventAutomation(
         stripeAccountId: "acct_mock_stripe_invoice_paid",
         mode: "live",
       },
+      health: {
+        lastMatchingEventReceivedAt: null,
+        lastDeliveryStatus: null,
+        lastDeliveryStatusAt: null,
+        warning: null,
+      },
     };
   }
   return {

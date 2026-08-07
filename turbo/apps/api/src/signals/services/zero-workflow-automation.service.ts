@@ -37,6 +37,7 @@ import {
   type NotionWorkflowEventConfig,
   type StripeInvoicePaidEventConfig,
   type StripeInvoicePaidEventCreateConfig,
+  type StripeWorkflowAutomationHealth,
   type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
@@ -50,6 +51,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { stripeWorkflowAutomationHealth } from "@vm0/db/schema/stripe-workflow-event";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   strapiIntegrations,
@@ -109,6 +111,7 @@ import {
   validateStripeInvoicePaidAutomationBinding,
 } from "./stripe-invoice-paid-workflow-automation.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwner } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
+import { stripeWorkflowEventSchemaAvailable } from "./stripe-workflow-event-schema.service";
 import { lockWorkflowWebhookAutomationTierEligibleForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -703,6 +706,7 @@ function githubEventRowToSummary(
 function stripeInvoicePaidRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
+  health: StripeWorkflowAutomationHealth,
 ): ZeroWorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
@@ -711,6 +715,39 @@ function stripeInvoicePaidRowToSummary(
     eventConfig: stripeInvoicePaidEventConfigSchema.parse(row.eventConfig),
     schedule: null,
     scheduleSummary: null,
+    health,
+  };
+}
+
+async function loadStripeWorkflowAutomationHealth(
+  db: ReadonlyDb,
+  automationId: string,
+): Promise<StripeWorkflowAutomationHealth> {
+  if (!(await stripeWorkflowEventSchemaAvailable(db))) {
+    return {
+      lastMatchingEventReceivedAt: null,
+      lastDeliveryStatus: null,
+      lastDeliveryStatusAt: null,
+      warning: null,
+    };
+  }
+  const [health] = await db
+    .select({
+      lastMatchingEventReceivedAt:
+        stripeWorkflowAutomationHealth.lastMatchingEventReceivedAt,
+      lastDeliveryStatus: stripeWorkflowAutomationHealth.latestDeliveryStatus,
+      lastDeliveryStatusAt:
+        stripeWorkflowAutomationHealth.latestDeliveryStatusAt,
+    })
+    .from(stripeWorkflowAutomationHealth)
+    .where(eq(stripeWorkflowAutomationHealth.automationId, automationId))
+    .limit(1);
+  return {
+    lastMatchingEventReceivedAt:
+      health?.lastMatchingEventReceivedAt?.toISOString() ?? null,
+    lastDeliveryStatus: health?.lastDeliveryStatus ?? null,
+    lastDeliveryStatusAt: health?.lastDeliveryStatusAt?.toISOString() ?? null,
+    warning: health?.lastDeliveryStatus === "failed" ? "delivery_failed" : null,
   };
 }
 
@@ -833,9 +870,6 @@ function eventRowToSummary(
       scheduleSummary: null,
     };
   }
-  if (row.eventType === "stripe-invoice-paid") {
-    return stripeInvoicePaidRowToSummary(row, chatThreadId);
-  }
   return null;
 }
 
@@ -846,6 +880,13 @@ async function rowToSummary(
 ): Promise<ZeroWorkflowAutomationSummary> {
   const chatThreadId = await resolveAutomationChatThreadId(db, row, options);
   if (row.kind === "event") {
+    if (row.eventType === "stripe-invoice-paid") {
+      return stripeInvoicePaidRowToSummary(
+        row,
+        chatThreadId,
+        await loadStripeWorkflowAutomationHealth(db, row.id),
+      );
+    }
     if (row.eventType === "webhook-received") {
       return {
         ...rowSummaryBase(row, chatThreadId),
