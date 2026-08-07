@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.392.0](https://github.com/vm0-ai/vm0/compare/api-v1.391.0...api-v1.392.0) (2026-08-07)
+
+
+### Features
+
+* **connectors:** sync active run connector state ([#25420](https://github.com/vm0-ai/vm0/issues/25420)) ([87e716c](https://github.com/vm0-ai/vm0/commit/87e716cdf766fb3a1af51cdd20b7833717fe1133))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.285.0
+    * @vm0/connectors bumped to 1.204.0
+    * @vm0/core bumped to 8.524.5
+    * @vm0/db bumped to 1.174.1
+
 ## [1.391.0](https://github.com/vm0-ai/vm0/compare/api-v1.390.0...api-v1.391.0) (2026-08-06)
 
 
