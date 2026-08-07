@@ -24,7 +24,6 @@ type Transaction = Tx;
 
 interface EmailOutboxDrainContext {
   readonly currentTimeMs: number;
-  readonly signal: AbortSignal;
 }
 
 const log = logger("zero:email");
@@ -495,7 +494,7 @@ async function drainNextOutboxItem(
 export const drainEmailOutboxBatch$ = command(
   async (
     { set },
-    context: Omit<EmailOutboxDrainContext, "signal">,
+    context: EmailOutboxDrainContext,
     signal: AbortSignal,
   ): Promise<number> => {
     const db = set(writeDb$);
@@ -528,7 +527,7 @@ export const drainEmailOutboxBatch$ = command(
 export const cleanupExpiredEmailOutbox$ = command(
   async (
     { set },
-    context: Omit<EmailOutboxDrainContext, "signal">,
+    context: EmailOutboxDrainContext,
     signal: AbortSignal,
   ): Promise<number> => {
     const db = set(writeDb$);

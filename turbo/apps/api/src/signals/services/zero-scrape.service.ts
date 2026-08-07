@@ -147,7 +147,6 @@ interface CompleteScrapeAfterProviderArgs {
   readonly request: ZeroScrapeRequest;
   readonly requestedUrl: URL;
   readonly recordUsage: () => Promise<number>;
-  readonly providerSignal: AbortSignal;
 }
 
 function errorBody(message: string, code: string) {
@@ -586,7 +585,7 @@ async function completeScrapeSuccess(
 }
 
 async function completeScrapeAfterProvider(
-  args: Omit<CompleteScrapeAfterProviderArgs, "providerSignal">,
+  args: CompleteScrapeAfterProviderArgs,
   providerSignal: AbortSignal,
 ): Promise<ZeroScrapeCommandResponse> {
   const firecrawlResult = await fetchFirecrawlScrape(

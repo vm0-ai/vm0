@@ -403,7 +403,6 @@ interface TeamsChatAdmissionFailureArgs {
   readonly agentId: string;
   readonly target: TeamsDeliveryTarget;
   readonly chatEventId: string;
-  readonly signal: AbortSignal;
 }
 
 interface TeamsAdmissionFailureContext {
@@ -412,7 +411,7 @@ interface TeamsAdmissionFailureContext {
 }
 
 async function loadTeamsAdmissionFailureContext(
-  args: Omit<TeamsChatAdmissionFailureArgs, "signal">,
+  args: TeamsChatAdmissionFailureArgs,
   signal: AbortSignal,
 ): Promise<TeamsAdmissionFailureContext | undefined> {
   const [eventRows, bindingRows] = await Promise.all([
@@ -473,7 +472,7 @@ interface TeamsAdmissionFailurePresentation {
 }
 
 async function resolveTeamsAdmissionFailurePresentation(
-  args: Omit<TeamsChatAdmissionFailureArgs, "signal">,
+  args: TeamsChatAdmissionFailureArgs,
   signal: AbortSignal,
 ): Promise<TeamsAdmissionFailurePresentation> {
   const [mentionerCount, featureContext, orgRows, agentRows] =
@@ -552,7 +551,7 @@ async function clearTeamsAdmissionThinkingReaction(
 }
 
 export async function deliverTeamsChatAdmissionFailure(
-  args: Omit<TeamsChatAdmissionFailureArgs, "signal">,
+  args: TeamsChatAdmissionFailureArgs,
   signal: AbortSignal,
 ): Promise<void> {
   const context = await loadTeamsAdmissionFailureContext(args, signal);

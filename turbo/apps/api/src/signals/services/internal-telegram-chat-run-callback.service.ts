@@ -625,11 +625,10 @@ interface TelegramChatAdmissionFailureArgs {
   readonly orgId: string;
   readonly target: TelegramDeliveryTarget;
   readonly chatEventId: string;
-  readonly signal: AbortSignal;
 }
 
 export async function deliverTelegramChatAdmissionFailure(
-  args: Omit<TelegramChatAdmissionFailureArgs, "signal">,
+  args: TelegramChatAdmissionFailureArgs,
   signal: AbortSignal,
 ): Promise<void> {
   const [event] = await args.db

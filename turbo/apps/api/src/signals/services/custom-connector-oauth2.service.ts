@@ -987,12 +987,11 @@ interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly userId: string;
   readonly connector: CustomConnectorRow;
   readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
   readonly forceRefresh?: boolean;
 }
 
 async function resolveCustomConnectorOAuth2AccessToken(
-  args: Omit<ResolveCustomConnectorOAuth2AccessTokenArgs, "signal">,
+  args: ResolveCustomConnectorOAuth2AccessTokenArgs,
   signal: AbortSignal,
 ): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {

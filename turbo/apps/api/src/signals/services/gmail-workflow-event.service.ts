@@ -901,14 +901,16 @@ export async function ensureGmailWatchForUser(
   );
 }
 
-interface ReconcileGmailPhysicalScopeArgs {
-  readonly db: Db;
+interface GmailPhysicalScopeInput {
   readonly emailAddress: string;
   readonly topicName: string;
   readonly excludedConnectorId?: string;
   readonly preferredConnectorId?: string;
   readonly renewBefore?: Date;
-  readonly signal: AbortSignal;
+}
+
+interface ReconcileGmailPhysicalScopeArgs extends GmailPhysicalScopeInput {
+  readonly db: Db;
 }
 
 async function resolveGmailAccessFromStates(
@@ -1111,7 +1113,7 @@ async function stopInactiveGmailStates(
 
 async function reconcileGmailPhysicalScopeLocked(
   db: Db,
-  args: Omit<Omit<ReconcileGmailPhysicalScopeArgs, "db">, "signal">,
+  args: GmailPhysicalScopeInput,
   signal: AbortSignal,
 ): Promise<GmailWatchReconcileResult> {
   const states = await loadGmailPhysicalWatchStates(
@@ -1162,7 +1164,7 @@ async function reconcileGmailPhysicalScopeLocked(
 }
 
 async function reconcileGmailPhysicalScope(
-  args: Omit<ReconcileGmailPhysicalScopeArgs, "signal">,
+  args: ReconcileGmailPhysicalScopeArgs,
   signal: AbortSignal,
 ): Promise<GmailWatchReconcileResult> {
   return await args.db.transaction(async (tx) => {

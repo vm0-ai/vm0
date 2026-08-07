@@ -60,7 +60,6 @@ interface HandleFeishuCallbackInput {
     prompt: string,
     resultText: string,
   ) => Promise<void>;
-  readonly signal: AbortSignal;
 }
 
 async function loadRun(db: Db, runId: string): Promise<RunContext | undefined> {
@@ -163,7 +162,7 @@ async function loadFeishuCallbackConnection(
 }
 
 async function handleFeishuCallback(
-  args: Omit<HandleFeishuCallbackInput, "signal">,
+  args: HandleFeishuCallbackInput,
   signal: AbortSignal,
 ): Promise<InternalRunCallbackDispatchResult> {
   if (args.callback.status === "progress") {

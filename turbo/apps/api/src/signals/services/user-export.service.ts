@@ -641,7 +641,6 @@ interface ResolveSessionHistoryArgs {
   readonly encoding: string | null;
   readonly rawSize: number | null;
   readonly encodedSize: number | null;
-  readonly legacyText: string | null;
 }
 
 async function resolveSessionHistory(
@@ -669,7 +668,7 @@ async function resolveSessionHistory(
     return result;
   }
 
-  return args.legacyText;
+  return null;
 }
 
 async function loadSessionHistoryBlob(
@@ -814,7 +813,6 @@ async function collectConversationMessages(
     .select({
       id: agentSessions.id,
       cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
       sessionHistoryBlobEncoding: blobs.encoding,
       sessionHistoryBlobEncodedSize: blobs.encodedSize,
       sessionHistoryBlobRawSize: blobs.rawSize,
@@ -837,7 +835,6 @@ async function collectConversationMessages(
         encoding: session.sessionHistoryBlobEncoding,
         rawSize: session.sessionHistoryBlobRawSize,
         encodedSize: session.sessionHistoryBlobEncodedSize,
-        legacyText: session.cliAgentSessionHistory,
       },
       signal,
     );

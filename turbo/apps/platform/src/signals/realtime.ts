@@ -136,7 +136,6 @@ interface SubscribeChannelArgs {
   readonly callback: ChannelCallback;
   readonly poke: () => void;
   readonly subscriberPokeTarget: EventTarget;
-  readonly signal: AbortSignal;
   readonly run: () => Promise<void>;
 }
 
@@ -148,7 +147,7 @@ async function subscribeChannel(
     poke,
     subscriberPokeTarget,
     run,
-  }: Omit<SubscribeChannelArgs, "signal">,
+  }: SubscribeChannelArgs,
   signal: AbortSignal,
 ): Promise<void> {
   signal.throwIfAborted();

@@ -222,7 +222,6 @@ interface AuthedPeopleSearchArgs {
 interface CompletePeopleSearchArgs {
   readonly apiKey: string;
   readonly request: ZeroPeopleSearchRequest;
-  readonly providerSignal: AbortSignal;
   readonly recordUsage: () => Promise<number>;
 }
 
@@ -674,7 +673,7 @@ function successBody(
 }
 
 async function completePeopleSearch(
-  args: Omit<CompletePeopleSearchArgs, "providerSignal">,
+  args: CompletePeopleSearchArgs,
   providerSignal: AbortSignal,
 ): Promise<ZeroPeopleSearchCommandResponse> {
   const providerResult = await fetchPerplexityPeopleSearch(

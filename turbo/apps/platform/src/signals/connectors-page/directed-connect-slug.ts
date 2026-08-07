@@ -66,7 +66,7 @@ type DirectedConnectModalKey = {
   readonly signal: AbortSignal;
 };
 
-export type DirectedConnectCustomDialogKey = {
+type DirectedConnectCustomDialogKey = {
   readonly connectorSlug: CustomConnectorSlug;
   readonly agentId: string | null;
   readonly signal: AbortSignal;

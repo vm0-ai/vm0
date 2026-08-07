@@ -88,7 +88,6 @@ interface DowngradeContext {
   readonly stripe: ReturnType<typeof getStripeClient>;
   readonly orgId: string;
   readonly org: DowngradeOrg;
-  readonly signal?: AbortSignal;
 }
 
 function subscriptionPhaseRange(
@@ -222,7 +221,7 @@ function shouldReplacePendingDowngradeSchedule(
 }
 
 async function scheduleCancellationAtPeriodEnd(
-  context: Omit<DowngradeContext, "signal">,
+  context: DowngradeContext,
   signal?: AbortSignal,
 ): Promise<string> {
   const subscription = await context.stripe.subscriptions.retrieve(
@@ -317,7 +316,7 @@ async function scheduleCancellationAtPeriodEnd(
 }
 
 async function scheduleDowngradeToPro(
-  context: Omit<DowngradeContext, "signal">,
+  context: DowngradeContext,
   currentTier: OrgTier,
   subscription: Stripe.Subscription,
   signal?: AbortSignal,
@@ -462,7 +461,6 @@ export async function downgradeSubscriptionForOrg(
     stripe,
     orgId: args.orgId,
     org: downgradeOrg,
-    signal,
   };
 
   if (
@@ -471,7 +469,7 @@ export async function downgradeSubscriptionForOrg(
   ) {
     const effectiveDate = await scheduleCancellationAtPeriodEnd(
       context,
-      context?.signal,
+      signal,
     );
     return { ok: true, status: "scheduled", effectiveDate };
   }
@@ -512,7 +510,7 @@ export async function downgradeSubscriptionForOrg(
     context,
     currentTier,
     subscription,
-    context?.signal,
+    signal,
   );
   return { ok: true, status: "scheduled", effectiveDate };
 }

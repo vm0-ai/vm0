@@ -6,6 +6,20 @@ function isFunction(node) {
   );
 }
 
+function unwrapExpression(node) {
+  let current = node;
+  while (
+    current?.type === "ChainExpression" ||
+    current?.type === "TSAsExpression" ||
+    current?.type === "TSNonNullExpression" ||
+    current?.type === "TSSatisfiesExpression" ||
+    current?.type === "TSTypeAssertion"
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 function functionName(node) {
   if (!node) {
     return undefined;
@@ -76,6 +90,33 @@ function isAbortSignalProperty(name) {
   );
 }
 
+function signalMemberArgument(node) {
+  const expression = unwrapExpression(node);
+  if (expression?.type !== "MemberExpression") {
+    return undefined;
+  }
+  const object = unwrapExpression(expression.object);
+  const property = memberPropertyName(expression);
+  if (object?.type !== "Identifier" || !isAbortSignalProperty(property)) {
+    return undefined;
+  }
+  return { node: expression, object: object.name, property };
+}
+
+function omittedAbortSignalProperty(node) {
+  if (node.typeName.type !== "Identifier" || node.typeName.name !== "Omit") {
+    return undefined;
+  }
+  const propertyType = node.typeArguments?.params[1];
+  if (propertyType?.type !== "TSLiteralType") {
+    return undefined;
+  }
+  const property = propertyType.literal.value;
+  return typeof property === "string" && isAbortSignalProperty(property)
+    ? property
+    : undefined;
+}
+
 function findVariable(scope, name) {
   let current = scope;
   while (current) {
@@ -122,6 +163,10 @@ export const noAbortSignalInObjectParams = {
     messages: {
       objectMember:
         "Pass AbortSignal as a separate final parameter instead of the '{{property}}' member of '{{parameter}}'. React components should read their lifecycle signal directly.",
+      objectAndSignalArgument:
+        "Do not pass '{{object}}' together with its '{{property}}' member. Construct a signal-free value and pass AbortSignal separately as the final parameter.",
+      signalOmit:
+        "Do not use Omit<T, '{{property}}'> to model an explicit AbortSignal parameter. Define a genuinely signal-free input type instead.",
     },
   },
   create(context) {
@@ -175,6 +220,28 @@ export const noAbortSignalInObjectParams = {
       FunctionDeclaration: checkFunction,
       FunctionExpression: checkFunction,
       ArrowFunctionExpression: checkFunction,
+      CallExpression(node) {
+        if (isAllowed(enclosingFunction(node))) {
+          return;
+        }
+        const objectArguments = new Set(
+          node.arguments.flatMap((argument) => {
+            const expression = unwrapExpression(argument);
+            return expression?.type === "Identifier" ? [expression.name] : [];
+          }),
+        );
+        for (const argument of node.arguments) {
+          const member = signalMemberArgument(argument);
+          if (member && objectArguments.has(member.object)) {
+            context.report({
+              node: member.node,
+              messageId: "objectAndSignalArgument",
+              data: { object: member.object, property: member.property },
+            });
+            return;
+          }
+        }
+      },
       MemberExpression(node) {
         const property = memberPropertyName(node);
         if (
@@ -222,6 +289,16 @@ export const noAbortSignalInObjectParams = {
             report(property, definition.name, node.init.name, propertyName);
             return;
           }
+        }
+      },
+      TSTypeReference(node) {
+        const property = omittedAbortSignalProperty(node);
+        if (property !== undefined) {
+          context.report({
+            node,
+            messageId: "signalOmit",
+            data: { property },
+          });
         }
       },
     };

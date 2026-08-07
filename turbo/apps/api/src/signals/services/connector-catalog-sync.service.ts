@@ -738,7 +738,6 @@ interface ConnectorCatalogSyncRuntime {
     ifNoneMatch: string | null,
   ) => Promise<ConditionalS3BufferDownload>;
   readonly source: ConnectorCatalogSource;
-  readonly signal: AbortSignal;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }
 
@@ -772,7 +771,7 @@ interface RejectSyncAttemptOptions {
 }
 
 async function rejectSyncAttempt(
-  runtime: Omit<ConnectorCatalogSyncRuntime, "signal">,
+  runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
   failureCode: ConnectorCatalogSyncFailureCode,
   options: RejectSyncAttemptOptions | undefined,
@@ -801,7 +800,7 @@ async function rejectSyncAttempt(
 }
 
 async function loadPointerForSync(
-  runtime: Omit<ConnectorCatalogSyncRuntime, "signal">,
+  runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
   signal: AbortSignal,
 ): Promise<PointerLoadResult> {
@@ -855,7 +854,7 @@ async function loadPointerForSync(
 }
 
 async function loadCandidateForSync(
-  runtime: Omit<ConnectorCatalogSyncRuntime, "signal">,
+  runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
   pointerObservation: PointerObservation & {
     readonly pointer: ConnectorCatalogActivePointer;
@@ -883,7 +882,7 @@ async function loadCandidateForSync(
 }
 
 async function completeUnchangedSync(
-  runtime: Omit<ConnectorCatalogSyncRuntime, "signal">,
+  runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot,
   pointerObservation: PointerObservation | undefined,
   signal: AbortSignal,
@@ -909,7 +908,7 @@ async function completeUnchangedSync(
 }
 
 async function commitValidatedCandidate(
-  runtime: Omit<ConnectorCatalogSyncRuntime, "signal">,
+  runtime: ConnectorCatalogSyncRuntime,
   args: {
     readonly baseline: SyncStateSnapshot | undefined;
     readonly candidate: ValidatedConnectorCatalogCandidate;
@@ -976,7 +975,7 @@ type CandidateSkillPreparationResult =
     };
 
 async function prepareCandidateSkillsForSync(
-  runtime: Omit<ConnectorCatalogSyncRuntime, "signal">,
+  runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
   candidate: ValidatedConnectorCatalogCandidate,
   pointerObservation: PointerObservation,
@@ -1012,7 +1011,7 @@ async function prepareCandidateSkillsForSync(
 }
 
 async function syncConnectorCatalogAttempt(
-  runtime: Omit<ConnectorCatalogSyncRuntime, "signal">,
+  runtime: ConnectorCatalogSyncRuntime,
   signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
   const baseline = await readSyncState(runtime.db, runtime.source.sourceId);
@@ -1155,7 +1154,6 @@ export const syncConnectorCatalog$ = command(
       capability: connectorCatalogExecutableCapabilityState(),
       db: set(writeDb$),
       source,
-      signal,
       validator: currentConnectorCatalogValidatorIdentity(),
       readActivePointer: async (ifNoneMatch) => {
         const result = await get(
@@ -1183,7 +1181,7 @@ export const syncConnectorCatalog$ = command(
 
     while (true) {
       signal.throwIfAborted();
-      const result = await syncConnectorCatalogAttempt(runtime, runtime.signal);
+      const result = await syncConnectorCatalogAttempt(runtime, signal);
       signal.throwIfAborted();
       if (result.kind === "retry") {
         continue;

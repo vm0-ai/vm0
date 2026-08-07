@@ -725,11 +725,10 @@ interface CollectMorningBriefInputArgs {
   readonly dayEnd: Date;
   /** The member's Morning Brief thread; never reported as unread. */
   readonly excludeChatThreadId: string | null;
-  readonly signal: AbortSignal;
 }
 
 export async function collectMorningBriefInput(
-  args: Omit<CollectMorningBriefInputArgs, "signal">,
+  args: CollectMorningBriefInputArgs,
   signal: AbortSignal,
 ): Promise<MorningBriefInput> {
   const accessFor = (connectorSlug: MorningBriefConnectorSlug) => {

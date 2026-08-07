@@ -264,7 +264,6 @@ interface CommandModelResponseArgs {
   readonly payload: SlackCommandPayload;
   readonly installation: SlackInstallation;
   readonly connection: SlackConnection;
-  readonly signal: AbortSignal;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -1190,7 +1189,7 @@ const commandSwitchResponse$ = command(
 const commandModelResponse$ = command(
   async (
     { get, set },
-    args: Omit<CommandModelResponseArgs, "signal">,
+    args: CommandModelResponseArgs,
     signal: AbortSignal,
   ): Promise<Response> => {
     if (!args.installation.orgId) {

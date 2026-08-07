@@ -160,7 +160,6 @@ type PollClaimedSessionArgs = ResolvedDeviceAuthClient & {
   readonly userId: string;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
-  readonly signal: AbortSignal;
   readonly persistConnector: (args: {
     readonly result: OAuthDeviceAuthCompleteResultBase;
   }) => Promise<ConnectorResponse>;
@@ -841,7 +840,7 @@ const completedDeviceSessionResponse$ = command(
 );
 
 async function runClaimedSession(
-  args: Omit<PollClaimedSessionArgs, "signal">,
+  args: PollClaimedSessionArgs,
   signal: AbortSignal,
 ): Promise<PollSuccess> {
   const providerState = await parseEncryptedProviderState({
@@ -918,7 +917,7 @@ async function runClaimedSession(
 }
 
 async function pollClaimedSession(
-  args: Omit<PollClaimedSessionArgs, "signal">,
+  args: PollClaimedSessionArgs,
   signal: AbortSignal,
 ): Promise<PollSuccess> {
   const result = await settle(runClaimedSession(args, signal), signal);

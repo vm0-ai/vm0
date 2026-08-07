@@ -91,7 +91,6 @@ interface ConnectorCredentialRefreshArgs {
     readonly markNeedsReconnectOnFailure?: boolean;
   };
   readonly runtimeEnvironmentName: string;
-  readonly signal: AbortSignal;
   readonly userId: string;
 }
 
@@ -484,7 +483,7 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(
 }
 
 async function connectorCredentialRefreshFailure(
-  args: Omit<ConnectorCredentialRefreshArgs, "signal">,
+  args: ConnectorCredentialRefreshArgs,
   kind: "invalid-output" | "missing-input" | "provider-failed",
   signal: AbortSignal,
 ): Promise<ConnectorCredentialRefreshResult> {
@@ -503,7 +502,7 @@ async function connectorCredentialRefreshFailure(
 }
 
 async function loadConnectorRefreshInputs(
-  args: Omit<ConnectorCredentialRefreshArgs, "signal">,
+  args: ConnectorCredentialRefreshArgs,
   access: ConnectorRefreshTokenAccess,
 ): Promise<
   | { readonly kind: "ok"; readonly inputs: Readonly<Record<string, string>> }
@@ -552,7 +551,7 @@ function connectorRefreshAccessToken(args: {
 }
 
 export async function refreshConnectorCredentialAccess(
-  args: Omit<ConnectorCredentialRefreshArgs, "signal">,
+  args: ConnectorCredentialRefreshArgs,
   signal: AbortSignal,
 ): Promise<ConnectorCredentialRefreshResult> {
   if (

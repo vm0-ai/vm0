@@ -411,11 +411,10 @@ interface AgentPhoneChatAdmissionFailureArgs {
   readonly agentId: string;
   readonly target: AgentPhoneDeliveryTarget;
   readonly chatEventId: string;
-  readonly signal: AbortSignal;
 }
 
 export async function deliverAgentPhoneChatAdmissionFailure(
-  args: Omit<AgentPhoneChatAdmissionFailureArgs, "signal">,
+  args: AgentPhoneChatAdmissionFailureArgs,
   signal: AbortSignal,
 ): Promise<void> {
   const [event] = await args.db

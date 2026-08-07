@@ -29,7 +29,6 @@ interface AppendAgentRunsDailyArgs {
   readonly summary: UsageSummaryArgs;
   readonly from: Date;
   readonly to: Date;
-  readonly signal: AbortSignal;
 }
 
 interface AppendHistoricalUsageArgs {
@@ -38,7 +37,6 @@ interface AppendHistoricalUsageArgs {
   readonly summary: UsageSummaryArgs;
   readonly historicalFrom: Date;
   readonly historicalTo: Date;
-  readonly signal: AbortSignal;
 }
 
 function utcMidnight(date: Date): Date {
@@ -85,7 +83,7 @@ async function queryAgentRunsDaily(
 }
 
 async function appendAgentRunsDaily(
-  args: Omit<AppendAgentRunsDailyArgs, "signal">,
+  args: AppendAgentRunsDailyArgs,
   signal: AbortSignal,
 ): Promise<void> {
   args.daily.push(
@@ -129,7 +127,7 @@ async function cacheUsageRows(
 }
 
 async function appendHistoricalUsage(
-  args: Omit<AppendHistoricalUsageArgs, "signal">,
+  args: AppendHistoricalUsageArgs,
   signal: AbortSignal,
 ): Promise<void> {
   const fromStr = args.historicalFrom.toISOString().split("T")[0]!;

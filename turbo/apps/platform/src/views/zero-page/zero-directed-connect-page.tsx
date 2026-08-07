@@ -58,7 +58,6 @@ import {
   setDirectedConnectModalKey$,
   directedConnectCustomDialogKey$,
   setDirectedConnectCustomDialogKey$,
-  type DirectedConnectCustomDialogKey,
 } from "../../signals/connectors-page/directed-connect-slug.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
@@ -738,22 +737,6 @@ function DirectedConnectCard() {
   );
 }
 
-function directedConnectCustomDialogOpen(
-  key: Omit<DirectedConnectCustomDialogKey, "signal"> | null,
-  args: {
-    readonly connectorSlug: CustomConnectorSlug;
-    readonly agentId: string | null;
-  },
-  keySignal: AbortSignal | undefined,
-  signal: AbortSignal,
-): boolean {
-  return (
-    key?.connectorSlug === args.connectorSlug &&
-    key.agentId === args.agentId &&
-    keySignal === signal
-  );
-}
-
 function customConnectorForSlug(
   connectors: readonly CustomConnectorResponse[],
   connectorSlug: CustomConnectorSlug,
@@ -780,15 +763,10 @@ function CustomDirectedConnectCard({
   const connectors =
     connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
   const connector = customConnectorForSlug(connectors, connectorSlug);
-  const dialogOpen = directedConnectCustomDialogOpen(
-    dialogKey,
-    {
-      connectorSlug,
-      agentId,
-    },
-    dialogKey?.signal,
-    signal,
-  );
+  const dialogOpen =
+    dialogKey?.connectorSlug === connectorSlug &&
+    dialogKey.agentId === agentId &&
+    dialogKey.signal === signal;
 
   if (connectorsLoadable.state === "hasData" && !connector) {
     return null;

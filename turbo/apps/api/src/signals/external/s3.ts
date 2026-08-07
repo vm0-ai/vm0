@@ -55,7 +55,6 @@ interface S3Credentials {
 
 interface DownloadS3BufferOptions {
   readonly maxBytes?: number;
-  readonly signal?: AbortSignal;
 }
 
 export type ConditionalS3BufferDownload =
@@ -368,7 +367,7 @@ function downloadS3BufferWithClient(
   client$: Computed<S3Client>,
   bucket: string,
   key: string,
-  options: Omit<DownloadS3BufferOptions, "signal"> = {},
+  options: DownloadS3BufferOptions = {},
   signal?: AbortSignal,
 ): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
@@ -388,7 +387,7 @@ async function readS3ObjectBody(
     readonly ETag?: string;
   },
   key: string,
-  options: Omit<DownloadS3BufferOptions, "signal">,
+  options: DownloadS3BufferOptions,
   signal?: AbortSignal,
 ): Promise<Buffer> {
   if (!response.Body) {
@@ -741,7 +740,6 @@ interface PutS3ObjectArgs {
   readonly key: string;
   readonly body: string | Buffer;
   readonly contentType: string;
-  readonly signal?: AbortSignal;
   readonly metadata?: Readonly<Record<string, string>>;
 }
 
@@ -756,7 +754,7 @@ function isAbortSignal(value: unknown): value is AbortSignal {
 
 function putS3ObjectWithClient(
   client$: Computed<S3Client>,
-  args: Omit<PutS3ObjectArgs, "signal">,
+  args: PutS3ObjectArgs,
   signal?: AbortSignal,
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {

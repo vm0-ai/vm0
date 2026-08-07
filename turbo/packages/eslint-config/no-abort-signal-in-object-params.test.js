@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { Linter } from "eslint";
+import tseslint from "typescript-eslint";
 
 import { noAbortSignalInObjectParams } from "./no-abort-signal-in-object-params.js";
 
@@ -15,7 +16,11 @@ function lint(code, options) {
   const linter = new Linter();
   return linter.verify(code, [
     {
-      languageOptions: { ecmaVersion: "latest", sourceType: "module" },
+      languageOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        parser: tseslint.parser,
+      },
       plugins: { vm0: plugin },
       rules: {
         "vm0/no-abort-signal-in-object-params": ["error", options ?? {}],
@@ -62,4 +67,30 @@ test("allows reviewed boundary functions", () => {
     }),
     [],
   );
+});
+
+test("reports passing a typed signal-bearing object with its signal member", () => {
+  const messages = lint(`
+    type Runtime = { signal: AbortSignal; value: string };
+    declare function runtime(): Runtime;
+    declare function consume(input: { value: string }, signal: AbortSignal): void;
+    function load(signal: AbortSignal) {
+      const input: Runtime = runtime();
+      consume(input, input.signal);
+      return signal;
+    }
+  `);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].messageId, "objectAndSignalArgument");
+});
+
+test("reports Omit used to hide a signal member", () => {
+  const messages = lint(`
+    type Runtime = { signal: AbortSignal; value: string };
+    function consume(input: Omit<Runtime, "signal">, signal: AbortSignal) {
+      return [input, signal];
+    }
+  `);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].messageId, "signalOmit");
 });

@@ -126,7 +126,6 @@ interface ReconcileBillingContext {
   readonly stripe: ReturnType<typeof getStripeClient>;
   readonly now: Date;
   readonly staleBefore: Date;
-  readonly signal: AbortSignal;
 }
 
 type ReconcileTx = Tx;
@@ -281,7 +280,7 @@ function currentUsageAllowanceCandidateWhere(
 }
 
 async function updateUsageAllowanceCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: UsageAllowanceCandidate,
   values: {
     readonly status: string;
@@ -330,7 +329,7 @@ function currentBillingCandidateWhere(candidate: StripeBillingCandidate) {
 }
 
 async function reconcileCanceledBillingCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
   signal: AbortSignal,
@@ -373,7 +372,7 @@ async function reconcileCanceledBillingCandidate(
 }
 
 async function refreshRecoveredBillingCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
   syncedFields: SyncedBillingFields,
@@ -418,7 +417,7 @@ async function refreshRecoveredBillingCandidate(
 }
 
 async function refreshPaymentFailedPaidThroughCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
   syncedFields: SyncedBillingFields,
@@ -456,7 +455,7 @@ async function refreshPaymentFailedPaidThroughCandidate(
 }
 
 async function downgradePaymentFailedBillingCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
   syncedFields: SyncedBillingFields,
@@ -498,7 +497,7 @@ async function downgradePaymentFailedBillingCandidate(
 }
 
 async function reconcileBillingCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: BillingCandidate,
   signal: AbortSignal,
 ): Promise<DowngradedSubscription[]> {
@@ -634,7 +633,7 @@ async function expireOrgCredits(
 }
 
 async function reconcileAtomGrantCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: AtomGrantCandidate,
   signal: AbortSignal,
 ): Promise<DowngradedSubscription[]> {
@@ -690,7 +689,7 @@ async function reconcileAtomGrantCandidate(
 }
 
 async function reconcileConcurrencyCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: ConcurrencyCandidate,
   signal: AbortSignal,
 ): Promise<ExpiredConcurrencySubscription[]> {
@@ -797,7 +796,7 @@ async function reconcileConcurrencyCandidate(
 }
 
 async function reconcileUsageAllowanceCandidate(
-  context: Omit<ReconcileBillingContext, "signal">,
+  context: ReconcileBillingContext,
   candidate: UsageAllowanceCandidate,
   signal: AbortSignal,
 ): Promise<ReconciledUsageAllowance[]> {

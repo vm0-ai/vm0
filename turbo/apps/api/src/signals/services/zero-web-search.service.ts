@@ -85,7 +85,6 @@ interface AuthedWebSearchArgs {
 interface CompleteWebSearchArgs {
   readonly apiKey: string;
   readonly request: ZeroWebSearchRequest;
-  readonly providerSignal: AbortSignal;
   readonly recordUsage: () => Promise<number>;
 }
 
@@ -378,7 +377,7 @@ function successBody(
 }
 
 async function completeWebSearch(
-  args: Omit<CompleteWebSearchArgs, "providerSignal">,
+  args: CompleteWebSearchArgs,
   providerSignal: AbortSignal,
 ): Promise<ZeroWebSearchCommandResponse> {
   const providerResult = await fetchPerplexitySearch(
