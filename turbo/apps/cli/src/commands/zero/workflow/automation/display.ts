@@ -19,6 +19,10 @@ interface WorkflowAutomationDetailsOptions {
   readonly threadModel?: WorkflowAutomationThreadModel;
 }
 
+interface WorkflowAutomationsTableOptions {
+  readonly showStripeDetails?: boolean;
+}
+
 const GMAIL_TEXT_FIELDS: readonly GmailTextField[] = [
   "from",
   "subject",
@@ -339,6 +343,7 @@ function formatGoogleAutomationEntry(
 
 function formatWorkflowAutomationEntry(
   automation: ZeroWorkflowAutomationSummary,
+  options: WorkflowAutomationsTableOptions = {},
 ): string {
   if (
     automation.kind === "event" &&
@@ -367,7 +372,7 @@ function formatWorkflowAutomationEntry(
   if (isWebhookAutomation(automation)) {
     return formatWebhookAutomationEntry(automation);
   }
-  if (isStripeInvoicePaidAutomation(automation)) {
+  if (options.showStripeDetails && isStripeInvoicePaidAutomation(automation)) {
     return formatStripeInvoicePaidAutomationEntry(automation);
   }
 
@@ -473,6 +478,7 @@ function signedCurlExample(
 
 export function printWorkflowAutomationsTable(
   automations: readonly ZeroWorkflowAutomationSummary[],
+  options: WorkflowAutomationsTableOptions = {},
 ): void {
   const idWidth = Math.max(
     2,
@@ -483,7 +489,7 @@ export function printWorkflowAutomationsTable(
   const scheduleWidth = Math.max(
     7,
     ...automations.map((automation) => {
-      return formatWorkflowAutomationEntry(automation).length;
+      return formatWorkflowAutomationEntry(automation, options).length;
     }),
   );
 
@@ -506,10 +512,15 @@ export function printWorkflowAutomationsTable(
       [
         automation.id.padEnd(idWidth),
         status.padEnd(8 + (automation.enabled ? 0 : 2)),
-        formatWorkflowAutomationEntry(automation).padEnd(scheduleWidth),
+        formatWorkflowAutomationEntry(automation, options).padEnd(
+          scheduleWidth,
+        ),
         formatRunTime(automation.nextRunAt),
       ].join("  "),
     );
+  }
+  if (!options.showStripeDetails) {
+    return;
   }
   for (const automation of automations) {
     if (
@@ -605,6 +616,18 @@ function printCommand(lines: readonly string[]): void {
   }
 }
 
+function stripeRecreateCommand(
+  automation: WorkflowStripeInvoicePaidAutomationSummary,
+  workflowId: string,
+): string {
+  const billingReasons = automation.eventConfig.billingReasons;
+  const billingReasonOption =
+    billingReasons && billingReasons.length > 0
+      ? ` --billing-reason ${billingReasons.join(",")}`
+      : "";
+  return `zero workflow automation add ${workflowId} stripe-invoice-paid${billingReasonOption}`;
+}
+
 function automationUpdateGuidance(
   automation: ZeroWorkflowAutomationSummary,
   workflowId: string,
@@ -617,7 +640,7 @@ function automationUpdateGuidance(
       label: "Change billing reasons (delete and recreate)",
       command: [
         `zero workflow automation rm ${automation.id}`,
-        `zero workflow automation add ${workflowId} stripe-invoice-paid --billing-reason <billing-reasons>`,
+        stripeRecreateCommand(automation, workflowId),
       ],
     };
   }

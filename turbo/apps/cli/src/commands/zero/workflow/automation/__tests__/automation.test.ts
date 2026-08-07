@@ -16,30 +16,9 @@ import { join } from "node:path";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { zeroWorkflowCommand } from "../../index";
-import { automationCommand } from "../index";
+import { automationCommand, createAutomationAddCommand } from "../index";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import chalk from "chalk";
-
-const stripeFeatureSwitch = vi.hoisted(() => {
-  return { enabled: false };
-});
-
-// The production rollout intentionally has no enabled identity yet. Control
-// only that configuration boundary so both gated command paths can run here.
-vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@vm0/core/feature-switch")>();
-  return {
-    ...actual,
-    isFeatureEnabled: (
-      ...args: Parameters<typeof actual.isFeatureEnabled>
-    ): boolean => {
-      if (args[0] === "stripeInvoicePaidWorkflowAutomations") {
-        return stripeFeatureSwitch.enabled;
-      }
-      return actual.isFeatureEnabled(...args);
-    },
-  };
-});
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const WORKFLOW_ID = "22222222-2222-4222-8222-222222222222";
@@ -393,7 +372,6 @@ describe("zero workflow automation commands", () => {
   });
 
   afterEach(() => {
-    stripeFeatureSwitch.enabled = false;
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
@@ -426,6 +404,15 @@ describe("zero workflow automation commands", () => {
       ),
     );
     return captured;
+  }
+
+  async function runStripeEnabledAdd(...args: string[]): Promise<void> {
+    vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
+    await createAutomationAddCommand({
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+      },
+    }).parseAsync(["node", "cli", ...args]);
   }
 
   function mockWorkflowList() {
@@ -958,8 +945,6 @@ describe("zero workflow automation commands", () => {
     });
 
     it("should add a Stripe invoice-paid automation without a billing filter", async () => {
-      stripeFeatureSwitch.enabled = true;
-      vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
       const response = {
         ...stripeInvoicePaidAutomation,
         eventConfig: {
@@ -978,13 +963,7 @@ describe("zero workflow automation commands", () => {
       };
       const captured = captureCreateAutomation(response);
 
-      await automationCommand.parseAsync([
-        "node",
-        "cli",
-        "add",
-        WORKFLOW_ID,
-        "stripe-invoice-paid",
-      ]);
+      await runStripeEnabledAdd(WORKFLOW_ID, "stripe-invoice-paid");
 
       expect(captured.body).toEqual({
         kind: "event",
@@ -1006,6 +985,10 @@ describe("zero workflow automation commands", () => {
       expect(output).toContain("Delivery at:");
       expect(output).toContain("delete and recreate");
       expect(output).not.toContain("zero workflow automation update --help");
+      expect(output).toContain(
+        `zero workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
+      );
+      expect(output).not.toContain("--billing-reason");
       expect(mockConsoleWarn.mock.calls.flat().join("\n")).toContain(
         "The latest Stripe workflow delivery failed.",
       );
@@ -1019,19 +1002,14 @@ describe("zero workflow automation commands", () => {
     });
 
     it("should add a Stripe invoice-paid automation with one billing reason", async () => {
-      stripeFeatureSwitch.enabled = true;
-      vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
       const captured = captureCreateAutomation(stripeInvoicePaidAutomation);
 
-      await automationCommand.parseAsync([
-        "node",
-        "cli",
-        "add",
+      await runStripeEnabledAdd(
         WORKFLOW_ID,
         "stripe-invoice-paid",
         "--billing-reason",
         "subscription_cycle",
-      ]);
+      );
 
       expect(captured.body).toEqual({
         kind: "event",
@@ -1045,8 +1023,6 @@ describe("zero workflow automation commands", () => {
     });
 
     it("should trim and stably deduplicate Stripe billing reasons", async () => {
-      stripeFeatureSwitch.enabled = true;
-      vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
       const response = {
         ...stripeInvoicePaidAutomation,
         eventConfig: {
@@ -1056,15 +1032,12 @@ describe("zero workflow automation commands", () => {
       };
       const captured = captureCreateAutomation(response);
 
-      await automationCommand.parseAsync([
-        "node",
-        "cli",
-        "add",
+      await runStripeEnabledAdd(
         WORKFLOW_ID,
         "stripe-invoice-paid",
         "--billing-reason",
         " subscription_cycle, subscription_create,subscription_cycle ",
-      ]);
+      );
 
       expect(captured.body).toEqual({
         kind: "event",
@@ -1077,6 +1050,9 @@ describe("zero workflow automation commands", () => {
       });
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
         "subscription_cycle, subscription_create",
+      );
+      expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+        `zero workflow automation add ${WORKFLOW_ID} stripe-invoice-paid --billing-reason subscription_cycle,subscription_create`,
       );
     });
 
@@ -1092,19 +1068,13 @@ describe("zero workflow automation commands", () => {
     ])(
       "should reject invalid Stripe billing reasons in %j",
       async (billingReason, expectedMessage) => {
-        stripeFeatureSwitch.enabled = true;
-        vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
-
         await expect(async () => {
-          await automationCommand.parseAsync([
-            "node",
-            "cli",
-            "add",
+          await runStripeEnabledAdd(
             WORKFLOW_ID,
             "stripe-invoice-paid",
             "--billing-reason",
             billingReason,
-          ]);
+          );
         }).rejects.toThrow("process.exit called");
 
         expect(mockConsoleError).toHaveBeenCalledWith(
@@ -1117,20 +1087,15 @@ describe("zero workflow automation commands", () => {
     it.each(["--connector-id", "--stripe-account-id", "--mode"])(
       "should not accept server-owned Stripe binding option %s",
       async (option) => {
-        stripeFeatureSwitch.enabled = true;
-        vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
         const captured = captureCreateAutomation(stripeInvoicePaidAutomation);
 
         await expect(async () => {
-          await automationCommand.parseAsync([
-            "node",
-            "cli",
-            "add",
+          await runStripeEnabledAdd(
             WORKFLOW_ID,
             "stripe-invoice-paid",
             option,
             "server-owned-value",
-          ]);
+          );
         }).rejects.toThrow("process.exit called");
 
         expect(captured.body).toBeUndefined();
@@ -1168,8 +1133,6 @@ describe("zero workflow automation commands", () => {
       "Stripe invoice-paid automations require Live mode; reconnect Stripe in Live mode",
       "Reconnect Stripe with OAuth before using Stripe invoice-paid automations",
     ])("should surface Stripe readiness failure: %s", async (message) => {
-      stripeFeatureSwitch.enabled = true;
-      vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
       server.use(
         http.post(
           "http://localhost:3000/api/zero/workflows/:workflowId/automations",
@@ -1183,13 +1146,7 @@ describe("zero workflow automation commands", () => {
       );
 
       await expect(async () => {
-        await automationCommand.parseAsync([
-          "node",
-          "cli",
-          "add",
-          WORKFLOW_ID,
-          "stripe-invoice-paid",
-        ]);
+        await runStripeEnabledAdd(WORKFLOW_ID, "stripe-invoice-paid");
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -1237,17 +1194,12 @@ describe("zero workflow automation commands", () => {
     });
 
     it("should show Stripe creation in help when the feature is enabled", async () => {
-      stripeFeatureSwitch.enabled = true;
       vi.stubEnv("ZERO_TOKEN", zeroToken("org-stripe-enabled"));
-      vi.resetModules();
-      const { automationCommand: enabledAutomationCommand } =
-        await import("../index");
-      const addCommand = enabledAutomationCommand.commands.find((command) => {
-        return command.name() === "add";
+      const addCommand = createAutomationAddCommand({
+        featureSwitchOverrides: {
+          [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
+        },
       });
-      if (!addCommand) {
-        throw new Error("add command not found");
-      }
       let helpOutput = "";
       addCommand.configureOutput({
         writeOut: (value) => {
@@ -2517,8 +2469,9 @@ describe("zero workflow automation commands", () => {
           `zero workflow automation rm ${AUTOMATION_ID}`,
         );
         expect(output).toContain(
-          `zero workflow automation add ${WORKFLOW_ID} stripe-invoice-paid --billing-reason <billing-reasons>`,
+          `zero workflow automation add ${WORKFLOW_ID} stripe-invoice-paid`,
         );
+        expect(output).not.toContain("--billing-reason");
         expect(output).not.toContain("zero workflow automation update --help");
         expect(output).not.toContain("private Stripe delivery failure details");
         const warningOutput = mockConsoleWarn.mock.calls.flat().join("\n");
