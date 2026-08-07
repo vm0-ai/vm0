@@ -5,6 +5,7 @@ import {
   testCronCleanupSandboxesStateContract,
 } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
+import { MIN_EPOCH_MS_TIMESTAMP } from "@vm0/api-contracts/contracts/runners";
 import {
   agentComposeVersions,
   agentComposes,
@@ -689,7 +690,7 @@ async function seedQueueEntryForAction(
           resumeSession: null,
           encryptedSecrets: null,
           cliAgentType: "claude-code",
-          apiStartTime: run.createdAt.getTime(),
+          apiStartTime: MIN_EPOCH_MS_TIMESTAMP,
         },
       }),
     ));
