@@ -708,6 +708,7 @@ export const secretConnectorMetadataMapSchema = z.record(
   secretConnectorMetadataSchema,
 );
 
+export const PI_MEMORY_ROOT = "/home/user/.pi/agent/memory";
 export const PI_SKILLS_ROOT = "/home/user/.pi/agent/skills";
 
 export const runSkillSnapshotEntrySchema = z

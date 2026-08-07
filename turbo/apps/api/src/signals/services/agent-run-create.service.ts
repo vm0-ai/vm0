@@ -5,6 +5,7 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   type PiModelConfig,
+  PI_MEMORY_ROOT,
   PI_SKILLS_ROOT,
   type SecretConnectorMetadata,
   type RunSkillSnapshot,
@@ -1230,26 +1231,36 @@ function frameworkApiKeyEnv(framework: SupportedFramework): string {
   return framework === "codex" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
 
-function autoMemoryMountPath(framework: SupportedFramework): string {
+function autoMemoryMountPath(
+  framework: SupportedFramework,
+  usePiMemoryPath: boolean,
+): string {
+  if (usePiMemoryPath) {
+    return PI_MEMORY_ROOT;
+  }
   return framework === "codex"
     ? CANONICAL_CODEX_MEMORY_MOUNT_PATH
     : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
 }
 
-function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
+function autoMemoryArtifact(
+  framework: SupportedFramework,
+  usePiMemoryPath: boolean,
+): ContextArtifact {
   return withAutoMemoryMissingRootPolicy({
     name: AUTO_MEMORY_ARTIFACT_NAME,
-    mountPath: autoMemoryMountPath(framework),
+    mountPath: autoMemoryMountPath(framework, usePiMemoryPath),
   });
 }
 
-function isCanonicalAutoMemoryArtifact(
-  artifact: ContextArtifact,
-  framework: SupportedFramework,
-): boolean {
+function isCanonicalAutoMemoryArtifact(artifact: ContextArtifact): boolean {
+  if (artifact.name !== AUTO_MEMORY_ARTIFACT_NAME) {
+    return false;
+  }
   return (
-    artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
-    artifact.mountPath === autoMemoryMountPath(framework)
+    artifact.mountPath === PI_MEMORY_ROOT ||
+    artifact.mountPath === CANONICAL_CODEX_MEMORY_MOUNT_PATH ||
+    artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
   );
 }
 
@@ -1262,13 +1273,17 @@ function withAutoMemoryMissingRootPolicy(
   };
 }
 
-function withCanonicalAutoMemoryMissingRootPolicy(
+function withCanonicalAutoMemoryConfiguration(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
+  usePiMemoryPath: boolean,
 ): readonly ContextArtifact[] {
   return artifacts.map((artifact) => {
-    return isCanonicalAutoMemoryArtifact(artifact, framework)
-      ? withAutoMemoryMissingRootPolicy(artifact)
+    return isCanonicalAutoMemoryArtifact(artifact)
+      ? withAutoMemoryMissingRootPolicy({
+          ...artifact,
+          mountPath: autoMemoryMountPath(framework, usePiMemoryPath),
+        })
       : artifact;
   });
 }
@@ -1276,23 +1291,20 @@ function withCanonicalAutoMemoryMissingRootPolicy(
 function claimsAutoMemorySlot(
   artifact: ContextArtifact,
   framework: SupportedFramework,
+  usePiMemoryPath: boolean,
 ): boolean {
   return (
     artifact.name === AUTO_MEMORY_ARTIFACT_NAME ||
-    artifact.mountPath === autoMemoryMountPath(framework)
+    artifact.mountPath === autoMemoryMountPath(framework, usePiMemoryPath)
   );
 }
 
 function withoutSupersededAutoMemoryArtifacts(
   artifacts: readonly ContextArtifact[],
-  framework: SupportedFramework,
   slotOwnerIndex: number,
 ): readonly ContextArtifact[] {
   return artifacts.filter((artifact, index) => {
-    return (
-      index >= slotOwnerIndex ||
-      !isCanonicalAutoMemoryArtifact(artifact, framework)
-    );
+    return index >= slotOwnerIndex || !isCanonicalAutoMemoryArtifact(artifact);
   });
 }
 
@@ -1315,6 +1327,7 @@ function composeArtifacts(
 function artifactsForRun(args: {
   readonly resolved: ResolvedCompose;
   readonly framework: SupportedFramework;
+  readonly usePiMemoryPath: boolean;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
 }): RunArtifacts {
   const isContinuation = Boolean(args.resolved.agentSessionId);
@@ -1330,32 +1343,38 @@ function artifactsForRun(args: {
   let autoMemorySlotArtifactIndex: number | undefined;
   for (let index = artifacts.length - 1; index >= 0; index -= 1) {
     const artifact = artifacts[index];
-    if (artifact && claimsAutoMemorySlot(artifact, args.framework)) {
+    if (
+      artifact &&
+      claimsAutoMemorySlot(artifact, args.framework, args.usePiMemoryPath)
+    ) {
       autoMemorySlotArtifactIndex = index;
       break;
     }
   }
   if (autoMemorySlotArtifactIndex === undefined) {
     return {
-      artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
+      artifacts: [
+        ...artifacts,
+        autoMemoryArtifact(args.framework, args.usePiMemoryPath),
+      ],
     };
   }
 
   const slotOwner = artifacts[autoMemorySlotArtifactIndex]!;
-  if (!isCanonicalAutoMemoryArtifact(slotOwner, args.framework)) {
+  if (!isCanonicalAutoMemoryArtifact(slotOwner)) {
     return {
       artifacts: withoutSupersededAutoMemoryArtifacts(
         artifacts,
-        args.framework,
         autoMemorySlotArtifactIndex,
       ),
     };
   }
 
   return {
-    artifacts: withCanonicalAutoMemoryMissingRootPolicy(
+    artifacts: withCanonicalAutoMemoryConfiguration(
       artifacts,
       args.framework,
+      args.usePiMemoryPath,
     ),
   };
 }
@@ -5912,6 +5931,7 @@ async function preparePiLaunchResources(args: {
       agentName,
       appendSystemPrompt: args.body.appendSystemPrompt,
       agentInstructions: resources.agentInstructions,
+      memory: resources.memory,
       skills: skills.skills,
     }),
     snapshot,
@@ -7897,6 +7917,7 @@ function prepareRunOutputMetadata(args: {
   const artifacts = artifactsForRun({
     resolved: args.resolved,
     framework: args.framework,
+    usePiMemoryPath: args.piEdge !== undefined,
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
   return {
