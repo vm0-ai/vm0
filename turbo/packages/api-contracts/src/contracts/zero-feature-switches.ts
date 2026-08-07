@@ -10,8 +10,8 @@ export const featureSwitchesResponseSchema = z.object({
   /**
    * The Platform bundle deployed 2026-08-07 14:02 Asia/Shanghai reads these
    * capability handshakes and old web/app clients can remain open for about two
-   * days. Current clients ignore them. The first daily deployment compatibility
-   * cleanup after 2026-08-09 14:02 owns removal of all three.
+   * days. Current clients ignore them. Remove all three after 2026-08-09 14:02,
+   * once that client window drains; follow-up issue: #25762.
    */
   supportsStructuredInlineTemplates: z.boolean().optional(),
   supportsImageRecognition: z.boolean().optional(),
