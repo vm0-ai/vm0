@@ -1,10 +1,7 @@
 import {
-  parseCustomConnectorProposalUrl,
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
   type ConnectorSignals,
-  type CustomConnectorActionDescriptor,
-  type CustomConnectorSignals,
 } from "./connector-action-block.ts";
 import {
   parsePermissionActionUrl,
@@ -65,11 +62,6 @@ export type BodyRenderBlock =
       signals: ConnectorSignals;
     }
   | {
-      type: "custom-connector-action";
-      resourceKey: string;
-      signals: CustomConnectorSignals;
-    }
-  | {
       type: "permission-action";
       resourceKey: string;
       signals: PermissionSignals;
@@ -106,11 +98,6 @@ export type ParsedBodyBlock =
       type: "connector-action";
       resourceKey: string;
       descriptor: ConnectorActionDescriptor;
-    }
-  | {
-      type: "custom-connector-action";
-      resourceKey: string;
-      descriptor: CustomConnectorActionDescriptor;
     }
   | {
       type: "permission-action";
@@ -772,7 +759,6 @@ function createActionBlockFromLine(
   {
     type:
       | "connector-action"
-      | "custom-connector-action"
       | "permission-action"
       | "computer-use-authorization"
       | "plan-upgrade"
@@ -791,15 +777,6 @@ function createActionBlockFromLine(
       type: "connector-action",
       resourceKey: connectorAction.originalUrl,
       descriptor: connectorAction,
-    };
-  }
-
-  const customConnectorAction = parseCustomConnectorProposalUrl(url);
-  if (customConnectorAction) {
-    return {
-      type: "custom-connector-action",
-      resourceKey: customConnectorAction.originalUrl,
-      descriptor: customConnectorAction,
     };
   }
 

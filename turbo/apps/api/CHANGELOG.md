@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.393.0](https://github.com/vm0-ai/vm0/compare/api-v1.392.0...api-v1.393.0) (2026-08-07)
+
+
+### Features
+
+* **connectors:** support custom connector connect cards ([#25500](https://github.com/vm0-ai/vm0/issues/25500)) ([b3854b0](https://github.com/vm0-ai/vm0/commit/b3854b0164686b2d154138c1cf3c4ff0ca15c755))
+
+
+### Performance Improvements
+
+* **runner:** extend exact reuse protection window ([#25549](https://github.com/vm0-ai/vm0/issues/25549)) ([1bf501e](https://github.com/vm0-ai/vm0/commit/1bf501ed9a2867c3e0200da14693124b9fbe5723))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.286.0
+    * @vm0/core bumped to 8.524.6
+    * @vm0/db bumped to 1.174.2
+
 ## [1.392.0](https://github.com/vm0-ai/vm0/compare/api-v1.391.0...api-v1.392.0) (2026-08-07)
 
 
