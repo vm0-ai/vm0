@@ -46,7 +46,18 @@ import type {
  * compiling.
  */
 
-/** Narrow a native agent message to the LLM turns vm0 persists. */
+/**
+ * Narrow a native agent message to the LLM turns vm0 persists.
+ *
+ * The native `AgentMessage` union is wider than {@link PiAgentMessage} because
+ * it also covers the harness-only roles (`bashExecution`, `custom`,
+ * `branchSummary`, `compactionSummary`). Those are produced by
+ * pi-agent-core's session layer, which this package never instantiates: it
+ * drives `runAgentLoop`/`runAgentLoopContinue` directly, and the only other
+ * emitter is `executePiUnresolvedToolBatch`, which emits tool results. The
+ * `null` branch is therefore unreachable rather than tolerant, and exists so
+ * the published surface can be typed without referencing native types.
+ */
 function transcriptMessage(message: AgentMessage): PiAgentMessage | null {
   return message.role === "user" ||
     message.role === "assistant" ||
