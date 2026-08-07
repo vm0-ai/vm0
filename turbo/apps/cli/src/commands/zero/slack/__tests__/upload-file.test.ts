@@ -274,7 +274,6 @@ describe("zero slack upload-file command", () => {
       ]);
       expect(capturedInitBody).toMatchObject({
         filename: "test-report.pdf",
-        supportsUploadHeaders: true,
         canonical: {
           operationId,
           contentType: "application/pdf",

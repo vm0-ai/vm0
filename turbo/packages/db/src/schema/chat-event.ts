@@ -217,6 +217,11 @@ export const chatEvents = pgTable(
           'run.cancelled',
           'control.interrupt',
           'control.revoke',
+          'browser.open',
+          'browser.close',
+          -- Retired physical values still written by the pre-cleanup API while
+          -- it drains. Narrow this list to open/close in a later release, once
+          -- that API is gone and the rows have been backfilled again.
           'browser.started',
           'browser.stopped',
           'goal.changed',

@@ -54,7 +54,6 @@ describe("zero github upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: 18,
-          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000101",

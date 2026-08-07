@@ -48,6 +48,29 @@ describe("/api/zero/feature-switches", () => {
     ).toBeFalsy();
   });
 
+  it("keeps the capability handshakes the previous Platform bundle reads", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_capability_handshake_test",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      "org:member",
+    );
+    const response = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    // The pre-cleanup Platform bundle disables inline templates, image
+    // recognition, and avatar templates when these fields are absent, so they
+    // must survive until that frontend release has drained.
+    expect(response.body).toMatchObject({
+      supportsStructuredInlineTemplates: true,
+      supportsImageRecognition: true,
+      supportsAvatarTemplates: true,
+    });
+  });
+
   it("persists and activates a user override for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
@@ -74,16 +97,11 @@ describe("/api/zero/feature-switches", () => {
     expect(
       updated.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
     ).toBeTruthy();
-    expect(updated.body.supportsImageRecognition).toBeTruthy();
-    expect(updated.body.supportsAvatarTemplates).toBeTruthy();
 
     const current = await accept(client().get({ headers }), [200]);
     expect(current.body.switches).toStrictEqual({
       [FeatureSwitchKey.ComposerUploadPopover]: true,
     });
-    expect(current.body.supportsCustomConnectorOAuth2).toBeTruthy();
-    expect(current.body.supportsImageRecognition).toBeTruthy();
-    expect(current.body.supportsAvatarTemplates).toBeTruthy();
     expect(
       current.body.effectiveSwitches[FeatureSwitchKey.ComposerUploadPopover],
     ).toBeTruthy();

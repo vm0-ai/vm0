@@ -13,9 +13,3 @@ export type CompatibleChatThreadEvent =
   | UnsequencedChatThreadEvent;
 
 export type ChatThreadEventView = CompatibleChatThreadEvent;
-
-export function chatThreadEventHasSeqId(
-  event: CompatibleChatThreadEvent,
-): event is ChatThreadEvent {
-  return "seqId" in event && typeof event.seqId === "number";
-}

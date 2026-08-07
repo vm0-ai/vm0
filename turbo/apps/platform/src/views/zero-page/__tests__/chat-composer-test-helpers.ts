@@ -384,6 +384,7 @@ export function mockThread(options?: {
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -419,12 +420,7 @@ export function mockThread(options?: {
     });
   });
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (
-      query.sinceSeqId ||
-      query.beforeSeqId ||
-      query.sinceId ||
-      query.beforeId
-    ) {
+    if (query.sinceSeqId || query.beforeSeqId) {
       return respond(200, { events: [] });
     }
     return respond(200, {
@@ -738,15 +734,6 @@ export function chatClipboardHtml(payload: {
   return `<div data-vm0-chat-message="${encodeURIComponent(
     JSON.stringify(payload),
   )}"></div>`;
-}
-
-export function oversizedFile(name: string, type: string): File {
-  const file = new File(["oversized"], name, { type });
-  Object.defineProperty(file, "size", {
-    configurable: true,
-    value: 1024 * 1024 * 1024 + 1,
-  });
-  return file;
 }
 
 export function composerElementFrom(textarea: HTMLElement): HTMLElement {

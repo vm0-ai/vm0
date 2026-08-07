@@ -1,5 +1,4 @@
 import {
-  canonicalChatEvent,
   chatThreadEventsContract,
   chatThreadMetadataContract,
   type ChatEvent,
@@ -230,7 +229,7 @@ export function createWorkflowsBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body.events.map(canonicalChatEvent);
+      return response.body.events;
     },
 
     /**

@@ -50,6 +50,5 @@ export const MODEL_CACHE_CREATION_TOKEN_CATEGORIES = [
 export const MODEL_TOKEN_USAGE_KINDS = [
   "model",
   "image-recognition",
-  "image-interpret-marks",
   "translation",
 ] as const;

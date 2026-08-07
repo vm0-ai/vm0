@@ -361,12 +361,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatErrorRecovery]: {
     maintainer: "ethan@vm0.ai",
     description:

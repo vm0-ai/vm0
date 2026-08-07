@@ -1,31 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  artifactsContract,
   chatThreadByIdContract,
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadComputerUseHostContract,
   chatThreadDraftSchema,
   chatThreadEventSchema,
-  chatThreadModelSelectionContract,
   chatThreadsContract,
   chatEventSchema,
   generationTemplateRequestSchema,
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
   userMessageDocumentSchema,
   userMessageInputDocumentSchema,
 } from "../chat-threads";
-
-const legacyModelSelection = {
-  modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-  selectedModel: "claude-sonnet-4-6",
-};
-
-const legacyProviderPinnedModelSelection = {
-  modelProviderId: "11111111-1111-4111-8111-111111111111",
-  selectedModel: "claude-sonnet-4-6",
-};
 
 describe("chat message response contract", () => {
   const workflowId = "11111111-1111-4111-8111-111111111111";
@@ -109,6 +96,7 @@ describe("chat message response contract", () => {
     });
     const send = chatEventsContract.send.body.safeParse({
       agentId: "agent-1",
+      hasTextContent: true,
       prompt: "Run the task",
       userMessage,
     });
@@ -188,19 +176,6 @@ describe("chat event pagination request compatibility", () => {
       data: { sinceSeqId: 42, limit: 20 },
     });
   });
-
-  it("accepts previous frontend UUID cursors during rollout", () => {
-    const beforeId = "11111111-1111-4111-8111-111111111111";
-    expect(
-      chatThreadEventsContract.list.query.safeParse({
-        beforeId,
-        limit: "20",
-      }),
-    ).toMatchObject({
-      success: true,
-      data: { beforeId, limit: 20 },
-    });
-  });
 });
 
 describe("chat thread event sequence contract", () => {
@@ -213,7 +188,7 @@ describe("chat thread event sequence contract", () => {
     });
   });
 
-  it("accepts previous API responses during independent app promotion", () => {
+  it("rejects retired UUID-cursor API responses", () => {
     const legacyEvent = {
       id: "11111111-1111-4111-8111-111111111111",
       kind: "renamed",
@@ -231,140 +206,14 @@ describe("chat thread event sequence contract", () => {
         chatThreads: [],
         latestEventId: legacyEvent.id,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       chatThreadsContract.events.responses[200].safeParse({
         events: [legacyEvent],
         hasMore: false,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
     expect(chatThreadEventSchema.safeParse(legacyEvent).success).toBe(false);
-  });
-});
-
-describe("chat thread model request compatibility", () => {
-  it("normalizes legacy thread create modelSelection bodies to model", () => {
-    const parsed = chatThreadsContract.create.body.safeParse({
-      agentId: "agent-1",
-      modelSelection: legacyModelSelection,
-      title: "Launch plan",
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      return;
-    }
-    expect(parsed.data).toMatchObject({
-      agentId: "agent-1",
-      model: "claude-sonnet-4-6",
-      title: "Launch plan",
-    });
-    expect(parsed.data).not.toHaveProperty("modelSelection");
-  });
-
-  it("normalizes legacy thread model update bodies to model", () => {
-    const parsed = chatThreadModelSelectionContract.update.body.safeParse({
-      modelSelection: legacyModelSelection,
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      return;
-    }
-    expect(parsed.data).toStrictEqual({ model: "claude-sonnet-4-6" });
-  });
-
-  it("normalizes legacy thread model clears to model null", () => {
-    const parsed = chatThreadModelSelectionContract.update.body.safeParse({
-      modelSelection: null,
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      return;
-    }
-    expect(parsed.data).toStrictEqual({ model: null });
-  });
-
-  it("normalizes legacy chat event send modelSelection bodies to model", () => {
-    const parsed = chatEventsContract.send.body.safeParse({
-      agentId: "agent-1",
-      prompt: "Build a launch plan",
-      userMessage: {
-        version: 1,
-        parts: [{ type: "text", text: "Build a launch plan" }],
-      },
-      modelProvider: "anthropic-api-key",
-      modelSelection: legacyModelSelection,
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      return;
-    }
-    expect(parsed.data).toMatchObject({
-      agentId: "agent-1",
-      prompt: "Build a launch plan",
-      model: "claude-sonnet-4-6",
-    });
-    expect(parsed.data).not.toHaveProperty("modelProvider");
-    expect(parsed.data).not.toHaveProperty("modelSelection");
-  });
-
-  it("normalizes legacy thread create bodies pinned to a concrete provider", () => {
-    const parsed = chatThreadsContract.create.body.safeParse({
-      agentId: "agent-1",
-      modelSelection: legacyProviderPinnedModelSelection,
-      title: "Launch plan",
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      return;
-    }
-    expect(parsed.data).toMatchObject({
-      agentId: "agent-1",
-      model: "claude-sonnet-4-6",
-      title: "Launch plan",
-    });
-    expect(parsed.data).not.toHaveProperty("modelSelection");
-  });
-
-  it("normalizes legacy thread model updates pinned to a concrete provider", () => {
-    const parsed = chatThreadModelSelectionContract.update.body.safeParse({
-      modelSelection: legacyProviderPinnedModelSelection,
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      return;
-    }
-    expect(parsed.data).toStrictEqual({ model: "claude-sonnet-4-6" });
-  });
-
-  it("normalizes legacy chat event send bodies pinned to a concrete provider", () => {
-    const parsed = chatEventsContract.send.body.safeParse({
-      agentId: "agent-1",
-      prompt: "Build a launch plan",
-      userMessage: {
-        version: 1,
-        parts: [{ type: "text", text: "Build a launch plan" }],
-      },
-      modelProvider: "anthropic-api-key",
-      modelSelection: legacyProviderPinnedModelSelection,
-    });
-
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      return;
-    }
-    expect(parsed.data).toMatchObject({
-      agentId: "agent-1",
-      prompt: "Build a launch plan",
-      model: "claude-sonnet-4-6",
-    });
-    expect(parsed.data).not.toHaveProperty("modelProvider");
-    expect(parsed.data).not.toHaveProperty("modelSelection");
   });
 });
 
@@ -614,22 +463,5 @@ describe("chat thread generation template contract", () => {
     });
 
     expect(parsed.success).toBe(false);
-  });
-});
-
-describe("artifacts contract", () => {
-  it("exposes image edit snapshot compatibility routes", () => {
-    expect(artifactsContract.getImageEditSnapshot.method).toBe("GET");
-    expect(artifactsContract.getImageEditSnapshot.path).toBe(
-      "/api/zero/artifacts/image-edit-snapshot",
-    );
-    expect(artifactsContract.upsertImageEditSnapshot.method).toBe("PUT");
-    expect(artifactsContract.upsertImageEditSnapshot.path).toBe(
-      "/api/zero/artifacts/image-edit-snapshot",
-    );
-    expect(artifactsContract.deleteImageEditSnapshot.method).toBe("DELETE");
-    expect(artifactsContract.deleteImageEditSnapshot.path).toBe(
-      "/api/zero/artifacts/image-edit-snapshot",
-    );
   });
 });

@@ -1,9 +1,8 @@
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
+import { setupPage } from "../../__tests__/page-helper.ts";
 import {
   avatarTemplatesEnabled$,
   featureSwitch$,
@@ -33,13 +32,11 @@ describe("bootstrap feature switch hydration", () => {
     ).toBeTruthy();
   });
 
-  it("enables image recognition from the stable API capability", async () => {
+  it("keeps image recognition available without capability negotiation", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: {},
         effectiveSwitches: {},
-        supportsCustomConnectorOAuth2: true,
-        supportsImageRecognition: true,
       });
     });
 
@@ -52,44 +49,7 @@ describe("bootstrap feature switch hydration", () => {
     expect(context.store.get(imageRecognitionAvailable$)).toBeTruthy();
   });
 
-  it("keeps image recognition unavailable when the API omits support", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: {},
-        effectiveSwitches: {},
-        supportsCustomConnectorOAuth2: true,
-      });
-    });
-
-    await setupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-    });
-
-    expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
-  });
-
-  it("keeps image recognition unavailable when the API disables support", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: {},
-        effectiveSwitches: {},
-        supportsCustomConnectorOAuth2: true,
-        supportsImageRecognition: false,
-      });
-    });
-
-    await setupPage({
-      context,
-      path: "/error",
-      withoutRender: true,
-    });
-
-    expect(context.store.get(imageRecognitionAvailable$)).toBeFalsy();
-  });
-
-  it("keeps avatar templates disabled when the API lacks support", async () => {
+  it("enables avatar templates from the feature switch alone", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
@@ -103,29 +63,7 @@ describe("bootstrap feature switch hydration", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(avatarTemplatesEnabled$)).toBeFalsy();
-  });
-
-  it("waits for current API support before trusting cached avatar templates", async () => {
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
-        effectiveSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
-        supportsAvatarTemplates: true,
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/error",
-      featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
-      withoutRender: true,
-    });
-
-    expect(context.store.get(avatarTemplatesEnabled$)).toBeFalsy();
-    await waitFor(() => {
-      expect(context.store.get(avatarTemplatesEnabled$)).toBeTruthy();
-    });
+    expect(context.store.get(avatarTemplatesEnabled$)).toBeTruthy();
   });
 
   it("skips feature switch hydration without an authenticated organization", async () => {

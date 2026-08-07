@@ -33,6 +33,19 @@ import {
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { i18n } from "../../../i18n/index.ts";
 
+// The composer editor is mounted on first paint and mounted again once page
+// bootstrap settles, so an element captured too early is detached before a test
+// can drive it. Keyboard events on a detached editor are silently dropped.
+function mountedComposer(): HTMLElement {
+  const composer = document.querySelector(
+    '.zero-composer [contenteditable="true"]',
+  );
+  if (!(composer instanceof HTMLElement)) {
+    throw new Error("Composer editor is not mounted");
+  }
+  return composer;
+}
+
 const context = testContext();
 
 afterEach(async () => {
@@ -330,6 +343,7 @@ function mockSidebarThreadStory(
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -393,11 +407,13 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
 
@@ -558,11 +574,13 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-12T12:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
 
@@ -627,6 +645,7 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -692,6 +711,7 @@ describe("zero sidebar", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
@@ -729,12 +749,7 @@ describe("zero sidebar", () => {
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (
-          query.sinceSeqId ||
-          query.beforeSeqId ||
-          query.sinceId ||
-          query.beforeId
-        ) {
+        if (query.sinceSeqId || query.beforeSeqId) {
           return respond(200, { events: [] });
         }
         return respond(200, {
@@ -1425,14 +1440,11 @@ describe("zero sidebar", () => {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
+        selectedModel: body.model ?? "claude-sonnet-4-6",
       });
     });
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const sidebar = await waitFor(() => {
       return screen.getByRole("navigation", { name: "Sidebar" });
@@ -1444,7 +1456,7 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
 
     await fill(
-      within(dialog).getByPlaceholderText("Search agents..."),
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
       "support",
     );
 
@@ -1455,10 +1467,13 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
     });
 
-    await fill(within(dialog).getByPlaceholderText("Search agents..."), "ops");
+    await fill(
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
+      "ops",
+    );
 
     await waitFor(() => {
-      expect(within(dialog).getByText("No agents found")).toBeInTheDocument();
+      expect(within(dialog).getByText("No results found")).toBeInTheDocument();
       expect(
         within(dialog).queryByText("Support Agent"),
       ).not.toBeInTheDocument();
@@ -1611,7 +1626,7 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
 
-  it("shows chat thread title results in the picker behind the unified search switch", async () => {
+  it("shows chat thread title results in the conversation picker", async () => {
     prepareAgentTeam();
     const defaultThread = createThread(EXISTING_THREAD_ID, "Incident notes");
     const researchThread = createThread(
@@ -1644,13 +1659,7 @@ describe("zero sidebar", () => {
       });
     });
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
-      },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1712,17 +1721,24 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "A",
-      code: "KeyA",
-      keyCode: 65,
-      ctrlKey: true,
-      shiftKey: true,
+    await screen.findByPlaceholderText(PLACEHOLDER);
+    await waitFor(() => {
+      if (screen.queryByRole("dialog", { name: "Talk to" })) {
+        return;
+      }
+      const composer = mountedComposer();
+      composer.focus();
+      fireEvent.keyDown(composer, {
+        key: "A",
+        code: "KeyA",
+        keyCode: 65,
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      throw new Error("Agent picker has not opened yet");
     });
 
-    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const dialog = screen.getByRole("dialog", { name: "Talk to" });
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
   });
@@ -1738,17 +1754,21 @@ describe("zero sidebar", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    const composer = await screen.findByPlaceholderText(PLACEHOLDER);
-    composer.focus();
-    fireEvent.keyDown(composer, {
-      key: "}",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
+    await screen.findByPlaceholderText(PLACEHOLDER);
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
+      if (pathname() === `/agents/${RESEARCH_AGENT_ID}/chat`) {
+        return;
+      }
+      const composer = mountedComposer();
+      composer.focus();
+      fireEvent.keyDown(composer, {
+        key: "}",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      throw new Error("Pinned agent navigation has not happened yet");
     });
+    expect(pathname()).toBe(`/agents/${RESEARCH_AGENT_ID}/chat`);
   });
 
   it("moves to an unread unpinned agent shown in the sidebar", async () => {
@@ -1981,11 +2001,7 @@ describe("zero sidebar", () => {
   it("selects an agent from the picker with arrow keys and enter", async () => {
     prepareAgentTeam();
 
-    setupSidebarPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatThreadUnifiedSearch]: false },
-    });
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(sidebar()).toBeInTheDocument();
@@ -1998,7 +2014,9 @@ describe("zero sidebar", () => {
     });
 
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-    const search = within(dialog).getByPlaceholderText("Search agents...");
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
 
     await fill(search, "support");
 

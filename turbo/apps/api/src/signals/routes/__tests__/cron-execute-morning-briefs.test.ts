@@ -7,7 +7,6 @@ import {
   cronExecuteMorningBriefsContract,
 } from "@vm0/api-contracts/contracts/cron";
 import {
-  canonicalChatEvent,
   chatThreadEventsContract,
   chatThreadsContract,
   type GenerationTemplateRequest,
@@ -531,7 +530,7 @@ async function readMorningBriefThreadEvents(
     }),
     [200],
   );
-  return messages.body.events.map(canonicalChatEvent);
+  return messages.body.events;
 }
 
 async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{

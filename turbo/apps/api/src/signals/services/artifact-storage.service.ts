@@ -29,7 +29,7 @@ export interface ArtifactObjectLocation {
   readonly id: string;
   readonly key: string;
   readonly url: string;
-  readonly metadata: Readonly<Record<string, string>> | undefined;
+  readonly metadata: Readonly<Record<string, string>>;
 }
 
 type StoredGeneratedArtifactObject = Omit<
@@ -96,23 +96,10 @@ export const allocateArtifactObject$ = command(
       readonly filename: string;
       readonly id?: string;
       readonly variant?: string;
-      readonly allowV2?: boolean;
     },
     signal: AbortSignal,
   ): Promise<ArtifactObjectLocation> => {
-    const useV2 = args.allowV2 !== false;
     signal.throwIfAborted();
-
-    // Previous upload clients cannot send the metadata headers required by V2.
-    if (!useV2) {
-      const id = args.id ?? randomUUID();
-      const key = buildArtifactKey(
-        args.userId,
-        id,
-        sanitizeArtifactFilename(args.filename),
-      );
-      return { id, key, url: buildFileUrlFromKey(key), metadata: undefined };
-    }
 
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     for (let attempt = 0; attempt < MAX_ARTIFACT_KEY_ATTEMPTS; attempt += 1) {

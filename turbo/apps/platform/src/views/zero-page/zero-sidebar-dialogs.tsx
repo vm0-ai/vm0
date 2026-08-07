@@ -33,7 +33,6 @@ import {
 import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   agentListDialogChatThreads$,
-  chatThreadUnifiedSearchEnabled$,
   type AgentListDialogChatThread,
   type AgentListDialogChatThreadResult,
 } from "../../signals/zero-page/agent-list-dialog-chat-threads.ts";
@@ -642,10 +641,8 @@ function ChatThreadCommandSectionContainer({
 
 function AgentDialogEmptyStates({
   subagents,
-  showAgentEmpty,
 }: {
   readonly subagents: readonly SubagentInfo[];
-  readonly showAgentEmpty: boolean;
 }) {
   const { t } = useTranslation("agents");
 
@@ -656,15 +653,6 @@ function AgentDialogEmptyStates({
           <p className="text-xs text-muted-foreground px-1 py-2">
             {t(($) => {
               return $.sidebar.noSubagents;
-            })}
-          </p>
-        </div>
-      )}
-      {showAgentEmpty && (
-        <div className="px-5 pb-5">
-          <p className="text-xs text-muted-foreground px-1 py-2">
-            {t(($) => {
-              return $.sidebar.noAgents;
             })}
           </p>
         </div>
@@ -694,9 +682,6 @@ export function AgentListDialog({
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const chatThreadUnifiedSearchEnabled = useGet(
-    chatThreadUnifiedSearchEnabled$,
-  );
   const unreadAgentIds = useLastResolved(unreadAgentIds$, {
     equalityFn: equalSets,
   });
@@ -740,10 +725,7 @@ export function AgentListDialog({
 
   const hasAgentMatches =
     showLead || filteredPinned.length > 0 || filteredUnpinned.length > 0;
-  const showAgentEmpty =
-    trimmedQuery && !hasAgentMatches && !chatThreadUnifiedSearchEnabled;
-  const showCombinedEmpty =
-    chatThreadUnifiedSearchEnabled && trimmedQuery && !hasAgentMatches;
+  const showCombinedEmpty = trimmedQuery && !hasAgentMatches;
 
   return (
     <CommandDialog
@@ -763,28 +745,18 @@ export function AgentListDialog({
           })}
         </DialogTitle>
         <DialogDescription className="text-sm text-muted-foreground mt-1">
-          {chatThreadUnifiedSearchEnabled
-            ? t(($) => {
-                return $.sidebar.descriptionWithChats;
-              })
-            : t(($) => {
-                return $.sidebar.description;
-              })}
+          {t(($) => {
+            return $.sidebar.descriptionWithChats;
+          })}
         </DialogDescription>
       </DialogHeader>
 
       <AgentCommandSearch
         query={query}
         setQuery={setQuery}
-        placeholder={
-          chatThreadUnifiedSearchEnabled
-            ? t(($) => {
-                return $.sidebar.searchAgentsAndChats;
-              })
-            : t(($) => {
-                return $.sidebar.searchAgents;
-              })
-        }
+        placeholder={t(($) => {
+          return $.sidebar.searchAgentsAndChats;
+        })}
       />
 
       <CommandList>
@@ -812,17 +784,12 @@ export function AgentListDialog({
           onChat={handleChat}
           onTogglePin={togglePin}
         />
-        {chatThreadUnifiedSearchEnabled ? (
-          <ChatThreadCommandSectionContainer
-            query={trimmedQuery}
-            onSelect={handleChatThread}
-            showCombinedEmpty={Boolean(showCombinedEmpty)}
-          />
-        ) : null}
-        <AgentDialogEmptyStates
-          subagents={subagents}
-          showAgentEmpty={Boolean(showAgentEmpty)}
+        <ChatThreadCommandSectionContainer
+          query={trimmedQuery}
+          onSelect={handleChatThread}
+          showCombinedEmpty={Boolean(showCombinedEmpty)}
         />
+        <AgentDialogEmptyStates subagents={subagents} />
       </CommandList>
     </CommandDialog>
   );

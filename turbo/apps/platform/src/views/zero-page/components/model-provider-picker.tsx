@@ -32,6 +32,7 @@ import {
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderType,
   type OrgModelPolicy,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { useTranslation } from "react-i18next";
@@ -63,7 +64,7 @@ import {
 import { ProviderIcon } from "./settings/provider-icons";
 
 export interface ModelProviderSelection {
-  selectedModel: string;
+  selectedModel: SupportedRunModel;
   codexServiceTier?: CodexServiceTier;
 }
 
@@ -235,6 +236,7 @@ function resolveModelFirstDefault(
 ): ModelProviderSelection | null {
   const validUserDefault =
     userPreference?.selectedModel &&
+    isSupportedRunModel(userPreference.selectedModel) &&
     policies.some((policy) => {
       return (
         policy.model === userPreference.selectedModel &&
@@ -246,7 +248,11 @@ function resolveModelFirstDefault(
         }
       : null;
   const validWorkspaceDefault = policies.find((policy) => {
-    return policy.isDefault && policy.routeStatus === "valid";
+    return (
+      policy.isDefault &&
+      policy.routeStatus === "valid" &&
+      isSupportedRunModel(policy.model)
+    );
   });
   return (
     value ??
@@ -426,6 +432,9 @@ function modelFirstSelectionFromRaw(
   if (raw === INHERIT_SENTINEL) {
     return null;
   }
+  if (!isSupportedRunModel(raw)) {
+    return null;
+  }
   return {
     selectedModel: raw,
   };
@@ -572,7 +581,7 @@ function CodexFastModeSplitPanel({
   onCheckedChange,
 }: {
   checked: boolean;
-  selectedModel: string;
+  selectedModel: SupportedRunModel;
   onCheckedChange: (checked: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -664,7 +673,7 @@ function CodexFastModeSelectControl({
   codexServiceTier,
   onChange,
 }: {
-  selectedModel: string;
+  selectedModel: SupportedRunModel;
   codexServiceTier: CodexServiceTier | undefined;
   onChange: (value: ModelProviderSelection | null) => void;
 }) {
@@ -827,7 +836,7 @@ function ModelFirstModelPickerContentLayout({
             defaultModel={defaultModel}
           />
         </div>
-        {codexFastModeAvailable && selectedModel && (
+        {codexFastModeAvailable && isSupportedRunModel(selectedModel) && (
           <CodexFastModeSelectControl
             selectedModel={selectedModel}
             codexServiceTier={codexServiceTier}

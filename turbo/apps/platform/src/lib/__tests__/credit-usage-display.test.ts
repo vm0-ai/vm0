@@ -13,12 +13,6 @@ describe("getCreditUsageDisplayName", () => {
     expect(
       getCreditUsageDisplayName("image-recognition", "google/gemini-3.5-flash"),
     ).toBe("Image Recognize");
-    expect(
-      getCreditUsageDisplayName(
-        "image-interpret-marks",
-        "google/gemini-3.5-flash",
-      ),
-    ).toBe("Image Recognize");
   });
 
   it("labels the task even if a different model backs it later", () => {

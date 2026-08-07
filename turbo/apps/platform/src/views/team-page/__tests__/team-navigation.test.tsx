@@ -984,17 +984,13 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       });
     });
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
-        if (
-          query.sinceSeqId !== undefined ||
-          query.beforeSeqId !== undefined ||
-          query.sinceId !== undefined ||
-          query.beforeId !== undefined
-        ) {
+        if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
           return respond(200, { events: [] });
         }
         return respond(200, {

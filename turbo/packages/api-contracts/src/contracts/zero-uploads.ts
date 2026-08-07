@@ -12,22 +12,8 @@ const prepareRequestSchema = z.object({
   filename: z.string().min(1).max(255),
   contentType: z.string().min(1).max(200),
   size: z.number().int().nonnegative(),
-  /**
-   * New clients opt in to applying headers returned with a presigned upload.
-   * Older API deployments ignore this field, while newer APIs keep returning
-   * legacy object keys to clients that omit it.
-   */
-  supportsUploadHeaders: z.literal(true).optional(),
-  /**
-   * New clients request multipart uploads for large files. Older API
-   * deployments ignore this unknown field and return the legacy single PUT
-   * response, which keeps frontend/backend rolling deploys compatible.
-   */
+  /** Request multipart upload URLs for large files. */
   multipart: z.literal(true).optional(),
-});
-
-const importImageRequestSchema = z.object({
-  url: z.string().url(),
 });
 
 const uploadMetadataSchema = z.object({
@@ -43,7 +29,7 @@ const prepareResponseSchema = uploadMetadataSchema.extend({
   /** Presigned PUT URL — browser uploads the file body here directly. */
   uploadUrl: z.string().url(),
   /** Headers the client must include with the presigned PUT request. */
-  uploadHeaders: z.record(z.string(), z.string()).optional(),
+  uploadHeaders: z.record(z.string(), z.string()),
 });
 
 const multipartUploadPartSchema = z.object({
@@ -169,22 +155,6 @@ export const zeroUploadsContract = c.router({
     },
     summary: "Complete a direct-to-R2 upload",
   },
-  importImage: {
-    method: "POST",
-    path: "/api/zero/uploads/import-image",
-    headers: authHeadersSchema,
-    body: importImageRequestSchema,
-    responses: {
-      200: completeResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      502: apiErrorSchema,
-    },
-    summary: "Import a remote image into user artifact storage",
-  },
 });
 
 export type ZeroUploadsContract = typeof zeroUploadsContract;
@@ -192,4 +162,3 @@ export type ZeroUploadsContract = typeof zeroUploadsContract;
 // Inferred types
 export type UploadPrepareResponse = z.infer<typeof prepareResultSchema>;
 export type UploadCompleteResponse = z.infer<typeof completeResponseSchema>;
-export type UploadImportImageResponse = z.infer<typeof completeResponseSchema>;

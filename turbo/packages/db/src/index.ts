@@ -112,7 +112,6 @@ import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-va
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as artifactSchema from "./schema/artifact";
 import * as sharedThreadSchema from "./schema/shared-thread";
-import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-snapshot";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
@@ -241,7 +240,6 @@ export const schema = {
   ...hostedSiteSchema,
   ...artifactSchema,
   ...sharedThreadSchema,
-  ...imageArtifactEditSnapshotSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,

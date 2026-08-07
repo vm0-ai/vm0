@@ -24,9 +24,6 @@ export function setMockFeatureSwitches(
       return respond(200, {
         switches: sanitized,
         effectiveSwitches: sanitized,
-        supportsCustomConnectorOAuth2: true,
-        supportsImageRecognition: true,
-        supportsAvatarTemplates: true,
       });
     }),
   );

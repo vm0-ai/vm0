@@ -606,13 +606,11 @@
   },
   "sidebar": {
     "clearSearch": "Suche löschen",
-    "description": "Wählen Sie einen Agenten aus, um ein Gespräch zu beginnen.",
     "descriptionWithChats": "Wählen Sie einen Agenten aus oder springen Sie zu einem Chat.",
     "leadDescription": "Ihr leitender Assistent, immer für Sie da",
     "markAllRead": "Alles als gelesen markieren",
     "more": "Mehr",
     "new": "Neu",
-    "noAgents": "Keine Agenten gefunden",
     "noResults": "Keine Ergebnisse gefunden",
     "noSubagents": "Noch keine Sub-Agenten verfügbar.",
     "openConversation": "Konversation öffnen",

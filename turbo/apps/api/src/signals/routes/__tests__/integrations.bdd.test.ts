@@ -5324,6 +5324,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         : "unset",
     ).toBeNull();
 
+    chat.mockEmptyObjectStorage();
     const upload = await integrations.requestGithubUploadInit(
       actor,
       {
@@ -5414,6 +5415,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       error: { code: "NOT_FOUND" },
     });
 
+    chat.mockEmptyObjectStorage();
     const uploadInit = await integrations.requestPhoneUploadInit(
       actor,
       {
