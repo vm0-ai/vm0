@@ -1,62 +1,18 @@
 import type { ChatSlackMessageFile } from "@vm0/db/jsonb-contracts/chat-slack-context";
-import type { WebClient } from "@slack/web-api";
 
 import {
-  fetchSlackUserInfoMap,
   formatSenderBlock,
+  type SlackClient,
+  type SlackConversationMessage,
+  type SlackMessageAttachment,
+  type SlackMessageBlock,
+  type SlackRichTextElement,
+  type SlackRichTextStyle,
   type SlackUserInfo,
   type SlackUserInfoResolver,
 } from "../signals/external/slack-message-client";
 
 export type SlackFile = ChatSlackMessageFile;
-
-interface SlackAttachment {
-  readonly image_url?: string;
-  readonly image_width?: number;
-  readonly image_height?: number;
-  readonly thumb_url?: string;
-  readonly title?: string;
-  readonly fallback?: string;
-}
-
-interface RichTextStyle {
-  readonly bold?: boolean;
-  readonly italic?: boolean;
-  readonly strike?: boolean;
-  readonly code?: boolean;
-}
-
-interface RichTextElement {
-  readonly type: string;
-  readonly text?: string;
-  readonly url?: string;
-  readonly name?: string;
-  readonly unicode?: string;
-  readonly user_id?: string;
-  readonly usergroup_id?: string;
-  readonly channel_id?: string;
-  readonly range?: string;
-  readonly style?: RichTextStyle | string;
-  readonly indent?: number;
-  readonly offset?: number;
-  readonly language?: string;
-  readonly elements?: readonly RichTextElement[];
-}
-
-interface SlackBlock {
-  readonly type: string;
-  readonly elements?: readonly RichTextElement[];
-}
-
-interface SlackMessage {
-  readonly user?: string;
-  readonly text?: string;
-  readonly ts?: string;
-  readonly bot_id?: string;
-  readonly files?: readonly SlackFile[];
-  readonly attachments?: readonly SlackAttachment[];
-  readonly blocks?: readonly SlackBlock[];
-}
 
 type SlackConversationContextPhase =
   | "replies"
@@ -93,37 +49,9 @@ interface SlackConversationContextOptions {
   readonly userInfoResolver?: SlackUserInfoResolver;
 }
 
-async function fetchThreadContext(
-  client: WebClient,
-  channel: string,
-  threadTs: string,
-  limit = 100,
-): Promise<readonly SlackMessage[]> {
-  const result = await client.conversations.replies({
-    channel,
-    ts: threadTs,
-    limit,
-  });
-  return (result.messages ?? []) as SlackMessage[];
-}
-
-async function fetchChannelContext(
-  client: WebClient,
-  channel: string,
-  limit = 10,
-  latest?: string,
-): Promise<readonly SlackMessage[]> {
-  const result = await client.conversations.history({
-    channel,
-    limit,
-    ...(latest && { latest }),
-  });
-  return [...((result.messages ?? []) as SlackMessage[])].reverse();
-}
-
 function applyTextStyle(
   text: string,
-  style: RichTextStyle | string | undefined,
+  style: SlackRichTextStyle | string | undefined,
 ): string {
   if (typeof style === "string" || !style) {
     return text;
@@ -144,7 +72,7 @@ function applyTextStyle(
   return result;
 }
 
-function formatInlineElement(element: RichTextElement): string {
+function formatInlineElement(element: SlackRichTextElement): string {
   switch (element.type) {
     case "text": {
       return applyTextStyle(element.text ?? "", element.style);
@@ -181,11 +109,13 @@ function formatInlineElement(element: RichTextElement): string {
   }
 }
 
-function inlineElementsToText(elements: readonly RichTextElement[]): string {
+function inlineElementsToText(
+  elements: readonly SlackRichTextElement[],
+): string {
   return elements.map(formatInlineElement).join("");
 }
 
-function formatRichTextList(section: RichTextElement): string[] {
+function formatRichTextList(section: SlackRichTextElement): string[] {
   const indent = "  ".repeat(section.indent ?? 0);
   const listStyle =
     typeof section.style === "string" ? section.style : undefined;
@@ -201,7 +131,7 @@ function formatRichTextList(section: RichTextElement): string[] {
   return parts;
 }
 
-function formatRichTextSection(section: RichTextElement): string[] {
+function formatRichTextSection(section: SlackRichTextElement): string[] {
   switch (section.type) {
     case "rich_text_section": {
       return [inlineElementsToText(section.elements ?? [])];
@@ -231,7 +161,7 @@ function formatRichTextSection(section: RichTextElement): string[] {
 }
 
 function extractTextFromBlocks(
-  blocks: readonly SlackBlock[] | undefined,
+  blocks: readonly SlackMessageBlock[] | undefined,
 ): string | undefined {
   if (!blocks || blocks.length === 0) {
     return undefined;
@@ -276,7 +206,9 @@ function formatFileInfo(file: SlackFile): string {
   return parts.join("\n");
 }
 
-function formatAttachmentImage(attachment: SlackAttachment): string | null {
+function formatAttachmentImage(
+  attachment: SlackMessageAttachment,
+): string | null {
   if (!attachment.image_url && !attachment.thumb_url) {
     return null;
   }
@@ -315,7 +247,9 @@ export function resolveUserMentions(
   });
 }
 
-function extractMentionedUserIds(messages: readonly SlackMessage[]): string[] {
+function extractMentionedUserIds(
+  messages: readonly SlackConversationMessage[],
+): string[] {
   const ids = new Set<string>();
   for (const message of messages) {
     addMentionedUserIdsFromBlocks(message.blocks, ids);
@@ -332,7 +266,7 @@ function extractMentionedUserIds(messages: readonly SlackMessage[]): string[] {
 }
 
 function addMentionedUserIdsFromBlocks(
-  blocks: readonly SlackBlock[] | undefined,
+  blocks: readonly SlackMessageBlock[] | undefined,
   ids: Set<string>,
 ): void {
   for (const block of blocks ?? []) {
@@ -343,7 +277,7 @@ function addMentionedUserIdsFromBlocks(
 }
 
 function addMentionedUserIdsFromElements(
-  elements: readonly RichTextElement[] | undefined,
+  elements: readonly SlackRichTextElement[] | undefined,
   ids: Set<string>,
 ): void {
   for (const element of elements ?? []) {
@@ -354,7 +288,7 @@ function addMentionedUserIdsFromElements(
 }
 
 function formatMessageWithMetadata(
-  message: SlackMessage,
+  message: SlackConversationMessage,
   relativeIndex: number,
   fileParts: readonly string[],
   userInfoMap?: Map<string, SlackUserInfo>,
@@ -387,7 +321,7 @@ const CONTEXT_PREAMBLE = [
 ].join("\n");
 
 function formatContextForAgent(
-  messages: readonly SlackMessage[],
+  messages: readonly SlackConversationMessage[],
   contextType: "thread" | "channel" = "thread",
   userInfoMap?: Map<string, SlackUserInfo>,
 ): string {
@@ -536,7 +470,7 @@ function unwrapSettled<T>(result: PromiseSettledResult<T>): T {
 }
 
 export async function fetchConversationContexts(
-  client: WebClient,
+  client: SlackClient,
   channelId: string,
   threadTs: string | undefined,
   currentMessageTs?: string,
@@ -558,17 +492,17 @@ export async function fetchConversationContexts(
     isDm,
     hasThread: Boolean(threadTs),
   });
-  let allMessages: readonly SlackMessage[];
-  let channelMessages: readonly SlackMessage[];
+  let allMessages: readonly SlackConversationMessage[];
+  let channelMessages: readonly SlackConversationMessage[];
   if (threadTs) {
     const [threadResult, channelResult] = await Promise.allSettled([
       measureContext("replies", async () => {
-        return await fetchThreadContext(client, channelId, threadTs);
+        return await client.fetchThreadMessages(channelId, threadTs);
       }),
       isDm
         ? Promise.resolve([])
         : measureContext("history", async () => {
-            return await fetchChannelContext(client, channelId, 10, threadTs);
+            return await client.fetchChannelMessages(channelId, 10, threadTs);
           }),
     ]);
     allMessages = unwrapSettled(threadResult);
@@ -577,7 +511,7 @@ export async function fetchConversationContexts(
     allMessages = isDm
       ? []
       : await measureContext("history", async () => {
-          return await fetchChannelContext(client, channelId, 10);
+          return await client.fetchChannelMessages(channelId, 10);
         });
     channelMessages = [];
   }
@@ -609,8 +543,7 @@ export async function fetchConversationContexts(
     ),
   });
   const userInfoMap = await measureContext("user_info", async () => {
-    return await fetchSlackUserInfoMap(
-      client,
+    return await client.fetchUserInfoMap(
       userInfoIds,
       options?.userInfoResolver,
     );
@@ -640,7 +573,7 @@ export async function fetchConversationContexts(
 export async function enrichMessageContent(opts: {
   readonly messageContent: string;
   readonly files: readonly SlackFile[] | undefined;
-  readonly client: WebClient;
+  readonly client: SlackClient;
   readonly userId: string;
   readonly userInfoResolver?: SlackUserInfoResolver;
 }): Promise<{
@@ -669,8 +602,7 @@ export async function enrichMessageContent(opts: {
   }
 
   const mentionedIds = extractMentionedUserIds([{ text: opts.messageContent }]);
-  const userInfoMap = await fetchSlackUserInfoMap(
-    opts.client,
+  const userInfoMap = await opts.client.fetchUserInfoMap(
     [opts.userId, ...mentionedIds],
     opts.userInfoResolver,
   );

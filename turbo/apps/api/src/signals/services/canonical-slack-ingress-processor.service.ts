@@ -20,9 +20,7 @@ import {
 } from "../external/realtime";
 import {
   createSlackClient,
-  createSlackUserInfoResolver,
-  getMessagePermalink,
-  setThreadStatus,
+  type SlackClient,
 } from "../external/slack-message-client";
 import { settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
@@ -255,14 +253,13 @@ function persistedCanonicalSlackIngress(
 }
 
 async function setCanonicalSlackThinkingStatus(args: {
-  readonly client: ReturnType<typeof createSlackClient>;
+  readonly client: SlackClient;
   readonly ingressId: string;
   readonly channelId: string;
   readonly threadTs: string;
 }): Promise<void> {
   await tapError(
-    setThreadStatus(
-      args.client,
+    args.client.setThreadStatus(
       args.channelId,
       args.threadTs,
       "is thinking...",
@@ -424,7 +421,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
       threadTs,
     });
     signal.throwIfAborted();
-    const userInfoResolver = createSlackUserInfoResolver(client);
+    const userInfoResolver = client.createUserInfoResolver();
     const messageContent = stripBotMention(event.text, ingress.botUserId);
     const canonicalAssets = await set(
       materializeCanonicalSlackInputAssets$,
@@ -456,7 +453,7 @@ const persistClaimedCanonicalSlackIngress$ = command(
         event.ts,
         { userInfoResolver },
       ),
-      getMessagePermalink(client, event.channel, event.ts),
+      client.getMessagePermalink(event.channel, event.ts),
     ]);
     signal.throwIfAborted();
     const messagePermalink =
