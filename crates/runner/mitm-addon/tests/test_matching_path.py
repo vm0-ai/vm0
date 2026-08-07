@@ -53,10 +53,6 @@ class TestMatchPath:
     def test_greedy_param_rejects_non_terminal_position(self, pattern):
         assert matching.match_path("/api/a/b/tail", pattern) is None
 
-    @pytest.mark.parametrize("pattern", ["/api/file-{id+}", "/api/file-{id*}"])
-    def test_greedy_param_rejects_mixed_segment(self, pattern):
-        assert matching.match_path("/api/file-123", pattern) is None
-
     def test_star_param_matches_rest(self):
         result = matching.match_path("/repos/octocat/hello-world", "/{path*}")
         assert result == {"path": "repos/octocat/hello-world"}

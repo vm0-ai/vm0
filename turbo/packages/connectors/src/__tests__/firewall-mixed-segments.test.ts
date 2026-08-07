@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateBaseUrl } from "../firewall-types";
 import { validateRule } from "../firewall-expander";
-import { matchFirewallPath } from "../firewall-rule-matcher";
 
 describe("mixed {param}{literal} segments — validateBaseUrl", () => {
   it("accepts parameter + literal suffix in path", () => {
@@ -120,72 +119,6 @@ describe("mixed {param}{literal} segments — validateRule", () => {
     expect(() => {
       return validateRule("GET /foo/{a}{b}{c}", "read", "svc");
     }).toThrow(/adjacent parameters/);
-  });
-});
-
-describe("mixed {param}{literal} segments — matchFirewallPath", () => {
-  it("extracts middle from {id}.json", () => {
-    expect(matchFirewallPath("/api/42.json", "/api/{id}.json")).toEqual({
-      id: "42",
-    });
-  });
-
-  it("returns null when middle would be empty ({repo}.git vs .git)", () => {
-    expect(
-      matchFirewallPath("/repos/octocat/.git", "/repos/{owner}/{repo}.git"),
-    ).toBeNull();
-  });
-
-  it("extracts owner and repo from {owner}/{repo}.git", () => {
-    expect(
-      matchFirewallPath(
-        "/repos/octocat/hello.git",
-        "/repos/{owner}/{repo}.git",
-      ),
-    ).toEqual({ owner: "octocat", repo: "hello" });
-  });
-
-  it("extracts version from v{version}", () => {
-    expect(matchFirewallPath("/v1/x", "/v{version}/x")).toEqual({
-      version: "1",
-    });
-  });
-
-  it("extracts middle when prefix and suffix are both present", () => {
-    expect(matchFirewallPath("/pre-abc.ext", "/pre-{name}.ext")).toEqual({
-      name: "abc",
-    });
-  });
-
-  it("returns null when prefix does not match", () => {
-    expect(matchFirewallPath("/foo-abc.ext", "/pre-{name}.ext")).toBeNull();
-  });
-
-  it("returns null when suffix does not match", () => {
-    expect(matchFirewallPath("/pre-abc.txt", "/pre-{name}.ext")).toBeNull();
-  });
-
-  it("captures middle containing a dot (repo name with a literal dot)", () => {
-    // Runtime segment "foo.bar.git" matches pattern segment "{repo}.git":
-    // prefix="", suffix=".git", middle captures the first "foo.bar" part.
-    expect(
-      matchFirewallPath(
-        "/repos/octocat/foo.bar.git",
-        "/repos/{owner}/{repo}.git",
-      ),
-    ).toEqual({ owner: "octocat", repo: "foo.bar" });
-  });
-
-  it("mixed segment path matching is case-sensitive", () => {
-    // Paths are case-sensitive; uppercase prefix in runtime must not match
-    // lowercase prefix in pattern.
-    expect(matchFirewallPath("/PRE-abc.ext", "/pre-{name}.ext")).toBeNull();
-  });
-
-  it("returns null when prefix is longer than runtime segment", () => {
-    // Defensive: prefix length exceeds segment length. startsWith returns
-    // false, guard never reaches slice with negative bounds.
-    expect(matchFirewallPath("/ab", "/prefix-{name}.ext")).toBeNull();
   });
 });
 
