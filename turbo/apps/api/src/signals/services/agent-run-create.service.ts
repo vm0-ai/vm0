@@ -1260,14 +1260,14 @@ function autoMemoryArtifact(
   });
 }
 
-function isCanonicalAutoMemoryArtifact(artifact: ContextArtifact): boolean {
-  if (artifact.name !== AUTO_MEMORY_ARTIFACT_NAME) {
-    return false;
-  }
+function isCanonicalAutoMemoryArtifact(
+  artifact: ContextArtifact,
+  framework: SupportedFramework,
+  usePiMemoryPath: boolean,
+): boolean {
   return (
-    artifact.mountPath === PI_MEMORY_ROOT ||
-    artifact.mountPath === CANONICAL_CODEX_MEMORY_MOUNT_PATH ||
-    artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+    artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
+    artifact.mountPath === autoMemoryMountPath(framework, usePiMemoryPath)
   );
 }
 
@@ -1280,17 +1280,14 @@ function withAutoMemoryMissingRootPolicy(
   };
 }
 
-function withCanonicalAutoMemoryConfiguration(
+function withCanonicalAutoMemoryMissingRootPolicy(
   artifacts: readonly ContextArtifact[],
   framework: SupportedFramework,
   usePiMemoryPath: boolean,
 ): readonly ContextArtifact[] {
   return artifacts.map((artifact) => {
-    return isCanonicalAutoMemoryArtifact(artifact)
-      ? withAutoMemoryMissingRootPolicy({
-          ...artifact,
-          mountPath: autoMemoryMountPath(framework, usePiMemoryPath),
-        })
+    return isCanonicalAutoMemoryArtifact(artifact, framework, usePiMemoryPath)
+      ? withAutoMemoryMissingRootPolicy(artifact)
       : artifact;
   });
 }
@@ -1308,10 +1305,15 @@ function claimsAutoMemorySlot(
 
 function withoutSupersededAutoMemoryArtifacts(
   artifacts: readonly ContextArtifact[],
+  framework: SupportedFramework,
+  usePiMemoryPath: boolean,
   slotOwnerIndex: number,
 ): readonly ContextArtifact[] {
   return artifacts.filter((artifact, index) => {
-    return index >= slotOwnerIndex || !isCanonicalAutoMemoryArtifact(artifact);
+    return (
+      index >= slotOwnerIndex ||
+      !isCanonicalAutoMemoryArtifact(artifact, framework, usePiMemoryPath)
+    );
   });
 }
 
@@ -1368,17 +1370,25 @@ function artifactsForRun(args: {
   }
 
   const slotOwner = artifacts[autoMemorySlotArtifactIndex]!;
-  if (!isCanonicalAutoMemoryArtifact(slotOwner)) {
+  if (
+    !isCanonicalAutoMemoryArtifact(
+      slotOwner,
+      args.framework,
+      args.usePiMemoryPath,
+    )
+  ) {
     return {
       artifacts: withoutSupersededAutoMemoryArtifacts(
         artifacts,
+        args.framework,
+        args.usePiMemoryPath,
         autoMemorySlotArtifactIndex,
       ),
     };
   }
 
   return {
-    artifacts: withCanonicalAutoMemoryConfiguration(
+    artifacts: withCanonicalAutoMemoryMissingRootPolicy(
       artifacts,
       args.framework,
       args.usePiMemoryPath,
