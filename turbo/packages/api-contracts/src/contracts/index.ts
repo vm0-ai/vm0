@@ -1187,7 +1187,6 @@ export {
   setCustomConnectorValuesBodySchema,
   startCustomConnectorOAuth2BodySchema,
   startCustomConnectorOAuth2ResponseSchema,
-  patchCustomConnectorBodySchema,
   customConnectorAuthModeSchema,
   customConnectorOAuthConfigSchema,
   customConnectorOAuthConfigInputSchema,
@@ -1204,7 +1203,6 @@ export {
   type CustomConnectorValueInput,
   type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
-  type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";
 export {
   zeroAgentCustomConnectorsContract,

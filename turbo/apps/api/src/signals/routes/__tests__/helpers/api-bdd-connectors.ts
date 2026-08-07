@@ -36,7 +36,6 @@ import {
   type CustomConnectorPermissionBundleResponse,
   type CustomConnectorResponse,
   type CustomConnectorValueInput,
-  type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
   type UpdateCustomConnectorBody,
@@ -77,7 +76,6 @@ import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
 import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
 import { zeroCustomConnectorOAuth2Routes } from "../../zero-custom-connectors-oauth2";
-import { zeroCustomConnectorsPatchRoutes } from "../../zero-custom-connectors-patch";
 import { zeroCustomConnectorProposalRoutes } from "../../zero-custom-connectors-proposal";
 import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
@@ -88,7 +86,6 @@ import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsGetRoutes,
-  ...zeroCustomConnectorsPatchRoutes,
   ...zeroCustomConnectorsUpdateRoutes,
 ]);
 
@@ -1786,41 +1783,6 @@ export function createConnectorBddApi(context: TestContext) {
       const response = await api.requestCustomConnectorPermissions(
         actor,
         connectorId,
-        [200],
-      );
-      expectStatus(response, 200);
-      return response.body;
-    },
-
-    async requestPatchCustomConnector(
-      actor: ApiTestUser | null,
-      connectorId: string,
-      body: PatchCustomConnectorBody,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
-    ) {
-      const client = setupApp({
-        context,
-        routes: zeroCustomConnectorByIdTestRoutes,
-      })(zeroCustomConnectorByIdContract);
-      return await accept(
-        client.patch({
-          params: { id: connectorId },
-          headers: authenticate(actor),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async patchCustomConnector(
-      actor: ApiTestUser,
-      connectorId: string,
-      body: PatchCustomConnectorBody,
-    ): Promise<CustomConnectorResponse> {
-      const response = await api.requestPatchCustomConnector(
-        actor,
-        connectorId,
-        body,
         [200],
       );
       expectStatus(response, 200);
