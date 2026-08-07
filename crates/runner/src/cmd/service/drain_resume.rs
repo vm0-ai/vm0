@@ -447,7 +447,7 @@ async fn resume_enablement_before_transition(
 
 fn drain_signal_convergence_error(unit: &RunnerServiceUnit, detail: &str) -> RunnerError {
     RunnerError::Internal(format!(
-        "cannot safely complete drain for {} after the original runner exited: {detail}; \
+        "cannot safely complete drain for {} while converging signal delivery: {detail}; \
          Restart=no remains applied; retry service drain",
         unit.unit_name()
     ))
@@ -460,7 +460,7 @@ fn drain_signal_convergence_timeout_error(
     drain_signal_convergence_error(
         unit,
         &format!(
-            "timed out after {}s waiting to signal a replacement runner \
+            "timed out after {}s waiting to signal an active runner \
              (last ActiveState={last_active_state:?})",
             DRAIN_SIGNAL_CONVERGENCE_TIMEOUT.as_secs()
         ),
@@ -523,13 +523,13 @@ async fn wait_for_drain_signal_convergence(
             .map_err(|error| {
                 drain_signal_convergence_error(
                     unit,
-                    &format!("cannot signal replacement runner: {error}"),
+                    &format!("cannot signal active runner: {error}"),
                 )
             })?;
 
         match signal_result {
             ServiceSignalOutcome::Sent => {
-                info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain) to replacement runner");
+                info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain) during signal convergence");
                 return Ok(());
             }
             ServiceSignalOutcome::AlreadyGone => {}
@@ -653,15 +653,12 @@ async fn drain_with_ops(
         // back into a potentially restarting service.
         match ops.signal_drain(unit).await {
             Err(error) => {
-                return Err(drain_error_after_rollback(
-                    unit,
-                    restart_override_written,
-                    prior_enablement,
-                    ops,
-                    "signal_drain",
-                    error,
-                )
-                .await);
+                warn!(
+                    unit = %unit.unit_name(),
+                    error = %error,
+                    "initial drain signal failed; retaining Restart=no while converging"
+                );
+                wait_for_drain_signal_convergence(unit, ops).await?;
             }
             Ok(ServiceSignalOutcome::Sent) => {
                 info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain)");
@@ -1543,17 +1540,20 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn drain_signal_failure_rolls_back_restart_override() {
+    #[tokio::test(start_paused = true)]
+    async fn drain_signal_failure_converges_without_rollback() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
-            signal_results: VecDeque::from([Err(fake_error("signal failed"))]),
+            lifecycle_state_results: lifecycle_states("active", 2),
+            signal_results: VecDeque::from([
+                Err(fake_error("initial signal failed")),
+                Ok(ServiceSignalOutcome::Sent),
+            ]),
             ..FakeDrainOps::default()
         };
 
-        let err = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+        drain_with_ops(&unit, &mut ops).await.unwrap();
 
-        assert!(err.to_string().contains("signal failed"));
         assert_eq!(
             ops.events,
             [
@@ -1564,106 +1564,13 @@ mod tests {
                 "daemon_reload",
                 "restart_policy",
                 "signal_drain",
-                "remove_restart_override",
-                "restore_enabled",
-                "daemon_reload",
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn drain_signal_failure_reports_rollback_failures() {
-        let unit = service_unit();
-        let mut ops = FakeDrainOps {
-            remove_error: true,
-            reload_errors: VecDeque::from([false, true]),
-            signal_results: VecDeque::from([Err(fake_error("signal failed"))]),
-            restore_enablement_error: true,
-            ..FakeDrainOps::default()
-        };
-
-        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
-        let message = error.to_string();
-
-        assert!(message.contains(
-            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
-        ));
-        assert!(
-            message.contains(
-                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
-            )
-        );
-        assert!(message.contains("remove drain restart override: internal error: remove failed"));
-        assert!(
-            message.contains("restore boot enablement: internal error: restore enablement failed")
-        );
-        assert!(message.contains("reload restored systemd state: internal error: reload failed"));
-        assert_eq!(
-            ops.events,
-            [
                 "lifecycle_state",
-                "is_enabled",
-                "write_restart_override",
-                "disable",
-                "daemon_reload",
-                "restart_policy",
-                "signal_drain",
-                "remove_restart_override",
-                "restore_enabled",
-                "daemon_reload",
+                "signal_drain_bounded",
             ]
         );
-        assert_eq!(
-            ops.reload_requirements,
-            [
-                SystemdReloadRequirement::dirty().with_drain_override(true),
-                SystemdReloadRequirement::dirty().with_drain_override(false),
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn drain_signal_failure_reports_unavailable_prior_enablement() {
-        let unit = service_unit();
-        let mut ops = FakeDrainOps {
-            enablement_results: VecDeque::from([Err(fake_error("enablement read failed"))]),
-            signal_results: VecDeque::from([Err(fake_error("signal failed"))]),
-            ..FakeDrainOps::default()
-        };
-
-        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
-        let message = error.to_string();
-
-        assert!(message.contains(
-            "drain failed for vm0-runner-test: internal error: signal failed; additionally rollback failed"
-        ));
-        assert!(
-            message.contains(
-                "failed to roll back drain transition for vm0-runner-test (signal_drain)"
-            )
-        );
-        assert!(message.contains("prior boot enablement is unavailable"));
-        assert_eq!(
-            ops.events,
-            [
-                "lifecycle_state",
-                "is_enabled",
-                "write_restart_override",
-                "disable",
-                "daemon_reload",
-                "restart_policy",
-                "signal_drain",
-                "remove_restart_override",
-                "daemon_reload",
-            ]
-        );
-        assert_eq!(
-            ops.reload_requirements,
-            [
-                SystemdReloadRequirement::dirty().with_drain_override(true),
-                SystemdReloadRequirement::dirty().with_drain_override(false),
-            ]
-        );
+        assert_eq!(ops.signal_timeouts, [DRAIN_SIGNAL_CONVERGENCE_TIMEOUT]);
+        assert!(!ops.events.contains(&"remove_restart_override"));
+        assert!(!ops.events.contains(&"restore_enabled"));
     }
 
     #[tokio::test]
