@@ -82,8 +82,29 @@ JSON
     run_id=${endpoint%/cancel}
     run_id=${run_id##*/}
     printf '%s\n' "$run_id" >>"$MOCK_CANCEL_LOG"
+    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+      *" $run_id "*)
+        echo 'gh: Cannot cancel a workflow re-run that has not yet queued. (HTTP 409)' >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  repos/vm0-ai/vm0/actions/runs/*/jobs)
+    run_id=${endpoint%/jobs}
+    run_id=${run_id##*/}
+    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+      *" $run_id "*) printf '%s\n' "${MOCK_WEDGED_JOB_COUNT:-0}" ;;
+      *) printf '0\n' ;;
+    esac
     ;;
   repos/vm0-ai/vm0/actions/runs/*)
+    run_id=${endpoint##*/}
+    case " ${MOCK_WEDGED_RUN_IDS:-} " in
+      *" $run_id "*)
+        printf 'queued\n'
+        exit 0
+        ;;
+    esac
     if [ "${MOCK_DELAY_COMPLETION:-0}" = "1" ] && [ ! -f "$MOCK_RUNS_RELEASED" ]; then
       printf 'in_progress\n'
     else
@@ -168,5 +189,33 @@ grep -q "No superseded CI runs found" <<<"$output" ||
 if run_cancel MERGE_GROUP_HEAD_REF=gh-readonly-queue/main/no-pr >/dev/null 2>&1; then
   fail "invalid merge-group ref must fail closed"
 fi
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+output=$(run_cancel MOCK_WEDGED_RUN_IDS=100 MOCK_WEDGED_JOB_COUNT=0)
+grep -q "skipping wedged superseded run 100" <<<"$output" ||
+  fail "expected an uncancellable run with no started job to be skipped"
+# The wedged run reports "queued" forever, so the barrier could only complete
+# if the run was excluded from it rather than merely skipped during cancel.
+grep -q "All superseded CI runs completed" <<<"$output" ||
+  fail "expected the barrier to still complete for the remaining runs"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "skipped wedged run must not be polled by the completion barrier"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+if run_cancel MOCK_WEDGED_RUN_IDS=100 MOCK_WEDGED_JOB_COUNT=3 >/dev/null 2>&1; then
+  fail "an uncancellable run that already started a job must fail closed"
+fi
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+output=$(run_cancel MOCK_WEDGED_RUN_IDS="100 110 120" MOCK_WEDGED_JOB_COUNT=0)
+grep -q "nothing to await" <<<"$output" ||
+  fail "expected an all-wedged target set to exit without a completion barrier"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "an all-wedged target set must not poll"
 
 echo "cancel-superseded-merge-group-runs tests passed"
