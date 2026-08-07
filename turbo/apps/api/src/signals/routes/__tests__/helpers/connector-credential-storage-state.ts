@@ -156,6 +156,26 @@ export async function setConnectorCredentialStorageState(
   });
 }
 
+export async function setCustomConnectorCredentialStorageState(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectorId: string;
+    readonly authMethod: "manual" | "oauth";
+    readonly storageVersion: number;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-custom-parent-state",
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connector_id: args.customConnectorId,
+    auth_method: args.authMethod,
+    storage_version: args.storageVersion,
+  });
+}
+
 export async function setConnectorSecretOwner(
   context: TestContext,
   args: {

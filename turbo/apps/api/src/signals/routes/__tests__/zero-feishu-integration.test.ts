@@ -56,6 +56,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
+  setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -1558,6 +1559,50 @@ describe("Feishu integration", () => {
       isConnected: true,
       connectedUserName: "Feishu User",
     });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requireValue(
+        admin.orgId,
+        "Expected Feishu admin to have an organization",
+      ),
+      userId: admin.userId,
+      customConnectorId: managedConnector.id,
+      authMethod: "oauth",
+      storageVersion: 2,
+    });
+    const incompatibleFeishuStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(incompatibleFeishuStatus.body.isConnected).toBeFalsy();
+    const incompatibleConnectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(incompatibleConnectorList.body.connectors[0]).toMatchObject({
+      id: managedConnector.id,
+      connected: false,
+    });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requireValue(
+        admin.orgId,
+        "Expected Feishu admin to have an organization",
+      ),
+      userId: admin.userId,
+      customConnectorId: managedConnector.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    const restoredFeishuStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(restoredFeishuStatus.body.isConnected).toBeTruthy();
     await accept(
       setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
         zeroCustomConnectorSecretContract,
