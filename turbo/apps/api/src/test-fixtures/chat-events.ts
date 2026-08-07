@@ -838,6 +838,8 @@ export async function setQueuedUserMessageCreatedAtFixture(args: {
 /**
  * Remove only the Stage 5/7 compatibility columns from one input row so BDD
  * tests can prove queue and replacement paths read the canonical document.
+ * The public API cannot construct this canonical-only row while the required
+ * dual-write boundary remains active, so this is a persisted-history fixture.
  */
 export async function clearLegacyChatEventInputColumnsFixture(
   eventId: string,

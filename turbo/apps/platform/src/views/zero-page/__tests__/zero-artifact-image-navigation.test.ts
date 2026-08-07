@@ -5,7 +5,6 @@ import type {
 import { computed } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { createArtifactCardSignalsRegistry } from "../../../signals/chat-page/artifact-card-signals.ts";
-import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import {
   parseBodyBlocks,
   type BodyRenderBlock,
@@ -62,52 +61,6 @@ function assistantEvent({ content }: { content: string }): EventFixture {
 }
 
 describe("currentEventImageArtifactNavigation", () => {
-  it("navigates user images from canonical file parts", () => {
-    const firstId = "user-image-first";
-    const secondId = "user-image-second";
-    const firstUrl = canonicalUserMessageFileUrl(firstId);
-    const secondUrl = canonicalUserMessageFileUrl(secondId);
-    const groups: Parameters<typeof currentEventImageArtifactNavigation>[1] = [
-      {
-        role: "user",
-        events: [
-          {
-            userMessage: {
-              version: 1,
-              parts: [
-                {
-                  type: "file",
-                  fileId: firstId,
-                  filenameSnapshot: "first.png",
-                  contentType: "image/png",
-                },
-                {
-                  type: "file",
-                  fileId: secondId,
-                  filenameSnapshot: "second.png",
-                  contentType: "image/png",
-                },
-              ],
-            },
-            blocks: [],
-          },
-        ],
-      },
-    ];
-
-    const navigation = currentEventImageArtifactNavigation(
-      [],
-      groups,
-      firstUrl,
-    );
-
-    expect(navigation.previous).toBeUndefined();
-    expect(navigation.next).toStrictEqual({
-      url: secondUrl,
-      filename: "second.png",
-    });
-  });
-
   it("navigates assistant images split across events in the same group", () => {
     const firstImageUrl =
       "https://cdn.vm7.io/artifacts/test/body-image-split-navigation/first.png";

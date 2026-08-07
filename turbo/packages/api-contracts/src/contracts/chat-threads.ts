@@ -531,7 +531,8 @@ const inputPromptEventSchema = chatEventBaseSchema
     eventType: z.literal("input.prompt"),
     content: z.null(),
     userMessage: userMessageDocumentSchema,
-    // Stage 5/7 removal owner: temporary response projections for old clients.
+    // Old web/app response fields (~2-day observed client window). The Stage
+    // 5/7 chat-event cleanup follow-up PR removes them after the client floor.
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -575,7 +576,8 @@ const inputRejectedEventSchema = chatEventBaseSchema
     content: z.null(),
     userMessage: userMessageDocumentSchema,
     error: z.string(),
-    // Stage 5/7 removal owner: temporary response projections for old clients.
+    // Old web/app response fields (~2-day observed client window). The Stage
+    // 5/7 chat-event cleanup follow-up PR removes them after the client floor.
     attachFiles: z.array(resolvedAttachFileSchema).optional(),
     generationTemplate: generationTemplateRequestSchema.optional(),
   })
@@ -804,14 +806,16 @@ const chatNormalSendBodyShape = {
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
   userMessage: userMessageInputDocumentSchema,
-  // Stage 5/7 removal owner: accepted only at ingress for old clients. New
-  // clients encode these values as file/template `userMessage` parts.
+  // Accepted at ingress for old web/app clients (~2-day observed window). New
+  // clients use template parts; the Stage 5/7 cleanup follow-up PR removes it
+  // after the client version-floor cutover.
   generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
   hasTextContent: z.boolean(),
-  // Stage 5/7 removal owner: accepted only at ingress for old clients. New
-  // clients encode attachments as file `userMessage` parts.
+  // Accepted at ingress for old web/app clients (~2-day observed window). New
+  // clients use file parts; the Stage 5/7 cleanup follow-up PR removes it after
+  // the client version-floor cutover.
   attachFiles: z.array(attachFileSchema).optional(),
   // Preview evaluation escape hatch: when enabled, the request asks the
   // runner to bypass preview mock CLIs and use the real agent runtime.

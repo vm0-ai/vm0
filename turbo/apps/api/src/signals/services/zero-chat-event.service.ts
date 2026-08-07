@@ -928,10 +928,11 @@ async function insertDisplayContext(
 }
 
 /**
- * Temporary persistence boundary for deployments that still expose the old
- * chat-event columns. Internal callers only provide `userMessage`; Stage 5/7
- * owns deleting this projection together with the public legacy fields after
- * the client and deployment version floors cross the cutover.
+ * Temporary old/new API persisted-state boundary. DB/API overlap has been
+ * observed for ~102 minutes, while old web/app response consumers can remain
+ * active for ~2 days. Internal callers only provide `userMessage`; the Stage
+ * 5/7 chat-event cleanup follow-up PR removes this projection after both the
+ * client version-floor cutover and the prior API drain windows have closed.
  */
 function legacyInputProjection(
   userMessage: NonNullable<ChatEventInsert["userMessage"]>,

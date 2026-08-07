@@ -63,9 +63,10 @@ function legacyGenerationTemplateTitleSnapshot(
 }
 
 /**
- * Convert the still-public legacy send fields at API ingress. Canonical parts
- * win when a mixed-version client submits both representations. Stage 5/7
- * owns removal after the client version floor makes these fields unreachable.
+ * Old web/app clients can send the legacy fields for the observed ~2-day
+ * client window. Convert them at API ingress; canonical parts win when both
+ * representations arrive. The Stage 5/7 chat-event cleanup follow-up PR owns
+ * removal after the client version floor makes the old fields unreachable.
  */
 export function normalizeLegacyUserMessageInput(args: {
   readonly userMessage: UserMessageInputDocument;
