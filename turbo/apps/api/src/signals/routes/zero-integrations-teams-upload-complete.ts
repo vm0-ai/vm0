@@ -142,21 +142,23 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
   const mimetype = body.contentType ?? object.contentType;
 
-  const result = await sendTeamsMessage({
-    serviceUrl: installation.serviceUrl,
-    conversationId: body.conversationId,
-    activityId: body.activityId,
-    tenantId: installation.teamsTenantId,
-    text: buildTeamsFileText({ body, file }),
-    attachments: [
-      {
-        contentType: mimetype,
-        contentUrl: file.fileUrl,
-        name: file.filename,
-      },
-    ],
+  const result = await sendTeamsMessage(
+    {
+      serviceUrl: installation.serviceUrl,
+      conversationId: body.conversationId,
+      activityId: body.activityId,
+      tenantId: installation.teamsTenantId,
+      text: buildTeamsFileText({ body, file }),
+      attachments: [
+        {
+          contentType: mimetype,
+          contentUrl: file.fileUrl,
+          name: file.filename,
+        },
+      ],
+    },
     signal,
-  });
+  );
   signal.throwIfAborted();
   if (result.kind === "teams-error") {
     return teamsErrorResponse(result);

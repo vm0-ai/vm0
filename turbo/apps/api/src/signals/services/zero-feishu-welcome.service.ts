@@ -14,13 +14,15 @@ import { settle } from "../utils";
 const L = logger("ZeroFeishuWelcome");
 const WELCOME_RETRY_LIMIT = 20;
 
-export async function notifyFeishuConnect(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly connectionId: string;
-  readonly openId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function notifyFeishuConnect(
+  args: {
+    readonly db: Db;
+    readonly installationId: string;
+    readonly connectionId: string;
+    readonly openId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const [installation] = await args.db
     .select({
       agentName: zeroAgents.name,
@@ -33,22 +35,24 @@ export async function notifyFeishuConnect(args: {
     )
     .where(eq(feishuOrgInstallations.id, args.installationId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!installation) {
     throw new Error("Feishu installation not found");
   }
-  await sendFeishuMessage({
-    db: args.db,
-    installationId: args.installationId,
-    receiveIdType: "open_id",
-    receiveId: args.openId,
-    message: buildFeishuWelcomeMessage({
-      agentName: installation.agentDisplayName ?? installation.agentName,
-    }),
-    idempotencyKey: args.connectionId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  await sendFeishuMessage(
+    {
+      db: args.db,
+      installationId: args.installationId,
+      receiveIdType: "open_id",
+      receiveId: args.openId,
+      message: buildFeishuWelcomeMessage({
+        agentName: installation.agentDisplayName ?? installation.agentName,
+      }),
+      idempotencyKey: args.connectionId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   await args.db
     .update(feishuOrgConnections)
     .set({ dmWelcomeSent: true, updatedAt: nowDate() })
@@ -80,13 +84,15 @@ export const retryPendingFeishuConnectWelcomes$ = command(
     let delivered = 0;
     for (const row of rows) {
       const result = await settle(
-        notifyFeishuConnect({
-          db,
-          installationId: row.installationId,
-          connectionId: row.connectionId,
-          openId: row.openId,
+        notifyFeishuConnect(
+          {
+            db,
+            installationId: row.installationId,
+            connectionId: row.connectionId,
+            openId: row.openId,
+          },
           signal,
-        }),
+        ),
         signal,
       );
       signal.throwIfAborted();

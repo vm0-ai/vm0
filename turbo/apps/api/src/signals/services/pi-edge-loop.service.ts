@@ -249,31 +249,33 @@ export const runPiEdgeTurn$ = command(
           expectedLastOrdinal += 1;
         };
 
-        await runPiAgentPrompt({
-          model: args.model,
-          systemPrompt: args.systemPrompt,
-          prompt: args.prompt,
-          messages: priorMessages,
-          executionEnv: args.executionEnv,
-          signal,
-          async onMessage(message) {
-            await project(message);
-            modelFailure ??= failedAssistantMessage(message);
-            if (!piMessageRequiresSandbox(message)) {
-              return;
-            }
-            await set(
-              dispatchPiSandboxHandoff$,
-              {
-                runId: args.runId,
-                userId: args.userId,
-                runnerGroup: args.runnerGroup,
-              },
-              signal,
-            );
-            throw new PiHandoffRequested();
+        await runPiAgentPrompt(
+          {
+            model: args.model,
+            systemPrompt: args.systemPrompt,
+            prompt: args.prompt,
+            messages: priorMessages,
+            executionEnv: args.executionEnv,
+            async onMessage(message) {
+              await project(message);
+              modelFailure ??= failedAssistantMessage(message);
+              if (!piMessageRequiresSandbox(message)) {
+                return;
+              }
+              await set(
+                dispatchPiSandboxHandoff$,
+                {
+                  runId: args.runId,
+                  userId: args.userId,
+                  runnerGroup: args.runnerGroup,
+                },
+                signal,
+              );
+              throw new PiHandoffRequested();
+            },
           },
-        });
+          signal,
+        );
         if (modelFailure !== null) {
           throw new Error(modelFailure);
         }

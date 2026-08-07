@@ -129,13 +129,15 @@ function pendingEventLockKey(args: {
   return [args.automationId, args.uid, args.documentId].join(":");
 }
 
-async function enqueueOrRefreshStrapiPendingEvent(args: {
-  readonly db: StrapiWebhookTransaction;
-  readonly automation: AutomationRow;
-  readonly integrationId: string;
-  readonly event: StrapiPublishEvent;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function enqueueOrRefreshStrapiPendingEvent(
+  args: {
+    readonly db: StrapiWebhookTransaction;
+    readonly automation: AutomationRow;
+    readonly integrationId: string;
+    readonly event: StrapiPublishEvent;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const lockKey = pendingEventLockKey({
     automationId: args.automation.id,
     uid: args.event.uid,
@@ -144,7 +146,7 @@ async function enqueueOrRefreshStrapiPendingEvent(args: {
   await args.db.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const [pending] = await args.db
     .select()
@@ -195,12 +197,14 @@ async function enqueueOrRefreshStrapiPendingEvent(args: {
   });
 }
 
-async function enqueueMatchingStrapiAutomations(args: {
-  readonly db: StrapiWebhookTransaction;
-  readonly integration: StrapiIntegrationRow;
-  readonly event: StrapiPublishEvent;
-  readonly signal: AbortSignal;
-}): Promise<number> {
+async function enqueueMatchingStrapiAutomations(
+  args: {
+    readonly db: StrapiWebhookTransaction;
+    readonly integration: StrapiIntegrationRow;
+    readonly event: StrapiPublishEvent;
+  },
+  signal: AbortSignal,
+): Promise<number> {
   const rows = await args.db
     .select({
       automation: rolloutCompatibleWorkflowAutomationColumns(false),
@@ -222,7 +226,7 @@ async function enqueueMatchingStrapiAutomations(args: {
       ),
     )
     .orderBy(asc(zeroWorkflowAutomations.id));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   let queued = 0;
   for (const { automation } of rows) {
@@ -238,13 +242,15 @@ async function enqueueMatchingStrapiAutomations(args: {
     ) {
       continue;
     }
-    await enqueueOrRefreshStrapiPendingEvent({
-      db: args.db,
-      automation,
-      integrationId: args.integration.id,
-      event: args.event,
-      signal: args.signal,
-    });
+    await enqueueOrRefreshStrapiPendingEvent(
+      {
+        db: args.db,
+        automation,
+        integrationId: args.integration.id,
+        event: args.event,
+      },
+      signal,
+    );
     queued += 1;
   }
   return queued;
@@ -334,12 +340,14 @@ export const dispatchStrapiWebhook$ = command(
         .set({ lastReceivedAt: nowDate(), updatedAt: nowDate() })
         .where(eq(strapiIntegrations.id, integration.id));
       signal.throwIfAborted();
-      const queued = await enqueueMatchingStrapiAutomations({
-        db: tx,
-        integration,
-        event: parsed.data,
+      const queued = await enqueueMatchingStrapiAutomations(
+        {
+          db: tx,
+          integration,
+          event: parsed.data,
+        },
         signal,
-      });
+      );
       return { kind: "ok", webhookKind: "publish", queued } as const;
     });
     signal.throwIfAborted();
@@ -378,20 +386,22 @@ function pendingVersionCondition(pending: StrapiPendingRow) {
   );
 }
 
-async function skipPendingEvent(args: {
-  readonly db: Db;
-  readonly pending: StrapiPendingRow;
-  readonly reason: string;
-  readonly attempts?: number;
-  readonly lastError?: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function skipPendingEvent(
+  args: {
+    readonly db: Db;
+    readonly pending: StrapiPendingRow;
+    readonly reason: string;
+    readonly attempts?: number;
+    readonly lastError?: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   await args.db.transaction(async (tx) => {
     const lockKey = pendingEventLockKey(args.pending);
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     await tx
       .update(strapiWorkflowPendingEvents)
       .set({
@@ -404,25 +414,29 @@ async function skipPendingEvent(args: {
       })
       .where(pendingVersionCondition(args.pending));
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function retryPendingEvent(args: {
-  readonly db: Db;
-  readonly pending: StrapiPendingRow;
-  readonly message: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function retryPendingEvent(
+  args: {
+    readonly db: Db;
+    readonly pending: StrapiPendingRow;
+    readonly message: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const nextAttempts = args.pending.attempts + 1;
   if (nextAttempts >= STRAPI_PENDING_MAX_ATTEMPTS) {
-    await skipPendingEvent({
-      db: args.db,
-      pending: args.pending,
-      reason: args.message,
-      attempts: nextAttempts,
-      lastError: args.message,
-      signal: args.signal,
-    });
+    await skipPendingEvent(
+      {
+        db: args.db,
+        pending: args.pending,
+        reason: args.message,
+        attempts: nextAttempts,
+        lastError: args.message,
+      },
+      signal,
+    );
     return;
   }
   await args.db.transaction(async (tx) => {
@@ -430,7 +444,7 @@ async function retryPendingEvent(args: {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     await tx
       .update(strapiWorkflowPendingEvents)
       .set({
@@ -442,7 +456,7 @@ async function retryPendingEvent(args: {
       })
       .where(pendingVersionCondition(args.pending));
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 class StrapiPendingEventChangedError extends Error {
@@ -452,16 +466,18 @@ class StrapiPendingEventChangedError extends Error {
   }
 }
 
-async function persistPendingEventProcessed(args: {
-  readonly tx: WorkflowQueueAdmissionTransaction;
-  readonly pending: StrapiPendingRow;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function persistPendingEventProcessed(
+  args: {
+    readonly tx: WorkflowQueueAdmissionTransaction;
+    readonly pending: StrapiPendingRow;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const lockKey = pendingEventLockKey(args.pending);
   await args.tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const currentTime = nowDate();
   const [processed] = await args.tx
     .update(strapiWorkflowPendingEvents)
@@ -472,17 +488,19 @@ async function persistPendingEventProcessed(args: {
     })
     .where(pendingVersionCondition(args.pending))
     .returning({ id: strapiWorkflowPendingEvents.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!processed) {
     throw new StrapiPendingEventChangedError();
   }
 }
 
-async function loadPendingEventTarget(args: {
-  readonly db: Db;
-  readonly automationId: string;
-  readonly signal: AbortSignal;
-}) {
+async function loadPendingEventTarget(
+  args: {
+    readonly db: Db;
+    readonly automationId: string;
+  },
+  signal: AbortSignal,
+) {
   const [row] = await args.db
     .select({
       automation: rolloutCompatibleWorkflowAutomationColumns(false),
@@ -525,7 +543,7 @@ async function loadPendingEventTarget(args: {
     )
     .where(eq(zeroWorkflowAutomations.id, args.automationId))
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return row ?? null;
 }
 
@@ -535,20 +553,24 @@ function runFailureMessage(result: RunFailure): string {
     : result.response.body.error.message;
 }
 
-async function processPendingEvent(args: {
-  readonly db: Db;
-  readonly pending: StrapiPendingRow;
-  readonly signal: AbortSignal;
-  readonly startRun: (
-    input: RunWorkflowAutomationNowArgs,
-    signal: AbortSignal,
-  ) => Promise<RunWorkflowAutomationResult>;
-}): Promise<"executed" | "skipped"> {
-  const row = await loadPendingEventTarget({
-    db: args.db,
-    automationId: args.pending.automationId,
-    signal: args.signal,
-  });
+async function processPendingEvent(
+  args: {
+    readonly db: Db;
+    readonly pending: StrapiPendingRow;
+    readonly startRun: (
+      input: RunWorkflowAutomationNowArgs,
+      signal: AbortSignal,
+    ) => Promise<RunWorkflowAutomationResult>;
+  },
+  signal: AbortSignal,
+): Promise<"executed" | "skipped"> {
+  const row = await loadPendingEventTarget(
+    {
+      db: args.db,
+      automationId: args.pending.automationId,
+    },
+    signal,
+  );
 
   const config = row
     ? strapiEntryPublishedEventConfigSchema.safeParse(
@@ -571,26 +593,33 @@ async function processPendingEvent(args: {
       orgId: row.automation.orgId,
     })
   ) {
-    await skipPendingEvent({
-      db: args.db,
-      pending: args.pending,
-      reason: "Automation is no longer active or no longer matches",
-      signal: args.signal,
-    });
+    await skipPendingEvent(
+      {
+        db: args.db,
+        pending: args.pending,
+        reason: "Automation is no longer active or no longer matches",
+      },
+      signal,
+    );
     return "skipped";
   }
-  const canFire = await workflowAutomationCanFire(args.db, {
-    automation: row.automation,
-    agentId: row.agentId,
-    signal: args.signal,
-  });
+  const canFire = await workflowAutomationCanFire(
+    args.db,
+    {
+      automation: row.automation,
+      agentId: row.agentId,
+    },
+    signal,
+  );
   if (!canFire) {
-    await skipPendingEvent({
-      db: args.db,
-      pending: args.pending,
-      reason: "Automation owner can no longer run this workflow",
-      signal: args.signal,
-    });
+    await skipPendingEvent(
+      {
+        db: args.db,
+        pending: args.pending,
+        reason: "Automation owner can no longer run this workflow",
+      },
+      signal,
+    );
     return "skipped";
   }
 
@@ -617,6 +646,7 @@ async function processPendingEvent(args: {
       latestEventAt: args.pending.latestEventAt.toISOString(),
     },
   };
+  const pending = args.pending;
   const result = await args.startRun(
     {
       due: {
@@ -630,23 +660,21 @@ async function processPendingEvent(args: {
       triggerBrief: `Strapi published ${args.pending.uid} ${args.pending.documentId} (${args.pending.locales.length} locale${args.pending.locales.length === 1 ? "" : "s"})`,
       coalescePendingScheduleRun: false,
       persistSourceTransition: async (tx) => {
-        await persistPendingEventProcessed({
-          tx,
-          pending: args.pending,
-          signal: args.signal,
-        });
+        await persistPendingEventProcessed({ tx, pending }, signal);
       },
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     },
-    args.signal,
+    signal,
   );
   if (result.kind !== "ok" && result.kind !== "enqueued") {
-    await retryPendingEvent({
-      db: args.db,
-      pending: args.pending,
-      message: runFailureMessage(result),
-      signal: args.signal,
-    });
+    await retryPendingEvent(
+      {
+        db: args.db,
+        pending: args.pending,
+        message: runFailureMessage(result),
+      },
+      signal,
+    );
     return "skipped";
   }
   return "executed";
@@ -657,15 +685,17 @@ type ExecuteDueStrapiResult = {
   readonly skipped: number;
 };
 
-async function executeDueStrapiWorkflowEvents(args: {
-  readonly db: Db;
-  readonly signal: AbortSignal;
-  readonly automationId?: string;
-  readonly startRun: (
-    input: RunWorkflowAutomationNowArgs,
-    signal: AbortSignal,
-  ) => Promise<RunWorkflowAutomationResult>;
-}): Promise<ExecuteDueStrapiResult> {
+async function executeDueStrapiWorkflowEvents(
+  args: {
+    readonly db: Db;
+    readonly automationId?: string;
+    readonly startRun: (
+      input: RunWorkflowAutomationNowArgs,
+      signal: AbortSignal,
+    ) => Promise<RunWorkflowAutomationResult>;
+  },
+  signal: AbortSignal,
+): Promise<ExecuteDueStrapiResult> {
   const due = await args.db
     .select(pendingColumns())
     .from(strapiWorkflowPendingEvents)
@@ -680,19 +710,21 @@ async function executeDueStrapiWorkflowEvents(args: {
     )
     .orderBy(asc(strapiWorkflowPendingEvents.runAfter))
     .limit(STRAPI_PENDING_BATCH_SIZE);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   let executed = 0;
   let skipped = 0;
   for (const pending of due) {
     const result = await settle(
-      processPendingEvent({
-        db: args.db,
-        pending,
-        signal: args.signal,
-        startRun: args.startRun,
-      }),
-      args.signal,
+      processPendingEvent(
+        {
+          db: args.db,
+          pending,
+          startRun: args.startRun,
+        },
+        signal,
+      ),
+      signal,
     );
     if (!result.ok) {
       if (result.error instanceof StrapiPendingEventChangedError) {
@@ -703,15 +735,17 @@ async function executeDueStrapiWorkflowEvents(args: {
         pendingEventId: pending.id,
         error: result.error,
       });
-      await retryPendingEvent({
-        db: args.db,
-        pending,
-        message:
-          result.error instanceof Error
-            ? result.error.message
-            : "Unknown error",
-        signal: args.signal,
-      });
+      await retryPendingEvent(
+        {
+          db: args.db,
+          pending,
+          message:
+            result.error instanceof Error
+              ? result.error.message
+              : "Unknown error",
+        },
+        signal,
+      );
       skipped += 1;
       continue;
     }
@@ -726,13 +760,15 @@ async function executeDueStrapiWorkflowEvents(args: {
 
 export const executeDueStrapiWorkflowEvents$ = command(
   async ({ set }, signal: AbortSignal): Promise<ExecuteDueStrapiResult> => {
-    return await executeDueStrapiWorkflowEvents({
-      db: set(writeDb$),
-      signal,
-      startRun: (input, childSignal) => {
-        return set(runWorkflowAutomationNow$, input, childSignal);
+    return await executeDueStrapiWorkflowEvents(
+      {
+        db: set(writeDb$),
+        startRun: (input, childSignal) => {
+          return set(runWorkflowAutomationNow$, input, childSignal);
+        },
       },
-    });
+      signal,
+    );
   },
 );
 
@@ -742,13 +778,15 @@ export const executeDueStrapiWorkflowEventsForAutomation$ = command(
     automationId: string,
     signal: AbortSignal,
   ): Promise<ExecuteDueStrapiResult> => {
-    return await executeDueStrapiWorkflowEvents({
-      db: set(writeDb$),
-      automationId,
-      signal,
-      startRun: (input, childSignal) => {
-        return set(runWorkflowAutomationNow$, input, childSignal);
+    return await executeDueStrapiWorkflowEvents(
+      {
+        db: set(writeDb$),
+        automationId,
+        startRun: (input, childSignal) => {
+          return set(runWorkflowAutomationNow$, input, childSignal);
+        },
       },
-    });
+      signal,
+    );
   },
 );

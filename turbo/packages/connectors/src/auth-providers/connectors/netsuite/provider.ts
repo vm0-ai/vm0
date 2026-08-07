@@ -4,14 +4,16 @@ import { refreshNetSuiteAccessToken } from "./api-token";
 export const netsuiteProvider = {
   access: {
     kind: "refresh-token",
-    refresh: async (args) => {
-      const token = await refreshNetSuiteAccessToken({
-        accountSubdomain: args.inputs.accountSubdomain,
-        clientId: args.inputs.clientId,
-        clientSecret: args.inputs.clientSecret,
-        refreshToken: args.inputs.refreshToken,
-        signal: args.signal,
-      });
+    refresh: async (args, signal: AbortSignal) => {
+      const token = await refreshNetSuiteAccessToken(
+        {
+          accountSubdomain: args.inputs.accountSubdomain,
+          clientId: args.inputs.clientId,
+          clientSecret: args.inputs.clientSecret,
+          refreshToken: args.inputs.refreshToken,
+        },
+        signal,
+      );
       return {
         outputs: {
           accessToken: token.accessToken,

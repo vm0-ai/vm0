@@ -30,13 +30,15 @@ export const zeroAgentLoopCommand = new Command()
     const io = new StdioPiAgentLoopIo(process.stdin, process.stdout);
     const executionEnv = createPiNodeExecutionEnv();
     try {
-      await runPiStandbyAgentLoop({
-        io,
-        config: piStandbyAgentConfigFromEnv(),
-        executionEnv,
-        signal: new AbortController().signal,
-        standbyTtlSeconds: options.standbyTtlSeconds,
-      });
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: piStandbyAgentConfigFromEnv(),
+          executionEnv,
+          standbyTtlSeconds: options.standbyTtlSeconds,
+        },
+        new AbortController().signal,
+      );
     } catch (error) {
       await io.write({
         type: "pi-error",

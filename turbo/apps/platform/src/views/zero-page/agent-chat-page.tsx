@@ -244,8 +244,9 @@ function TypewriterText({
   );
 }
 
-function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
+function InviteButton() {
   const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
@@ -549,7 +550,7 @@ export function AgentChatPage() {
       <span ref={subscribeComputerUseHostsChangedRef} hidden />
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
-          <InviteButton pageSignal={pageSignal} />
+          <InviteButton />
         </div>
       </header>
 

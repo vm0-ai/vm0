@@ -97,11 +97,13 @@ function textResponse(text: string): Response {
   return new Response(text, { status: 200 });
 }
 
-async function markCallbackVerified(args: {
-  readonly db: Db;
-  readonly config: FeishuInstallationConfig;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function markCallbackVerified(
+  args: {
+    readonly db: Db;
+    readonly config: FeishuInstallationConfig;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (args.config.callbackVerified) {
     return;
   }
@@ -109,7 +111,7 @@ async function markCallbackVerified(args: {
     .update(feishuOrgInstallations)
     .set({ callbackVerifiedAt: nowDate(), updatedAt: nowDate() })
     .where(eq(feishuOrgInstallations.id, args.config.id));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   await publishFeishuOrgChanged(
     args.db,
     args.config.orgId,
@@ -240,12 +242,14 @@ function inboundMessage(
   };
 }
 
-async function ensureInboundBotIdentity(args: {
-  readonly db: Db;
-  readonly config: FeishuInstallationConfig;
-  readonly envelope: z.infer<typeof v2EnvelopeSchema>;
-  readonly signal: AbortSignal;
-}): Promise<FeishuInstallationConfig> {
+async function ensureInboundBotIdentity(
+  args: {
+    readonly db: Db;
+    readonly config: FeishuInstallationConfig;
+    readonly envelope: z.infer<typeof v2EnvelopeSchema>;
+  },
+  signal: AbortSignal,
+): Promise<FeishuInstallationConfig> {
   if (args.config.botOpenId) {
     return args.config;
   }
@@ -259,15 +263,19 @@ async function ensureInboundBotIdentity(args: {
   }
   const bot = await tapError(
     (async () => {
-      const tenantAccessToken = await getFeishuTenantAccessToken({
-        db: args.db,
-        installationId: args.config.id,
-        signal: args.signal,
-      });
-      return await fetchFeishuBotInfo({
-        tenantAccessToken,
-        signal: args.signal,
-      });
+      const tenantAccessToken = await getFeishuTenantAccessToken(
+        {
+          db: args.db,
+          installationId: args.config.id,
+        },
+        signal,
+      );
+      return await fetchFeishuBotInfo(
+        {
+          tenantAccessToken,
+        },
+        signal,
+      );
     })(),
     (error) => {
       L.warn("Failed to backfill Feishu bot identity", {
@@ -276,7 +284,7 @@ async function ensureInboundBotIdentity(args: {
       });
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!bot) {
     return args.config;
   }
@@ -289,19 +297,21 @@ async function ensureInboundBotIdentity(args: {
       updatedAt: nowDate(),
     })
     .where(eq(feishuOrgInstallations.id, args.config.id));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { ...args.config, botOpenId: bot.openId };
 }
 
-async function admitInboundFeishuMessage(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly processIngress: (
-    ingressId: string,
-    signal: AbortSignal,
-  ) => Promise<boolean>;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function admitInboundFeishuMessage(
+  args: {
+    readonly db: Db;
+    readonly message: FeishuInboundMessage;
+    readonly processIngress: (
+      ingressId: string,
+      signal: AbortSignal,
+    ) => Promise<boolean>;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const admittedAt = nowDate();
   const ingress = await admitFeishuChatEvent(args.db, {
     installationId: args.message.installationId,
@@ -309,7 +319,7 @@ async function admitInboundFeishuMessage(args: {
     payload: JSON.stringify(args.message),
     currentTime: admittedAt,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   L.debug("Canonical Feishu ingress admitted", {
     type: "canonical_feishu_ingress_admission",
     eventId: args.message.eventId,
@@ -383,7 +393,7 @@ export const handleZeroFeishuEvents$ = command(
         });
         return jsonResponse({ error: "Invalid Feishu token" }, 401);
       }
-      await markCallbackVerified({ db, config, signal });
+      await markCallbackVerified({ db, config }, signal);
       L.debug("Verified Feishu callback URL", {
         installationId: config.id,
       });
@@ -425,27 +435,31 @@ export const handleZeroFeishuEvents$ = command(
       });
       return jsonResponse({ error: "Invalid Feishu token" }, 401);
     }
-    await markCallbackVerified({ db, config, signal });
-    const dispatchConfig = await ensureInboundBotIdentity({
-      db,
-      config,
-      envelope: v2.data,
+    await markCallbackVerified({ db, config }, signal);
+    const dispatchConfig = await ensureInboundBotIdentity(
+      {
+        db,
+        config,
+        envelope: v2.data,
+      },
       signal,
-    });
+    );
     const message = inboundMessage(dispatchConfig, v2.data);
     if (message) {
-      await admitInboundFeishuMessage({
-        db,
-        message,
-        processIngress: (ingressId, inputSignal) => {
-          return set(
-            processCanonicalFeishuIngress$,
-            { ingressId },
-            inputSignal,
-          );
+      await admitInboundFeishuMessage(
+        {
+          db,
+          message,
+          processIngress: (ingressId, inputSignal) => {
+            return set(
+              processCanonicalFeishuIngress$,
+              { ingressId },
+              inputSignal,
+            );
+          },
         },
         signal,
-      });
+      );
       signal.throwIfAborted();
     }
     return textResponse("OK");

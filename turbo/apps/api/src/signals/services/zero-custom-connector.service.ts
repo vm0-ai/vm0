@@ -1928,18 +1928,20 @@ function validateValueInputs(args: {
   });
 }
 
-async function encryptCustomConnectorValues(args: {
-  readonly values: readonly CustomConnectorValueInput[];
-  readonly featureSwitchContext: FeatureSwitchContextArg;
-  readonly signal: AbortSignal;
-}): Promise<readonly EncryptedCustomConnectorValue[]> {
+async function encryptCustomConnectorValues(
+  args: {
+    readonly values: readonly CustomConnectorValueInput[];
+    readonly featureSwitchContext: FeatureSwitchContextArg;
+  },
+  signal: AbortSignal,
+): Promise<readonly EncryptedCustomConnectorValue[]> {
   const encryptedValues: EncryptedCustomConnectorValue[] = [];
   for (const value of args.values) {
     const encryptedValue = await encryptStoredSecretValue(
       value.value,
       args.featureSwitchContext,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     encryptedValues.push({
       key: value.key,
       kind: value.kind,
@@ -1987,11 +1989,11 @@ export const setCustomConnectorValues$ = command(
     );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    const encryptedValues = await encryptCustomConnectorValues({
-      values,
-      featureSwitchContext,
+    const encryptionInput = { values, featureSwitchContext };
+    const encryptedValues = await encryptCustomConnectorValues(
+      encryptionInput,
       signal,
-    });
+    );
     if (encryptedValues.length > 0) {
       await writeDb.transaction(async (tx) => {
         await tx

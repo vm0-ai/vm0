@@ -162,23 +162,27 @@ async function loadDriveTokens(
   };
 }
 
-async function refreshDriveAccessToken(args: {
-  readonly connection: ConnectorCredentialConnection;
-  readonly db: ReadonlyDb;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-  readonly userId: string;
-}): Promise<string | null> {
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection: args.connection,
-    db: args.db,
-    featureSwitchContext: args.featureSwitchContext,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
-    signal: args.signal,
-  });
+async function refreshDriveAccessToken(
+  args: {
+    readonly connection: ConnectorCredentialConnection;
+    readonly db: ReadonlyDb;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection: args.connection,
+      db: args.db,
+      featureSwitchContext: args.featureSwitchContext,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
+    },
+    signal,
+  );
   return refreshed.kind === "ok" ? refreshed.accessToken : null;
 }
 
@@ -186,11 +190,13 @@ type DriveListResult =
   | { readonly type: "ok"; readonly files: z.infer<typeof driveFileSchema>[] }
   | { readonly type: "unauthorized" };
 
-async function listArtifactFiles(args: {
-  readonly accessToken: string;
-  readonly threadId: string;
-  readonly signal: AbortSignal;
-}): Promise<DriveListResult> {
+async function listArtifactFiles(
+  args: {
+    readonly accessToken: string;
+    readonly threadId: string;
+  },
+  signal: AbortSignal,
+): Promise<DriveListResult> {
   const url = new URL(GOOGLE_DRIVE_FILES_URL);
   url.searchParams.set(
     "q",
@@ -205,7 +211,7 @@ async function listArtifactFiles(args: {
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${args.accessToken}` },
-    signal: args.signal,
+    signal,
   });
   if (response.status === 401) {
     return { type: "unauthorized" };
@@ -219,39 +225,47 @@ async function listArtifactFiles(args: {
   return { type: "ok", files: parsed.files };
 }
 
-async function listArtifactFilesWithRefresh(args: {
-  readonly db: ReadonlyDb;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly orgId: string;
-  readonly tokens: ConnectorTokens;
-  readonly threadId: string;
-  readonly signal: AbortSignal;
-  readonly userId: string;
-}): Promise<z.infer<typeof driveFileSchema>[] | "unauthorized"> {
-  const first = await listArtifactFiles({
-    accessToken: args.tokens.accessToken,
-    threadId: args.threadId,
-    signal: args.signal,
-  });
+async function listArtifactFilesWithRefresh(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly orgId: string;
+    readonly tokens: ConnectorTokens;
+    readonly threadId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<z.infer<typeof driveFileSchema>[] | "unauthorized"> {
+  const first = await listArtifactFiles(
+    {
+      accessToken: args.tokens.accessToken,
+      threadId: args.threadId,
+    },
+    signal,
+  );
   if (first.type === "ok") {
     return first.files;
   }
-  const refreshedAccessToken = await refreshDriveAccessToken({
-    connection: args.tokens.connection,
-    db: args.db,
-    featureSwitchContext: args.featureSwitchContext,
-    orgId: args.orgId,
-    signal: args.signal,
-    userId: args.userId,
-  });
+  const refreshedAccessToken = await refreshDriveAccessToken(
+    {
+      connection: args.tokens.connection,
+      db: args.db,
+      featureSwitchContext: args.featureSwitchContext,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+    signal,
+  );
   if (!refreshedAccessToken) {
     return "unauthorized";
   }
-  const second = await listArtifactFiles({
-    accessToken: refreshedAccessToken,
-    threadId: args.threadId,
-    signal: args.signal,
-  });
+  const second = await listArtifactFiles(
+    {
+      accessToken: refreshedAccessToken,
+      threadId: args.threadId,
+    },
+    signal,
+  );
   if (second.type === "unauthorized") {
     return "unauthorized";
   }
@@ -366,15 +380,17 @@ export function googleDriveArtifactStatusLookup(args: {
     // 2s timeout intentionally propagates under the project-wide ban on
     // swallowing aborts.
     const files = await tapError(
-      listArtifactFilesWithRefresh({
-        db,
-        featureSwitchContext,
-        orgId: args.orgId,
-        tokens,
-        threadId: args.threadId,
-        signal: AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
-        userId: args.userId,
-      }),
+      listArtifactFilesWithRefresh(
+        {
+          db,
+          featureSwitchContext,
+          orgId: args.orgId,
+          tokens,
+          threadId: args.threadId,
+          userId: args.userId,
+        },
+        AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
+      ),
     );
     if (files === undefined) {
       return { type: "unknown" };
@@ -1098,14 +1114,16 @@ export const syncArtifactToGoogleDrive$ = command(
     signal.throwIfAborted();
 
     if (result.type === "unauthorized") {
-      const refreshed = await refreshDriveAccessToken({
-        connection: tokens.connection,
-        db,
-        featureSwitchContext,
-        orgId: args.orgId,
+      const refreshed = await refreshDriveAccessToken(
+        {
+          connection: tokens.connection,
+          db,
+          featureSwitchContext,
+          orgId: args.orgId,
+          userId: args.userId,
+        },
         signal,
-        userId: args.userId,
-      });
+      );
       signal.throwIfAborted();
       if (refreshed) {
         result = await uploadArtifactWithToken({

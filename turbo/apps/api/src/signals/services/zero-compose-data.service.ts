@@ -182,11 +182,13 @@ export const deleteComposeById$ = command(
       return conflict("Cannot delete agent: agent is currently running");
     }
 
-    await reconcileWorkflowEventWatches({
-      db: writeDb,
-      automations: result.automations,
+    await reconcileWorkflowEventWatches(
+      {
+        db: writeDb,
+        automations: result.automations,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (result.s3Prefix) {

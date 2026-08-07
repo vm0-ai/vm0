@@ -102,14 +102,16 @@ describe("Pi handoff recovery", () => {
     const events: AgentEvent[] = [];
 
     try {
-      const results = await executePiUnresolvedToolBatch({
-        messages,
-        executionEnv: env,
-        signal: new AbortController().signal,
-        onEvent(event) {
-          events.push(event);
+      const results = await executePiUnresolvedToolBatch(
+        {
+          messages,
+          executionEnv: env,
+          onEvent(event) {
+            events.push(event);
+          },
         },
-      });
+        new AbortController().signal,
+      );
 
       expect(results).toHaveLength(1);
       expect(results[0]).toMatchObject({
@@ -133,16 +135,18 @@ describe("Pi handoff recovery", () => {
   it("returns an error ToolResult for an unavailable tool", async () => {
     const env = new NodeExecutionEnv({ cwd: tmpdir() });
     try {
-      const results = await executePiUnresolvedToolBatch({
-        messages: [
-          assistant("handoff", [
-            { id: "unknown-1", name: "unknown", arguments: {} },
-          ]),
-        ],
-        executionEnv: env,
-        signal: new AbortController().signal,
-        onEvent() {},
-      });
+      const results = await executePiUnresolvedToolBatch(
+        {
+          messages: [
+            assistant("handoff", [
+              { id: "unknown-1", name: "unknown", arguments: {} },
+            ]),
+          ],
+          executionEnv: env,
+          onEvent() {},
+        },
+        new AbortController().signal,
+      );
 
       expect(results[0]).toMatchObject({
         toolCallId: "unknown-1",

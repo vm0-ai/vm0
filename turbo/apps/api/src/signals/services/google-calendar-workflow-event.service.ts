@@ -273,16 +273,18 @@ function tokenNeedsRefresh(
   );
 }
 
-async function resolveGoogleCalendarAccess(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId?: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarAccessResult> {
+async function resolveGoogleCalendarAccess(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId?: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarAccessResult> {
   const currentTime = nowDate();
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const loaded = await loadConnectorCredentialConnection({
     db: args.db,
     snapshot,
@@ -293,7 +295,7 @@ async function resolveGoogleCalendarAccess(args: {
       ? {}
       : { connectorId: args.connectorId }),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (loaded.kind === "missing") {
     return {
       kind: "bad_request",
@@ -325,7 +327,7 @@ async function resolveGoogleCalendarAccess(args: {
     db: args.db,
     valueRefs: [accessTokenValueRef],
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const accessToken = values.get(accessTokenValueRef);
   if (!accessToken) {
     return {
@@ -344,15 +346,17 @@ async function resolveGoogleCalendarAccess(args: {
       },
     };
   }
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: GOOGLE_CALENDAR_ACCESS_TOKEN_ENVIRONMENT_NAME,
-    signal: args.signal,
-    persist: { db: args.db, markNeedsReconnectOnFailure: true },
-  });
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: GOOGLE_CALENDAR_ACCESS_TOKEN_ENVIRONMENT_NAME,
+      persist: { db: args.db, markNeedsReconnectOnFailure: true },
+    },
+    signal,
+  );
   if (refreshed.kind === "configuration-unavailable") {
     return {
       kind: "bad_request",
@@ -427,16 +431,18 @@ async function googleCalendarFetchJson<T>(
   return { kind: "ok", value: schema.parse(await response.json()) };
 }
 
-async function googleCalendarFetchNoContent(args: {
-  readonly accessToken: string;
-  readonly url: string;
-  readonly init: RequestInit;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarFetchResult<null>> {
+async function googleCalendarFetchNoContent(
+  args: {
+    readonly accessToken: string;
+    readonly url: string;
+    readonly init: RequestInit;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarFetchResult<null>> {
   const response = await tapError(
     fetch(args.url, {
       ...args.init,
-      signal: args.signal,
+      signal,
       headers: {
         Authorization: `Bearer ${args.accessToken}`,
         "Content-Type": "application/json",
@@ -444,7 +450,7 @@ async function googleCalendarFetchNoContent(args: {
       },
     }),
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!response) {
     return {
       kind: "error",
@@ -477,13 +483,15 @@ function watchExpirationDate(
   return new Date(currentTime.getTime() + WATCH_TTL_SECONDS * 1000);
 }
 
-async function watchCalendarEvents(args: {
-  readonly accessToken: string;
-  readonly calendarId: string;
-  readonly channelId: string;
-  readonly channelToken: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function watchCalendarEvents(
+  args: {
+    readonly accessToken: string;
+    readonly calendarId: string;
+    readonly channelId: string;
+    readonly channelToken: string;
+  },
+  signal: AbortSignal,
+): Promise<
   GoogleCalendarFetchResult<z.infer<typeof calendarWatchResponseSchema>>
 > {
   return await googleCalendarFetchJson(
@@ -500,29 +508,33 @@ async function watchCalendarEvents(args: {
         params: { ttl: String(WATCH_TTL_SECONDS) },
       }),
     },
-    args.signal,
+    signal,
   );
 }
 
-async function stopCalendarChannel(args: {
-  readonly accessToken: string;
-  readonly channelId: string;
-  readonly resourceId: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const result = await googleCalendarFetchNoContent({
-    accessToken: args.accessToken,
-    url: calendarApiUrl("/channels/stop"),
-    init: {
-      method: "POST",
-      body: JSON.stringify({
-        id: args.channelId,
-        resourceId: args.resourceId,
-      }),
+async function stopCalendarChannel(
+  args: {
+    readonly accessToken: string;
+    readonly channelId: string;
+    readonly resourceId: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
+  const result = await googleCalendarFetchNoContent(
+    {
+      accessToken: args.accessToken,
+      url: calendarApiUrl("/channels/stop"),
+      init: {
+        method: "POST",
+        body: JSON.stringify({
+          id: args.channelId,
+          resourceId: args.resourceId,
+        }),
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   if (result.kind !== "ok") {
     log.warn("Failed to stop Google Calendar watch channel", {
       provider: "google_calendar",
@@ -569,12 +581,14 @@ async function stopCalendarChannelWithLifecycleOwnership(args: {
   readonly channel: GoogleCalendarChannelIdentity;
 }): Promise<boolean> {
   const stopped = await tapError(
-    stopCalendarChannel({
-      accessToken: args.accessToken,
-      channelId: args.channel.channelId,
-      resourceId: args.channel.resourceId,
-      signal: AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS),
-    }),
+    stopCalendarChannel(
+      {
+        accessToken: args.accessToken,
+        channelId: args.channel.channelId,
+        resourceId: args.channel.resourceId,
+      },
+      AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS),
+    ),
     (error) => {
       log.warn("Failed to finish Google Calendar watch channel cleanup", {
         provider: "google_calendar",
@@ -600,12 +614,14 @@ type CalendarEventsListOk = Extract<
   { readonly kind: "ok" }
 >;
 
-async function listCalendarEvents(args: {
-  readonly accessToken: string;
-  readonly calendarId: string;
-  readonly syncToken?: string | null;
-  readonly signal: AbortSignal;
-}): Promise<CalendarEventsListResult> {
+async function listCalendarEvents(
+  args: {
+    readonly accessToken: string;
+    readonly calendarId: string;
+    readonly syncToken?: string | null;
+  },
+  signal: AbortSignal,
+): Promise<CalendarEventsListResult> {
   let pageToken: string | null = null;
   const events: GoogleCalendarEvent[] = [];
   let nextSyncToken: string | null = null;
@@ -626,9 +642,9 @@ async function listCalendarEvents(args: {
       args.accessToken,
       url.toString(),
       { method: "GET" },
-      args.signal,
+      signal,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (result.kind !== "ok") {
       return result.status === 410
         ? { kind: "stale_cursor" }
@@ -878,13 +894,15 @@ function eventSnapshotRow(args: {
   };
 }
 
-async function upsertCalendarEventSnapshots(args: {
-  readonly db: Db;
-  readonly watchStateId: string;
-  readonly events: readonly GoogleCalendarEvent[];
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function upsertCalendarEventSnapshots(
+  args: {
+    readonly db: Db;
+    readonly watchStateId: string;
+    readonly events: readonly GoogleCalendarEvent[];
+    readonly currentTime: Date;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (args.events.length === 0) {
     return;
   }
@@ -918,22 +936,26 @@ async function upsertCalendarEventSnapshots(args: {
         updatedAt: args.currentTime,
       },
     });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function baselineCalendarWatchState(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly accessToken: string;
-  readonly signal: AbortSignal;
-}): Promise<EnsureGoogleCalendarWatchResult> {
-  const baseline = await listCalendarEvents({
-    accessToken: args.accessToken,
-    calendarId: args.state.calendarId,
-    syncToken: null,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+async function baselineCalendarWatchState(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly accessToken: string;
+  },
+  signal: AbortSignal,
+): Promise<EnsureGoogleCalendarWatchResult> {
+  const baseline = await listCalendarEvents(
+    {
+      accessToken: args.accessToken,
+      calendarId: args.state.calendarId,
+      syncToken: null,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (baseline.kind !== "ok") {
     return {
       kind: "bad_request",
@@ -945,13 +967,15 @@ async function baselineCalendarWatchState(args: {
   }
 
   const currentTime = nowDate();
-  await upsertCalendarEventSnapshots({
-    db: args.db,
-    watchStateId: args.state.id,
-    events: baseline.events,
-    currentTime,
-    signal: args.signal,
-  });
+  await upsertCalendarEventSnapshots(
+    {
+      db: args.db,
+      watchStateId: args.state.id,
+      events: baseline.events,
+      currentTime,
+    },
+    signal,
+  );
 
   await args.db
     .update(googleCalendarWatchStates)
@@ -961,17 +985,19 @@ async function baselineCalendarWatchState(args: {
       updatedAt: currentTime,
     })
     .where(eq(googleCalendarWatchStates.id, args.state.id));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return { kind: "ok" };
 }
 
-async function loadCalendarWatchState(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly calendarId: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarWatchStateRow | null> {
+async function loadCalendarWatchState(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly calendarId: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchStateRow | null> {
   const [state] = await args.db
     .select()
     .from(googleCalendarWatchStates)
@@ -982,7 +1008,7 @@ async function loadCalendarWatchState(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return state ?? null;
 }
 
@@ -1017,13 +1043,15 @@ async function lockGoogleCalendarLifecycle(
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
-export async function hasEnabledGoogleCalendarConsumer(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly calendarId: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+export async function hasEnabledGoogleCalendarConsumer(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly calendarId: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const automations = await args.db
     .select({
       eventType: zeroWorkflowAutomations.eventType,
@@ -1041,7 +1069,7 @@ export async function hasEnabledGoogleCalendarConsumer(args: {
         ]),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return automations.some((automation) => {
     return (
       parseGoogleCalendarEventAutomationConfig(automation)?.calendarId ===
@@ -1050,16 +1078,18 @@ export async function hasEnabledGoogleCalendarConsumer(args: {
   });
 }
 
-async function prepareCalendarWatch(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly access: GoogleCalendarAccess;
-  readonly calendarId: string;
-  readonly previousState: GoogleCalendarWatchStateRow | null;
-  readonly resetBaseline: boolean;
-  readonly signal: AbortSignal;
-}): Promise<
+async function prepareCalendarWatch(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly access: GoogleCalendarAccess;
+    readonly calendarId: string;
+    readonly previousState: GoogleCalendarWatchStateRow | null;
+    readonly resetBaseline: boolean;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly kind: "prepared";
       readonly prepared: PreparedGoogleCalendarWatch;
@@ -1077,7 +1107,7 @@ async function prepareCalendarWatch(args: {
     };
   }
 
-  const baselineResult = await establishCalendarWatchBaseline(args);
+  const baselineResult = await establishCalendarWatchBaseline(args, signal);
   if (baselineResult.kind !== "ok") {
     return baselineResult;
   }
@@ -1085,20 +1115,25 @@ async function prepareCalendarWatch(args: {
   const channelId = randomUUID();
   const channelToken = mintChannelToken();
   const currentTime = nowDate();
-  const state = await persistPendingCalendarWatch({
-    ...args,
-    baseline: baselineResult.baseline,
-    channelId,
-    channelToken,
-    currentTime,
-  });
-  await replaceCalendarWatchBaselineSnapshots({
-    db: args.db,
-    stateId: state.id,
-    baseline: baselineResult.baseline,
-    currentTime,
-    signal: args.signal,
-  });
+  const state = await persistPendingCalendarWatch(
+    {
+      ...args,
+      baseline: baselineResult.baseline,
+      channelId,
+      channelToken,
+      currentTime,
+    },
+    signal,
+  );
+  await replaceCalendarWatchBaselineSnapshots(
+    {
+      db: args.db,
+      stateId: state.id,
+      baseline: baselineResult.baseline,
+      currentTime,
+    },
+    signal,
+  );
 
   return {
     kind: "prepared",
@@ -1111,25 +1146,29 @@ async function prepareCalendarWatch(args: {
   };
 }
 
-async function establishCalendarWatchBaseline(args: {
-  readonly access: GoogleCalendarAccess;
-  readonly calendarId: string;
-  readonly resetBaseline: boolean;
-  readonly signal: AbortSignal;
-}): Promise<
+async function establishCalendarWatchBaseline(
+  args: {
+    readonly access: GoogleCalendarAccess;
+    readonly calendarId: string;
+    readonly resetBaseline: boolean;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "ok"; readonly baseline: CalendarEventsListOk | null }
   | { readonly kind: "bad_request"; readonly message: string }
 > {
   if (!args.resetBaseline) {
     return { kind: "ok", baseline: null };
   }
-  const baseline = await listCalendarEvents({
-    accessToken: args.access.accessToken,
-    calendarId: args.calendarId,
-    syncToken: null,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const baseline = await listCalendarEvents(
+    {
+      accessToken: args.access.accessToken,
+      calendarId: args.calendarId,
+      syncToken: null,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (baseline.kind !== "ok") {
     return {
       kind: "bad_request",
@@ -1139,19 +1178,21 @@ async function establishCalendarWatchBaseline(args: {
   return { kind: "ok", baseline };
 }
 
-async function persistPendingCalendarWatch(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly access: GoogleCalendarAccess;
-  readonly calendarId: string;
-  readonly previousState: GoogleCalendarWatchStateRow | null;
-  readonly baseline: CalendarEventsListOk | null;
-  readonly channelId: string;
-  readonly channelToken: string;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarWatchStateRow> {
+async function persistPendingCalendarWatch(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly access: GoogleCalendarAccess;
+    readonly calendarId: string;
+    readonly previousState: GoogleCalendarWatchStateRow | null;
+    readonly baseline: CalendarEventsListOk | null;
+    readonly channelId: string;
+    readonly channelToken: string;
+    readonly currentTime: Date;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchStateRow> {
   const previousChannel = args.previousState
     ? {
         channelId: args.previousState.channelId,
@@ -1205,34 +1246,38 @@ async function persistPendingCalendarWatch(args: {
       },
     })
     .returning();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!state) {
     throw new Error("Failed to persist pending Google Calendar watch state");
   }
   return state;
 }
 
-async function replaceCalendarWatchBaselineSnapshots(args: {
-  readonly db: Db;
-  readonly stateId: string;
-  readonly baseline: CalendarEventsListOk | null;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function replaceCalendarWatchBaselineSnapshots(
+  args: {
+    readonly db: Db;
+    readonly stateId: string;
+    readonly baseline: CalendarEventsListOk | null;
+    readonly currentTime: Date;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (!args.baseline) {
     return;
   }
   await args.db
     .delete(googleCalendarEventSnapshots)
     .where(eq(googleCalendarEventSnapshots.watchStateId, args.stateId));
-  args.signal.throwIfAborted();
-  await upsertCalendarEventSnapshots({
-    db: args.db,
-    watchStateId: args.stateId,
-    events: args.baseline.events,
-    currentTime: args.currentTime,
-    signal: args.signal,
-  });
+  signal.throwIfAborted();
+  await upsertCalendarEventSnapshots(
+    {
+      db: args.db,
+      watchStateId: args.stateId,
+      events: args.baseline.events,
+      currentTime: args.currentTime,
+    },
+    signal,
+  );
 }
 
 async function restorePreparedCalendarWatch(args: {
@@ -1248,12 +1293,14 @@ async function restorePreparedCalendarWatch(args: {
       args.access.connectorId,
       args.calendarId,
     );
-    const current = await loadCalendarWatchState({
-      db: tx,
-      connectorId: args.access.connectorId,
-      calendarId: args.calendarId,
-      signal: lifecycleSignal,
-    });
+    const current = await loadCalendarWatchState(
+      {
+        db: tx,
+        connectorId: args.access.connectorId,
+        calendarId: args.calendarId,
+      },
+      lifecycleSignal,
+    );
     if (
       !current ||
       current.id !== args.prepared.stateId ||
@@ -1420,12 +1467,14 @@ async function finalizePreparedCalendarWatch(args: {
       args.access.connectorId,
       args.calendarId,
     );
-    const current = await loadCalendarWatchState({
-      db: tx,
-      connectorId: args.access.connectorId,
-      calendarId: args.calendarId,
-      signal: lifecycleSignal,
-    });
+    const current = await loadCalendarWatchState(
+      {
+        db: tx,
+        connectorId: args.access.connectorId,
+        calendarId: args.calendarId,
+      },
+      lifecycleSignal,
+    );
     if (
       !current ||
       current.id !== args.prepared.stateId ||
@@ -1433,13 +1482,15 @@ async function finalizePreparedCalendarWatch(args: {
     ) {
       throw new Error("Failed to load pending Google Calendar watch state");
     }
-    const hasConsumer = await hasEnabledGoogleCalendarConsumer({
-      db: tx,
-      orgId: current.orgId,
-      userId: current.userId,
-      calendarId: current.calendarId,
-      signal: lifecycleSignal,
-    });
+    const hasConsumer = await hasEnabledGoogleCalendarConsumer(
+      {
+        db: tx,
+        orgId: current.orgId,
+        userId: current.userId,
+        calendarId: current.calendarId,
+      },
+      lifecycleSignal,
+    );
     if (!hasConsumer) {
       return { kind: "inactive" };
     }
@@ -1466,12 +1517,14 @@ async function finalizePreparedCalendarWatch(args: {
     if (!updated) {
       throw new Error("Failed to finalize Google Calendar watch state");
     }
-    const finalized = await loadCalendarWatchState({
-      db: tx,
-      connectorId: args.access.connectorId,
-      calendarId: args.calendarId,
-      signal: lifecycleSignal,
-    });
+    const finalized = await loadCalendarWatchState(
+      {
+        db: tx,
+        connectorId: args.access.connectorId,
+        calendarId: args.calendarId,
+      },
+      lifecycleSignal,
+    );
     if (!finalized) {
       throw new Error("Failed to load finalized Google Calendar watch state");
     }
@@ -1490,13 +1543,15 @@ async function activatePreparedCalendarWatch(args: {
 > {
   const lifecycleSignal = AbortSignal.timeout(WATCH_LIFECYCLE_TIMEOUT_MS);
   const watch = await tapError(
-    watchCalendarEvents({
-      accessToken: args.access.accessToken,
-      calendarId: args.calendarId,
-      channelId: args.prepared.channelId,
-      channelToken: args.prepared.channelToken,
-      signal: lifecycleSignal,
-    }),
+    watchCalendarEvents(
+      {
+        accessToken: args.access.accessToken,
+        calendarId: args.calendarId,
+        channelId: args.prepared.channelId,
+        channelToken: args.prepared.channelToken,
+      },
+      lifecycleSignal,
+    ),
   );
   if (!watch || watch.kind !== "ok") {
     await restorePreparedCalendarWatch(args);
@@ -1556,17 +1611,19 @@ async function activatePreparedCalendarWatch(args: {
   return { kind: "ok", state };
 }
 
-export async function ensureGoogleCalendarWatchForUser(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly calendarId?: string;
-  readonly forceRefresh?: boolean;
-  readonly signal: AbortSignal;
-}): Promise<EnsureGoogleCalendarWatchResult> {
+export async function ensureGoogleCalendarWatchForUser(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly calendarId?: string;
+    readonly forceRefresh?: boolean;
+  },
+  signal: AbortSignal,
+): Promise<EnsureGoogleCalendarWatchResult> {
   const calendarId = args.calendarId ?? DEFAULT_CALENDAR_ID;
-  const accessResult = await resolveGoogleCalendarAccess(args);
-  args.signal.throwIfAborted();
+  const accessResult = await resolveGoogleCalendarAccess(args, signal);
+  signal.throwIfAborted();
   if (accessResult.kind !== "ok") {
     return accessResult;
   }
@@ -1577,25 +1634,29 @@ export async function ensureGoogleCalendarWatchForUser(args: {
       accessResult.access.connectorId,
       calendarId,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
-    const hasConsumer = await hasEnabledGoogleCalendarConsumer({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      calendarId,
-      signal: args.signal,
-    });
+    const hasConsumer = await hasEnabledGoogleCalendarConsumer(
+      {
+        db: tx,
+        orgId: args.orgId,
+        userId: args.userId,
+        calendarId,
+      },
+      signal,
+    );
     if (!hasConsumer) {
       return { kind: "unchanged" } as const;
     }
 
-    const existing = await loadCalendarWatchState({
-      db: tx,
-      connectorId: accessResult.access.connectorId,
-      calendarId,
-      signal: args.signal,
-    });
+    const existing = await loadCalendarWatchState(
+      {
+        db: tx,
+        connectorId: accessResult.access.connectorId,
+        calendarId,
+      },
+      signal,
+    );
     const currentTime = nowDate();
     if (
       existing &&
@@ -1605,19 +1666,21 @@ export async function ensureGoogleCalendarWatchForUser(args: {
       return { kind: "unchanged" } as const;
     }
 
-    return await prepareCalendarWatch({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      access: accessResult.access,
-      calendarId,
-      previousState: existing,
-      resetBaseline:
-        existing === null ||
-        args.forceRefresh === true ||
-        existing.syncToken === null,
-      signal: args.signal,
-    });
+    return await prepareCalendarWatch(
+      {
+        db: tx,
+        orgId: args.orgId,
+        userId: args.userId,
+        access: accessResult.access,
+        calendarId,
+        previousState: existing,
+        resetBaseline:
+          existing === null ||
+          args.forceRefresh === true ||
+          existing.syncToken === null,
+      },
+      signal,
+    );
   });
   if (prepared.kind === "unchanged") {
     return { kind: "ok" };
@@ -1717,22 +1780,26 @@ async function cleanupPreviousCalendarChannel(args: {
   };
 }
 
-async function prepareCalendarWatchRenewal(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly access: GoogleCalendarAccess;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarWatchReconcileDecision> {
-  const prepared = await prepareCalendarWatch({
-    db: args.db,
-    orgId: args.state.orgId,
-    userId: args.state.userId,
-    access: args.access,
-    calendarId: args.state.calendarId,
-    previousState: args.state,
-    resetBaseline: args.state.syncToken === null,
-    signal: args.signal,
-  });
+async function prepareCalendarWatchRenewal(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly access: GoogleCalendarAccess;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchReconcileDecision> {
+  const prepared = await prepareCalendarWatch(
+    {
+      db: args.db,
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+      access: args.access,
+      calendarId: args.state.calendarId,
+      previousState: args.state,
+      resetBaseline: args.state.syncToken === null,
+    },
+    signal,
+  );
   if (prepared.kind !== "prepared") {
     log.warn("Workflow watch lifecycle reconciliation failed", {
       provider: "google_calendar",
@@ -1780,35 +1847,41 @@ async function stopCurrentCalendarWatch(args: {
   return { kind: "stopped" };
 }
 
-async function decideGoogleCalendarWatchReconciliation(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly calendarId: string;
-  readonly forceStop?: boolean;
-  readonly renewBefore?: Date;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarWatchReconcileDecision> {
+async function decideGoogleCalendarWatchReconciliation(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly calendarId: string;
+    readonly forceStop?: boolean;
+    readonly renewBefore?: Date;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchReconcileDecision> {
   await lockGoogleCalendarLifecycle(args.db, args.connectorId, args.calendarId);
-  args.signal.throwIfAborted();
-  const state = await loadCalendarWatchState({
-    db: args.db,
-    connectorId: args.connectorId,
-    calendarId: args.calendarId,
-    signal: args.signal,
-  });
+  signal.throwIfAborted();
+  const state = await loadCalendarWatchState(
+    {
+      db: args.db,
+      connectorId: args.connectorId,
+      calendarId: args.calendarId,
+    },
+    signal,
+  );
   if (!state) {
     return { kind: "unchanged" };
   }
 
   const hasConsumer =
     !args.forceStop &&
-    (await hasEnabledGoogleCalendarConsumer({
-      db: args.db,
-      orgId: state.orgId,
-      userId: state.userId,
-      calendarId: state.calendarId,
-      signal: args.signal,
-    }));
+    (await hasEnabledGoogleCalendarConsumer(
+      {
+        db: args.db,
+        orgId: state.orgId,
+        userId: state.userId,
+        calendarId: state.calendarId,
+      },
+      signal,
+    ));
   const previous = previousCalendarChannel(state);
   const renewalDue = calendarWatchRenewalDue({
     state,
@@ -1819,14 +1892,16 @@ async function decideGoogleCalendarWatchReconciliation(args: {
     return { kind: "unchanged" };
   }
 
-  const access = await resolveGoogleCalendarAccess({
-    db: args.db,
-    orgId: state.orgId,
-    userId: state.userId,
-    connectorId: state.connectorId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const access = await resolveGoogleCalendarAccess(
+    {
+      db: args.db,
+      orgId: state.orgId,
+      userId: state.userId,
+      connectorId: state.connectorId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (access.kind !== "ok") {
     if (!hasConsumer) {
       await markCalendarWatchNeedsRewatch(args.db, state.id);
@@ -1856,12 +1931,14 @@ async function decideGoogleCalendarWatchReconciliation(args: {
   }
 
   return hasConsumer
-    ? await prepareCalendarWatchRenewal({
-        db: args.db,
-        state: currentState,
-        access: access.access,
-        signal: args.signal,
-      })
+    ? await prepareCalendarWatchRenewal(
+        {
+          db: args.db,
+          state: currentState,
+          access: access.access,
+        },
+        signal,
+      )
     : await stopCurrentCalendarWatch({
         db: args.db,
         state: currentState,
@@ -1869,19 +1946,24 @@ async function decideGoogleCalendarWatchReconciliation(args: {
       });
 }
 
-async function reconcileGoogleCalendarWatchState(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly calendarId: string;
-  readonly forceStop?: boolean;
-  readonly renewBefore?: Date;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarWatchReconcileResult> {
+async function reconcileGoogleCalendarWatchState(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly calendarId: string;
+    readonly forceStop?: boolean;
+    readonly renewBefore?: Date;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchReconcileResult> {
   const decision = await args.db.transaction(async (tx) => {
-    return await decideGoogleCalendarWatchReconciliation({
-      ...args,
-      db: tx,
-    });
+    return await decideGoogleCalendarWatchReconciliation(
+      {
+        ...args,
+        db: tx,
+      },
+      signal,
+    );
   });
   if (decision.kind !== "prepared") {
     return decision;
@@ -1909,13 +1991,15 @@ async function reconcileGoogleCalendarWatchState(args: {
   return { kind: "renewed" };
 }
 
-export async function reconcileGoogleCalendarWatchesForUser(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly calendarId?: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function reconcileGoogleCalendarWatchesForUser(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly calendarId?: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const states = await args.db
     .select({
       connectorId: googleCalendarWatchStates.connectorId,
@@ -1931,35 +2015,41 @@ export async function reconcileGoogleCalendarWatchesForUser(args: {
           : [eq(googleCalendarWatchStates.calendarId, args.calendarId)]),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   for (const state of states) {
-    await reconcileGoogleCalendarWatchState({
-      db: args.db,
-      connectorId: state.connectorId,
-      calendarId: state.calendarId,
-      signal: args.signal,
-    });
+    await reconcileGoogleCalendarWatchState(
+      {
+        db: args.db,
+        connectorId: state.connectorId,
+        calendarId: state.calendarId,
+      },
+      signal,
+    );
   }
 }
 
-export async function cleanupGoogleCalendarWatchesForConnector(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function cleanupGoogleCalendarWatchesForConnector(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const states = await args.db
     .select({ calendarId: googleCalendarWatchStates.calendarId })
     .from(googleCalendarWatchStates)
     .where(eq(googleCalendarWatchStates.connectorId, args.connectorId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   for (const state of states) {
-    await reconcileGoogleCalendarWatchState({
-      db: args.db,
-      connectorId: args.connectorId,
-      calendarId: state.calendarId,
-      forceStop: true,
-      signal: args.signal,
-    });
+    await reconcileGoogleCalendarWatchState(
+      {
+        db: args.db,
+        connectorId: args.connectorId,
+        calendarId: state.calendarId,
+        forceStop: true,
+      },
+      signal,
+    );
   }
 }
 
@@ -1982,11 +2072,13 @@ function decodeCalendarWebhookHeaders(
   };
 }
 
-async function loadCalendarWatchStateForNotification(args: {
-  readonly db: Db;
-  readonly notification: GoogleCalendarWebhookNotification;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarWatchStateRow | null> {
+async function loadCalendarWatchStateForNotification(
+  args: {
+    readonly db: Db;
+    readonly notification: GoogleCalendarWebhookNotification;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarWatchStateRow | null> {
   const [state] = await args.db
     .select()
     .from(googleCalendarWatchStates)
@@ -2023,7 +2115,7 @@ async function loadCalendarWatchStateForNotification(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!state) {
     return null;
   }
@@ -2048,16 +2140,18 @@ async function loadCalendarWatchStateForNotification(args: {
         eq(googleCalendarWatchStates.resourceId, ""),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { ...state, resourceId: args.notification.resourceId };
 }
 
-async function loadCalendarEventSnapshotMap(args: {
-  readonly db: Db;
-  readonly watchStateId: string;
-  readonly events: readonly GoogleCalendarEvent[];
-  readonly signal: AbortSignal;
-}): Promise<Map<string, GoogleCalendarEventSnapshotRow>> {
+async function loadCalendarEventSnapshotMap(
+  args: {
+    readonly db: Db;
+    readonly watchStateId: string;
+    readonly events: readonly GoogleCalendarEvent[];
+  },
+  signal: AbortSignal,
+): Promise<Map<string, GoogleCalendarEventSnapshotRow>> {
   const ids = args.events.map((event) => {
     return event.id;
   });
@@ -2073,7 +2167,7 @@ async function loadCalendarEventSnapshotMap(args: {
         inArray(googleCalendarEventSnapshots.calendarEventId, ids),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return new Map(
     rows.map((row) => {
       return [row.calendarEventId, row];
@@ -2105,11 +2199,13 @@ function parseGoogleCalendarEventAutomationConfig(
   return null;
 }
 
-async function loadGoogleCalendarEventAutomations(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarEventAutomationRow[]> {
+async function loadGoogleCalendarEventAutomations(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarEventAutomationRow[]> {
   const automationRows = await args.db
     .select({
       automation: rolloutCompatibleWorkflowAutomationColumns(false),
@@ -2150,7 +2246,7 @@ async function loadGoogleCalendarEventAutomations(args: {
         ]),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const currentTime = nowDate();
   const automations: GoogleCalendarEventAutomationRow[] = [];
@@ -2159,12 +2255,15 @@ async function loadGoogleCalendarEventAutomations(args: {
     if (!config || config.calendarId !== args.state.calendarId) {
       continue;
     }
-    const canFire = await workflowAutomationCanFire(args.db, {
-      automation: row.automation,
-      agentId: row.agentId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const canFire = await workflowAutomationCanFire(
+      args.db,
+      {
+        automation: row.automation,
+        agentId: row.agentId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (!canFire) {
       continue;
     }
@@ -2180,7 +2279,7 @@ async function loadGoogleCalendarEventAutomations(args: {
           currentTime,
         });
       }));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     automations.push({
       automation: row.automation,
       agentId: row.agentId,
@@ -2240,15 +2339,17 @@ function googleCalendarTriggerContext(args: {
   };
 }
 
-async function insertGoogleCalendarProcessedEvent(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly automation: GoogleCalendarEventAutomationRow;
-  readonly notification: GoogleCalendarWebhookNotification;
-  readonly event: CalendarEventContext;
-  readonly eventChangeKey: string;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function insertGoogleCalendarProcessedEvent(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly automation: GoogleCalendarEventAutomationRow;
+    readonly notification: GoogleCalendarWebhookNotification;
+    readonly event: CalendarEventContext;
+    readonly eventChangeKey: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   const [processed] = await args.db
     .insert(googleCalendarProcessedEvents)
     .values({
@@ -2264,26 +2365,28 @@ async function insertGoogleCalendarProcessedEvent(args: {
     })
     .onConflictDoNothing()
     .returning({ id: googleCalendarProcessedEvents.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return processed?.id ?? null;
 }
 
-async function dispatchGoogleCalendarAutomationEvent(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly automation: GoogleCalendarEventAutomationRow;
-  readonly notification: GoogleCalendarWebhookNotification;
-  readonly event: CalendarEventContext;
-  readonly eventChangeKey: string;
-  readonly timing: WorkflowEventRunTiming;
-  readonly startRun: GoogleCalendarRunStarter;
-  readonly signal: AbortSignal;
-}): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
+async function dispatchGoogleCalendarAutomationEvent(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly automation: GoogleCalendarEventAutomationRow;
+    readonly notification: GoogleCalendarWebhookNotification;
+    readonly event: CalendarEventContext;
+    readonly eventChangeKey: string;
+    readonly timing: WorkflowEventRunTiming;
+    readonly startRun: GoogleCalendarRunStarter;
+  },
+  signal: AbortSignal,
+): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
   const processedId = await args.timing.measure(
     "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
     async () => {
-      return await insertGoogleCalendarProcessedEvent(args);
+      return await insertGoogleCalendarProcessedEvent(args, signal);
     },
   );
   if (!processedId) {
@@ -2298,12 +2401,12 @@ async function dispatchGoogleCalendarAutomationEvent(args: {
     eventChangeKey: args.eventChangeKey,
     timing: args.timing,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (result !== "ok") {
     await args.db
       .delete(googleCalendarProcessedEvents)
       .where(eq(googleCalendarProcessedEvents.id, processedId));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return { kind: "run_error" };
   }
 
@@ -2323,20 +2426,21 @@ function googleCalendarAutomationMatchesChange(
   return automation.automation.eventType === "google-calendar-event-cancelled";
 }
 
-async function dispatchCalendarEventChanges(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly notification: GoogleCalendarWebhookNotification;
-  readonly changes: readonly CalendarEventChange[];
-  readonly automations: readonly GoogleCalendarEventAutomationRow[];
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly startRun: GoogleCalendarRunStarter;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarDispatchStateResult> {
+async function dispatchCalendarEventChanges(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly notification: GoogleCalendarWebhookNotification;
+    readonly changes: readonly CalendarEventChange[];
+    readonly automations: readonly GoogleCalendarEventAutomationRow[];
+    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly startRun: GoogleCalendarRunStarter;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarDispatchStateResult> {
   if (args.automations.length === 0 || args.changes.length === 0) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
-
   let dispatched = 0;
   let duplicates = 0;
   for (const change of args.changes) {
@@ -2356,17 +2460,19 @@ async function dispatchCalendarEventChanges(args: {
       if (!matches) {
         continue;
       }
-      const result = await dispatchGoogleCalendarAutomationEvent({
-        db: args.db,
-        state: args.state,
-        automation,
-        notification: args.notification,
-        event: context,
-        eventChangeKey: change.eventChangeKey,
-        timing: runTiming,
-        startRun: args.startRun,
-        signal: args.signal,
-      });
+      const result = await dispatchGoogleCalendarAutomationEvent(
+        {
+          db: args.db,
+          state: args.state,
+          automation,
+          notification: args.notification,
+          event: context,
+          eventChangeKey: change.eventChangeKey,
+          timing: runTiming,
+          startRun: args.startRun,
+        },
+        signal,
+      );
       if (typeof result !== "string") {
         return {
           kind: "run_error",
@@ -2381,24 +2487,28 @@ async function dispatchCalendarEventChanges(args: {
   return { kind: "ok", dispatched, duplicates };
 }
 
-async function dispatchGoogleCalendarChanges(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly notification: GoogleCalendarWebhookNotification;
-  readonly changes: CalendarEventsListOk;
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly startRun: GoogleCalendarRunStarter;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarDispatchStateResult> {
+async function dispatchGoogleCalendarChanges(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly notification: GoogleCalendarWebhookNotification;
+    readonly changes: CalendarEventsListOk;
+    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly startRun: GoogleCalendarRunStarter;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarDispatchStateResult> {
   const snapshotMap = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_external_events",
     async () => {
-      return await loadCalendarEventSnapshotMap({
-        db: args.db,
-        watchStateId: args.state.id,
-        events: args.changes.events,
-        signal: args.signal,
-      });
+      return await loadCalendarEventSnapshotMap(
+        {
+          db: args.db,
+          watchStateId: args.state.id,
+          events: args.changes.events,
+        },
+        signal,
+      );
     },
   );
   const calendarEventChanges = args.changes.events
@@ -2415,35 +2525,41 @@ async function dispatchGoogleCalendarChanges(args: {
   const automations = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_automations",
     async () => {
-      return await loadGoogleCalendarEventAutomations({
-        db: args.db,
-        state: args.state,
-        signal: args.signal,
-      });
+      return await loadGoogleCalendarEventAutomations(
+        {
+          db: args.db,
+          state: args.state,
+        },
+        signal,
+      );
     },
   );
-  const result = await dispatchCalendarEventChanges({
-    db: args.db,
-    state: args.state,
-    notification: args.notification,
-    changes: calendarEventChanges,
-    automations,
-    sourceTiming: args.sourceTiming,
-    startRun: args.startRun,
-    signal: args.signal,
-  });
+  const result = await dispatchCalendarEventChanges(
+    {
+      db: args.db,
+      state: args.state,
+      notification: args.notification,
+      changes: calendarEventChanges,
+      automations,
+      sourceTiming: args.sourceTiming,
+      startRun: args.startRun,
+    },
+    signal,
+  );
   if (result.kind !== "ok") {
     return result;
   }
 
   const currentTime = nowDate();
-  await upsertCalendarEventSnapshots({
-    db: args.db,
-    watchStateId: args.state.id,
-    events: args.changes.events,
-    currentTime,
-    signal: args.signal,
-  });
+  await upsertCalendarEventSnapshots(
+    {
+      db: args.db,
+      watchStateId: args.state.id,
+      events: args.changes.events,
+      currentTime,
+    },
+    signal,
+  );
 
   await args.db
     .update(googleCalendarWatchStates)
@@ -2453,29 +2569,33 @@ async function dispatchGoogleCalendarChanges(args: {
       updatedAt: currentTime,
     })
     .where(eq(googleCalendarWatchStates.id, args.state.id));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return result;
 }
 
-async function dispatchGoogleCalendarWatchState(args: {
-  readonly db: Db;
-  readonly state: GoogleCalendarWatchStateRow;
-  readonly notification: GoogleCalendarWebhookNotification;
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly startRun: GoogleCalendarRunStarter;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarDispatchStateResult> {
+async function dispatchGoogleCalendarWatchState(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleCalendarWatchStateRow;
+    readonly notification: GoogleCalendarWebhookNotification;
+    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly startRun: GoogleCalendarRunStarter;
+  },
+  signal: AbortSignal,
+): Promise<GoogleCalendarDispatchStateResult> {
   const hasConsumer = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_automations",
     async () => {
-      return await hasEnabledGoogleCalendarConsumer({
-        db: args.db,
-        orgId: args.state.orgId,
-        userId: args.state.userId,
-        calendarId: args.state.calendarId,
-        signal: args.signal,
-      });
+      return await hasEnabledGoogleCalendarConsumer(
+        {
+          db: args.db,
+          orgId: args.state.orgId,
+          userId: args.state.userId,
+          calendarId: args.state.calendarId,
+        },
+        signal,
+      );
     },
   );
   if (!hasConsumer) {
@@ -2490,16 +2610,18 @@ async function dispatchGoogleCalendarWatchState(args: {
   const access = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_source_state",
     async () => {
-      return await resolveGoogleCalendarAccess({
-        db: args.db,
-        orgId: args.state.orgId,
-        userId: args.state.userId,
-        connectorId: args.state.connectorId,
-        signal: args.signal,
-      });
+      return await resolveGoogleCalendarAccess(
+        {
+          db: args.db,
+          orgId: args.state.orgId,
+          userId: args.state.userId,
+          connectorId: args.state.connectorId,
+        },
+        signal,
+      );
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (access.kind !== "ok") {
     log.warn(
       "Google Calendar event skipped because connector access is unavailable",
@@ -2510,23 +2632,23 @@ async function dispatchGoogleCalendarWatchState(args: {
     );
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
+  const baselineInput = {
+    db: args.db,
+    state: args.state,
+    accessToken: access.access.accessToken,
+  };
 
   if (args.notification.resourceState === "not_exists") {
     await args.db
       .update(googleCalendarWatchStates)
       .set({ needsRewatch: true, updatedAt: nowDate() })
       .where(eq(googleCalendarWatchStates.id, args.state.id));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
   if (!args.state.syncToken) {
-    const baseline = await baselineCalendarWatchState({
-      db: args.db,
-      state: args.state,
-      accessToken: access.access.accessToken,
-      signal: args.signal,
-    });
+    const baseline = await baselineCalendarWatchState(baselineInput, signal);
     if (baseline.kind !== "ok") {
       log.warn("Google Calendar baseline sync failed", {
         watchStateId: args.state.id,
@@ -2539,22 +2661,19 @@ async function dispatchGoogleCalendarWatchState(args: {
   const changes = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_external_events",
     async () => {
-      return await listCalendarEvents({
-        accessToken: access.access.accessToken,
-        calendarId: args.state.calendarId,
-        syncToken: args.state.syncToken,
-        signal: args.signal,
-      });
+      return await listCalendarEvents(
+        {
+          accessToken: access.access.accessToken,
+          calendarId: args.state.calendarId,
+          syncToken: args.state.syncToken,
+        },
+        signal,
+      );
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (changes.kind === "stale_cursor") {
-    const baseline = await baselineCalendarWatchState({
-      db: args.db,
-      state: args.state,
-      accessToken: access.access.accessToken,
-      signal: args.signal,
-    });
+    const baseline = await baselineCalendarWatchState(baselineInput, signal);
     if (baseline.kind !== "ok") {
       log.warn("Google Calendar stale cursor baseline sync failed", {
         watchStateId: args.state.id,
@@ -2571,15 +2690,17 @@ async function dispatchGoogleCalendarWatchState(args: {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  return await dispatchGoogleCalendarChanges({
-    db: args.db,
-    state: args.state,
-    notification: args.notification,
-    changes,
-    sourceTiming: args.sourceTiming,
-    startRun: args.startRun,
-    signal: args.signal,
-  });
+  return await dispatchGoogleCalendarChanges(
+    {
+      db: args.db,
+      state: args.state,
+      notification: args.notification,
+      changes,
+      sourceTiming: args.sourceTiming,
+      startRun: args.startRun,
+    },
+    signal,
+  );
 }
 
 export const dispatchGoogleCalendarWebhook$ = command(
@@ -2607,11 +2728,13 @@ export const dispatchGoogleCalendarWebhook$ = command(
     const state = await sourceTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
       async () => {
-        return await loadCalendarWatchStateForNotification({
-          db,
-          notification,
+        return await loadCalendarWatchStateForNotification(
+          {
+            db,
+            notification,
+          },
           signal,
-        });
+        );
       },
     );
     signal.throwIfAborted();
@@ -2666,14 +2789,16 @@ export const dispatchGoogleCalendarWebhook$ = command(
             : "error";
         };
 
-    const result = await dispatchGoogleCalendarWatchState({
-      db,
-      state,
-      notification,
-      sourceTiming,
-      startRun,
+    const result = await dispatchGoogleCalendarWatchState(
+      {
+        db,
+        state,
+        notification,
+        sourceTiming,
+        startRun,
+      },
       signal,
-    });
+    );
     if (result.kind !== "ok") {
       return result;
     }
@@ -2705,13 +2830,15 @@ export const renewGoogleCalendarWatches$ = command(
     let renewed = 0;
     let failed = 0;
     for (const state of states) {
-      const result = await reconcileGoogleCalendarWatchState({
-        db,
-        connectorId: state.connectorId,
-        calendarId: state.calendarId,
-        renewBefore,
+      const result = await reconcileGoogleCalendarWatchState(
+        {
+          db,
+          connectorId: state.connectorId,
+          calendarId: state.calendarId,
+          renewBefore,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
       renewed += result.kind === "renewed" ? 1 : 0;
       failed += result.kind === "failed" ? 1 : 0;

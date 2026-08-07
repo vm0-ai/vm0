@@ -752,16 +752,18 @@ function JobPermissionsTab({
               if (connectorSlug === null) {
                 throw new Error("Cannot save permissions without a connector");
               }
-              await savePermissionDraftPolicies({
-                scope: { agentId },
-                connectorSlug,
-                metadata,
-                initialPolicies: drawerInitialPolicies,
-                initialGrants: activeUserGrantSnapshot.grants,
-                intent,
+              await savePermissionDraftPolicies(
+                {
+                  scope: { agentId },
+                  connectorSlug,
+                  metadata,
+                  initialPolicies: drawerInitialPolicies,
+                  initialGrants: activeUserGrantSnapshot.grants,
+                  intent,
+                  applyGrantPolicies,
+                },
                 pageSignal,
-                applyGrantPolicies,
-              });
+              );
               toast.success(
                 t(($) => {
                   return $.authorization.permissionsUpdated;

@@ -382,13 +382,15 @@ async function createSession(args: {
   return session;
 }
 
-function registerStartAbortCancellation(args: {
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-  readonly session: ModelProviderAuthSession;
-  readonly orgId: string;
-  readonly userId: string;
-}): () => void {
+function registerStartAbortCancellation(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ModelProviderAuthSession;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): () => void {
   const cleanupOnAbort = () => {
     detach(
       cancelSession({
@@ -402,9 +404,9 @@ function registerStartAbortCancellation(args: {
       "cancel aborted Codex device auth session",
     );
   };
-  args.signal.addEventListener("abort", cleanupOnAbort, { once: true });
+  signal.addEventListener("abort", cleanupOnAbort, { once: true });
   return () => {
-    args.signal.removeEventListener("abort", cleanupOnAbort);
+    signal.removeEventListener("abort", cleanupOnAbort);
   };
 }
 
@@ -530,11 +532,13 @@ async function requestOpenAiDeviceUserCode(
   };
 }
 
-async function pollOpenAiDeviceToken(args: {
-  readonly deviceAuthId: string;
-  readonly userCode: string;
-  readonly signal: AbortSignal;
-}): Promise<CodexDeviceTokenPollResult> {
+async function pollOpenAiDeviceToken(
+  args: {
+    readonly deviceAuthId: string;
+    readonly userCode: string;
+  },
+  signal: AbortSignal,
+): Promise<CodexDeviceTokenPollResult> {
   const response = await fetch(
     `${CODEX_DEVICE_AUTH_API_BASE_URL}/deviceauth/token`,
     {
@@ -544,7 +548,7 @@ async function pollOpenAiDeviceToken(args: {
         device_auth_id: args.deviceAuthId,
         user_code: args.userCode,
       }),
-      signal: args.signal,
+      signal,
     },
   );
 
@@ -574,11 +578,13 @@ async function pollOpenAiDeviceToken(args: {
   };
 }
 
-async function exchangeOpenAiAuthorizationCode(args: {
-  readonly authorizationCode: string;
-  readonly codeVerifier: string;
-  readonly signal: AbortSignal;
-}): Promise<CodexOAuthTokens> {
+async function exchangeOpenAiAuthorizationCode(
+  args: {
+    readonly authorizationCode: string;
+    readonly codeVerifier: string;
+  },
+  signal: AbortSignal,
+): Promise<CodexOAuthTokens> {
   const response = await fetch(`${CODEX_DEVICE_AUTH_ISSUER}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -589,7 +595,7 @@ async function exchangeOpenAiAuthorizationCode(args: {
       client_id: CODEX_DEVICE_AUTH_CLIENT_ID,
       code_verifier: args.codeVerifier,
     }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -611,13 +617,15 @@ async function exchangeOpenAiAuthorizationCode(args: {
   };
 }
 
-export async function startCodexDeviceAuth(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly scope: CodexDeviceAuthScope;
-  readonly signal: AbortSignal;
-}): Promise<CodexDeviceAuthStartResult> {
+export async function startCodexDeviceAuth(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly scope: CodexDeviceAuthScope;
+  },
+  signal: AbortSignal,
+): Promise<CodexDeviceAuthStartResult> {
   const startedAt = nowDate();
   await cancelActiveSessions({
     writeDb: args.writeDb,
@@ -632,19 +640,21 @@ export async function startCodexDeviceAuth(args: {
     userId: args.userId,
     expiresAt: expiresAt(startedAt),
   });
-  const unregisterAbortCancellation = registerStartAbortCancellation({
-    signal: args.signal,
-    writeDb: args.writeDb,
-    session,
-    orgId: args.orgId,
-    userId: args.userId,
-  });
+  const unregisterAbortCancellation = registerStartAbortCancellation(
+    {
+      writeDb: args.writeDb,
+      session,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+    signal,
+  );
   const userCodeResult = await onRejection(
-    settle(requestOpenAiDeviceUserCode(args.signal), args.signal),
+    settle(requestOpenAiDeviceUserCode(signal), signal),
     unregisterAbortCancellation,
   );
   unregisterAbortCancellation();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!userCodeResult.ok) {
     const message = unknownErrorMessage(
       userCodeResult.error,
@@ -669,7 +679,7 @@ export async function startCodexDeviceAuth(args: {
     deviceAuthId: userCodeResult.value.deviceAuthId,
     userCode: userCodeResult.value.userCode,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return {
     ok: true,
@@ -815,17 +825,23 @@ const importCodexAuthJson$ = command(
 
     const response =
       args.scope === "org"
-        ? await handleCodexAuthJsonPaste({
-            scope: "org",
-            orgId: args.orgId,
-            ...common,
-          })
-        : await handleCodexAuthJsonPaste({
-            scope: "personal",
-            orgId: args.orgId,
-            userId: args.userId,
-            ...common,
-          });
+        ? await handleCodexAuthJsonPaste(
+            {
+              scope: "org",
+              orgId: args.orgId,
+              ...common,
+            },
+            common.signal,
+          )
+        : await handleCodexAuthJsonPaste(
+            {
+              scope: "personal",
+              orgId: args.orgId,
+              userId: args.userId,
+              ...common,
+            },
+            common.signal,
+          );
 
     if (response.status === 400) {
       return {
@@ -949,11 +965,13 @@ const completeLoadedCodexDeviceAuth$ = command(
       };
     }
 
-    const deviceToken = await pollOpenAiDeviceToken({
-      deviceAuthId: providerState.deviceAuthId,
-      userCode: providerState.userCode,
+    const deviceToken = await pollOpenAiDeviceToken(
+      {
+        deviceAuthId: providerState.deviceAuthId,
+        userCode: providerState.userCode,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (deviceToken.status === "pending") {
       return { status: "pending", errorMessage: null };
@@ -1009,11 +1027,13 @@ const importClaimedCodexDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<CodexDeviceAuthCompleteResult> => {
     const tokens = await settle(
-      exchangeOpenAiAuthorizationCode({
-        authorizationCode: args.authorizationCode,
-        codeVerifier: args.codeVerifier,
+      exchangeOpenAiAuthorizationCode(
+        {
+          authorizationCode: args.authorizationCode,
+          codeVerifier: args.codeVerifier,
+        },
         signal,
-      }),
+      ),
       signal,
     );
     signal.throwIfAborted();

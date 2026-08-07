@@ -51,13 +51,15 @@ const startCodexDeviceAuthInner$ = command(
       return adminRequired;
     }
 
-    const result = await startCodexDeviceAuth({
-      writeDb: set(writeDb$),
-      orgId: auth.orgId,
-      userId: auth.userId,
-      scope: body.data.scope,
+    const result = await startCodexDeviceAuth(
+      {
+        writeDb: set(writeDb$),
+        orgId: auth.orgId,
+        userId: auth.userId,
+        scope: body.data.scope,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (!result.ok) {

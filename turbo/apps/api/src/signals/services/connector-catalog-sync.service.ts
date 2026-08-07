@@ -631,26 +631,30 @@ async function activateCandidate(args: {
     });
 }
 
-async function commitCandidate(args: {
-  readonly db: Db;
-  readonly sourceId: string;
-  readonly baseline: SyncStateSnapshot | undefined;
-  readonly candidate: ValidatedConnectorCatalogCandidate;
-  readonly catalogGzip: Buffer;
-  readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
-  readonly pointerObservation: PointerObservation;
-  readonly attemptedAt: Date;
-  readonly capability: ExecutableCapabilityState;
-  readonly validator: ConnectorCatalogValidatorIdentity;
-  readonly signal: AbortSignal;
-}): Promise<CandidateCommitResult> {
+async function commitCandidate(
+  args: {
+    readonly db: Db;
+    readonly sourceId: string;
+    readonly baseline: SyncStateSnapshot | undefined;
+    readonly candidate: ValidatedConnectorCatalogCandidate;
+    readonly catalogGzip: Buffer;
+    readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
+    readonly pointerObservation: PointerObservation;
+    readonly attemptedAt: Date;
+    readonly capability: ExecutableCapabilityState;
+    readonly validator: ConnectorCatalogValidatorIdentity;
+  },
+  signal: AbortSignal,
+): Promise<CandidateCommitResult> {
   const result = await settle(
     args.db.transaction(async (tx) => {
-      await registerPreparedConnectorCatalogSkills({
-        db: tx,
-        registrations: args.skillRegistrations,
-        signal: args.signal,
-      });
+      await registerPreparedConnectorCatalogSkills(
+        {
+          db: tx,
+          registrations: args.skillRegistrations,
+        },
+        signal,
+      );
       await activateCandidate({ ...args, db: tx });
       await persistConnectorCatalogCompatibility({
         db: tx,
@@ -734,7 +738,6 @@ interface ConnectorCatalogSyncRuntime {
     ifNoneMatch: string | null,
   ) => Promise<ConditionalS3BufferDownload>;
   readonly source: ConnectorCatalogSource;
-  readonly signal: AbortSignal;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }
 
@@ -771,29 +774,35 @@ async function rejectSyncAttempt(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
   failureCode: ConnectorCatalogSyncFailureCode,
-  options: RejectSyncAttemptOptions = {},
+  options: RejectSyncAttemptOptions | undefined,
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
-  const reusedCachedRejection = options.reusedCachedRejection ?? false;
+  const resolvedOptions = options ?? {};
+  const reusedCachedRejection = resolvedOptions.reusedCachedRejection ?? false;
   const response = await rejectCandidate({
     db: runtime.db,
     source: runtime.source,
     baseline,
     failureCode,
     rejectedCandidate:
-      !reusedCachedRejection && (options.cacheable ?? true)
-        ? cacheableRejectedCandidate(options.pointerObservation, failureCode)
+      !reusedCachedRejection && (resolvedOptions.cacheable ?? true)
+        ? cacheableRejectedCandidate(
+            resolvedOptions.pointerObservation,
+            failureCode,
+          )
         : undefined,
-    pointerObservation: options.pointerObservation,
+    pointerObservation: resolvedOptions.pointerObservation,
     reusedCachedRejection,
     validator: runtime.validator,
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   return response ? { kind: "complete", response } : { kind: "retry" };
 }
 
 async function loadPointerForSync(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot | undefined,
+  signal: AbortSignal,
 ): Promise<PointerLoadResult> {
   const conditionalEtag =
     baseline?.lastObservedPointerEtag &&
@@ -803,9 +812,9 @@ async function loadPointerForSync(
       : null;
   const downloaded = await settle(
     runtime.readActivePointer(conditionalEtag),
-    runtime.signal,
+    signal,
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!downloaded.ok) {
     const pointerObservation =
       downloaded.error instanceof S3ObjectSizeLimitError &&
@@ -817,6 +826,7 @@ async function loadPointerForSync(
       baseline,
       classifySyncFailure(downloaded.error),
       { pointerObservation },
+      signal,
     );
   }
   if (downloaded.value.kind === "not-modified") {
@@ -833,6 +843,7 @@ async function loadPointerForSync(
       baseline,
       classifySyncFailure(parsed.error),
       { pointerObservation: { pointer: null, etag } },
+      signal,
     );
   }
   return {
@@ -848,21 +859,23 @@ async function loadCandidateForSync(
   pointerObservation: PointerObservation & {
     readonly pointer: ConnectorCatalogActivePointer;
   },
+  signal: AbortSignal,
 ): Promise<CandidateLoadResult> {
   const result = await settle(
     loadConnectorCatalogCandidate({
       reader: runtime.reader,
       pointer: pointerObservation.pointer,
     }),
-    runtime.signal,
+    signal,
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!result.ok) {
     return await rejectSyncAttempt(
       runtime,
       baseline,
       classifySyncFailure(result.error),
       { pointerObservation },
+      signal,
     );
   }
   return { kind: "loaded", candidate: result.value };
@@ -871,7 +884,8 @@ async function loadCandidateForSync(
 async function completeUnchangedSync(
   runtime: ConnectorCatalogSyncRuntime,
   baseline: SyncStateSnapshot,
-  pointerObservation?: PointerObservation,
+  pointerObservation: PointerObservation | undefined,
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
   const committed = await recordUnchangedAttempt({
     db: runtime.db,
@@ -880,7 +894,7 @@ async function completeUnchangedSync(
     attemptedAt: nowDate(),
     pointerObservation,
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!committed) {
     return { kind: "retry" };
   }
@@ -889,47 +903,58 @@ async function completeUnchangedSync(
     sourceId: runtime.source.sourceId,
     outcome: "unchanged",
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "complete", response };
 }
 
 async function commitValidatedCandidate(
   runtime: ConnectorCatalogSyncRuntime,
-  baseline: SyncStateSnapshot | undefined,
-  candidate: ValidatedConnectorCatalogCandidate,
-  skillRegistrations: readonly PreparedConnectorSkillRegistration[],
-  pointerObservation: PointerObservation,
+  args: {
+    readonly baseline: SyncStateSnapshot | undefined;
+    readonly candidate: ValidatedConnectorCatalogCandidate;
+    readonly skillRegistrations: readonly PreparedConnectorSkillRegistration[];
+    readonly pointerObservation: PointerObservation;
+  },
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
-  const catalogGzip = encodeConnectorCatalogSnapshot(candidate.rawBytes);
-  const outcome = await commitCandidate({
-    db: runtime.db,
-    sourceId: runtime.source.sourceId,
-    baseline,
-    candidate,
-    catalogGzip,
-    capability: runtime.capability,
-    validator: runtime.validator,
-    skillRegistrations,
-    pointerObservation,
-    attemptedAt: nowDate(),
-    signal: runtime.signal,
-  });
-  runtime.signal.throwIfAborted();
+  const catalogGzip = encodeConnectorCatalogSnapshot(args.candidate.rawBytes);
+  const outcome = await commitCandidate(
+    {
+      db: runtime.db,
+      sourceId: runtime.source.sourceId,
+      baseline: args.baseline,
+      candidate: args.candidate,
+      catalogGzip,
+      capability: runtime.capability,
+      validator: runtime.validator,
+      skillRegistrations: args.skillRegistrations,
+      pointerObservation: args.pointerObservation,
+      attemptedAt: nowDate(),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (outcome === "retry") {
     return { kind: "retry" };
   }
   if (typeof outcome !== "string") {
-    return await rejectSyncAttempt(runtime, baseline, outcome.failure.code, {
-      pointerObservation,
-      cacheable: outcome.failure.cacheable,
-    });
+    return await rejectSyncAttempt(
+      runtime,
+      args.baseline,
+      outcome.failure.code,
+      {
+        pointerObservation: args.pointerObservation,
+        cacheable: outcome.failure.cacheable,
+      },
+      signal,
+    );
   }
   log.debug("Connector catalog sync completed", {
     sourceId: runtime.source.sourceId,
     schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-    catalogVersion: candidate.identity.catalogVersion,
-    catalogDigest: candidate.identity.catalogDigest,
-    rawBytes: candidate.rawBytes.byteLength,
+    catalogVersion: args.candidate.identity.catalogVersion,
+    catalogDigest: args.candidate.identity.catalogDigest,
+    rawBytes: args.candidate.rawBytes.byteLength,
     compressedBytes: catalogGzip.byteLength,
     outcome,
   });
@@ -938,7 +963,7 @@ async function commitValidatedCandidate(
     sourceId: runtime.source.sourceId,
     outcome,
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { kind: "complete", response };
 }
 
@@ -954,14 +979,17 @@ async function prepareCandidateSkillsForSync(
   baseline: SyncStateSnapshot | undefined,
   candidate: ValidatedConnectorCatalogCandidate,
   pointerObservation: PointerObservation,
+  signal: AbortSignal,
 ): Promise<CandidateSkillPreparationResult> {
   const prepared = await settle(
-    prepareConnectorCatalogSkills({
-      db: runtime.db,
-      artifact: candidate.artifact,
-      signal: runtime.signal,
-    }),
-    runtime.signal,
+    prepareConnectorCatalogSkills(
+      {
+        db: runtime.db,
+        artifact: candidate.artifact,
+      },
+      signal,
+    ),
+    signal,
   );
   if (prepared.ok) {
     return { kind: "prepared", registrations: prepared.value };
@@ -970,18 +998,25 @@ async function prepareCandidateSkillsForSync(
   if (!failure) {
     throw prepared.error;
   }
-  return await rejectSyncAttempt(runtime, baseline, failure.code, {
-    pointerObservation,
-    cacheable: failure.cacheable,
-  });
+  return await rejectSyncAttempt(
+    runtime,
+    baseline,
+    failure.code,
+    {
+      pointerObservation,
+      cacheable: failure.cacheable,
+    },
+    signal,
+  );
 }
 
 async function syncConnectorCatalogAttempt(
   runtime: ConnectorCatalogSyncRuntime,
+  signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
   const baseline = await readSyncState(runtime.db, runtime.source.sourceId);
-  runtime.signal.throwIfAborted();
-  const pointerResult = await loadPointerForSync(runtime, baseline);
+  signal.throwIfAborted();
+  const pointerResult = await loadPointerForSync(runtime, baseline, signal);
   if (pointerResult.kind === "retry" || pointerResult.kind === "complete") {
     return pointerResult;
   }
@@ -991,20 +1026,38 @@ async function syncConnectorCatalogAttempt(
   };
   if (pointerResult.kind === "not-modified") {
     if (!baseline) {
-      return await rejectSyncAttempt(runtime, baseline, "source-unavailable");
+      return await rejectSyncAttempt(
+        runtime,
+        baseline,
+        "source-unavailable",
+        undefined,
+        signal,
+      );
     }
     const cachedFailure = cachedRejectionForObservedEtag(
       baseline,
       runtime.validator,
     );
     if (cachedFailure) {
-      return await rejectSyncAttempt(runtime, baseline, cachedFailure, {
-        reusedCachedRejection: true,
-      });
+      return await rejectSyncAttempt(
+        runtime,
+        baseline,
+        cachedFailure,
+        {
+          reusedCachedRejection: true,
+        },
+        signal,
+      );
     }
     const observedPointer = observedPointerFromState(baseline);
     if (!observedPointer) {
-      return await rejectSyncAttempt(runtime, baseline, "source-unavailable");
+      return await rejectSyncAttempt(
+        runtime,
+        baseline,
+        "source-unavailable",
+        undefined,
+        signal,
+      );
     }
     pointerObservation = {
       pointer: observedPointer,
@@ -1022,7 +1075,12 @@ async function syncConnectorCatalogAttempt(
     if (!baseline) {
       throw new Error("Connector catalog active snapshot disappeared");
     }
-    return await completeUnchangedSync(runtime, baseline, pointerObservation);
+    return await completeUnchangedSync(
+      runtime,
+      baseline,
+      pointerObservation,
+      signal,
+    );
   }
 
   const cachedFailure = cachedRejectionForPointer(
@@ -1031,16 +1089,23 @@ async function syncConnectorCatalogAttempt(
     runtime.validator,
   );
   if (cachedFailure) {
-    return await rejectSyncAttempt(runtime, baseline, cachedFailure, {
-      pointerObservation,
-      reusedCachedRejection: true,
-    });
+    return await rejectSyncAttempt(
+      runtime,
+      baseline,
+      cachedFailure,
+      {
+        pointerObservation,
+        reusedCachedRejection: true,
+      },
+      signal,
+    );
   }
 
   const candidateResult = await loadCandidateForSync(
     runtime,
     baseline,
     pointerObservation,
+    signal,
   );
   if (candidateResult.kind !== "loaded") {
     return candidateResult;
@@ -1050,16 +1115,20 @@ async function syncConnectorCatalogAttempt(
     baseline,
     candidateResult.candidate,
     pointerObservation,
+    signal,
   );
   if (skillPreparation.kind !== "prepared") {
     return skillPreparation;
   }
   return await commitValidatedCandidate(
     runtime,
-    baseline,
-    candidateResult.candidate,
-    skillPreparation.registrations,
-    pointerObservation,
+    {
+      baseline,
+      candidate: candidateResult.candidate,
+      skillRegistrations: skillPreparation.registrations,
+      pointerObservation,
+    },
+    signal,
   );
 }
 
@@ -1085,7 +1154,6 @@ export const syncConnectorCatalog$ = command(
       capability: connectorCatalogExecutableCapabilityState(),
       db: set(writeDb$),
       source,
-      signal,
       validator: currentConnectorCatalogValidatorIdentity(),
       readActivePointer: async (ifNoneMatch) => {
         const result = await get(
@@ -1113,7 +1181,7 @@ export const syncConnectorCatalog$ = command(
 
     while (true) {
       signal.throwIfAborted();
-      const result = await syncConnectorCatalogAttempt(runtime);
+      const result = await syncConnectorCatalogAttempt(runtime, signal);
       signal.throwIfAborted();
       if (result.kind === "retry") {
         continue;

@@ -481,12 +481,14 @@ async function findActiveInstallation(args: {
   return installation ?? null;
 }
 
-async function loadGithubWebhookAutomations(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly eventType: GithubWebhookAutomationEventType;
-  readonly signal: AbortSignal;
-}): Promise<readonly GithubWebhookAutomationRow[]> {
+async function loadGithubWebhookAutomations(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly eventType: GithubWebhookAutomationEventType;
+  },
+  signal: AbortSignal,
+): Promise<readonly GithubWebhookAutomationRow[]> {
   const rows = await args.db
     .select({
       automation: rolloutCompatibleWorkflowAutomationColumns(false),
@@ -523,7 +525,7 @@ async function loadGithubWebhookAutomations(args: {
       ),
     )
     .orderBy(asc(zeroWorkflowAutomations.createdAt));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const automations: GithubWebhookAutomationRow[] = [];
   const currentTime = nowDate();
@@ -535,12 +537,15 @@ async function loadGithubWebhookAutomations(args: {
     if (!config) {
       continue;
     }
-    const canFire = await workflowAutomationCanFire(args.db, {
-      automation: row.automation,
-      agentId: row.agentId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const canFire = await workflowAutomationCanFire(
+      args.db,
+      {
+        automation: row.automation,
+        agentId: row.agentId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (!canFire) {
       continue;
     }
@@ -556,7 +561,7 @@ async function loadGithubWebhookAutomations(args: {
           currentTime,
         });
       }));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     automations.push({
       automation: row.automation,
       agentId: row.agentId,
@@ -869,12 +874,14 @@ export const dispatchGithubWebhookAutomations$ = command(
     const automations = await sourceTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_load_automations",
       async () => {
-        return await loadGithubWebhookAutomations({
-          db,
-          orgId: installation.orgId,
-          eventType: args.event.eventType,
+        return await loadGithubWebhookAutomations(
+          {
+            db,
+            orgId: installation.orgId,
+            eventType: args.event.eventType,
+          },
           signal,
-        });
+        );
       },
     );
     signal.throwIfAborted();

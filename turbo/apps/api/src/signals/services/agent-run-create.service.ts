@@ -4125,15 +4125,17 @@ async function loadCustomConnectorContext(
     refreshedRows.push({
       connector: row.connector,
       credentialAccess: row.credentialAccess,
-      values: await refreshCustomConnectorOAuth2ValuesIfNeeded({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        connector: row.connector,
-        values: row.values,
-        featureContext: args.featureSwitchContext,
+      values: await refreshCustomConnectorOAuth2ValuesIfNeeded(
+        {
+          db,
+          orgId: args.orgId,
+          userId: args.userId,
+          connector: row.connector,
+          values: row.values,
+          featureContext: args.featureSwitchContext,
+        },
         signal,
-      }),
+      ),
     });
     signal.throwIfAborted();
   }
@@ -4720,9 +4722,9 @@ async function checkFinalRunAdmission(
     readonly modelProviderType: string | null | undefined;
     readonly selectedModel: string | null | undefined;
     readonly enforceVm0Credits: boolean;
-    readonly signal: AbortSignal;
     readonly timing: ApiDispatchTimingCollector;
   },
+  signal: AbortSignal,
 ): Promise<CreateRunErrorResult | null> {
   if (args.enforceVm0Credits) {
     return await args.timing.measure(
@@ -4734,7 +4736,7 @@ async function checkFinalRunAdmission(
           orgId: args.orgId,
           userId: args.userId,
         });
-        args.signal.throwIfAborted();
+        signal.throwIfAborted();
         return (
           (await checkResolvedOrgCreditsForRunAdmission({
             db,
@@ -4750,7 +4752,7 @@ async function checkFinalRunAdmission(
   }
 
   const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return (
     checkOrgPlanRunAdmission({
       capabilities,
@@ -7265,8 +7267,8 @@ async function resolveRunModelProvider(
     readonly content: AgentComposeContent;
     readonly framework: SupportedFramework;
     readonly featureSwitchContext: FeatureSwitchContext;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
   const hasFrameworkKey = hasExplicitFrameworkApiKey(
     options.content,
@@ -7293,7 +7295,7 @@ async function resolveRunModelProvider(
         ),
       })
     : null;
-  options.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!shouldResolveModelProvider || modelProvider) {
     return modelProvider;
@@ -7308,7 +7310,7 @@ async function resolveRunModelProvider(
         modelProviderType: "vm0",
         selectedModel: args.selectedModelOverride,
       })) ?? null;
-    options.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
     }
@@ -7384,11 +7386,11 @@ async function loadRunConnectorContexts(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorScope: EffectiveConnectorScope;
-    readonly signal: AbortSignal;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly timing: ApiDispatchTimingCollector | undefined;
   },
-  connectorCatalogSnapshot: ConnectorRuntimeSnapshot,
-  featureSwitchContext: FeatureSwitchContext,
-  timing?: ApiDispatchTimingCollector,
+  signal: AbortSignal,
 ): Promise<{
   readonly storedConnectorSnapshot: StoredConnectorMaterializationSnapshot | null;
   readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
@@ -7396,7 +7398,7 @@ async function loadRunConnectorContexts(
 }> {
   const [storedConnectorSnapshot, customConnectorContext] = await Promise.all([
     measureApiDispatchTiming(
-      timing,
+      args.timing,
       "api_dispatch_prepare_context_load_stored_connectors",
       "nested",
       async () => {
@@ -7407,9 +7409,9 @@ async function loadRunConnectorContexts(
             userId: args.userId,
             allowedConnectorSlugs: args.connectorScope.allowedConnectorSlugs,
             scopeSource: args.connectorScope.source,
-            connectorCatalogSnapshot,
+            connectorCatalogSnapshot: args.connectorCatalogSnapshot,
           },
-          timing,
+          args.timing,
         );
       },
       storedConnectorTimingDimensions({
@@ -7417,7 +7419,7 @@ async function loadRunConnectorContexts(
       }),
     ),
     measureApiDispatchTiming(
-      timing,
+      args.timing,
       "api_dispatch_prepare_context_load_custom_connectors",
       "nested",
       async () => {
@@ -7429,11 +7431,11 @@ async function loadRunConnectorContexts(
             allowedCustomConnectorIds:
               args.connectorScope.allowedCustomConnectorIds,
             customConnectorGrants: args.connectorScope.customConnectorGrants,
-            featureSwitchContext,
-            connectorCatalogSnapshot,
+            featureSwitchContext: args.featureSwitchContext,
+            connectorCatalogSnapshot: args.connectorCatalogSnapshot,
           },
-          args.signal,
-          timing,
+          signal,
+          args.timing,
         );
       },
     ),
@@ -7447,13 +7449,15 @@ async function loadRunConnectorContexts(
   };
 }
 
-async function buildResolvedRunBody(args: {
-  readonly initialBody: CreateRunBody;
-  readonly resolved: ResolvedCompose;
-  readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<CreateRunBody> {
+async function buildResolvedRunBody(
+  args: {
+    readonly initialBody: CreateRunBody;
+    readonly resolved: ResolvedCompose;
+    readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<CreateRunBody> {
   const runVars =
     args.initialBody.vars !== undefined
       ? args.initialBody.vars
@@ -7462,7 +7466,7 @@ async function buildResolvedRunBody(args: {
     persistedEnvironment: args.persistedEnvironment,
     runVars,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const body: CreateRunBody = {
     ...args.initialBody,
@@ -7478,7 +7482,7 @@ async function buildResolvedRunBody(args: {
     persistedEnvironment: args.persistedEnvironment,
     featureSwitchContext: args.featureSwitchContext,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return { ...body, secrets: mergedSecrets };
 }
@@ -7644,12 +7648,14 @@ function connectorScopeFromCreateArgs(
   };
 }
 
-async function resolveEffectiveConnectorScope(args: {
-  readonly db: Db;
-  readonly createArgs: CreateAgentRunArgs;
-  readonly resolved: ResolvedCompose;
-  readonly signal: AbortSignal;
-}): Promise<EffectiveConnectorScope | CreateRunErrorResult> {
+async function resolveEffectiveConnectorScope(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly resolved: ResolvedCompose;
+  },
+  signal: AbortSignal,
+): Promise<EffectiveConnectorScope | CreateRunErrorResult> {
   const createArgsScope = connectorScopeFromCreateArgs(args.createArgs);
   if (createArgsScope) {
     return createArgsScope;
@@ -7658,7 +7664,7 @@ async function resolveEffectiveConnectorScope(args: {
   const zeroBackedAgent = await loadZeroBackedComposeAgent(args.db, {
     composeId: args.resolved.composeId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (zeroBackedAgent) {
     if (
       zeroBackedAgent.visibility === "private" &&
@@ -7689,25 +7695,27 @@ async function resolveEffectiveConnectorScope(args: {
   };
 }
 
-async function prepareRunBodyContext(args: {
-  readonly get: PrepareRunContextGet;
-  readonly db: Db;
-  readonly createArgs: CreateAgentRunArgs;
-  readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly signal: AbortSignal;
-  readonly initialBody: CreateRunBody;
-}): Promise<PreparedRunBodyContext | CreateRunErrorResult> {
+async function prepareRunBodyContext(
+  args: {
+    readonly get: PrepareRunContextGet;
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
+    readonly timing: ApiDispatchTimingCollector;
+    readonly initialBody: CreateRunBody;
+  },
+  signal: AbortSignal,
+): Promise<PreparedRunBodyContext | CreateRunErrorResult> {
   const featureSwitchContext = await args.timing.measure(
     "api_dispatch_prepare_context_feature_switches",
     "nested",
     async () => {
       if (args.preloadedFeatureSwitchContext !== undefined) {
-        args.signal.throwIfAborted();
+        signal.throwIfAborted();
         return args.preloadedFeatureSwitchContext;
       }
       return await args.get(
-        loadRunFeatureSwitchContext(args.createArgs, args.signal),
+        loadRunFeatureSwitchContext(args.createArgs, signal),
       );
     },
     {
@@ -7732,7 +7740,7 @@ async function prepareRunBodyContext(args: {
       );
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (isRouteError(resolved)) {
     return resolved;
   }
@@ -7744,15 +7752,17 @@ async function prepareRunBodyContext(args: {
     "api_dispatch_prepare_context_resolve_connector_scope",
     "nested",
     async () => {
-      return await resolveEffectiveConnectorScope({
-        db: args.db,
-        createArgs: args.createArgs,
-        resolved,
-        signal: args.signal,
-      });
+      return await resolveEffectiveConnectorScope(
+        {
+          db: args.db,
+          createArgs: args.createArgs,
+          resolved,
+        },
+        signal,
+      );
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (isRouteError(connectorScope)) {
     return connectorScope;
   }
@@ -7768,18 +7778,20 @@ async function prepareRunBodyContext(args: {
       });
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const body = await args.timing.measure(
     "api_dispatch_prepare_context_build_resolved_body",
     "nested",
     async () => {
-      return await buildResolvedRunBody({
-        initialBody: args.initialBody,
-        resolved,
-        persistedEnvironment,
-        featureSwitchContext,
-        signal: args.signal,
-      });
+      return await buildResolvedRunBody(
+        {
+          initialBody: args.initialBody,
+          resolved,
+          persistedEnvironment,
+          featureSwitchContext,
+        },
+        signal,
+      );
     },
   );
   const requestedFrameworkResult = await args.timing.measure(
@@ -7797,7 +7809,7 @@ async function prepareRunBodyContext(args: {
       );
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (isRouteError(requestedFrameworkResult)) {
     return requestedFrameworkResult;
   }
@@ -7810,15 +7822,17 @@ async function prepareRunBodyContext(args: {
   };
 }
 
-async function prepareRunConnectorContexts(args: {
-  readonly db: Db;
-  readonly createArgs: CreateAgentRunArgs;
-  readonly connectorScope: EffectiveConnectorScope;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly signal: AbortSignal;
-}): Promise<
+async function prepareRunConnectorContexts(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly connectorScope: EffectiveConnectorScope;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+  signal: AbortSignal,
+): Promise<
   Awaited<ReturnType<typeof loadRunConnectorContexts>> | CreateRunErrorResult
 > {
   const result = await settle(
@@ -7832,11 +7846,11 @@ async function prepareRunConnectorContexts(args: {
             orgId: args.createArgs.orgId,
             userId: args.createArgs.userId,
             connectorScope: args.connectorScope,
-            signal: args.signal,
+            connectorCatalogSnapshot: args.connectorCatalogSnapshot,
+            featureSwitchContext: args.featureSwitchContext,
+            timing: args.timing,
           },
-          args.connectorCatalogSnapshot,
-          args.featureSwitchContext,
-          args.timing,
+          signal,
         );
       },
       storedConnectorTimingDimensions({
@@ -7853,47 +7867,70 @@ async function prepareRunConnectorContexts(args: {
   throw result.error;
 }
 
-async function prepareRunRuntimeContext(args: {
-  readonly db: Db;
-  readonly createArgs: CreateAgentRunArgs;
-  readonly connectorScope: EffectiveConnectorScope;
-  readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly signal: AbortSignal;
-  readonly bodyContext: PreparedRunBodyContext;
-}): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
+async function resolvePreparedRunModelProvider(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly timing: ApiDispatchTimingCollector;
+    readonly bodyContext: PreparedRunBodyContext;
+  },
+  signal: AbortSignal,
+): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
+  const { resolved, requestedFramework, featureSwitchContext } =
+    args.bodyContext;
+  return await args.timing.measure(
+    "api_dispatch_prepare_context_resolve_model_provider",
+    "nested",
+    async () => {
+      return await resolveRunModelProvider(
+        args.db,
+        args.createArgs,
+        {
+          content: resolved.content,
+          framework: requestedFramework,
+          featureSwitchContext,
+        },
+        signal,
+      );
+    },
+  );
+}
+
+async function prepareRunRuntimeContext(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly connectorScope: EffectiveConnectorScope;
+    readonly preloadedConnectorCatalogSnapshot?: ConnectorRuntimeSnapshot;
+    readonly timing: ApiDispatchTimingCollector;
+    readonly bodyContext: PreparedRunBodyContext;
+  },
+  signal: AbortSignal,
+): Promise<PreparedRuntimeContext | CreateRunErrorResult> {
   const { body, resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
   const connectorCatalogSnapshot = await connectorCatalogSnapshotForRun(args);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const connectorScope = connectorScopeForRuntimeSnapshot(
     args.connectorScope,
     connectorCatalogSnapshot,
   );
-  const modelProvider = await args.timing.measure(
-    "api_dispatch_prepare_context_resolve_model_provider",
-    "nested",
-    async () => {
-      return await resolveRunModelProvider(args.db, args.createArgs, {
-        content: resolved.content,
-        framework: requestedFramework,
-        featureSwitchContext,
-        signal: args.signal,
-      });
-    },
-  );
+  const modelProvider = await resolvePreparedRunModelProvider(args, signal);
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }
   const framework = modelProvider
     ? modelProviderFramework(modelProvider)
     : requestedFramework;
-  const connectorContexts = await prepareRunConnectorContexts({
-    ...args,
-    connectorScope,
-    featureSwitchContext,
-    connectorCatalogSnapshot,
-  });
+  const connectorContexts = await prepareRunConnectorContexts(
+    {
+      ...args,
+      connectorScope,
+      featureSwitchContext,
+      connectorCatalogSnapshot,
+    },
+    signal,
+  );
   if (isRouteError(connectorContexts)) {
     return connectorContexts;
   }
@@ -7902,7 +7939,7 @@ async function prepareRunRuntimeContext(args: {
     storedConnectorMetadataContext,
     customConnectorContext,
   } = connectorContexts;
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const storedConnectorTiming = storedConnectorTimingDimensions({
     scopeSource: connectorScope.source,
@@ -7939,7 +7976,7 @@ async function prepareRunRuntimeContext(args: {
     connectorContextPromise,
     permissionManifestPromise,
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (isRouteError(permissionManifest)) {
     return permissionManifest;
   }
@@ -8048,25 +8085,66 @@ function isImageRecognitionAvailableForRun(args: {
   );
 }
 
-function prepareRunContext(input: {
+interface PrepareRunContextInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
-  readonly signal: AbortSignal;
   readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly preloadedUserTimezone: string | null | undefined;
   readonly preloadedConnectorCatalogSnapshot:
     | ConnectorRuntimeSnapshot
     | undefined;
-}): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
-  const {
-    db,
-    args,
-    timing,
+}
+
+async function prepareRunContexts(
+  get: PrepareRunContextGet,
+  input: PrepareRunContextInput,
+  initialBody: CreateRunBody,
+  signal: AbortSignal,
+): Promise<
+  | CreateRunErrorResult
+  | {
+      readonly bodyContext: PreparedRunBodyContext;
+      readonly runtimeContext: PreparedRuntimeContext;
+    }
+> {
+  const bodyContext = await prepareRunBodyContext(
+    {
+      get,
+      db: input.db,
+      createArgs: input.args,
+      preloadedFeatureSwitchContext: input.preloadedFeatureSwitchContext,
+      timing: input.timing,
+      initialBody,
+    },
     signal,
-    preloadedFeatureSwitchContext,
-    preloadedConnectorCatalogSnapshot,
-  } = input;
+  );
+  if (isRouteError(bodyContext)) {
+    return bodyContext;
+  }
+  const runtimeContext = await prepareRunRuntimeContext(
+    {
+      db: input.db,
+      createArgs: input.args,
+      connectorScope: bodyContext.connectorScope,
+      preloadedConnectorCatalogSnapshot:
+        input.preloadedConnectorCatalogSnapshot,
+      timing: input.timing,
+      bodyContext,
+    },
+    signal,
+  );
+  if (isRouteError(runtimeContext)) {
+    return runtimeContext;
+  }
+  return { bodyContext, runtimeContext };
+}
+
+function prepareRunContext(
+  input: PrepareRunContextInput,
+  signal: AbortSignal,
+): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
+  const { db, args, timing } = input;
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
       const initialBody = initialRunBody(args);
@@ -8080,31 +8158,16 @@ function prepareRunContext(input: {
         return captureGate;
       }
 
-      const bodyContext = await prepareRunBodyContext({
+      const contexts = await prepareRunContexts(
         get,
-        db,
-        createArgs: args,
-        preloadedFeatureSwitchContext,
-        timing,
-        signal,
+        input,
         initialBody,
-      });
-      if (isRouteError(bodyContext)) {
-        return bodyContext;
-      }
-
-      const runtimeContext = await prepareRunRuntimeContext({
-        db,
-        createArgs: args,
-        connectorScope: bodyContext.connectorScope,
-        preloadedConnectorCatalogSnapshot,
-        timing,
         signal,
-        bodyContext,
-      });
-      if (isRouteError(runtimeContext)) {
-        return runtimeContext;
+      );
+      if (isRouteError(contexts)) {
+        return contexts;
       }
+      const { bodyContext, runtimeContext } = contexts;
       const { body, resolved } = bodyContext;
       const piEdge = resolvePreparedPiEdgeModelConfig({
         createArgs: args,
@@ -8311,7 +8374,6 @@ interface AtomicLaunchRunInput {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
-  readonly signal: AbortSignal;
   readonly timing: ApiDispatchTimingCollector;
 }
 
@@ -8326,13 +8388,16 @@ function isQueuePayloadRequiredResult(
   );
 }
 
-async function finalizeAtomicLaunchCommit(args: {
-  readonly input: AtomicLaunchRunInput;
-  readonly identity: LaunchRunIdentity;
-  readonly launch: PreparedRunnerLaunch;
-  readonly committed: AtomicLaunchCommitAttempt;
-}): Promise<QueueFirstAgentRunResult | QueuePayloadRequiredResult> {
-  if (isReturnableRouteError(args.committed, args.input.signal)) {
+async function finalizeAtomicLaunchCommit(
+  args: {
+    readonly input: AtomicLaunchRunInput;
+    readonly identity: LaunchRunIdentity;
+    readonly launch: PreparedRunnerLaunch;
+    readonly committed: AtomicLaunchCommitAttempt;
+  },
+  signal: AbortSignal,
+): Promise<QueueFirstAgentRunResult | QueuePayloadRequiredResult> {
+  if (isReturnableRouteError(args.committed, signal)) {
     return args.committed;
   }
   if (args.committed.kind === "queue-first-claim-lost") {
@@ -8358,34 +8423,40 @@ async function finalizeAtomicLaunchCommit(args: {
   });
 }
 
-async function completeQueuePayloadLaunch(args: {
-  readonly input: AtomicLaunchRunInput;
-  readonly identity: LaunchRunIdentity;
-  readonly callbackRows: readonly AgentRunCallbackInsert[];
-  readonly launch: PreparedRunnerLaunch;
-  readonly commitLaunch: CommitAtomicLaunch;
-}): Promise<QueueFirstAgentRunResult> {
-  args.input.signal.throwIfAborted();
+async function completeQueuePayloadLaunch(
+  args: {
+    readonly input: AtomicLaunchRunInput;
+    readonly identity: LaunchRunIdentity;
+    readonly callbackRows: readonly AgentRunCallbackInsert[];
+    readonly launch: PreparedRunnerLaunch;
+    readonly commitLaunch: CommitAtomicLaunch;
+  },
+  signal: AbortSignal,
+): Promise<QueueFirstAgentRunResult> {
+  signal.throwIfAborted();
   const encryptedQueuedParams = await settle(
     encryptQueuedRunnerJobPayload(
       args.launch.runnerJobPayload,
       args.input.context.featureSwitchContext,
     ),
   );
-  args.input.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!encryptedQueuedParams.ok) {
     const retried = await args.commitLaunch(undefined);
-    const finalizedRetry = await finalizeAtomicLaunchCommit({
-      input: args.input,
-      identity: args.identity,
-      launch: args.launch,
-      committed: retried,
-    });
+    const finalizedRetry = await finalizeAtomicLaunchCommit(
+      {
+        input: args.input,
+        identity: args.identity,
+        launch: args.launch,
+        committed: retried,
+      },
+      signal,
+    );
     if (!isQueuePayloadRequiredResult(finalizedRetry)) {
       return finalizedRetry;
     }
-    args.input.signal.throwIfAborted();
+    signal.throwIfAborted();
     return await commitFailedLaunch({
       db: args.input.db,
       createArgs: args.input.args,
@@ -8398,14 +8469,17 @@ async function completeQueuePayloadLaunch(args: {
   }
 
   const committed = await args.commitLaunch(encryptedQueuedParams.value);
-  const finalized = await finalizeAtomicLaunchCommit({
-    input: args.input,
-    identity: args.identity,
-    launch: args.launch,
-    committed,
-  });
+  const finalized = await finalizeAtomicLaunchCommit(
+    {
+      input: args.input,
+      identity: args.identity,
+      launch: args.launch,
+      committed,
+    },
+    signal,
+  );
   if (isQueuePayloadRequiredResult(finalized)) {
-    args.input.signal.throwIfAborted();
+    signal.throwIfAborted();
     throw new Error("Queued launch still required encrypted payload");
   }
   return finalized;
@@ -8413,6 +8487,7 @@ async function completeQueuePayloadLaunch(args: {
 
 function createAtomicLaunchRun(
   input: AtomicLaunchRunInput,
+  signal: AbortSignal,
 ): Computed<Promise<QueueFirstAgentRunResult>> {
   return computed(async (get): Promise<QueueFirstAgentRunResult> => {
     const identity = prepareLaunchRunIdentity({
@@ -8424,7 +8499,7 @@ function createAtomicLaunchRun(
         orgId: input.args.orgId,
         timing: input.timing,
       });
-      input.signal.throwIfAborted();
+      signal.throwIfAborted();
       if (preflightConcurrency) {
         return preflightConcurrency;
       }
@@ -8436,7 +8511,7 @@ function createAtomicLaunchRun(
       featureSwitchContext: input.context.featureSwitchContext,
       timing: input.timing,
     });
-    input.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     const launchResult = await settle(
       input.timing.measure(
@@ -8458,7 +8533,7 @@ function createAtomicLaunchRun(
         },
       ),
     );
-    input.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!launchResult.ok) {
       return await commitFailedLaunch({
         db: input.db,
@@ -8495,20 +8570,26 @@ function createAtomicLaunchRun(
     };
 
     const committed = await commitLaunch(undefined);
-    const finalized = await finalizeAtomicLaunchCommit({
-      input,
-      identity,
-      launch,
-      committed,
-    });
-    if (isQueuePayloadRequiredResult(finalized)) {
-      return await completeQueuePayloadLaunch({
+    const finalized = await finalizeAtomicLaunchCommit(
+      {
         input,
         identity,
-        callbackRows,
         launch,
-        commitLaunch,
-      });
+        committed,
+      },
+      signal,
+    );
+    if (isQueuePayloadRequiredResult(finalized)) {
+      return await completeQueuePayloadLaunch(
+        {
+          input,
+          identity,
+          callbackRows,
+          launch,
+          commitLaunch,
+        },
+        signal,
+      );
     }
     return finalized;
   });
@@ -8593,16 +8674,19 @@ export const prepareAgentRun$ = command(
       "top_level",
       async () => {
         return await get(
-          prepareRunContext({
-            db,
-            args,
-            timing,
+          prepareRunContext(
+            {
+              db,
+              args,
+              timing,
+              preloadedFeatureSwitchContext:
+                input.preloadedFeatureSwitchContext,
+              preloadedUserTimezone: input.preloadedUserTimezone,
+              preloadedConnectorCatalogSnapshot:
+                input.preloadedConnectorCatalogSnapshot,
+            },
             signal,
-            preloadedFeatureSwitchContext: input.preloadedFeatureSwitchContext,
-            preloadedUserTimezone: input.preloadedUserTimezone,
-            preloadedConnectorCatalogSnapshot:
-              input.preloadedConnectorCatalogSnapshot,
-          }),
+          ),
         );
       },
     );
@@ -8638,17 +8722,20 @@ export const completeAgentRun$ = command(
       "api_dispatch_check_run_admission",
       "top_level",
       async () => {
-        return await checkFinalRunAdmission(db, {
-          orgId: args.orgId,
-          userId: args.userId,
-          modelProviderType,
-          selectedModel,
-          enforceVm0Credits:
-            args.enforceVm0Credits === true &&
-            context.modelProvider?.type === "vm0",
+        return await checkFinalRunAdmission(
+          db,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            modelProviderType,
+            selectedModel,
+            enforceVm0Credits:
+              args.enforceVm0Credits === true &&
+              context.modelProvider?.type === "vm0",
+            timing,
+          },
           signal,
-          timing,
-        });
+        );
       },
     );
     signal.throwIfAborted();
@@ -8657,13 +8744,15 @@ export const completeAgentRun$ = command(
     }
 
     const result = await get(
-      createAtomicLaunchRun({
-        db,
-        args,
-        context,
+      createAtomicLaunchRun(
+        {
+          db,
+          args,
+          context,
+          timing,
+        },
         signal,
-        timing,
-      }),
+      ),
     );
     // The run and runner job are durable now. Observe request cancellation for
     // diagnostics, but let the commit-owned activation finish independently.

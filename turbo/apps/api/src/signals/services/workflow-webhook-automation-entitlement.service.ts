@@ -12,23 +12,30 @@ type DbTransaction = Tx;
 
 export async function lockWorkflowWebhookAutomationTierEligibleForOrg(
   tx: DbTransaction,
-  args: { readonly orgId: string; readonly signal: AbortSignal },
+  args: {
+    readonly orgId: string;
+  },
+  signal: AbortSignal,
 ): Promise<boolean> {
   const capabilities = await loadOrgPlanCapabilities(tx, args.orgId, {
     forUpdate: true,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return capabilities?.workflowWebhookAutomationAllowed === true;
 }
 
 export async function disableIneligibleWorkflowWebhookAutomationsForOrg(
   db: Db,
-  args: { readonly orgId: string; readonly signal: AbortSignal },
+  args: {
+    readonly orgId: string;
+  },
+  signal: AbortSignal,
 ): Promise<number> {
   return await db.transaction(async (tx) => {
     const tierEligible = await lockWorkflowWebhookAutomationTierEligibleForOrg(
       tx,
       args,
+      signal,
     );
     if (tierEligible) {
       return 0;
@@ -49,7 +56,7 @@ export async function disableIneligibleWorkflowWebhookAutomationsForOrg(
         ),
       )
       .returning({ id: zeroWorkflowAutomations.id });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (disabled.length === 0) {
       return 0;
     }
@@ -68,7 +75,7 @@ export async function disableIneligibleWorkflowWebhookAutomationsForOrg(
           }),
         ),
       );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return disabled.length;
   });
 }

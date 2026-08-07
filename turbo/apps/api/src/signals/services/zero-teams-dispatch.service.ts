@@ -692,32 +692,38 @@ async function resolveDefaultComposeId(
   return metadata?.defaultAgentId ?? null;
 }
 
-async function sendTeamsRunStartIndicator(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function sendTeamsRunStartIndicator(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const activityId = args.activity.activityId;
   let indicator:
     | ReturnType<typeof sendTeamsTypingActivity>
     | ReturnType<typeof sendTeamsReaction>;
   if (isTeamsDirectMessage(args.activity) || !activityId) {
-    indicator = sendTeamsTypingActivity({
-      serviceUrl: args.activity.serviceUrl,
-      conversationId: args.activity.conversationId,
-      tenantId: args.activity.tenantId,
-      signal: args.signal,
-    });
+    indicator = sendTeamsTypingActivity(
+      {
+        serviceUrl: args.activity.serviceUrl,
+        conversationId: args.activity.conversationId,
+        tenantId: args.activity.tenantId,
+      },
+      signal,
+    );
   } else {
-    indicator = sendTeamsReaction({
-      serviceUrl: args.activity.serviceUrl,
-      conversationId: args.activity.conversationId,
-      activityId,
-      tenantId: args.activity.tenantId,
-      reactionType: TEAMS_THINKING_REACTION_TYPE,
-      signal: args.signal,
-    });
+    indicator = sendTeamsReaction(
+      {
+        serviceUrl: args.activity.serviceUrl,
+        conversationId: args.activity.conversationId,
+        activityId,
+        tenantId: args.activity.tenantId,
+        reactionType: TEAMS_THINKING_REACTION_TYPE,
+      },
+      signal,
+    );
   }
-  await bestEffort(indicator, args.signal);
+  await bestEffort(indicator, signal);
 }
 
 async function getUserAgentPreference(
@@ -1156,22 +1162,26 @@ function teamsGraphSenderUserIds(
   ];
 }
 
-async function fetchTeamsGraphUserInfoMap(args: {
-  readonly tenantId: string;
-  readonly messages: readonly TeamsGraphMessage[];
-  readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<string, TeamsGraphUserInfo>> {
+async function fetchTeamsGraphUserInfoMap(
+  args: {
+    readonly tenantId: string;
+    readonly messages: readonly TeamsGraphMessage[];
+  },
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, TeamsGraphUserInfo>> {
   const userIds = teamsGraphSenderUserIds(args.messages);
   if (userIds.length === 0) {
     return new Map();
   }
 
-  const result = await fetchTeamsUsers({
-    tenantId: args.tenantId,
-    userIds,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const result = await fetchTeamsUsers(
+    {
+      tenantId: args.tenantId,
+      userIds,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (result.kind === "teams-error") {
     L.debug("Teams user context fetch failed", {
       tenantId: args.tenantId,
@@ -1227,10 +1237,12 @@ function recentChannelContextExcludedIds(
   return ids;
 }
 
-async function fetchTeamsThreadRootMessage(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<TeamsGraphMessage | null> {
+async function fetchTeamsThreadRootMessage(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<TeamsGraphMessage | null> {
   const { activity } = args;
   if (
     !isTeamsThreadReply(activity) ||
@@ -1240,13 +1252,15 @@ async function fetchTeamsThreadRootMessage(args: {
     return null;
   }
 
-  const rootResult = await fetchTeamsChannelMessage({
-    tenantId: activity.tenantId,
-    teamId: activity.teamAadGroupId,
-    channelId: activity.channelId,
-    messageId: activity.threadId,
-    signal: args.signal,
-  });
+  const rootResult = await fetchTeamsChannelMessage(
+    {
+      tenantId: activity.tenantId,
+      teamId: activity.teamAadGroupId,
+      channelId: activity.channelId,
+      messageId: activity.threadId,
+    },
+    signal,
+  );
   if (rootResult.kind === "teams-error") {
     L.warn("Teams thread root context fetch failed", {
       tenantId: activity.tenantId,
@@ -1263,24 +1277,28 @@ async function fetchTeamsThreadRootMessage(args: {
   return rootResult.message;
 }
 
-async function fetchTeamsThreadContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly rootMessage: TeamsGraphMessage | null;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchTeamsThreadContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+    readonly rootMessage: TeamsGraphMessage | null;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   const { activity } = args;
   if (!args.rootMessage || !activity.teamAadGroupId || !activity.channelId) {
     return { text: "", files: [] };
   }
 
-  const repliesResult = await fetchTeamsChannelMessageReplies({
-    tenantId: activity.tenantId,
-    teamId: activity.teamAadGroupId,
-    channelId: activity.channelId,
-    messageId: activity.threadId,
-    limit: 100,
-    signal: args.signal,
-  });
+  const repliesResult = await fetchTeamsChannelMessageReplies(
+    {
+      tenantId: activity.tenantId,
+      teamId: activity.teamAadGroupId,
+      channelId: activity.channelId,
+      messageId: activity.threadId,
+      limit: 100,
+    },
+    signal,
+  );
   if (repliesResult.kind === "teams-error") {
     L.warn("Teams thread replies context fetch failed", {
       tenantId: activity.tenantId,
@@ -1295,11 +1313,13 @@ async function fetchTeamsThreadContext(args: {
   }
 
   const messages = [args.rootMessage, ...repliesResult.messages];
-  const userInfoMap = await fetchTeamsGraphUserInfoMap({
-    tenantId: activity.tenantId,
-    messages,
-    signal: args.signal,
-  });
+  const userInfoMap = await fetchTeamsGraphUserInfoMap(
+    {
+      tenantId: activity.tenantId,
+      messages,
+    },
+    signal,
+  );
 
   const contextMessages = teamsContextMessages(
     activity.tenantId,
@@ -1327,11 +1347,13 @@ function teamsMessagesBeforeReference(
   });
 }
 
-async function fetchRecentTeamsChannelContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly beforeMessage: TeamsGraphMessage | null;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchRecentTeamsChannelContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+    readonly beforeMessage: TeamsGraphMessage | null;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   const { activity } = args;
   const teamAadGroupId = activity.teamAadGroupId;
   const channelId = activity.channelId;
@@ -1339,13 +1361,15 @@ async function fetchRecentTeamsChannelContext(args: {
     return { text: "", files: [] };
   }
 
-  const result = await fetchTeamsChannelMessages({
-    tenantId: activity.tenantId,
-    teamId: teamAadGroupId,
-    channelId,
-    limit: 10,
-    signal: args.signal,
-  });
+  const result = await fetchTeamsChannelMessages(
+    {
+      tenantId: activity.tenantId,
+      teamId: teamAadGroupId,
+      channelId,
+      limit: 10,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     L.warn("Teams channel context fetch failed", {
       tenantId: activity.tenantId,
@@ -1362,11 +1386,13 @@ async function fetchRecentTeamsChannelContext(args: {
     result.messages,
     args.beforeMessage,
   );
-  const userInfoMap = await fetchTeamsGraphUserInfoMap({
-    tenantId: activity.tenantId,
-    messages,
-    signal: args.signal,
-  });
+  const userInfoMap = await fetchTeamsGraphUserInfoMap(
+    {
+      tenantId: activity.tenantId,
+      messages,
+    },
+    signal,
+  );
 
   const contextMessages = teamsContextMessages(
     activity.tenantId,
@@ -1384,10 +1410,12 @@ function isTeamsDirectMessage(activity: TeamsMessageActivity): boolean {
   return activity.conversationType === "personal";
 }
 
-async function fetchTeamsDirectMessageThreadContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchTeamsDirectMessageThreadContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   const { activity } = args;
   const userId = activity.sender.aadObjectId;
   const teamsAppId = activity.teamsAppId ?? env("MICROSOFT_TEAMS_BOT_APP_ID");
@@ -1395,13 +1423,15 @@ async function fetchTeamsDirectMessageThreadContext(args: {
     return { text: "", files: [] };
   }
 
-  const result = await fetchTeamsPersonalChatMessages({
-    tenantId: activity.tenantId,
-    userId,
-    teamsAppId,
-    limit: 50,
-    signal: args.signal,
-  });
+  const result = await fetchTeamsPersonalChatMessages(
+    {
+      tenantId: activity.tenantId,
+      userId,
+      teamsAppId,
+      limit: 50,
+    },
+    signal,
+  );
   if (result.kind === "teams-error") {
     L.warn("Teams direct message thread context fetch failed", {
       tenantId: activity.tenantId,
@@ -1414,11 +1444,13 @@ async function fetchTeamsDirectMessageThreadContext(args: {
   }
 
   const messages = result.messages;
-  const userInfoMap = await fetchTeamsGraphUserInfoMap({
-    tenantId: activity.tenantId,
-    messages,
-    signal: args.signal,
-  });
+  const userInfoMap = await fetchTeamsGraphUserInfoMap(
+    {
+      tenantId: activity.tenantId,
+      messages,
+    },
+    signal,
+  );
   const contextMessages = teamsContextMessages(
     activity.tenantId,
     messages,
@@ -1448,28 +1480,36 @@ function teamsValidationFallbackNotice(args: {
   return null;
 }
 
-async function fetchTeamsPromptContext(args: {
-  readonly activity: TeamsMessageActivity;
-  readonly signal: AbortSignal;
-}): Promise<TeamsPromptContext> {
+async function fetchTeamsPromptContext(
+  args: {
+    readonly activity: TeamsMessageActivity;
+  },
+  signal: AbortSignal,
+): Promise<TeamsPromptContext> {
   if (isTeamsDirectMessage(args.activity)) {
-    return await fetchTeamsDirectMessageThreadContext(args);
+    return await fetchTeamsDirectMessageThreadContext(args, signal);
   }
 
-  const threadRootMessage = await fetchTeamsThreadRootMessage({
-    activity: args.activity,
-    signal: args.signal,
-  });
-  const recentChannelContext = await fetchRecentTeamsChannelContext({
-    activity: args.activity,
-    beforeMessage: threadRootMessage,
-    signal: args.signal,
-  });
-  const threadContext = await fetchTeamsThreadContext({
-    activity: args.activity,
-    rootMessage: threadRootMessage,
-    signal: args.signal,
-  });
+  const threadRootMessage = await fetchTeamsThreadRootMessage(
+    {
+      activity: args.activity,
+    },
+    signal,
+  );
+  const recentChannelContext = await fetchRecentTeamsChannelContext(
+    {
+      activity: args.activity,
+      beforeMessage: threadRootMessage,
+    },
+    signal,
+  );
+  const threadContext = await fetchTeamsThreadContext(
+    {
+      activity: args.activity,
+      rootMessage: threadRootMessage,
+    },
+    signal,
+  );
   return {
     text: [recentChannelContext.text, threadContext.text]
       .filter((context) => {
@@ -1540,18 +1580,20 @@ function teamsChatMessageId(
   );
 }
 
-async function persistTeamsChatMessage(args: {
-  readonly db: Db;
-  readonly activity: TeamsMessageActivity;
-  readonly installation: BoundTeamsInstallation;
-  readonly connection: TeamsConnection;
-  readonly composeId: string;
-  readonly promptFiles: readonly TeamsPromptFile[];
-  readonly promptContext: TeamsPromptContext;
-  readonly apiStartTime: number;
-  readonly modelRoute: IntegrationModelRoutePin | undefined;
-  readonly signal: AbortSignal;
-}): Promise<
+async function persistTeamsChatMessage(
+  args: {
+    readonly db: Db;
+    readonly activity: TeamsMessageActivity;
+    readonly installation: BoundTeamsInstallation;
+    readonly connection: TeamsConnection;
+    readonly composeId: string;
+    readonly promptFiles: readonly TeamsPromptFile[];
+    readonly promptContext: TeamsPromptContext;
+    readonly apiStartTime: number;
+    readonly modelRoute: IntegrationModelRoutePin | undefined;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
@@ -1575,7 +1617,7 @@ async function persistTeamsChatMessage(args: {
     selectedModel: args.modelRoute?.selectedModel ?? null,
     currentTime,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const launchContext = canonicalTeamsLaunchContext({
     activity: args.activity,
@@ -1621,7 +1663,7 @@ async function persistTeamsChatMessage(args: {
       },
       "id",
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!event) {
       return false;
     }
@@ -1633,7 +1675,7 @@ async function persistTeamsChatMessage(args: {
     );
     return true;
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return inserted
     ? { inserted: true, chatThreadId: route.chatThreadId, chatEventId }
     : { inserted: false };
@@ -1714,18 +1756,20 @@ const runAgentForTeams$ = command(
       nowDate().getTime(),
     );
     const db = set(writeDb$);
-    const persisted = await persistTeamsChatMessage({
-      db,
-      activity: args.activity,
-      installation: args.installation,
-      connection: args.connection,
-      composeId: args.composeId,
-      promptFiles: args.promptFiles,
-      promptContext: args.promptContext,
-      apiStartTime: args.apiStartTime,
-      modelRoute: args.modelRoute,
+    const persisted = await persistTeamsChatMessage(
+      {
+        db,
+        activity: args.activity,
+        installation: args.installation,
+        connection: args.connection,
+        composeId: args.composeId,
+        promptFiles: args.promptFiles,
+        promptContext: args.promptContext,
+        apiStartTime: args.apiStartTime,
+        modelRoute: args.modelRoute,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (!persisted.inserted) {
       return { kind: "ignored" };
@@ -2112,10 +2156,12 @@ const runResolvedTeamsAgentForActivity$ = command(
       return { kind: "ignored" };
     }
 
-    await sendTeamsRunStartIndicator({
-      activity: args.activity,
+    await sendTeamsRunStartIndicator(
+      {
+        activity: args.activity,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     const modelRoute = await set(
@@ -2128,10 +2174,12 @@ const runResolvedTeamsAgentForActivity$ = command(
     );
     signal.throwIfAborted();
 
-    const promptContext = await fetchTeamsPromptContext({
-      activity: args.activity,
+    const promptContext = await fetchTeamsPromptContext(
+      {
+        activity: args.activity,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     return await set(

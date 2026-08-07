@@ -43,7 +43,7 @@ function createAwsExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider
         expiresIn: AWS_EXTERNAL_CODE_SESSION_EXPIRES_IN_SECONDS,
       };
     },
-    completeExternalCodeAuthorization: async (args) => {
+    completeExternalCodeAuthorization: async (args, signal: AbortSignal) => {
       const providerState = parseAwsExternalCodeProviderState(
         args.providerState,
       );
@@ -51,20 +51,24 @@ function createAwsExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider
         verificationCode: args.code,
         expectedState: providerState.state,
       });
-      const token = await exchangeAwsSigninAuthorizationCode({
-        clientId: args.authClient.clientId,
-        signinRegion: providerState.signinRegion,
-        code: verificationCode.code,
-        codeVerifier: providerState.codeVerifier,
-        dpopKey: providerState.dpopKey,
-        redirectUri: providerState.redirectUri,
-        signal: args.signal,
-      });
-      const identity = await getAwsCallerIdentity({
-        credentials: token.credentials,
-        region: providerState.runtimeRegion,
-        signal: args.signal,
-      });
+      const token = await exchangeAwsSigninAuthorizationCode(
+        {
+          clientId: args.authClient.clientId,
+          signinRegion: providerState.signinRegion,
+          code: verificationCode.code,
+          codeVerifier: providerState.codeVerifier,
+          dpopKey: providerState.dpopKey,
+          redirectUri: providerState.redirectUri,
+        },
+        signal,
+      );
+      const identity = await getAwsCallerIdentity(
+        {
+          credentials: token.credentials,
+          region: providerState.runtimeRegion,
+        },
+        signal,
+      );
       return {
         outputs: {
           refreshToken: token.refreshToken,
@@ -89,14 +93,16 @@ function createAwsRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
 > {
   return {
     kind: "refresh-token",
-    refresh: async (args) => {
-      const token = await refreshAwsSigninToken({
-        clientId: args.authClient.clientId,
-        signinRegion: args.inputs.signinRegion,
-        refreshToken: args.inputs.refreshToken,
-        dpopKey: args.inputs.dpopKey,
-        signal: args.signal,
-      });
+    refresh: async (args, signal: AbortSignal) => {
+      const token = await refreshAwsSigninToken(
+        {
+          clientId: args.authClient.clientId,
+          signinRegion: args.inputs.signinRegion,
+          refreshToken: args.inputs.refreshToken,
+          dpopKey: args.inputs.dpopKey,
+        },
+        signal,
+      );
       return {
         outputs: {
           refreshToken: token.refreshToken,

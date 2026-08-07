@@ -89,17 +89,19 @@ export async function buildDatadogAuthorizationUrl(
   return { url: `${AUTHORIZATION_URL}?${params.toString()}`, codeVerifier };
 }
 
-async function requestToken(args: {
-  readonly domain: string;
-  readonly body: URLSearchParams;
-  readonly operation: "exchange" | "refresh";
-  readonly signal?: AbortSignal;
-}) {
+async function requestToken(
+  args: {
+    readonly domain: string;
+    readonly body: URLSearchParams;
+    readonly operation: "exchange" | "refresh";
+  },
+  signal?: AbortSignal,
+) {
   const response = await fetch(tokenUrl(args.domain), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: args.body,
-    signal: args.signal,
+    signal,
   });
   if (!response.ok) {
     await throwOAuthError("Datadog", args.operation, response);
@@ -141,24 +143,28 @@ export async function exchangeDatadogCode(args: {
   };
 }
 
-export async function refreshDatadogToken(args: {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly refreshToken: string;
-  readonly domain: string;
-  readonly signal: AbortSignal;
-}) {
-  const token = await requestToken({
-    domain: args.domain,
-    operation: "refresh",
-    signal: args.signal,
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: args.clientId,
-      client_secret: args.clientSecret,
-      refresh_token: args.refreshToken,
-    }),
-  });
+export async function refreshDatadogToken(
+  args: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly refreshToken: string;
+    readonly domain: string;
+  },
+  signal: AbortSignal,
+) {
+  const token = await requestToken(
+    {
+      domain: args.domain,
+      operation: "refresh",
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: args.clientId,
+        client_secret: args.clientSecret,
+        refresh_token: args.refreshToken,
+      }),
+    },
+    signal,
+  );
   return {
     accessToken: token.access_token,
     refreshToken: token.refresh_token ?? null,

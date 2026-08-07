@@ -2117,54 +2117,68 @@ async function markAndReturnRefreshFailure(
   return refreshFailedResult(failureReason);
 }
 
-function refreshPreparedAccessToken(args: {
-  readonly prepared: PreparedRefreshTokenContext;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}) {
+function refreshPreparedAccessToken(
+  args: {
+    readonly prepared: PreparedRefreshTokenContext;
+    readonly inputs: Readonly<Record<string, string>>;
+  },
+  signal: AbortSignal,
+) {
   if (args.prepared.sourceType === "connector") {
-    return refreshPreparedConnectorAccessToken({
-      prepared: args.prepared,
-      inputs: args.inputs,
-      signal: args.signal,
-    });
+    return refreshPreparedConnectorAccessToken(
+      {
+        prepared: args.prepared,
+        inputs: args.inputs,
+      },
+      signal,
+    );
   }
 
-  return refreshPreparedModelProviderAccessToken({
-    prepared: args.prepared,
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+  return refreshPreparedModelProviderAccessToken(
+    {
+      prepared: args.prepared,
+      inputs: args.inputs,
+    },
+    signal,
+  );
 }
 
-function refreshPreparedModelProviderAccessToken(args: {
-  readonly prepared: ModelProviderPreparedRefreshTokenContext;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}) {
-  return refreshPreparedModelProviderAccess({
-    providerKey: args.prepared.providerKey,
-    currentEnv: args.prepared.currentEnv,
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+function refreshPreparedModelProviderAccessToken(
+  args: {
+    readonly prepared: ModelProviderPreparedRefreshTokenContext;
+    readonly inputs: Readonly<Record<string, string>>;
+  },
+  signal: AbortSignal,
+) {
+  return refreshPreparedModelProviderAccess(
+    {
+      providerKey: args.prepared.providerKey,
+      currentEnv: args.prepared.currentEnv,
+      inputs: args.inputs,
+    },
+    signal,
+  );
 }
 
-function refreshPreparedConnectorAccessToken(args: {
-  readonly prepared: ConnectorPreparedRefreshTokenContext;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}) {
-  return refreshConnectorAuthProviderAccessTokenWithMethod({
-    connectorSlug: args.prepared.connectorSlug,
-    authMethodId: args.prepared.authMethodId,
-    method: args.prepared.runtimeMethod.method,
-    ...(args.prepared.authClient
-      ? { authClient: args.prepared.authClient }
-      : {}),
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+function refreshPreparedConnectorAccessToken(
+  args: {
+    readonly prepared: ConnectorPreparedRefreshTokenContext;
+    readonly inputs: Readonly<Record<string, string>>;
+  },
+  signal: AbortSignal,
+) {
+  return refreshConnectorAuthProviderAccessTokenWithMethod(
+    {
+      connectorSlug: args.prepared.connectorSlug,
+      authMethodId: args.prepared.authMethodId,
+      method: args.prepared.runtimeMethod.method,
+      ...(args.prepared.authClient
+        ? { authClient: args.prepared.authClient }
+        : {}),
+      inputs: args.inputs,
+    },
+    signal,
+  );
 }
 
 async function lockPreparedRefreshSource(
@@ -2390,14 +2404,16 @@ async function refreshLockedAccessToken(args: {
 
   const refreshSignal = firewallAuthRefreshTimeoutSignal();
   const refreshResult = await settle(
-    refreshPreparedAccessToken({
-      prepared: args.prepared,
-      inputs: refreshInputsFromLockedState({
-        accessSourceKey: args.refreshArgs.accessSourceKey,
-        state: lockedState,
-      }),
-      signal: refreshSignal,
-    }),
+    refreshPreparedAccessToken(
+      {
+        prepared: args.prepared,
+        inputs: refreshInputsFromLockedState({
+          accessSourceKey: args.refreshArgs.accessSourceKey,
+          state: lockedState,
+        }),
+      },
+      refreshSignal,
+    ),
   );
   if (!refreshResult.ok) {
     return markAndReturnRefreshFailure(
@@ -3078,16 +3094,18 @@ async function syncCustomConnectorRuntimeSecrets(args: {
     let encryptedValue = row.encryptedValue;
     if (row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY) {
       const accessToken = await tapError(
-        resolveRevisionPinnedCustomConnectorOAuth2AccessToken({
-          db: args.db,
-          orgId: args.orgId,
-          userId: args.userId,
-          connectorId: row.connectorId,
-          connectorRevision: row.connectorRevision,
-          featureContext: args.featureSwitchContext,
-          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-          forceRefresh: args.forceRefresh,
-        }),
+        resolveRevisionPinnedCustomConnectorOAuth2AccessToken(
+          {
+            db: args.db,
+            orgId: args.orgId,
+            userId: args.userId,
+            connectorId: row.connectorId,
+            connectorRevision: row.connectorRevision,
+            featureContext: args.featureSwitchContext,
+            forceRefresh: args.forceRefresh,
+          },
+          AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+        ),
         (error) => {
           L.warn("Failed to resolve live custom connector OAuth token", {
             runId: args.runId,
@@ -4323,15 +4341,17 @@ async function resolveCurrentCustomConnectorSecrets(args: {
       ref.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
     ) {
       const accessToken = await settle(
-        resolveCurrentCustomConnectorOAuth2AccessToken({
-          db: args.db,
-          orgId: args.auth.orgId,
-          userId: args.auth.userId,
-          connectorId: ref.connectorId,
-          featureContext: featureSwitchContext,
-          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-          forceRefresh: args.forceRefresh,
-        }),
+        resolveCurrentCustomConnectorOAuth2AccessToken(
+          {
+            db: args.db,
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            connectorId: ref.connectorId,
+            featureContext: featureSwitchContext,
+            forceRefresh: args.forceRefresh,
+          },
+          AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+        ),
       );
       if (!accessToken.ok) {
         if (

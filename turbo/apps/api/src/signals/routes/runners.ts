@@ -1862,31 +1862,33 @@ async function resolveResumeSessionForClaim(args: {
   );
 }
 
-async function buildClaimResponseBody(args: {
-  readonly db: Db;
-  readonly run: ClaimedRun;
-  readonly reuseKey: string | null;
-  readonly storedContext: StoredExecutionContext;
-  readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
-  readonly timing: ClaimRouteTimingCollector;
-  readonly signal: AbortSignal;
-  readonly loadIdentityRepresentation: (
-    hash: string,
-  ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
-  readonly loadCompressedRepresentation: (
-    hash: string,
-    encoding: CompressedSessionHistoryBlobEncoding,
-  ) => Promise<CompressedResumeSessionHistoryRepresentation | undefined>;
-  readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
-  readonly generateResumeSessionHistoryObjectUrl: (
-    objectKey: string,
-  ) => Promise<string>;
-}): Promise<ExecutionContext> {
+async function buildClaimResponseBody(
+  args: {
+    readonly db: Db;
+    readonly run: ClaimedRun;
+    readonly reuseKey: string | null;
+    readonly storedContext: StoredExecutionContext;
+    readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
+    readonly timing: ClaimRouteTimingCollector;
+    readonly loadIdentityRepresentation: (
+      hash: string,
+    ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
+    readonly loadCompressedRepresentation: (
+      hash: string,
+      encoding: CompressedSessionHistoryBlobEncoding,
+    ) => Promise<CompressedResumeSessionHistoryRepresentation | undefined>;
+    readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
+    readonly generateResumeSessionHistoryObjectUrl: (
+      objectKey: string,
+    ) => Promise<string>;
+  },
+  signal: AbortSignal,
+): Promise<ExecutionContext> {
   const secretValues = await secretValuesForRunner(
     args.storedContext,
     args.timing,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return await args.timing.measure(
     "claim_route_response_assembly",
     "top_level",
@@ -1923,7 +1925,7 @@ async function buildClaimResponseBody(args: {
         throw error;
       }
       const resumeSession = resumeSessionResult.value;
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       const sandboxToken = generateSandboxToken(
         args.run.userId,
         args.run.id,
@@ -1934,7 +1936,7 @@ async function buildClaimResponseBody(args: {
         throw error;
       }
       const refreshedPolicies = refreshedPoliciesResult.value;
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       const {
         connectorPermissionBaseline: _connectorPermissionBaseline,
         piExecutionMode: _unlockedPiExecutionMode,
@@ -1982,40 +1984,42 @@ const buildClaimResponseBodyForClaim$ = command(
       readonly storedContext: StoredExecutionContext;
       readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
       readonly timing: ClaimRouteTimingCollector;
-      readonly signal: AbortSignal;
     },
+    signal: AbortSignal,
   ): Promise<ExecutionContext> => {
-    return await buildClaimResponseBody({
-      db: args.db,
-      run: args.run,
-      reuseKey: args.reuseKey,
-      storedContext: args.storedContext,
-      connectorPermissionBaseline: args.connectorPermissionBaseline,
-      timing: args.timing,
-      signal: args.signal,
-      loadIdentityRepresentation(hash: string) {
-        return set(loadIdentityResumeSessionHistoryRepresentation$, {
-          db: args.db,
-          hash,
-        });
+    return await buildClaimResponseBody(
+      {
+        db: args.db,
+        run: args.run,
+        reuseKey: args.reuseKey,
+        storedContext: args.storedContext,
+        connectorPermissionBaseline: args.connectorPermissionBaseline,
+        timing: args.timing,
+        loadIdentityRepresentation(hash: string) {
+          return set(loadIdentityResumeSessionHistoryRepresentation$, {
+            db: args.db,
+            hash,
+          });
+        },
+        loadCompressedRepresentation(
+          hash: string,
+          encoding: CompressedSessionHistoryBlobEncoding,
+        ) {
+          return set(loadCompressedResumeSessionHistoryRepresentation$, {
+            db: args.db,
+            encoding,
+            hash,
+          });
+        },
+        generateResumeSessionHistoryUrl(hash: string) {
+          return set(generateResumeSessionHistoryUrl$, hash);
+        },
+        generateResumeSessionHistoryObjectUrl(objectKey: string) {
+          return set(generateResumeSessionHistoryObjectUrl$, objectKey);
+        },
       },
-      loadCompressedRepresentation(
-        hash: string,
-        encoding: CompressedSessionHistoryBlobEncoding,
-      ) {
-        return set(loadCompressedResumeSessionHistoryRepresentation$, {
-          db: args.db,
-          encoding,
-          hash,
-        });
-      },
-      generateResumeSessionHistoryUrl(hash: string) {
-        return set(generateResumeSessionHistoryUrl$, hash);
-      },
-      generateResumeSessionHistoryObjectUrl(objectKey: string) {
-        return set(generateResumeSessionHistoryObjectUrl$, objectKey);
-      },
-    });
+      signal,
+    );
   },
 );
 
@@ -2367,17 +2371,21 @@ const scheduleClaimFailedSideEffects$ = command(
   },
 );
 
-async function failClaimForResumeSessionHistoryLoad(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly hash: string;
-  readonly errorMessage: string;
-  readonly cause: unknown;
-  readonly signal: AbortSignal;
-  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
-}) {
+async function failClaimForResumeSessionHistoryLoad(
+  args: {
+    readonly db: Db;
+    readonly runId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly hash: string;
+    readonly errorMessage: string;
+    readonly cause: unknown;
+    readonly scheduleFailedSideEffects: (
+      args: ClaimFailedSideEffectArgs,
+    ) => void;
+  },
+  signal: AbortSignal,
+) {
   L.warn("session history R2 object could not be loaded during claim", {
     runId: args.runId,
     hash: args.hash,
@@ -2388,7 +2396,7 @@ async function failClaimForResumeSessionHistoryLoad(args: {
     args.db,
     args.runId,
     args.errorMessage,
-    args.signal,
+    signal,
   );
   if (poisonResult.status !== "failed") {
     return poisonJobErrorResponse(poisonResult);
@@ -2402,19 +2410,23 @@ async function failClaimForResumeSessionHistoryLoad(args: {
   return badRequestMessage(args.errorMessage);
 }
 
-async function failClaimForInvalidStoredExecutionContext(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
-}) {
+async function failClaimForInvalidStoredExecutionContext(
+  args: {
+    readonly db: Db;
+    readonly runId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly scheduleFailedSideEffects: (
+      args: ClaimFailedSideEffectArgs,
+    ) => void;
+  },
+  signal: AbortSignal,
+) {
   const poisonResult = await failPoisonQueuedJob(
     args.db,
     args.runId,
     INVALID_EXECUTION_CONTEXT_ERROR,
-    args.signal,
+    signal,
   );
   if (poisonResult.status !== "failed") {
     return poisonJobErrorResponse(poisonResult);
@@ -2428,28 +2440,34 @@ async function failClaimForInvalidStoredExecutionContext(args: {
   return badRequestMessage("Job missing execution context");
 }
 
-async function claimResponseBuildErrorResponse(args: {
-  readonly db: Db;
-  readonly run: ClaimedRun;
-  readonly runId: string;
-  readonly error: unknown;
-  readonly signal: AbortSignal;
-  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
-}) {
+async function claimResponseBuildErrorResponse(
+  args: {
+    readonly db: Db;
+    readonly run: ClaimedRun;
+    readonly runId: string;
+    readonly error: unknown;
+    readonly scheduleFailedSideEffects: (
+      args: ClaimFailedSideEffectArgs,
+    ) => void;
+  },
+  signal: AbortSignal,
+) {
   if (!isResumeSessionHistoryLoadError(args.error)) {
     throw args.error;
   }
-  return await failClaimForResumeSessionHistoryLoad({
-    db: args.db,
-    runId: args.runId,
-    hash: args.error.hash,
-    userId: args.run.userId,
-    orgId: args.run.orgId,
-    errorMessage: args.error.message,
-    cause: args.error.cause,
-    signal: args.signal,
-    scheduleFailedSideEffects: args.scheduleFailedSideEffects,
-  });
+  return await failClaimForResumeSessionHistoryLoad(
+    {
+      db: args.db,
+      runId: args.runId,
+      hash: args.error.hash,
+      userId: args.run.userId,
+      orgId: args.run.orgId,
+      errorMessage: args.error.message,
+      cause: args.error.cause,
+      scheduleFailedSideEffects: args.scheduleFailedSideEffects,
+    },
+    signal,
+  );
 }
 
 const claimAuthorizedJob$ = command(
@@ -2464,10 +2482,10 @@ const claimAuthorizedJob$ = command(
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
-      readonly signal: AbortSignal;
     },
+    signal: AbortSignal,
   ) => {
-    const { db, runId, jobWithRun, claimRouteTiming, signal } = args;
+    const { db, runId, jobWithRun, claimRouteTiming } = args;
     const run = jobWithRun.run;
 
     const contextParseStartedAt = now();
@@ -2486,43 +2504,50 @@ const claimAuthorizedJob$ = command(
         runId,
         storedContextResult.error.issues,
       );
-      return await failClaimForInvalidStoredExecutionContext({
-        db,
-        runId,
-        userId: run.userId,
-        orgId: run.orgId,
-        signal,
-        scheduleFailedSideEffects(failedArgs) {
-          set(scheduleClaimFailedSideEffects$, failedArgs);
+      return await failClaimForInvalidStoredExecutionContext(
+        {
+          db,
+          runId,
+          userId: run.userId,
+          orgId: run.orgId,
+          scheduleFailedSideEffects(failedArgs) {
+            set(scheduleClaimFailedSideEffects$, failedArgs);
+          },
         },
-      });
+        signal,
+      );
     }
     const { context: storedContext, connectorPermissionBaseline } =
       decodeCompatibleStoredExecutionContext(storedContextResult.data);
 
     const responseBodyResult = await settle(
-      set(buildClaimResponseBodyForClaim$, {
-        db,
-        run,
-        reuseKey: jobWithRun.job.reuseKey,
-        storedContext,
-        connectorPermissionBaseline,
-        timing: claimRouteTiming,
+      set(
+        buildClaimResponseBodyForClaim$,
+        {
+          db,
+          run,
+          reuseKey: jobWithRun.job.reuseKey,
+          storedContext,
+          connectorPermissionBaseline,
+          timing: claimRouteTiming,
+        },
         signal,
-      }),
+      ),
       signal,
     );
     if (!responseBodyResult.ok) {
-      return await claimResponseBuildErrorResponse({
-        db,
-        run,
-        runId,
-        error: responseBodyResult.error,
-        signal,
-        scheduleFailedSideEffects(failedArgs) {
-          set(scheduleClaimFailedSideEffects$, failedArgs);
+      return await claimResponseBuildErrorResponse(
+        {
+          db,
+          run,
+          runId,
+          error: responseBodyResult.error,
+          scheduleFailedSideEffects(failedArgs) {
+            set(scheduleClaimFailedSideEffects$, failedArgs);
+          },
         },
-      });
+        signal,
+      );
     }
     signal.throwIfAborted();
 
@@ -2618,18 +2643,21 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return authError;
   }
 
-  return await set(claimAuthorizedJob$, {
-    db,
-    runId,
-    authType: auth.type,
-    runnerIdentity:
-      auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
-    jobWithRun,
-    telemetry: body.data.telemetry,
-    claimRequestStartedAtMs,
-    claimRouteTiming,
+  return await set(
+    claimAuthorizedJob$,
+    {
+      db,
+      runId,
+      authType: auth.type,
+      runnerIdentity:
+        auth.type === "official-runner" ? body.data.runnerIdentity : undefined,
+      jobWithRun,
+      telemetry: body.data.telemetry,
+      claimRequestStartedAtMs,
+      claimRouteTiming,
+    },
     signal,
-  });
+  );
 });
 
 const runnerRealtimeTokenBody$ = bodyResultOf(

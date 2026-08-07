@@ -85,11 +85,13 @@ export const deleteZeroWorkflow$ = command(
       return false;
     }
 
-    await reconcileWorkflowEventWatches({
-      db: writeDb,
-      automations: result.automations,
+    await reconcileWorkflowEventWatches(
+      {
+        db: writeDb,
+        automations: result.automations,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (result.s3Prefix) {

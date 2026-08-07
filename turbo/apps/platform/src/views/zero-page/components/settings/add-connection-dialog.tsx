@@ -191,7 +191,6 @@ type ConnectMethodContentProps = ConnectModalContentProps & {
   externalCodeCompleting: boolean;
   manualGrantSubmitting: boolean;
   noAuthSubmitting: boolean;
-  signal: AbortSignal;
 };
 
 type ConnectMethodSharedContentProps = Omit<
@@ -411,13 +410,12 @@ function OAuthAuthCodeConnectButton({
   authorizeVisibleAgentsOnConnect,
   agentId,
   connectOAuthAuthCodeAndSettle,
-  signal,
 }: ConnectModalContentProps & {
   method: PublicConnectorCatalogAuthMethodDetail;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
-  signal: AbortSignal;
 }) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   return (
     <Button
       variant="outline"
@@ -459,7 +457,6 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
       onSuccess={props.onSuccess}
       authorizeVisibleAgentsOnConnect={props.authorizeVisibleAgentsOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
-      signal={props.signal}
     />
   );
 }
@@ -740,6 +737,7 @@ function OAuthDeviceAuthStartContent({
 
 function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   const state = useGet(connectorOAuthDeviceAuthState$);
   const openVerificationPage = useSet(
     openConnectorOAuthDeviceAuthVerificationPage$,
@@ -795,7 +793,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
           effectiveStartOptionValues,
         ),
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -1004,6 +1002,7 @@ function ExternalCodePendingContent({
 
 function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   const state = useGet(connectorExternalCodeState$);
   const setCode = useSet(setConnectorExternalCodeAuthorizationCode$);
   const openAuthorizationPage = useSet(
@@ -1023,7 +1022,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         authMethod: props.authMethod,
         ...(props.agentId ? { agentId: props.agentId } : {}),
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -1040,7 +1039,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -1108,6 +1107,7 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
 
 function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const { t } = useTranslation();
+  const signal = useGet(pageSignal$);
   const enable = onDomEventFn(async () => {
     await props.connectNoAuthAndSettle(
       {
@@ -1120,7 +1120,7 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
           ...(props.agentId ? { agentId: props.agentId } : {}),
         },
       },
-      props.signal,
+      signal,
     );
   });
 
@@ -1280,7 +1280,6 @@ function StandardConnectMethodsContent({
   externalCodeCompleting,
   manualGrantSubmitting,
   noAuthSubmitting,
-  signal,
   entries,
 }: ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
@@ -1292,7 +1291,6 @@ function StandardConnectMethodsContent({
   externalCodeCompleting: boolean;
   manualGrantSubmitting: boolean;
   noAuthSubmitting: boolean;
-  signal: AbortSignal;
   entries: readonly ConnectMethodContentEntry[];
 }) {
   return (
@@ -1314,7 +1312,6 @@ function StandardConnectMethodsContent({
           externalCodeCompleting,
           manualGrantSubmitting,
           noAuthSubmitting,
-          signal,
         }}
       />
     </div>
@@ -1439,7 +1436,6 @@ function ConnectModalContent({
       externalCodeCompleting={externalCodeCompleting}
       manualGrantSubmitting={manualGrantSubmitting}
       noAuthSubmitting={noAuthSubmitting}
-      signal={pageSignal}
       entries={entries}
     />
   );

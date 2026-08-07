@@ -58,9 +58,6 @@ import {
   setDirectedConnectModalKey$,
   directedConnectCustomDialogKey$,
   setDirectedConnectCustomDialogKey$,
-  type DirectedConnectCustomDialogKey,
-  type DirectedConnectModalKey,
-  type DirectedConnectManualGrantDialogKey,
 } from "../../signals/connectors-page/directed-connect-slug.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
@@ -80,36 +77,38 @@ import {
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 
-function runDirectedConnect(params: {
-  item: PlatformConnectorCatalogStatusItem;
-  connectorSlug: ConnectorSlug;
-  agentId: string | null;
-  signal: AbortSignal;
-  connect: (
-    connectorSlug: ConnectorSlug,
-    method: PublicConnectorCatalogAuthMethodDetail,
-    options: {
-      readonly connectorLabel?: string;
-      readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
-      readonly agentId?: string;
-    },
-    signal: AbortSignal,
-  ) => Promise<boolean>;
-  connectNoAuth: (
-    args: {
-      readonly connectorSlug: ConnectorSlug;
-      readonly authMethod: ConnectorAuthMethodId;
-      readonly options: {
+function runDirectedConnect(
+  params: {
+    item: PlatformConnectorCatalogStatusItem;
+    connectorSlug: ConnectorSlug;
+    agentId: string | null;
+    connect: (
+      connectorSlug: ConnectorSlug,
+      method: PublicConnectorCatalogAuthMethodDetail,
+      options: {
         readonly connectorLabel?: string;
+        readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
         readonly agentId?: string;
-      };
-    },
-    signal: AbortSignal,
-  ) => Promise<boolean>;
-  openConnectModal: () => void;
-  openManualGrantDialog: () => void;
-  onSuccess: () => void | Promise<void>;
-}): void {
+      },
+      signal: AbortSignal,
+    ) => Promise<boolean>;
+    connectNoAuth: (
+      args: {
+        readonly connectorSlug: ConnectorSlug;
+        readonly authMethod: ConnectorAuthMethodId;
+        readonly options: {
+          readonly connectorLabel?: string;
+          readonly agentId?: string;
+        };
+      },
+      signal: AbortSignal,
+    ) => Promise<boolean>;
+    openConnectModal: () => void;
+    openManualGrantDialog: () => void;
+    onSuccess: () => void | Promise<void>;
+  },
+  signal: AbortSignal,
+): void {
   const launchMode = getConnectorStatusConnectLaunchMode(params.item);
   if (
     launchMode === "modal" &&
@@ -152,7 +151,7 @@ function runDirectedConnect(params: {
             connectorIcon: params.item.icon,
             ...(params.agentId ? { agentId: params.agentId } : {}),
           },
-          params.signal,
+          signal,
         );
         if (connected) {
           await params.onSuccess();
@@ -172,7 +171,7 @@ function runDirectedConnect(params: {
               ...(params.agentId ? { agentId: params.agentId } : {}),
             },
           },
-          params.signal,
+          signal,
         );
         if (connected) {
           await params.onSuccess();
@@ -517,34 +516,26 @@ function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
   };
 }
 
-function directedConnectManualGrantDialogOpen(
-  key: DirectedConnectManualGrantDialogKey | null,
-  args: {
-    readonly connectorSlug: ConnectorSlug | null;
-    readonly agentId: string | null;
-    readonly signal: AbortSignal;
-  },
-): boolean {
-  return (
-    key?.connectorSlug === args.connectorSlug &&
-    key.agentId === args.agentId &&
-    key.signal === args.signal
-  );
-}
-
-function directedConnectModalOpen(
-  key: DirectedConnectModalKey | null,
-  args: {
-    readonly connectorSlug: ConnectorSlug | null;
-    readonly agentId: string | null;
-    readonly signal: AbortSignal;
-  },
-): boolean {
-  return (
-    key?.connectorSlug === args.connectorSlug &&
-    key.agentId === args.agentId &&
-    key.signal === args.signal
-  );
+function useDirectedConnectDialogOpenState(
+  connectorSlug: ConnectorSlug | null,
+  agentId: string | null,
+  signal: AbortSignal,
+): {
+  readonly manualGrantDialogOpen: boolean;
+  readonly connectModalOpen: boolean;
+} {
+  const manualGrantDialogKey = useGet(manualGrantDialogKey$);
+  const connectModalKey = useGet(directedConnectModalKey$);
+  return {
+    manualGrantDialogOpen:
+      manualGrantDialogKey?.connectorSlug === connectorSlug &&
+      manualGrantDialogKey.agentId === agentId &&
+      manualGrantDialogKey.signal === signal,
+    connectModalOpen:
+      connectModalKey?.connectorSlug === connectorSlug &&
+      connectModalKey.agentId === agentId &&
+      connectModalKey.signal === signal,
+  };
 }
 
 function DirectedConnectCardContent({
@@ -634,21 +625,12 @@ function DirectedConnectCard() {
   const signal = useGet(pageSignal$);
   const { item, isConnected, isLoading, unavailable } =
     useDirectedConnectCatalogState(connectorSlug);
-  const manualGrantDialogKey = useGet(manualGrantDialogKey$);
   const setManualGrantDialogKey = useSet(setManualGrantDialogKey$);
-  const connectModalKey = useGet(directedConnectModalKey$);
   const setDirectedConnectModalKey = useSet(setDirectedConnectModalKey$);
   const actionCallback = useGet(routeChatActionCallback$);
   const runCallback = useSet(runChatActionCallback$);
-  const manualGrantDialogOpen = directedConnectManualGrantDialogOpen(
-    manualGrantDialogKey,
-    { connectorSlug, agentId, signal },
-  );
-  const connectModalOpen = directedConnectModalOpen(connectModalKey, {
-    connectorSlug,
-    agentId,
-    signal,
-  });
+  const { manualGrantDialogOpen, connectModalOpen } =
+    useDirectedConnectDialogOpenState(connectorSlug, agentId, signal);
 
   if (!connectorSlug) {
     return null;
@@ -691,29 +673,31 @@ function DirectedConnectCard() {
     if (!canConnect || !item) {
       return;
     }
-    runDirectedConnect({
-      item,
-      connectorSlug,
-      agentId,
+    runDirectedConnect(
+      {
+        item,
+        connectorSlug,
+        agentId,
+        connect,
+        connectNoAuth,
+        openManualGrantDialog: () => {
+          return setManualGrantDialogKey({
+            connectorSlug,
+            agentId,
+            signal,
+          });
+        },
+        openConnectModal: () => {
+          setDirectedConnectModalKey({
+            connectorSlug,
+            agentId,
+            signal,
+          });
+        },
+        onSuccess: handleConnectSuccess,
+      },
       signal,
-      connect,
-      connectNoAuth,
-      openManualGrantDialog: () => {
-        return setManualGrantDialogKey({
-          connectorSlug,
-          agentId,
-          signal,
-        });
-      },
-      openConnectModal: () => {
-        setDirectedConnectModalKey({
-          connectorSlug,
-          agentId,
-          signal,
-        });
-      },
-      onSuccess: handleConnectSuccess,
-    });
+    );
   };
 
   return (
@@ -753,21 +737,6 @@ function DirectedConnectCard() {
   );
 }
 
-function directedConnectCustomDialogOpen(
-  key: DirectedConnectCustomDialogKey | null,
-  args: {
-    readonly connectorSlug: CustomConnectorSlug;
-    readonly agentId: string | null;
-    readonly signal: AbortSignal;
-  },
-): boolean {
-  return (
-    key?.connectorSlug === args.connectorSlug &&
-    key.agentId === args.agentId &&
-    key.signal === args.signal
-  );
-}
-
 function customConnectorForSlug(
   connectors: readonly CustomConnectorResponse[],
   connectorSlug: CustomConnectorSlug,
@@ -794,11 +763,10 @@ function CustomDirectedConnectCard({
   const connectors =
     connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
   const connector = customConnectorForSlug(connectors, connectorSlug);
-  const dialogOpen = directedConnectCustomDialogOpen(dialogKey, {
-    connectorSlug,
-    agentId,
-    signal,
-  });
+  const dialogOpen =
+    dialogKey?.connectorSlug === connectorSlug &&
+    dialogKey.agentId === agentId &&
+    dialogKey.signal === signal;
 
   if (connectorsLoadable.state === "hasData" && !connector) {
     return null;

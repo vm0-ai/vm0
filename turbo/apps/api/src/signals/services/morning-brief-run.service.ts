@@ -201,19 +201,21 @@ const stageMorningBriefInput$ = command(
     );
     const { dayStart, dayEnd } = morningBriefDayBounds(timezone, currentTime);
 
-    const input = await collectMorningBriefInput({
-      db,
-      orgId: row.orgId,
-      userId: row.userId,
-      briefDate,
-      timezone,
-      since,
-      until: currentTime,
-      dayStart,
-      dayEnd,
-      excludeChatThreadId: row.chatThreadId,
+    const input = await collectMorningBriefInput(
+      {
+        db,
+        orgId: row.orgId,
+        userId: row.userId,
+        briefDate,
+        timezone,
+        since,
+        until: currentTime,
+        dayStart,
+        dayEnd,
+        excludeChatThreadId: row.chatThreadId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (allSourcesFailed(input)) {

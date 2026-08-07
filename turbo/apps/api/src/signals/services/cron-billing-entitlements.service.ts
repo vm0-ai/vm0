@@ -126,7 +126,6 @@ interface ReconcileBillingContext {
   readonly stripe: ReturnType<typeof getStripeClient>;
   readonly now: Date;
   readonly staleBefore: Date;
-  readonly signal: AbortSignal;
 }
 
 type ReconcileTx = Tx;
@@ -287,6 +286,7 @@ async function updateUsageAllowanceCandidate(
     readonly status: string;
     readonly expiresAt: Date;
   },
+  signal: AbortSignal,
 ): Promise<ReconciledUsageAllowance[]> {
   const rows = await context.db
     .update(orgUsageAllowanceEntitlements)
@@ -301,7 +301,7 @@ async function updateUsageAllowanceCandidate(
       subscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
       status: orgUsageAllowanceEntitlements.status,
     });
-  context.signal.throwIfAborted();
+  signal.throwIfAborted();
   return rows.map((row) => {
     return {
       ...row,
@@ -332,8 +332,9 @@ async function reconcileCanceledBillingCandidate(
   context: ReconcileBillingContext,
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
+  signal: AbortSignal,
 ): Promise<DowngradedSubscription[]> {
-  const { db, now, signal } = context;
+  const { db, now } = context;
   const rows = await db.transaction(async (tx) => {
     return await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
@@ -375,8 +376,9 @@ async function refreshRecoveredBillingCandidate(
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
   syncedFields: SyncedBillingFields,
+  signal: AbortSignal,
 ): Promise<void> {
-  const { db, signal } = context;
+  const { db } = context;
   const priceId =
     knownPlanPriceItem(subscription.items.data)?.price.id ??
     subscription.items.data[0]?.price.id;
@@ -419,8 +421,9 @@ async function refreshPaymentFailedPaidThroughCandidate(
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
   syncedFields: SyncedBillingFields,
+  signal: AbortSignal,
 ): Promise<void> {
-  const { db, signal } = context;
+  const { db } = context;
   await db.transaction(async (tx) => {
     await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
@@ -456,8 +459,9 @@ async function downgradePaymentFailedBillingCandidate(
   candidate: StripeBillingCandidate,
   subscription: SubscriptionInput,
   syncedFields: SyncedBillingFields,
+  signal: AbortSignal,
 ): Promise<DowngradedSubscription[]> {
-  const { db, signal } = context;
+  const { db } = context;
   const rows = await db.transaction(async (tx) => {
     return await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
@@ -495,8 +499,9 @@ async function downgradePaymentFailedBillingCandidate(
 async function reconcileBillingCandidate(
   context: ReconcileBillingContext,
   candidate: BillingCandidate,
+  signal: AbortSignal,
 ): Promise<DowngradedSubscription[]> {
-  const { stripe, now, staleBefore, signal } = context;
+  const { stripe, now, staleBefore } = context;
   if (!candidate.stripeSubscriptionId) {
     return [];
   }
@@ -524,6 +529,7 @@ async function reconcileBillingCandidate(
       context,
       stripeCandidate,
       subscription,
+      signal,
     );
   }
 
@@ -545,6 +551,7 @@ async function reconcileBillingCandidate(
       stripeCandidate,
       subscription,
       syncedFields,
+      signal,
     );
     return [];
   }
@@ -564,6 +571,7 @@ async function reconcileBillingCandidate(
       stripeCandidate,
       subscription,
       syncedFields,
+      signal,
     );
     return [];
   }
@@ -573,6 +581,7 @@ async function reconcileBillingCandidate(
     stripeCandidate,
     subscription,
     syncedFields,
+    signal,
   );
 }
 
@@ -626,8 +635,9 @@ async function expireOrgCredits(
 async function reconcileAtomGrantCandidate(
   context: ReconcileBillingContext,
   candidate: AtomGrantCandidate,
+  signal: AbortSignal,
 ): Promise<DowngradedSubscription[]> {
-  const { db, now, signal } = context;
+  const { db, now } = context;
   await expireOrgCredits(db, candidate.orgId, now);
   signal.throwIfAborted();
 
@@ -681,8 +691,9 @@ async function reconcileAtomGrantCandidate(
 async function reconcileConcurrencyCandidate(
   context: ReconcileBillingContext,
   candidate: ConcurrencyCandidate,
+  signal: AbortSignal,
 ): Promise<ExpiredConcurrencySubscription[]> {
-  const { db, stripe, now, staleBefore, signal } = context;
+  const { db, stripe, now, staleBefore } = context;
   const subscription = (await stripe.subscriptions.retrieve(
     candidate.stripeSubscriptionId,
   )) as SubscriptionInput;
@@ -787,8 +798,9 @@ async function reconcileConcurrencyCandidate(
 async function reconcileUsageAllowanceCandidate(
   context: ReconcileBillingContext,
   candidate: UsageAllowanceCandidate,
+  signal: AbortSignal,
 ): Promise<ReconciledUsageAllowance[]> {
-  const { stripe, now, staleBefore, signal } = context;
+  const { stripe, now, staleBefore } = context;
   const subscription = (await stripe.subscriptions.retrieve(
     candidate.stripeSubscriptionId,
   )) as SubscriptionInput;
@@ -799,10 +811,15 @@ async function reconcileUsageAllowanceCandidate(
   const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
 
   if (subscriptionIsTerminalUsageAllowance(subscription)) {
-    return await updateUsageAllowanceCandidate(context, candidate, {
-      status: "canceled",
-      expiresAt: now,
-    });
+    return await updateUsageAllowanceCandidate(
+      context,
+      candidate,
+      {
+        status: "canceled",
+        expiresAt: now,
+      },
+      signal,
+    );
   }
 
   if (!isPaymentFailed) {
@@ -828,10 +845,15 @@ async function reconcileUsageAllowanceCandidate(
       return [];
     }
 
-    return await updateUsageAllowanceCandidate(context, candidate, {
-      status: subscription.status,
-      expiresAt: periodEnd,
-    });
+    return await updateUsageAllowanceCandidate(
+      context,
+      candidate,
+      {
+        status: subscription.status,
+        expiresAt: periodEnd,
+      },
+      signal,
+    );
   }
 
   if (!periodEnd) {
@@ -844,16 +866,26 @@ async function reconcileUsageAllowanceCandidate(
       },
     );
   } else if (periodEnd > staleBefore) {
-    return await updateUsageAllowanceCandidate(context, candidate, {
-      status: subscription.status,
-      expiresAt: periodEnd,
-    });
+    return await updateUsageAllowanceCandidate(
+      context,
+      candidate,
+      {
+        status: subscription.status,
+        expiresAt: periodEnd,
+      },
+      signal,
+    );
   }
 
-  return await updateUsageAllowanceCandidate(context, candidate, {
-    status: "canceled",
-    expiresAt: now,
-  });
+  return await updateUsageAllowanceCandidate(
+    context,
+    candidate,
+    {
+      status: "canceled",
+      expiresAt: now,
+    },
+    signal,
+  );
 }
 
 async function loadReconcileCandidateRows(
@@ -983,24 +1015,27 @@ export const reconcileBillingEntitlements$ = command(
     for (const candidate of candidates) {
       downgraded.push(
         ...(await reconcileBillingCandidate(
-          { db, stripe, now, staleBefore, signal },
+          { db, stripe, now, staleBefore },
           candidate,
+          signal,
         )),
       );
     }
     for (const candidate of atomGrantCandidates) {
       downgraded.push(
         ...(await reconcileAtomGrantCandidate(
-          { db, stripe, now, staleBefore, signal },
+          { db, stripe, now, staleBefore },
           candidate,
+          signal,
         )),
       );
     }
     for (const candidate of concurrencyCandidates) {
       expiredConcurrency.push(
         ...(await reconcileConcurrencyCandidate(
-          { db, stripe, now, staleBefore, signal },
+          { db, stripe, now, staleBefore },
           candidate,
+          signal,
         )),
       );
     }
@@ -1012,11 +1047,12 @@ export const reconcileBillingEntitlements$ = command(
       }
       reconciledUsageAllowances.push(
         ...(await reconcileUsageAllowanceCandidate(
-          { db, stripe, now, staleBefore, signal },
+          { db, stripe, now, staleBefore },
           {
             orgId: candidate.orgId,
             stripeSubscriptionId: candidate.stripeSubscriptionId,
           },
+          signal,
         )),
       );
     }
@@ -1026,10 +1062,13 @@ export const reconcileBillingEntitlements$ = command(
         return subscription.orgId;
       }),
     )) {
-      await disableIneligibleWorkflowWebhookAutomationsForOrg(db, {
-        orgId,
+      await disableIneligibleWorkflowWebhookAutomationsForOrg(
+        db,
+        {
+          orgId,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
     }
 

@@ -16,20 +16,22 @@ function authHeaders(token: string): Record<string, string> {
   };
 }
 
-export async function postGithubIssueComment(args: {
-  readonly token: string;
-  readonly repo: string;
-  readonly issueNumber: number;
-  readonly body: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+export async function postGithubIssueComment(
+  args: {
+    readonly token: string;
+    readonly repo: string;
+    readonly issueNumber: number;
+    readonly body: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const response = await fetch(
     `${GITHUB_API_BASE}/repos/${args.repo}/issues/${args.issueNumber}/comments`,
     {
       method: "POST",
       headers: authHeaders(args.token),
       body: JSON.stringify({ body: args.body }),
-      signal: args.signal,
+      signal,
     },
   );
 
@@ -44,13 +46,15 @@ export async function postGithubIssueComment(args: {
   return String(data.id);
 }
 
-export async function removeGithubCommentReaction(args: {
-  readonly token: string;
-  readonly repo: string;
-  readonly commentId: string;
-  readonly reactionId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function removeGithubCommentReaction(
+  args: {
+    readonly token: string;
+    readonly repo: string;
+    readonly commentId: string;
+    readonly reactionId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   await tapError(
     (async (): Promise<void> => {
       const response = await fetch(
@@ -58,7 +62,7 @@ export async function removeGithubCommentReaction(args: {
         {
           method: "DELETE",
           headers: authHeaders(args.token),
-          signal: args.signal,
+          signal,
         },
       );
 

@@ -85,7 +85,6 @@ interface AuthedWebSearchArgs {
 interface CompleteWebSearchArgs {
   readonly apiKey: string;
   readonly request: ZeroWebSearchRequest;
-  readonly providerSignal: AbortSignal;
   readonly recordUsage: () => Promise<number>;
 }
 
@@ -379,11 +378,12 @@ function successBody(
 
 async function completeWebSearch(
   args: CompleteWebSearchArgs,
+  providerSignal: AbortSignal,
 ): Promise<ZeroWebSearchCommandResponse> {
   const providerResult = await fetchPerplexitySearch(
     args.apiKey,
     args.request,
-    args.providerSignal,
+    providerSignal,
   );
   if (providerResult.kind === "error") {
     return providerResult.error;
@@ -441,30 +441,32 @@ export const zeroWebSearch$ = command(
     }
 
     const runId = runIdForUsage(args.auth);
-    return completeWebSearch({
-      apiKey,
-      request: args.body,
-      providerSignal: requestSignal,
-      recordUsage: () => {
-        // Provider work has completed, so client disconnect must not skip billing.
-        return set(
-          recordManagedUsage$,
-          {
-            actor: {
-              orgId: args.auth.orgId,
-              userId: args.auth.userId,
-              ...(runId ? { runId } : {}),
+    return completeWebSearch(
+      {
+        apiKey,
+        request: args.body,
+        recordUsage: () => {
+          // Provider work has completed, so client disconnect must not skip billing.
+          return set(
+            recordManagedUsage$,
+            {
+              actor: {
+                orgId: args.auth.orgId,
+                userId: args.auth.userId,
+                ...(runId ? { runId } : {}),
+              },
+              resource: {
+                kind: USAGE_KIND,
+                provider: PROVIDER,
+                category: BILLING_CATEGORY,
+              },
+              label: "web search",
             },
-            resource: {
-              kind: USAGE_KIND,
-              provider: PROVIDER,
-              category: BILLING_CATEGORY,
-            },
-            label: "web search",
-          },
-          signal,
-        );
+            signal,
+          );
+        },
       },
-    });
+      requestSignal,
+    );
   },
 );

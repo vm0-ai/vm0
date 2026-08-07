@@ -109,11 +109,13 @@ function targetKey(target: WorkflowEventWatchTarget): string {
   return `google_calendar:${target.orgId}:${target.userId}:${target.calendarId}`;
 }
 
-export async function reconcileWorkflowEventWatches(args: {
-  readonly db: Db;
-  readonly automations: readonly WorkflowEventWatchAutomation[];
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function reconcileWorkflowEventWatches(
+  args: {
+    readonly db: Db;
+    readonly automations: readonly WorkflowEventWatchAutomation[];
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const targets = new Map<string, WorkflowEventWatchTarget>();
   for (const automation of args.automations) {
     const target = workflowEventWatchTarget(automation);
@@ -124,30 +126,36 @@ export async function reconcileWorkflowEventWatches(args: {
 
   for (const target of targets.values()) {
     if (target.provider === "gmail") {
-      await reconcileGmailWatchesForUser({
-        db: args.db,
-        orgId: target.orgId,
-        userId: target.userId,
-        signal: args.signal,
-      });
+      await reconcileGmailWatchesForUser(
+        {
+          db: args.db,
+          orgId: target.orgId,
+          userId: target.userId,
+        },
+        signal,
+      );
       continue;
     }
     if (target.provider === "google_forms") {
-      await reconcileGoogleFormsWatchesForUser({
+      await reconcileGoogleFormsWatchesForUser(
+        {
+          db: args.db,
+          orgId: target.orgId,
+          userId: target.userId,
+          formId: target.formId,
+        },
+        signal,
+      );
+      continue;
+    }
+    await reconcileGoogleCalendarWatchesForUser(
+      {
         db: args.db,
         orgId: target.orgId,
         userId: target.userId,
-        formId: target.formId,
-        signal: args.signal,
-      });
-      continue;
-    }
-    await reconcileGoogleCalendarWatchesForUser({
-      db: args.db,
-      orgId: target.orgId,
-      userId: target.userId,
-      calendarId: target.calendarId,
-      signal: args.signal,
-    });
+        calendarId: target.calendarId,
+      },
+      signal,
+    );
   }
 }

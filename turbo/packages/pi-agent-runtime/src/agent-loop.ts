@@ -182,15 +182,17 @@ export function isPiAgentModelSupported(config: PiAgentModelConfig): boolean {
  * Run the native Pi agent loop with the same model, prompt, messages, and
  * ExecutionEnv-driven tools used on both sides of a handoff.
  */
-export async function runPiAgentPrompt(args: {
-  readonly model: PiAgentModelConfig;
-  readonly systemPrompt: string;
-  readonly prompt: string;
-  readonly messages?: readonly AgentMessage[];
-  readonly executionEnv: ExecutionEnv;
-  readonly signal: AbortSignal;
-  readonly onEvent: (event: AgentEvent) => Promise<void> | void;
-}): Promise<readonly AgentMessage[]> {
+export async function runPiAgentPrompt(
+  args: {
+    readonly model: PiAgentModelConfig;
+    readonly systemPrompt: string;
+    readonly prompt: string;
+    readonly messages?: readonly AgentMessage[];
+    readonly executionEnv: ExecutionEnv;
+    readonly onEvent: (event: AgentEvent) => Promise<void> | void;
+  },
+  signal: AbortSignal,
+): Promise<readonly AgentMessage[]> {
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(
@@ -218,7 +220,7 @@ export async function runPiAgentPrompt(args: {
       },
     },
     args.onEvent,
-    args.signal,
+    signal,
     piAgentStream,
   );
 }
@@ -227,14 +229,16 @@ export async function runPiAgentPrompt(args: {
  * Resume a handed-off Pi turn by executing the latest unresolved assistant
  * tool batch in the Sandbox, then continuing the native model loop.
  */
-export async function runPiAgentResume(args: {
-  readonly model: PiAgentModelConfig;
-  readonly systemPrompt: string;
-  readonly messages: readonly AgentMessage[];
-  readonly executionEnv: ExecutionEnv;
-  readonly signal: AbortSignal;
-  readonly onEvent: (event: AgentEvent) => Promise<void> | void;
-}): Promise<readonly AgentMessage[]> {
+export async function runPiAgentResume(
+  args: {
+    readonly model: PiAgentModelConfig;
+    readonly systemPrompt: string;
+    readonly messages: readonly AgentMessage[];
+    readonly executionEnv: ExecutionEnv;
+    readonly onEvent: (event: AgentEvent) => Promise<void> | void;
+  },
+  signal: AbortSignal,
+): Promise<readonly AgentMessage[]> {
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(
@@ -242,12 +246,14 @@ export async function runPiAgentResume(args: {
     );
   }
   const messages = [...args.messages];
-  const toolResults = await executePiUnresolvedToolBatch({
-    messages,
-    executionEnv: args.executionEnv,
-    signal: args.signal,
-    onEvent: args.onEvent,
-  });
+  const toolResults = await executePiUnresolvedToolBatch(
+    {
+      messages,
+      executionEnv: args.executionEnv,
+      onEvent: args.onEvent,
+    },
+    signal,
+  );
   if (toolResults.length === 0) {
     throw new Error(
       "Pi transcript has no unresolved assistant tool-call batch",
@@ -269,7 +275,7 @@ export async function runPiAgentResume(args: {
       },
     },
     args.onEvent,
-    args.signal,
+    signal,
     piAgentStream,
   );
   return [...toolResults, ...continued];

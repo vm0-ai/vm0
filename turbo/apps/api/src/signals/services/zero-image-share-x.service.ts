@@ -99,14 +99,16 @@ function missingRequiredScopes(scopes: readonly string[]): readonly string[] {
   });
 }
 
-async function resolveXAccessToken(args: {
-  readonly connector: ConnectorCredentialConnection;
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-}): Promise<XAccessTokenResult> {
+async function resolveXAccessToken(
+  args: {
+    readonly connector: ConnectorCredentialConnection;
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly writeDb: Db;
+  },
+  signal: AbortSignal,
+): Promise<XAccessTokenResult> {
   const accessTokenValueRef = connectorCredentialRuntimeValueRef(
     args.connector,
     X_ACCESS_TOKEN_ENVIRONMENT_NAME,
@@ -119,7 +121,7 @@ async function resolveXAccessToken(args: {
     db: args.db,
     valueRefs: [accessTokenValueRef],
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const tokenExpiresAtMs = args.connector.tokenExpiresAt?.getTime() ?? 0;
   const accessToken = values.get(accessTokenValueRef);
@@ -131,18 +133,20 @@ async function resolveXAccessToken(args: {
     return { ok: true, accessToken };
   }
 
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection: args.connector,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: X_ACCESS_TOKEN_ENVIRONMENT_NAME,
-    signal: args.signal,
-    persist: {
-      db: args.writeDb,
-      defaultExpiresInMs: DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS,
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection: args.connector,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: X_ACCESS_TOKEN_ENVIRONMENT_NAME,
+      persist: {
+        db: args.writeDb,
+        defaultExpiresInMs: DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS,
+      },
     },
-  });
+    signal,
+  );
   if (refreshed.kind === "configuration-unavailable") {
     return xShareError("PROVIDER_UNAVAILABLE", "X sharing is not configured");
   }
@@ -216,10 +220,12 @@ async function readXImageBytes(
   return Buffer.concat(chunks);
 }
 
-async function fetchShareImage(args: {
-  readonly imageUrl: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function fetchShareImage(
+  args: {
+    readonly imageUrl: string;
+  },
+  signal: AbortSignal,
+): Promise<
   | {
       readonly ok: true;
       readonly media: string;
@@ -236,8 +242,8 @@ async function fetchShareImage(args: {
     return xShareError("BAD_REQUEST", "Choose an image with a public URL");
   }
 
-  const response = await tapError(fetch(parsed, { signal: args.signal }));
-  args.signal.throwIfAborted();
+  const response = await tapError(fetch(parsed, { signal }));
+  signal.throwIfAborted();
   if (!response) {
     return xShareError("BAD_REQUEST", "Couldn't load the image");
   }
@@ -257,8 +263,8 @@ async function fetchShareImage(args: {
     );
   }
 
-  const imageBytes = await readXImageBytes(response, args.signal);
-  args.signal.throwIfAborted();
+  const imageBytes = await readXImageBytes(response, signal);
+  signal.throwIfAborted();
   if (!(imageBytes instanceof Uint8Array)) {
     return imageBytes;
   }
@@ -281,12 +287,14 @@ function extractMediaId(value: z.infer<typeof xMediaUploadResponseSchema>) {
   );
 }
 
-async function xApiJson(args: {
-  readonly accessToken: string;
-  readonly body: unknown;
-  readonly signal: AbortSignal;
-  readonly url: string;
-}) {
+async function xApiJson(
+  args: {
+    readonly accessToken: string;
+    readonly body: unknown;
+    readonly url: string;
+  },
+  signal: AbortSignal,
+) {
   const response = await fetch(args.url, {
     method: "POST",
     headers: {
@@ -294,9 +302,9 @@ async function xApiJson(args: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(args.body),
-    signal: args.signal,
+    signal,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const responseText = await response.text();
   if (!response.ok) {
@@ -310,25 +318,29 @@ async function xApiJson(args: {
   return body;
 }
 
-async function uploadXImageMedia(args: {
-  readonly accessToken: string;
-  readonly image: {
-    readonly media: string;
-    readonly mediaType: string;
-  };
-  readonly signal: AbortSignal;
-}): Promise<string> {
-  const body = await xApiJson({
-    accessToken: args.accessToken,
-    signal: args.signal,
-    url: "https://api.x.com/2/media/upload",
-    body: {
-      media: args.image.media,
-      media_category: "tweet_image",
-      media_type: args.image.mediaType,
-      shared: false,
+async function uploadXImageMedia(
+  args: {
+    readonly accessToken: string;
+    readonly image: {
+      readonly media: string;
+      readonly mediaType: string;
+    };
+  },
+  signal: AbortSignal,
+): Promise<string> {
+  const body = await xApiJson(
+    {
+      accessToken: args.accessToken,
+      url: "https://api.x.com/2/media/upload",
+      body: {
+        media: args.image.media,
+        media_category: "tweet_image",
+        media_type: args.image.mediaType,
+        shared: false,
+      },
     },
-  });
+    signal,
+  );
   const parsed = xMediaUploadResponseSchema.parse(body);
   const mediaId = extractMediaId(parsed);
   if (!mediaId) {
@@ -337,22 +349,26 @@ async function uploadXImageMedia(args: {
   return mediaId;
 }
 
-async function createXPost(args: {
-  readonly accessToken: string;
-  readonly caption: string | undefined;
-  readonly mediaId: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+async function createXPost(
+  args: {
+    readonly accessToken: string;
+    readonly caption: string | undefined;
+    readonly mediaId: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const text = args.caption?.trim() || DEFAULT_X_CAPTION;
-  const body = await xApiJson({
-    accessToken: args.accessToken,
-    signal: args.signal,
-    url: "https://api.x.com/2/tweets",
-    body: {
-      text,
-      media: { media_ids: [args.mediaId] },
+  const body = await xApiJson(
+    {
+      accessToken: args.accessToken,
+      url: "https://api.x.com/2/tweets",
+      body: {
+        text,
+        media: { media_ids: [args.mediaId] },
+      },
     },
-  });
+    signal,
+  );
   return xCreateTweetResponseSchema.parse(body).data.id;
 }
 
@@ -408,39 +424,47 @@ export const shareImageToX$ = command(
       return xShareError("CONFLICT", "Reconnect X to post images");
     }
 
-    const accessTokenResult = await resolveXAccessToken({
-      connector,
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
+    const accessTokenResult = await resolveXAccessToken(
+      {
+        connector,
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        writeDb,
+      },
       signal,
-      writeDb,
-    });
+    );
     if (!accessTokenResult.ok) {
       return accessTokenResult;
     }
 
-    const image = await fetchShareImage({
-      imageUrl: args.imageUrl,
+    const image = await fetchShareImage(
+      {
+        imageUrl: args.imageUrl,
+      },
       signal,
-    });
+    );
     if (!image.ok) {
       return image;
     }
 
     const postResult = await tapError(
       (async () => {
-        const mediaId = await uploadXImageMedia({
-          accessToken: accessTokenResult.accessToken,
-          image,
+        const mediaId = await uploadXImageMedia(
+          {
+            accessToken: accessTokenResult.accessToken,
+            image,
+          },
           signal,
-        });
-        const tweetId = await createXPost({
-          accessToken: accessTokenResult.accessToken,
-          caption: args.caption,
-          mediaId,
+        );
+        const tweetId = await createXPost(
+          {
+            accessToken: accessTokenResult.accessToken,
+            caption: args.caption,
+            mediaId,
+          },
           signal,
-        });
+        );
         return {
           ok: true as const,
           tweetId,

@@ -159,11 +159,13 @@ async function readExistingVersions(
   );
 }
 
-export async function prepareConnectorCatalogSkills(args: {
-  readonly db: ReadonlyDb;
-  readonly artifact: ConnectorCatalogArtifact;
-  readonly signal: AbortSignal;
-}): Promise<readonly PreparedConnectorSkillRegistration[]> {
+export async function prepareConnectorCatalogSkills(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly artifact: ConnectorCatalogArtifact;
+  },
+  signal: AbortSignal,
+): Promise<readonly PreparedConnectorSkillRegistration[]> {
   const bundledSkills = args.artifact.connectors.flatMap((connector) => {
     return connector.skill.kind === "bundled" ? [connector.skill] : [];
   });
@@ -172,7 +174,7 @@ export async function prepareConnectorCatalogSkills(args: {
     bundledSkills.map((skill) => {
       return skill.versionId;
     }),
-    args.signal,
+    signal,
   );
   return bundledSkills.map((skill) => {
     const registration = registrationFromSkill(skill);
@@ -395,17 +397,15 @@ async function registerConnectorCatalogSkills(
   await updateNewStorageHeads(db, newHeads, signal);
 }
 
-export async function registerPreparedConnectorCatalogSkills(args: {
-  readonly db: Db;
-  readonly registrations: readonly PreparedConnectorSkillRegistration[];
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function registerPreparedConnectorCatalogSkills(
+  args: {
+    readonly db: Db;
+    readonly registrations: readonly PreparedConnectorSkillRegistration[];
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (args.registrations.length === 0) {
     return;
   }
-  await registerConnectorCatalogSkills(
-    args.db,
-    args.registrations,
-    args.signal,
-  );
+  await registerConnectorCatalogSkills(args.db, args.registrations, signal);
 }

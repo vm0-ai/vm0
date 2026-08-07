@@ -322,29 +322,32 @@ function buildAppliedUserGrantPolicies({
   }).map(applyGrantFromChangedPolicy);
 }
 
-async function saveUserGrantPolicies({
-  scope,
-  connectorSlug,
-  metadata,
-  initialPolicies,
-  initialGrants,
-  policies,
-  expiresInByPermission,
-  resetPending,
-  pageSignal,
-  applyGrantPolicies,
-}: {
-  scope: { agentId: string };
-  connectorSlug: string;
-  metadata: PlatformConnectorPermissionMetadata;
-  initialPolicies: FirewallPolicies;
-  initialGrants: readonly PlatformUserPermissionGrant[];
-  policies: FirewallPolicies;
-  expiresInByPermission: GrantExpirationSelections;
-  resetPending: boolean;
-  pageSignal: AbortSignal;
-  applyGrantPolicies: ApplyUserPermissionGrants;
-}): Promise<void> {
+async function saveUserGrantPolicies(
+  {
+    scope,
+    connectorSlug,
+    metadata,
+    initialPolicies,
+    initialGrants,
+    policies,
+    expiresInByPermission,
+    resetPending,
+    applyGrantPolicies,
+  }: {
+    scope: {
+      agentId: string;
+    };
+    connectorSlug: string;
+    metadata: PlatformConnectorPermissionMetadata;
+    initialPolicies: FirewallPolicies;
+    initialGrants: readonly PlatformUserPermissionGrant[];
+    policies: FirewallPolicies;
+    expiresInByPermission: GrantExpirationSelections;
+    resetPending: boolean;
+    applyGrantPolicies: ApplyUserPermissionGrants;
+  },
+  pageSignal: AbortSignal,
+): Promise<void> {
   await applyGrantPolicies(
     {
       ...scope,
@@ -364,41 +367,46 @@ async function saveUserGrantPolicies({
   );
 }
 
-export async function savePermissionDraftPolicies({
-  scope,
-  connectorSlug,
-  metadata,
-  initialPolicies,
-  initialGrants,
-  intent,
-  pageSignal,
-  applyGrantPolicies,
-}: {
-  scope: { agentId: string };
-  connectorSlug: string;
-  metadata: PlatformConnectorPermissionMetadata;
-  initialPolicies: FirewallPolicies;
-  initialGrants: readonly PlatformUserPermissionGrant[];
-  intent: PermissionDraftIntent;
-  pageSignal: AbortSignal;
-  applyGrantPolicies: ApplyUserPermissionGrants;
-}): Promise<void> {
+export async function savePermissionDraftPolicies(
+  {
+    scope,
+    connectorSlug,
+    metadata,
+    initialPolicies,
+    initialGrants,
+    intent,
+    applyGrantPolicies,
+  }: {
+    scope: {
+      agentId: string;
+    };
+    connectorSlug: string;
+    metadata: PlatformConnectorPermissionMetadata;
+    initialPolicies: FirewallPolicies;
+    initialGrants: readonly PlatformUserPermissionGrant[];
+    intent: PermissionDraftIntent;
+    applyGrantPolicies: ApplyUserPermissionGrants;
+  },
+  pageSignal: AbortSignal,
+): Promise<void> {
   const { policies, expiresInByPermission } =
     materializePermissionDraftForLegacySave({
       context: createPermissionDraftContext({ metadata, initialPolicies }),
       draft: intent,
       permissions: metadata.permissions,
     });
-  await saveUserGrantPolicies({
-    scope,
-    connectorSlug,
-    metadata,
-    initialPolicies,
-    initialGrants,
-    policies,
-    expiresInByPermission,
-    resetPending: intent.resetPending,
+  await saveUserGrantPolicies(
+    {
+      scope,
+      connectorSlug,
+      metadata,
+      initialPolicies,
+      initialGrants,
+      policies,
+      expiresInByPermission,
+      resetPending: intent.resetPending,
+      applyGrantPolicies,
+    },
     pageSignal,
-    applyGrantPolicies,
-  });
+  );
 }

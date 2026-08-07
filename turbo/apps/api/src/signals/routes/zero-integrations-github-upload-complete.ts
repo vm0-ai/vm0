@@ -84,10 +84,12 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
     return routeError(404, "No GitHub installation found", "NOT_FOUND");
   }
 
-  const token = await getGithubIntegrationAccessToken({
-    installation,
+  const token = await getGithubIntegrationAccessToken(
+    {
+      installation,
+    },
     signal,
-  });
+  );
   signal.throwIfAborted();
   if (!token) {
     return routeError(404, "No GitHub installation found", "NOT_FOUND");
@@ -111,13 +113,15 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
     caption: body.caption,
   });
   const commentResult = await settle(
-    postGithubIssueComment({
-      token,
-      repo: body.repo,
-      issueNumber: body.issueNumber,
-      body: commentBody,
+    postGithubIssueComment(
+      {
+        token,
+        repo: body.repo,
+        issueNumber: body.issueNumber,
+        body: commentBody,
+      },
       signal,
-    }),
+    ),
   );
   signal.throwIfAborted();
   if (!commentResult.ok) {

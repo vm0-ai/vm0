@@ -97,20 +97,22 @@ async function resolveModelLabel(args: {
   return model ? getModelDisplayName(model) : undefined;
 }
 
-export async function resolveIntegrationAgentResponsePresentation(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly agentId: string;
-  readonly defaultAgentId?: string;
-  readonly replyToMention?: string;
-  readonly getFeatureOverrides: (
-    orgId: string,
-    userId: string,
-  ) => Promise<Record<string, boolean>>;
-  readonly signal: AbortSignal;
-}): Promise<{
+export async function resolveIntegrationAgentResponsePresentation(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runId: string;
+    readonly agentId: string;
+    readonly defaultAgentId?: string;
+    readonly replyToMention?: string;
+    readonly getFeatureOverrides: (
+      orgId: string,
+      userId: string,
+    ) => Promise<Record<string, boolean>>;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly logsUrl: string | undefined;
   readonly footerText: string | undefined;
 }> {
@@ -128,7 +130,7 @@ export async function resolveIntegrationAgentResponsePresentation(args: {
     }),
     args.getFeatureOverrides(args.orgId, args.userId),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const parts: string[] = [];
   if (respondedBy) {
