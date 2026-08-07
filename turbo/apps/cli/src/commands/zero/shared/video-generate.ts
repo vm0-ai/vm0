@@ -395,7 +395,7 @@ export function createVideoGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k",
       "dreamina-seedance-2.0-fast",
     )
     .option(
@@ -405,7 +405,7 @@ export function createVideoGenerateCommand(
     )
     .option(
       "--duration <duration>",
-      "Duration: 2s-15s depending on model",
+      "Duration: 2s-30s depending on model",
       "8s",
     )
     .option(
@@ -419,19 +419,19 @@ export function createVideoGenerateCommand(
     .option("--safety-tolerance <level>", "Safety tolerance", "4")
     .option(
       "--image-url <url>",
-      "Reference image URL; repeat for multiple Seedance 2.0 or MiniMax H3 references",
+      "Reference image URL; repeat for models that support multiple references",
       collectUrl,
       [],
     )
     .option(
       "--video-url <url>",
-      "Reference video URL; repeat up to 3 times for Seedance 2.0 or MiniMax H3",
+      "Reference video URL; repeat up to 10 times depending on model",
       collectUrl,
       [],
     )
     .option(
       "--audio-url <url>",
-      "Reference audio URL; repeat up to 3 times for MiniMax H3",
+      "Reference audio URL; repeat up to 10 times depending on model",
       collectUrl,
       [],
     )
@@ -453,6 +453,9 @@ Notes:
   - Uses MiniMax, BytePlus ModelArk, and fal.ai video models with configured usage pricing
 
 Models:
+  - Dreamina Seedance 2.5: dreamina-seedance-2.5. Supports 4s-30s,
+    480p/720p, optional audio, up to 30 image references, and up to 10
+    video and 10 audio references, plus first/last frames.
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
     dreamina-seedance-2.0-fast (default). Supports 4s-15s,
     480p/720p, seed, optional audio, image references, and first/last
