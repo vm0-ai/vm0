@@ -66,6 +66,15 @@ gh api repos/vm0-ai/vm0/contents/docs/bad-smell.md --jq '.content' | base64 -d
 gh api repos/vm0-ai/vm0/contents/docs/testing.md --jq '.content' | base64 -d
 ```
 
+Fetch the fallback rules when the PR adds, keeps, or removes a fallback path:
+`??`/`||` defaults on contract-owned fields, compatibility branches for old
+clients, runners, routes, or persisted shapes, behavior gated by a feature
+switch, or tests that assert removed behavior stays removed:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/fallback.md --jq '.content' | base64 -d
+```
+
 #### Surface-Specific Practice Documents
 
 Fetch the event-sourcing rules when the PR changes persistent or optimistic
@@ -167,6 +176,7 @@ Use the testing docs as the authoritative source for testing conventions. Key st
 | Test behavior not mocks — no `expect(mock).toHaveBeenCalled()` as sole assertion | P1       |
 | Mock cleanup — `vi.clearAllMocks()` in `beforeEach` when mocks are used          | P1       |
 | New user-facing features must be gated behind a `FeatureSwitchKey`               | P1       |
+| No negative tests asserting removed behavior stays removed                       | P1       |
 
 ### Step 5: Code Review Analysis
 
@@ -207,6 +217,28 @@ Review the diff for:
 - Do not require failure-path rollback, removal, timeout cleanup, or other
   fallback cleanup for optimistic events. A rare transient mismatch is recovered
   by refreshing the page and reloading persistent state.
+
+**Fallback Discipline**
+
+Apply `docs/fallback.md`. The default is no fallback.
+
+- Request changes for a fallback that guards a state the owning contract
+  already prevents: a `??`/`||` chain on a required SDK field, Zod-required
+  property, or `NOT NULL` column; a fabricated default for a corrupted row; a
+  reader for a producer that no longer exists.
+- A feature still gated by a non-GA `FeatureSwitchKey` has no external users.
+  Do not request compatibility code, dual-read/dual-write, migrations, or
+  rollback handling for it, and do not treat a transient error during its
+  cutover as a blocker. Request removal when such a PR adds that fallback.
+- A new cross-version rollout fallback must carry a comment naming the
+  condition that makes it removable and a follow-up issue or PR. An
+  open-ended "tolerate the old shape" branch is a finding.
+- A PR that removes a fallback must state its evidence — type/schema,
+  single-writer, production query, or closed rollback window — and must delete
+  the branch, its contract entry, and its own tests together.
+- Flag negative tests that only assert deleted behavior is still deleted
+  (retired route still 404s, legacy field still ignored). The exception is a
+  fail-closed security boundary, where rejection is the product behavior.
 
 **Testing Coverage**
 
@@ -344,6 +376,7 @@ Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<re
 
 - Documentation index: https://github.com/vm0-ai/vm0/blob/main/docs/docs.md
 - Production-code quality: https://github.com/vm0-ai/vm0/blob/main/docs/bad-smell.md
+- Fallbacks to avoid: https://github.com/vm0-ai/vm0/blob/main/docs/fallback.md
 - Event sourcing and optimistic events: https://github.com/vm0-ai/vm0/blob/main/docs/event-sourcing.md
 - Testing standards: https://github.com/vm0-ai/vm0/blob/main/docs/testing.md
 - React effects and ccstate commands: https://github.com/vm0-ai/vm0/blob/main/docs/effect.md
