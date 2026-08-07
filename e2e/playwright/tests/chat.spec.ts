@@ -148,6 +148,9 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
     name: "Connectors",
     exact: true,
   });
+  const microphoneButton = composer.getByRole("button", {
+    name: "Voice input",
+  });
   const sendButton = composer.getByRole("button", { name: "Send" });
 
   await expect(connectorsButton.locator("img")).toHaveCount(3);
@@ -157,15 +160,16 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await editor.fill("Keep the mobile Send button contained");
+  await expect(microphoneButton).toBeVisible();
   await expect(sendButton).toBeEnabled();
 
   for (const width of [360, 320]) {
     await page.setViewportSize({ width, height: 780 });
-    await expect(workflowButton).toBeHidden();
-    await expect(connectorsButton.locator("img:visible")).toHaveCount(2);
+    await expect(workflowButton).toBeVisible();
+    await expect(connectorsButton.locator("img:visible")).toHaveCount(0);
     await expect(
       connectorsButton.locator("img:visible, svg:visible"),
-    ).toHaveCount(3);
+    ).toHaveCount(1);
     await expectInside(sendButton, composer);
   }
 

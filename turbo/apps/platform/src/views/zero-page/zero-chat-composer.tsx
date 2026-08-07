@@ -5722,7 +5722,7 @@ function CreateWorkflowPromptButton({
           <button
             type="button"
             className={cn(
-              "hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:inline-flex sm:h-9 sm:w-9",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
             aria-label={t(($) => {
@@ -5780,11 +5780,12 @@ function ConnectorTriggerIcons({
       return { kind: "custom" as const, connector };
     }),
   ].slice(0, 3);
+  const hasComputerAccess = hasComputerUse || hasCloudBrowser;
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
-    <span className="flex items-center -space-x-2 sm:-space-x-1.5">
+    <span className="flex items-center sm:-space-x-1.5">
       {enabled.map((item, index) => {
         const key =
           item.kind === "builtin" ? item.connector.slug : item.connector.id;
@@ -5793,7 +5794,7 @@ function ConnectorTriggerIcons({
             key={key}
             className={cn(
               "relative shrink-0",
-              index === 2 && "hidden sm:block",
+              (index > 0 || hasComputerAccess) && "hidden sm:block",
             )}
           >
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
@@ -8041,7 +8042,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerTemplateAttachmentSync signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
-          <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
+          <div className="flex items-center justify-between gap-1 px-2 pb-3 pt-1 sm:gap-2 sm:px-4">
             <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
               <ComposerUploadControl signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />
