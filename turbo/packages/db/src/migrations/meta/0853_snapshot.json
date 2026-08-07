@@ -1,6 +1,6 @@
 {
-  "id": "e19ed2a7-2975-4a40-9a5a-91171a4f25c0",
-  "prevId": "ac63abbe-29a3-4e9d-92bf-7095e9657955",
+  "id": "23c3e653-f0c6-48c3-af80-f07008304d7b",
+  "prevId": "e19ed2a7-2975-4a40-9a5a-91171a4f25c0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4801,7 +4801,7 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.budget',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.budget',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'control.interrupt',\n          'control.revoke',\n          'browser.open',\n          'browser.close',\n          -- Retired physical values still written by the pre-cleanup API while\n          -- it drains. Narrow this list to open/close in a later release, once\n          -- that API is gone and the rows have been backfilled again.\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",

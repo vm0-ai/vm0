@@ -21,7 +21,10 @@ import {
   pauseGoalQueueTargetFixture,
   readGoalQueueStateFixture,
 } from "../../../test-fixtures/goal-queue";
-import { admitWorkflowAutomationEventFixture } from "../../../test-fixtures/workflow-queue";
+import {
+  admitWorkflowAutomationEventFixture,
+  readWorkflowRunTriggerSourceFixture,
+} from "../../../test-fixtures/workflow-queue";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -609,6 +612,9 @@ describe("workflow queue", () => {
       await postWorkflowWebhook(automation, "run after invalid goal"),
       automation.threadId,
     );
+    await expect(
+      readWorkflowRunTriggerSourceFixture(workflowRunId),
+    ).resolves.toBe("workflow-event");
     const events = await wf.readThreadEvents(automation.threadId);
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -959,6 +965,9 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, busyRunId);
     const runIds = await workflowRunIds(webhookAutomation.threadId);
     expect(runIds).toHaveLength(2);
+    await expect(readWorkflowRunTriggerSourceFixture(runIds[1]!)).resolves.toBe(
+      "workflow-schedule",
+    );
     const claimedTick = (
       await wf.readThreadEvents(webhookAutomation.threadId)
     ).find((event) => {

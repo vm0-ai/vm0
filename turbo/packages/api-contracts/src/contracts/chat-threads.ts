@@ -836,6 +836,23 @@ export const chatThreadsContract = c.router({
     summary:
       "List chat thread ids that currently have queued, pending, or running runs.",
   },
+  unreadIds: {
+    method: "GET",
+    path: "/api/zero/chat-threads/unread-ids",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({
+        threadIds: z.array(z.string().uuid()),
+      }),
+      401: apiErrorSchema,
+      // A newly promoted app can briefly reach an API version from before
+      // this additive route existed. Remove after that API is outside the
+      // production rollback window.
+      404: apiErrorSchema,
+    },
+    summary:
+      "List unread chat thread ids for the caller in the current organization.",
+  },
   create: {
     method: "POST",
     path: "/api/zero/chat-threads",

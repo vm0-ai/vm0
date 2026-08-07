@@ -318,6 +318,23 @@ const strapiAutomation = {
   nextRunAt: null,
 };
 
+const stripeInvoicePaidAutomation = {
+  ...automationBase,
+  kind: "event",
+  eventType: "stripe-invoice-paid",
+  eventConfig: {
+    provider: "stripe",
+    event: "invoice_paid",
+    billingReasons: ["subscription_cycle"],
+    connectorId: "00000000-0000-4000-a000-000000000411",
+    stripeAccountId: "acct_cli_stripe_invoice_paid",
+    mode: "live",
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 describe("zero workflow automation commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -1891,6 +1908,7 @@ describe("zero workflow automation commands", () => {
               notionDatabaseAutomation,
               notionContentUpdatedAutomation,
               strapiAutomation,
+              stripeInvoicePaidAutomation,
             ]);
           },
         ),
@@ -1915,6 +1933,7 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(
         "Strapi entry published: api::article.article, en",
       );
+      expect(logCalls).toContain("Stripe invoice paid");
     });
 
     it("should display an empty state with an add hint", async () => {

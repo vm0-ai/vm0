@@ -209,6 +209,11 @@ export const apiAgentsHandlers = [
     return respond(200, { threadIds: [] });
   }),
 
+  // GET /api/zero/chat-threads/unread-ids
+  mockApi(chatThreadsContract.unreadIds, ({ respond }) => {
+    return respond(200, { threadIds: [] });
+  }),
+
   // GET /api/zero/chat-thread-drafts
   mockApi(chatThreadsContract.drafts, ({ respond }) => {
     return respond(200, { draftThreadIds: [] });

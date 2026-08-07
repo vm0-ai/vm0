@@ -14,10 +14,11 @@ import {
   zeroAgentsByIdContract,
   zeroAgentDraftContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { resetSignal } from "../../../signals/utils.ts";
+import { createDeferredPromise, resetSignal } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -237,6 +238,70 @@ describe("chat drafts", () => {
         screen.getByLabelText("Remove agent-brief.md"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("keeps local edits made while an agent draft is loading", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000112";
+    const draftResponse = createDeferredPromise<void>(context.signal);
+    let draftRequested = false;
+    mockAgentChatPage(agentId);
+    context.mocks.api(zeroAgentDraftContract.get, async ({ respond }) => {
+      draftRequested = true;
+      await draftResponse.promise;
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: "stale-agent-draft-image",
+              filenameSnapshot: "lightbox.svg",
+              contentType: "image/svg+xml",
+            },
+          ],
+        },
+        draftAttachments: [
+          {
+            id: "stale-agent-draft-image",
+            filename: "lightbox.svg",
+            contentType: "image/svg+xml",
+            size: 64,
+            url: "https://cdn.vm7.io/artifacts/test/drafts/lightbox.svg",
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(200, {
+        concurrency: {
+          tier: "pro",
+          limit: 2,
+          active: 0,
+          available: 2,
+        },
+        queue: [],
+        runningTasks: [],
+        estimatedTimePerRun: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat?queue=1`,
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      expect(draftRequested).toBeTruthy();
+    });
+    await fill(editor, "Local draft created while loading");
+    draftResponse.resolve();
+
+    await screen.findByRole("heading", {
+      name: "Your agent is waiting in line",
+    });
+    expect(editor).toHaveTextContent("Local draft created while loading");
+    expect(screen.queryByLabelText("Remove lightbox.svg")).toBeNull();
   });
 
   it("loads an agent feedback draft from the canonical API", async () => {

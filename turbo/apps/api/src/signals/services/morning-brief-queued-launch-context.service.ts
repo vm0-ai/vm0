@@ -85,7 +85,6 @@ async function loadMorningBriefLaunchContext(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         eq(chatEvents.contextType, "morning_brief"),
-        eq(chatEvents.triggerSource, "workflow-schedule"),
       ),
     )
     .limit(1);

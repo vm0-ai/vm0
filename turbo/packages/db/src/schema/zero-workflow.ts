@@ -167,6 +167,7 @@ export type ZeroWorkflowEventType =
   | "notion-database-item-created"
   | "notion-page-content-updated"
   | "strapi-entry-published"
+  | "stripe-invoice-paid"
   | "webhook-received";
 
 export type ZeroWorkflowWebhookDisabledReason = "paid_plan_required";
@@ -244,7 +245,7 @@ export const zeroWorkflowAutomations = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type IN ('chat-run-finished', 'gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'github-deployment-status-created', 'github-issue-comment-created', 'github-pull-request-review-submitted', 'github-workflow-job-completed', 'github-workflow-run-completed', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-forms-response-submitted', 'google-meet-transcript-generated', 'notion-child-page-created', 'notion-database-item-created', 'notion-page-content-updated', 'strapi-entry-published', 'webhook-received')
+            AND event_type IN ('chat-run-finished', 'gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'github-deployment-status-created', 'github-issue-comment-created', 'github-pull-request-review-submitted', 'github-workflow-job-completed', 'github-workflow-run-completed', 'google-calendar-event-created', 'google-calendar-event-updated', 'google-calendar-event-cancelled', 'google-forms-response-submitted', 'google-meet-transcript-generated', 'notion-child-page-created', 'notion-database-item-created', 'notion-page-content-updated', 'strapi-entry-published', 'stripe-invoice-paid', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL

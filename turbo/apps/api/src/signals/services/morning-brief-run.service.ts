@@ -485,7 +485,7 @@ async function hasPendingMorningBriefQueueEvent(
     .where(
       and(
         inArray(chatEvents.id, pendingMessageIds),
-        eq(chatEvents.triggerSource, "workflow-schedule"),
+        eq(chatEvents.contextType, "morning_brief"),
       ),
     );
   for (const message of messages) {
