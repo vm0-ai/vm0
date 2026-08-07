@@ -1132,6 +1132,8 @@ exit 42
             "body_limits.py",
             "builtin_firewall_cache.py",
             "flow_metadata_keys.py",
+            "generated/__init__.py",
+            "generated/model_usage.py",
             "matching.py",
             "mitmproxy_compat.py",
             "registry.py",

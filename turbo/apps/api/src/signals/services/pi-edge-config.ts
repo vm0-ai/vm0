@@ -6,6 +6,7 @@ import {
 import {
   getModelProviderPiChatCompletionsUrl,
   type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   isPiAgentModelSupported,
@@ -22,6 +23,12 @@ import {
 
 export type PiEdgeModelConfig = PiAgentModelConfig;
 
+export interface PiEdgeUsageConfig {
+  /** Canonical selected model used for observations and, when billable, pricing. */
+  readonly model: SupportedRunModel;
+  readonly billable: boolean;
+}
+
 export interface PiEdgeTurnArgs {
   readonly runId: string;
   readonly userId: string;
@@ -29,6 +36,7 @@ export interface PiEdgeTurnArgs {
   readonly prompt: string;
   readonly systemPrompt: string;
   readonly model: PiEdgeModelConfig;
+  readonly usage?: PiEdgeUsageConfig;
   readonly executionEnv: ExecutionEnv;
   readonly skillSnapshot: RunSkillSnapshot;
   readonly runnerGroup: string;

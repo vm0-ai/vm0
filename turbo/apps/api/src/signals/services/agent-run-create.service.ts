@@ -41,6 +41,7 @@ import {
   type ModelProviderCredentialScope,
   getModelProviderFirewall,
   type ModelProviderType,
+  type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   connectorAuthMethodRuntimeMetadata,
@@ -224,6 +225,7 @@ import {
   resolvePiEdgeModelConfig,
   type PiEdgeModelConfig,
   type PiEdgeTurnArgs,
+  type PiEdgeUsageConfig,
 } from "./pi-edge-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
@@ -560,6 +562,7 @@ interface CustomConnectorAuthRef {
 
 interface PreparedRunnerLaunch {
   readonly piEdge?: PiEdgeModelConfig;
+  readonly piEdgeUsage?: PiEdgeUsageConfig;
   readonly piExecutionEnv?: ExecutionEnv;
   readonly piPrompt?: string;
   readonly piSystemPrompt?: string;
@@ -741,7 +744,7 @@ interface PermissionManifest {
 
 interface ModelUsageContext {
   readonly billableFirewalls: readonly string[];
-  readonly modelUsageProvider: string | undefined;
+  readonly modelUsageProvider: SupportedRunModel | undefined;
 }
 
 interface StoredExecutionSecrets {
@@ -5362,7 +5365,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
-  readonly modelUsageProvider: string | undefined;
+  readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly apiStartTime: number;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
@@ -5772,7 +5775,7 @@ function isModelProviderFirewallName(name: string): boolean {
 function validateModelUsageProviderInvariant(args: {
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly billableFirewalls: readonly string[];
-  readonly modelUsageProvider: string | undefined;
+  readonly modelUsageProvider: SupportedRunModel | undefined;
 }): CreateRunErrorResult | null {
   if (args.modelProvider?.type !== "vm0") {
     return null;
@@ -5808,7 +5811,7 @@ function prepareModelUsageContext(args: {
 
 function modelUsageProviderForContext(
   modelProvider: ResolvedModelProviderEnvironment | null,
-): string | undefined {
+): SupportedRunModel | undefined {
   if (!modelProvider?.selectedModel) {
     return undefined;
   }
@@ -5868,7 +5871,7 @@ interface BuildRunnerJobPayloadInput {
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
-  readonly modelUsageProvider: string | undefined;
+  readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly apiStartTime: number;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
@@ -5984,6 +5987,24 @@ function preparedRunnerGroup(content: AgentComposeContent): string {
   return group;
 }
 
+function piEdgeUsageConfig(
+  args: BuildRunnerJobPayloadInput,
+): PiEdgeUsageConfig | undefined {
+  if (args.piEdge === undefined) {
+    return undefined;
+  }
+  if (args.modelUsageProvider === undefined) {
+    if (args.modelProvider?.type === "vm0") {
+      throw new Error("Pi edge usage requires a canonical managed model");
+    }
+    return undefined;
+  }
+  return {
+    model: args.modelUsageProvider,
+    billable: args.modelProvider?.type === "vm0",
+  };
+}
+
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
@@ -6075,6 +6096,7 @@ function buildRunnerJobPayload(
       builtContext.context,
       piResources,
     );
+    const piEdgeUsage = piEdgeUsageConfig(args);
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,
@@ -6084,6 +6106,7 @@ function buildRunnerJobPayload(
     const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
     return {
       ...(args.piEdge === undefined ? {} : { piEdge: args.piEdge }),
+      ...(piEdgeUsage === undefined ? {} : { piEdgeUsage }),
       ...(piResources === undefined
         ? {}
         : {
@@ -7178,7 +7201,7 @@ interface PreparedRunContext {
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
-  readonly modelUsageProvider: string | undefined;
+  readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
@@ -7544,7 +7567,7 @@ interface PreparedRuntimeContext {
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
-  readonly modelUsageProvider: string | undefined;
+  readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly connectorScope: EffectiveConnectorScope;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
 }
@@ -8202,6 +8225,9 @@ async function committedAtomicLaunchResponse(args: {
       prompt: args.launch.piPrompt,
       systemPrompt: args.launch.piSystemPrompt,
       model: args.launch.piEdge,
+      ...(args.launch.piEdgeUsage === undefined
+        ? {}
+        : { usage: args.launch.piEdgeUsage }),
       executionEnv: args.launch.piExecutionEnv,
       skillSnapshot: args.launch.runSkillSnapshot,
       runnerGroup: args.committed.runnerJobPayload.runnerGroup,

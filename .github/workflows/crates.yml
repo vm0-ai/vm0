@@ -127,21 +127,22 @@ jobs:
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # The api-contracts Rust bindings are generated from selected
-          # TypeScript contract files, and the checked artifacts live under
-          # crates/api-contracts.
-          # Keep this output separate from any-changed so a TS-only contract
-          # edit runs the drift check without forcing every Rust crate job to
-          # run.
+          # The api-contracts cross-language bindings are generated from
+          # selected TypeScript contract files. Keep this legacy-named output
+          # separate from any-changed so a TS-only contract edit runs the
+          # drift check without forcing every Rust crate job to run.
           api_contracts_rust_bindings_changed=false
           changed_files="$(mktemp)"
           git diff --name-only "$BASE_REF" HEAD > "$changed_files"
           while IFS= read -r changed_file; do
             case "$changed_file" in
               crates/api-contracts/* | \
+              crates/runner/mitm-addon/src/generated/* | \
               turbo/packages/api-contracts/package.json | \
               turbo/packages/api-contracts/tsconfig.json | \
+              turbo/packages/api-contracts/tsconfig.python-bindings.json | \
               turbo/packages/api-contracts/src/contracts/* | \
+              turbo/packages/api-contracts/src/python-bindings/* | \
               turbo/packages/api-contracts/src/rust-bindings/* | \
               turbo/pnpm-lock.yaml)
                 api_contracts_rust_bindings_changed=true
@@ -461,11 +462,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      - name: Check API Contracts Rust Bindings
+      - name: Check API Contracts Bindings
         working-directory: turbo
         run: |
           pnpm -F @vm0/api-contracts generate:rust
-          git diff --exit-code -- ../crates/api-contracts/src/generated
+          pnpm -F @vm0/api-contracts generate:python
+          git diff --exit-code -- \
+            ../crates/api-contracts/src/generated \
+            ../crates/runner/mitm-addon/src/generated
 
   runner-firewall-contract-test:
     runs-on: ubuntu-latest

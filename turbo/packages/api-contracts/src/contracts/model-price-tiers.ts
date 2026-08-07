@@ -58,3 +58,17 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "mimo-v2.5": "$",
   "hy3-preview": "$",
 });
+
+/**
+ * Inclusive total-input boundary for built-in model long-context pricing.
+ * Total input includes uncached input, cache reads, and cache creation.
+ */
+export const MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS: Readonly<
+  Partial<Record<SupportedRunModel, number>>
+> = Object.freeze({
+  "gpt-5.5": 272_001,
+  "gpt-5.6-sol": 272_001,
+  "gpt-5.6-terra": 272_001,
+  "gpt-5.6-luna": 272_001,
+  "MiniMax-M3": 512_001,
+} satisfies Partial<Record<SupportedRunModel, number>>);
