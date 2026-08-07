@@ -6995,7 +6995,10 @@ async function commitPreparedLaunchUnderLock(
   );
 
   if (concurrency) {
-    if (!args.createArgs.queueOnConcurrencyLimit) {
+    if (
+      args.launch.piEdge !== undefined ||
+      !args.createArgs.queueOnConcurrencyLimit
+    ) {
       return concurrency;
     }
     if (!args.encryptedQueuedParams) {
