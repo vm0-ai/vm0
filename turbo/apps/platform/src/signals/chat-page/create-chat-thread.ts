@@ -1948,9 +1948,13 @@ function createEventChangeEffects(
       const hasOptimisticUserMessage = get(
         chatEvents.hasOptimisticUserMessage$,
       );
+      // Scroll events own the DOM-aware decision: reaching the tail clears the
+      // held position there. An event batch can run while this thread's DOM is
+      // empty or stale, so restoration must read only the position already
+      // captured for the reader.
       const scrollPosition = hasOptimisticUserMessage
         ? null
-        : set(scroll.readRenderedThreadScrollPosition$);
+        : get(scroll.threadScrollPosition$);
       L.debug("events change scroll decision", {
         threadId,
         hasOptimisticUserMessage,

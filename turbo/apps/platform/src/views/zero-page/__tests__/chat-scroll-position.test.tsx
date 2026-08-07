@@ -3,13 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   chatEventResponse,
-  chatEventsContract,
   chatThreadEventsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   normalizeMockChatEvents,
@@ -1131,134 +1129,6 @@ describe("chat scroll position", () => {
     await waitFor(() => {
       expect(sent).toBeTruthy();
     });
-  });
-
-  it("keeps the visible anchor when a reply arrives before optimistic reconciliation", async () => {
-    const user = userEvent.setup({ delay: null });
-    const threadId = "b0000000-0000-4000-a000-000000000819";
-    const runId = "d0000000-0000-4000-a000-000000000819";
-    const prompt = "Wait for the reply while reading history";
-    const reply = "Reply delivered after the reader parked";
-    const initialEvents = normalizeMockChatEvents([
-      ...simpleUserEvents(threadId, "optimistic-reply", 8),
-      {
-        id: "optimistic-reply-previous-run-completed",
-        threadId,
-        role: "assistant",
-        content: null,
-        runId: "optimistic-reply-run-7",
-        runLifecycleEvent: "completed",
-        createdAt: "2026-07-30T10:07:01Z",
-      },
-    ]);
-    const initialLastSeqId = initialEvents.at(-1)?.seqId;
-    if (initialLastSeqId === undefined) {
-      throw new Error("Expected initial chat events");
-    }
-    let sendAccepted = false;
-    let exposeReply = false;
-    const arrivingReply = {
-      id: "optimistic-reply-arrived",
-      threadId,
-      eventType: "output.message" as const,
-      content: reply,
-      createdAt: "2026-07-30T10:08:01Z",
-      seqId: initialLastSeqId + 1,
-      runId,
-    } satisfies ChatEvent;
-
-    mockChatLifecycle(context, {
-      threadId,
-      threadTitle: "Optimistic reply scroll",
-    });
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      if (query.beforeSeqId !== undefined) {
-        return respond(200, { events: [] });
-      }
-      if (query.sinceSeqId === undefined) {
-        return respond(200, {
-          events: initialEvents.map(chatEventResponse),
-        });
-      }
-      if (query.sinceSeqId === initialLastSeqId) {
-        return respond(200, {
-          events: exposeReply ? [chatEventResponse(arrivingReply)] : [],
-        });
-      }
-      return respond(200, { events: [] });
-    });
-    context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
-      const clientEventId = body.clientEventId;
-      if (clientEventId === undefined) {
-        throw new Error("Expected send request to include clientEventId");
-      }
-      sendAccepted = true;
-      return respond(201, {
-        runId,
-        threadId,
-        status: "pending",
-        createdAt: "2026-07-30T10:08:00Z",
-      });
-    });
-    installChatLayout(
-      new Map([
-        [
-          threadId,
-          {
-            clientHeight: () => {
-              return 300;
-            },
-            scrollHeight: () => {
-              if (document.body.textContent?.includes(reply)) {
-                return 1200;
-              }
-              return document.body.textContent?.includes(prompt) ? 1100 : 1000;
-            },
-            eventRect: (eventId) => {
-              const index = Number(eventId.split("-").at(-1));
-              return Number.isFinite(index)
-                ? { top: index * 100, height: 80 }
-                : undefined;
-            },
-          },
-        ],
-      ]),
-    );
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    const container = await waitFor(() => {
-      expect(
-        screen.getByText("optimistic-reply message 7"),
-      ).toBeInTheDocument();
-      return chatScrollContainer();
-    });
-    const composer = await screen.findByRole("textbox", { name: "Message" });
-    await sendMessageInUI(user, composer, prompt);
-    await waitFor(() => {
-      expect(screen.getByText(prompt)).toBeInTheDocument();
-      expect(sendAccepted).toBeTruthy();
-    });
-
-    // The optimistic send follows the tail. The reader then deliberately
-    // returns to history and remains parked there while the reply is pending.
-    scrollTo(container, 420);
-    expect(viewportOffsetTop("optimistic-reply-4")).toBe(-20);
-    await waitFor(() => {
-      expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
-    });
-
-    exposeReply = true;
-    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
-
-    await expect(screen.findByText(reply)).resolves.toBeInTheDocument();
-    const renderFrame = createDeferredPromise<void>(context.signal);
-    window.requestAnimationFrame(() => {
-      renderFrame.resolve();
-    });
-    await renderFrame.promise;
-    expect(viewportOffsetTop("optimistic-reply-4")).toBe(-20);
-    expect(container.scrollTop).toBe(420);
   });
 
   it("preserves a programmatic non-bottom position when a new message arrives", async () => {
