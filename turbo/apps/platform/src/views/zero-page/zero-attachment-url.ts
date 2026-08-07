@@ -6,6 +6,7 @@ import {
 import { resolvePublicArtifactsBaseUrl } from "../../lib/platform-host.ts";
 import { i18n } from "../../i18n/index.ts";
 import { logger } from "../../signals/log.ts";
+import { throwIfAbort } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 
 const log = logger("zero-attachment-url");
@@ -245,7 +246,7 @@ async function fetchBlobForDownload(
     }
     return await res.blob();
   } catch (error) {
-    signal.throwIfAborted();
+    throwIfAbort(error);
     log.warn("downloadUrl: fetch failed", error);
     toast.error(
       i18n.t(($) => {

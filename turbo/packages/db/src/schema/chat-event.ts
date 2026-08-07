@@ -143,6 +143,10 @@ export const chatEvents = pgTable(
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
+    // Old/new API persisted-state projection (~102-minute observed overlap)
+    // and old web/app response support (~2-day observed window). Canonical
+    // semantics live in user_message and chat_event_asset_refs. The Stage 5/7
+    // chat-event cleanup follow-up PR drops these after both windows close.
     attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
     generationTemplate: jsonb(
       "generation_template",

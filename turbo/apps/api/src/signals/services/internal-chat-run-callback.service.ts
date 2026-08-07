@@ -16,8 +16,6 @@ import { runOutputMaterializations } from "@vm0/db/schema/run-output-materializa
 import {
   chatEventTerminalPredicate,
   chatEvents,
-  type ChatEventAttachFileMetadata,
-  type ChatEventGenerationTemplate,
   type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
@@ -148,7 +146,6 @@ import {
   isWebChatContextType,
   loadNextUnclaimedQueuedUserMessage,
   queuedUserMessageTriggerSource,
-  resolveAttachFileMetadata$,
   type QueuedUserMessageContextType,
   type QueuedUserMessageTriggerSource,
   type QueuedUserMessage,
@@ -442,8 +439,6 @@ interface PriorRunEvent {
   readonly role: "user" | "assistant";
   readonly content: string | null;
   readonly userMessage: ChatEventUserMessage | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatEventGenerationTemplate | null;
 }
 
 interface PriorRun {
@@ -650,7 +645,6 @@ interface CreateQueuedChatRunInput {
     readonly displayName: string;
   } | null;
   readonly triggerSource: QueuedUserMessageTriggerSource;
-  readonly attachFileMetadata: readonly ChatEventAttachFileMetadata[] | null;
   readonly realAgentInPreview?: boolean;
   readonly slackDelivery?: {
     readonly channelId: string;
@@ -913,10 +907,7 @@ function buildQueuedCreateZeroRunArgs(
       kind: "user_message" as const,
       threadId: input.threadId,
       eventId: input.queuedMessage.id,
-      orgId: input.orgId,
-      userId: input.userId,
       admissionTime,
-      attachFileMetadata: input.attachFileMetadata,
       ...(input.morningBriefDelivery
         ? {
             morningBriefDeliveryId: input.morningBriefDelivery.deliveryId,
@@ -2245,19 +2236,6 @@ function buildComputerUseSystemPrompt(displayName: string): string {
   ].join("\n");
 }
 
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
-}
-
 function truncatePrior(value: string): string {
   if (value.length <= PRIOR_MESSAGE_CHAR_CAP) {
     return value;
@@ -2275,13 +2253,11 @@ function formatPriorRunEvent(event: PriorRunEvent): string {
     const prompt = projectUserMessage(userMessage).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
-  const body = `${roleLabel}: ${
+  return `${roleLabel}: ${
     event.content === null
       ? "[empty message]"
       : truncatePrior(event.content) || "[empty message]"
   }`;
-  const attach = formatAttachFileIds(event.attachFiles);
-  return attach ? `${body}\n${attach}` : body;
 }
 
 function priorRunsContextLabel(
@@ -2402,10 +2378,8 @@ async function getLatestRunsByThreadId(
       eventType: chatEvents.eventType,
       content: chatEvents.content,
       userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
-      generationTemplate: chatEvents.generationTemplate,
     })
     .from(chatEvents)
     .where(
@@ -2439,8 +2413,6 @@ async function getLatestRunsByThreadId(
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
     });
     eventsByRunId.set(row.runId, existing);
   }
@@ -2683,11 +2655,6 @@ interface CreateQueuedChatRunInputArgs {
   readonly queuedMessage: QueuedUserMessage;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
-  readonly resolveAttachFileMetadata: (
-    userId: string,
-    attachFiles: readonly string[] | null,
-    signal: AbortSignal,
-  ) => Promise<ChatEventAttachFileMetadata[] | null>;
   readonly resolveMorningBriefSignedUrls: (
     keys: { readonly inputKey: string; readonly outputKey: string },
     signal: AbortSignal,
@@ -3050,9 +3017,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
-        explicit:
-          args.userMessageProjection?.generationTemplate ??
-          args.input.queuedMessage.generationTemplate,
+        explicit: args.userMessageProjection?.generationTemplate,
         explicitTemplates: args.userMessageProjection?.generationTemplates,
       });
     },
@@ -3131,12 +3096,6 @@ async function buildCreateQueuedChatRunInput(
 
   const [startNewSession, loadedIncompleteContext] =
     await loadQueuedMessageSessionState(args, modelRoute);
-  const attachFileMetadata = await args.resolveAttachFileMetadata(
-    args.userId,
-    args.queuedMessage.attachFiles,
-    args.signal,
-  );
-  args.signal.throwIfAborted();
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -3199,7 +3158,6 @@ async function buildCreateQueuedChatRunInput(
     codexServiceTier: modelRoute.codexServiceTier,
     computerUseHostGrant,
     triggerSource,
-    attachFileMetadata,
     realAgentInPreview: isFeatureEnabled(
       FeatureSwitchKey.RealAgentInPreview,
       featureSwitchContext,
@@ -3885,7 +3843,6 @@ interface AutoSendQueuedMessageArgs {
   readonly queueItemCreatedBefore?: Date;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
-  readonly resolveAttachFileMetadata: CreateQueuedChatRunInputArgs["resolveAttachFileMetadata"];
   readonly resolveMorningBriefSignedUrls: CreateQueuedChatRunInputArgs["resolveMorningBriefSignedUrls"];
   readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
@@ -3977,7 +3934,6 @@ async function autoSendQueuedMessageForThread(
         queuedMessage,
         timing: args.timing,
         signal: args.signal,
-        resolveAttachFileMetadata: args.resolveAttachFileMetadata,
         resolveMorningBriefSignedUrls: args.resolveMorningBriefSignedUrls,
       });
     },
@@ -5250,13 +5206,6 @@ export const drainQueuedUserMessagesForThread$ = command(
       queueItemCreatedBefore: args.queueItemCreatedBefore,
       timing: args.timing ?? new ChatCallbackPreCreateTimingCollector(),
       signal,
-      resolveAttachFileMetadata: (userId, attachFiles, inputSignal) => {
-        return set(
-          resolveAttachFileMetadata$,
-          { userId, attachFiles },
-          inputSignal,
-        );
-      },
       resolveMorningBriefSignedUrls: async (keys, inputSignal) => {
         const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
         const inputUrl = await get(

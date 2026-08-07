@@ -1,6 +1,5 @@
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import type {
-  ChatEventGenerationTemplate,
   ChatEventUserMessage,
   chatEvents,
 } from "@vm0/db/schema/chat-event";
@@ -34,7 +33,6 @@ interface ActiveInputPromptEvent {
   readonly eventType: "input.prompt" | "input.budget";
   readonly contextType: ChatEventContextType;
   readonly userMessage: ChatEventUserMessage;
-  readonly generationTemplate: ChatEventGenerationTemplate | null;
 }
 
 interface IntegrationPromptMaterial {
@@ -135,7 +133,7 @@ export async function materializeActiveInputPrompt(
     );
   }
   const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
-    explicit: projection.generationTemplate ?? args.event.generationTemplate,
+    explicit: projection.generationTemplate,
     explicitTemplates: projection.generationTemplates,
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;

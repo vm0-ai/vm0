@@ -45,7 +45,7 @@ import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const THREAD_ID = "thread-action-cards";
+const THREAD_ID = "e4000000-0000-4000-a000-000000000001";
 
 function catalogPermissionDetail(
   overrides: Partial<PublicConnectorCatalogPermissionDetail> &
@@ -308,7 +308,7 @@ function selectMailText(element: HTMLElement): void {
 
 describe("chat event action cards", () => {
   it("keeps connector action card height stable while catalog metadata loads", async () => {
-    const threadId = `${THREAD_ID}-connector-loading-height`;
+    const threadId = "e4000000-0000-4000-a000-000000000002";
     const connectorUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}`;
     let catalogRequestStarted = false;
     let resolveCatalog = (): void => {
@@ -367,7 +367,7 @@ describe("chat event action cards", () => {
 
   it("keeps sent mail card height stable without exposing follow-up", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = `${THREAD_ID}-mail-loading-height`;
+    const threadId = "e4000000-0000-4000-a000-000000000003";
     const mailDraftId = "c0000000-0000-4000-a000-000000000091";
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
     const createdAt = "2026-07-30T10:00:00.000Z";
@@ -891,7 +891,7 @@ describe("chat event action cards", () => {
 
   it("renders canonical user text literally and assistant actions on alternate origins", async () => {
     const previousUrl = window.location.href;
-    const threadId = `${THREAD_ID}-alternate-production-origin`;
+    const threadId = "e4000000-0000-4000-a000-000000000004";
     window.location.href = `https://app.okou.ai/chats/${threadId}`;
     context.signal.addEventListener(
       "abort",
@@ -990,11 +990,27 @@ describe("chat event action cards", () => {
         },
       });
     });
-    mockChatLifecycle(context, {
+    const lifecycle = mockChatLifecycle(context, {
       threadId: leftThreadId,
       threadTitle: "Left chat",
       chatEvents: [],
     });
+    lifecycle.setThreadList([
+      {
+        id: leftThreadId,
+        title: "Left chat",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt,
+        updatedAt: createdAt,
+      },
+      {
+        id: rightThreadId,
+        title: "Right chat",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ]);
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
@@ -1159,7 +1175,7 @@ describe("chat event action cards", () => {
 
   it("preserves assistant copy and reconnects an expired connector", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = `${THREAD_ID}-reconnect`;
+    const threadId = "e4000000-0000-4000-a000-000000000005";
     const callbackPrompt = "Retry the Gmail draft after reconnecting";
     const connectorUrl = `${window.location.origin}/connectors/gmail/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const assistantCopy = `Gmail needs to be reconnected. [Reconnect Gmail](${connectorUrl}) to continue creating the draft.`;
@@ -1287,7 +1303,7 @@ describe("chat event action cards", () => {
 
   it("connects a single OAuth connector directly and resumes the chat", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = `${THREAD_ID}-direct-oauth`;
+    const threadId = "e4000000-0000-4000-a000-000000000006";
     const callbackPrompt = "Re-check GitHub access, then continue";
     const connectorUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const sentPrompts: string[] = [];
@@ -1405,7 +1421,7 @@ describe("chat event action cards", () => {
 
   it("enables a single no-auth connector directly", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = `${THREAD_ID}-direct-no-auth`;
+    const threadId = "e4000000-0000-4000-a000-000000000007";
     const connectorUrl = `${window.location.origin}/connectors/stripe/authorize?agentId=${AGENT_ID}`;
     let connected = false;
     let authorized = false;
@@ -2032,7 +2048,7 @@ describe("chat event action cards", () => {
       },
     );
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-multiple-permissions`,
+      threadId: "e4000000-0000-4000-a000-000000000008",
       threadTitle: "Multiple permission cards",
       chatEvents: [
         {
@@ -2054,7 +2070,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-multiple-permissions`,
+      path: "/chats/e4000000-0000-4000-a000-000000000008",
     });
 
     const permissionCards = await screen.findAllByTestId(
@@ -2124,7 +2140,7 @@ describe("chat event action cards", () => {
   it("runs a permission callback prompt after the grant is confirmed", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const threadId = `${THREAD_ID}-single-permission`;
+    const threadId = "e4000000-0000-4000-a000-000000000009";
     const callbackPrompt = "Re-check Slack access, then continue";
     const permissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=channels.read&action=allow&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const sentPrompts: {
@@ -2222,7 +2238,7 @@ describe("chat event action cards", () => {
 
   it("runs a connector callback prompt after authorization", async () => {
     const user = userEvent.setup({ delay: null });
-    const threadId = `${THREAD_ID}-single-connector`;
+    const threadId = "e4000000-0000-4000-a000-000000000010";
     const callbackPrompt = "Re-check GitHub access, then continue";
     const connectorUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const sentPrompts: string[] = [];
@@ -2298,7 +2314,7 @@ describe("chat event action cards", () => {
       }),
     ]);
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-hidden-connector-metadata`,
+      threadId: "e4000000-0000-4000-a000-000000000011",
       threadTitle: "Hidden connector metadata",
       chatEvents: [
         {
@@ -2320,7 +2336,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-hidden-connector-metadata`,
+      path: "/chats/e4000000-0000-4000-a000-000000000011",
     });
 
     const userMessage = await screen.findByText(
@@ -2399,7 +2415,7 @@ describe("chat event action cards", () => {
       },
     );
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-future-connector`,
+      threadId: "e4000000-0000-4000-a000-000000000012",
       threadTitle: "Future connector",
       chatEvents: [
         {
@@ -2421,7 +2437,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-future-connector`,
+      path: "/chats/e4000000-0000-4000-a000-000000000012",
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2468,7 +2484,7 @@ describe("chat event action cards", () => {
       },
     );
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-hidden-permission-metadata`,
+      threadId: "e4000000-0000-4000-a000-000000000013",
       threadTitle: "Hidden permission metadata",
       chatEvents: [
         {
@@ -2490,7 +2506,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-hidden-permission-metadata`,
+      path: "/chats/e4000000-0000-4000-a000-000000000013",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -2530,7 +2546,7 @@ describe("chat event action cards", () => {
       return respond(200, []);
     });
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-already-allowed-permission`,
+      threadId: "e4000000-0000-4000-a000-000000000014",
       threadTitle: "Permission already allowed",
       chatEvents: [
         {
@@ -2552,7 +2568,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-already-allowed-permission`,
+      path: "/chats/e4000000-0000-4000-a000-000000000014",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -2605,7 +2621,7 @@ describe("chat event action cards", () => {
       ]);
     });
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-expired-allowed-permission`,
+      threadId: "e4000000-0000-4000-a000-000000000015",
       threadTitle: "Expired permission allow",
       chatEvents: [
         {
@@ -2627,7 +2643,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-expired-allowed-permission`,
+      path: "/chats/e4000000-0000-4000-a000-000000000015",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -2672,7 +2688,7 @@ describe("chat event action cards", () => {
       return respond(200, []);
     });
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-already-denied-permission`,
+      threadId: "e4000000-0000-4000-a000-000000000016",
       threadTitle: "Permission already denied",
       chatEvents: [
         {
@@ -2694,7 +2710,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-already-denied-permission`,
+      path: "/chats/e4000000-0000-4000-a000-000000000016",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -2735,7 +2751,7 @@ describe("chat event action cards", () => {
       );
     });
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-permission-updated-event`,
+      threadId: "e4000000-0000-4000-a000-000000000017",
       threadTitle: "Permission updated event",
       chatEvents: [
         {
@@ -2757,7 +2773,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-permission-updated-event`,
+      path: "/chats/e4000000-0000-4000-a000-000000000017",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -2825,7 +2841,7 @@ describe("chat event action cards", () => {
     );
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-custom-connector`,
+      threadId: "e4000000-0000-4000-a000-000000000018",
       threadTitle: "Custom connector card",
       chatEvents: [
         {
@@ -2847,7 +2863,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-custom-connector`,
+      path: "/chats/e4000000-0000-4000-a000-000000000018",
     });
 
     const card = await screen.findByTestId("connector-action-card");
@@ -2874,7 +2890,7 @@ describe("chat event action cards", () => {
   it("leaves legacy custom connector proposal links as markdown", async () => {
     const proposalUrl = `${window.location.origin}/connectors/custom/proposal?p=legacy`;
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-custom-connector-proposal`,
+      threadId: "e4000000-0000-4000-a000-000000000019",
       threadTitle: "Legacy custom connector proposal",
       chatEvents: [
         {
@@ -2889,7 +2905,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-custom-connector-proposal`,
+      path: "/chats/e4000000-0000-4000-a000-000000000019",
     });
 
     const legacyProposal = await screen.findByText("Legacy proposal");
@@ -2902,7 +2918,7 @@ describe("chat event action cards", () => {
       "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test";
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-computer-use-authorization`,
+      threadId: "e4000000-0000-4000-a000-000000000020",
       threadTitle: "Computer Use authorization card",
       chatEvents: [
         {
@@ -2924,7 +2940,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-computer-use-authorization`,
+      path: "/chats/e4000000-0000-4000-a000-000000000020",
     });
 
     const card = await screen.findByTestId("computer-use-authorization-card");
@@ -2954,7 +2970,7 @@ describe("chat event action cards", () => {
     const creditUrl = "/?settings=billing&billingView=credits";
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-plan-upgrade`,
+      threadId: "e4000000-0000-4000-a000-000000000021",
       threadTitle: "Plan upgrade cards",
       chatEvents: [
         {
@@ -2981,7 +2997,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-plan-upgrade`,
+      path: "/chats/e4000000-0000-4000-a000-000000000021",
     });
 
     const cards = await screen.findAllByTestId("plan-upgrade-card");
@@ -3164,7 +3180,7 @@ describe("chat event action cards", () => {
       },
     );
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-permission-load-retry`,
+      threadId: "e4000000-0000-4000-a000-000000000022",
       threadTitle: "Permission load retry",
       chatEvents: [
         {
@@ -3186,7 +3202,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-permission-load-retry`,
+      path: "/chats/e4000000-0000-4000-a000-000000000022",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -3244,7 +3260,7 @@ describe("chat event action cards", () => {
     );
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-permission-status-loading`,
+      threadId: "e4000000-0000-4000-a000-000000000023",
       threadTitle: "Permission status loading",
       chatEvents: [
         {
@@ -3266,7 +3282,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-permission-status-loading`,
+      path: "/chats/e4000000-0000-4000-a000-000000000023",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -3306,7 +3322,7 @@ describe("chat event action cards", () => {
     });
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-permission-load-forbidden`,
+      threadId: "e4000000-0000-4000-a000-000000000024",
       threadTitle: "Permission load forbidden",
       chatEvents: [
         {
@@ -3328,7 +3344,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-permission-load-forbidden`,
+      path: "/chats/e4000000-0000-4000-a000-000000000024",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -3366,7 +3382,7 @@ describe("chat event action cards", () => {
     });
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-permission-save-error`,
+      threadId: "e4000000-0000-4000-a000-000000000025",
       threadTitle: "Permission save error",
       chatEvents: [
         {
@@ -3388,7 +3404,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-permission-save-error`,
+      path: "/chats/e4000000-0000-4000-a000-000000000025",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -3592,7 +3608,7 @@ describe("chat event action cards", () => {
       },
     );
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-duration`,
+      threadId: "e4000000-0000-4000-a000-000000000026",
       threadTitle: "Permission duration",
       chatEvents: [
         {
@@ -3614,7 +3630,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-duration`,
+      path: "/chats/e4000000-0000-4000-a000-000000000026",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -3679,7 +3695,7 @@ describe("chat event action cards", () => {
       },
     );
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-unknown-permission`,
+      threadId: "e4000000-0000-4000-a000-000000000027",
       threadTitle: "Unknown permission",
       chatEvents: [
         {
@@ -3701,7 +3717,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-unknown-permission`,
+      path: "/chats/e4000000-0000-4000-a000-000000000027",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
@@ -3775,7 +3791,7 @@ describe("chat event action cards", () => {
     );
 
     mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-deny`,
+      threadId: "e4000000-0000-4000-a000-000000000028",
       threadTitle: "Permission action",
       chatEvents: [
         {
@@ -3797,7 +3813,7 @@ describe("chat event action cards", () => {
 
     detachedSetupPage({
       context,
-      path: `/chats/${THREAD_ID}-deny`,
+      path: "/chats/e4000000-0000-4000-a000-000000000028",
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");

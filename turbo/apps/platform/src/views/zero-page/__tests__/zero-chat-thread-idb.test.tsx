@@ -22,6 +22,7 @@ import {
   chatIdb$,
   openChatIdb,
 } from "../../../signals/external/chat-idb-store.ts";
+import { setLogErrorHandler } from "../../../signals/log.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -181,39 +182,53 @@ function mockCurrentThreadDetail(): void {
   });
 }
 
-function mockSidebarThread(): void {
-  const thread = {
-    id: THREAD_ID,
-    title: THREAD_TITLE,
-    agent: { id: AGENT_ID, avatarUrl: null },
-    createdAt: "2026-03-10T00:00:00Z",
-    updatedAt: "2026-03-10T00:00:02Z",
-    pinnedAt: null,
+function currentThreadSnapshot() {
+  return {
+    chatThreads: [
+      {
+        id: THREAD_ID,
+        agentId: AGENT_ID,
+        title: THREAD_TITLE,
+        sortAt: "2026-03-10T00:00:02Z",
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:02Z",
+        pinnedAt: null,
+        renamedAt: null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+      },
+    ],
+    latestEventId: null,
+    latestSeqId: null,
   };
+}
+
+function mockSidebarThread(): void {
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    return respond(200, {
-      chatThreads: [
-        {
-          id: thread.id,
-          agentId: thread.agent.id,
-          title: thread.title,
-          sortAt: thread.updatedAt,
-          createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
-          pinnedAt: thread.pinnedAt,
-          renamedAt: null,
-          selectedModel: null,
-          serviceTier: null,
-          computerUseHostId: null,
-        },
-      ],
-      latestEventId: null,
-      latestSeqId: null,
-    });
+    return respond(200, currentThreadSnapshot());
   });
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
+}
+
+function trackActiveAgentError(): () => boolean {
+  let logged = false;
+  setLogErrorHandler((loggerName, args) => {
+    const [message, error] = args;
+    if (
+      loggerName === "Promise" &&
+      message === "Detached promise rejected [dom_callback]" &&
+      error instanceof Error &&
+      error.message === "Chat thread requires an active agent"
+    ) {
+      logged = true;
+    }
+  });
+  return () => {
+    return logged;
+  };
 }
 
 describe("zero chat thread IndexedDB fallback", () => {
@@ -223,6 +238,146 @@ describe("zero chat thread IndexedDB fallback", () => {
 
   afterEach(async () => {
     await clearCachedChatData();
+  });
+
+  it("keeps the app skeleton visible until uncached thread metadata syncs", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+    const runtimeDb = await primeRuntimeChatDb();
+    const snapshotRequested = context.mocks.deferred<void>();
+    const releaseSnapshot = context.mocks.deferred<void>();
+    const activeAgentErrorLogged = trackActiveAgentError();
+    context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+      if (!snapshotRequested.settled()) {
+        snapshotRequested.resolve();
+      }
+      await releaseSnapshot.promise;
+      return respond(200, currentThreadSnapshot());
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    try {
+      setupChatPage();
+      await snapshotRequested.promise;
+
+      const appSkeleton = await screen.findByTestId("app-skeleton");
+      expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+      expect(
+        screen.queryByPlaceholderText(PLACEHOLDER),
+      ).not.toBeInTheDocument();
+      expect(activeAgentErrorLogged()).toBeFalsy();
+
+      releaseSnapshot.resolve();
+
+      await expect(
+        screen.findByPlaceholderText(PLACEHOLDER),
+      ).resolves.toBeInTheDocument();
+      await waitFor(() => {
+        expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+      });
+      expect(activeAgentErrorLogged()).toBeFalsy();
+    } finally {
+      if (!releaseSnapshot.settled()) {
+        releaseSnapshot.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("shows chat thread not found after remote metadata sync confirms a miss", async () => {
+    const runtimeDb = await primeRuntimeChatDb();
+    const snapshotRequested = context.mocks.deferred<void>();
+    const releaseSnapshot = context.mocks.deferred<void>();
+    const activeAgentErrorLogged = trackActiveAgentError();
+    context.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+      snapshotRequested.resolve();
+      await releaseSnapshot.promise;
+      return respond(200, {
+        chatThreads: [],
+        latestEventId: null,
+        latestSeqId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    try {
+      setupChatPage();
+      await snapshotRequested.promise;
+
+      const appSkeleton = await screen.findByTestId("app-skeleton");
+      expect(appSkeleton).not.toHaveAttribute("aria-hidden");
+      expect(
+        screen.queryByRole("heading", { name: "Chat thread not found" }),
+      ).not.toBeInTheDocument();
+
+      releaseSnapshot.resolve();
+
+      await expect(
+        screen.findByRole("heading", { name: "Chat thread not found" }),
+      ).resolves.toBeInTheDocument();
+      expect(appSkeleton).toHaveAttribute("aria-hidden", "true");
+      expect(
+        screen.queryByPlaceholderText(PLACEHOLDER),
+      ).not.toBeInTheDocument();
+      expect(activeAgentErrorLogged()).toBeFalsy();
+    } finally {
+      if (!releaseSnapshot.settled()) {
+        releaseSnapshot.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("renders from cached thread metadata without waiting for remote sync", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_THREAD_SNAPSHOT_STORE, {
+      id: "current",
+      ...currentThreadSnapshot(),
+      latestEventId: "00000000-0000-4000-8000-000000000001",
+      latestSeqId: 1,
+    });
+    const remoteEventsRequested = context.mocks.deferred<void>();
+    const releaseRemoteEvents = context.mocks.deferred<void>();
+    const activeAgentErrorLogged = trackActiveAgentError();
+    context.mocks.api(chatThreadsContract.events, async ({ respond }) => {
+      remoteEventsRequested.resolve();
+      await releaseRemoteEvents.promise;
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    try {
+      setupChatPage();
+      await remoteEventsRequested.promise;
+
+      await expect(
+        screen.findByPlaceholderText(PLACEHOLDER),
+      ).resolves.toBeInTheDocument();
+      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
+      expect(releaseRemoteEvents.settled()).toBeFalsy();
+      expect(activeAgentErrorLogged()).toBeFalsy();
+    } finally {
+      if (!releaseRemoteEvents.settled()) {
+        releaseRemoteEvents.resolve();
+      }
+      runtimeDb.close();
+    }
   });
 
   it("shows cached messages without auto-opening their artifact before remote catch-up", async () => {

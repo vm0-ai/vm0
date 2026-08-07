@@ -7,7 +7,6 @@ import {
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
   PI_SKILLS_ROOT,
-  PI_STANDBY_PROFILE,
   PI_STANDBY_TTL_RELEASE_EXIT_CODE,
 } from "@vm0/api-contracts/contracts/runners";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
@@ -37,11 +36,21 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { readModelStatsObservations } from "./helpers/model-stats-state";
-import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
-import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
+import {
+  secretKmsPlaintext,
+  useSecretKmsProbe,
+} from "./helpers/secret-kms-probe";
+import {
+  mutateRunnerJobSecretValueEnvironmentKeys,
+  seedVm0ManagedModelKey,
+} from "./helpers/runtime-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
+import {
+  createAgentComposeFixture,
+  readAgentComposeByIdFixture,
+} from "../../../test-fixtures/agent-composes";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -443,6 +452,7 @@ interface PiEdgeFixture {
   readonly agentId: string;
   readonly orgId: string;
   readonly runnerGroup: string;
+  readonly runnerProfile: string;
   readonly agentDisplayName: string;
   readonly agentInstructions: string;
   readonly workflowSkillName: string;
@@ -450,10 +460,55 @@ interface PiEdgeFixture {
   readonly model: SupportedRunModel;
 }
 
+async function setFixtureAgentProfile(
+  actor: ApiTestUser,
+  agentId: string,
+  profile: string,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected the Pi fixture actor to belong to an org");
+  }
+  const fixtureActor = { userId: actor.userId, orgId: actor.orgId };
+  const composeResponse = await readAgentComposeByIdFixture({
+    actor: fixtureActor,
+    composeId: agentId,
+  });
+  if (composeResponse.status !== 200) {
+    throw new Error("Expected the Pi fixture agent compose to be readable");
+  }
+  const content = composeResponse.body.content;
+  if (!content) {
+    throw new Error("Expected the Pi fixture agent to have compose content");
+  }
+  const entries = Object.entries(content.agents);
+  if (entries.length !== 1) {
+    throw new Error("Expected the Pi fixture compose to contain one agent");
+  }
+  const entry = entries[0];
+  if (!entry) {
+    throw new Error("Expected the Pi fixture compose agent");
+  }
+  const [agentName, agent] = entry;
+  const updated = await createAgentComposeFixture({
+    actor: fixtureActor,
+    content: {
+      ...content,
+      agents: {
+        [agentName]: { ...agent, experimental_profile: profile },
+      },
+    },
+    signal: context.signal,
+  });
+  if (updated.status !== 200 || updated.body.composeId !== agentId) {
+    throw new Error("Expected the Pi fixture compose update to preserve id");
+  }
+}
+
 async function piEdgeFixture(
   options: {
     readonly provider?: "byok" | "vm0";
     readonly model?: SupportedRunModel;
+    readonly runnerProfile?: string;
   } = {},
 ): Promise<PiEdgeFixture> {
   const providerType = options.provider ?? "byok";
@@ -497,6 +552,10 @@ async function piEdgeFixture(
   const agentInstructions =
     "# Pinned Pi instructions\nAlways preserve the run snapshot.";
   await bdd.updateAgentInstructions(actor, agent.agentId, agentInstructions);
+  const runnerProfile = options.runnerProfile ?? DEFAULT_PROFILE;
+  if (runnerProfile !== DEFAULT_PROFILE) {
+    await setFixtureAgentProfile(actor, agent.agentId, runnerProfile);
+  }
   const workflowSkillName = `pi-snapshot-${randomUUID().slice(0, 8)}`;
   await workflows.createWorkflow(actor, {
     agentId: agent.agentId,
@@ -508,6 +567,7 @@ async function piEdgeFixture(
     agentId: agent.agentId,
     orgId,
     runnerGroup,
+    runnerProfile,
     agentDisplayName: AGENT_DISPLAY_NAME,
     agentInstructions,
     workflowSkillName,
@@ -588,6 +648,7 @@ async function codexPiEdgeFixture(args?: {
     agentId: agent.agentId,
     orgId,
     runnerGroup,
+    runnerProfile: DEFAULT_PROFILE,
     agentDisplayName: AGENT_DISPLAY_NAME,
     agentInstructions,
     workflowSkillName,
@@ -855,7 +916,32 @@ describe("PiLoop edge turn", () => {
     }
     expect(poll.body.job?.runId).toBe(ordinary.body.runId);
     expect(jobNotificationCount()).toBe(baselineJobNotifications + 1);
+    const ordinaryNotification = context.mocks.ably.publish.mock.calls.find(
+      ([topic, payload]) => {
+        return (
+          topic === "job" && recordOf(payload)?.runId === ordinary.body.runId
+        );
+      },
+    );
+    const ordinaryNotificationPayload = recordOf(ordinaryNotification?.[1]);
+    if (!ordinaryNotificationPayload) {
+      throw new Error("Expected an ordinary Runner job notification");
+    }
+    expect(ordinaryNotificationPayload).not.toHaveProperty("piExecutionMode");
     expect(completionRequests).toBe(0);
+    const ordinaryContext = await api.claimRunnerJob(ordinary.body.runId);
+    expect(ordinaryContext).not.toHaveProperty("piExecutionMode");
+    const duplicateOrdinaryClaim = await api.requestClaimRunnerJob(
+      true,
+      ordinary.body.runId,
+      [404],
+    );
+    if (duplicateOrdinaryClaim.status !== 404) {
+      throw new Error("Expected the duplicate ordinary claim to return 404");
+    }
+    expect(duplicateOrdinaryClaim.body.error.message).toBe(
+      "Job not found in queue",
+    );
     await api.requestCancelRun(fixture.actor, ordinary.body.runId, [200]);
   });
 
@@ -869,6 +955,7 @@ describe("PiLoop edge turn", () => {
     );
     const legacyPoll = await api.pollRunner(fixture.runnerGroup);
     expect(legacyPoll.body.job?.runId).toBe(legacy.runId);
+    expect(legacyPoll.body.job).not.toHaveProperty("piExecutionMode");
     await api.requestCancelRun(fixture.actor, legacy.runId, [200]);
 
     await enablePiLoop(fixture);
@@ -909,13 +996,11 @@ describe("PiLoop edge turn", () => {
     const edge = await sendChatRun(fixture, edgePrompt, legacy.threadId);
     await modelStarted.promise;
 
-    const defaultPoll = await api.pollRunner(fixture.runnerGroup);
-    expect(defaultPoll.body.job).toBeNull();
     const standbyPoll = await api.requestPollRunner(
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -924,9 +1009,33 @@ describe("PiLoop edge turn", () => {
     }
     expect(standbyPoll.body.job).toMatchObject({
       runId: edge.runId,
-      experimentalProfile: PI_STANDBY_PROFILE,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "standby",
     });
+    expect(
+      context.mocks.ably.publish.mock.calls
+        .slice(publishedBefore)
+        .some(([topic, payload]) => {
+          const job = recordOf(payload);
+          return (
+            topic === "job" &&
+            job?.runId === edge.runId &&
+            job.profile === fixture.runnerProfile &&
+            job.piExecutionMode === "standby"
+          );
+        }),
+    ).toBeTruthy();
     const standbyContext = await api.claimRunnerJob(edge.runId);
+    expect(standbyContext.piExecutionMode).toBe("standby");
+    const duplicateStandbyClaim = await api.requestClaimRunnerJob(
+      true,
+      edge.runId,
+      [404],
+    );
+    if (duplicateStandbyClaim.status !== 404) {
+      throw new Error("Expected the duplicate standby claim to return 404");
+    }
+    expect(duplicateStandbyClaim.body.error.message).toBe("Run not found");
     const skillSnapshot = standbyContext.runSkillSnapshot;
     if (skillSnapshot === undefined) {
       throw new Error("Expected Pi standby context to include Skill snapshot");
@@ -1126,6 +1235,17 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, edge.runId)).status).toBe(
       "completed",
     );
+    const settledStandbyClaim = await api.requestClaimRunnerJob(
+      true,
+      edge.runId,
+      [404],
+    );
+    if (settledStandbyClaim.status !== 404) {
+      throw new Error("Expected the settled standby claim to return 404");
+    }
+    expect(settledStandbyClaim.body.error.message).toBe(
+      "Job not found in queue",
+    );
     expect(
       context.mocks.ably.publish.mock.calls
         .slice(publishedBefore)
@@ -1262,7 +1382,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1417,7 +1537,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1426,7 +1546,8 @@ describe("PiLoop edge turn", () => {
     }
     expect(standbyPoll.body.job).toMatchObject({
       runId: run.runId,
-      experimentalProfile: PI_STANDBY_PROFILE,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "standby",
     });
     const standbyContext = await api.claimRunnerJob(run.runId);
     expect(standbyContext.piModelConfig).toStrictEqual({
@@ -1882,13 +2003,32 @@ describe("PiLoop edge turn", () => {
   });
 
   it("requeues an expired standby onto the cold-start lane without settling the run", async () => {
-    const fixture = await piEdgeFixture();
+    const fixture = await piEdgeFixture({
+      runnerProfile: "vm0/pi-lifecycle-integration",
+    });
     await enablePiLoop(fixture);
     const modelStarted = createDeferredPromise<void>(context.signal);
     const releaseModel = createDeferredPromise<void>(context.signal);
+    const claimDecryptStarted = createDeferredPromise<void>(context.signal);
+    const releaseStaleClaim = createDeferredPromise<void>(context.signal);
+    let stallNextDecrypt = false;
+    useSecretKmsProbe(undefined, () => {
+      if (!stallNextDecrypt) {
+        return undefined;
+      }
+      stallNextDecrypt = false;
+      claimDecryptStarted.resolve();
+      return (async () => {
+        await releaseStaleClaim.promise;
+        return secretKmsPlaintext();
+      })();
+    });
     onTestFinished(() => {
       if (!releaseModel.settled()) {
         releaseModel.resolve();
+      }
+      if (!releaseStaleClaim.settled()) {
+        releaseStaleClaim.resolve();
       }
     });
     server.use(
@@ -1910,15 +2050,38 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
     if (standbyPoll.status !== 200) {
       throw new Error("Expected Pi standby poll to return 200");
     }
-    expect(standbyPoll.body.job?.runId).toBe(run.runId);
+    expect(standbyPoll.body.job).toMatchObject({
+      runId: run.runId,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "standby",
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      run.runId,
+      "invalid",
+    );
+    stallNextDecrypt = true;
+    const staleStandbyClaim = api.claimRunnerJob(run.runId);
+    await claimDecryptStarted.promise;
     const standbyContext = await api.claimRunnerJob(run.runId);
+    expect(standbyContext.piExecutionMode).toBe("standby");
+    const duplicateStandbyClaim = await api.requestClaimRunnerJob(
+      true,
+      run.runId,
+      [404],
+    );
+    if (duplicateStandbyClaim.status !== 404) {
+      throw new Error("Expected the duplicate standby claim to return 404");
+    }
+    expect(duplicateStandbyClaim.body.error.message).toBe("Run not found");
+    const publishedBeforeRelease = context.mocks.ably.publish.mock.calls.length;
 
     const released = await webhooks.requestAgentComplete(
       {
@@ -1937,7 +2100,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [DEFAULT_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1956,7 +2119,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [DEFAULT_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1965,15 +2128,42 @@ describe("PiLoop edge turn", () => {
     }
     expect(coldPoll.body.job).toMatchObject({
       runId: run.runId,
-      experimentalProfile: DEFAULT_PROFILE,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "cold-start",
     });
-    const coldContext = await api.claimRunnerJob(run.runId);
+    expect(
+      context.mocks.ably.publish.mock.calls
+        .slice(publishedBeforeRelease)
+        .some(([topic, payload]) => {
+          const job = recordOf(payload);
+          return (
+            topic === "job" &&
+            job?.runId === run.runId &&
+            job.profile === fixture.runnerProfile &&
+            job.piExecutionMode === "cold-start"
+          );
+        }),
+    ).toBeTruthy();
+    releaseStaleClaim.resolve();
+    const coldContext = await staleStandbyClaim;
+    expect(coldContext.piExecutionMode).toBe("cold-start");
     expect(coldContext.piSystemPrompt).toBe(standbyContext.piSystemPrompt);
     expect(coldContext.runSkillSnapshot).toStrictEqual(
       standbyContext.runSkillSnapshot,
     );
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "running",
+    );
+    const duplicateColdClaim = await api.requestClaimRunnerJob(
+      true,
+      run.runId,
+      [404],
+    );
+    if (duplicateColdClaim.status !== 404) {
+      throw new Error("Expected the duplicate cold claim to return 404");
+    }
+    expect(duplicateColdClaim.body.error.message).toBe(
+      "Job not found in queue",
     );
   });
 
@@ -2107,7 +2297,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );

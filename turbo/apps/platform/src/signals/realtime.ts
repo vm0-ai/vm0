@@ -240,8 +240,8 @@ const runWithChannel$ = command(
                 return true;
               }
             } catch (error) {
-              loopSignal.throwIfAborted();
               throwIfAbort(error);
+              loopSignal.throwIfAborted();
               if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
                 L.warn(
                   `giving up on ably notification after repeated handler failures`,
@@ -305,8 +305,8 @@ const runPayloadLoopIteration$ = command(
       }
       signal.throwIfAborted();
     } catch (error) {
-      signal.throwIfAborted();
       throwIfAbort(error);
+      signal.throwIfAborted();
       if (state.transientRetryCount >= MAX_TRANSIENT_RETRIES) {
         L.warn(
           hasPayload

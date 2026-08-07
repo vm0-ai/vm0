@@ -26,6 +26,10 @@ export function generateDataKeyOutput(
   };
 }
 
+export function secretKmsPlaintext(): Uint8Array {
+  return TEST_DATA_KEY;
+}
+
 export function useSecretKmsProbe(
   overrideGenerateDataKey?: (
     request: SecretKmsGenerateDataKeyRequest,
