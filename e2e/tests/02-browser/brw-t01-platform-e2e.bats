@@ -105,7 +105,7 @@ open_auth_form() {
     }
   )"
 
-  open_browser_with_pages_deployment_retry "$url"
+  agent-browser open "$url"
   if wait_for_browser_target --timeout-seconds 30 --fn \
     "Boolean(${target_expression}) || Boolean(${failed_script_expression})"; then
     if [[ "$(agent-browser eval "Boolean(${target_expression})")" == "true" ]]; then
