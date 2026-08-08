@@ -1191,8 +1191,7 @@ describe("chat lifecycle", () => {
     expect(followupButton).not.toHaveClass("border", "bg-background");
 
     const finishedLabel = screen.getByText(`Keep going · ${completedAtLabel}`);
-    const finishedLabelRow = finishedLabel.parentElement;
-    const finishedDivider = finishedLabelRow!.parentElement;
+    const finishedDivider = finishedLabel.parentElement;
     const finishedRunRow = finishedDivider!.parentElement;
     expect(finishedRunRow).toHaveClass("flex", "flex-col", "gap-2");
     expect(finishedRunRow).not.toHaveClass(
@@ -1201,18 +1200,23 @@ describe("chat lifecycle", () => {
       "p-3",
     );
     expect(followupList!.parentElement).toBe(finishedRunRow);
-    expect(finishedDivider!.firstElementChild).toHaveClass(
-      "h-px",
-      "w-full",
-      "bg-border/40",
+    expect(finishedDivider).toHaveClass(
+      "flex",
+      "min-h-5",
+      "items-center",
+      "gap-2",
     );
-    expect(finishedDivider!.firstElementChild).not.toHaveClass("hidden");
-    expect(finishedLabelRow!.lastElementChild).toHaveClass(
+    expect(finishedDivider).toHaveTextContent(
+      `Keep going · ${completedAtLabel}`,
+    );
+    expect(finishedDivider!.children).toHaveLength(2);
+    expect(finishedDivider!.firstElementChild).toBe(finishedLabel);
+    expect(finishedDivider!.lastElementChild).toHaveClass(
       "h-px",
       "flex-1",
       "bg-border/40",
     );
-    expect(finishedLabelRow!.lastElementChild).not.toHaveClass("hidden");
+    expect(finishedDivider!.querySelector(".w-full")).toBeNull();
   });
 
   it.each([
