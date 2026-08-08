@@ -4,7 +4,8 @@ use std::time::Duration;
 use tracing::info;
 
 use crate::process::{
-    self, DiscoveredProcesses, FirecrackerProcessIdentity, ProcessStat, ProcessStatRead,
+    self, DiscoveredProcesses, FirecrackerProcessIdentity, ProcessDiscovery, ProcessStat,
+    ProcessStatRead,
 };
 
 use super::target::KillTarget;
@@ -25,10 +26,21 @@ pub(super) enum Outcome {
 }
 
 pub(super) async fn terminate(target: &KillTarget) -> Outcome {
+    terminate_with_discovery(target, process::discover_all_with_status).await
+}
+
+async fn terminate_with_discovery<Discover, DiscoverFuture>(
+    target: &KillTarget,
+    discover: Discover,
+) -> Outcome
+where
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
+{
     let identity = match validate_orphan_target(target).await {
         OrphanTargetValidation::Valid { identity } => identity,
         OrphanTargetValidation::AlreadyGone => {
-            return already_gone_orphan_outcome(target).await;
+            return already_gone_orphan_outcome_with_discovery(target, discover).await;
         }
         OrphanTargetValidation::Changed => {
             return Outcome::AlreadyExitedOrChanged(target.clone());
@@ -43,7 +55,9 @@ pub(super) async fn terminate(target: &KillTarget) -> Outcome {
                 failure,
             },
         },
-        ProcessGroupSignalResult::AlreadyGone => already_gone_orphan_outcome(target).await,
+        ProcessGroupSignalResult::AlreadyGone => {
+            already_gone_orphan_outcome_with_discovery(target, discover).await
+        }
         ProcessGroupSignalResult::Failed => Outcome::SignalFailed(target.clone()),
     }
 }
@@ -52,7 +66,24 @@ pub(super) async fn confirmed_disappeared_outcome(
     target: &KillTarget,
     was_orphan: bool,
 ) -> Option<Outcome> {
-    let discovered = process::discover_all_with_status().await;
+    confirmed_disappeared_outcome_with_discovery(
+        target,
+        was_orphan,
+        process::discover_all_with_status,
+    )
+    .await
+}
+
+async fn confirmed_disappeared_outcome_with_discovery<Discover, DiscoverFuture>(
+    target: &KillTarget,
+    was_orphan: bool,
+    discover: Discover,
+) -> Option<Outcome>
+where
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
+{
+    let discovered = discover().await;
     if should_cleanup_disappeared_initial_orphan(
         target,
         was_orphan,
@@ -66,8 +97,15 @@ pub(super) async fn confirmed_disappeared_outcome(
     }
 }
 
-async fn already_gone_orphan_outcome(target: &KillTarget) -> Outcome {
-    confirmed_disappeared_outcome(target, true)
+async fn already_gone_orphan_outcome_with_discovery<Discover, DiscoverFuture>(
+    target: &KillTarget,
+    discover: Discover,
+) -> Outcome
+where
+    Discover: FnOnce() -> DiscoverFuture,
+    DiscoverFuture: std::future::Future<Output = ProcessDiscovery>,
+{
+    confirmed_disappeared_outcome_with_discovery(target, true, discover)
         .await
         .unwrap_or_else(|| Outcome::AlreadyExitedOrChanged(target.clone()))
 }
@@ -497,7 +535,7 @@ mod tests {
 
     use super::super::test_support::{discovered_with_firecrackers, make_fc, make_target};
     use super::*;
-    use crate::process::FirecrackerProcessInfo;
+    use crate::process::{FirecrackerProcessInfo, ProcessDiscovery};
     use crate::test_fixtures::ignored_child::{
         ignored_child_test_env_guard_enabled, run_ignored_child_test,
     };
@@ -515,6 +553,33 @@ mod tests {
             ppid: 7,
             pgid: identity.pgid,
             starttime: identity.starttime,
+        }
+    }
+
+    fn process_discovery(
+        firecrackers: Vec<FirecrackerProcessInfo>,
+        proc_scan_complete: bool,
+    ) -> ProcessDiscovery {
+        ProcessDiscovery {
+            processes: discovered_with_firecrackers(firecrackers),
+            proc_scan_complete,
+        }
+    }
+
+    fn missing_orphan_target() -> KillTarget {
+        KillTarget {
+            pid: u32::MAX,
+            ppid: None,
+            run_id: None,
+            sandbox_id: "sbox-missing".into(),
+            base_dir: Some(PathBuf::from("/data/r1")),
+            identity: Some(FirecrackerProcessIdentity {
+                pid: u32::MAX,
+                pgid: 1234,
+                starttime: 123456,
+                sandbox_id: "sbox-missing".into(),
+                base_dir: Some(PathBuf::from("/data/r1")),
+            }),
         }
     }
 
@@ -1118,26 +1183,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orphan_kill_nonexistent_pid_reports_gone_when_cleanup_is_safe() {
-        // u32::MAX exceeds any valid PID — /proc/{pid}/stat won't exist
-        let target = KillTarget {
-            pid: u32::MAX,
-            ppid: None,
-            run_id: None,
-            sandbox_id: "sbox-missing".into(),
-            base_dir: Some(PathBuf::from("/data/r1")),
-            identity: Some(FirecrackerProcessIdentity {
-                pid: u32::MAX,
-                pgid: 1234,
-                starttime: 123456,
-                sandbox_id: "sbox-missing".into(),
-                base_dir: Some(PathBuf::from("/data/r1")),
-            }),
-        };
+    async fn orphan_kill_nonexistent_pid_reports_gone_with_complete_discovery() {
+        let target = missing_orphan_target();
 
-        assert!(matches!(
-            terminate(&target).await,
-            Outcome::AlreadyExited(_)
-        ));
+        let outcome = terminate_with_discovery(&target, || {
+            std::future::ready(process_discovery(vec![], true))
+        })
+        .await;
+
+        assert!(
+            matches!(
+                &outcome,
+                Outcome::AlreadyExited(exited) if exited == &target
+            ),
+            "unexpected orphan kill outcome: {outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn orphan_kill_nonexistent_pid_refuses_incomplete_discovery() {
+        let target = missing_orphan_target();
+
+        let outcome = terminate_with_discovery(&target, || {
+            std::future::ready(process_discovery(vec![], false))
+        })
+        .await;
+
+        assert!(
+            matches!(
+                &outcome,
+                Outcome::AlreadyExitedOrChanged(refused) if refused == &target
+            ),
+            "unexpected orphan kill outcome: {outcome:?}"
+        );
     }
 }
