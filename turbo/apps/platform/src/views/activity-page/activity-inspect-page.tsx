@@ -115,7 +115,7 @@ function InspectEmptyState() {
         })}
       />
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <IconUpload size={48} stroke={1} className="text-muted-foreground/40" />
+        <IconUpload size={48} stroke={1} className="" />
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
             return $.activity.inspect.noLog.title;

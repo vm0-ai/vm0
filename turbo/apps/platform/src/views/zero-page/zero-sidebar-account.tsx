@@ -412,7 +412,7 @@ function CreditBalanceItem({
       onModalSelect={onOpenCreditBalance}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
+      <IconCoins size={18} stroke={1.5} className="" />
       <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
         {loading ? (
           <span className="block h-4 w-24 rounded bg-muted/60" />
@@ -440,11 +440,7 @@ function UnifiedSettingsGroup({
         onModalSelect={onOpenSettings}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
-        <IconSettings
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
+        <IconSettings size={18} stroke={1.5} className="" />
         <span>
           {t(($) => {
             return $.settings.accountMenu.settings;
@@ -458,7 +454,7 @@ function UnifiedSettingsGroup({
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconFlask size={18} stroke={1.5} className="text-muted-foreground" />
+          <IconFlask size={18} stroke={1.5} className="" />
           <span>
             {t(($) => {
               return $.settings.accountMenu.lab;
@@ -487,7 +483,7 @@ function AccountManagementGroup({
         onClick={onAddAccount}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
-        <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+        <IconPlus size={18} stroke={1.5} className="" />
         <span>
           {t(($) => {
             return $.settings.accountMenu.addAccount;
@@ -499,21 +495,13 @@ function AccountManagementGroup({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
-        <IconSwitchHorizontal
-          size={18}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
+        <IconSwitchHorizontal size={18} stroke={1.5} className="" />
         <span className="flex-1">
           {t(($) => {
             return $.settings.accountMenu.switchAccount;
           })}
         </span>
-        <IconChevronRight
-          size={14}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
+        <IconChevronRight size={14} stroke={1.5} className="" />
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-[220px]">
         {others.map((account) => {
@@ -546,7 +534,7 @@ function AccountManagementGroup({
           onClick={onAddAccount}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+          <IconPlus size={18} stroke={1.5} className="" />
           <span>
             {t(($) => {
               return $.settings.accountMenu.addAccount;
@@ -567,11 +555,7 @@ function ExtraAccountActions() {
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <IconDatabaseExport
-        size={18}
-        stroke={1.5}
-        className="text-muted-foreground"
-      />
+      <IconDatabaseExport size={18} stroke={1.5} className="" />
       <span>
         {t(($) => {
           return $.settings.accountMenu.exportData;
@@ -594,7 +578,7 @@ function SignOutItem({
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <IconLogout size={18} stroke={1.5} className="text-muted-foreground" />
+      <IconLogout size={18} stroke={1.5} className="" />
       <span>
         {t(($) => {
           return $.settings.accountMenu.signOut;

@@ -1787,7 +1787,7 @@ function FeishuSetupFaq() {
             <IconChevronRight
               size={17}
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+              className="mt-0.5 shrink-0 transition-transform group-open:rotate-90"
             />
             <span>
               {t(($) => {
@@ -1807,7 +1807,7 @@ function FeishuSetupFaq() {
             <IconChevronRight
               size={17}
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+              className="mt-0.5 shrink-0 transition-transform group-open:rotate-90"
             />
             <span>
               {t(($) => {

@@ -150,20 +150,16 @@ function resolveCard(
 function CardIcon({ kind }: { kind: CardKind }): ReactNode {
   switch (kind) {
     case "ready": {
-      return <IconGift size={40} className="text-foreground opacity-80" />;
+      return <IconGift size={40} className="opacity-80" />;
     }
     case "granted": {
       return <IconCheck size={40} className="text-green-600 opacity-80" />;
     }
     case "processing": {
-      return (
-        <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
-      );
+      return <IconLoader2 size={40} className="animate-spin" />;
     }
     case "auth": {
-      return (
-        <IconLock size={40} className="text-muted-foreground opacity-70" />
-      );
+      return <IconLock size={40} className="opacity-70" />;
     }
     case "broken": {
       return <IconX size={40} className="text-destructive opacity-70" />;

@@ -99,7 +99,7 @@ function ConnectorAccessSearch({
       <IconSearch
         size={15}
         stroke={1.5}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
       />
       <input
         value={value}

@@ -133,9 +133,7 @@ function MailDraftCardContent({
                 })
               : statusLabel(draft.status)}
         </span>
-        {!deleted ? (
-          <IconChevronRight size={16} className="text-muted-foreground" />
-        ) : null}
+        {!deleted ? <IconChevronRight size={16} className="" /> : null}
       </span>
     </>
   );

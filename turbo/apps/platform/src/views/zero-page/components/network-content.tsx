@@ -288,10 +288,7 @@ function TypeFilter({
             <IconFilter size={14} stroke={1.5} className="shrink-0" />
             {typeFilterLabel(typeFilter)}
           </span>
-          <IconChevronDown
-            size={14}
-            className="shrink-0 text-muted-foreground"
-          />
+          <IconChevronDown size={14} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
@@ -1136,7 +1133,7 @@ export function NetworkContent({
       {hasMore && onLoadMore && (
         <div className="flex justify-center py-4">
           {loading ? (
-            <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <IconLoader2 className="h-5 w-5 animate-spin" />
           ) : (
             <button
               type="button"

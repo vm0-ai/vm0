@@ -59,7 +59,7 @@ export function MorningBriefUnsubscribePage() {
   if (!status) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
-        <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
+        <IconLoader2 size={40} className="animate-spin" />
         <span className="sr-only">
           {t(($) => {
             return $.lifecycle.morningBriefUnsubscribe.loadingLabel;

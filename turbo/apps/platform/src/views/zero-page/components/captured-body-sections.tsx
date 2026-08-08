@@ -54,7 +54,7 @@ function CollapsibleSection({
           <IconChevronRight
             size={14}
             stroke={2}
-            className="transition-transform group-open:rotate-90 text-muted-foreground shrink-0"
+            className="transition-transform group-open:rotate-90 shrink-0"
           />
           <span className="text-xs font-medium text-foreground">{title}</span>
           {badge && <InlineBadge color="muted">{badge}</InlineBadge>}

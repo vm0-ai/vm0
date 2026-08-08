@@ -476,7 +476,7 @@ function getTodoStatusIcon(status: string) {
       return <IconLoader className="h-4 w-4 text-yellow-500" />;
     }
     default: {
-      return <IconCircleDashed className="h-4 w-4 text-muted-foreground" />;
+      return <IconCircleDashed className="h-4 w-4" />;
     }
   }
 }

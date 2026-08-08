@@ -134,9 +134,9 @@ function SessionStateIndicator({
       aria-label={t(($) => {
         return $.chat.sidebar.draft;
       })}
-      className="flex items-center justify-center text-sidebar-foreground/50"
+      className="flex items-center justify-center text-sidebar-foreground"
     >
-      <IconPencil size={16} stroke={2} />
+      <IconPencil className="opacity-35" size={16} stroke={2} />
     </span>
   );
 }
@@ -231,15 +231,19 @@ function ChatThreadMenu({
                 >
                   {usePinnedIndicatorTrigger ? (
                     <>
-                      <IconPin size={16} stroke={2} className="md:hidden" />
+                      <IconPin
+                        size={16}
+                        stroke={2}
+                        className="md:hidden opacity-70"
+                      />
                       <IconDots
                         size={16}
                         stroke={2}
-                        className="hidden md:block"
+                        className="hidden md:block opacity-70"
                       />
                     </>
                   ) : (
-                    <IconDots size={16} stroke={2} />
+                    <IconDots className="opacity-70" size={16} stroke={2} />
                   )}
                 </span>
               </TooltipTrigger>
@@ -326,9 +330,9 @@ function ChatThreadSideDecorator({
                 aria-label={t(($) => {
                   return $.chat.sidebar.pinned;
                 })}
-                className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
+                className="hidden items-center justify-center text-sidebar-foreground group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
-                <IconPin size={16} stroke={2} />
+                <IconPin className="opacity-50" size={16} stroke={2} />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -663,7 +667,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <IconDots size={16} stroke={2} />
+          <IconDots className="opacity-70" size={16} stroke={2} />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -714,13 +718,13 @@ function ChatThreadsTitle() {
         return setCollapsed(!collapsed);
       }}
     >
-      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground group-hover:text-sidebar-foreground transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <IconChevronRight
+            className={`opacity-35 ${collapsed ? "" : "rotate-90"}`}
             size={12}
             stroke={2}
-            className={collapsed ? "" : "rotate-90"}
           />
         </span>
       </span>

@@ -3393,11 +3393,7 @@ function CompletedWorkFoldRow({
         onClick={onToggle}
         className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
-        <IconHourglass
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <IconHourglass aria-hidden size={14} className="shrink-0" />
         <span className="text-[13px]">{label}</span>
         <IconChevronRight
           aria-hidden
@@ -3606,11 +3602,7 @@ function RunGroupFoldRow({
           embedded && "mt-1.5",
         )}
       >
-        <Icon
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <Icon aria-hidden size={14} className="shrink-0" />
         <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
           {label}
         </span>
@@ -4009,7 +4001,7 @@ function RecommendedFollowupList({
             <IconArrowUpRight
               size={14}
               stroke={1.8}
-              className="shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
+              className="shrink-0 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100"
             />
           </button>
         );

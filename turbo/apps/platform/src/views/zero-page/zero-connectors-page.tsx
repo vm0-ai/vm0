@@ -488,11 +488,7 @@ function ConnectorFilterDropdown({
           })}
           className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
         >
-          <IconFilter
-            size={14}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
+          <IconFilter size={14} stroke={1.5} className="" />
           {activeAgent && (
             <AvatarFromUrl
               avatarUrl={activeAgent.avatarUrl}
@@ -502,11 +498,7 @@ function ConnectorFilterDropdown({
             />
           )}
           <span className="max-w-[140px] truncate">{triggerLabel}</span>
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
+          <IconChevronDown size={14} stroke={1.5} className="" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

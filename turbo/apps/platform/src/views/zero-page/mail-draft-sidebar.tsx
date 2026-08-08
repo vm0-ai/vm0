@@ -277,7 +277,7 @@ function AttachmentSummary({
 }) {
   return (
     <div className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-foreground/15 bg-background/80 px-1.5">
-      <IconPaperclip size={14} className="shrink-0 text-muted-foreground" />
+      <IconPaperclip size={14} className="shrink-0" />
       <span className="min-w-0 truncate text-xs font-medium">
         {attachment.filename}
       </span>

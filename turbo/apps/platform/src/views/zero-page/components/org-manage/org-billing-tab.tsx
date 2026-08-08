@@ -2248,11 +2248,7 @@ export function OrgBillingTab() {
                     className="text-foreground/40"
                   />
                 </span>
-                <IconChevronRight
-                  size={14}
-                  stroke={1.5}
-                  className="shrink-0 text-muted-foreground/50"
-                />
+                <IconChevronRight size={14} stroke={1.5} className="shrink-0" />
               </button>
             </>
           )}

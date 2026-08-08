@@ -2684,11 +2684,7 @@ function WorkflowFilePicker({
           className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-sm px-0.5 py-0.5 text-sm font-medium text-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="min-w-0 truncate">{selectedLabel}</span>
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <IconChevronDown size={14} stroke={1.5} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">

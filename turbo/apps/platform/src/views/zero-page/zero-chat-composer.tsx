@@ -1578,10 +1578,7 @@ function TemplateEmptyPanel() {
   return (
     <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
-        <IconSearch
-          className="mb-4 h-8 w-8 text-muted-foreground/70"
-          stroke={1.7}
-        />
+        <IconSearch className="mb-4 h-8 w-8" stroke={1.7} />
         <p className="text-sm font-semibold text-muted-foreground">
           {t(($) => {
             return $.artifacts.templates.noMatches;
@@ -6268,11 +6265,7 @@ function ComputerUseConnectorMenuSection({
         </div>
       ) : (
         <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
-          <IconDeviceDesktop
-            size={16}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <IconDeviceDesktop size={16} stroke={1.5} className="shrink-0" />
           {t(($) => {
             return $.chat.computerUse.noOnlineComputers;
           })}
@@ -6284,11 +6277,7 @@ function ComputerUseConnectorMenuSection({
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
           onClick={onOpenDownloadDialog}
         >
-          <IconPlug
-            size={16}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <IconPlug size={16} stroke={1.5} className="shrink-0" />
           {t(($) => {
             return $.chat.computerUse.connectMyComputer;
           })}
