@@ -116,6 +116,7 @@ import type {
 import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -4108,6 +4109,10 @@ function RecommendedFollowupList({
   const { t } = useTranslation();
   const responsiveFollowupCards =
     useGet(featureSwitch$)[FeatureSwitchKey.ResponsiveFollowupCards] ?? false;
+  // Card rail only on actual mobile/touch text-entry devices, mirroring the
+  // composer auto-focus heuristic. A desktop window dragged narrow must still
+  // render the flat list, so container width is not the deciding factor.
+  const showFollowupCards = responsiveFollowupCards && isMobileTextInputDevice();
   const selectOrAppendComposerText = useSet(
     thread.composer.editor.selectOrAppendText$,
   );
@@ -4136,8 +4141,8 @@ function RecommendedFollowupList({
         return $.chat.run.keepGoing;
       })}
       className={cn(
-        responsiveFollowupCards
-          ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden @[900px]:-mx-2 @[900px]:block @[900px]:overflow-visible @[900px]:pb-0"
+        showFollowupCards
+          ? "-mx-2 flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           : "-mx-2",
       )}
     >
@@ -4149,8 +4154,8 @@ function RecommendedFollowupList({
             title={followup.prompt}
             className={cn(
               "group flex text-left transition-colors",
-              responsiveFollowupCards
-                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--zero-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 @[900px]:min-h-10 @[900px]:w-full @[900px]:items-center @[900px]:gap-2 @[900px]:rounded-lg @[900px]:border-0 @[900px]:bg-transparent @[900px]:px-2 @[900px]:py-2 @[900px]:shadow-none @[900px]:hover:bg-state-hover"
+              showFollowupCards
+                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--zero-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover",
             )}
             onClick={() => {
@@ -4160,7 +4165,7 @@ function RecommendedFollowupList({
             <span
               className={cn(
                 "shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground",
-                responsiveFollowupCards && "hidden @[900px]:block",
+                showFollowupCards && "hidden",
               )}
             >
               <RecommendedFollowupIcon followup={followup} />
@@ -4168,8 +4173,8 @@ function RecommendedFollowupList({
             <span
               className={cn(
                 "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 group-hover:text-foreground",
-                responsiveFollowupCards
-                  ? "text-foreground @[900px]:text-muted-foreground"
+                showFollowupCards
+                  ? "text-foreground"
                   : "text-muted-foreground",
               )}
             >
@@ -4180,7 +4185,7 @@ function RecommendedFollowupList({
               stroke={1.8}
               className={cn(
                 "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100",
-                responsiveFollowupCards && "hidden @[900px]:block",
+                showFollowupCards && "hidden",
               )}
             />
           </button>
