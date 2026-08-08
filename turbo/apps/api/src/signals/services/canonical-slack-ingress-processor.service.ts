@@ -25,7 +25,6 @@ import {
 import { settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
-  attachCanonicalAssetsToEvent,
   materializeCanonicalSlackInputAssets$,
   type CanonicalSlackInputAsset,
 } from "./canonical-asset.service";
@@ -361,11 +360,6 @@ async function persistCanonicalSlackMessage(
     if (!inserted) {
       throw new Error("Canonical Slack ingress message already exists");
     }
-    await attachCanonicalAssetsToEvent(
-      tx,
-      args.ingress.ingressId,
-      args.canonicalAssets,
-    );
     await touchChatThreadLastMessageAt(
       tx,
       args.chatThreadId,

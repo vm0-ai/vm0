@@ -666,7 +666,7 @@ export const materializeCanonicalSlackInputAssets$ = command(
   },
 );
 
-export async function attachCanonicalAssetsToEvent(
+async function attachCanonicalAssetsToEvent(
   db: Db,
   eventId: string,
   assets: readonly {

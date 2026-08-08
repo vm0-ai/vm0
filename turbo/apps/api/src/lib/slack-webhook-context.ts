@@ -362,9 +362,14 @@ function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
 }
 
+/**
+ * Canonical input asset resolved for one Slack file. `slackFileId` is the
+ * upstream Slack file ID the asset was imported from, which is how a prompt
+ * line pairs a raw Slack file with its canonical replacement.
+ */
 export interface SlackPromptAsset {
   readonly assetId: string;
-  readonly position: number;
+  readonly slackFileId: string;
   readonly filename: string;
   readonly contentType: string;
   readonly status: "pending" | "ready" | "failed";
@@ -377,14 +382,15 @@ function canonicalSlackFilesPrompt(
   if (!files || files.length === 0) {
     return "";
   }
-  const assetByPosition = new Map(
+  const assetBySlackFileId = new Map(
     assets.map((asset) => {
-      return [asset.position, asset] as const;
+      return [asset.slackFileId, asset] as const;
     }),
   );
   return files
-    .flatMap((file, position) => {
-      const asset = assetByPosition.get(position);
+    .flatMap((file) => {
+      const asset =
+        file.id === undefined ? undefined : assetBySlackFileId.get(file.id);
       if (asset?.status === "ready") {
         return [
           `[Web file] ${asset.filename} (${asset.contentType})\n   [ID] ${asset.assetId}`,

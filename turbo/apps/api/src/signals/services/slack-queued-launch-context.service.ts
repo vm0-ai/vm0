@@ -1,14 +1,16 @@
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import {
+  chatEvents,
+  type ChatEventUserMessage,
+} from "@vm0/db/schema/chat-event";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import {
   CANONICAL_ASSET_VERSION,
-  chatEventAssetRefs,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 
 import {
   buildSlackSystemPrompt,
@@ -19,6 +21,7 @@ import {
 import { inferMimetype } from "../../lib/mimetype";
 import type { SlackUserInfo } from "../external/slack-message-client";
 import type { Db } from "../external/db";
+import { userMessageFileParts } from "./zero-chat-user-message.service";
 
 export interface SlackQueuedLaunchMaterial {
   readonly prompt: string;
@@ -46,7 +49,10 @@ type SlackLaunchContextRow = Pick<
   | "channelType"
   | "threadTs"
   | "routeThreadTs"
-> & { readonly botUserId: string };
+> & {
+  readonly botUserId: string;
+  readonly userMessage: ChatEventUserMessage | null;
+};
 
 function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   if (
@@ -57,12 +63,14 @@ function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
     row.messageFiles === null ||
     row.mentionDisplayNames === null ||
     row.channelType === null ||
-    row.threadTs === null
+    row.threadTs === null ||
+    row.userMessage === null
   ) {
     return null;
   }
   return {
     ...row,
+    userMessage: row.userMessage,
     channelId: row.channelId,
     conversationContext: row.conversationContext,
     messageText: row.messageText,
@@ -85,6 +93,7 @@ async function loadSlackLaunchContext(
   const [row] = await db
     .select({
       botUserId: slackOrgInstallations.botUserId,
+      userMessage: chatEvents.userMessage,
       channelId: chatSlackContext.channelId,
       conversationContext: chatSlackContext.conversationContext,
       messageText: chatSlackContext.messageText,
@@ -147,37 +156,47 @@ async function loadSlackLaunchContext(
   return requiredSlackLaunchContext(row);
 }
 
+/**
+ * Resolve the canonical input assets the Slack message persisted in its user
+ * message document. The document is the only ownership record: the file parts
+ * name the assets, and the asset row carries the Slack file ID that pairs each
+ * one back to the raw file retained with the launch context.
+ */
 async function loadSlackPromptAssets(
   db: Db,
-  args: { readonly eventId: string; readonly userId: string },
+  args: {
+    readonly userMessage: ChatEventUserMessage;
+    readonly userId: string;
+  },
 ): Promise<SlackPromptAsset[]> {
+  const assetIds = userMessageFileParts(args.userMessage).map((part) => {
+    return part.fileId;
+  });
+  if (assetIds.length === 0) {
+    return [];
+  }
   const rows = await db
     .select({
       assetId: runUploadedFiles.id,
-      position: chatEventAssetRefs.position,
+      slackFileId: runUploadedFiles.externalId,
       filename: runUploadedFiles.filename,
       contentType: runUploadedFiles.contentType,
       status: runUploadedFiles.materializationStatus,
     })
-    .from(chatEventAssetRefs)
-    .innerJoin(
-      runUploadedFiles,
-      eq(runUploadedFiles.id, chatEventAssetRefs.assetId),
-    )
+    .from(runUploadedFiles)
     .where(
       and(
-        eq(chatEventAssetRefs.chatEventId, args.eventId),
+        inArray(runUploadedFiles.id, assetIds),
         eq(runUploadedFiles.userId, args.userId),
         eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
         eq(runUploadedFiles.classification, "input"),
       ),
-    )
-    .orderBy(asc(chatEventAssetRefs.position));
+    );
   return rows.map((row) => {
     const filename = row.filename ?? row.assetId;
     return {
       assetId: row.assetId,
-      position: row.position,
+      slackFileId: row.slackFileId,
       filename,
       contentType: row.contentType ?? inferMimetype(filename),
       status: row.status ?? "failed",
@@ -209,7 +228,7 @@ export async function loadSlackQueuedLaunchMaterial(
     return null;
   }
   const assets = await loadSlackPromptAssets(db, {
-    eventId: args.eventId,
+    userMessage: context.userMessage,
     userId: args.userId,
   });
   const messagePrompt = resolveUserMentions(

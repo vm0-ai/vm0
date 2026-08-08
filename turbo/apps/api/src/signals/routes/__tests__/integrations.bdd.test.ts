@@ -26,7 +26,10 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { readThreadSessionBinding } from "./helpers/runtime-state";
+import {
+  readChatEventAssetRefIds,
+  readThreadSessionBinding,
+} from "./helpers/runtime-state";
 
 /*
 helper gap:
@@ -1578,6 +1581,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!canonicalInputMessage) {
       throw new Error("Expected the canonical Slack input message");
     }
+    // Slack input assets are owned by the user message document alone. The
+    // test-only state boundary pins that the ref-table writer stopped, while
+    // the launch prompt below covers the document-backed read path.
+    await expect(
+      readChatEventAssetRefIds(context, canonicalInputMessage.id),
+    ).resolves.toStrictEqual([]);
     await expect(
       readChatEventContextFixture(canonicalInputMessage.id),
     ).resolves.toMatchObject({
