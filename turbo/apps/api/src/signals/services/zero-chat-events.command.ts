@@ -1431,9 +1431,7 @@ function appendUnassociatedUserMessage(params: {
         : {}),
     };
     const inserted = params.revokesEventId
-      ? await replaceChatEvent(tx, params.revokesEventId, event, {
-          preserveAssetRefs: false,
-        })
+      ? await replaceChatEvent(tx, params.revokesEventId, event)
       : await insertChatEvent(tx, event, "id");
     if (inserted) {
       await registerCanonicalWebInputAssets(tx, {
@@ -1548,9 +1546,7 @@ async function appendAssociatedUserMessage(params: {
       ...(params.triggerSource === "web" ? { contextType: "web" } : {}),
     };
     const inserted = params.revokesEventId
-      ? await replaceChatEvent(tx, params.revokesEventId, event, {
-          preserveAssetRefs: false,
-        })
+      ? await replaceChatEvent(tx, params.revokesEventId, event)
       : await insertChatEvent(tx, event, "id");
     if (inserted) {
       await registerCanonicalWebInputAssets(tx, {
@@ -2694,9 +2690,7 @@ async function appendInsufficientCreditsEvents(params: {
       createdAt: userCreatedAt,
     };
     const userMessage = params.body.revokesEventId
-      ? await replaceChatEvent(tx, params.body.revokesEventId, userValues, {
-          preserveAssetRefs: false,
-        })
+      ? await replaceChatEvent(tx, params.body.revokesEventId, userValues)
       : await insertChatEvent(tx, userValues, "id");
 
     const createdAt = userMessage?.createdAt ?? userCreatedAt;

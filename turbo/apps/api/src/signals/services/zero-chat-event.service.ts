@@ -22,7 +22,6 @@ import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
 import { eq, sql } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import type {
@@ -1131,7 +1130,6 @@ export async function replaceChatEvent(
   tx: ChatEventWriteTransaction,
   eventId: string,
   replacement: NewChatEvent,
-  options?: { readonly preserveAssetRefs?: boolean },
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
@@ -1148,7 +1146,7 @@ export async function replaceChatEvent(
   if (!target) {
     throw new Error("Cannot revoke a missing chat event");
   }
-  return await replaceLoadedChatEvent(tx, target, replacement, options);
+  return await replaceLoadedChatEvent(tx, target, replacement);
 }
 
 /** Append a replacement for a target already loaded by an authoritative read. */
@@ -1156,7 +1154,6 @@ export async function replaceLoadedChatEvent(
   tx: ChatEventWriteTransaction,
   target: LoadedChatEventReplacementTarget,
   replacement: NewChatEvent,
-  options?: { readonly preserveAssetRefs?: boolean },
 ): Promise<ChatEventCommandResult | null> {
   if (target.chatThreadId !== replacement.chatThreadId) {
     throw new Error("Cannot revoke a chat event from another thread");
@@ -1209,26 +1206,6 @@ export async function replaceLoadedChatEvent(
 
   if (displayContext) {
     await insertDisplayContext(tx, displayContext, inserted.createdAt);
-  }
-  if (options?.preserveAssetRefs !== false) {
-    await tx
-      .insert(chatEventAssetRefs)
-      .select(
-        tx
-          .select({
-            chatEventId: sql`${inserted.id}`
-              .mapWith(chatEventAssetRefs.chatEventId)
-              .as("chat_event_id"),
-            assetId: chatEventAssetRefs.assetId,
-            position: chatEventAssetRefs.position,
-            createdAt: sql`now()`
-              .mapWith(chatEventAssetRefs.createdAt)
-              .as("created_at"),
-          })
-          .from(chatEventAssetRefs)
-          .where(eq(chatEventAssetRefs.chatEventId, target.id)),
-      )
-      .onConflictDoNothing();
   }
   return inserted;
 }
