@@ -44,14 +44,25 @@ function readRuleBody(css: string, selector: string): string {
   throw new Error(`Unterminated CSS rule for ${selector}`);
 }
 
+/** Maps each `--state-<step>-alpha` declaration in `themeBody` to its percent. */
+function readAlphas(themeBody: string): Map<string, number> {
+  const alphas = new Map<string, number>();
+  for (const [, step, percent] of themeBody.matchAll(
+    /--state-([a-z-]+)-alpha:\s*([\d.]+)%/g,
+  )) {
+    if (step !== undefined && percent !== undefined) {
+      alphas.set(step, Number(percent));
+    }
+  }
+  return alphas;
+}
+
 function readAlpha(themeBody: string, name: string): number {
-  const match = new RegExp(`--state-${name}-alpha:\\s*([\\d.]+)%`).exec(
-    themeBody,
-  );
-  if (match === null) {
+  const alpha = readAlphas(themeBody).get(name);
+  if (alpha === undefined) {
     throw new Error(`Missing --state-${name}-alpha`);
   }
-  return Number(match[1]);
+  return alpha;
 }
 
 const THEMES = [
