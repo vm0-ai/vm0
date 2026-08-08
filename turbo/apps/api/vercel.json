@@ -17,6 +17,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/snapshot-chat-events",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/cron/execute-workflow-automations",
       "schedule": "* * * * *"
     },

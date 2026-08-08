@@ -88,6 +88,12 @@ const cronProjectChatEventSearchResponseSchema = z.object({
   deletedDocs: z.number(),
 });
 
+const cronSnapshotChatEventsResponseSchema = z.object({
+  success: z.literal(true),
+  snapshots: z.number(),
+  archivedEvents: z.number(),
+});
+
 const cronCompactUsageEventsResponseSchema = z.object({
   success: z.literal(true),
   cutoff: z.string(),
@@ -292,6 +298,20 @@ export const cronProjectChatEventSearchContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Project chat events into the search docs table",
+  },
+});
+
+export const cronSnapshotChatEventsContract = c.router({
+  snapshot: {
+    method: "GET",
+    path: "/api/cron/snapshot-chat-events",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSnapshotChatEventsResponseSchema,
+      401: apiErrorSchema,
+      500: z.object({ error: z.string() }),
+    },
+    summary: "Archive chat events into immutable full-thread R2 snapshots",
   },
 });
 

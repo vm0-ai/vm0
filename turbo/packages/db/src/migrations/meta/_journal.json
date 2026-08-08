@@ -372,6 +372,13 @@
       "when": 1786119747451,
       "tag": "0860_striped_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 861,
+      "version": "7",
+      "when": 1786157342275,
+      "tag": "0861_light_brother_voodoo",
+      "breakpoints": true
     }
   ]
 }
