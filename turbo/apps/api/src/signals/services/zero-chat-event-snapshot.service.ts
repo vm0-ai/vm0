@@ -97,9 +97,10 @@ export function zeroChatThreadEventSnapshot(args: {
  * Raw-row tail after a seq cursor. The cursor must still exist: a missing row
  * means the range below it is unavailable and the client has to rebuild from
  * a fresh snapshot. A cursor equal to the current head's last_seq_id is always
- * valid because the snapshot endpoint just handed it out. A thread with no
- * current head has never had a range archived away, so any cursor still reads
- * from Postgres; `sinceSeqId: 0` is the cold start for such a thread.
+ * valid because the snapshot endpoint just handed it out. `sinceSeqId: 0` is
+ * the cold start for a thread the archiver has not reached yet: it precedes
+ * every event, so it owns no row of its own, and it stays valid only while the
+ * thread has no current head.
  */
 export function zeroChatThreadEventRows(args: {
   readonly threadId: string;
