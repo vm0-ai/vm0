@@ -566,6 +566,23 @@ impl VsockHost {
 
     /// Request graceful shutdown from guest.
     ///
+    /// Once the guest receives a valid shutdown request, its connection loop
+    /// is terminal: after attempting to write `MSG_SHUTDOWN_ACK`, it stops
+    /// dispatching later frames and waits for the host to disconnect. This
+    /// remains true when the acknowledgement write fails and the host cannot
+    /// observe it.
+    ///
+    /// A transport error, timeout, or cancellation after the request may have
+    /// been written does not reveal whether the guest received it. This method
+    /// does not expose which side of that boundary a failure or cancellation
+    /// occurred on. Unless other synchronization proves that no frame started
+    /// writing, treat the guest lifecycle state as uncertain and do not attempt
+    /// later operations on this connection.
+    ///
+    /// `Ok(())` confirms that the host received a matching, valid
+    /// `MSG_SHUTDOWN_ACK`. It does not wait for or prove guest connection-loop
+    /// exit, guest-process termination, or VM termination.
+    ///
     /// The timeout covers waiting for the shared writer, writing the request,
     /// and waiting for the acknowledgement.
     ///
