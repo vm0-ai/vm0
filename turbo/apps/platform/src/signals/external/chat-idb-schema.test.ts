@@ -1,6 +1,8 @@
 import type { IDBPDatabase } from "idb";
 import { describe, expect, it, vi } from "vitest";
 import {
+  CHAT_EVENT_ROWS_ORDER_INDEX,
+  CHAT_EVENT_ROWS_STORE,
   CHAT_IDB_VERSION,
   CHAT_MESSAGES_ORDER_INDEX,
   CHAT_MESSAGES_STORE,
@@ -81,6 +83,22 @@ function expectChatMessagesStoreCreated(
   });
 }
 
+function expectChatEventRowsStoreCreated(
+  createdStores: ReturnType<typeof fakeDb>["createdStores"],
+  createObjectStore: ReturnType<typeof fakeDb>["createObjectStore"],
+): void {
+  expect(createObjectStore).toHaveBeenCalledWith(CHAT_EVENT_ROWS_STORE, {
+    keyPath: "id",
+  });
+  expect(
+    createdStores.get(CHAT_EVENT_ROWS_STORE)?.createIndex,
+  ).toHaveBeenCalledWith(
+    CHAT_EVENT_ROWS_ORDER_INDEX,
+    ["chatThreadId", "seqId"],
+    { unique: true },
+  );
+}
+
 function expectThreadEventStoresCreated(
   createdStores: ReturnType<typeof fakeDb>["createdStores"],
   createObjectStore: ReturnType<typeof fakeDb>["createObjectStore"],
@@ -123,8 +141,9 @@ describe("upgradeChatIdb local cache resets", () => {
 
       expect(deleteObjectStore).toHaveBeenCalledTimes(6);
       expectAllLocalCacheStoresDeleted(deleteObjectStore);
-      expect(createObjectStore).toHaveBeenCalledTimes(4);
+      expect(createObjectStore).toHaveBeenCalledTimes(5);
       expectChatMessagesStoreCreated(createdStores, createObjectStore);
+      expectChatEventRowsStoreCreated(createdStores, createObjectStore);
       expectThreadEventStoresCreated(createdStores, createObjectStore);
       expect(createObjectStore).not.toHaveBeenCalledWith(
         LEGACY_ARTIFACT_ITEMS_STORE,
@@ -160,8 +179,9 @@ describe("upgradeChatIdb local cache resets", () => {
       expect(deleteObjectStore).toHaveBeenCalledWith(
         LEGACY_ARTIFACT_SYNC_STORE,
       );
-      expect(createObjectStore).toHaveBeenCalledTimes(4);
+      expect(createObjectStore).toHaveBeenCalledTimes(5);
       expectChatMessagesStoreCreated(createdStores, createObjectStore);
+      expectChatEventRowsStoreCreated(createdStores, createObjectStore);
       expectThreadEventStoresCreated(createdStores, createObjectStore);
     },
   );
@@ -183,8 +203,9 @@ describe("upgradeChatIdb local cache resets", () => {
     expect(deleteObjectStore).toHaveBeenCalledWith(
       CHAT_THREAD_EVENT_SYNC_STORE,
     );
-    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expect(createObjectStore).toHaveBeenCalledTimes(5);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectChatEventRowsStoreCreated(createdStores, createObjectStore);
     expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 
@@ -210,8 +231,9 @@ describe("upgradeChatIdb local cache resets", () => {
       expect(deleteObjectStore).toHaveBeenCalledWith(
         CHAT_THREAD_EVENT_SYNC_STORE,
       );
-      expect(createObjectStore).toHaveBeenCalledTimes(4);
+      expect(createObjectStore).toHaveBeenCalledTimes(5);
       expectChatMessagesStoreCreated(createdStores, createObjectStore);
+      expectChatEventRowsStoreCreated(createdStores, createObjectStore);
       expectThreadEventStoresCreated(createdStores, createObjectStore);
     },
   );
@@ -240,8 +262,9 @@ describe("upgradeChatIdb user-message part cutover", () => {
       expect(deleteObjectStore).toHaveBeenCalledWith(
         CHAT_THREAD_EVENT_SYNC_STORE,
       );
-      expect(createObjectStore).toHaveBeenCalledTimes(4);
+      expect(createObjectStore).toHaveBeenCalledTimes(5);
       expectChatMessagesStoreCreated(createdStores, createObjectStore);
+      expectChatEventRowsStoreCreated(createdStores, createObjectStore);
       expectThreadEventStoresCreated(createdStores, createObjectStore);
     },
   );
@@ -266,14 +289,16 @@ describe("upgradeChatIdb user-message part cutover", () => {
       CHAT_THREAD_EVENT_SYNC_STORE,
     );
     expect(deleteObjectStore).not.toHaveBeenCalledWith(unrelatedStore);
-    expect(createObjectStore).toHaveBeenCalledTimes(4);
+    expect(createObjectStore).toHaveBeenCalledTimes(5);
     expectChatMessagesStoreCreated(createdStores, createObjectStore);
+    expectChatEventRowsStoreCreated(createdStores, createObjectStore);
     expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 
   it("does not rebuild local caches at the current schema version", () => {
     const { db, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
+      CHAT_EVENT_ROWS_STORE,
       CHAT_THREAD_SNAPSHOT_STORE,
       CHAT_THREAD_EVENTS_STORE,
       CHAT_THREAD_EVENT_SYNC_STORE,

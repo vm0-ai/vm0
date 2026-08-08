@@ -27,13 +27,18 @@ const CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION = 27;
 // payload shapes. Rebuild all event-bearing stores so v27 cache entries cannot
 // re-enter the v28 fold.
 const CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION = 28;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION;
+// Raw chat_events rows cached by the snapshot-read pipeline. The store name
+// mirrors the server table because it holds the server row shape verbatim.
+const CHAT_IDB_EVENT_ROWS_VERSION = 29;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_EVENT_ROWS_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
 export const CHAT_MESSAGES_STORE = "chat_messages";
+export const CHAT_EVENT_ROWS_STORE = "chat_events";
+export const CHAT_EVENT_ROWS_ORDER_INDEX = "byThreadAndSeq";
 export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
@@ -43,6 +48,13 @@ export const CHAT_THREAD_EVENTS_ORDER_INDEX = "bySeqId";
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
   store.createIndex(CHAT_MESSAGES_ORDER_INDEX, ["threadId", "seqId"], {
+    unique: true,
+  });
+}
+
+function createChatEventRowsStore(db: IDBPDatabase): void {
+  const store = db.createObjectStore(CHAT_EVENT_ROWS_STORE, { keyPath: "id" });
+  store.createIndex(CHAT_EVENT_ROWS_ORDER_INDEX, ["chatThreadId", "seqId"], {
     unique: true,
   });
 }
@@ -135,6 +147,9 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
     createChatMessagesStore(db);
+  }
+  if (!db.objectStoreNames.contains(CHAT_EVENT_ROWS_STORE)) {
+    createChatEventRowsStore(db);
   }
   if (!db.objectStoreNames.contains(CHAT_THREAD_SNAPSHOT_STORE)) {
     createChatThreadSnapshotStore(db);

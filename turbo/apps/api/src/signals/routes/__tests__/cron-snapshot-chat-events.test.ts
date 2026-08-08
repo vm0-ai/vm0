@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { Readable } from "node:stream";
 import { gunzipSync } from "node:zlib";
 
 import {
@@ -16,7 +15,15 @@ import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { readChatEventSnapshotHead } from "./helpers/runtime-state";
+import {
+  installFakeChatEventR2,
+  writeFakeChatEventObject,
+  type RecordedChatEventPut,
+} from "./helpers/fake-chat-event-r2";
+import {
+  readChatEventSnapshotHead,
+  setChatEventSnapshotHeadVersion,
+} from "./helpers/runtime-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -27,12 +34,7 @@ const CRON_SECRET = "test-cron-secret";
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
 
-interface RecordedPut {
-  readonly bucket: string;
-  readonly key: string;
-  readonly contentType: string | undefined;
-  readonly body: Buffer;
-}
+type RecordedPut = RecordedChatEventPut;
 
 function snapshotCronClient() {
   return setupApp({ context, routes: cronSnapshotChatEventsRoutes })(
@@ -125,7 +127,8 @@ function expectArchiveInvariants(
   const match = OBJECT_KEY_PATTERN.exec(put.key);
   expect(match?.[1]).toBe(threadId);
   expect(put.bucket).toBe("test-user-storages");
-  expect(put.contentType).toBe("application/gzip");
+  expect(put.contentType).toBe("application/x-ndjson");
+  expect(put.contentEncoding).toBe("gzip");
   expect(match?.[3]).toBe(createHash("sha256").update(put.body).digest("hex"));
 
   const lines = archivedLines(put.body);
@@ -146,57 +149,7 @@ function expectArchiveInvariants(
 }
 
 describe("cron snapshot chat events", () => {
-  /**
-   * In-memory R2 for chat-events keys. The object map outlives individual
-   * tests on purpose: the test database is shared with concurrently running
-   * files, so a later cron pass in this file may legitimately re-download a
-   * head object that an earlier test in this file published for an unrelated
-   * thread.
-   */
-  const fakeR2Objects = new Map<string, Buffer>();
   const recordedPuts: RecordedPut[] = [];
-
-  function installFakeR2(): void {
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      const record = command as {
-        readonly constructor: { readonly name: string };
-        readonly input?: {
-          readonly Bucket?: string;
-          readonly Key?: string;
-          readonly Body?: unknown;
-          readonly ContentType?: string;
-        };
-      };
-      const key = record.input?.Key;
-      if (key?.startsWith("chat-events/") === true) {
-        if (record.constructor.name === "PutObjectCommand") {
-          const body = record.input?.Body;
-          if (!Buffer.isBuffer(body)) {
-            throw new Error("expected a Buffer body for chat-events puts");
-          }
-          fakeR2Objects.set(key, body);
-          recordedPuts.push({
-            bucket: record.input?.Bucket ?? "",
-            key,
-            contentType: record.input?.ContentType,
-            body,
-          });
-          return Promise.resolve({});
-        }
-        if (record.constructor.name === "GetObjectCommand") {
-          const stored = fakeR2Objects.get(key);
-          if (stored === undefined) {
-            return Promise.reject(new Error(`missing fake R2 object: ${key}`));
-          }
-          return Promise.resolve({
-            Body: Readable.from([stored]),
-            ContentLength: stored.length,
-          });
-        }
-      }
-      return Promise.resolve({ ContentLength: 1024 });
-    });
-  }
 
   function putsForThread(threadId: string): readonly RecordedPut[] {
     return recordedPuts.filter((put) => {
@@ -205,7 +158,7 @@ describe("cron snapshot chat events", () => {
   }
 
   beforeEach(() => {
-    installFakeR2();
+    installFakeChatEventR2(context, recordedPuts);
     recordedPuts.length = 0;
     // Drain every candidate thread in the shared test database in one pass so
     // assertions about this file's threads never depend on batch ordering.
@@ -257,7 +210,7 @@ describe("cron snapshot chat events", () => {
     expect(firstRaw).toContain(`${marker} first`);
     expect(firstRaw).toContain(`${marker} second`);
     const firstHead = await readChatEventSnapshotHead(context, threadId);
-    expect(firstHead.archive_schema_version).toBe(2);
+    expect(firstHead.archive_schema_version).toBe(3);
     expect(firstHead.object_key).toBe(firstPut.key);
 
     // Nothing new to archive: the same pass again must not touch the thread.
@@ -288,8 +241,52 @@ describe("cron snapshot chat events", () => {
     const secondRaw = gunzipSync(secondPut.body).toString("utf8");
     expect(secondRaw).toContain(`${marker} third`);
     const secondHead = await readChatEventSnapshotHead(context, threadId);
-    expect(secondHead.archive_schema_version).toBe(2);
+    expect(secondHead.archive_schema_version).toBe(3);
     expect(secondHead.object_key).toBe(secondPut.key);
+
+    await runSnapshotCron();
+    expect(putsForThread(threadId)).toHaveLength(2);
+  }, 60_000);
+
+  it("refreshes a v2 head to v3 in place without a Postgres tail", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Version-only snapshot agent",
+    });
+
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `version-only-${randomUUID()}`,
+    });
+    await projectChatEventSearch();
+    await runSnapshotCron();
+
+    const firstPut = putsForThread(threadId)[0];
+    if (firstPut === undefined) {
+      throw new Error("Expected a first-generation snapshot object");
+    }
+    const firstHead = await readChatEventSnapshotHead(context, threadId);
+    await setChatEventSnapshotHeadVersion(context, threadId, 2);
+
+    // The v2 line shape equals v3, so the rebuild produces byte-identical
+    // content: the pass must refresh the object headers and stamp the
+    // existing head row instead of publishing a duplicate object key.
+    const upgraded = await runSnapshotCron();
+    expect(upgraded.success).toBeTruthy();
+    const puts = putsForThread(threadId);
+    expect(puts).toHaveLength(2);
+    const refreshedPut = puts[1];
+    if (refreshedPut === undefined) {
+      throw new Error("Expected a metadata refresh upload");
+    }
+    expect(refreshedPut.key).toBe(firstPut.key);
+    expect(refreshedPut.body.equals(firstPut.body)).toBeTruthy();
+    expectArchiveInvariants(refreshedPut, threadId);
+
+    const upgradedHead = await readChatEventSnapshotHead(context, threadId);
+    expect(upgradedHead.archive_schema_version).toBe(3);
+    expect(upgradedHead.last_seq_id).toBe(firstHead.last_seq_id);
+    expect(upgradedHead.object_key).toBe(firstPut.key);
 
     await runSnapshotCron();
     expect(putsForThread(threadId)).toHaveLength(2);
@@ -318,7 +315,7 @@ describe("cron snapshot chat events", () => {
       throw new Error("Expected a non-empty snapshot object");
     }
     corrupted[corrupted.length - 1] = lastByte ^ 0xff;
-    fakeR2Objects.set(headPut.key, corrupted);
+    writeFakeChatEventObject(headPut.key, corrupted);
 
     await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
@@ -337,7 +334,7 @@ describe("cron snapshot chat events", () => {
 
     // Restoring the object bytes lets the next pass archive the thread again,
     // and keeps the shared database healthy for the remaining tests.
-    fakeR2Objects.set(headPut.key, headPut.body);
+    writeFakeChatEventObject(headPut.key, headPut.body);
     await runSnapshotCron();
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);

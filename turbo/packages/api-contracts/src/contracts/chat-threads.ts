@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { chatEventRowSchema } from "./chat-event-rows";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
@@ -1475,6 +1476,56 @@ export const chatThreadEventsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get a chat event by id for a thread",
+  },
+  /**
+   * Snapshot-read cold start: a presigned download for the thread's head
+   * archive object. The object is gzip NDJSON of chatEventRowSchema lines
+   * stored with `Content-Encoding: gzip`, so a browser fetch decompresses it
+   * transparently. 404 also covers threads whose head has not reached the
+   * current archive schema version yet.
+   */
+  snapshot: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/event-snapshot",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    responses: {
+      200: z.object({
+        url: z.string().url(),
+        expiresInSeconds: z.number().int().positive(),
+        lastSeqId: z.number().int().positive(),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a presigned download for the thread's chat event snapshot",
+  },
+  /**
+   * Raw-row tail after a snapshot or cached cursor. 410 signals that the
+   * cursor row no longer exists and the client must rebuild from a fresh
+   * snapshot.
+   */
+  rows: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/event-rows",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    query: z.object({
+      sinceSeqId: z.coerce.number().int().positive(),
+      limit: z.coerce.number().min(1).max(50).default(50),
+    }),
+    responses: {
+      200: z.object({
+        rows: z.array(chatEventRowSchema),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      410: apiErrorSchema,
+    },
+    summary: "Get raw chat event rows after a seq cursor",
   },
 });
 

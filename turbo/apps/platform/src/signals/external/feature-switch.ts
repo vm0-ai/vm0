@@ -72,6 +72,10 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
+export const chatEventSnapshotReadEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatEventSnapshotRead] ?? false;
+});
+
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ComposerConnectorPermissions] ?? false

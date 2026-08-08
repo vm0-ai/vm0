@@ -33,6 +33,10 @@ import {
 } from "../services/zero-chat-thread.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import {
+  zeroChatThreadEventRows,
+  zeroChatThreadEventSnapshot,
+} from "../services/zero-chat-event-snapshot.service";
+import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
 } from "../services/zero-chat-thread-event.service";
@@ -160,6 +164,73 @@ const listChatEventsInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: { events },
+  };
+});
+
+const getChatEventSnapshotInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadEventsContract.snapshot));
+  const snapshot = await get(
+    zeroChatThreadEventSnapshot({
+      threadId: params.threadId,
+      userId: auth.userId,
+    }),
+  );
+  if (snapshot.kind === "thread-not-found") {
+    return chatThreadNotFound();
+  }
+  if (snapshot.kind === "snapshot-not-found") {
+    return {
+      status: 404 as const,
+      body: {
+        error: {
+          message: "Chat event snapshot not found",
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+        },
+      },
+    };
+  }
+
+  return {
+    status: 200 as const,
+    body: {
+      url: snapshot.url,
+      expiresInSeconds: snapshot.expiresInSeconds,
+      lastSeqId: snapshot.lastSeqId,
+    },
+  };
+});
+
+const listChatEventRowsInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadEventsContract.rows));
+  const query = get(queryOf(chatThreadEventsContract.rows));
+  const page = await get(
+    zeroChatThreadEventRows({
+      threadId: params.threadId,
+      userId: auth.userId,
+      sinceSeqId: query.sinceSeqId,
+      limit: query.limit,
+    }),
+  );
+  if (page.kind === "thread-not-found") {
+    return chatThreadNotFound();
+  }
+  if (page.kind === "expired") {
+    return {
+      status: 410 as const,
+      body: {
+        error: {
+          message: "Chat events cursor has expired",
+          code: "CHAT_EVENTS_EXPIRED",
+        },
+      },
+    };
+  }
+
+  return {
+    status: 200 as const,
+    body: { rows: [...page.rows] },
   };
 });
 
@@ -363,6 +434,20 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadEventsContract.get,
     handler: authRoute({}, getChatThreadEventInner$),
+  },
+  {
+    route: chatThreadEventsContract.snapshot,
+    handler: authRoute(
+      { requiredCapability: "chat-event:read" },
+      getChatEventSnapshotInner$,
+    ),
+  },
+  {
+    route: chatThreadEventsContract.rows,
+    handler: authRoute(
+      { requiredCapability: "chat-event:read" },
+      listChatEventRowsInner$,
+    ),
   },
   {
     route: chatSearchContract.search,
