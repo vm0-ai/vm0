@@ -118,6 +118,12 @@ beforeEach(() => {
     selectedModel: "claude-sonnet-4-6",
     updatedAt: "2026-03-10T00:00:00Z",
   });
+  context.mocks.browser.blobDownload();
+  context.mocks.http.get("/api/zero/web/download-file", () => {
+    return new Response(new Uint8Array([137, 80, 78, 71]), {
+      headers: { "Content-Type": "image/png" },
+    });
+  });
 });
 
 afterEach(async () => {
@@ -884,6 +890,16 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
+    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
+      expect(request.credentials).toBe("include");
+      expect(request.headers.get("authorization")).toMatch(/^Bearer /);
+      expect(new URL(request.url).searchParams.get("file_id")).toBe(
+        "attachment-photo",
+      );
+      return new Response(new Uint8Array([137, 80, 78, 71]), {
+        headers: { "Content-Type": "image/png" },
+      });
+    });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -907,6 +923,9 @@ describe("zero attachment chips", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const image = await screen.findByAltText("photo.png");
+    await waitFor(() => {
+      expect(image.getAttribute("src")).toMatch(/^blob:mock-download-/);
+    });
     const preview = image.closest("a");
     const text = await screen.findByText("Review this image");
     const textBubble = text.closest(".zero-chat-bubble-user");
@@ -2769,7 +2788,6 @@ describe("zero attachment chips", () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
     context.mocks.browser.clipboardWriteText();
     context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
-      expect(request.credentials).toBe("include");
       const fileId = new URL(request.url).searchParams.get("file_id");
       if (fileId === "attachment-markdown") {
         return new Response("# Release notes\n\nThe rollout is ready.", {

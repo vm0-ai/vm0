@@ -53,7 +53,6 @@ async function readLimitedText(response: Response): Promise<string> {
 
 export async function fetchPreviewText(url: string): Promise<string> {
   const response = await fetch(url, {
-    credentials: "include",
     headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
   });
   if (!response.ok) {
