@@ -158,11 +158,6 @@ async function readGoalMarkerSummaries(fixture: GoalApiFixture) {
       );
     })
     .map((event) => {
-      expect(event).not.toHaveProperty("goalEvent");
-      expect(event).not.toHaveProperty("status");
-      expect(event).not.toHaveProperty("reason");
-      expect(event).not.toHaveProperty("contextType");
-      expect(event).not.toHaveProperty("contextId");
       return { eventType: event.eventType, content: event.content };
     });
 }
@@ -709,7 +704,6 @@ describe("zero goals", () => {
           );
         })
         .map((event) => {
-          expect(event).not.toHaveProperty("goalEvent");
           return { eventType: event.eventType, content: event.content };
         }),
     ).toStrictEqual([

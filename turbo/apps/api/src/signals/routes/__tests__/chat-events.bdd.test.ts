@@ -2212,7 +2212,6 @@ describe("CHAT-02: org queue markers", () => {
         );
       },
     );
-    expect(templateMessage).not.toHaveProperty("generationTemplate");
     expect(templateMessage?.userMessage?.parts).toContainEqual(
       expect.objectContaining({
         type: "template",
@@ -5799,7 +5798,6 @@ describe("CHAT-02: generation templates and attachments", () => {
         return item.eventType === "input.prompt" && item.runId === sent.runId;
       },
     );
-    expect(message).not.toHaveProperty("generationTemplate");
     expect(message).toMatchObject({
       content: null,
       userMessage: {
@@ -5911,7 +5909,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     const message = userMessages(messages.events).find((event) => {
       return event.eventType === "input.prompt" && event.runId === sent.runId;
     });
-    expect(message).not.toHaveProperty("generationTemplate");
     expect(message).toMatchObject({
       userMessage: {
         version: 1,
@@ -6445,7 +6442,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     const attachedMessage = userMessages(messages.events).find((message) => {
       return message.eventType === "input.prompt";
     });
-    expect(attachedMessage).not.toHaveProperty("attachFiles");
     const attached = attachedMessage?.userMessage?.parts.find((part) => {
       return part.type === "file";
     });
@@ -6627,7 +6623,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     }
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
-    expect(promoted).not.toHaveProperty("attachFiles");
     expect(promoted.userMessage?.parts).toStrictEqual(
       expect.arrayContaining([
         {

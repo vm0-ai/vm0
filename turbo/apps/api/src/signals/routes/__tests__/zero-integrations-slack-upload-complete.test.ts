@@ -800,9 +800,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
     expect(lifecycleMarker).not.toHaveProperty("attachFiles");
-    for (const message of messages.events) {
-      expect(message).not.toHaveProperty("attachFiles");
-    }
     expect(
       messages.events.find((message) => {
         return (

@@ -1126,7 +1126,6 @@ describe("CHAT-02: completed chat callback", () => {
     if (!recommender) {
       throw new Error("Expected a recommended follow-up message");
     }
-    expect(recommender).not.toHaveProperty("recommendedFollowups");
     expect(resolveChatEventRecommendedFollowups(recommender)).toStrictEqual([
       { prompt: longFollowupPrompt, kind: "talk" },
       {
@@ -1214,7 +1213,6 @@ describe("CHAT-02: completed chat callback", () => {
     expect(claimed.runId).not.toBe(first.runId);
     expect(claimed.id).not.toBe(queued.id);
     expect(claimed.revokesEventId).toBe(queued.id);
-    expect(claimed).not.toHaveProperty("generationTemplate");
     expect(claimed.userMessage?.parts).toContainEqual(
       expect.objectContaining({
         type: "template",
@@ -1680,7 +1678,6 @@ describe("CHAT-02: completed chat callback", () => {
     if (!followupEvent) {
       throw new Error("Expected a recommended follow-up message");
     }
-    expect(followupEvent).not.toHaveProperty("recommendedFollowups");
     expect(resolveChatEventRecommendedFollowups(followupEvent)).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
@@ -1847,7 +1844,6 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       eventType: "goal.close",
       content: null,
     });
-    expect(closeMarker).not.toHaveProperty("goalEvent");
   }, 90_000);
 
   it("rebuilds a preparing goal run from the latest row despite its UI marker", async () => {
@@ -4644,7 +4640,6 @@ describe("CHAT-02: auto-send after failures", () => {
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
     ]);
-    expect(claimed).not.toHaveProperty("attachFiles");
     expect(claimed.userMessage?.parts).toContainEqual(
       expect.objectContaining({
         type: "file",

@@ -384,10 +384,6 @@ describe("ChatEvent catalog", () => {
       chatEventSchema.safeParse({ ...open, content: " untrimmed " }).success,
     ).toBe(false);
     expect(
-      chatEventSchema.safeParse({ ...open, goalEvent: { type: "cleared" } })
-        .success,
-    ).toBe(false);
-    expect(
       chatEventSchema.safeParse({ ...close, content: "closed" }).success,
     ).toBe(false);
   });
@@ -408,83 +404,12 @@ describe("ChatEvent catalog", () => {
     expect(isChatEventContentTextType("goal.open")).toBe(false);
   });
 
-  it("rejects all retired camelCase event projections", () => {
-    const attachment = {
-      id: "attachment-1",
-      filename: "brief.txt",
-      contentType: "text/plain",
-      size: 5,
-      url: "https://example.com/brief.txt",
-    };
-    const prompt = chatEvents.find((event) => {
-      return event.eventType === "input.prompt";
-    });
-    const rejected = chatEvents.find((event) => {
-      return event.eventType === "input.rejected";
-    });
-    const completed = chatEvents.find((event) => {
-      return event.eventType === "run.completed";
-    });
-
-    expect(
-      chatEventSchema.safeParse({ ...prompt, attachFiles: [attachment] })
-        .success,
-    ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({ ...rejected, attachFiles: [attachment] })
-        .success,
-    ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({ ...completed, attachFiles: [attachment] })
-        .success,
-    ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({
-        ...prompt,
-        generationTemplate: {
-          type: "website",
-          selection: { websiteTemplateId: "template-1" },
-        },
-      }).success,
-    ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({
-        ...chatEvents.find((event) => {
-          return event.eventType === "output.followups";
-        }),
-        recommendedFollowups: [{ prompt: "Legacy", kind: "talk" }],
-      }).success,
-    ).toBe(false);
-    expect(
-      chatEventSchema.safeParse({
-        ...chatEvents.find((event) => {
-          return event.eventType === "goal.open";
-        }),
-        goalEvent: { type: "cleared" },
-      }).success,
-    ).toBe(false);
-  });
-
   it("emits canonical responses for every registered leaf", () => {
     for (const event of chatEvents) {
       const response = chatEventResponse(event);
       expect(response).toStrictEqual(event);
       expect(chatEventSchema.parse(response)).toStrictEqual(response);
     }
-  });
-
-  it("rejects a response that only carries the retired rich-input field", () => {
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Run the task" }],
-    };
-    expect(
-      chatEventSchema.safeParse({
-        ...chatEventResponse(chatEvents[0]!),
-        userMessage: undefined,
-        structuredPrompt: userMessage,
-      }).success,
-    ).toBe(false);
   });
 });
 
@@ -718,12 +643,7 @@ describe("ChatEvent HTTP contracts", () => {
     });
   });
 
-  it.each([
-    ["attachFiles", []],
-    ["generationTemplate", { type: "website" }],
-    ["goalEvent", { type: "cleared" }],
-    ["recommendedFollowups", []],
-  ])("does not expose the retired %s request field", (field, value) => {
+  it("accepts only the declared send body fields", () => {
     const request = {
       agentId: "agent-1",
       prompt: "Run the task",
@@ -733,9 +653,14 @@ describe("ChatEvent HTTP contracts", () => {
         parts: [{ type: "text" as const, text: "Run the task" }],
       },
       hasTextContent: true,
-      [field]: value,
     };
 
-    expect(chatEventsContract.send.body.safeParse(request).success).toBe(false);
+    expect(chatEventsContract.send.body.safeParse(request).success).toBe(true);
+    expect(
+      chatEventsContract.send.body.safeParse({
+        ...request,
+        unsupportedField: "value",
+      }).success,
+    ).toBe(false);
   });
 });

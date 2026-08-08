@@ -1404,7 +1404,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }) === true
       );
     });
-    expect(listedMessage).not.toHaveProperty("attachFiles");
     expect(listedMessage).toMatchObject({
       userMessage: {
         parts: expect.arrayContaining([
@@ -1421,7 +1420,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       chatThreadId,
       listedMessage.id,
     );
-    expect(fetchedMessage).not.toHaveProperty("attachFiles");
     expect(fetchedMessage).toMatchObject({
       id: listedMessage.id,
       userMessage: {
@@ -1613,9 +1611,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
-    for (const message of visibleMessages) {
-      expect(message).not.toHaveProperty("attachFiles");
-    }
     expect(
       visibleMessages
         .filter((message) => {

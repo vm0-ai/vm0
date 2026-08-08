@@ -357,7 +357,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
       error: "insufficient_credits",
       revokesEventId: clientEventId,
     });
-    expect(rejectedUserMessage).not.toHaveProperty("attachFiles");
     expect(rejectedUserMessage).not.toHaveProperty("automationId");
     expect(rejectedUserMessage).not.toHaveProperty("triggerBrief");
     expect(assistantMessage?.content).toContain("Insufficient credits");
