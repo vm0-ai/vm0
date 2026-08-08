@@ -35,7 +35,7 @@ export function buildDraftPersistencePayload(
   if (hasUserMessageDraft) {
     userMessage = source.editorDocument
       ? source.editorDocument.toMessageDocument({
-          generationTemplate: source.generationTemplate,
+          selectedTemplate: source.generationTemplate,
           attachments: source.attachments,
         })
       : textToMessageDocument(source.input, undefined, source.attachments);

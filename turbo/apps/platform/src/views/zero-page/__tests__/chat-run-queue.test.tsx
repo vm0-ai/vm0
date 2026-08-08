@@ -51,7 +51,6 @@ interface ModelSelectionRequest {
 interface QueuedMessageCapture {
   content?: string;
   hasTextContent?: boolean;
-  attachments?: unknown;
   clientEventId: string;
   userMessage?: UserMessageDocument;
   modelSelection?: ModelSelectionRequest | null;
@@ -987,7 +986,6 @@ describe("chat run queue", () => {
       expect(queuedBody).toMatchObject({
         content: "(see attached files)",
         hasTextContent: false,
-        attachments: undefined,
         userMessage: {
           version: 1,
           parts: [

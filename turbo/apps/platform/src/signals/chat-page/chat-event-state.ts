@@ -30,10 +30,7 @@ export function isQueueMarkerEvent(
 
 export function isGoalMarkerEvent(
   event: ChatEvent,
-): event is Extract<
-  ChatEvent,
-  { eventType: "goal.open" | "goal.close" | "goal.changed" }
-> {
+): event is Extract<ChatEvent, { eventType: "goal.open" | "goal.close" }> {
   return isChatGoalMarkerEventType(event.eventType);
 }
 

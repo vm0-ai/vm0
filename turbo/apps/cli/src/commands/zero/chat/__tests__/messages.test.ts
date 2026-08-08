@@ -93,7 +93,7 @@ function automationEvent(args: { id: string; seqId: number; brief: string }) {
   };
 }
 
-function goalEvent(args: { id: string; seqId: number; brief: string }) {
+function goalInputEvent(args: { id: string; seqId: number; brief: string }) {
   return {
     id: args.id,
     threadId: THREAD_ID,
@@ -323,7 +323,7 @@ describe("zero chat messages command", () => {
               seqId: 1,
               brief: "Gmail label applied",
             }),
-            goalEvent({
+            goalInputEvent({
               id: "00000000-0000-4000-8000-000000000022",
               seqId: 2,
               brief: "Merge PR #1",

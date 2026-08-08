@@ -50,8 +50,7 @@ import {
   appendAndSend,
 } from "./chat-composer-test-helpers.ts";
 
-// Templates are sent as inline parts of the structured userMessage rather than
-// through the legacy top-level generationTemplate field.
+// Templates are sent as inline parts of the structured userMessage.
 function sentInlineTemplate(
   userMessage: UserMessageDocument | undefined,
 ): GenerationTemplateRequest | undefined {
@@ -293,12 +292,10 @@ describe("chat composer templates", () => {
     const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const second = PRESENTATION_TEMPLATE_PICKER_ITEMS[1]!;
     let submittedUserMessage: UserMessageDocument | undefined;
-    let submittedGenerationTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate(body) {
         submittedUserMessage = body.userMessage;
-        submittedGenerationTemplate = body.generationTemplate;
       },
     });
 
@@ -350,7 +347,6 @@ describe("chat composer templates", () => {
     await user.click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
-      expect(submittedGenerationTemplate).toBeUndefined();
       expect(submittedUserMessage?.parts).toHaveLength(2);
       expect(submittedUserMessage?.parts[0]).toMatchObject({
         type: "template",
@@ -3045,7 +3041,7 @@ describe("chat composer templates", () => {
 
   it("restores a recalled Morning Brief message as an inline template", async () => {
     const template = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    const generationTemplate = {
+    const selectedTemplate = {
       type: "illustration",
       selection: {
         illustrationStyleId: template.illustrationStyleId,
@@ -3071,28 +3067,15 @@ describe("chat composer templates", () => {
         {
           id: "msg-template-queued-user",
           role: "user",
-          content: "invalidate",
+          content: null,
           runId: undefined,
-          attachFiles: [
-            {
-              id: "legacy-recalled-file",
-              filename: "legacy-note.txt",
-              contentType: "text/plain",
-              size: 12,
-              url: "https://example.test/legacy-note.txt",
-            },
-          ],
-          generationTemplate: {
-            type: "presentation",
-            selection: { templateId: "legacy-presentation" },
-          },
           userMessage: {
             version: 1,
             parts: [
               {
                 type: "template",
                 titleSnapshot: template.title,
-                template: generationTemplate,
+                template: selectedTemplate,
               },
               {
                 type: "file",

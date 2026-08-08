@@ -6,6 +6,10 @@ import {
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
+import {
+  serializeChatFollowupsContent,
+  type ChatRecommendedFollowup,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -15,7 +19,6 @@ import { runOutputMaterializations } from "@vm0/db/schema/run-output-materializa
 import {
   chatEventTerminalPredicate,
   chatEvents,
-  type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -139,7 +142,7 @@ import { buildAgentRunSourceContext } from "./zero-web-chat-session-prompt.servi
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   integrationCompletionFallbackEventIdForRun,
-  recommendedFollowupsEventIdForRun,
+  followupsEventIdForRun,
 } from "./assistant-event-id";
 import {
   failQueuedUserMessage,
@@ -232,7 +235,7 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template"
+  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_template_context"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run"
@@ -1802,20 +1805,19 @@ async function insertRecommendedFollowupsEvent(args: {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
-  readonly recommendedFollowups: ChatEventRecommendedFollowups;
+  readonly followups: readonly ChatRecommendedFollowup[];
 }): Promise<boolean> {
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,
       {
-        id: recommendedFollowupsEventIdForRun(args.runId),
+        id: followupsEventIdForRun(args.runId),
         chatThreadId: args.threadId,
         eventType: "output.followups",
-        content: null,
+        content: serializeChatFollowupsContent(args.followups),
         runId: args.runId,
         runGroupId,
-        recommendedFollowups: args.recommendedFollowups,
       },
       "id",
     );
@@ -1839,7 +1841,7 @@ async function generateRecommendedFollowupsForCompletedRun(
     readonly threadId: string;
   },
   signal: AbortSignal,
-): Promise<ChatEventRecommendedFollowups | undefined> {
+): Promise<readonly ChatRecommendedFollowup[] | undefined> {
   signal.throwIfAborted();
   const suggestions = await generateChatThreadRecommendedFollowupsFromContext({
     messages: args.followupContext,
@@ -2055,21 +2057,20 @@ async function runCompletedChatCallbackSideEffects(
   );
 
   const followupsStep = (async () => {
-    const recommendedFollowups =
-      await generateRecommendedFollowupsForCompletedRun(
-        {
-          followupContext: args.followupContext,
-          threadId: args.chatThread.chatThreadId,
-        },
-        signal,
-      );
-    if (recommendedFollowups) {
+    const followups = await generateRecommendedFollowupsForCompletedRun(
+      {
+        followupContext: args.followupContext,
+        threadId: args.chatThread.chatThreadId,
+      },
+      signal,
+    );
+    if (followups) {
       await insertRecommendedFollowupsEvent({
         db: args.db,
         runId: args.runId,
         threadId: args.chatThread.chatThreadId,
         userId: args.chatThread.userId,
-        recommendedFollowups,
+        followups,
       });
     }
   })();
@@ -3022,12 +3023,12 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template",
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_template_context",
     "nested",
     () => {
       return resolveThreadGenerationTemplatePrompt({
-        explicit: args.userMessageProjection?.generationTemplate,
-        explicitTemplates: args.userMessageProjection?.generationTemplates,
+        explicit: args.userMessageProjection?.primaryTemplate,
+        explicitTemplates: args.userMessageProjection?.templates,
       });
     },
   );

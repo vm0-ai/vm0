@@ -106,7 +106,7 @@ describe("user message document codec", () => {
     const template = presentationTemplate();
     const attachments = persistedAttachments();
     const structured = editorDocToMessageDocument(editorDocument, {
-      generationTemplate: template,
+      selectedTemplate: template,
       attachments,
     });
     expect(structured).toStrictEqual({
@@ -201,7 +201,7 @@ describe("user message document codec", () => {
 
     // Restoring normalizes the legacy leading template chip into an inline
     // template node: it carries its own template data, so the re-encode needs
-    // no ambient generationTemplate context, and the template part now sits in
+    // no ambient selected-template context, and the template part now sits in
     // the text flow after the elevated file parts.
     expect(
       editorDocToMessageDocument(workflowComposerDocument(restored), {
@@ -762,7 +762,7 @@ describe("user message document codec", () => {
             { type: "paragraph", content: [{ type: "text", text: "x" }] },
           ],
         }),
-        { generationTemplate: presentationTemplate() },
+        { selectedTemplate: presentationTemplate() },
       ),
     ).toBeNull();
 

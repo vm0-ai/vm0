@@ -1,5 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isChatEventContentTextType } from "@vm0/api-contracts/contracts/chat-events";
 import type { ModelProviderFramework } from "@vm0/api-contracts/contracts/model-provider-types";
 import {
   isSupportedRunModel,
@@ -163,7 +164,7 @@ function classifyAssistantError(
 
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
-    Boolean(event.content) ||
+    (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
     event.blocks.length > 0 ||
     event.eventType === "input.rejected" ||
     event.eventType === "output.error" ||

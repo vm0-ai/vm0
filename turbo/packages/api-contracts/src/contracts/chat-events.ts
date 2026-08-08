@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { ZeroGoalEvent } from "./zero-goals";
 
 export const CHAT_EVENT_TYPES = [
   "input.prompt",
@@ -22,7 +21,6 @@ export const CHAT_EVENT_TYPES = [
   "browser.close",
   "goal.open",
   "goal.close",
-  "goal.changed",
   "usage.recorded",
 ] as const;
 
@@ -50,7 +48,6 @@ export const CHAT_EVENT_CONTENT_TEXT_TYPES = [
 export const CHAT_GOAL_MARKER_EVENT_TYPES = [
   "goal.open",
   "goal.close",
-  "goal.changed",
 ] as const satisfies readonly ChatEventType[];
 
 const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
@@ -90,7 +87,6 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   "browser.close": [],
   "goal.open": [],
   "goal.close": [],
-  "goal.changed": [],
   "usage.recorded": [],
 } satisfies Record<ChatEventType, readonly ChatEventType[]>;
 
@@ -115,7 +111,6 @@ const CHAT_RUN_FOLD_STATES = {
   "browser.close": null,
   "goal.open": null,
   "goal.close": null,
-  "goal.changed": null,
   "usage.recorded": null,
 } satisfies Record<ChatEventType, ChatRunFoldState | null>;
 
@@ -127,7 +122,6 @@ interface ChatEventFoldInput {
   readonly revokesEventId?: string | null;
   readonly seqId?: number;
   readonly content?: string | null;
-  readonly goalEvent?: ZeroGoalEvent;
 }
 
 export interface ChatQueueFoldInput extends ChatEventFoldInput {
@@ -162,7 +156,6 @@ const CHAT_EVENT_COMPATIBILITY_ROLES = {
   "browser.close": "assistant",
   "goal.open": "assistant",
   "goal.close": "assistant",
-  "goal.changed": "assistant",
   "usage.recorded": "assistant",
 } satisfies Record<ChatEventType, ChatEventCompatibilityRole>;
 
@@ -370,16 +363,16 @@ export function foldActiveChatGoalObjective(
 ): string | null {
   let objective: string | null = null;
 
-  const goalEvents = events.filter((event) => {
+  const goalMarkers = events.filter((event) => {
     return isChatGoalMarkerEventType(event.eventType);
   });
-  const orderedEvents = goalEvents.every((event) => {
+  const orderedEvents = goalMarkers.every((event) => {
     return event.seqId !== undefined;
   })
-    ? [...goalEvents].sort((left, right) => {
+    ? [...goalMarkers].sort((left, right) => {
         return (left.seqId ?? 0) - (right.seqId ?? 0);
       })
-    : goalEvents;
+    : goalMarkers;
 
   for (const event of orderedEvents) {
     if (event.eventType === "goal.open") {
@@ -388,34 +381,10 @@ export function foldActiveChatGoalObjective(
     }
     if (event.eventType === "goal.close") {
       objective = null;
-      continue;
-    }
-
-    const legacyObjective = legacyGoalChangedObjective(event);
-    if (legacyObjective !== undefined) {
-      objective = legacyObjective;
     }
   }
   const trimmed = objective?.trim();
   return trimmed || null;
-}
-
-function legacyGoalChangedObjective(
-  event: ChatEventFoldInput,
-): string | null | undefined {
-  if (event.eventType !== "goal.changed" || event.goalEvent === undefined) {
-    return undefined;
-  }
-
-  // Stage 3 rollout compatibility: current writers, persisted rows, and old
-  // web/app clients still use goal.changed + goalEvent. Delete this reader in
-  // Stage 5 after the Stage 4 client floor and content-marker writer cutover.
-  if (event.goalEvent.type === "cleared") {
-    return null;
-  }
-  return event.goalEvent.status === "active"
-    ? event.goalEvent.objectiveBrief
-    : null;
 }
 
 export function foldLatestChatUsageByRunId<

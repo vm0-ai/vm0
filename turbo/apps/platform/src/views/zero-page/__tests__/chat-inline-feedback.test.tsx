@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
-  type GenerationTemplateRequest,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
@@ -31,14 +30,7 @@ interface ModelSelectionRequest {
 interface RunCreateCapture {
   prompt?: string;
   userMessage?: UserMessageDocument;
-  attachFiles?: {
-    id: string;
-    filename: string;
-    contentType: string;
-    size: number;
-  }[];
   hasTextContent?: boolean;
-  generationTemplate?: GenerationTemplateRequest;
   modelSelection?: ModelSelectionRequest | null;
   computerUseHostId?: string | null;
   clientEventId?: string;
@@ -287,7 +279,6 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(sentMessages).toHaveLength(1);
     });
-    expect(sentMessages[0]?.generationTemplate).toBeUndefined();
     expect(sentMessages[0]?.userMessage?.parts).toHaveLength(1);
     expect(sentMessages[0]?.userMessage?.parts[0]).toMatchObject({
       type: "feedback",
@@ -1439,8 +1430,6 @@ describe("chat inline feedback", () => {
     if (!sentBody) {
       throw new Error("feedback send body not captured");
     }
-    expect(sentBody.attachFiles).toBeUndefined();
-    expect(sentBody.generationTemplate).toBeUndefined();
     expect(sentBody.userMessage?.parts).toContainEqual({
       type: "file",
       fileId: "upload-feedback-brief",

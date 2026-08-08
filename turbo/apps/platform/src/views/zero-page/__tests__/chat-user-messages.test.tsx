@@ -148,7 +148,7 @@ describe("user messages", () => {
     );
   });
 
-  it("renders ordered snapshots with literal Markdown text", async () => {
+  it("renders ordered canonical snapshots with literal Markdown text", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000741";
     const referencedThreadId = "b0000000-0000-4000-a000-000000000742";
     mockChatLifecycle(context, {
@@ -158,28 +158,8 @@ describe("user messages", () => {
         {
           id: "00000000-0000-4000-8000-000000000741",
           role: "user",
-          content: "Legacy structured body should stay hidden",
+          content: null,
           runId: "d0000000-0000-4000-a000-000000000741",
-          generationTemplate: {
-            type: "presentation",
-            selection: { templateId: "retired-template" },
-          },
-          attachFiles: [
-            {
-              id: "image-live",
-              filename: "reference.png",
-              url: "/f/test-user/image-live/reference.png",
-              contentType: "image/png",
-              size: 84,
-            },
-            {
-              id: "file-live",
-              filename: "renamed-report.pdf",
-              url: "/f/test-user/file-live/renamed-report.pdf",
-              contentType: "application/pdf",
-              size: 42,
-            },
-          ],
           userMessage: {
             version: 1,
             parts: [

@@ -1,74 +1,9 @@
-import type {
-  AvatarGenerationOptions,
-  UserMessageDocument,
-  VideoGenerationOptions,
-} from "@vm0/api-contracts/contracts/chat-threads";
-
-/** attach_files stores legacy file IDs. */
-export type ChatEventAttachFiles = string[];
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 
 export type ChatEventUserMessage = UserMessageDocument;
 
-export interface ChatEventPresentationGenerationTemplate {
-  readonly type: "presentation";
-  readonly selection: {
-    readonly templateId: string;
-    readonly colorSystemId?: string;
-    readonly previewUrl?: string;
-  };
-}
-
-export interface ChatEventVideoGenerationTemplate {
-  readonly type: "video";
-  readonly selection: {
-    readonly stylePresetId: string;
-    readonly videoOptions?: VideoGenerationOptions;
-    readonly avatarOptions?: AvatarGenerationOptions;
-  };
-}
-
-export interface ChatEventIllustrationGenerationTemplate {
-  readonly type: "illustration";
-  readonly selection: {
-    readonly illustrationStyleId: string;
-  };
-}
-
-export interface ChatEventWorkflowGenerationTemplate {
-  readonly type: "workflow";
-  readonly selection: {
-    readonly workflowTemplateId: string;
-  };
-}
-
-export interface ChatEventWebsiteGenerationTemplate {
-  readonly type: "website";
-  readonly selection: {
-    readonly websiteTemplateId: string;
-  };
-}
-
-export type ChatEventGenerationTemplate =
-  | ChatEventPresentationGenerationTemplate
-  | ChatEventVideoGenerationTemplate
-  | ChatEventIllustrationGenerationTemplate
-  | ChatEventWorkflowGenerationTemplate
-  | ChatEventWebsiteGenerationTemplate;
-
-export type ChatEventRecommendedFollowupKind = "talk" | "generate";
-export type ChatEventRecommendedFollowupGenerationType =
-  | "image"
-  | "video"
-  | "presentation"
-  | "website";
-
-export interface ChatEventRecommendedFollowup {
-  readonly prompt: string;
-  readonly kind: ChatEventRecommendedFollowupKind;
-  readonly generationType?: ChatEventRecommendedFollowupGenerationType;
-}
-
-export type ChatEventRecommendedFollowups = ChatEventRecommendedFollowup[];
+/** Opaque Stage 5 storage type for the four physical columns dropped in Stage 7. */
+export type ChatEventRetainedLegacyPayload = unknown;
 
 export interface ChatEventUsageProviderBreakdown {
   readonly provider: string;
@@ -97,15 +32,3 @@ export interface ChatEventAttachFileMetadata {
 }
 
 export type ChatEventAttachFileMetadataList = ChatEventAttachFileMetadata[];
-
-export type ChatEventGoalEvent =
-  | {
-      readonly type: "state";
-      readonly status: "active";
-      readonly objectiveBrief: string;
-    }
-  | {
-      readonly type: "state";
-      readonly status: "paused" | "blocked" | "complete";
-    }
-  | { readonly type: "cleared" };

@@ -602,7 +602,6 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        expect(body.generationTemplate).toBeUndefined();
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
@@ -641,7 +640,6 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        expect(body.generationTemplate).toBeUndefined();
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });
@@ -740,7 +738,6 @@ describe("onboarding flow", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        expect(body.generationTemplate).toBeUndefined();
         generationType = templateTypeFromUserMessage(body.userMessage);
       },
     });

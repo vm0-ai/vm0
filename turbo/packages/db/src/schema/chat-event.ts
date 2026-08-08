@@ -15,32 +15,17 @@ import {
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import type {
-  ChatEventAttachFiles,
-  ChatEventGenerationTemplate,
-  ChatEventGoalEvent,
-  ChatEventRecommendedFollowups,
+  ChatEventRetainedLegacyPayload,
   ChatEventUserMessage,
   ChatEventUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-event";
 export type {
   ChatEventAttachFileMetadata,
   ChatEventAttachFileMetadataList,
-  ChatEventAttachFiles,
-  ChatEventGenerationTemplate,
-  ChatEventGoalEvent,
-  ChatEventIllustrationGenerationTemplate,
-  ChatEventPresentationGenerationTemplate,
-  ChatEventRecommendedFollowup,
-  ChatEventRecommendedFollowupGenerationType,
-  ChatEventRecommendedFollowupKind,
-  ChatEventRecommendedFollowups,
   ChatEventUserMessage,
   ChatEventUsageKindBreakdown,
   ChatEventUsagePayload,
   ChatEventUsageProviderBreakdown,
-  ChatEventVideoGenerationTemplate,
-  ChatEventWebsiteGenerationTemplate,
-  ChatEventWorkflowGenerationTemplate,
 } from "@vm0/db/jsonb-contracts/chat-event";
 
 /**
@@ -142,18 +127,20 @@ export const chatEvents = pgTable(
     runEventId: text("run_event_id"),
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
-    goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
-    // Old/new API persisted-state projection (~102-minute observed overlap)
-    // and old web/app response support (~2-day observed window). Canonical
-    // semantics live in user_message and chat_event_asset_refs. The Stage 5/7
-    // chat-event cleanup follow-up PR drops these after both windows close.
-    attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
-    generationTemplate: jsonb(
+    // Untyped physical compatibility columns used only by the Stage 5
+    // DB-before-API insert bridge. Stage 7 drops all four after the old API
+    // fleet and the Stage 6 client-floor rollout have fully drained; tracked by
+    // https://github.com/vm0-ai/vm0/issues/25767.
+    legacyGoalPayload:
+      jsonb("goal_event").$type<ChatEventRetainedLegacyPayload>(),
+    legacyAttachedFiles:
+      jsonb("attach_files").$type<ChatEventRetainedLegacyPayload>(),
+    legacyTemplatePayload: jsonb(
       "generation_template",
-    ).$type<ChatEventGenerationTemplate>(),
-    recommendedFollowups: jsonb(
+    ).$type<ChatEventRetainedLegacyPayload>(),
+    legacyFollowupsPayload: jsonb(
       "recommended_followups",
-    ).$type<ChatEventRecommendedFollowups>(),
+    ).$type<ChatEventRetainedLegacyPayload>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -228,7 +215,6 @@ export const chatEvents = pgTable(
           'browser.stopped',
           'goal.open',
           'goal.close',
-          'goal.changed',
           'usage.recorded'
         )`,
       ),
@@ -272,10 +258,10 @@ export const chatEvents = pgTable(
             AND ${table.activeInputSequence} IS NULL
             AND ${table.runEventSequenceNumber} IS NULL
             AND ${table.runEventId} IS NULL
-            AND ${table.goalEvent} IS NULL
-            AND ${table.attachFiles} IS NULL
-            AND ${table.generationTemplate} IS NULL
-            AND ${table.recommendedFollowups} IS NULL
+            AND ${table.legacyGoalPayload} IS NULL
+            AND ${table.legacyAttachedFiles} IS NULL
+            AND ${table.legacyTemplatePayload} IS NULL
+            AND ${table.legacyFollowupsPayload} IS NULL
           )`,
       ),
       check(

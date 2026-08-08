@@ -14,7 +14,6 @@ import {
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
-  type AttachFile,
   type ChatEvent,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
@@ -23,9 +22,7 @@ import {
   type ChatThreadSnapshotProjection,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
-  type GenerationTemplateRequest,
   type PersistedAttachment,
-  type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -101,9 +98,7 @@ type BddSendEventBody =
       readonly model?: SupportedRunModel;
       readonly runOptions?: ChatRunOptionsRequest;
       readonly userMessage?: UserMessageInputDocument;
-      readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
-      readonly attachFiles?: readonly AttachFile[];
       readonly computerUseHostId?: string | null;
       readonly cloudBrowserEnabled?: boolean;
       readonly clientEventId?: string;
@@ -1187,26 +1182,10 @@ export function createChatFilesBddApi(context: TestContext) {
                   body.userMessage ??
                   ({
                     version: 1,
-                    parts: [
-                      ...(body.attachFiles ?? []).map((file) => {
-                        return {
-                          type: "file" as const,
-                          fileId: file.id,
-                          filenameSnapshot: file.filename,
-                          contentType: file.contentType,
-                        };
-                      }),
-                      { type: "text", text: body.prompt },
-                    ],
-                  } satisfies UserMessageDocument),
-                ...(body.generationTemplate === undefined
-                  ? {}
-                  : { generationTemplate: body.generationTemplate }),
+                    parts: [{ type: "text", text: body.prompt }],
+                  } satisfies UserMessageInputDocument),
                 hasTextContent:
                   body.hasTextContent ?? body.prompt.trim().length > 0,
-                ...(body.attachFiles === undefined
-                  ? {}
-                  : { attachFiles: [...body.attachFiles] }),
                 // Explicit null clears the thread's sticky computer-use host;
                 // omitting the field keeps it, so the two must stay distinct.
                 ...(body.computerUseHostId === undefined
