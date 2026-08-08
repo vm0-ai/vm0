@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.404.0](https://github.com/vm0-ai/vm0/compare/api-v1.403.1...api-v1.404.0) (2026-08-08)
+
+
+### Features
+
+* **api:** archive chat events into immutable full-thread r2 snapshots ([#25770](https://github.com/vm0-ai/vm0/issues/25770)) ([e8cd166](https://github.com/vm0-ai/vm0/commit/e8cd16649ca7ce99aa5edf14d452d55414dce89e))
+* **api:** force app.vm0.ai clients to upgrade to v0.707.0 ([#25771](https://github.com/vm0-ai/vm0/issues/25771)) ([41a989f](https://github.com/vm0-ai/vm0/commit/41a989f80d2b8ef58484df5441c292d353f48b9a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.295.0
+    * @vm0/core bumped to 8.530.5
+    * @vm0/db bumped to 1.180.0
+    * @vm0/pi-agent-runtime bumped to 1.3.8
+
 ## [1.403.1](https://github.com/vm0-ai/vm0/compare/api-v1.403.0...api-v1.403.1) (2026-08-08)
 
 
