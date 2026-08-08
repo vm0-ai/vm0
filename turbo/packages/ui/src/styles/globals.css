@@ -141,17 +141,17 @@
    * (the layer would replace the fill instead of sitting on it), so each fill
    * gets its own pre-mixed pair below.
    * =================================== */
-  --color-state-hover: hsl(var(--gray-950) / var(--state-hover-alpha));
-  --color-state-selected: hsl(var(--gray-950) / var(--state-selected-alpha));
+  --color-state-hover: hsl(var(--state-layer) / var(--state-hover-alpha));
+  --color-state-selected: hsl(var(--state-layer) / var(--state-selected-alpha));
   --color-state-selected-hover: hsl(
-    var(--gray-950) / var(--state-selected-hover-alpha)
+    var(--state-layer) / var(--state-selected-hover-alpha)
   );
-  --color-state-pressed: hsl(var(--gray-950) / var(--state-pressed-alpha));
+  --color-state-pressed: hsl(var(--state-layer) / var(--state-pressed-alpha));
 
   --color-card-hover: color-mix(
     in srgb,
     hsl(var(--card)),
-    hsl(var(--gray-950)) var(--state-hover-alpha)
+    hsl(var(--state-layer)) var(--state-hover-alpha)
   );
   /* Neutral-dark page primary ("Add schedule" style). Already at maximum
      contrast against the page, so its states step toward the surface. */
@@ -168,12 +168,12 @@
   --color-secondary-hover: color-mix(
     in srgb,
     hsl(var(--secondary)),
-    hsl(var(--gray-950)) var(--state-hover-alpha)
+    hsl(var(--state-layer)) var(--state-hover-alpha)
   );
   --color-secondary-pressed: color-mix(
     in srgb,
     hsl(var(--secondary)),
-    hsl(var(--gray-950)) var(--state-pressed-alpha)
+    hsl(var(--state-layer)) var(--state-pressed-alpha)
   );
   --color-primary-hover: color-mix(
     in srgb,
@@ -287,8 +287,15 @@
     ); /* gray-50 - lighter background for code blocks */
 
     /* Interaction state ladder (light).
-       Layer colour is gray-950 -- the cool near-black that anchors the neutral
-       ramp -- so states keep the product's cool tint instead of going flat. */
+
+       The layer colour is chosen so that compositing it onto a surface lands
+       back on the neutral ramp rather than just darkening it. The ramp falls
+       away from white at roughly R:G:B = 1 : 0.84 : 0.62 (gray-50 -> gray-200),
+       and this colour falls at 1 : 0.842 : 0.620 -- so every state keeps the
+       ramp's cool cast at hue 215 / ~23% saturation instead of washing out to
+       a flat 2% grey. `--state-hover` over white is exactly gray-50. */
+    --state-layer: 215 100% 19%;
+
     --state-hover-alpha: 5%;
     --state-selected-alpha: 8.5%;
     --state-selected-hover-alpha: 11.5%;
@@ -400,7 +407,11 @@
 
     /* Interaction state ladder (dark).
        Dark surfaces need a wider ladder than light ones to read as the same
-       step, so the alphas are raised rather than mirrored. */
+       step, so the alphas are raised rather than mirrored. The dark ramp is a
+       much quieter cool (hue 240 at 3% saturation), so the layer matches that
+       hue and stays just saturated enough to hold it as the alpha climbs. */
+    --state-layer: 240 100% 97%;
+
     --state-hover-alpha: 7%;
     --state-selected-alpha: 12%;
     --state-selected-hover-alpha: 16%;
