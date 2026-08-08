@@ -9,7 +9,9 @@ use tracing::info;
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::state_file::PROXY_REGISTRY_MAX_BYTES;
-use crate::types::{ConnectorRuntimeTarget, FirewallEntry, NetworkPolicy, SecretConnectorMetadata};
+use crate::types::{
+    ConnectorRuntimeTargetRegistration, FirewallEntry, NetworkPolicy, SecretConnectorMetadata,
+};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +35,8 @@ struct VmEntry {
     omitted_builtin_firewalls: HashSet<String>,
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
     omitted_custom_connector_ids: HashSet<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    connector_routing_variables: HashMap<String, HashMap<String, String>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
     secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
@@ -54,7 +58,7 @@ pub struct VmRegistration<'a> {
     pub proxy_log_path: &'a std::path::Path,
     pub firewalls: Option<&'a [FirewallEntry]>,
     pub network_policies: Option<&'a HashMap<String, NetworkPolicy>>,
-    pub connector_runtime_targets: Option<&'a [ConnectorRuntimeTarget]>,
+    pub connector_runtime_targets: Option<&'a [ConnectorRuntimeTargetRegistration]>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
     pub secret_connector_metadata_map: Option<&'a HashMap<String, SecretConnectorMetadata>>,
@@ -154,7 +158,8 @@ pub struct ProxyRegistryHandle {
 pub(crate) enum CustomConnectorRuntimeRegistryState {
     Available {
         firewall: FirewallEntry,
-        network_policy: NetworkPolicy,
+        network_policy: Box<NetworkPolicy>,
+        routing_variables: Option<HashMap<String, String>>,
     },
     Absent,
 }
@@ -174,6 +179,14 @@ fn custom_connector_owner(entry: &FirewallEntry) -> Option<&str> {
         } => Some(custom_connector_id),
         FirewallEntry::Builtin { .. } | FirewallEntry::Inline { .. } => None,
     }
+}
+
+fn builtin_connector_routing_key(connector_slug: &str) -> String {
+    format!("builtin:{connector_slug}")
+}
+
+fn custom_connector_routing_key(custom_connector_id: &str) -> String {
+    format!("custom:{custom_connector_id}")
 }
 
 fn validate_custom_connector_resource_ownership(firewalls: &[FirewallEntry]) -> RunnerResult<()> {
@@ -249,20 +262,65 @@ fn initial_omitted_connector_runtime_targets(
     let mut omitted_custom_connector_ids = HashSet::new();
     for target in registration.connector_runtime_targets.unwrap_or_default() {
         match target {
-            ConnectorRuntimeTarget::Builtin { connector_slug }
+            ConnectorRuntimeTargetRegistration::Builtin { connector_slug }
                 if !active_builtin_firewalls.contains(connector_slug.as_str()) =>
             {
                 omitted_builtin_firewalls.insert(connector_slug.clone());
             }
-            ConnectorRuntimeTarget::Custom {
+            ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id,
+                ..
             } if !active_custom_connector_ids.contains(custom_connector_id.as_str()) => {
                 omitted_custom_connector_ids.insert(custom_connector_id.clone());
             }
-            ConnectorRuntimeTarget::Builtin { .. } | ConnectorRuntimeTarget::Custom { .. } => {}
+            ConnectorRuntimeTargetRegistration::Builtin { .. }
+            | ConnectorRuntimeTargetRegistration::Custom { .. } => {}
         }
     }
     (omitted_builtin_firewalls, omitted_custom_connector_ids)
+}
+
+fn initial_connector_routing_variables(
+    registration: &VmRegistration<'_>,
+) -> HashMap<String, HashMap<String, String>> {
+    let mut routing_variables = HashMap::new();
+    let run_vars = registration.vars.cloned().unwrap_or_default();
+    for firewall in registration.firewalls.unwrap_or_default() {
+        if let FirewallEntry::Builtin {
+            name,
+            base_url_vars,
+        } = firewall
+        {
+            let raw_values = base_url_vars.as_ref().map_or_else(
+                || Some(HashMap::new()),
+                |resolved_values| {
+                    resolved_values
+                        .keys()
+                        .map(|key| run_vars.get(key).map(|value| (key.clone(), value.clone())))
+                        .collect::<Option<HashMap<_, _>>>()
+                },
+            );
+            // Missing raw values are the old-API compatibility shape. Omitting
+            // this identity keeps the pre-pin auth path until #25351 removes
+            // the fallback after old API instances drain.
+            if let Some(raw_values) = raw_values {
+                routing_variables.insert(builtin_connector_routing_key(name), raw_values);
+            }
+        }
+    }
+    for target in registration.connector_runtime_targets.unwrap_or_default() {
+        if let ConnectorRuntimeTargetRegistration::Custom {
+            custom_connector_id,
+            base_url_vars: Some(base_url_vars),
+        } = target
+        {
+            routing_variables.insert(
+                custom_connector_routing_key(custom_connector_id),
+                base_url_vars.clone(),
+            );
+        }
+    }
+    routing_variables
 }
 
 impl ProxyRegistryHandle {
@@ -282,6 +340,7 @@ impl ProxyRegistryHandle {
         registration: &VmRegistration<'_>,
     ) -> RunnerResult<()> {
         validate_custom_connector_resource_ownership(registration.firewalls.unwrap_or_default())?;
+        let connector_routing_variables = initial_connector_routing_variables(registration);
         let _guard = lock::acquire(self.lock_path.clone()).await?;
 
         let mut registry = read_registry(&self.registry_path).await?;
@@ -302,6 +361,7 @@ impl ProxyRegistryHandle {
                 network_policies: registration.network_policies.cloned(),
                 omitted_builtin_firewalls,
                 omitted_custom_connector_ids,
+                connector_routing_variables,
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
                 secret_connector_map: registration.secret_connector_map.cloned(),
                 secret_connector_metadata_map: registration.secret_connector_metadata_map.cloned(),
@@ -355,6 +415,7 @@ impl ProxyRegistryHandle {
             CustomConnectorRuntimeRegistryState::Available {
                 firewall,
                 network_policy,
+                routing_variables,
             } => {
                 let FirewallEntry::Inline {
                     firewall: inline_firewall,
@@ -421,7 +482,13 @@ impl ProxyRegistryHandle {
                         network_policies.remove(&firewall_name);
                     }
                 }
-                network_policies.insert(inline_firewall_name, network_policy);
+                network_policies.insert(inline_firewall_name, *network_policy);
+                if let Some(routing_variables) = routing_variables {
+                    vm.connector_routing_variables.insert(
+                        custom_connector_routing_key(custom_connector_id),
+                        routing_variables,
+                    );
+                }
                 vm.omitted_custom_connector_ids.remove(custom_connector_id);
             }
             CustomConnectorRuntimeRegistryState::Absent => {
@@ -849,6 +916,7 @@ mod tests {
                 network_policies: None,
                 omitted_builtin_firewalls: HashSet::new(),
                 omitted_custom_connector_ids: HashSet::new(),
+                connector_routing_variables: HashMap::new(),
                 encrypted_secrets: None,
                 secret_connector_map: None,
                 secret_connector_metadata_map: None,
@@ -1034,22 +1102,28 @@ mod tests {
         let firewalls = vec![
             FirewallEntry::Builtin {
                 name: "slack".to_string(),
-                base_url_vars: None,
+                base_url_vars: Some(HashMap::from([(
+                    "SLACK_HOST".to_string(),
+                    "xn--mnich-kva.example.test".to_string(),
+                )])),
             },
             custom_runtime_firewall(available_custom_id, "custom_connector_available"),
         ];
+        let vars = HashMap::from([("SLACK_HOST".to_string(), "münich.example.test".to_string())]);
         let targets = vec![
-            ConnectorRuntimeTarget::Builtin {
+            ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
             },
-            ConnectorRuntimeTarget::Builtin {
+            ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "github".to_string(),
             },
-            ConnectorRuntimeTarget::Custom {
+            ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: available_custom_id.to_string(),
+                base_url_vars: Some(HashMap::new()),
             },
-            ConnectorRuntimeTarget::Custom {
+            ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: omitted_custom_id.to_string(),
+                base_url_vars: None,
             },
         ];
 
@@ -1060,6 +1134,7 @@ mod tests {
                 &VmRegistration {
                     firewalls: Some(&firewalls),
                     connector_runtime_targets: Some(&targets),
+                    vars: Some(&vars),
                     ..base_registration()
                 },
             )
@@ -1075,6 +1150,16 @@ mod tests {
         assert_eq!(
             vm.omitted_custom_connector_ids,
             HashSet::from([omitted_custom_id.to_string()])
+        );
+        assert_eq!(
+            vm.connector_routing_variables,
+            HashMap::from([
+                (
+                    "builtin:slack".to_string(),
+                    HashMap::from([("SLACK_HOST".to_string(), "münich.example.test".to_string(),)]),
+                ),
+                (format!("custom:{available_custom_id}"), HashMap::new(),),
+            ])
         );
     }
 
@@ -1161,7 +1246,8 @@ mod tests {
                 custom_connector_id,
                 CustomConnectorRuntimeRegistryState::Available {
                     firewall: custom_runtime_firewall(custom_connector_id, "slack"),
-                    network_policy: policy(&["custom.write"], &[], &[], "deny"),
+                    network_policy: Box::new(policy(&["custom.write"], &[], &[], "deny")),
+                    routing_variables: None,
                 },
             )
             .await
@@ -1202,6 +1288,12 @@ mod tests {
                 policy(&["chat:write"], &[], &[], "allow"),
             ),
         ]);
+        let pinned_routing_variables =
+            HashMap::from([("subdomain".to_string(), "pinned".to_string())]);
+        let runtime_targets = vec![ConnectorRuntimeTargetRegistration::Custom {
+            custom_connector_id: custom_connector_id.to_string(),
+            base_url_vars: Some(pinned_routing_variables.clone()),
+        }];
         harness
             .handle
             .register_vm(
@@ -1210,6 +1302,7 @@ mod tests {
                     run_id: "run-test",
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
+                    connector_runtime_targets: Some(&runtime_targets),
                     ..base_registration()
                 },
             )
@@ -1254,6 +1347,11 @@ mod tests {
                 .unwrap()
                 .contains_key("slack")
         );
+        assert_eq!(
+            absent_vm.connector_routing_variables
+                [&custom_connector_routing_key(custom_connector_id)],
+            pinned_routing_variables
+        );
 
         let restored_firewall = custom_runtime_firewall(custom_connector_id, restored_name);
         assert!(
@@ -1265,7 +1363,8 @@ mod tests {
                     custom_connector_id,
                     CustomConnectorRuntimeRegistryState::Available {
                         firewall: restored_firewall,
-                        network_policy: policy(&["custom.write"], &[], &[], "ask"),
+                        network_policy: Box::new(policy(&["custom.write"], &[], &[], "ask",)),
+                        routing_variables: Some(pinned_routing_variables.clone()),
                     },
                 )
                 .await
@@ -1277,6 +1376,11 @@ mod tests {
             !restored_vm
                 .omitted_custom_connector_ids
                 .contains(custom_connector_id)
+        );
+        assert_eq!(
+            restored_vm.connector_routing_variables
+                [&custom_connector_routing_key(custom_connector_id)],
+            pinned_routing_variables
         );
         assert!(
             restored_vm

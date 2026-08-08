@@ -140,6 +140,48 @@ async def test_invalid_registered_vm_non_object_blocks_before_auth_injection(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "invalid_registry_vm"
 
 
+async def test_invalid_connector_routing_variables_block_before_auth_injection(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    vm_info = _single_firewall_vm(
+        tmp_path,
+        api_entry={
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer secret"}},
+            "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+        },
+        network_policy={
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        },
+        vm_fields={"connectorRoutingVariables": {"github": {"HOST": "example.test"}}},
+    )
+    reg_path = _write_registry(tmp_path, client_ip="10.200.0.5", vm_info=vm_info)
+    flow = real_flow(with_response=False, client_ip="10.200.0.5", host="api.github.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content) == {
+        "error": "invalid_registry_vm",
+        "message": (
+            "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
+        ),
+        "reason": "invalid_connector_routing_variables",
+    }
+    auth_fetch.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "firewalls",
     [0, 1, False, True, "", {}, {"name": "github"}, "broken"],
