@@ -48,6 +48,8 @@ pub struct Job {
     #[serde(default)]
     pub pi_execution_mode: Option<PiExecutionMode>,
     #[serde(default)]
+    pub runner_preference: Option<serde_json::Value>,
+    #[serde(default)]
     pub runner_preference_decision: Option<serde_json::Value>,
 }
 
@@ -1677,7 +1679,7 @@ mod tests {
                 "experimentalProfile": "browser",
                 "cliAgentSessionId": "session-id",
                 "piExecutionMode": "standby",
-                "runnerPreferenceDecision": {
+                "runnerPreference": {
                     "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "b85bb257-21c1-4b8f-8676-a4051f35b7b0",
@@ -1685,6 +1687,10 @@ mod tests {
                     },
                     "tier": "reusableSandbox",
                     "expiresAt": "2026-08-03T12:00:00.000Z"
+                },
+                "runnerPreferenceDecision": {
+                    "kind": "noPreference",
+                    "reason": "noReuseKey"
                 }
             }
         });
@@ -1698,6 +1704,7 @@ mod tests {
         );
         assert_eq!(job.experimental_profile, "browser");
         assert_eq!(job.pi_execution_mode, Some(PiExecutionMode::Standby));
+        assert!(job.runner_preference.is_some());
         assert!(job.runner_preference_decision.is_some());
         assert!(job.reuse_key().is_none());
     }

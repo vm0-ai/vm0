@@ -1,5 +1,5 @@
 import type {
-  RunnerPreferenceDecision,
+  RunnerPreference,
   RunnerPreferenceResolution,
 } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -270,14 +270,11 @@ export function runnerReusePreferencePollPriority(args: {
   END`;
 }
 
-type PositiveRunnerPreferenceDecision = Extract<
-  RunnerPreferenceDecision,
+type PositiveRunnerPreference = Extract<
+  RunnerPreference,
   { kind: "preference" }
 >;
-type NoRunnerPreferenceDecision = Extract<
-  RunnerPreferenceDecision,
-  { kind: "noPreference" }
->;
+type NoRunnerPreference = Extract<RunnerPreference, { kind: "noPreference" }>;
 
 const preferenceResolutionByTier = {
   exactSandbox: "exact_history_generation",
@@ -285,7 +282,7 @@ const preferenceResolutionByTier = {
   reusableSandbox: "matching_reusable_sandbox",
   workspaceCache: "matching_workspace_cache",
 } as const satisfies Record<
-  PositiveRunnerPreferenceDecision["tier"],
+  PositiveRunnerPreference["tier"],
   RunnerPreferenceResolution
 >;
 
@@ -295,40 +292,40 @@ const noPreferenceResolutionByReason = {
   noViableHolder: "no_viable_holder",
   lookupError: "lookup_error",
 } as const satisfies Record<
-  NoRunnerPreferenceDecision["reason"],
+  NoRunnerPreference["reason"],
   RunnerPreferenceResolution
 >;
 
-export function runnerReusePreferenceLookupErrorDecision(): RunnerPreferenceDecision {
+export function runnerReusePreferenceLookupError(): RunnerPreference {
   return {
     kind: "noPreference",
     reason: "lookupError",
   };
 }
 
-function runnerPreferenceDecisionResolution(
-  decision: RunnerPreferenceDecision,
+export function runnerPreferenceResolution(
+  preference: RunnerPreference,
 ): RunnerPreferenceResolution {
-  if (decision.kind === "noPreference") {
-    return noPreferenceResolutionByReason[decision.reason];
+  if (preference.kind === "noPreference") {
+    return noPreferenceResolutionByReason[preference.reason];
   }
-  return preferenceResolutionByTier[decision.tier];
+  return preferenceResolutionByTier[preference.tier];
 }
 
-export function runnerPreferenceDecisionTelemetryDimensions(
-  decision: RunnerPreferenceDecision,
+export function runnerPreferenceTelemetryDimensions(
+  preference: RunnerPreference,
 ): Record<string, string> {
   return {
-    runner_preference_resolution: runnerPreferenceDecisionResolution(decision),
-    runner_preference_decision_kind: decision.kind,
-    ...(decision.kind === "preference"
-      ? { runner_preference_tier: decision.tier }
-      : { runner_preference_no_preference_reason: decision.reason }),
+    runner_preference_resolution: runnerPreferenceResolution(preference),
+    runner_preference_decision_kind: preference.kind,
+    ...(preference.kind === "preference"
+      ? { runner_preference_tier: preference.tier }
+      : { runner_preference_no_preference_reason: preference.reason }),
   };
 }
 
 interface RunnerReuseHolder {
-  readonly runnerIdentity: PositiveRunnerPreferenceDecision["runnerIdentity"];
+  readonly runnerIdentity: PositiveRunnerPreference["runnerIdentity"];
   readonly hasExactHistoryGeneration: boolean;
   readonly isFinalizingPredecessor: boolean;
   readonly hasReusableSandbox: boolean;
@@ -441,7 +438,7 @@ export async function resolveRunnerReusePreference(args: {
   readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
   readonly currentDate: Date;
-}): Promise<RunnerPreferenceDecision> {
+}): Promise<RunnerPreference> {
   if (!args.reuseKey) {
     return {
       kind: "noPreference",

@@ -27,7 +27,7 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
-use super::{RunnerPreferenceContext, parse_runner_preference_decision};
+use super::{RunnerPreferenceContext, parse_runner_preference};
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
@@ -1047,18 +1047,42 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         },
         None => None,
     };
-    let runner_preference_context =
-        match parse_runner_preference_decision(msg.data.get("runnerPreferenceDecision").cloned()) {
-            Ok(context) => context,
-            Err(error) => {
-                warn!(
-                    run_id = %run_id,
-                    error = %error,
-                    "ably: invalid runner preference decision, using ordinary admission"
-                );
-                None
+    let runner_preference_context = match parse_runner_preference(
+        msg.data.get("runnerPreference").cloned(),
+    ) {
+        Ok(Some(context)) => Some(context),
+        Ok(None) => {
+            match parse_runner_preference(msg.data.get("runnerPreferenceDecision").cloned()) {
+                Ok(context) => context,
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        error = %error,
+                        "ably: invalid compatibility runner preference, using ordinary admission"
+                    );
+                    None
+                }
             }
-        };
+        }
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                error = %error,
+                "ably: invalid canonical runner preference, trying compatibility field"
+            );
+            match parse_runner_preference(msg.data.get("runnerPreferenceDecision").cloned()) {
+                Ok(context) => context,
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        error = %error,
+                        "ably: invalid compatibility runner preference, using ordinary admission"
+                    );
+                    None
+                }
+            }
+        }
+    };
     Some(JobNotification {
         run_id,
         profile,
@@ -1213,7 +1237,7 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{RunnerPreferenceResolution, RunnerPreferenceTier};
+    use crate::provider::{RunnerPreference, RunnerPreferenceTier};
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -2007,7 +2031,7 @@ mod tests {
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
                 "piExecutionMode": "standby",
-                "runnerPreferenceDecision": {
+                "runnerPreference": {
                     "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
@@ -2015,6 +2039,10 @@ mod tests {
                     },
                     "tier": "reusableSandbox",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
+                "runnerPreferenceDecision": {
+                    "kind": "noPreference",
+                    "reason": "noReuseKey"
                 }
             }),
         );
@@ -2042,13 +2070,19 @@ mod tests {
             .expect("canonical preference should be parsed");
         assert_eq!(preference.tier(), RunnerPreferenceTier::ReusableSandbox);
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
+        let telemetry = candidate
+            .runner_preference_claim_telemetry()
+            .expect("canonical preference telemetry");
+        assert!(matches!(
+            telemetry.runner_preference,
+            RunnerPreference::Preference {
+                tier: RunnerPreferenceTier::ReusableSandbox,
+                ..
+            }
+        ));
         assert_eq!(
-            candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
-            Some(super::super::RunnerPreferenceClaimTelemetry {
-                resolution: RunnerPreferenceResolution::MatchingReusableSandbox,
-                state: super::super::RunnerPreferenceClaimState::Active,
-                targeted_self: Some(true),
-            })
+            telemetry.state,
+            Some(super::super::RunnerPreferenceClaimState::Active)
         );
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
@@ -2083,7 +2117,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_preference_decision_preserves_direct_candidate() {
+    async fn malformed_canonical_preference_uses_compatibility_value() {
         let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
@@ -2101,7 +2135,7 @@ mod tests {
                 "runId": "00000000-0000-0000-0000-000000000011",
                 "profile": "vm0/default",
                 "reuseKey": "thread:malformed-preference",
-                "runnerPreferenceDecision": {
+                "runnerPreference": {
                     "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "00000000-0000-0000-0000-000000000005",
@@ -2109,6 +2143,10 @@ mod tests {
                     },
                     "tier": "workspaceCache",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
+                },
+                "runnerPreferenceDecision": {
+                    "kind": "noPreference",
+                    "reason": "noViableHolder"
                 }
             }),
         );
@@ -2120,11 +2158,14 @@ mod tests {
             .into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
         assert!(candidate.runner_preference().is_none());
-        assert!(
-            candidate
-                .runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,)
-                .is_none()
-        );
+        let telemetry = candidate
+            .runner_preference_claim_telemetry()
+            .expect("compatibility preference telemetry");
+        assert!(matches!(
+            telemetry.runner_preference,
+            RunnerPreference::NoPreference { .. }
+        ));
+        assert_eq!(telemetry.state, None);
         assert_no_direct_candidate(&direct_candidates).await;
     }
 

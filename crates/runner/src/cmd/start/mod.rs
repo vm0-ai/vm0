@@ -1635,7 +1635,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let pending_finalizing_deadline = pending_finalizing_candidate
             .as_ref()
             .and_then(JobCandidate::runner_preference)
-            .map(crate::provider::RunnerPreference::deadline);
+            .map(crate::provider::ActiveRunnerPreference::deadline);
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
             // The future is pinned outside the loop so heartbeat/cleanup

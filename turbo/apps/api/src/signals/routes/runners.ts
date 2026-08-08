@@ -21,8 +21,8 @@ import {
   type HeldSandboxState,
   type HeldWorkspaceState,
   type PiExecutionMode,
+  type RunnerPreference,
   type RunnerPreferenceClaimState,
-  type RunnerPreferenceDecision,
   type RunnerPreferenceResolution,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
@@ -120,9 +120,10 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  runnerPreferenceDecisionTelemetryDimensions,
+  runnerPreferenceResolution,
+  runnerPreferenceTelemetryDimensions,
   runnerReuseKeyTelemetryKind,
-  runnerReusePreferenceLookupErrorDecision,
+  runnerReusePreferenceLookupError,
   runnerReusePreferencePollPriority,
   resolveRunnerReusePreference,
 } from "../services/runner-reuse-preference";
@@ -554,7 +555,7 @@ function recordPollTimingMetrics(args: {
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+  readonly runnerPreference: RunnerPreference;
   readonly reuseKeyKind: "thread" | "session" | "none";
   readonly historyGenerationRunId: string | undefined;
   readonly queueCreatedAtMs: number;
@@ -568,9 +569,7 @@ function recordPollTimingMetrics(args: {
     profile: args.profile,
     auth_type: args.authType,
     reuse_key_kind: args.reuseKeyKind,
-    ...runnerPreferenceDecisionTelemetryDimensions(
-      args.runnerPreferenceDecision,
-    ),
+    ...runnerPreferenceTelemetryDimensions(args.runnerPreference),
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
@@ -659,7 +658,7 @@ async function resolvePollRunnerReusePreference(
       });
     },
   );
-  return resolution ?? runnerReusePreferenceLookupErrorDecision();
+  return resolution ?? runnerReusePreferenceLookupError();
 }
 
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -745,7 +744,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     pendingJob.piExecutionMode === null
       ? undefined
       : piExecutionModeSchema.parse(pendingJob.piExecutionMode);
-  const runnerPreferenceDecision = await resolvePollRunnerReusePreference(db, {
+  const runnerPreference = await resolvePollRunnerReusePreference(db, {
     runId: pendingJob.runId,
     runnerGroup: group,
     profile: pendingJob.profile,
@@ -761,7 +760,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     profile: pendingJob.profile,
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
-    runnerPreferenceDecision,
+    runnerPreference,
     reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
     historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
@@ -785,7 +784,8 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         ...(piExecutionMode ? { piExecutionMode } : {}),
-        runnerPreferenceDecision,
+        runnerPreference,
+        runnerPreferenceDecision: runnerPreference,
       },
     },
   };
@@ -2034,9 +2034,50 @@ interface ClaimTimingTelemetry {
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
+  readonly runnerPreference?: RunnerPreference;
   readonly runnerPreferenceResolution?: RunnerPreferenceResolution;
   readonly runnerPreferenceClaimState?: RunnerPreferenceClaimState;
   readonly runnerPreferenceTargetedSelf?: boolean;
+}
+
+interface SuccessfulClaimPreferenceTelemetry {
+  readonly resolution: RunnerPreferenceResolution | undefined;
+  readonly claimState: RunnerPreferenceClaimState | undefined;
+  readonly targetedSelf: boolean | undefined;
+}
+
+function successfulClaimPreferenceTelemetry(args: {
+  readonly telemetry: ClaimTimingTelemetry | undefined;
+  readonly runnerIdentity: RunnerClaimIdentity | undefined;
+}): SuccessfulClaimPreferenceTelemetry {
+  const preference = args.telemetry?.runnerPreference;
+  if (!preference) {
+    return {
+      resolution: args.telemetry?.runnerPreferenceResolution,
+      claimState: args.telemetry?.runnerPreferenceClaimState,
+      targetedSelf: args.telemetry?.runnerPreferenceTargetedSelf,
+    };
+  }
+
+  if (preference.kind === "noPreference") {
+    return {
+      resolution: runnerPreferenceResolution(preference),
+      claimState: "absent",
+      targetedSelf: undefined,
+    };
+  }
+
+  const claimState = args.telemetry?.runnerPreferenceClaimState;
+  return {
+    resolution: runnerPreferenceResolution(preference),
+    claimState: claimState === "absent" ? undefined : claimState,
+    targetedSelf: args.runnerIdentity
+      ? preference.runnerIdentity.runnerId.toLowerCase() ===
+          args.runnerIdentity.runnerId.toLowerCase() &&
+        preference.runnerIdentity.heartbeatGeneration ===
+          args.runnerIdentity.heartbeatGeneration
+      : undefined,
+  };
 }
 
 function scheduleSuccessfulClaimSideEffects(args: {
@@ -2046,10 +2087,15 @@ function scheduleSuccessfulClaimSideEffects(args: {
   readonly claimRequestStartedAtMs: number;
   readonly claimResult: ClaimedTransitionResult;
   readonly telemetry: ClaimTimingTelemetry | undefined;
+  readonly runnerIdentity: RunnerClaimIdentity | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
   const { job, run } = args.jobWithRun;
   const queueCreatedAtMs = job.createdAt.getTime();
+  const preferenceTelemetry = successfulClaimPreferenceTelemetry({
+    telemetry: args.telemetry,
+    runnerIdentity: args.runnerIdentity,
+  });
   scheduleClaimSucceededSideEffects({
     runId: run.id,
     userId: run.userId,
@@ -2092,9 +2138,9 @@ function scheduleSuccessfulClaimSideEffects(args: {
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
-    runnerPreferenceResolution: args.telemetry?.runnerPreferenceResolution,
-    runnerPreferenceClaimState: args.telemetry?.runnerPreferenceClaimState,
-    runnerPreferenceTargetedSelf: args.telemetry?.runnerPreferenceTargetedSelf,
+    runnerPreferenceResolution: preferenceTelemetry.resolution,
+    runnerPreferenceClaimState: preferenceTelemetry.claimState,
+    runnerPreferenceTargetedSelf: preferenceTelemetry.targetedSelf,
     historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
       args.storedContext,
     ),
@@ -2595,6 +2641,7 @@ const claimAuthorizedJob$ = command(
       claimRequestStartedAtMs: args.claimRequestStartedAtMs,
       claimResult,
       telemetry: args.telemetry,
+      runnerIdentity: args.runnerIdentity,
       claimRouteTiming,
     });
 

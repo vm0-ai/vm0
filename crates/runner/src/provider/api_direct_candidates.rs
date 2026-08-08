@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 #[cfg(test)]
-use super::RunnerPreference;
+use super::ActiveRunnerPreference;
 use super::{JobCandidate, JobDiscoverySource, RunnerPreferenceContext};
 use crate::ids::RunId;
 use crate::types::PiExecutionMode;
@@ -381,7 +381,7 @@ fn snapshot(depth: usize, capacity: usize) -> DirectCandidateInboxSnapshot {
 mod tests {
     use std::time::Duration;
 
-    use super::super::{RunnerPreferenceResolution, RunnerPreferenceTier};
+    use super::super::{RunnerNoPreferenceReason, RunnerPreference, RunnerPreferenceTier};
     use super::*;
 
     fn run_id(value: u128) -> RunId {
@@ -404,7 +404,7 @@ mod tests {
         tier: RunnerPreferenceTier,
         deadline: StdInstant,
     ) -> RunnerPreferenceContext {
-        RunnerPreferenceContext::for_test(RunnerPreference::ranked_for_test(
+        RunnerPreferenceContext::for_test(ActiveRunnerPreference::ranked_for_test(
             uuid::Uuid::from_u128(runner_id),
             7,
             tier,
@@ -508,13 +508,19 @@ mod tests {
         assert_eq!(preference.tier(), RunnerPreferenceTier::ExactSandbox);
         assert_eq!(preference.deadline(), exact_deadline);
         assert!(preference.targets(&uuid::Uuid::from_u128(20).to_string(), 7));
+        let telemetry = candidate
+            .runner_preference_claim_telemetry()
+            .expect("canonical preference telemetry");
+        assert!(matches!(
+            telemetry.runner_preference,
+            RunnerPreference::Preference {
+                tier: RunnerPreferenceTier::ExactSandbox,
+                ..
+            }
+        ));
         assert_eq!(
-            candidate.runner_preference_claim_telemetry(&uuid::Uuid::from_u128(20).to_string(), 7,),
-            Some(super::super::RunnerPreferenceClaimTelemetry {
-                resolution: RunnerPreferenceResolution::ExactHistoryGeneration,
-                state: super::super::RunnerPreferenceClaimState::Active,
-                targeted_self: Some(true),
-            })
+            telemetry.state,
+            Some(super::super::RunnerPreferenceClaimState::Active)
         );
         assert!(
             candidate
@@ -574,8 +580,8 @@ mod tests {
                     "vm0/default".to_string(),
                     StdInstant::now(),
                     None,
-                    Some(RunnerPreferenceContext::negative(
-                        RunnerPreferenceResolution::NoViableHolder,
+                    Some(RunnerPreferenceContext::no_preference_for_test(
+                        RunnerNoPreferenceReason::NoViableHolder,
                     )),
                 )
                 .with_pi_execution_mode(Some(PiExecutionMode::ColdStart)),
@@ -600,13 +606,19 @@ mod tests {
         assert_eq!(preference.tier(), RunnerPreferenceTier::WorkspaceCache);
         assert_eq!(preference.deadline(), first_deadline);
         assert!(preference.targets(&uuid::Uuid::from_u128(10).to_string(), 7));
+        let telemetry = candidate
+            .runner_preference_claim_telemetry()
+            .expect("retained canonical preference telemetry");
+        assert!(matches!(
+            telemetry.runner_preference,
+            RunnerPreference::Preference {
+                tier: RunnerPreferenceTier::WorkspaceCache,
+                ..
+            }
+        ));
         assert_eq!(
-            candidate.runner_preference_claim_telemetry(&uuid::Uuid::from_u128(10).to_string(), 7,),
-            Some(super::super::RunnerPreferenceClaimTelemetry {
-                resolution: RunnerPreferenceResolution::MatchingWorkspaceCache,
-                state: super::super::RunnerPreferenceClaimState::Active,
-                targeted_self: Some(true),
-            })
+            telemetry.state,
+            Some(super::super::RunnerPreferenceClaimState::Active)
         );
     }
 

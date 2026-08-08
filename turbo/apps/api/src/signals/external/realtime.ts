@@ -6,7 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
   PiExecutionMode,
-  RunnerPreferenceDecision,
+  RunnerPreference,
 } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
@@ -433,7 +433,7 @@ export async function publishRunnerJobNotification(args: {
   readonly runId: string;
   readonly profile: string;
   readonly piExecutionMode?: PiExecutionMode;
-  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+  readonly runnerPreference: RunnerPreference;
   readonly metadata?: {
     /** Raw key required for runner-local reuse matching; it stays on the internal runner-group channel. */
     readonly reuseKey: string | null;
@@ -459,7 +459,8 @@ export async function publishRunnerJobNotification(args: {
         ...(args.metadata?.historyGenerationRunId
           ? { historyGenerationRunId: args.metadata.historyGenerationRunId }
           : {}),
-        runnerPreferenceDecision: args.runnerPreferenceDecision,
+        runnerPreference: args.runnerPreference,
+        runnerPreferenceDecision: args.runnerPreference,
       });
       L.debug(
         `Published job ${args.runId} to runner-group:${args.group} (broadcast)`,

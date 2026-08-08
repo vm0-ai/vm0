@@ -189,7 +189,7 @@ struct ClaimAdmissionRequest<'a> {
 
 struct PreferenceCandidateRequest<'a> {
     candidate: JobCandidate,
-    preference: &'a crate::provider::RunnerPreference,
+    preference: &'a crate::provider::ActiveRunnerPreference,
     reuse_key: &'a str,
     profile_name: &'a str,
     job_vcpu: u32,
@@ -1072,7 +1072,7 @@ fn finalizing_preparation(
 
 async fn defer_preference_candidate(
     candidate: JobCandidate,
-    preference: &crate::provider::RunnerPreference,
+    preference: &crate::provider::ActiveRunnerPreference,
     reuse_key: &str,
     ctx: &DiscoveredJobContext<'_>,
     retain: bool,

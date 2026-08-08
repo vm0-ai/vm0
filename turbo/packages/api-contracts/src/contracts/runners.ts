@@ -106,7 +106,7 @@ const runnerProcessIdentitySchema = z
  * runner is not an exclusive assignee; another runner with a better compatible
  * local resource remains eligible to claim.
  */
-export const runnerPreferenceDecisionSchema = z.discriminatedUnion("kind", [
+export const runnerPreferenceSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("preference"),
@@ -168,6 +168,7 @@ const runnerClaimTelemetrySchema = z
     pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
     pollHttpRequestMs: z.number().int().nonnegative().optional(),
     pollReason: runnerClaimPollReasonSchema.optional(),
+    runnerPreference: runnerPreferenceSchema.optional().catch(undefined),
     runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
     runnerPreferenceClaimState: runnerPreferenceClaimStateSchema.optional(),
     runnerPreferenceTargetedSelf: z.boolean().optional(),
@@ -449,7 +450,10 @@ export const jobSchema = z.object({
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
   piExecutionMode: piExecutionModeSchema.optional(),
-  runnerPreferenceDecision: runnerPreferenceDecisionSchema,
+  runnerPreference: runnerPreferenceSchema,
+  // Keep the compatibility field until every pre-migration runner is unable
+  // to claim. Cleanup is tracked by #25751.
+  runnerPreferenceDecision: runnerPreferenceSchema,
 });
 
 const heldWorkspaceCacheSchema = z.object({
@@ -1187,9 +1191,7 @@ export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
-export type RunnerPreferenceDecision = z.infer<
-  typeof runnerPreferenceDecisionSchema
->;
+export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
 export type RunnerPreferenceResolution = z.infer<
   typeof runnerPreferenceResolutionSchema
 >;
