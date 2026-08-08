@@ -435,6 +435,18 @@ export async function insertChatEventAssetRefFixture(
   });
 }
 
+export async function setChatEventSnapshotHeadVersion(
+  context: TestContext,
+  threadId: string,
+  archiveSchemaVersion: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-chat-event-snapshot-head-version",
+    thread_id: threadId,
+    archive_schema_version: archiveSchemaVersion,
+  });
+}
+
 export async function readChatEventSnapshotHead(
   context: TestContext,
   threadId: string,

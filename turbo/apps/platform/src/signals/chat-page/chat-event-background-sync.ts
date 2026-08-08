@@ -1,15 +1,30 @@
 import { command } from "ccstate";
+import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventSnapshotReadEnabled$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
+import {
+  goalRunIdsForThread,
+  recordGoalRunIds$,
+} from "./chat-event-goal-run-ids.ts";
 import {
   loadIndexedDbChatEventBounds$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
 import {
+  clearIndexedDbChatEventRows$,
+  loadIndexedDbChatEventRowLastSeqId$,
+  writeIndexedDbChatEventRows$,
+} from "./chat-event-row-indexed-db.ts";
+import {
   CHAT_EVENTS_PAGE_LIMIT,
   listEventsAfter$,
 } from "./remote-chat-event-data-source.ts";
+import {
+  CHAT_EVENT_ROWS_PAGE_LIMIT,
+  listRowsAfter$,
+} from "./remote-chat-event-row-data-source.ts";
 import {
   activeChatEventThreadIds$,
   receiveActiveChatEvents$,
@@ -59,9 +74,14 @@ function createdMessageSyncThroughSeqId(message: unknown): number | null {
   return message.data.syncThroughSeqId;
 }
 
-const syncChatThreadEventsToIndexedDb$ = command(
+/**
+ * Snapshot-read variant: tails the raw-row cache. A thread without cached
+ * rows is left to its foreground pane, which owns the snapshot cold start; a
+ * 410 clears the cache so the next foreground sync rebuilds it.
+ */
+const syncChatThreadRowsToIndexedDb$ = command(
   async (
-    { set },
+    { get, set },
     {
       threadId,
       syncThroughSeqId,
@@ -71,6 +91,76 @@ const syncChatThreadEventsToIndexedDb$ = command(
     },
     signal: AbortSignal,
   ): Promise<ChatEvent[]> => {
+    const lastSeqId = await set(
+      loadIndexedDbChatEventRowLastSeqId$,
+      threadId,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (lastSeqId === null) {
+      L.debug("skipped background row sync: no cached rows", { threadId });
+      return [];
+    }
+    if (syncThroughSeqId !== null && lastSeqId >= syncThroughSeqId) {
+      L.debug("skipped background row sync: seq watermark already cached", {
+        threadId,
+        syncThroughSeqId,
+      });
+      return [];
+    }
+
+    const syncedEvents: ChatEvent[] = [];
+    let sinceSeqId = lastSeqId;
+    for (;;) {
+      const page = await set(listRowsAfter$, { threadId, sinceSeqId }, signal);
+      signal.throwIfAborted();
+      if (page.kind === "expired") {
+        await set(clearIndexedDbChatEventRows$, threadId, signal);
+        signal.throwIfAborted();
+        L.debug("background row sync cursor expired; cache cleared", {
+          threadId,
+        });
+        return syncedEvents;
+      }
+      if (page.rows.length === 0) {
+        return syncedEvents;
+      }
+      await set(writeIndexedDbChatEventRows$, page.rows, signal);
+      signal.throwIfAborted();
+      set(recordGoalRunIds$, threadId, page.rows);
+      const goalRunIds = get(goalRunIdsForThread(threadId));
+      syncedEvents.push(
+        ...page.rows.map((row) => {
+          return chatEventFromRow(row, goalRunIds);
+        }),
+      );
+      sinceSeqId = page.rows.at(-1)!.seqId;
+      if (page.rows.length < CHAT_EVENT_ROWS_PAGE_LIMIT) {
+        return syncedEvents;
+      }
+    }
+  },
+);
+
+const syncChatThreadEventsToIndexedDb$ = command(
+  async (
+    { get, set },
+    {
+      threadId,
+      syncThroughSeqId,
+    }: {
+      readonly threadId: string;
+      readonly syncThroughSeqId: number | null;
+    },
+    signal: AbortSignal,
+  ): Promise<ChatEvent[]> => {
+    if (get(chatEventSnapshotReadEnabled$)) {
+      return await set(
+        syncChatThreadRowsToIndexedDb$,
+        { threadId, syncThroughSeqId },
+        signal,
+      );
+    }
     const bounds = await set(loadIndexedDbChatEventBounds$, threadId, signal);
     signal.throwIfAborted();
 
