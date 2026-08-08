@@ -227,13 +227,31 @@ def _increment_buffered_reports() -> None:
 
 
 class BufferedReportLease:
-    """One-shot ownership token for a retained, unadmitted webhook report."""
+    """Own the runner-visible count for one retained, unadmitted webhook report.
+
+    Keep the lease with its report while webhook-delivery admission remains
+    retryable, including when admission returns ``False``. Release it exactly
+    once after delivery admits the report or after deliberate terminal discard,
+    eviction, or reset.
+
+    Premature release can let the runner shutdown drain advance before handoff.
+    Failing to release the lease can hold the drain pending until its bounded
+    timeout.
+    """
 
     def __init__(self) -> None:
         self._released = False
         self._lock = threading.Lock()
 
     def release(self) -> None:
+        """Release retained-report ownership exactly once.
+
+        Concurrent calls are serialized, and only the first decrements the
+        buffered-report contribution. A repeated call preserves other reports'
+        counts but emits the addon-process-wide, one-shot ``buffered_reports``
+        underflow diagnostic. Repeated release is an ownership error, not
+        ordinary idempotent cleanup.
+        """
         should_release = False
         should_log = False
         with self._lock:
@@ -250,6 +268,14 @@ class BufferedReportLease:
 
 
 def admit_buffered_report() -> BufferedReportLease:
+    """Count one retained report and return its terminal-release lease.
+
+    Calling this function immediately adds the report to the retained-report
+    contribution of the runner-facing aggregate ``buffered`` snapshot. The
+    caller must keep the returned lease with the report while webhook-delivery
+    admission returns ``False``, then release it according to the lease
+    contract. A report rejected before this function is called owns no lease.
+    """
     _increment_buffered_reports()
     return BufferedReportLease()
 
