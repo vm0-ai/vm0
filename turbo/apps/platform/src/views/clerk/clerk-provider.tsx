@@ -46,6 +46,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
     signUpUrl: resolveAppAuthUrl("/sign-up"),
+    touchSession: false,
     ui: clerkUi,
   };
   return satelliteConfig ? (

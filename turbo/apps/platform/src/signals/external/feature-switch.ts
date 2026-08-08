@@ -74,6 +74,10 @@ export const codexFastModeEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
 });
 
+export const foregroundAuthRecoveryEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ForegroundAuthRecovery] ?? false;
+});
+
 export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ComposerConnectorPermissions] ?? false

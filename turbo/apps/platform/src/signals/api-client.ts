@@ -19,6 +19,7 @@ import {
 import { createAuthedContractClient } from "./api-client-base.ts";
 import { unauthorizedRedirectSuppressionUntil$ } from "./auth-retry.ts";
 import { rootSignal$ } from "./root-signal.ts";
+import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch.ts";
 
 /**
  * Type alias for the factory function returned by `get(zeroClient$)`.
@@ -78,6 +79,9 @@ export const zeroClient$ = computed((get) => {
       },
       getRootSignal: () => {
         return get(rootSignal$);
+      },
+      shouldTouchSessionOnUnauthorized: () => {
+        return !get(foregroundAuthRecoveryEnabled$);
       },
       getUnauthorizedRedirectSuppressionUntil: () => {
         return get(unauthorizedRedirectSuppressionUntil$);

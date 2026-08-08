@@ -12,6 +12,7 @@ import { resolveApiBase, resolveOAuthApiBase } from "./api-base.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 import { rootSignal$ } from "./root-signal.ts";
+import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch.ts";
 
 /**
  * OAuth navigation uses the direct API in preview/development so those
@@ -180,7 +181,11 @@ export const fetch$ = computed((get) => {
         get(rootSignal$),
         options?.signal ?? (url instanceof Request ? url.signal : undefined),
       );
-      const refreshResult = await fetchFreshToken(clerk, recoverySignal);
+      const refreshResult = await fetchFreshToken(
+        clerk,
+        recoverySignal,
+        !get(foregroundAuthRecoveryEnabled$),
+      );
       if (refreshResult.status === "refreshed") {
         response = await retryAuthRecoveryOperation(async () => {
           return await performFetch(refreshResult.token, recoverySignal);

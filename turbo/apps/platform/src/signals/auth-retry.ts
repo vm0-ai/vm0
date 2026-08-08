@@ -2,8 +2,10 @@
  * Auth retry helpers shared by `fetch$` (signals/fetch.ts) and
  * `zeroClient$` (signals/api-client.ts).
  *
- * On a 401 response we force-refresh the Clerk JWT and replay the request.
- * Network failures during either recovery step retry with fibonacci backoff.
+ * On a 401 response we refresh Clerk and replay the request. During the
+ * foreground-recovery rollout, the legacy arm touches the session first while
+ * the enabled arm relies on the foreground barrier's completed touch.
+ * Network failures during recovery or replay retry with fibonacci backoff.
  * Only an explicit 401 after recovery falls back to
  * `clerk.redirectToSignIn()`.
  */
@@ -87,17 +89,14 @@ function waitForSettledClerkSession(
 }
 
 /**
- * Force-refresh the Clerk session token. Network failures retry until the
- * request's owning signal aborts, so a temporarily offline browser does not
- * turn into a sign-in redirect.
- *
- * Concurrent 401s may each trigger their own refresh, but Clerk's FAPI
- * internally dedups in-flight token requests, so the extra traffic is
- * bounded and not worth adding module-level state to avoid.
+ * Refresh the Clerk session token. Network failures retry until the request's
+ * owning signal aborts, so a temporarily offline browser does not turn into a
+ * sign-in redirect. The rollout's legacy arm also touches the session first.
  */
 export async function fetchFreshToken(
   clerk: ClerkLike,
   signal: AbortSignal,
+  touchSession: boolean,
 ): Promise<FreshTokenResult> {
   const session = await waitForSettledClerkSession(clerk, signal);
   if (session === null) {
@@ -105,13 +104,38 @@ export async function fetchFreshToken(
   }
 
   const token = await retryAuthRecoveryOperation(async () => {
-    await session.touch({ intent: "focus" });
+    if (touchSession) {
+      await session.touch({ intent: "focus" });
+      signal.throwIfAborted();
+    }
     return session.getToken({ skipCache: true });
   }, signal);
   if (!token) {
     return { status: "unavailable" };
   }
   return { status: "refreshed", token };
+}
+
+/**
+ * Resume Clerk's foreground session before visibility-driven data catch-up.
+ * The caller owns foreground lifecycle coalescing and cancellation.
+ */
+export async function resumeClerkSession(
+  clerk: ClerkLike,
+  expectedOrgId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const session = await waitForSettledClerkSession(clerk, signal);
+  if (session === null) {
+    return false;
+  }
+
+  const token = await retryAuthRecoveryOperation(async () => {
+    await session.touch({ intent: "focus" });
+    signal.throwIfAborted();
+    return session.getToken({ skipCache: true });
+  }, signal);
+  return Boolean(token && session.lastActiveOrganizationId === expectedOrgId);
 }
 
 function isClerkOfflineError(error: unknown): boolean {
@@ -123,8 +147,18 @@ function isClerkOfflineError(error: unknown): boolean {
   );
 }
 
+function isClerkNetworkError(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message.startsWith("ClerkJS: Network error")
+  );
+}
+
 function isAuthRecoveryNetworkError(error: unknown): boolean {
-  return isClerkOfflineError(error) || isNetworkRequestError(error);
+  return (
+    isClerkOfflineError(error) ||
+    isClerkNetworkError(error) ||
+    isNetworkRequestError(error)
+  );
 }
 
 export function retryAuthRecoveryOperation<T>(

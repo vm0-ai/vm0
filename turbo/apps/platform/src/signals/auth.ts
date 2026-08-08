@@ -343,6 +343,7 @@ export const clerk$ = computed(async (get) => {
   const satelliteConfig = resolveClerkSatelliteConfig();
   await clerkInstance.load({
     ui,
+    touchSession: false,
     ...(satelliteConfig
       ? {
           isSatellite: true,

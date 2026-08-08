@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
+import { command } from "ccstate";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import {
   clearMockedAuth,
@@ -19,9 +22,25 @@ import {
 import { setRootSignal$ } from "../root-signal.ts";
 import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
+import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
 
 const context = testContext();
 const resetAuthRecoverySignal$ = resetSignal();
+const { set$: setFeatureSwitchCacheLocalStorage$ } = localStorageSignals(
+  FEATURE_SWITCH_CACHE_KEY,
+);
+
+const enableForegroundAuthRecovery$ = command(({ set }) => {
+  set(
+    setFeatureSwitchCacheLocalStorage$,
+    JSON.stringify(
+      getAllFeatureStates({
+        overrides: { [FeatureSwitchKey.ForegroundAuthRecovery]: true },
+      }),
+    ),
+  );
+});
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -55,6 +74,10 @@ function mockSignedInUser(): void {
   context.signal.addEventListener("abort", () => {
     clearMockedAuth();
   });
+}
+
+function enableForegroundAuthRecovery(): void {
+  context.store.set(enableForegroundAuthRecovery$);
 }
 
 function setBrowserUrl(url: string): void {
@@ -146,6 +169,7 @@ describe("api client headers", () => {
 
   it("retries fetch$ auth recovery network failures without redirecting", async () => {
     mockSignedInUser();
+    enableForegroundAuthRecovery();
     context.store.set(setRootSignal$, context.signal);
     let requests = 0;
     let forcedTokenRefreshes = 0;
@@ -191,6 +215,7 @@ describe("api client headers", () => {
     await expect(response.json()).resolves.toStrictEqual({ recovered: true });
     expect(requests).toBe(3);
     expect(forcedTokenRefreshes).toBe(3);
+    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
@@ -245,6 +270,7 @@ describe("api client headers", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ recovered: true });
     expect(authorizationHeaders).toStrictEqual([null, "Bearer fresh-token"]);
+    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
