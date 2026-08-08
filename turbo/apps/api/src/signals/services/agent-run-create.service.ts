@@ -4188,15 +4188,11 @@ export function customConnectorRuntimeExecutionState(args: {
   const permissionNames = collectPermissionNames(source.apis);
   const defaultPolicy = allAllowPolicyForPermissions(permissionNames);
   const policy = args.context.permissionPolicies?.[firewallName];
-  const networkPolicy = networkPolicyForFirewallPolicy(
+  const networkPolicy = resolveConnectorNetworkPolicy({
     permissionNames,
-    policy
-      ? {
-          ...policy,
-          unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
-        }
-      : defaultPolicy,
-  );
+    defaultPolicy,
+    policy,
+  });
 
   return {
     firewall: {
@@ -4335,6 +4331,23 @@ function allAllowPolicyForPermissions(
     ),
     unknownPolicy: "allow",
   };
+}
+
+function resolveConnectorNetworkPolicy(args: {
+  readonly permissionNames: readonly string[];
+  readonly defaultPolicy: FirewallPolicy;
+  readonly policy: FirewallPolicy | undefined;
+}): NetworkPolicy {
+  return networkPolicyForFirewallPolicy(
+    args.permissionNames,
+    args.policy
+      ? {
+          ...args.policy,
+          unknownPolicy:
+            args.policy.unknownPolicy ?? args.defaultPolicy.unknownPolicy,
+        }
+      : args.defaultPolicy,
+  );
 }
 
 async function loadRequiredFirewallPermissionIndex(args: {
@@ -4487,21 +4500,11 @@ function applyConnectorPolicies(
     const defaultPolicy = defaultPolicyForFirewall(firewall, permissionNames);
     firewalls.push(entryForFirewall(firewall));
 
-    if (!policy) {
-      networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
-        permissionNames,
-        defaultPolicy,
-      );
-      continue;
-    }
-
-    networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
+    networkPolicies[firewall.name] = resolveConnectorNetworkPolicy({
       permissionNames,
-      {
-        ...policy,
-        unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
-      },
-    );
+      defaultPolicy,
+      policy,
+    });
   }
 
   return { firewalls, networkPolicies };
@@ -4700,17 +4703,10 @@ function applyBuiltinConnectorMetadataPolicies(
       billableFirewalls.push(name);
     }
 
-    if (!policy) {
-      networkPolicies[name] = networkPolicyForFirewallPolicy(
-        permissionNames,
-        defaultPolicy,
-      );
-      continue;
-    }
-
-    networkPolicies[name] = networkPolicyForFirewallPolicy(permissionNames, {
-      ...policy,
-      unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
+    networkPolicies[name] = resolveConnectorNetworkPolicy({
+      permissionNames,
+      defaultPolicy,
+      policy,
     });
   }
 

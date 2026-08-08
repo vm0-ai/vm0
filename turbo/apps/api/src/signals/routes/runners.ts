@@ -2826,7 +2826,7 @@ const connectorRuntimeSyncInner$ = command(
       return authError;
     }
 
-    const resolutions = await resolveConnectorRuntimeTargets({
+    const results = await resolveConnectorRuntimeTargets({
       db,
       scope: {
         orgId: run.orgId,
@@ -2838,11 +2838,7 @@ const connectorRuntimeSyncInner$ = command(
     signal.throwIfAborted();
     return {
       status: 200 as const,
-      body: {
-        results: resolutions.map((resolution) => {
-          return resolution.result;
-        }),
-      },
+      body: { results },
     };
   },
 );
