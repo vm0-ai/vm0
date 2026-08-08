@@ -1323,8 +1323,6 @@ function isCompatibilityFixtureAction(
     "set-chat-slack-context-as-previous-api",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
-    "read-chat-event-asset-refs",
-    "insert-chat-event-asset-ref",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
