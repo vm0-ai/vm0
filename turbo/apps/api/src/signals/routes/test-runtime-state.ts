@@ -15,15 +15,14 @@ import {
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
+import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import {
-  chatEventAssetRefs,
-  runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
+import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
@@ -1121,14 +1120,40 @@ async function setComputerUseHostAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+type PreviousApiChatSlackContextAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-chat-slack-context-as-previous-api" }
+>;
+
+async function setChatSlackContextAsPreviousApi(
+  db: Db,
+  body: PreviousApiChatSlackContextAction,
+  signal: AbortSignal,
+) {
+  // The API version immediately before the Slack launch snapshot wrote no
+  // bot_user_id and no message_assets. No current production route can
+  // reproduce that mixed-version writer shape.
+  const [updated] = await db
+    .update(chatSlackContext)
+    .set({ botUserId: null, messageAssets: null })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.id, body.event_id),
+        eq(chatSlackContext.id, chatEvents.contextId),
+      ),
+    )
+    .returning({ id: chatSlackContext.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a Slack context for previous API downgrade");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 type PreviousApiRunnerJobContextProfileAction = Extract<
   TestRuntimeStateActionBody,
   { action: "set-runner-job-context-profile-as-previous-api" }
->;
-
-type ChatEventAssetRefFixtureAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "read-chat-event-asset-refs" | "insert-chat-event-asset-ref" }
 >;
 
 type PreviousApiBrowserTabSnapshotAction = Extract<
@@ -1206,9 +1231,9 @@ type CompatibilityFixtureAction =
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
+  | PreviousApiChatSlackContextAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
-  | ChatEventAssetRefFixtureAction
   | ConnectorPermissionBaselineMutationAction;
 
 type ChatEventSnapshotFixtureAction = Extract<
@@ -1295,10 +1320,9 @@ function isCompatibilityFixtureAction(
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
+    "set-chat-slack-context-as-previous-api",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
-    "read-chat-event-asset-refs",
-    "insert-chat-event-asset-ref",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -1324,37 +1348,14 @@ async function compatibilityFixtureActionResponse(
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);
     }
+    case "set-chat-slack-context-as-previous-api": {
+      return await setChatSlackContextAsPreviousApi(db, body, signal);
+    }
     case "set-browser-tab-snapshot-as-previous-api": {
       return await setBrowserTabSnapshotAsPreviousApi(db, body, signal);
     }
     case "set-runner-job-context-profile-as-previous-api": {
       return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
-    }
-    case "read-chat-event-asset-refs": {
-      const rows = await db
-        .select({ assetId: chatEventAssetRefs.assetId })
-        .from(chatEventAssetRefs)
-        .where(eq(chatEventAssetRefs.chatEventId, body.event_id))
-        .orderBy(chatEventAssetRefs.position);
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          chat_event_asset_ref_ids: rows.map((row) => {
-            return row.assetId;
-          }),
-        },
-      };
-    }
-    case "insert-chat-event-asset-ref": {
-      await db.insert(chatEventAssetRefs).values({
-        chatEventId: body.event_id,
-        assetId: body.asset_id,
-        position: body.position,
-      });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);

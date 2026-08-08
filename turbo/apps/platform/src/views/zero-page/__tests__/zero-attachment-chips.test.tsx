@@ -11,7 +11,9 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { HttpResponse } from "msw";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
@@ -22,6 +24,11 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
+
+/** Mirrors the presigned object URL the API signs for a private attachment. */
+function presignedFileUrl(fileId: string): string {
+  return `https://r2.example.com/artifacts/${fileId}?sig=test`;
+}
 
 function artifactFile(
   url: string,
@@ -123,6 +130,10 @@ beforeEach(() => {
     return new Response(new Uint8Array([137, 80, 78, 71]), {
       headers: { "Content-Type": "image/png" },
     });
+  });
+  context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
+    const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
+    return HttpResponse.json({ url: presignedFileUrl(fileId) });
   });
 });
 
@@ -890,15 +901,13 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
+    context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
       expect(request.credentials).toBe("include");
       expect(request.headers.get("authorization")).toMatch(/^Bearer /);
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
         "attachment-photo",
       );
-      return new Response(new Uint8Array([137, 80, 78, 71]), {
-        headers: { "Content-Type": "image/png" },
-      });
+      return HttpResponse.json({ url: presignedFileUrl("attachment-photo") });
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -924,19 +933,65 @@ describe("zero attachment chips", () => {
 
     const image = await screen.findByAltText("photo.png");
     await waitFor(() => {
-      expect(image.getAttribute("src")).toMatch(/^blob:mock-download-/);
+      expect(image.getAttribute("src")).toBe(
+        presignedFileUrl("attachment-photo"),
+      );
     });
     const preview = image.closest("a");
     const text = await screen.findByText("Review this image");
     const textBubble = text.closest(".zero-chat-bubble-user");
 
     expect(preview).not.toBeNull();
+    expect(preview).toHaveAttribute(
+      "href",
+      presignedFileUrl("attachment-photo"),
+    );
     expect(textBubble).not.toBeNull();
     expect(preview?.closest(".zero-chat-bubble-user")).toBeNull();
     expect(
       preview!.compareDocumentPosition(textBubble!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("falls back to the canonical url when the api predates the file-url route", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    context.mocks.http.get("/api/zero/web/file-url", () => {
+      return HttpResponse.json(
+        { error: { message: "Attachment is unavailable", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-rollout-photo",
+          role: "user",
+          content: "Review this image",
+          fileParts: [
+            {
+              type: "file",
+              fileId: "attachment-photo",
+              filenameSnapshot: "photo.png",
+              contentType: "image/png",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const image = await screen.findByAltText("photo.png");
+    await waitFor(() => {
+      expect(image.getAttribute("src")).toBe(
+        canonicalUserMessageFileUrl("attachment-photo"),
+      );
+    });
+    expect(toastError).not.toHaveBeenCalledWith("Attachment is unavailable");
+    toastError.mockRestore();
   });
 
   it("keeps the user image preview frame stable while the image loads", async () => {

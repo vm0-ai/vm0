@@ -4,6 +4,7 @@ import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-ev
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
+  ChatSlackMessageAssets,
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
@@ -21,7 +22,6 @@ import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
 import { eq, sql } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import type {
@@ -45,9 +45,11 @@ type ChatEventDisplayContext =
       readonly slackContext: {
         readonly channelId: string;
         readonly messageTs: string;
+        readonly botUserId: string;
         readonly conversationContext: string;
         readonly messageText: string;
         readonly messageFiles: ChatSlackMessageFiles;
+        readonly messageAssets: ChatSlackMessageAssets;
         readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
         readonly senderDisplayName: string | null;
         readonly senderUserId: string | null;
@@ -441,9 +443,11 @@ type NewDisplayContext =
       readonly chatThreadId: string;
       readonly channelId: string;
       readonly messageTs: string;
+      readonly botUserId: string;
       readonly conversationContext: string;
       readonly messageText: string;
       readonly messageFiles: ChatSlackMessageFiles;
+      readonly messageAssets: ChatSlackMessageAssets;
       readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
       readonly senderDisplayName: string | null;
       readonly senderUserId: string | null;
@@ -612,9 +616,11 @@ function newDisplayContext(
       chatThreadId: values.chatThreadId,
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
+      botUserId: slackContext.botUserId,
       conversationContext: slackContext.conversationContext,
       messageText: slackContext.messageText,
       messageFiles: slackContext.messageFiles,
+      messageAssets: slackContext.messageAssets,
       mentionDisplayNames: slackContext.mentionDisplayNames,
       senderDisplayName: slackContext.senderDisplayName,
       senderUserId: slackContext.senderUserId,
@@ -830,9 +836,11 @@ async function insertDisplayContext(
       chatThreadId: context.chatThreadId,
       channelId: context.channelId,
       messageTs: context.messageTs,
+      botUserId: context.botUserId,
       conversationContext: context.conversationContext,
       messageText: context.messageText,
       messageFiles: context.messageFiles,
+      messageAssets: context.messageAssets,
       mentionDisplayNames: context.mentionDisplayNames,
       senderDisplayName: context.senderDisplayName,
       senderUserId: context.senderUserId,
@@ -1122,7 +1130,6 @@ export async function replaceChatEvent(
   tx: ChatEventWriteTransaction,
   eventId: string,
   replacement: NewChatEvent,
-  options?: { readonly preserveAssetRefs?: boolean },
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
@@ -1139,7 +1146,7 @@ export async function replaceChatEvent(
   if (!target) {
     throw new Error("Cannot revoke a missing chat event");
   }
-  return await replaceLoadedChatEvent(tx, target, replacement, options);
+  return await replaceLoadedChatEvent(tx, target, replacement);
 }
 
 /** Append a replacement for a target already loaded by an authoritative read. */
@@ -1147,7 +1154,6 @@ export async function replaceLoadedChatEvent(
   tx: ChatEventWriteTransaction,
   target: LoadedChatEventReplacementTarget,
   replacement: NewChatEvent,
-  options?: { readonly preserveAssetRefs?: boolean },
 ): Promise<ChatEventCommandResult | null> {
   if (target.chatThreadId !== replacement.chatThreadId) {
     throw new Error("Cannot revoke a chat event from another thread");
@@ -1200,26 +1206,6 @@ export async function replaceLoadedChatEvent(
 
   if (displayContext) {
     await insertDisplayContext(tx, displayContext, inserted.createdAt);
-  }
-  if (options?.preserveAssetRefs !== false) {
-    await tx
-      .insert(chatEventAssetRefs)
-      .select(
-        tx
-          .select({
-            chatEventId: sql`${inserted.id}`
-              .mapWith(chatEventAssetRefs.chatEventId)
-              .as("chat_event_id"),
-            assetId: chatEventAssetRefs.assetId,
-            position: chatEventAssetRefs.position,
-            createdAt: sql`now()`
-              .mapWith(chatEventAssetRefs.createdAt)
-              .as("created_at"),
-          })
-          .from(chatEventAssetRefs)
-          .where(eq(chatEventAssetRefs.chatEventId, target.id)),
-      )
-      .onConflictDoNothing();
   }
   return inserted;
 }

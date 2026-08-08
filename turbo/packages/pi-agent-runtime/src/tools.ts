@@ -128,17 +128,17 @@ export function createPiExecutionTools(env: ExecutionEnv): PiExecutionTools {
   ] as const;
 }
 
-export function isPiEdgeToolName(name: string): boolean {
-  return name === "read";
-}
-
-/** Whether an assistant batch must leave the API-backed ExecutionEnv. */
+/**
+ * Whether an assistant batch must leave the API-backed ExecutionEnv. The Pi
+ * edge loop executes no tools, so the first batch that issues any tool call
+ * hands off to the sandbox, which then runs it.
+ */
 export function piMessageRequiresSandbox(message: AgentMessage): boolean {
   return (
     message.role === "assistant" &&
     message.stopReason === "toolUse" &&
     message.content.some((block) => {
-      return block.type === "toolCall" && !isPiEdgeToolName(block.name);
+      return block.type === "toolCall";
     })
   );
 }

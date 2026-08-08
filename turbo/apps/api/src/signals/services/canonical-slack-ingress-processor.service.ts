@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { ChatSlackMessageAssets } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
@@ -25,7 +26,6 @@ import {
 import { settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
-  attachCanonicalAssetsToEvent,
   materializeCanonicalSlackInputAssets$,
   type CanonicalSlackInputAsset,
 } from "./canonical-asset.service";
@@ -280,9 +280,11 @@ type ClaimedCanonicalSlackIngress = NonNullable<
 interface CanonicalSlackLaunchContext {
   readonly channelId: string;
   readonly messageTs: string;
+  readonly botUserId: string;
   readonly conversationContext: string;
   readonly messageText: string;
   readonly messageFiles: readonly SlackFile[];
+  readonly messageAssets: ChatSlackMessageAssets;
   readonly mentionDisplayNames: Readonly<Record<string, string>>;
   readonly senderDisplayName: string | null;
   readonly senderUserId: string | null;
@@ -294,8 +296,10 @@ interface CanonicalSlackLaunchContext {
 function canonicalSlackLaunchContext(args: {
   readonly event: SlackAgentEvent;
   readonly routeThreadTs: string;
+  readonly botUserId: string;
   readonly messageText: string;
   readonly conversationContext: string;
+  readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
   readonly mentionDisplayNames: Readonly<Record<string, string>>;
   readonly userInfoExtras: {
     readonly slackDisplayName?: string;
@@ -306,9 +310,19 @@ function canonicalSlackLaunchContext(args: {
   return {
     channelId: args.event.channel,
     messageTs: args.event.ts,
+    botUserId: args.botUserId,
     conversationContext: args.conversationContext,
     messageText: args.messageText,
     messageFiles: args.event.files ?? [],
+    messageAssets: args.canonicalAssets.map((asset) => {
+      return {
+        assetId: asset.assetId,
+        slackFileId: asset.slackFileId,
+        filename: asset.filename,
+        contentType: asset.contentType,
+        status: asset.status,
+      };
+    }),
     mentionDisplayNames: args.mentionDisplayNames,
     senderDisplayName: args.userInfoExtras.slackDisplayName ?? null,
     senderUserId: args.userInfoExtras.slackUserId ?? null,
@@ -361,11 +375,6 @@ async function persistCanonicalSlackMessage(
     if (!inserted) {
       throw new Error("Canonical Slack ingress message already exists");
     }
-    await attachCanonicalAssetsToEvent(
-      tx,
-      args.ingress.ingressId,
-      args.canonicalAssets,
-    );
     await touchChatThreadLastMessageAt(
       tx,
       args.chatThreadId,
@@ -474,8 +483,10 @@ const persistClaimedCanonicalSlackIngress$ = command(
         slackContext: canonicalSlackLaunchContext({
           event,
           routeThreadTs: ingress.threadTs,
+          botUserId: ingress.botUserId,
           messageText: messageContent,
           conversationContext: context.executionContext,
+          canonicalAssets,
           mentionDisplayNames: enriched.mentionDisplayNames,
           userInfoExtras: enriched.userInfoExtras,
         }),

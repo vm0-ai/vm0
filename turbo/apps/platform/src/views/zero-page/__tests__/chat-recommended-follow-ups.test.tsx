@@ -212,6 +212,12 @@ describe("chat lifecycle", () => {
       },
     });
 
+    // The card rail is a mobile-only surface: the same coarse-pointer
+    // heuristic that gates the composer's auto-focus device decides it.
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)";
+    });
+
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
@@ -241,6 +247,65 @@ describe("chat lifecycle", () => {
       expect(composer).toHaveFocus();
     });
     expect(sentMessages).toHaveLength(0);
+  });
+
+  it("keeps the flat list on desktop even with a narrow window", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000735";
+    const prompts = ["Draft launch copy", "Generate a hero image"];
+    const completedAt = "2026-06-09T10:01:01Z";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Narrow desktop window",
+      chatEvents: [
+        {
+          id: "msg-narrow-desktop-assistant",
+          eventType: "output.message",
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId: "run-narrow-desktop",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-narrow-desktop-completed",
+          eventType: "run.completed",
+          role: "assistant",
+          content: null,
+          runId: "run-narrow-desktop",
+          runLifecycleEvent: "completed",
+          followups: prompts.map((prompt) => {
+            return { prompt, kind: "talk" as const };
+          }),
+          createdAt: completedAt,
+        },
+      ],
+    });
+
+    // Fine-pointer desktop: even a dragged-narrow window must not produce
+    // cards, matching the composer auto-focus heuristic.
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(any-pointer: fine)";
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ResponsiveFollowupCards]: true,
+      },
+    });
+
+    await screen.findByText("The launch plan is ready.");
+    const group = screen.getByRole("group", { name: "Keep going" });
+    for (const prompt of prompts) {
+      expect(buttonByText(prompt)).toBeInTheDocument();
+    }
+    // No horizontal card rail on desktop: the buttons stay full-width rows
+    // (w-full, items-center) rather than fixed-width self-stretch cards.
+    const rows = Array.from(group.querySelectorAll<HTMLElement>("button"));
+    expect(rows).toHaveLength(prompts.length);
+    expect(rows[0]?.className).toContain("w-full");
+    expect(rows[0]?.className).not.toContain("flex-[0_0_min");
   });
 
   it("shows recommended follow-ups after an appended follow-up event", async () => {

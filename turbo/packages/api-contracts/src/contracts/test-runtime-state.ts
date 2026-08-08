@@ -119,16 +119,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("read-chat-event-asset-refs"),
-    event_id: z.uuid(),
-  }),
-  z.object({
-    action: z.literal("insert-chat-event-asset-ref"),
-    event_id: z.uuid(),
-    asset_id: z.uuid(),
-    position: z.int().nonnegative(),
-  }),
-  z.object({
     action: z.literal("read-chat-event-snapshot-head"),
     thread_id: z.uuid(),
   }),
@@ -181,6 +171,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     computer_use_host_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("set-chat-slack-context-as-previous-api"),
+    event_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("set-browser-tab-snapshot-as-previous-api"),
     thread_id: z.uuid(),
     tab_urls: z.array(z.string().max(8192)).max(50),
@@ -216,7 +210,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
-  chat_event_asset_ref_ids: z.array(z.uuid()).optional(),
   chat_event_snapshot_head: z
     .object({
       archive_schema_version: z.int().positive(),

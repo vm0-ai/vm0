@@ -3,20 +3,13 @@ import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import {
-  CANONICAL_ASSET_VERSION,
-  chatEventAssetRefs,
-  runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 import {
   buildSlackSystemPrompt,
   canonicalSlackAgentPrompt,
   resolveUserMentions,
-  type SlackPromptAsset,
 } from "../../lib/slack-webhook-context";
-import { inferMimetype } from "../../lib/mimetype";
 import type { SlackUserInfo } from "../external/slack-message-client";
 import type { Db } from "../external/db";
 
@@ -37,16 +30,18 @@ export interface SlackQueuedLaunchMaterial {
 type SlackLaunchContextRow = Pick<
   typeof chatSlackContext.$inferSelect,
   | "channelId"
+  | "botUserId"
   | "conversationContext"
   | "messageText"
   | "messageFiles"
+  | "messageAssets"
   | "mentionDisplayNames"
   | "senderDisplayName"
   | "senderUserId"
   | "channelType"
   | "threadTs"
   | "routeThreadTs"
-> & { readonly botUserId: string };
+> & { readonly installationBotUserId: string };
 
 function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   if (
@@ -64,9 +59,26 @@ function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   return {
     ...row,
     channelId: row.channelId,
+    // Rollout fallback for context rows the previous API wrote without the
+    // launch snapshot: bot_user_id and message_assets are null there. The bot
+    // user ID falls back to the workspace installation; the assets degrade to
+    // the raw Slack file blocks those runs rendered before canonical Slack
+    // inputs existed.
+    //
+    // Surface: persisted Slack launch context read by this API. This loader is
+    // only reached while admitting a queued message
+    // (internal-chat-run-callback.service.ts) or steering a live run
+    // (active-input-prompt.service.ts), so the window is bounded by how long a
+    // pre-cutover Slack input event can still sit in the thread queue or in an
+    // active run, not by the ~102 min DB/API skew — historical rows are never
+    // re-read. Remove both branches, the installationBotUserId projection, and
+    // the "previous API version" launch test once no such event can remain;
+    // follow-up: https://github.com/vm0-ai/vm0/issues/25830
+    botUserId: row.botUserId ?? row.installationBotUserId,
     conversationContext: row.conversationContext,
     messageText: row.messageText,
     messageFiles: row.messageFiles,
+    messageAssets: row.messageAssets ?? [],
     mentionDisplayNames: row.mentionDisplayNames,
     channelType: row.channelType,
     threadTs: row.threadTs,
@@ -84,11 +96,13 @@ async function loadSlackLaunchContext(
 ) {
   const [row] = await db
     .select({
-      botUserId: slackOrgInstallations.botUserId,
+      installationBotUserId: slackOrgInstallations.botUserId,
       channelId: chatSlackContext.channelId,
+      botUserId: chatSlackContext.botUserId,
       conversationContext: chatSlackContext.conversationContext,
       messageText: chatSlackContext.messageText,
       messageFiles: chatSlackContext.messageFiles,
+      messageAssets: chatSlackContext.messageAssets,
       mentionDisplayNames: chatSlackContext.mentionDisplayNames,
       senderDisplayName: chatSlackContext.senderDisplayName,
       senderUserId: chatSlackContext.senderUserId,
@@ -147,44 +161,6 @@ async function loadSlackLaunchContext(
   return requiredSlackLaunchContext(row);
 }
 
-async function loadSlackPromptAssets(
-  db: Db,
-  args: { readonly eventId: string; readonly userId: string },
-): Promise<SlackPromptAsset[]> {
-  const rows = await db
-    .select({
-      assetId: runUploadedFiles.id,
-      position: chatEventAssetRefs.position,
-      filename: runUploadedFiles.filename,
-      contentType: runUploadedFiles.contentType,
-      status: runUploadedFiles.materializationStatus,
-    })
-    .from(chatEventAssetRefs)
-    .innerJoin(
-      runUploadedFiles,
-      eq(runUploadedFiles.id, chatEventAssetRefs.assetId),
-    )
-    .where(
-      and(
-        eq(chatEventAssetRefs.chatEventId, args.eventId),
-        eq(runUploadedFiles.userId, args.userId),
-        eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
-        eq(runUploadedFiles.classification, "input"),
-      ),
-    )
-    .orderBy(asc(chatEventAssetRefs.position));
-  return rows.map((row) => {
-    const filename = row.filename ?? row.assetId;
-    return {
-      assetId: row.assetId,
-      position: row.position,
-      filename,
-      contentType: row.contentType ?? inferMimetype(filename),
-      status: row.status ?? "failed",
-    };
-  });
-}
-
 function mentionUserInfoMap(
   mentionDisplayNames: Readonly<Record<string, string>>,
 ): Map<string, SlackUserInfo> {
@@ -208,10 +184,6 @@ export async function loadSlackQueuedLaunchMaterial(
   if (!context) {
     return null;
   }
-  const assets = await loadSlackPromptAssets(db, {
-    eventId: args.eventId,
-    userId: args.userId,
-  });
   const messagePrompt = resolveUserMentions(
     context.messageText,
     mentionUserInfoMap(context.mentionDisplayNames),
@@ -220,7 +192,7 @@ export async function loadSlackQueuedLaunchMaterial(
     prompt: canonicalSlackAgentPrompt(
       messagePrompt,
       context.messageFiles,
-      assets,
+      context.messageAssets,
     ),
     appendSystemPrompt: buildSlackSystemPrompt({
       botUserId: context.botUserId,

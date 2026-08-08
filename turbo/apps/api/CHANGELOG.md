@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.407.0](https://github.com/vm0-ai/vm0/compare/api-v1.406.1...api-v1.407.0) (2026-08-08)
+
+
+### Features
+
+* serve private chat attachments via presigned r2 urls ([#25825](https://github.com/vm0-ai/vm0/issues/25825)) ([77bd954](https://github.com/vm0-ai/vm0/commit/77bd95468d08df94b68643841055942ccb3c9c45))
+
+
+### Refactoring
+
+* **api:** make the slack context row the whole launch snapshot ([#25824](https://github.com/vm0-ai/vm0/issues/25824)) ([d5f5388](https://github.com/vm0-ai/vm0/commit/d5f5388e1406541640462b215482405bc2378f08)), closes [#25830](https://github.com/vm0-ai/vm0/issues/25830)
+* **api:** stop writing chat_event_asset_refs rows ([#25833](https://github.com/vm0-ai/vm0/issues/25833)) ([e7cc81d](https://github.com/vm0-ai/vm0/commit/e7cc81dc7ff81ff36d0e3d830de566efbb651f52))
+* **pi-edge:** edge turn executes no tools, use noop env ([#25826](https://github.com/vm0-ai/vm0/issues/25826)) ([6efa7ec](https://github.com/vm0-ai/vm0/commit/6efa7ecc85e5b0da3c07763a77d2f91870f91a52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.0
+    * @vm0/core bumped to 8.532.1
+    * @vm0/db bumped to 1.181.2
+    * @vm0/pi-agent-runtime bumped to 1.3.15
+
 ## [1.406.1](https://github.com/vm0-ai/vm0/compare/api-v1.406.0...api-v1.406.1) (2026-08-08)
 
 
