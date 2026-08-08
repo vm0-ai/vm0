@@ -567,6 +567,7 @@ mod tests {
     }
 
     fn missing_orphan_target() -> KillTarget {
+        // Linux /proc PID entries cannot reach u32::MAX, so this target is deterministically absent.
         KillTarget {
             pid: u32::MAX,
             ppid: None,
