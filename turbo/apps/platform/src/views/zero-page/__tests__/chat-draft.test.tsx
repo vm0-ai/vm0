@@ -858,6 +858,7 @@ describe("chat drafts", () => {
     );
     await waitFor(() => {
       expect(screen.getByLabelText("Remove fresh.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
     });
 
     await fill(textarea(), "Review the updated launch brief");
@@ -998,6 +999,87 @@ describe("chat drafts", () => {
     });
   });
 
+  it("blocks button and keyboard submission until attachment upload finishes", async () => {
+    const user = userEvent.setup({ delay: null });
+    const uploadResponse = context.mocks.deferred<Response>();
+    const submittedPrompts: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: THREAD_UPLOADS_ID,
+      onRunCreate(body) {
+        submittedPrompts.push(body.prompt ?? "");
+      },
+    });
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        await expect(request.json()).resolves.toMatchObject({
+          filename: "pending.txt",
+        });
+        return HttpResponse.json({
+          id: "upload-pending-send",
+          filename: "pending.txt",
+          contentType: "text/plain",
+          size: 7,
+          uploadUrl: "https://mock-upload.example.com/pending.txt",
+          uploadHeaders: {},
+          url: "https://example.com/pending.txt",
+        });
+      },
+    );
+    context.mocks.http.put(
+      "https://mock-upload.example.com/pending.txt",
+      () => {
+        return uploadResponse.promise;
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_UPLOADS_ID}` });
+
+    const editor = await findComposerEditor();
+    await fillComposer(editor, "Review the pending upload");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("File input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["pending"], "pending.txt", { type: "text/plain" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Cancel upload pending.txt"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
+    });
+
+    await user.click(editor);
+    await user.keyboard("{Enter}");
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    uploadResponse.resolve(new HttpResponse(null, { status: 200 }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove pending.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    expect(submittedPrompts).toStrictEqual([]);
+    expect(textarea()).toHaveTextContent("Review the pending upload");
+
+    click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submittedPrompts).toStrictEqual(["Review the pending upload"]);
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
   it("removes failed upload chips and leaves remaining draft attachments sendable", async () => {
     const user = userEvent.setup({ delay: null });
 
@@ -1058,6 +1140,7 @@ describe("chat drafts", () => {
       ).toBeInTheDocument();
       expect(screen.queryByTitle("failed.txt")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeEnabled();
     });
   });
 

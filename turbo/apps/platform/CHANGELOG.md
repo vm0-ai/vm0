@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.710.0](https://github.com/vm0-ai/vm0/compare/app-v0.709.0...app-v0.710.0) (2026-08-08)
+
+
+### Features
+
+* add responsive follow-up card rail ([#25816](https://github.com/vm0-ai/vm0/issues/25816)) ([e4643b0](https://github.com/vm0-ai/vm0/commit/e4643b020d395d6df91213bab809e283d5d4f092))
+
+
+### Bug Fixes
+
+* restore authenticated chat attachment flows ([#25815](https://github.com/vm0-ai/vm0/issues/25815)) ([08f3773](https://github.com/vm0-ai/vm0/commit/08f3773afa918104387414c2bcc82bc96236e955))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.297.1
+    * @vm0/core bumped to 8.532.0
+
 ## [0.709.0](https://github.com/vm0-ai/vm0/compare/app-v0.708.2...app-v0.709.0) (2026-08-08)
 
 

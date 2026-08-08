@@ -102,7 +102,7 @@ import {
   chatThreadServiceTierFromCodex,
 } from "./zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
+import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
@@ -1436,8 +1436,7 @@ function appendUnassociatedUserMessage(params: {
         })
       : await insertChatEvent(tx, event, "id");
     if (inserted) {
-      await attachCanonicalWebInputAssetsToEvent(tx, {
-        eventId: inserted.id,
+      await registerCanonicalWebInputAssets(tx, {
         chatThreadId: params.threadId,
         userId: params.userId,
         orgId: params.orgId,
@@ -1554,8 +1553,7 @@ async function appendAssociatedUserMessage(params: {
         })
       : await insertChatEvent(tx, event, "id");
     if (inserted) {
-      await attachCanonicalWebInputAssetsToEvent(tx, {
-        eventId: inserted.id,
+      await registerCanonicalWebInputAssets(tx, {
         chatThreadId: params.threadId,
         userId: params.userId,
         orgId: params.orgId,
@@ -2703,13 +2701,11 @@ async function appendInsufficientCreditsEvents(params: {
 
     const createdAt = userMessage?.createdAt ?? userCreatedAt;
     if (userMessage) {
-      await attachCanonicalWebInputAssetsToEvent(tx, {
-        eventId: userMessage.id,
+      await registerCanonicalWebInputAssets(tx, {
         chatThreadId: params.prepared.thread.threadId,
         userId: params.userId,
         orgId: params.orgId,
         files: fileMetadata ?? [],
-        replaceExisting: params.body.revokesEventId !== undefined,
       });
     }
     if (userMessage && params.touchThreadSort) {

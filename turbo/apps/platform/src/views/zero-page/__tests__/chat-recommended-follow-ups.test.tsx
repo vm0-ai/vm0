@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click, fill } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
@@ -145,7 +146,6 @@ describe("chat lifecycle", () => {
       expect(buttonByText("Generate launch artifact")).toBeInTheDocument();
       expect(buttonByText("Draft launch copy")).toBeInTheDocument();
     });
-
     click(buttonByText(followupPrompt));
 
     await waitFor(() => {
@@ -162,6 +162,84 @@ describe("chat lifecycle", () => {
       expect(window.getSelection()?.toString()).toBe(followupPrompt);
     });
     expect(composer.textContent).toBe(`${existingDraft}\n${followupPrompt}`);
+    expect(sentMessages).toHaveLength(0);
+  });
+
+  it("preserves follow-up content and selection when the card rail is enabled", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000734";
+    const prompts = [
+      "Draft launch copy",
+      "Create a detailed presentation outline with speaker notes",
+      "Generate a hero image",
+    ];
+    const completedAt = "2026-06-09T10:01:01Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    const selectedPrompt = prompts[1]!;
+    const sentMessages: unknown[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Responsive follow-ups",
+      chatEvents: [
+        {
+          id: "msg-responsive-followups-assistant",
+          eventType: "output.message",
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId: "run-responsive-followups",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-responsive-followups-completed",
+          eventType: "run.completed",
+          role: "assistant",
+          content: null,
+          runId: "run-responsive-followups",
+          runLifecycleEvent: "completed",
+          followups: prompts.map((prompt) => {
+            return { prompt, kind: "talk" as const };
+          }),
+          createdAt: completedAt,
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ResponsiveFollowupCards]: true,
+      },
+    });
+
+    const composer = await findWorkflowComposerEditor();
+    await screen.findByText("The launch plan is ready.");
+    expect(
+      screen.getByText(`Keep going · ${completedAtLabel}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Keep going" }),
+    ).toBeInTheDocument();
+    for (const prompt of prompts) {
+      const card = buttonByText(prompt);
+      expect(card).toBeVisible();
+      expect(card).toHaveAccessibleName(prompt);
+    }
+
+    click(buttonByText(selectedPrompt));
+
+    await waitFor(() => {
+      expect(composer.textContent).toBe(selectedPrompt);
+      expect(composer).toHaveFocus();
+    });
     expect(sentMessages).toHaveLength(0);
   });
 

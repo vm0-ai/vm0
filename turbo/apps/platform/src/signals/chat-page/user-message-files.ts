@@ -2,9 +2,14 @@ import type {
   ResolvedAttachFile,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { appendCapturedPreviewBypassToUrl } from "../../lib/preview-bypass-cookie.ts";
+import { resolveApiBase } from "../api-base.ts";
 
 export function canonicalUserMessageFileUrl(fileId: string): string {
-  return `/api/zero/web/download-file?file_id=${encodeURIComponent(fileId)}`;
+  const url = new URL("/api/zero/web/download-file", resolveApiBase());
+  url.searchParams.set("file_id", fileId);
+  appendCapturedPreviewBypassToUrl(url);
+  return url.toString();
 }
 
 /** Resolve the file parts without consulting legacy chat-event projections. */

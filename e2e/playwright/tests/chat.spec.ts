@@ -4,6 +4,12 @@ import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
+const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
+const responsiveFollowupPrompts = [
+  "Draft launch copy",
+  "Create a detailed presentation outline with speaker notes",
+  "Generate a hero image",
+] as const;
 
 interface ConnectorCatalogStatusItem {
   readonly slug: string;
@@ -121,6 +127,146 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       json: { enabledConnectorSlugs: composerConnectorSlugs },
     });
   });
+}
+
+async function enableResponsiveFollowupCards(page: Page): Promise<void> {
+  await page.route("**/api/zero/feature-switches", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
+      throw new Error("Feature switches returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        effectiveSwitches: {
+          ...body.effectiveSwitches,
+          chatEventSnapshotRead: false,
+          responsiveFollowupCards: true,
+        },
+      },
+    });
+  });
+}
+
+async function mockResponsiveFollowupThread(
+  page: Page,
+  agentId: string,
+): Promise<void> {
+  const createdAt = "2026-06-09T10:01:01Z";
+  const runId = "run-responsive-followups";
+  const events = [
+    {
+      id: "msg-responsive-followups-assistant",
+      threadId: responsiveFollowupThreadId,
+      eventType: "output.message",
+      content: "The launch plan is ready.",
+      runId,
+      seqId: 1,
+      createdAt: "2026-06-09T10:01:00Z",
+    },
+    {
+      id: "msg-responsive-followups-completed",
+      threadId: responsiveFollowupThreadId,
+      eventType: "run.completed",
+      content: null,
+      runId,
+      runLifecycleEvent: "completed",
+      seqId: 2,
+      createdAt,
+    },
+    {
+      id: "msg-responsive-followups-followups",
+      threadId: responsiveFollowupThreadId,
+      eventType: "output.followups",
+      content: JSON.stringify({
+        version: 1,
+        followups: responsiveFollowupPrompts.map((prompt) => {
+          return { prompt, kind: "talk" };
+        }),
+      }),
+      runId,
+      seqId: 3,
+      createdAt,
+    },
+  ];
+
+  await page.route("**/api/zero/chat-threads/snapshot", async (route) => {
+    await route.fulfill({
+      json: {
+        chatThreads: [
+          {
+            id: responsiveFollowupThreadId,
+            agentId,
+            title: "Responsive follow-ups",
+            sortAt: createdAt,
+            createdAt,
+            updatedAt: createdAt,
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
+            cloudBrowserEnabled: false,
+          },
+        ],
+        latestEventId: null,
+        latestSeqId: null,
+      },
+    });
+  });
+  await page.route(
+    new RegExp(
+      `/api/zero/chat-threads/${responsiveFollowupThreadId}/events(?:\\?.*)?$`,
+    ),
+    async (route) => {
+      const requestUrl = new URL(route.request().url());
+      const isIncremental =
+        requestUrl.searchParams.has("sinceSeqId") ||
+        requestUrl.searchParams.has("beforeSeqId");
+      await route.fulfill({ json: { events: isIncremental ? [] : events } });
+    },
+  );
+  await page.route(
+    new RegExp(
+      `/api/zero/chat-threads/${responsiveFollowupThreadId}/draft(?:\\?.*)?$`,
+    ),
+    async (route) => {
+      await route.fulfill({
+        json: { draftUserMessage: null, draftAttachments: null },
+      });
+    },
+  );
+  await page.route(
+    new RegExp(
+      `/api/zero/chat-threads/${responsiveFollowupThreadId}/mark-read(?:\\?.*)?$`,
+    ),
+    async (route) => {
+      await route.fulfill({ json: { lastReadAt: createdAt, unreads: [] } });
+    },
+  );
+  await page.route(
+    new RegExp(
+      `/api/zero/chat-threads/${responsiveFollowupThreadId}/event-snapshot(?:\\?.*)?$`,
+    ),
+    async (route) => {
+      await route.fulfill({
+        status: 404,
+        json: { error: { code: "NOT_FOUND", message: "Not found" } },
+      });
+    },
+  );
+  await page.route(
+    new RegExp(
+      `/api/zero/chat-threads/${responsiveFollowupThreadId}(?:\\?.*)?$`,
+    ),
+    async (route) => {
+      await route.fulfill({
+        json: { lastReadAt: createdAt, cancellationRecoveryPending: false },
+      });
+    },
+  );
 }
 
 async function expectInside(inner: Locator, outer: Locator): Promise<void> {
@@ -241,6 +387,109 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await waitForAgentDraftClear(page, async () => {
     await clearComposerEditor(editor);
   });
+});
+
+test("responsive follow-up rail aligns its edges and equalizes card heights", async ({
+  page,
+}) => {
+  await enableResponsiveFollowupCards(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  const agentId = new URL(page.url()).pathname.match(
+    /^\/agents\/([^/]+)\/chat\/?$/,
+  )?.[1];
+  if (!agentId) {
+    throw new Error("Could not resolve the active agent from the chat URL");
+  }
+  await mockResponsiveFollowupThread(page, agentId);
+  await page.goto(new URL(`/chats/${responsiveFollowupThreadId}`, appUrl).href);
+
+  const rail = page.getByRole("group", { name: "Keep going" });
+  const cards = responsiveFollowupPrompts.map((prompt) => {
+    return page.getByRole("button", { name: prompt, exact: true });
+  });
+  await expect(rail).toBeVisible();
+  for (const card of cards) {
+    await expect(card).toBeVisible();
+  }
+
+  await expect
+    .poll(async () => {
+      const railBox = await rail.boundingBox();
+      const firstBox = await cards[0].boundingBox();
+      if (!railBox || !firstBox) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(firstBox.x - railBox.x);
+    })
+    .toBeLessThan(1);
+  await expect
+    .poll(async () => {
+      const boxes = await Promise.all(cards.map((card) => card.boundingBox()));
+      if (boxes.some((box) => box === null)) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const heights = boxes.map((box) => box!.height);
+      return Math.max(...heights) - Math.min(...heights);
+    })
+    .toBeLessThan(1);
+
+  await cards[1].evaluate((element) => {
+    element.scrollIntoView({ block: "nearest", inline: "center" });
+  });
+  await expect
+    .poll(async () => {
+      const railBox = await rail.boundingBox();
+      const middleBox = await cards[1].boundingBox();
+      if (!railBox || !middleBox) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const railCenter = railBox.x + railBox.width / 2;
+      const cardCenter = middleBox.x + middleBox.width / 2;
+      return Math.abs(cardCenter - railCenter);
+    })
+    .toBeLessThan(2);
+
+  await rail.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect
+    .poll(async () => {
+      const railBox = await rail.boundingBox();
+      const lastBox = await cards[2].boundingBox();
+      if (!railBox || !lastBox) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(lastBox.x + lastBox.width - (railBox.x + railBox.width));
+    })
+    .toBeLessThan(1);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect
+    .poll(async () => {
+      const railBox = await rail.boundingBox();
+      const firstBox = await cards[0].boundingBox();
+      if (!railBox || !firstBox) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(firstBox.width - railBox.width);
+    })
+    .toBeLessThan(2);
+
+  await page.keyboard.press("Tab");
+  await cards[0].focus();
+  await expect
+    .poll(async () => {
+      return cards[0].evaluate((element) => {
+        return (
+          element.matches(":focus-visible") &&
+          getComputedStyle(element).boxShadow !== "none"
+        );
+      });
+    })
+    .toBe(true);
 });
 
 test("image lightbox centers and pans across the full viewer", async ({
