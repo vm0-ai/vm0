@@ -16,10 +16,11 @@ use guest_contracts::reuse_preparation::{
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[test]
-fn prepare_for_reuse_removes_only_unprotected_runtime_entries() -> TestResult {
+fn prepare_for_reuse_preserves_generation_when_candidate_runtime_is_absent() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runtime/runs");
-    let current = runs.join("current");
+    let current = runs.join("generation");
+    let unstarted_candidate = runs.join("candidate");
     let retained = runs.join("retained");
     let stale = runs.join("stale/nested");
     let outside = dir.path().join("outside");
@@ -39,6 +40,7 @@ fn prepare_for_reuse_removes_only_unprotected_runtime_entries() -> TestResult {
     std::fs::write(runs.join("stale-file"), b"stale")?;
     std::fs::write(outside.join("keep"), b"outside")?;
     symlink(&outside, runs.join("stale-link"))?;
+    assert!(!unstarted_candidate.exists());
 
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
@@ -66,7 +68,31 @@ fn prepare_for_reuse_removes_only_unprotected_runtime_entries() -> TestResult {
     assert!(!runs.join("stale").exists());
     assert!(!runs.join("stale-file").exists());
     assert!(!runs.join("stale-link").exists());
+    assert!(!unstarted_candidate.exists());
     assert_eq!(std::fs::read(outside.join("keep"))?, b"outside");
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_missing_protected_generation_before_cleanup() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let runs = dir.path().join("runtime/runs");
+    let missing_generation = runs.join("missing-generation");
+    let stale = runs.join("stale");
+    std::fs::create_dir_all(&stale)?;
+    std::fs::write(stale.join("agent.jsonl"), b"stale")?;
+
+    let output = run_helper(&ReusePreparationRequest {
+        current_runtime_dir: path_string(&missing_generation),
+        retained_runtime_dir: None,
+    })?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED)
+    );
+    assert!(!missing_generation.exists());
+    assert_eq!(std::fs::read(stale.join("agent.jsonl"))?, b"stale");
     Ok(())
 }
 

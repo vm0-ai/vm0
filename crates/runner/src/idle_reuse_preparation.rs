@@ -66,7 +66,7 @@ impl std::fmt::Display for IdleReusePreparationFailure {
 }
 
 pub(crate) struct IdleReusePreparation {
-    run_id: RunId,
+    operation_run_id: RunId,
     sandbox_id: String,
     command: String,
     request_bytes: Vec<u8>,
@@ -75,17 +75,18 @@ pub(crate) struct IdleReusePreparation {
 impl IdleReusePreparation {
     pub(crate) fn new(
         sandbox_id: &str,
-        run_id: RunId,
+        operation_run_id: RunId,
+        current_runtime_run_id: RunId,
         retained_runtime_dir: Option<&str>,
     ) -> Result<Self, IdleReusePreparationFailure> {
         let current_runtime_dir = guest_contracts::runtime_paths::run_dir_for_home(
             CANONICAL_GUEST_HOME_DIR,
-            &run_id.to_string(),
+            &current_runtime_run_id.to_string(),
         )
         .map_err(|error| {
             reject_without_exec(
                 sandbox_id,
-                run_id,
+                operation_run_id,
                 ReuseRejectionReason::InvalidRequest,
                 format!("resolve current runtime directory: {error}"),
             )
@@ -99,7 +100,7 @@ impl IdleReusePreparation {
         let request_bytes = serde_json::to_vec(&request).map_err(|error| {
             reject_without_exec(
                 sandbox_id,
-                run_id,
+                operation_run_id,
                 ReuseRejectionReason::InvalidRequest,
                 format!("serialize reuse-preparation request: {error}"),
             )
@@ -111,7 +112,7 @@ impl IdleReusePreparation {
             mount_command
         );
         Ok(Self {
-            run_id,
+            operation_run_id,
             sandbox_id: sandbox_id.to_owned(),
             command,
             request_bytes,
@@ -138,7 +139,7 @@ impl IdleReusePreparation {
             let reason = helper_failure_reason(result);
             return Err(reject_with_result(
                 &self.sandbox_id,
-                self.run_id,
+                self.operation_run_id,
                 reason,
                 result,
                 format_helper_exec_failure("reuse preparation", result),
@@ -149,7 +150,7 @@ impl IdleReusePreparation {
             serde_json::from_slice::<ReusePreparationReport>(&result.stdout).map_err(|error| {
                 reject_with_result(
                     &self.sandbox_id,
-                    self.run_id,
+                    self.operation_run_id,
                     ReuseRejectionReason::InvalidReport,
                     result,
                     format!("reuse preparation returned an invalid report: {error}"),
@@ -167,7 +168,7 @@ impl IdleReusePreparation {
             };
             log_report(
                 &self.sandbox_id,
-                self.run_id,
+                self.operation_run_id,
                 reason.as_str(),
                 result,
                 report,
@@ -181,7 +182,14 @@ impl IdleReusePreparation {
             });
         }
 
-        log_report(&self.sandbox_id, self.run_id, "ready", result, report, true);
+        log_report(
+            &self.sandbox_id,
+            self.operation_run_id,
+            "ready",
+            result,
+            report,
+            true,
+        );
         Ok(())
     }
 }
@@ -374,24 +382,30 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         let guard = tracing::subscriber::set_default(subscriber);
         tracing::callsite::rebuild_interest_cache();
-        let result = execute_preparation(sandbox, run_id, None).await;
+        let result = execute_preparation(sandbox, run_id, run_id, None).await;
         drop(guard);
         (result, captured.entries())
     }
 
     async fn execute_preparation(
         sandbox: &MockSandbox,
-        run_id: RunId,
+        operation_run_id: RunId,
+        current_runtime_run_id: RunId,
         retained_runtime_dir: Option<&str>,
     ) -> Result<(), IdleReusePreparationFailure> {
-        let preparation = IdleReusePreparation::new(sandbox.id(), run_id, retained_runtime_dir)?;
+        let preparation = IdleReusePreparation::new(
+            sandbox.id(),
+            operation_run_id,
+            current_runtime_run_id,
+            retained_runtime_dir,
+        )?;
         let result = sandbox
             .exec_with_diagnostic_label(&preparation.exec_request(), "idle-reuse-preparation")
             .await
             .map_err(|error| {
                 reject_without_exec(
                     sandbox.id(),
-                    run_id,
+                    operation_run_id,
                     ReuseRejectionReason::HelperFailed,
                     format!("reuse-preparation exec failed: {error}"),
                 )
@@ -419,12 +433,18 @@ mod tests {
             serde_json::to_vec(&healthy_reuse_preparation_report()).unwrap(),
             Vec::new(),
         )));
-        let run_id = RunId::new_v4();
+        let operation_run_id = RunId::new_v4();
+        let current_runtime_run_id = RunId::new_v4();
         let retained = "/home/user/.vm0/guest-agent/runs/previous";
 
-        execute_preparation(&sandbox, run_id, Some(retained))
-            .await
-            .expect("healthy guest should be prepared");
+        execute_preparation(
+            &sandbox,
+            operation_run_id,
+            current_runtime_run_id,
+            Some(retained),
+        )
+        .await
+        .expect("healthy guest should be prepared");
 
         let calls = sandbox.exec_calls();
         assert_eq!(calls.len(), 1);
@@ -447,7 +467,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             request.current_runtime_dir,
-            format!("/home/user/.vm0/guest-agent/runs/{run_id}")
+            format!("/home/user/.vm0/guest-agent/runs/{current_runtime_run_id}")
         );
         assert_eq!(request.retained_runtime_dir.as_deref(), Some(retained));
     }
