@@ -123,6 +123,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import {
+  createPiNoopExecutionEnv,
   formatPiUserPrompt,
   loadPiRunSkills,
   renderPiSystemPrompt,
@@ -5973,7 +5974,7 @@ async function preparePiLaunchResources(args: {
     });
   }
   return {
-    executionEnv: resources.env,
+    executionEnv: createPiNoopExecutionEnv(),
     modelConfig: piSandboxModelConfig(args.piEdge),
     prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
     systemPrompt: renderPiSystemPrompt({

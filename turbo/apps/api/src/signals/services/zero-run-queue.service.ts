@@ -1,11 +1,13 @@
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import type { PersistedStorageMount } from "@vm0/db/types";
-import type { ExecutionEnv } from "@vm0/pi-agent-runtime";
+import {
+  createPiNoopExecutionEnv,
+  type ExecutionEnv,
+} from "@vm0/pi-agent-runtime";
 import {
   and,
   count,
@@ -46,7 +48,6 @@ import {
   type PendingRunActivation,
 } from "./agent-run-activation.service";
 import type { PiEdgeModelConfig, PiEdgeUsageConfig } from "./pi-edge-config";
-import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -84,7 +85,6 @@ interface QueueCandidate {
   readonly encryptedParams: string | null;
   readonly runStatus: string | null;
   readonly chatThreadId: string | null;
-  readonly storageMounts: PersistedStorageMount[] | null;
 }
 
 interface PromotedRunnerJob {
@@ -235,7 +235,6 @@ async function loadDrainCandidates(
         createdAt: agentRunQueue.createdAt,
         encryptedParams: agentRunQueue.encryptedParams,
         runStatus: agentRuns.status,
-        storageMounts: agentRuns.storageMounts,
         chatThreadId: zeroRuns.chatThreadId,
       })
       .from(agentRunQueue)
@@ -246,28 +245,18 @@ async function loadDrainCandidates(
   });
 }
 
-async function prepareQueuedPiEdgeTurn(
-  get: <T>(computedValue: Computed<T>) => T,
-  db: Db,
+function prepareQueuedPiEdgeTurn(
   row: QueueCandidate,
   payload: QueuedRunnerJobPayload,
-): Promise<PreparedQueuedPiEdgeTurn | undefined> {
+): PreparedQueuedPiEdgeTurn | undefined {
   if (payload.piEdge === undefined) {
     return undefined;
   }
   const systemPrompt = payload.executionContext.piSystemPrompt;
   const skillSnapshot = payload.executionContext.runSkillSnapshot;
-  if (
-    row.storageMounts === null ||
-    systemPrompt === undefined ||
-    skillSnapshot === undefined
-  ) {
+  if (systemPrompt === undefined || skillSnapshot === undefined) {
     throw new Error(`Queued Pi run "${row.runId}" is missing launch context`);
   }
-  const resources = await loadPiLaunchStorageResources(get, db, {
-    snapshot: skillSnapshot,
-    persistedStorageMounts: row.storageMounts,
-  });
   return {
     model: payload.piEdge.model,
     ...(payload.piEdge.usage === undefined
@@ -275,7 +264,7 @@ async function prepareQueuedPiEdgeTurn(
       : { usage: payload.piEdge.usage }),
     prompt: payload.piEdge.prompt,
     systemPrompt,
-    executionEnv: resources.env,
+    executionEnv: createPiNoopExecutionEnv(),
     skillSnapshot,
   };
 }
@@ -503,7 +492,7 @@ async function promoteQueuedCandidateWithSideEffects(
  */
 export const drainOrgQueue$ = command(
   async (
-    { get, set },
+    { set },
     args: { readonly orgId: string },
     signal: AbortSignal,
   ): Promise<number> => {
@@ -519,9 +508,7 @@ export const drainOrgQueue$ = command(
           : null;
       signal.throwIfAborted();
       const piEdgeTurn =
-        payload === null
-          ? undefined
-          : await prepareQueuedPiEdgeTurn(get, writeDb, row, payload);
+        payload === null ? undefined : prepareQueuedPiEdgeTurn(row, payload);
       signal.throwIfAborted();
 
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
