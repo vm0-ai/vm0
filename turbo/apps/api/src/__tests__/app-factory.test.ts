@@ -24,6 +24,15 @@ const TEST_APP_ROUTES = Object.freeze([...healthRoutes, ...zeroMailRoutes]);
 const MINIMUM_WEB_CLIENT_VERSION =
   webClientCompatibility.minimumSupportedVersion;
 
+// Derived so that raising the supported floor does not turn this fixture into
+// an unsupported version.
+const NEWER_WEB_CLIENT_VERSION = MINIMUM_WEB_CLIENT_VERSION.replace(
+  /(\d+)$/u,
+  (patch) => {
+    return (Number(patch) + 1).toString();
+  },
+);
+
 // eslint-disable-next-line api/no-test-vi-mocks
 const { mockFlushLogs } = vi.hoisted(() => {
   return {
@@ -1050,7 +1059,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.707.1",
+          [CLIENT_VERSION_HEADER]: NEWER_WEB_CLIENT_VERSION,
         },
       });
 

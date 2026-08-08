@@ -212,7 +212,6 @@ export async function insertAssistantEventsInTransaction(
         runEventId: item.runEventId,
       };
     }),
-    "any",
   );
   signal.throwIfAborted();
 

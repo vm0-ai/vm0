@@ -268,8 +268,23 @@ describe("cron snapshot chat events", () => {
     const firstHead = await readChatEventSnapshotHead(context, threadId);
     await setChatEventSnapshotHeadVersion(context, threadId, 2);
 
-    // The rewrite fallback is retired, so a pre-v3 head fails the pass
-    // instead of silently republishing the object under the current version.
+    // An idle head on a retired version is never a candidate, so it cannot
+    // strand the globally scoped pass for every other thread.
+    const idle = await runSnapshotCron();
+    expect(idle.success).toBeTruthy();
+    expect(putsForThread(threadId)).toHaveLength(1);
+    const idleHead = await readChatEventSnapshotHead(context, threadId);
+    expect(idleHead.archive_schema_version).toBe(2);
+    expect(idleHead.object_key).toBe(firstPut.key);
+
+    // With a new tail the thread is a candidate again, and the retired rewrite
+    // fallback means it fails closed instead of republishing under v3.
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `version-only-tail-${randomUUID()}`,
+    });
+    await projectChatEventSearch();
     await accept(
       snapshotCronClient().snapshot({
         headers: { authorization: `Bearer ${CRON_SECRET}` },
@@ -286,10 +301,9 @@ describe("cron snapshot chat events", () => {
     await setChatEventSnapshotHeadVersion(context, threadId, 3);
     const recovered = await runSnapshotCron();
     expect(recovered.success).toBeTruthy();
-    expect(putsForThread(threadId)).toHaveLength(1);
     const recoveredHead = await readChatEventSnapshotHead(context, threadId);
-    expect(recoveredHead.last_seq_id).toBe(firstHead.last_seq_id);
-    expect(recoveredHead.object_key).toBe(firstPut.key);
+    expect(recoveredHead.last_seq_id).toBeGreaterThan(firstHead.last_seq_id);
+    expect(recoveredHead.object_key).not.toBe(firstPut.key);
   }, 60_000);
 
   it("fails the pass when a parent object no longer matches its content hash", async () => {

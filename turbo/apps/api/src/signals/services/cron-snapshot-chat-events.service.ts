@@ -6,19 +6,7 @@ import {
   type ChatEventRow,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { command, type Computed } from "ccstate";
-import {
-  and,
-  asc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  lt,
-  lte,
-  ne,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
@@ -53,7 +41,12 @@ interface ChatEventSnapshotStats {
   readonly r2GcSubpartitionedShards: number;
 }
 
-export function chatEventSnapshotCorsReady() {
+/**
+ * Bucket CORS is bucket-level configuration that changes approximately never,
+ * so the cron owns reconciliation. Read paths must not depend on an R2
+ * control-plane call to serve a presigned URL.
+ */
+function chatEventSnapshotCorsReady() {
   const appOrigin = new URL(env("APP_URL")).origin;
   return ensureS3CorsGetOrigin(env("R2_USER_STORAGES_BUCKET_NAME"), appOrigin);
 }
@@ -638,16 +631,13 @@ export const snapshotChatEvents$ = command(
           eq(chatEventSnapshots.isHead, true),
         ),
       )
+      // Only threads with a new tail. An idle head on a retired archive
+      // version is left alone: the reader already treats it as missing, and
+      // selecting it here would abort the whole pass on the throw below.
       .where(
-        or(
-          gt(
-            chatEventSearchWatermarks.indexedSeqId,
-            sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
-          ),
-          and(
-            isNotNull(chatEventSnapshots.id),
-            ne(chatEventSnapshots.archiveSchemaVersion, ARCHIVE_SCHEMA_VERSION),
-          ),
+        gt(
+          chatEventSearchWatermarks.indexedSeqId,
+          sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
         ),
       )
       .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))

@@ -10,7 +10,6 @@ import { db$ } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
 import {
   ARCHIVE_SCHEMA_VERSION,
-  chatEventSnapshotCorsReady,
   chatEventRowFromDbRow,
 } from "./cron-snapshot-chat-events.service";
 
@@ -76,7 +75,6 @@ export function zeroChatThreadEventSnapshot(args: {
       return { kind: "snapshot-not-found" } as const;
     }
 
-    await get(chatEventSnapshotCorsReady());
     const url = await get(
       generatePresignedGetUrl(
         env("R2_USER_STORAGES_BUCKET_NAME"),
@@ -97,8 +95,7 @@ export function zeroChatThreadEventSnapshot(args: {
  * Raw-row tail after a seq cursor. The cursor must still exist: a missing row
  * means the range below it is unavailable and the client has to rebuild from
  * a fresh snapshot. A cursor equal to the current head's last_seq_id is always
- * valid because the snapshot endpoint just handed it out. Payload reclaim
- * preserves cursor rows and therefore cannot create false 410 responses.
+ * valid because the snapshot endpoint just handed it out.
  */
 export function zeroChatThreadEventRows(args: {
   readonly threadId: string;
