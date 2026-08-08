@@ -2404,19 +2404,21 @@ mod tests {
             cleared_body["telemetry"]["runnerPreferenceClaimState"],
             "cleared"
         );
-        let absent = JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
-            .with_no_runner_preference_for_test(RunnerNoPreferenceReason::NoViableHolder);
-        let absent_body = serde_json::to_value(claim_request_body_for_test(&absent)).unwrap();
+        let no_preference =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_no_runner_preference_for_test(RunnerNoPreferenceReason::NoViableHolder);
+        let no_preference_body =
+            serde_json::to_value(claim_request_body_for_test(&no_preference)).unwrap();
         assert_eq!(
-            absent_body["telemetry"]["runnerPreference"]["kind"],
+            no_preference_body["telemetry"]["runnerPreference"]["kind"],
             "noPreference"
         );
         assert_eq!(
-            absent_body["telemetry"]["runnerPreference"]["reason"],
+            no_preference_body["telemetry"]["runnerPreference"]["reason"],
             "noViableHolder"
         );
         assert!(
-            absent_body["telemetry"]
+            no_preference_body["telemetry"]
                 .get("runnerPreferenceClaimState")
                 .is_none()
         );

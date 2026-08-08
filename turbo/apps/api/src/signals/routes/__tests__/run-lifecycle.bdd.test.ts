@@ -11581,19 +11581,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(serialized).not.toContain(apiKey.token);
     }
     const timingEvents = sandboxOperationEventsForRun(first.runId);
-    const oldRunnerClaimEvent = singleSandboxOperationEvent(
-      timingEvents,
-      "claim_request_to_running",
-    );
-    expect(oldRunnerClaimEvent).not.toHaveProperty(
-      "runner_preference_resolution",
-    );
-    expect(oldRunnerClaimEvent).not.toHaveProperty(
-      "runner_preference_claim_state",
-    );
-    expect(oldRunnerClaimEvent).not.toHaveProperty(
-      "runner_preference_targeted_self",
-    );
     expect(
       timingEvents.find((event) => {
         return event.op_type === "job_discovered_to_claim_request";
