@@ -1467,7 +1467,6 @@
       "loadingGoal": "Ziel wird geladen...",
       "message_one": "{{count}} Nachricht",
       "message_other": "{{count}} Nachrichten",
-      "modelChangeAppliesNextRun": "Ihr ausgewähltes Modell wird bei Ihrer nächsten Ausführung verwendet.",
       "openGoalDetails": "Zieldetails öffnen",
       "pendingAutomationEvent": "Ausstehendes Automatisierungsereignis",
       "queuedMessage": "Nachricht in der Warteschlange",
@@ -1516,7 +1515,9 @@
       "justNow": "soeben",
       "keepGoing": "Fortsetzen",
       "keepGoingAt": "Fortsetzen · {{timestamp}}",
+      "modelChangedTo": "Modell wurde auf {{model}} geändert",
       "queueEllipsis": "In Warteschlange...",
+      "selectedModelAppliesAfterCurrentRun": "Ihr ausgewähltes {{model}}-Modell wird nach dieser Ausführung wirksam",
       "thinking": {
         "assembling": "Teile werden zusammengesetzt...",
         "brewing": "Eine Antwort wird vorbereitet...",

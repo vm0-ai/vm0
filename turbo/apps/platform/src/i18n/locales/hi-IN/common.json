@@ -1467,7 +1467,6 @@
       "loadingGoal": "लक्ष्य लोड हो रहा है...",
       "message_one": "{{count}} संदेश",
       "message_other": "{{count}} संदेश",
-      "modelChangeAppliesNextRun": "आपका चुना हुआ मॉडल आपके अगले रन से लागू होगा।",
       "openGoalDetails": "लक्ष्य विवरण खोलें",
       "pendingAutomationEvent": "लंबित ऑटोमेशन कार्यक्रम",
       "queuedMessage": "पंक्तिबद्ध संदेश",
@@ -1516,7 +1515,9 @@
       "justNow": "बस अब",
       "keepGoing": "जारी रखें",
       "keepGoingAt": "चलते रहें · {{timestamp}}",
+      "modelChangedTo": "मॉडल को {{model}} में बदल दिया गया है",
       "queueEllipsis": "कतार...",
+      "selectedModelAppliesAfterCurrentRun": "आपका चुना हुआ {{model}} मॉडल इस रन के बाद लागू होगा",
       "thinking": {
         "assembling": "टुकड़ों को जोड़ना...",
         "brewing": "एक प्रतिक्रिया तैयार की जा रही है...",
