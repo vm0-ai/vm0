@@ -77,8 +77,8 @@ function signedObjectInputs(): Record<string, unknown>[] {
 }
 
 function signedOptions(): unknown[] {
-  return context.mocks.s3.getSignedUrl.mock.calls.map(([, , options]) => {
-    return options;
+  return context.mocks.s3.getSignedUrl.mock.calls.map((call) => {
+    return call[2];
   });
 }
 
