@@ -16,7 +16,7 @@ import {
   runnersPollContract,
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
-  type ConnectorRuntimeTarget,
+  type ConnectorRuntimeTargetRegistration,
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
@@ -1427,7 +1427,7 @@ function connectorPermissionBaselineMatchesStoredContext(
 
 function connectorRuntimeTargetsForClaim(
   storedContext: StoredExecutionContext,
-): ConnectorRuntimeTarget[] | undefined {
+): ConnectorRuntimeTargetRegistration[] | undefined {
   if (storedContext.connectorRuntimeTargets !== undefined) {
     return storedContext.connectorRuntimeTargets;
   }

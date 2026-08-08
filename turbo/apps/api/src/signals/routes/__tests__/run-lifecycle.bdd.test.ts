@@ -8333,12 +8333,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       Authorization: "Bearer custom-secret-value",
     });
 
-    const target = { kind: "custom" as const, customConnectorId: custom.id };
+    const targetIdentity = {
+      kind: "custom" as const,
+      customConnectorId: custom.id,
+    };
+    const target = {
+      ...targetIdentity,
+      baseUrlVars: { subdomain: "pinned-routing-value" },
+    };
     const [initialRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
     const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
     expect(initialAvailable.nextSyncAt).toBeUndefined();
+    expect(initialAvailable.target).toStrictEqual(targetIdentity);
+    expect(initialAvailable.baseUrlVars).toBeUndefined();
     const { api: initialApi, body: currentAuthBody } =
       customConnectorRuntimeAuthBody(
         initialAvailable,
@@ -8442,7 +8451,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       throw new Error("Expected an absent custom connector runtime result");
     }
     expect(absentRuntime).toMatchObject({
-      target,
+      target: targetIdentity,
       state: "absent",
       reason: "grant-unavailable",
     });
@@ -8453,7 +8462,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       targets: [target],
     });
     expect(restoredRuntime).toMatchObject({
-      target,
+      target: targetIdentity,
       state: "available",
     });
 
@@ -8531,7 +8540,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       targets: [target],
     });
     expect(compatibleRuntime).toMatchObject({
-      target,
+      target: targetIdentity,
       state: "available",
     });
     const compatibleAuth = await fw.requestFirewallAuth(
