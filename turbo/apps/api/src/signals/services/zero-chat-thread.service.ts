@@ -121,6 +121,10 @@ type ChatSearchMessageRow = {
   readonly runId: string | null;
 };
 
+type ChatSearchMatchRow = ChatSearchMessageRow & {
+  readonly agentName: string;
+};
+
 interface ChatSearchContext {
   readonly before: ChatSearchMessage[];
   readonly after: ChatSearchMessage[];
@@ -1069,34 +1073,123 @@ function chatSearchKeywordCondition(pattern: string): SQL {
 }
 
 /**
- * Index-backed keyword condition over the chat_event_search_docs projection.
- * Keywords without a bigram-indexable form cannot match the projection.
+ * Resolves matches from the chat_event_search_docs projection alone: keyword,
+ * ownership, agent scope, `since`, ordering and the limit are all answered by
+ * the projection, so no chat_events predicate can pull the planner away from
+ * the tsvector index. Keywords without a bigram-indexable form cannot match.
  */
-function chatSearchIndexCondition(
+async function chatSearchIndexedEventIds(
   db: ReadonlyDb,
   args: {
     readonly userId: string;
     readonly orgId: string;
     readonly keyword: string;
+    readonly agentId?: string;
+    readonly since?: Date;
+    readonly limit: number;
   },
-): SQL {
+): Promise<readonly string[]> {
   const tsquery = chatSearchBigramTsquery(args.keyword);
   if (tsquery === null) {
-    return sql`false`;
+    return [];
   }
-  return inArray(
-    chatEvents.id,
-    db
-      .select({ eventId: chatEventSearchDocs.eventId })
-      .from(chatEventSearchDocs)
-      .where(
-        and(
-          eq(chatEventSearchDocs.userId, args.userId),
-          eq(chatEventSearchDocs.orgId, args.orgId),
-          sql`to_tsvector('simple', ${chatEventSearchDocs.textBigram}) @@ to_tsquery('simple', ${tsquery})`,
-        ),
+  const docs = await db
+    .select({ eventId: chatEventSearchDocs.eventId })
+    .from(chatEventSearchDocs)
+    .where(
+      and(
+        eq(chatEventSearchDocs.userId, args.userId),
+        eq(chatEventSearchDocs.orgId, args.orgId),
+        sql`${chatEventSearchDocs.tsv} @@ to_tsquery('simple', ${tsquery})`,
+        args.agentId
+          ? eq(chatEventSearchDocs.agentComposeId, args.agentId)
+          : undefined,
+        args.since ? gte(chatEventSearchDocs.createdAt, args.since) : undefined,
       ),
-  );
+    )
+    .orderBy(desc(chatEventSearchDocs.createdAt))
+    .limit(args.limit);
+  return docs.map((doc) => {
+    return doc.eventId;
+  });
+}
+
+/**
+ * Decorates already-selected matches with the columns the response needs. The
+ * joins run over at most `limit + 1` primary-key lookups, so they never take
+ * part in selecting rows. Ownership is re-asserted against the authoritative
+ * thread and compose rows, because the projection only holds a copy of it.
+ */
+async function chatSearchIndexedMatches(
+  db: ReadonlyDb,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly eventIds: readonly string[];
+  },
+): Promise<ChatSearchMatchRow[]> {
+  if (args.eventIds.length === 0) {
+    return [];
+  }
+  return await db
+    .select({
+      ...searchMessageColumns,
+      agentName: agentComposes.name,
+    })
+    .from(chatEvents)
+    .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
+    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
+    .where(
+      and(
+        inArray(chatEvents.id, [...args.eventIds]),
+        eq(chatThreads.userId, args.userId),
+        eq(agentComposes.orgId, args.orgId),
+      ),
+    )
+    .orderBy(desc(chatEvents.createdAt));
+}
+
+/**
+ * Pre-projection fallback: scans the caller's own chat_events with ILIKE and
+ * evaluates visibility while matching.
+ */
+async function chatSearchLegacyMatches(
+  db: ReadonlyDb,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly keyword: string;
+    readonly agentId?: string;
+    readonly since?: Date;
+    readonly limit: number;
+  },
+): Promise<ChatSearchMatchRow[]> {
+  const matchConditions = [
+    eq(chatThreads.userId, args.userId),
+    eq(agentComposes.orgId, args.orgId),
+    chatEventTextCondition(),
+    visibleChatEventCondition(db),
+    excludeGoalMarkerCondition(),
+    chatSearchKeywordCondition(`%${escapeLikePattern(args.keyword)}%`),
+  ];
+  if (args.since) {
+    matchConditions.push(gte(chatEvents.createdAt, args.since));
+  }
+  if (args.agentId) {
+    matchConditions.push(eq(zeroAgents.id, args.agentId));
+  }
+  return await db
+    .select({
+      ...searchMessageColumns,
+      agentName: agentComposes.name,
+    })
+    .from(chatEvents)
+    .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
+    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
+    .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .where(and(...matchConditions))
+    .orderBy(desc(chatEvents.createdAt))
+    .limit(args.limit);
 }
 
 function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
@@ -1243,39 +1336,27 @@ export function zeroChatSearch(args: {
     const db = get(db$);
     const sinceDate = args.since ? new Date(args.since) : undefined;
 
-    const keywordCondition = args.useSearchIndex
-      ? chatSearchIndexCondition(db, args)
-      : chatSearchKeywordCondition(`%${escapeLikePattern(args.keyword)}%`);
-    const matchConditions = [
-      eq(chatThreads.userId, args.userId),
-      eq(agentComposes.orgId, args.orgId),
-      chatEventTextCondition(),
-      visibleChatEventCondition(db),
-      excludeGoalMarkerCondition(),
-      keywordCondition,
-    ];
-    if (sinceDate) {
-      matchConditions.push(gte(chatEvents.createdAt, sinceDate));
-    }
-    if (args.agentId) {
-      matchConditions.push(eq(zeroAgents.id, args.agentId));
-    }
-
-    const matches = await db
-      .select({
-        ...searchMessageColumns,
-        agentName: agentComposes.name,
-      })
-      .from(chatEvents)
-      .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
-      .innerJoin(
-        agentComposes,
-        eq(chatThreads.agentComposeId, agentComposes.id),
-      )
-      .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(and(...matchConditions))
-      .orderBy(desc(chatEvents.createdAt))
-      .limit(args.limit + 1);
+    const matches = args.useSearchIndex
+      ? await chatSearchIndexedMatches(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+          eventIds: await chatSearchIndexedEventIds(db, {
+            userId: args.userId,
+            orgId: args.orgId,
+            keyword: args.keyword,
+            agentId: args.agentId,
+            since: sinceDate,
+            limit: args.limit + 1,
+          }),
+        })
+      : await chatSearchLegacyMatches(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+          keyword: args.keyword,
+          agentId: args.agentId,
+          since: sinceDate,
+          limit: args.limit + 1,
+        });
 
     const hasMore = matches.length > args.limit;
     const truncated = hasMore ? matches.slice(0, args.limit) : matches;

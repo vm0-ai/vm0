@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   chatEventSearchDocs,
@@ -25,6 +25,7 @@ interface LaggingThread {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly agentComposeId: string;
   readonly lastChatEventSeqId: number;
   readonly indexedSeqId: number | null;
 }
@@ -99,9 +100,14 @@ async function projectThread(
       .orderBy(asc(chatEvents.seqId))
       .limit(THREAD_EVENT_LIMIT);
 
+    // Any event type can revoke an earlier one: replaceLoadedChatEvent appends
+    // the replacement with revokes_event_id set and keeps the replacement's own
+    // type, so a queued prompt is usually revoked by an input.rejected rather
+    // than a control.revoke. Matching on revokes_event_id alone keeps this in
+    // step with the visibility rule readers apply to chat_events.
     const revokedEventIds = new Set<string>();
     for (const row of rows) {
-      if (row.eventType === "control.revoke" && row.revokesEventId !== null) {
+      if (row.revokesEventId !== null) {
         revokedEventIds.add(row.revokesEventId);
       }
     }
@@ -121,6 +127,7 @@ async function projectThread(
           chatThreadId: thread.chatThreadId,
           orgId: thread.orgId,
           userId: thread.userId,
+          agentComposeId: thread.agentComposeId,
           role,
           createdAt: row.createdAt,
           text,
@@ -129,12 +136,19 @@ async function projectThread(
       ];
     });
 
+    // Ticks stay idempotent: an already-indexed doc is only rewritten to fill
+    // an agent_compose_id an older API version left null, which heals the rows
+    // it wrote while the migration was ahead of its deployment.
     const indexed =
       docs.length > 0
         ? await tx
             .insert(chatEventSearchDocs)
             .values(docs)
-            .onConflictDoNothing({ target: chatEventSearchDocs.eventId })
+            .onConflictDoUpdate({
+              target: chatEventSearchDocs.eventId,
+              set: { agentComposeId: sql`EXCLUDED.agent_compose_id` },
+              setWhere: isNull(chatEventSearchDocs.agentComposeId),
+            })
             .returning({ eventId: chatEventSearchDocs.eventId })
         : [];
 
@@ -187,6 +201,7 @@ export const projectChatEventSearch$ = command(
         chatThreadId: chatThreads.id,
         userId: chatThreads.userId,
         orgId: agentComposes.orgId,
+        agentComposeId: chatThreads.agentComposeId,
         lastChatEventSeqId: chatThreads.lastChatEventSeqId,
         indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
       })
