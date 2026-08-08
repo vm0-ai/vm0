@@ -1517,7 +1517,7 @@
       "keepGoingAt": "Keep going · {{timestamp}}",
       "modelChangedTo": "Model changed to {{model}}",
       "queueEllipsis": "queue...",
-      "selectedModelAppliesAfterCurrentRun": "Your selected {{model}} model will take effect after this run",
+      "selectedModelAppliesAfterCurrentRun": "Next run will use {{model}}",
       "thinking": {
         "assembling": "Assembling the pieces...",
         "brewing": "Brewing up a response...",
