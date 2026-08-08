@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.405.2](https://github.com/vm0-ai/vm0/compare/api-v1.405.1...api-v1.405.2) (2026-08-08)
+
+
+### Refactoring
+
+* **chat:** finalize chat event schema contraction ([#25805](https://github.com/vm0-ai/vm0/issues/25805)) ([22d4afe](https://github.com/vm0-ai/vm0/commit/22d4afef54d8e8f04edcd345a90741c9eb155859))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.2
+    * @vm0/core bumped to 8.530.9
+    * @vm0/db bumped to 1.180.4
+    * @vm0/pi-agent-runtime bumped to 1.3.12
+
 ## [1.405.1](https://github.com/vm0-ai/vm0/compare/api-v1.405.0...api-v1.405.1) (2026-08-08)
 
 
