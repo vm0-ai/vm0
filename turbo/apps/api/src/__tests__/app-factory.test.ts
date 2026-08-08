@@ -985,7 +985,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("rejects pre-content-event-reader app clients before route handlers run", async () => {
+    it("rejects pre-canonical-chat-event app clients before route handlers run", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -994,7 +994,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.706.2",
+          [CLIENT_VERSION_HEADER]: "0.706.4",
         },
       });
 
@@ -1050,7 +1050,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.706.4",
+          [CLIENT_VERSION_HEADER]: "0.707.1",
         },
       });
 
