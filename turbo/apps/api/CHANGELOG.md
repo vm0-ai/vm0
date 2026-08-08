@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.406.1](https://github.com/vm0-ai/vm0/compare/api-v1.406.0...api-v1.406.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* restore authenticated chat attachment flows ([#25815](https://github.com/vm0-ai/vm0/issues/25815)) ([08f3773](https://github.com/vm0-ai/vm0/commit/08f3773afa918104387414c2bcc82bc96236e955))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.297.1
+    * @vm0/core bumped to 8.532.0
+    * @vm0/db bumped to 1.181.1
+    * @vm0/pi-agent-runtime bumped to 1.3.14
+
 ## [1.406.0](https://github.com/vm0-ai/vm0/compare/api-v1.405.2...api-v1.406.0) (2026-08-08)
 
 
