@@ -4112,7 +4112,8 @@ function RecommendedFollowupList({
   // Card rail only on actual mobile/touch text-entry devices, mirroring the
   // composer auto-focus heuristic. A desktop window dragged narrow must still
   // render the flat list, so container width is not the deciding factor.
-  const showFollowupCards = responsiveFollowupCards && isMobileTextInputDevice();
+  const showFollowupCards =
+    responsiveFollowupCards && isMobileTextInputDevice();
   const selectOrAppendComposerText = useSet(
     thread.composer.editor.selectOrAppendText$,
   );
@@ -4173,9 +4174,7 @@ function RecommendedFollowupList({
             <span
               className={cn(
                 "min-w-0 flex-1 break-words text-[0.9375rem] font-medium leading-6 group-hover:text-foreground",
-                showFollowupCards
-                  ? "text-foreground"
-                  : "text-muted-foreground",
+                showFollowupCards ? "text-foreground" : "text-muted-foreground",
               )}
             >
               {followup.prompt}

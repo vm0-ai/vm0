@@ -302,9 +302,7 @@ describe("chat lifecycle", () => {
     }
     // No horizontal card rail on desktop: the buttons stay full-width rows
     // (w-full, items-center) rather than fixed-width self-stretch cards.
-    const rows = Array.from(
-      group.querySelectorAll<HTMLElement>("button"),
-    );
+    const rows = Array.from(group.querySelectorAll<HTMLElement>("button"));
     expect(rows).toHaveLength(prompts.length);
     expect(rows[0]?.className).toContain("w-full");
     expect(rows[0]?.className).not.toContain("flex-[0_0_min");
