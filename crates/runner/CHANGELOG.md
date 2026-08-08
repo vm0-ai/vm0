@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.160.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.8...runner-rs-v0.160.9) (2026-08-08)
+
+
+### Bug Fixes
+
+* **runner:** preserve exact reuse generation on rollback ([#25753](https://github.com/vm0-ai/vm0/issues/25753)) ([5b7191c](https://github.com/vm0-ai/vm0/commit/5b7191cdc389da31a23a5ffbefd196c0a510e53a))
+
+
+### Refactoring
+
+* **runner:** migrate to canonical preference contract ([#25757](https://github.com/vm0-ai/vm0/issues/25757)) ([92d09d9](https://github.com/vm0-ai/vm0/commit/92d09d9b55d79a31543f38693412f38e3ec52d1a))
+
 ## [0.160.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.7...runner-rs-v0.160.8) (2026-08-07)
 
 

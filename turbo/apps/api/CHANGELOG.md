@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.404.1](https://github.com/vm0-ai/vm0/compare/api-v1.404.0...api-v1.404.1) (2026-08-08)
+
+
+### Refactoring
+
+* **runner:** migrate to canonical preference contract ([#25757](https://github.com/vm0-ai/vm0/issues/25757)) ([92d09d9](https://github.com/vm0-ai/vm0/commit/92d09d9b55d79a31543f38693412f38e3ec52d1a))
+
+
+### Performance Improvements
+
+* **api:** raise chat event snapshot batch to 500 for backfill ([#25776](https://github.com/vm0-ai/vm0/issues/25776)) ([9e134cf](https://github.com/vm0-ai/vm0/commit/9e134cf42441e21a3318a1ec71c192124c2329e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.295.1
+    * @vm0/core bumped to 8.530.6
+    * @vm0/db bumped to 1.180.1
+    * @vm0/pi-agent-runtime bumped to 1.3.9
+
 ## [1.404.0](https://github.com/vm0-ai/vm0/compare/api-v1.403.1...api-v1.404.0) (2026-08-08)
 
 

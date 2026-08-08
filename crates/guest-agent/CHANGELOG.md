@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.65.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.2...guest-agent-v0.65.3) (2026-08-08)
+
+
+### Bug Fixes
+
+* **runner:** preserve exact reuse generation on rollback ([#25753](https://github.com/vm0-ai/vm0/issues/25753)) ([5b7191c](https://github.com/vm0-ai/vm0/commit/5b7191cdc389da31a23a5ffbefd196c0a510e53a))
+
 ## [0.65.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.1...guest-agent-v0.65.2) (2026-08-07)
 
 
