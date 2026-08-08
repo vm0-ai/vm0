@@ -14,6 +14,8 @@ import {
 } from "./cron-snapshot-chat-events.service";
 
 const SNAPSHOT_URL_TTL_SECONDS = 900;
+/** Cursor that reads a thread from its very first event. */
+const THREAD_START_SEQ_ID = 0;
 
 type ChatEventSnapshotDownload =
   | { readonly kind: "thread-not-found" }
@@ -44,9 +46,9 @@ function currentHeadFilter(threadId: string) {
 
 /**
  * Presigned download for the thread's head archive object. Only heads on the
- * current archive schema version are served: older heads behave as missing
- * until the snapshot cron rewrites them, which the switch-gated client treats
- * the same as a thread without a snapshot.
+ * current archive schema version are served. Unsupported heads fail closed as
+ * missing; version migration is an explicit rollout operation, not a reader
+ * fallback.
  */
 export function zeroChatThreadEventSnapshot(args: {
   readonly threadId: string;
@@ -93,10 +95,12 @@ export function zeroChatThreadEventSnapshot(args: {
 
 /**
  * Raw-row tail after a seq cursor. The cursor must still exist: a missing row
- * means the range below it was reclaimed and the client has to rebuild from a
- * fresh snapshot. A cursor equal to the current head's last_seq_id is always
- * valid because the snapshot endpoint just handed it out, even after the row
- * itself is eventually reclaimed.
+ * means the range below it is unavailable and the client has to rebuild from
+ * a fresh snapshot. A cursor equal to the current head's last_seq_id is always
+ * valid because the snapshot endpoint just handed it out. `sinceSeqId: 0` is
+ * the cold start for a thread the archiver has not reached yet: it precedes
+ * every event, so it owns no row of its own, and it stays valid only while the
+ * thread has no current head.
  */
 export function zeroChatThreadEventRows(args: {
   readonly threadId: string;
@@ -131,7 +135,12 @@ export function zeroChatThreadEventRows(args: {
         .from(chatEventSnapshots)
         .where(currentHeadFilter(args.threadId))
         .limit(1);
-      if (head?.lastSeqId !== args.sinceSeqId) {
+      // The cold-start cursor precedes every event, so it owns no row. It is
+      // only valid while nothing has been archived; once a head exists the
+      // client must start from that head instead.
+      const coldStart =
+        args.sinceSeqId === THREAD_START_SEQ_ID && head === undefined;
+      if (!coldStart && head?.lastSeqId !== args.sinceSeqId) {
         return { kind: "expired" } as const;
       }
     }

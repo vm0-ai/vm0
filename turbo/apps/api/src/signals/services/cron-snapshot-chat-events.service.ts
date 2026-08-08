@@ -6,7 +6,7 @@ import {
   type ChatEventRow,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { command, type Computed } from "ccstate";
-import { and, asc, eq, gt, isNotNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
@@ -14,15 +14,41 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { env, optionalEnv } from "../../lib/env";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { downloadS3Buffer, putImmutableS3Object } from "../external/s3";
+import {
+  deleteS3Objects,
+  downloadS3Buffer,
+  ensureS3CorsGetOrigin,
+  listS3ObjectsPage,
+  putImmutableS3Object,
+  type S3Object,
+} from "../external/s3";
 import { settle } from "../utils";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
 interface ChatEventSnapshotStats {
+  readonly corsChanged: boolean;
   readonly snapshots: number;
   readonly archivedEvents: number;
+  readonly r2ObjectsScanned: number;
+  readonly r2ObjectsMeasured: number;
+  readonly r2ObjectsDeleted: number;
+  readonly r2BytesMeasured: number;
+  readonly r2BytesDeleted: number;
+  readonly r2GcShardsScanned: number;
+  readonly r2GcSubpartitionedShards: number;
+}
+
+/**
+ * Bucket CORS is bucket-level configuration that changes approximately never,
+ * so the cron owns reconciliation. Read paths must not depend on an R2
+ * control-plane call to serve a presigned URL.
+ */
+function chatEventSnapshotCorsReady() {
+  const appOrigin = new URL(env("APP_URL")).origin;
+  return ensureS3CorsGetOrigin(env("R2_USER_STORAGES_BUCKET_NAME"), appOrigin);
 }
 
 interface SnapshotCandidate {
@@ -36,30 +62,31 @@ interface SnapshotCandidate {
 
 /**
  * Version of the archive object contract. Bump it whenever the NDJSON line
- * shape (chatEventRowSchema) or the object encoding changes. Existing heads
- * keep their recorded version and are selected for a verified rewrite even
- * when they have no new Postgres tail. v3 keeps the v2 line shape but stores
- * objects with `Content-Encoding: gzip` metadata so browsers decompress
- * snapshot downloads transparently; readers only serve v3 heads.
+ * shape (chatEventRowSchema) or the object encoding changes. v3 stores objects
+ * with `Content-Encoding: gzip` metadata so browsers decompress snapshot
+ * downloads transparently; readers only serve v3 heads.
  */
 export const ARCHIVE_SCHEMA_VERSION = 3;
-/**
- * The v2 line shape is identical to v3, so v2 parents rebuild without any
- * per-line migration; the fresh upload alone applies the v3 object encoding.
- */
-const REWRITABLE_ARCHIVE_SCHEMA_VERSION = 2;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
- * Sized for the initial backfill: ~130k candidate threads at 48 runs/day
- * clear in about 5 days, and the first production run measured ~0.19s per
- * thread, so a full batch stays far below the platform function timeout.
- * After catch-up this is only a cap; steady state re-archives ~700 active
- * threads per day.
+ * At the 10-minute cron cadence this cap permits 72k changed threads per day.
+ * Normal traffic re-archives roughly 700 active threads per day, so the cap
+ * leaves ample room for bursts while keeping each invocation bounded.
  */
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const EVENT_PAGE_SIZE = 1000;
 const OBJECT_KEY_CONTENT_SHA256 = /-([0-9a-f]{64})\.ndjson\.gz$/;
+const DEFAULT_R2_GC_GRACE_HOURS = 24 * 7;
+const R2_GC_SHARDS_PER_RUN = 16;
+const R2_GC_SHARD_COUNT = 16 ** 3;
+const R2_GC_PAGE_SIZE = 1000;
+/**
+ * Matches the cron cadence so every invocation advances to the next shard
+ * window; the 4096 shards are swept in about 1.8 days.
+ */
+const R2_GC_SLOT_MS = 10 * 60 * 1000;
+const HEX_DIGITS = "0123456789abcdef";
 
 type ArchiveEventRow = Pick<
   typeof chatEvents.$inferSelect,
@@ -95,6 +122,36 @@ function chatEventSnapshotThreadBatchSize(): number {
     );
   }
   return parsed;
+}
+
+function positiveIntegerEnv(name: string, fallback: number): number {
+  const raw = optionalEnv(name);
+  if (raw === undefined) {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function booleanEnv(name: string, fallback = false): boolean {
+  const raw = optionalEnv(name);
+  if (raw === undefined) {
+    return fallback;
+  }
+  if (raw === "true") {
+    return true;
+  }
+  if (raw === "false") {
+    return false;
+  }
+  throw new Error(`${name} must be true or false`);
+}
+
+function hoursBefore(now: Date, hours: number): Date {
+  return new Date(now.getTime() - hours * 60 * 60 * 1000);
 }
 
 function encodeArchiveLine(line: ChatEventRow): Buffer {
@@ -149,11 +206,15 @@ function parseArchiveLines(raw: Buffer): readonly unknown[] {
     });
 }
 
-function validatedArchiveRaw(raw: Buffer): Buffer {
+function validatedArchiveRows(raw: Buffer): readonly ChatEventRow[] {
   const lines = parseArchiveLines(raw);
-  for (const line of lines) {
-    chatEventRowSchema.parse(line);
-  }
+  return lines.map((line) => {
+    return chatEventRowSchema.parse(line);
+  });
+}
+
+function validatedArchiveRaw(raw: Buffer): Buffer {
+  validatedArchiveRows(raw);
   return raw;
 }
 
@@ -297,23 +358,19 @@ async function archiveThread(
   signal.throwIfAborted();
   if (
     candidate.headId !== null &&
-    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION &&
-    candidate.headArchiveSchemaVersion !== REWRITABLE_ARCHIVE_SCHEMA_VERSION
+    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION
   ) {
     throw new Error(
       `unsupported chat event snapshot schema version: ${candidate.headArchiveSchemaVersion}`,
     );
   }
-  const needsSchemaUpgrade =
-    candidate.headId !== null &&
-    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION;
-  if (tail.count === 0 && !needsSchemaUpgrade) {
+  if (tail.count === 0) {
     return null;
   }
 
-  // The parent object is the only source for the archived prefix: Postgres
-  // payloads below the head watermark are reclaimed later, so rebuilds never
-  // query that range. Re-reading the parent also re-verifies its hash.
+  // The parent object supplies the archived prefix, so a rebuild only reads
+  // the Postgres tail past the head watermark. Re-reading the parent also
+  // re-verifies its hash.
   let parentRaw: Buffer = Buffer.alloc(0);
   if (candidate.headId !== null) {
     if (candidate.headObjectKey === null) {
@@ -334,32 +391,13 @@ async function archiveThread(
     tail.lastSeqId,
     sha256Hex(compressed),
   );
-  // A v2 head with no tail rebuilds to byte-identical content, so the key
-  // matches the current head. Refresh the stored object headers in place and
-  // stamp the existing head row instead of publishing a duplicate key.
-  const isMetadataOnlyRewrite = objectKey === candidate.headObjectKey;
   await get(
     putImmutableS3Object(bucket, objectKey, compressed, ARCHIVE_CONTENT_TYPE, {
       signal,
       contentEncoding: ARCHIVE_CONTENT_ENCODING,
-      refreshMetadata: isMetadataOnlyRewrite,
     }),
   );
   signal.throwIfAborted();
-
-  if (isMetadataOnlyRewrite && candidate.headId !== null) {
-    const stamped = await db
-      .update(chatEventSnapshots)
-      .set({ archiveSchemaVersion: ARCHIVE_SCHEMA_VERSION })
-      .where(
-        and(
-          eq(chatEventSnapshots.id, candidate.headId),
-          eq(chatEventSnapshots.isHead, true),
-        ),
-      )
-      .returning({ id: chatEventSnapshots.id });
-    return stamped.length === 0 ? null : tail.count;
-  }
 
   // A deleted thread (foreign key) or a concurrent writer that already
   // published this thread's next head (unique head/object key) are expected
@@ -379,14 +417,187 @@ async function archiveThread(
   return published.value ? tail.count : null;
 }
 
+interface R2GcStats {
+  readonly scanned: number;
+  readonly measured: number;
+  readonly deleted: number;
+  readonly bytesMeasured: number;
+  readonly bytesDeleted: number;
+  readonly shardsScanned: number;
+  readonly subpartitionedShards: number;
+}
+
+function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
+  const override = optionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD");
+  if (override !== undefined) {
+    if (!/^[0-9a-f]{3}$/u.test(override)) {
+      throw new Error(
+        "CHAT_EVENT_SNAPSHOT_GC_SHARD must be three lowercase hex digits",
+      );
+    }
+    return [`chat-events/${override}`];
+  }
+  const slot = Math.floor(now.getTime() / R2_GC_SLOT_MS);
+  const first = (slot * R2_GC_SHARDS_PER_RUN) % R2_GC_SHARD_COUNT;
+  return Array.from({ length: R2_GC_SHARDS_PER_RUN }, (_, offset) => {
+    const shard = (first + offset) % R2_GC_SHARD_COUNT;
+    return `chat-events/${shard.toString(16).padStart(3, "0")}`;
+  });
+}
+
+async function boundedGcObjectPages(
+  get: ComputedGetter,
+  bucket: string,
+  prefix: string,
+): Promise<readonly (readonly S3Object[])[]> {
+  const page = await get(listS3ObjectsPage(bucket, prefix, R2_GC_PAGE_SIZE));
+  if (!page.isTruncated) {
+    return [page.objects];
+  }
+  const pages: (readonly S3Object[])[] = [];
+  for (const suffix of HEX_DIGITS) {
+    const child = await get(
+      listS3ObjectsPage(bucket, `${prefix}${suffix}`, R2_GC_PAGE_SIZE),
+    );
+    if (child.isTruncated) {
+      throw new Error(
+        `chat event snapshot GC partition ${prefix}${suffix} exceeds ${R2_GC_PAGE_SIZE.toString()} objects`,
+      );
+    }
+    pages.push(child.objects);
+  }
+  return pages;
+}
+
+async function collectR2SnapshotGarbage(
+  get: ComputedGetter,
+  db: Db,
+  bucket: string,
+  signal: AbortSignal,
+): Promise<R2GcStats> {
+  const now = nowDate();
+  const olderThan = hoursBefore(
+    now,
+    positiveIntegerEnv(
+      "CHAT_EVENT_SNAPSHOT_GC_GRACE_HOURS",
+      DEFAULT_R2_GC_GRACE_HOURS,
+    ),
+  );
+  const dryRun = booleanEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", true);
+  let scanned = 0;
+  let measured = 0;
+  let deleted = 0;
+  let bytesMeasured = 0;
+  let bytesDeleted = 0;
+  let shardsScanned = 0;
+  let subpartitionedShards = 0;
+
+  for (const prefix of chatEventSnapshotGcPrefixes(now)) {
+    const pages = await boundedGcObjectPages(get, bucket, prefix);
+    signal.throwIfAborted();
+    shardsScanned += 1;
+    if (pages.length > 1) {
+      subpartitionedShards += 1;
+    }
+    for (const objects of pages) {
+      scanned += objects.length;
+      const oldObjects = objects.filter((object) => {
+        return object.lastModified < olderThan;
+      });
+      if (oldObjects.length === 0) {
+        continue;
+      }
+      const keys = oldObjects.map((object) => {
+        return object.key;
+      });
+      const references = await db
+        .select({
+          objectKey: chatEventSnapshots.objectKey,
+          isHead: chatEventSnapshots.isHead,
+          createdAt: chatEventSnapshots.createdAt,
+        })
+        .from(chatEventSnapshots)
+        .where(inArray(chatEventSnapshots.objectKey, keys));
+      signal.throwIfAborted();
+      const referencesByKey = new Map(
+        references.map((reference) => {
+          return [reference.objectKey, reference] as const;
+        }),
+      );
+      const garbage = oldObjects.filter((object) => {
+        const reference = referencesByKey.get(object.key);
+        return (
+          reference === undefined ||
+          (!reference.isHead && reference.createdAt < olderThan)
+        );
+      });
+      measured += garbage.length;
+      bytesMeasured += garbage.reduce((total, object) => {
+        return total + object.size;
+      }, 0);
+      if (dryRun || garbage.length === 0) {
+        continue;
+      }
+
+      const garbageKeys = garbage.map((object) => {
+        return object.key;
+      });
+      await db
+        .delete(chatEventSnapshots)
+        .where(
+          and(
+            inArray(chatEventSnapshots.objectKey, garbageKeys),
+            eq(chatEventSnapshots.isHead, false),
+            lt(chatEventSnapshots.createdAt, olderThan),
+          ),
+        );
+      const stillReferenced = await db
+        .select({ objectKey: chatEventSnapshots.objectKey })
+        .from(chatEventSnapshots)
+        .where(inArray(chatEventSnapshots.objectKey, garbageKeys));
+      signal.throwIfAborted();
+      const protectedKeys = new Set(
+        stillReferenced.map((reference) => {
+          return reference.objectKey;
+        }),
+      );
+      const deletable = garbage.filter((object) => {
+        return !protectedKeys.has(object.key);
+      });
+      await get(
+        deleteS3Objects(
+          bucket,
+          deletable.map((object) => {
+            return object.key;
+          }),
+        ),
+      );
+      signal.throwIfAborted();
+      deleted += deletable.length;
+      bytesDeleted += deletable.reduce((total, object) => {
+        return total + object.size;
+      }, 0);
+    }
+  }
+  return {
+    scanned,
+    measured,
+    deleted,
+    bytesMeasured,
+    bytesDeleted,
+    shardsScanned,
+    subpartitionedShards,
+  };
+}
+
 /**
  * Archives chat_events into immutable full-thread R2 snapshot objects, oldest
  * threads first. Each pass picks threads whose search watermark is ahead of
  * their head snapshot, rebuilds one full archive per thread (parent object +
  * Postgres tail up to the watermark), uploads it content-addressed, and
- * publishes it as the new head. The search watermark caps every snapshot so
- * archived events are always queryable before their Postgres payloads become
- * reclaimable. Ticks are idempotent: objects are immutable, the head swap is
+ * publishes it as the new head. The search watermark caps every snapshot so no
+ * archived event outruns the search index. Ticks are idempotent: objects are
+ * immutable, the head swap is
  * guarded by the expected parent, and a lost race only leaves an orphaned
  * object behind.
  */
@@ -397,6 +608,8 @@ export const snapshotChatEvents$ = command(
   ): Promise<ChatEventSnapshotStats> => {
     const db = set(writeDb$);
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const cors = await get(chatEventSnapshotCorsReady());
+    signal.throwIfAborted();
     const candidates = await db
       .select({
         chatThreadId: chatThreads.id,
@@ -418,16 +631,13 @@ export const snapshotChatEvents$ = command(
           eq(chatEventSnapshots.isHead, true),
         ),
       )
+      // Only threads with a new tail. An idle head on a retired archive
+      // version is left alone: the reader already treats it as missing, and
+      // selecting it here would abort the whole pass on the throw below.
       .where(
-        or(
-          gt(
-            chatEventSearchWatermarks.indexedSeqId,
-            sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
-          ),
-          and(
-            isNotNull(chatEventSnapshots.id),
-            ne(chatEventSnapshots.archiveSchemaVersion, ARCHIVE_SCHEMA_VERSION),
-          ),
+        gt(
+          chatEventSearchWatermarks.indexedSeqId,
+          sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
         ),
       )
       .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
@@ -444,6 +654,19 @@ export const snapshotChatEvents$ = command(
         archivedEvents += archived;
       }
     }
-    return { snapshots, archivedEvents };
+    const r2Gc = await collectR2SnapshotGarbage(get, db, bucket, signal);
+    signal.throwIfAborted();
+    return {
+      corsChanged: cors.changed,
+      snapshots,
+      archivedEvents,
+      r2ObjectsScanned: r2Gc.scanned,
+      r2ObjectsMeasured: r2Gc.measured,
+      r2ObjectsDeleted: r2Gc.deleted,
+      r2BytesMeasured: r2Gc.bytesMeasured,
+      r2BytesDeleted: r2Gc.bytesDeleted,
+      r2GcShardsScanned: r2Gc.shardsScanned,
+      r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
+    };
   },
 );

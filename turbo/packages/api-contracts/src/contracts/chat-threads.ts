@@ -499,7 +499,6 @@ const chatEventBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
-  isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   revokesEventId: z.string().optional(),
   /** Server-assigned strict position within the chat thread. */
@@ -588,7 +587,6 @@ const inputGoalEventSchema = chatEventBaseSchema
     // the user-facing document and stream ordering contract.
     runId: z.never().optional(),
     runGroupId: z.never().optional(),
-    isGoalRun: z.never().optional(),
     runEventId: z.never().optional(),
     revokesEventId: z.never().optional(),
     sequenceNumber: z.never().optional(),
@@ -717,7 +715,6 @@ const browserCloseEventSchema = chatEventBaseSchema
 const goalMarkerMetadataSchema = {
   runId: z.never().optional(),
   runGroupId: z.never().optional(),
-  isGoalRun: z.never().optional(),
   runEventId: z.never().optional(),
   revokesEventId: z.never().optional(),
   sequenceNumber: z.never().optional(),
@@ -1502,9 +1499,10 @@ export const chatThreadEventsContract = c.router({
     summary: "Get a presigned download for the thread's chat event snapshot",
   },
   /**
-   * Raw-row tail after a snapshot or cached cursor. 410 signals that the
-   * cursor row no longer exists and the client must rebuild from a fresh
-   * snapshot.
+   * Raw-row tail after a snapshot or cached cursor. `sinceSeqId: 0` reads a
+   * thread from the beginning, which is the cold start for a thread the
+   * archiver has not reached yet. 410 signals that the cursor row no longer
+   * exists and the client must rebuild from a fresh snapshot.
    */
   rows: {
     method: "GET",
@@ -1512,7 +1510,7 @@ export const chatThreadEventsContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
-      sinceSeqId: z.coerce.number().int().positive(),
+      sinceSeqId: z.coerce.number().int().nonnegative(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {

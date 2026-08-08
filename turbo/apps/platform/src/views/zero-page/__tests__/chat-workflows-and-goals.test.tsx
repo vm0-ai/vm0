@@ -898,7 +898,6 @@ describe("chat lifecycle", () => {
           content: "First non-goal prompt",
           runId: "f0000001-0000-4000-a000-00000000071c",
           runGroupId,
-          isGoalRun: false,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -907,7 +906,6 @@ describe("chat lifecycle", () => {
           content: "First non-goal result",
           runId: "f0000001-0000-4000-a000-00000000071c",
           runGroupId,
-          isGoalRun: false,
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -916,7 +914,6 @@ describe("chat lifecycle", () => {
           content: "Latest non-goal prompt",
           runId: "f0000001-0000-4000-a000-00000000071d",
           runGroupId,
-          isGoalRun: false,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -925,7 +922,6 @@ describe("chat lifecycle", () => {
           content: "Latest non-goal result",
           runId: "f0000001-0000-4000-a000-00000000071d",
           runGroupId,
-          isGoalRun: false,
           createdAt: "2026-06-09T10:02:30Z",
         },
       ],
@@ -975,7 +971,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           },
           runId: "f0000001-0000-4000-a000-00000000072c",
           runGroupId,
-          isGoalRun: true,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -984,7 +979,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First goal result",
           runId: "f0000001-0000-4000-a000-00000000072c",
           runGroupId,
-          isGoalRun: true,
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -997,7 +991,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           },
           runId: "f0000001-0000-4000-a000-00000000072d",
           runGroupId,
-          isGoalRun: true,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -1006,7 +999,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "Checking the current goal state.",
           runId: "f0000001-0000-4000-a000-00000000072d",
           runGroupId,
-          isGoalRun: true,
           createdAt: "2026-06-09T10:02:10Z",
         },
         {
@@ -1015,7 +1007,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "Latest goal result",
           runId: "f0000001-0000-4000-a000-00000000072d",
           runGroupId,
-          isGoalRun: true,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1091,7 +1082,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           },
           runId: "f0000001-0000-4000-a000-00000000082c",
           runGroupId,
-          isGoalRun: true,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -1100,7 +1090,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           content: "First goal result",
           runId: "f0000001-0000-4000-a000-00000000082c",
           runGroupId,
-          isGoalRun: true,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:30Z",
         },
@@ -1114,7 +1103,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           },
           runId: "f0000001-0000-4000-a000-00000000082d",
           runGroupId,
-          isGoalRun: true,
           createdAt: "2026-06-09T10:02:00Z",
         },
       ],

@@ -66,7 +66,7 @@ export interface InsertAssistantEventsInput {
   readonly items: readonly {
     readonly runEventSequenceNumber: number;
     readonly content: string;
-    readonly runEventId?: string;
+    readonly runEventId: string;
   }[];
 }
 
@@ -195,67 +195,28 @@ export async function insertAssistantEventsInTransaction(
     };
   }
 
-  const itemsWithRunEventId = args.items.filter(
-    (
-      item,
-    ): item is {
-      readonly runEventSequenceNumber: number;
-      readonly content: string;
-      readonly runEventId: string;
-    } => {
-      return item.runEventId !== undefined;
-    },
-  );
-  const legacyItems = args.items.filter((item) => {
-    return item.runEventId === undefined;
-  });
   const runContext = await assistantEventRunContextForRun(tx, args.runId);
   signal.throwIfAborted();
 
-  const deterministicRows =
-    itemsWithRunEventId.length === 0
-      ? []
-      : await insertChatEvents(
-          tx,
-          itemsWithRunEventId.map((item) => {
-            return {
-              id: assistantEventIdForRunEvent(args.runId, item.runEventId),
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId: runContext.runGroupId,
-              eventType: "output.message",
-              content: item.content,
-              runEventSequenceNumber: item.runEventSequenceNumber,
-              runEventId: item.runEventId,
-            };
-          }),
-          "any",
-        );
+  const insertedRows = await insertChatEvents(
+    tx,
+    args.items.map((item) => {
+      return {
+        id: assistantEventIdForRunEvent(args.runId, item.runEventId),
+        chatThreadId: args.threadId,
+        runId: args.runId,
+        runGroupId: runContext.runGroupId,
+        eventType: "output.message",
+        content: item.content,
+        runEventSequenceNumber: item.runEventSequenceNumber,
+        runEventId: item.runEventId,
+      };
+    }),
+  );
   signal.throwIfAborted();
 
-  const legacyRows =
-    legacyItems.length === 0
-      ? []
-      : await insertChatEvents(
-          tx,
-          legacyItems.map((item) => {
-            return {
-              chatThreadId: args.threadId,
-              runId: args.runId,
-              runGroupId: runContext.runGroupId,
-              eventType: "output.message",
-              content: item.content,
-              runEventSequenceNumber: item.runEventSequenceNumber,
-              runEventId: null,
-            };
-          }),
-          "run-sequence",
-        );
-  signal.throwIfAborted();
-
-  const insertedRowCount = deterministicRows.length + legacyRows.length;
   return {
-    insertedRowCount,
+    insertedRowCount: insertedRows.length,
     shouldAttemptFirstAssistantEventClaim:
       runContext.shouldAttemptFirstAssistantEventClaim,
   };

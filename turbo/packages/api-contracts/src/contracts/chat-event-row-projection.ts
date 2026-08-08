@@ -1,23 +1,6 @@
 import type { ChatEventRow } from "./chat-event-rows";
 import { chatEventSchema, type ChatEvent } from "./chat-threads";
 
-/**
- * Run ids whose runs were created from a goal input. A raw row set carries the
- * claimed `input.goal` events of every goal-driven run in the thread, so the
- * client derives what the API's zero_runs lateral join derives server-side.
- */
-export function goalRunIdsFromChatEventRows(
-  rows: readonly ChatEventRow[],
-): ReadonlySet<string> {
-  const goalRunIds = new Set<string>();
-  for (const row of rows) {
-    if (row.eventType === "input.goal" && row.runId !== null) {
-      goalRunIds.add(row.runId);
-    }
-  }
-  return goalRunIds;
-}
-
 function requiredRowField<T>(
   value: T | null,
   eventType: string,
@@ -35,17 +18,13 @@ function requiredRowField<T>(
  * test suite pins that parity by comparing this function's output for
  * /event-rows against the /events response of the same thread.
  */
-export function chatEventFromRow(
-  row: ChatEventRow,
-  goalRunIds: ReadonlySet<string>,
-): ChatEvent {
+export function chatEventFromRow(row: ChatEventRow): ChatEvent {
   const base = {
     id: row.id,
     threadId: row.chatThreadId,
     content: row.content,
     runId: row.runId ?? undefined,
     runGroupId: row.runGroupId ?? undefined,
-    isGoalRun: (row.runId !== null && goalRunIds.has(row.runId)) || undefined,
     runEventId: row.runEventId ?? undefined,
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,

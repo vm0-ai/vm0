@@ -15,10 +15,6 @@ import { logger } from "../log.ts";
 import { settle } from "../utils.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";
 import {
-  goalRunIdsForThread,
-  recordGoalRunIds$,
-} from "./chat-event-goal-run-ids.ts";
-import {
   loadIndexedDbChatEvents$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
@@ -50,6 +46,8 @@ import {
 const L = logger("ChatEventStorageSignals");
 const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
 const FIRST_CHAT_EVENT_SEQ_ID = 1;
+/** Cursor that reads a thread from its very first event. */
+const THREAD_START_SEQ_ID = 0;
 
 export interface ChatEventDataSource {
   readonly listEventsAfter$: typeof listEventsAfter$;
@@ -313,34 +311,38 @@ function createSyncRemoteRowsCommand({
   mergePersistentEvents$,
 }: RowSyncDependencies): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const goalRunIds$ = goalRunIdsForThread(threadId);
     const mergeRows = async (rows: readonly ChatEventRow[]): Promise<void> => {
       if (rows.length === 0) {
         return;
       }
-      set(recordGoalRunIds$, threadId, rows);
-      const goalRunIds = get(goalRunIds$);
       await set(
         mergePersistentEvents$,
         rows.map((row) => {
-          return chatEventFromRow(row, goalRunIds);
+          return chatEventFromRow(row);
         }),
         signal,
       );
       signal.throwIfAborted();
     };
 
-    const loadSnapshot = async (): Promise<number> => {
+    /**
+     * Derive the cold-start cursor from the server. A thread the archiver has
+     * not reached yet has no snapshot, so the whole thread is still in
+     * Postgres and the tail below reads it from the beginning.
+     */
+    const loadColdStartCursor = async (): Promise<number> => {
       const snapshot = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
       );
-      // The skeleton must resolve even when the snapshot is missing (404 on
-      // threads the archiver has not reached); the request error surfaces
-      // through the normal toast path.
+      // The skeleton must resolve even when the snapshot request fails; the
+      // error surfaces through the normal toast path.
       set(initialRemoteEventsResolved$, true);
       if (!snapshot.ok) {
         throw snapshot.error;
+      }
+      if (snapshot.value === null) {
+        return THREAD_START_SEQ_ID;
       }
       await set(writeIndexedDbChatEventRows$, snapshot.value.rows, signal);
       signal.throwIfAborted();
@@ -348,13 +350,16 @@ function createSyncRemoteRowsCommand({
       return snapshot.value.lastSeqId;
     };
 
-    let rebuiltFromSnapshot = false;
+    // True once the cursor came from the server rather than the local cache.
+    // An expiry after that means the thread cannot be read at all, so the pass
+    // fails loudly instead of rebuilding the same cursor forever.
+    let cursorFromServer = false;
     let sinceSeqId: number;
     const cachedLastSeqId = get(persistentEvents$).at(-1)?.seqId;
     if (cachedLastSeqId === undefined) {
-      sinceSeqId = await loadSnapshot();
+      sinceSeqId = await loadColdStartCursor();
       signal.throwIfAborted();
-      rebuiltFromSnapshot = true;
+      cursorFromServer = true;
     } else {
       sinceSeqId = cachedLastSeqId;
     }
@@ -364,16 +369,16 @@ function createSyncRemoteRowsCommand({
       signal.throwIfAborted();
       set(initialRemoteEventsResolved$, true);
       if (page.kind === "expired") {
-        if (rebuiltFromSnapshot) {
+        if (cursorFromServer) {
           throw new Error(
-            "chat event rows cursor expired right after a snapshot rebuild",
+            "chat event rows cursor expired right after a cold start",
           );
         }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         signal.throwIfAborted();
-        sinceSeqId = await loadSnapshot();
+        sinceSeqId = await loadColdStartCursor();
         signal.throwIfAborted();
-        rebuiltFromSnapshot = true;
+        cursorFromServer = true;
         continue;
       }
       await set(writeIndexedDbChatEventRows$, page.rows, signal);
@@ -396,7 +401,7 @@ function createRowCacheSignals(
   persistentEvents$: PersistentChatEvents$,
 ) {
   const loadRowCacheIntoPersistentEvents$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async ({ set }, signal: AbortSignal): Promise<void> => {
       const rows = await set(
         loadIndexedDbChatEventRowsAfter$,
         threadId,
@@ -407,13 +412,11 @@ function createRowCacheSignals(
       if (rows.length === 0) {
         return;
       }
-      set(recordGoalRunIds$, threadId, rows);
-      const goalRunIds = get(goalRunIdsForThread(threadId));
       set(persistentEvents$, (previous) => {
         return mergePersistentEvents([
           previous,
           rows.map((row) => {
-            return chatEventFromRow(row, goalRunIds);
+            return chatEventFromRow(row);
           }),
         ]);
       });

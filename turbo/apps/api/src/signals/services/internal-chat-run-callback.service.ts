@@ -376,9 +376,6 @@ const chatCallbackPayloadSchema = z
     telegramDelivery: telegramDeliveryTargetSchema.optional(),
     agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
     githubDelivery: githubDeliveryTargetSchema.optional(),
-    // Retain while callbacks created by this version can be dispatched by
-    // rollback-eligible API versions that still gate pushes by run origin.
-    isGoalRun: z.boolean().optional(),
   })
   .passthrough();
 
@@ -405,6 +402,7 @@ function assistantEventInsertInput(
       return {
         runEventSequenceNumber: item.sequenceNumber,
         content: item.content,
+        runEventId: `callback:${item.sequenceNumber}`,
       };
     }),
   };

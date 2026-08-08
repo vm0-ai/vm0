@@ -384,7 +384,6 @@ describe("zero goals", () => {
       runId: goalRunId,
       runGroupId: goal.goalId,
       revokesEventId: goalEventId,
-      isGoalRun: true,
       userMessage: {
         version: 1,
         parts: [

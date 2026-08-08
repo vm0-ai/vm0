@@ -406,7 +406,6 @@ interface ChatEventBatchCommandResult {
 }
 
 type InsertChatEventConflict = "none" | "any" | "id" | "run-lifecycle";
-type InsertChatEventsConflict = "any" | "run-sequence";
 
 type PersistedChatEvent = Omit<
   ChatEventInsert,
@@ -1089,10 +1088,14 @@ export async function insertChatEvent(
   return rows[0] ?? null;
 }
 
+/**
+ * Batch append. The untargeted conflict clause covers every unique index on
+ * chat_events, including chat_events_run_event_seq_unique, so a retry that
+ * derives a different row id still cannot duplicate a run event.
+ */
 export async function insertChatEvents(
   tx: ChatEventWriteTransaction,
   values: readonly AppendChatEvent[],
-  conflict: InsertChatEventsConflict,
 ): Promise<readonly ChatEventBatchCommandResult[]> {
   if (values.length === 0) {
     return [];
@@ -1104,19 +1107,10 @@ export async function insertChatEvents(
       return persistedChatEventValues(value);
     }),
   );
-  const query = tx.insert(chatEvents).values([...valuesWithSeqIds]);
-  if (conflict === "any") {
-    return await query.onConflictDoNothing().returning({
-      id: chatEvents.id,
-      createdAt: chatEvents.createdAt,
-      seqId: chatEvents.seqId,
-      sequenceNumber: chatEvents.runEventSequenceNumber,
-    });
-  }
-  return await query
-    .onConflictDoNothing({
-      target: [chatEvents.runId, chatEvents.runEventSequenceNumber],
-    })
+  return await tx
+    .insert(chatEvents)
+    .values([...valuesWithSeqIds])
+    .onConflictDoNothing()
     .returning({
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,

@@ -191,8 +191,8 @@ export interface PendingWorkflowQueueEvent {
  * Load the runnable automation head. Pending user events always win and any
  * active run blocks the whole thread.
  *
- * During code-before-migration deployment, legacy queue rows simply have no
- * event counterpart yet and therefore return null rather than failing.
+ * A concurrently deleted thread can remove the selected event before this
+ * lookup; that canonical deletion race returns null rather than failing.
  */
 export async function loadNextWorkflowQueueEvent(
   db: Db,
