@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.532.0](https://github.com/vm0-ai/vm0/compare/core-v8.531.0...core-v8.532.0) (2026-08-08)
+
+
+### Features
+
+* add responsive follow-up card rail ([#25816](https://github.com/vm0-ai/vm0/issues/25816)) ([e4643b0](https://github.com/vm0-ai/vm0/commit/e4643b020d395d6df91213bab809e283d5d4f092))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.297.1
+
 ## [8.531.0](https://github.com/vm0-ai/vm0/compare/core-v8.530.9...core-v8.531.0) (2026-08-08)
 
 
