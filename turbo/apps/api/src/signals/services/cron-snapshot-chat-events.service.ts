@@ -815,7 +815,7 @@ interface R2GcStats {
   readonly subpartitionedShards: number;
 }
 
-export function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
+function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
   const override = optionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD");
   if (override !== undefined) {
     if (!/^[0-9a-f]{3}$/u.test(override)) {

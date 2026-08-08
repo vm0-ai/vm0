@@ -159,6 +159,9 @@ describe("chat event snapshot read endpoints", () => {
       }),
       [404],
     );
+    // The snapshot cron scope is global, so an unsupported head left behind
+    // would fail every later pass in the suite.
+    await setChatEventSnapshotHeadVersion(context, threadId, 3);
 
     const stranger = bdd.user({ orgId: `org_${randomUUID()}` });
     const strangerResponse = await accept(

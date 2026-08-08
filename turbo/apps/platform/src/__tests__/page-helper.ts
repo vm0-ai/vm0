@@ -132,7 +132,12 @@ export async function setupPage(options: {
     [FeatureSwitchKey.ChatEventSnapshotRead]: false,
     ...options.featureSwitches,
   };
-  setMockFeatureSwitches(featureSwitchOverrides);
+  // Only override the GET handler when the caller asked for specific switches;
+  // the default handler already pins the generic-fixture defaults, and tests
+  // that install their own feature-switch handlers must keep precedence.
+  if (options.featureSwitches) {
+    setMockFeatureSwitches(featureSwitchOverrides);
+  }
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
     getAllFeatureStates({

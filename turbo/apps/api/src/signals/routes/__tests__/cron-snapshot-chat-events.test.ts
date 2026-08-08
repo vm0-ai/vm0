@@ -248,7 +248,7 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
-  it("refreshes a v2 head to v3 in place without a Postgres tail", async () => {
+  it("fails the pass when a head carries an unsupported schema version", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Version-only snapshot agent",
@@ -268,28 +268,28 @@ describe("cron snapshot chat events", () => {
     const firstHead = await readChatEventSnapshotHead(context, threadId);
     await setChatEventSnapshotHeadVersion(context, threadId, 2);
 
-    // The v2 line shape equals v3, so the rebuild produces byte-identical
-    // content: the pass must refresh the object headers and stamp the
-    // existing head row instead of publishing a duplicate object key.
-    const upgraded = await runSnapshotCron();
-    expect(upgraded.success).toBeTruthy();
-    const puts = putsForThread(threadId);
-    expect(puts).toHaveLength(2);
-    const refreshedPut = puts[1];
-    if (refreshedPut === undefined) {
-      throw new Error("Expected a metadata refresh upload");
-    }
-    expect(refreshedPut.key).toBe(firstPut.key);
-    expect(refreshedPut.body.equals(firstPut.body)).toBeTruthy();
-    expectArchiveInvariants(refreshedPut, threadId);
+    // The rewrite fallback is retired, so a pre-v3 head fails the pass
+    // instead of silently republishing the object under the current version.
+    await accept(
+      snapshotCronClient().snapshot({
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      }),
+      [500],
+    );
+    expect(putsForThread(threadId)).toHaveLength(1);
+    const strandedHead = await readChatEventSnapshotHead(context, threadId);
+    expect(strandedHead.archive_schema_version).toBe(2);
+    expect(strandedHead.object_key).toBe(firstPut.key);
 
-    const upgradedHead = await readChatEventSnapshotHead(context, threadId);
-    expect(upgradedHead.archive_schema_version).toBe(3);
-    expect(upgradedHead.last_seq_id).toBe(firstHead.last_seq_id);
-    expect(upgradedHead.object_key).toBe(firstPut.key);
-
-    await runSnapshotCron();
-    expect(putsForThread(threadId)).toHaveLength(2);
+    // Restore the supported version: the cron scope is global, so an
+    // unsupported head left behind would fail every later pass in the suite.
+    await setChatEventSnapshotHeadVersion(context, threadId, 3);
+    const recovered = await runSnapshotCron();
+    expect(recovered.success).toBeTruthy();
+    expect(putsForThread(threadId)).toHaveLength(1);
+    const recoveredHead = await readChatEventSnapshotHead(context, threadId);
+    expect(recoveredHead.last_seq_id).toBe(firstHead.last_seq_id);
+    expect(recoveredHead.object_key).toBe(firstPut.key);
   }, 60_000);
 
   it("fails the pass when a parent object no longer matches its content hash", async () => {

@@ -31,7 +31,7 @@ export interface S3Object {
   readonly lastModified: Date;
 }
 
-export interface S3ObjectPage {
+interface S3ObjectPage {
   readonly objects: readonly S3Object[];
   readonly isTruncated: boolean;
 }
