@@ -36,7 +36,14 @@ interface SnapshotCandidate {
  */
 const ARCHIVE_SCHEMA_VERSION = 1;
 const ARCHIVE_CONTENT_TYPE = "application/gzip";
-const DEFAULT_THREAD_BATCH_SIZE = 25;
+/**
+ * Sized for the initial backfill: ~130k candidate threads at 48 runs/day
+ * clear in about 5 days, and the first production run measured ~0.19s per
+ * thread, so a full batch stays far below the platform function timeout.
+ * After catch-up this is only a cap; steady state re-archives ~700 active
+ * threads per day.
+ */
+const DEFAULT_THREAD_BATCH_SIZE = 500;
 const EVENT_PAGE_SIZE = 1000;
 const OBJECT_KEY_CONTENT_SHA256 = /-([0-9a-f]{64})\.ndjson\.gz$/;
 
