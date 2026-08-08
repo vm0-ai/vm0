@@ -1129,6 +1129,23 @@ describe("PiLoop edge turn", () => {
               { type: "thinking", thinking: "edge reasoning" },
               { type: "text", text: "edge answer" },
             ],
+            api: "openai-completions",
+            provider: "deepseek",
+            model: MODEL,
+            usage: {
+              input: 8,
+              output: 4,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 12,
+              cost: {
+                input: 8,
+                output: 4,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 12,
+              },
+            },
             stopReason: "stop",
             timestamp: 3,
           },
@@ -1256,8 +1273,7 @@ describe("PiLoop edge turn", () => {
         .slice(publishedBefore)
         .some(([topic, payload]) => {
           return (
-            topic === "pi-standby-release" &&
-            recordOf(payload)?.runId === edge.runId
+            topic === "pi-handoff" && recordOf(payload)?.runId === edge.runId
           );
         }),
     ).toBeTruthy();
@@ -1875,9 +1891,24 @@ describe("PiLoop edge turn", () => {
     expect(modelCall).toBe(1);
     expect(completionRequests).toHaveLength(1);
 
-    // The read hands off to the Sandbox, which then fails; the edge's
-    // successful managed response must still be settled.
+    // The read hands off to the Sandbox. A failing standby is first requeued
+    // onto the cold-start lane, and the cold-start Sandbox failure settles the
+    // run; the edge's successful managed response must still be settled.
     const standbyContext = await api.claimRunnerJob(run.runId);
+    const released = await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "the standby failed after the handoff",
+      },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    expect(released.body).toStrictEqual({ success: true, status: "released" });
+    await flushWaitUntilForTest();
+
+    const coldContext = await api.claimRunnerJob(run.runId);
+    expect(coldContext.piExecutionMode).toBe("cold-start");
     await webhooks.requestAgentComplete(
       {
         runId: run.runId,
@@ -1885,7 +1916,7 @@ describe("PiLoop edge turn", () => {
         error: "the Sandbox failed after the handoff",
         lastEventSequence: 2,
       },
-      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      { authorization: `Bearer ${coldContext.sandboxToken}` },
       [200],
     );
     await flushWaitUntilForTest();

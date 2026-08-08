@@ -1,7 +1,4 @@
-import {
-  ExecutionError,
-  FileError,
-} from "@earendil-works/pi-agent-core";
+import { ExecutionError, FileError } from "@earendil-works/pi-agent-core";
 
 import type { ExecutionEnv, FileInfo, Result } from "./types";
 
@@ -41,23 +38,56 @@ function shellFailure(): Result<ShellResult, ExecutionError> {
 export function createPiNoopExecutionEnv(): ExecutionEnv {
   return {
     cwd: "/home/user/workspace",
-    absolutePath: (path) => Promise.resolve({ ok: true, value: path }),
-    joinPath: (parts) =>
-      Promise.resolve({ ok: true, value: parts.join("/") }),
-    readTextFile: () => Promise.resolve(fileFailure()),
-    readTextLines: () => Promise.resolve(fileFailure()),
-    readBinaryFile: () => Promise.resolve(fileFailure()),
-    writeFile: () => Promise.resolve(fileFailure()),
-    appendFile: () => Promise.resolve(fileFailure()),
-    fileInfo: () => Promise.resolve(fileFailure<FileInfo>()),
-    listDir: () => Promise.resolve(fileFailure()),
-    canonicalPath: () => Promise.resolve(fileFailure()),
-    exists: () => Promise.resolve(fileFailure<boolean>()),
-    createDir: () => Promise.resolve(fileFailure()),
-    remove: () => Promise.resolve(fileFailure()),
-    createTempDir: () => Promise.resolve(fileFailure()),
-    createTempFile: () => Promise.resolve(fileFailure()),
-    exec: () => Promise.resolve(shellFailure()),
-    cleanup: () => Promise.resolve(),
+    absolutePath: (path) => {
+      return Promise.resolve({ ok: true, value: path });
+    },
+    joinPath: (parts) => {
+      return Promise.resolve({ ok: true, value: parts.join("/") });
+    },
+    readTextFile: () => {
+      return Promise.resolve(fileFailure());
+    },
+    readTextLines: () => {
+      return Promise.resolve(fileFailure());
+    },
+    readBinaryFile: () => {
+      return Promise.resolve(fileFailure());
+    },
+    writeFile: () => {
+      return Promise.resolve(fileFailure());
+    },
+    appendFile: () => {
+      return Promise.resolve(fileFailure());
+    },
+    fileInfo: () => {
+      return Promise.resolve(fileFailure<FileInfo>());
+    },
+    listDir: () => {
+      return Promise.resolve(fileFailure());
+    },
+    canonicalPath: () => {
+      return Promise.resolve(fileFailure());
+    },
+    exists: () => {
+      return Promise.resolve(fileFailure<boolean>());
+    },
+    createDir: () => {
+      return Promise.resolve(fileFailure());
+    },
+    remove: () => {
+      return Promise.resolve(fileFailure());
+    },
+    createTempDir: () => {
+      return Promise.resolve(fileFailure());
+    },
+    createTempFile: () => {
+      return Promise.resolve(fileFailure());
+    },
+    exec: () => {
+      return Promise.resolve(shellFailure());
+    },
+    cleanup: () => {
+      return Promise.resolve();
+    },
   };
 }

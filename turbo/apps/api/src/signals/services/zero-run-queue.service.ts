@@ -4,7 +4,10 @@ import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { createPiNoopExecutionEnv, type ExecutionEnv } from "@vm0/pi-agent-runtime";
+import {
+  createPiNoopExecutionEnv,
+  type ExecutionEnv,
+} from "@vm0/pi-agent-runtime";
 import {
   and,
   count,
@@ -242,10 +245,10 @@ async function loadDrainCandidates(
   });
 }
 
-async function prepareQueuedPiEdgeTurn(
+function prepareQueuedPiEdgeTurn(
   row: QueueCandidate,
   payload: QueuedRunnerJobPayload,
-): Promise<PreparedQueuedPiEdgeTurn | undefined> {
+): PreparedQueuedPiEdgeTurn | undefined {
   if (payload.piEdge === undefined) {
     return undefined;
   }
@@ -505,9 +508,7 @@ export const drainOrgQueue$ = command(
           : null;
       signal.throwIfAborted();
       const piEdgeTurn =
-        payload === null
-          ? undefined
-          : await prepareQueuedPiEdgeTurn(row, payload);
+        payload === null ? undefined : prepareQueuedPiEdgeTurn(row, payload);
       signal.throwIfAborted();
 
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
