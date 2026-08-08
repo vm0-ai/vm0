@@ -3452,6 +3452,8 @@ function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
 
 const RUN_SECTION_LABEL_CLASS =
   "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
+const RUN_SECTION_ROW_CLASS =
+  "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
 function RunSectionDivider({ label }: { label: string }) {
   return (
@@ -3476,7 +3478,7 @@ function RunSectionDividerRow({
     <div
       role={announce ? "status" : undefined}
       aria-live={announce ? "polite" : undefined}
-      className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+      className={RUN_SECTION_ROW_CLASS}
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
@@ -4565,7 +4567,7 @@ function AssistantThinkingStatusRow({
     <div
       {...thinkingIndicatorProps}
       data-role="assistant-thinking"
-      className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+      className={RUN_SECTION_ROW_CLASS}
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
