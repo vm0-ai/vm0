@@ -19,8 +19,8 @@ pub(crate) use self::procfs::{
     ProcessStatRead, read_cmdline, read_cwd, read_process_stat, read_process_stat_checked,
     read_process_stat_checked_blocking,
 };
-pub(crate) use self::types::process_stat_is_live;
 pub use self::types::{
     DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
     MitmproxyProcessInfo, ProcessStat,
 };
+pub(crate) use self::types::{ProcessDiscovery, process_stat_is_live};
