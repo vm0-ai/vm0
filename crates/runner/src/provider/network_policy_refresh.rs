@@ -50,7 +50,8 @@ use crate::ids::RunId;
 use crate::proxy::{CustomConnectorRuntimeRegistryState, ProxyRegistryHandle};
 use crate::types::{
     ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeSyncState, ConnectorRuntimeTarget,
-    ConnectorRuntimeTargetRegistration, FirewallEntry, NetworkPolicy, NetworkPolicyRefresh,
+    ConnectorRuntimeTargetRegistration, ConnectorRuntimeUnresolvedReason, FirewallEntry,
+    NetworkPolicy, NetworkPolicyRefresh,
 };
 
 const REFRESH_REQUEST_QUEUE_CAPACITY: usize = 256;
@@ -714,12 +715,14 @@ impl NetworkPolicyRefreshCore {
         run_id: RunId,
         active_targets: &[ConnectorRefreshTarget],
     ) -> bool {
-        let Some(requested_targets) = self
-            .connector_runtime_sync_registrations(run_id, active_targets)
-            .await
-        else {
+        let current_targets = self
+            .current_connector_runtime_sync_targets(run_id, active_targets)
+            .await;
+        if current_targets.is_empty() {
             return true;
-        };
+        }
+        let (active_targets, requested_targets): (Vec<_>, Vec<_>) =
+            current_targets.into_iter().unzip();
         let mut transport_retry_attempted = false;
         let response = loop {
             let response = self
@@ -731,7 +734,7 @@ impl NetworkPolicyRefreshCore {
                 transport_retry_attempted = true;
                 warn!(
                     run_id = %run_id,
-                    targets = ?target_identities(active_targets),
+                    targets = ?target_identities(&active_targets),
                     error = %error,
                     attempt = 1,
                     max_attempts = 2,
@@ -778,18 +781,18 @@ impl NetworkPolicyRefreshCore {
             Err(error) => {
                 warn!(
                     run_id = %run_id,
-                    targets = ?target_identities(active_targets),
+                    targets = ?target_identities(&active_targets),
                     error = %error,
                     transport_retry_attempted,
                     "connector runtime sync failed; retaining last-known-good state"
                 );
-                self.schedule_refresh_retries(run_id, active_targets, "api_error")
+                self.schedule_refresh_retries(run_id, &active_targets, "api_error")
                     .await;
                 return true;
             }
         };
 
-        self.publish_connector_runtime_response(run_id, active_targets, response)
+        self.publish_connector_runtime_response(run_id, &active_targets, response)
             .await
     }
 
@@ -857,6 +860,16 @@ impl NetworkPolicyRefreshCore {
                 _ => None,
             };
             if let ConnectorRuntimeSyncState::Unresolved { reason } = &result.state {
+                if !connector_runtime_unresolved_reason_is_valid(&target.target, reason) {
+                    warn!(
+                        run_id = %run_id,
+                        target = %target.target.log_identity(),
+                        reason = ?reason,
+                        "invalid connector runtime sync result; retaining last-known-good state"
+                    );
+                    retry_targets.push(target.clone());
+                    continue;
+                }
                 warn!(
                     run_id = %run_id,
                     target = %target.target.log_identity(),
@@ -1149,21 +1162,23 @@ impl NetworkPolicyRefreshCore {
             .collect()
     }
 
-    async fn connector_runtime_sync_registrations(
+    async fn current_connector_runtime_sync_targets(
         &self,
         run_id: RunId,
         targets: &[ConnectorRefreshTarget],
-    ) -> Option<Vec<ConnectorRuntimeTargetRegistration>> {
+    ) -> Vec<(ConnectorRefreshTarget, ConnectorRuntimeTargetRegistration)> {
         let active_runs = self.inner.active_runs.lock().await;
-        let active = active_runs.get(&run_id)?;
+        let Some(active) = active_runs.get(&run_id) else {
+            return Vec::new();
+        };
         targets
             .iter()
-            .map(|target| {
+            .filter_map(|target| {
                 let connector = active.connectors.get(&target.target)?;
                 if connector.generation != target.generation {
                     return None;
                 }
-                Some(match &target.target {
+                let registration = match &target.target {
                     ConnectorRuntimeTarget::Builtin { connector_slug } => {
                         ConnectorRuntimeTargetRegistration::Builtin {
                             connector_slug: connector_slug.clone(),
@@ -1175,7 +1190,8 @@ impl NetworkPolicyRefreshCore {
                         custom_connector_id: custom_connector_id.clone(),
                         base_url_vars: connector.pinned_base_url_vars.clone(),
                     },
-                })
+                };
+                Some((target.clone(), registration))
             })
             .collect()
     }
@@ -1240,15 +1256,15 @@ impl NetworkPolicyRefreshCore {
         let Some(connector) = active.connectors.get_mut(&target.target) else {
             return false;
         };
+        if connector.generation != target.generation {
+            return false;
+        }
         if let Some(candidate) = candidate_base_url_vars {
             match &connector.pinned_base_url_vars {
                 Some(pinned) if pinned != candidate => return false,
                 Some(_) => {}
                 None => connector.pinned_base_url_vars = Some(candidate.clone()),
             }
-        }
-        if connector.generation != target.generation {
-            return false;
         }
         connector.consecutive_failures = 0;
         self.replace_schedule_locked(active, run_id, target, deadline)
@@ -1482,6 +1498,14 @@ async fn patch_network_policy(
             policy,
         )
         .await
+}
+
+fn connector_runtime_unresolved_reason_is_valid(
+    target: &ConnectorRuntimeTarget,
+    reason: &ConnectorRuntimeUnresolvedReason,
+) -> bool {
+    matches!(target, ConnectorRuntimeTarget::Custom { .. })
+        || matches!(reason, ConnectorRuntimeUnresolvedReason::Connector)
 }
 
 fn custom_connector_runtime_registry_state(
@@ -2168,6 +2192,61 @@ mod tests {
         (dir, registry, registry_path)
     }
 
+    async fn register_tagged_builtin_runtime(
+        core: &NetworkPolicyRefreshCore,
+        run_id: RunId,
+        connector_slugs: &[&str],
+    ) -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        Vec<ConnectorRuntimeTarget>,
+    ) {
+        let targets = connector_slugs
+            .iter()
+            .map(|connector_slug| builtin_target(connector_slug))
+            .collect::<Vec<_>>();
+        let registrations = targets
+            .iter()
+            .map(runtime_target_registration)
+            .collect::<Vec<_>>();
+        let firewalls = connector_slugs
+            .iter()
+            .map(|connector_slug| FirewallEntry::Builtin {
+                name: (*connector_slug).to_string(),
+                base_url_vars: None,
+            })
+            .collect::<Vec<_>>();
+        let policies = connector_slugs
+            .iter()
+            .map(|connector_slug| {
+                (
+                    (*connector_slug).to_string(),
+                    NetworkPolicy {
+                        allow: vec!["last-known-good".to_string()],
+                        deny: vec![],
+                        ask: vec![],
+                        unknown_policy: "allow".to_string(),
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let (dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &policies).await;
+        core.register_run(NetworkPolicyRefreshRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            connector_slugs: connector_slugs
+                .iter()
+                .map(|connector_slug| (*connector_slug).to_string())
+                .collect(),
+            targets: Some(&registrations),
+            refreshes: None,
+        })
+        .await;
+        (dir, registry_path, targets)
+    }
+
     async fn wait_until_slack_policy(
         registry_path: &std::path::Path,
         predicate: impl Fn(&serde_json::Value) -> bool,
@@ -2603,8 +2682,8 @@ mod tests {
         let server = MockServer::start();
         let (core, _requests) = core_without_worker(&server);
         let run_id = RunId::nil();
-        let connector_slugs = ["slack", "github", "linear"];
-        let targets = connector_slugs.map(builtin_target);
+        let (_dir, registry_path, targets) =
+            register_tagged_builtin_runtime(&core, run_id, &["slack", "github", "linear"]).await;
         let unexpected_target = builtin_target("notion");
         let runtime_sync = server.mock(|when, then| {
             when.method(POST)
@@ -2658,42 +2737,6 @@ mod tests {
                     ],
                 }));
         });
-        let firewalls = connector_slugs
-            .iter()
-            .map(|connector_slug| FirewallEntry::Builtin {
-                name: (*connector_slug).to_string(),
-                base_url_vars: None,
-            })
-            .collect::<Vec<_>>();
-        let policies = connector_slugs
-            .iter()
-            .map(|connector_slug| {
-                (
-                    (*connector_slug).to_string(),
-                    NetworkPolicy {
-                        allow: vec!["last-known-good".to_string()],
-                        deny: vec![],
-                        ask: vec![],
-                        unknown_policy: "allow".to_string(),
-                    },
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        let (_dir, registry, registry_path) =
-            registered_runtime_registry(run_id, &firewalls, &policies).await;
-
-        let registrations = targets
-            .clone()
-            .map(ConnectorRuntimeTargetRegistration::from);
-        core.register_run(NetworkPolicyRefreshRegistration {
-            run_id,
-            source_ip: "10.200.0.2",
-            registry,
-            connector_slugs: connector_slugs.map(ToOwned::to_owned).into(),
-            targets: Some(&registrations),
-            refreshes: None,
-        })
-        .await;
         let active_targets = targets
             .iter()
             .cloned()
@@ -2732,6 +2775,63 @@ mod tests {
         assert!(active.refresh_tasks.contains_key(&targets[1]));
         assert!(active.refresh_tasks.contains_key(&targets[2]));
         drop(active_runs);
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn tagged_batch_keeps_current_target_when_another_generation_is_superseded() {
+        let server = MockServer::start();
+        let (core, _requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let (_dir, registry_path, targets) =
+            register_tagged_builtin_runtime(&core, run_id, &["slack", "github"]).await;
+        let stale_batch = targets
+            .iter()
+            .cloned()
+            .map(|target| ConnectorRefreshTarget {
+                target,
+                generation: 0,
+            })
+            .collect::<Vec<_>>();
+        let github_target = targets[1].clone();
+        let runtime_sync = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"))
+                .json_body(json!({ "targets": [github_target.clone()] }));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": github_target,
+                        "state": "available",
+                        "networkPolicy": {
+                            "allow": ["issues:write"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    }],
+                }));
+        });
+
+        core.notify_connector_runtime_sync(run_id, targets[0].clone())
+            .await;
+        assert!(
+            core.sync_connector_runtime_batch_now(run_id, &stale_batch)
+                .await
+        );
+
+        runtime_sync.assert_calls(1);
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(registry_path)
+                .await
+                .expect("registry should be readable"),
+        )
+        .expect("registry should be valid JSON");
+        assert_eq!(
+            registry_json["vms"]["10.200.0.2"]["networkPolicies"]["github"]["allow"],
+            json!(["issues:write"])
+        );
         core.unregister_run(run_id).await;
     }
 
