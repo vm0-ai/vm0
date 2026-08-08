@@ -363,7 +363,10 @@ function mockPublicConnectorStatus(
   });
 }
 
-function mockCustomConnectorStory(): void {
+function mockCustomConnectorStory(): {
+  readonly createBodies: readonly CreateCustomConnectorBody[];
+  readonly updateBodies: readonly UpdateCustomConnectorBody[];
+} {
   context.mocks.data.org({
     id: "org_1",
     name: "Test Org",
@@ -371,6 +374,8 @@ function mockCustomConnectorStory(): void {
   });
 
   let connectors: CustomConnectorResponse[] = [];
+  const createBodies: CreateCustomConnectorBody[] = [];
+  const updateBodies: UpdateCustomConnectorBody[] = [];
 
   context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors });
@@ -378,6 +383,7 @@ function mockCustomConnectorStory(): void {
   context.mocks.api(
     zeroCustomConnectorsContract.create,
     ({ body, respond }) => {
+      createBodies.push(body);
       const prefixTemplates = body.prefixTemplates ?? body.prefixes ?? [];
       const fields = body.fields ?? [];
       const headerInjections = body.headerInjections ?? [];
@@ -438,6 +444,7 @@ function mockCustomConnectorStory(): void {
   context.mocks.api(
     zeroCustomConnectorByIdContract.update,
     ({ params, body, respond }) => {
+      updateBodies.push(body);
       let updated = connectors.find((connector) => {
         return connector.id === params.id;
       });
@@ -481,6 +488,7 @@ function mockCustomConnectorStory(): void {
       return respond(204);
     },
   );
+  return { createBodies, updateBodies };
 }
 
 function setupConnectorStatusFilterPage(path = "/connectors"): void {
@@ -3805,6 +3813,7 @@ describe("connectors page", () => {
     expect(createdBodies).toHaveLength(1);
     expect(createdBodies[0]).toMatchObject({
       displayName: "Acme API",
+      storageVersion: 1,
       prefixTemplates: ["https://api.acme.test/v1/"],
       fields: [],
       headerInjections: [
@@ -3886,6 +3895,7 @@ describe("connectors page", () => {
     expect(screen.getByText("https://api.acme.test/v2/")).toBeInTheDocument();
     expect(updatedBodies[0]).toMatchObject({
       displayName: "Acme API",
+      storageVersion: 2,
       prefixTemplates: ["https://api.acme.test/v2/"],
       authMode: "oauth",
       oauthConfig: {
@@ -3937,7 +3947,7 @@ describe("connectors page", () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000051";
     const supportAgentId = "c0000000-0000-4000-a000-000000000052";
-    mockCustomConnectorStory();
+    const story = mockCustomConnectorStory();
     context.mocks.data.team([
       teamAgent(defaultAgentId, "Zero"),
       teamAgent(researchAgentId, "Research"),
@@ -3979,6 +3989,7 @@ describe("connectors page", () => {
       ).toBeInTheDocument();
       expect(within(card).queryByText("Not connected")).not.toBeInTheDocument();
     });
+    expect(story.createBodies[0]?.storageVersion).toBe(1);
 
     const connectorCardButton = buttonByAriaLabel("Connect Acme API");
     expect(
@@ -4027,6 +4038,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("Acme Billing API")).toBeInTheDocument();
     });
+    expect(story.updateBodies[0]?.storageVersion).toBe(1);
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Disconnect"));

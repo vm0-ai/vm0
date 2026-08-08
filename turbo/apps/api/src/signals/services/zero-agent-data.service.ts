@@ -206,10 +206,6 @@ export function zeroAgentCustomConnectorGrants(args: {
           and(
             eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
             eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
-            eq(
-              orgCustomConnectors.revision,
-              userCustomConnectors.connectorRevision,
-            ),
           ),
         )
         .where(

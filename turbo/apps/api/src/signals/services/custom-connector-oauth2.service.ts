@@ -611,12 +611,12 @@ export function customConnectorOAuthStateMatchesDefinition(
   context: CustomConnectorOAuthStateContext,
   connector: Pick<CustomConnectorRow, "id" | "revision" | "storageVersion">,
 ): boolean {
-  return (
-    connector.id === context.connectorId &&
-    connector.revision === context.connectorRevision &&
-    (context.storageVersion === undefined ||
-      connector.storageVersion === context.storageVersion)
-  );
+  if (connector.id !== context.connectorId) {
+    return false;
+  }
+  return context.storageVersion === undefined
+    ? connector.revision === context.connectorRevision
+    : connector.storageVersion === context.storageVersion;
 }
 
 export async function decryptCustomConnectorOAuth2Credentials(
@@ -754,6 +754,29 @@ export async function storeCustomConnectorOAuth2Connection(args: {
 }): Promise<void> {
   const encrypted = await encryptTokenValues(args);
   await args.db.transaction(async (tx) => {
+    const [definition] = await tx
+      .select({
+        authMode: orgCustomConnectors.authMode,
+        storageVersion: orgCustomConnectors.storageVersion,
+      })
+      .from(orgCustomConnectors)
+      .where(
+        and(
+          eq(orgCustomConnectors.id, args.connectorId),
+          eq(orgCustomConnectors.orgId, args.orgId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !definition ||
+      definition.authMode !== "oauth" ||
+      definition.storageVersion !== args.storageVersion
+    ) {
+      throw new Error(
+        "Custom connector credential contract changed during OAuth connection",
+      );
+    }
     const [connection] = await tx
       .insert(connectors)
       .values({

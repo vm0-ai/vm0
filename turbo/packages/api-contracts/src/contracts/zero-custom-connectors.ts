@@ -159,6 +159,7 @@ export const createCustomConnectorBodySchema = z.object({
     .nullable()
     .optional(),
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
+  storageVersion: z.number().int().positive().optional(),
   slug: z.string().optional(),
 });
 export type CreateCustomConnectorBody = z.infer<
@@ -177,6 +178,7 @@ export const updateCustomConnectorBodySchema = z.object({
     .nullable()
     .optional(),
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
+  storageVersion: z.number().int().positive().optional(),
 });
 export type UpdateCustomConnectorBody = z.infer<
   typeof updateCustomConnectorBodySchema

@@ -10,6 +10,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import { publishCustomConnectorRuntimeSyncWakeups } from "./custom-connector-runtime-wakeup.service";
 import type { Tx } from "../../lib/db-types";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
@@ -51,6 +52,7 @@ interface ExistingFeishuCustomConnector {
 interface ReconciledFeishuCustomConnector {
   readonly connectorId: string;
   readonly displayName: string;
+  readonly runtimeChanged: boolean;
 }
 
 const FEISHU_SKILL_MARKDOWN = `Use Feishu OpenAPI as the connected user to find coworkers, collaborate in chats, work with cloud content, manage calendars, and organize tasks.
@@ -263,6 +265,7 @@ async function createFeishuCustomConnector(
   return {
     connectorId: connector.id,
     displayName: feishuCustomConnectorDisplayName(installation.botName),
+    runtimeChanged: false,
   };
 }
 
@@ -273,11 +276,18 @@ async function repairFeishuCustomConnector(
   existing: ExistingFeishuCustomConnector,
   signal: AbortSignal,
 ): Promise<ReconciledFeishuCustomConnector> {
+  const credentialContractChanged =
+    existing.connector.authMode !== "oauth" ||
+    !isDeepStrictEqual(existing.connector.fields, []) ||
+    !oauthConfigMatches(existing.oauthConfig, installation);
   await tx
     .update(orgCustomConnectors)
     .set({
       ...desiredConnectorDefinition(installation),
       revision: existing.connector.revision + 1,
+      storageVersion: credentialContractChanged
+        ? existing.connector.storageVersion + 1
+        : existing.connector.storageVersion,
       updatedAt: nowDate(),
     })
     .where(eq(orgCustomConnectors.id, existing.connector.id));
@@ -297,18 +307,10 @@ async function repairFeishuCustomConnector(
       },
     });
   signal.throwIfAborted();
-  await tx
-    .delete(connectors)
-    .where(
-      and(
-        eq(connectors.customConnectorId, existing.connector.id),
-        eq(connectors.orgId, args.orgId),
-      ),
-    );
-  signal.throwIfAborted();
   return {
     connectorId: existing.connector.id,
     displayName: feishuCustomConnectorDisplayName(installation.botName),
+    runtimeChanged: true,
   };
 }
 
@@ -381,6 +383,7 @@ async function reconcileFeishuCustomConnector(
     return {
       connectorId: existing.connector.id,
       displayName: feishuCustomConnectorDisplayName(installation.botName),
+      runtimeChanged: false,
     };
   }
   return await repairFeishuCustomConnector(
@@ -405,6 +408,14 @@ export const ensureFeishuCustomConnector$ = command(
     signal.throwIfAborted();
     if (!result) {
       return null;
+    }
+    if (result.runtimeChanged) {
+      await publishCustomConnectorRuntimeSyncWakeups({
+        db,
+        scope: { orgId: args.orgId },
+        customConnectorIds: [result.connectorId],
+      });
+      signal.throwIfAborted();
     }
     await set(
       syncCustomConnectorSkillVolume$,
@@ -449,6 +460,12 @@ export const deleteFeishuCustomConnector$ = command(
     if (!deleted) {
       return;
     }
+    await publishCustomConnectorRuntimeSyncWakeups({
+      db: set(writeDb$),
+      scope: { orgId: args.orgId },
+      customConnectorIds: [deleted.id],
+    });
+    signal.throwIfAborted();
     await set(
       syncCustomConnectorSkillVolume$,
       {

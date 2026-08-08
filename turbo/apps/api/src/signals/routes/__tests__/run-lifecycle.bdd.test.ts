@@ -370,6 +370,8 @@ const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
   "custom_connector_runtime_missing_required_count_bucket",
   "custom_connector_runtime_no_auth_injection_count_bucket",
   "custom_connector_runtime_invalid_prefix_count_bucket",
+  "custom_connector_runtime_pinned_routing_count_bucket",
+  "custom_connector_runtime_unpinned_routing_count_bucket",
 ] as const;
 const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_builtin_permission_indexes",
@@ -8268,9 +8270,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
     expect(claim.secretValues).not.toContain("custom-secret-value");
-    expect(claim.connectorRuntimeTargets ?? []).not.toContainEqual({
+    expect(claim.connectorRuntimeTargets ?? []).toContainEqual({
       kind: "custom",
       customConnectorId: custom.id,
+      baseUrlVars: {},
     });
     const legacyCustomFirewall = findFirewallEntry(
       claim.firewalls,
@@ -8279,7 +8282,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     if (!legacyCustomFirewall || legacyCustomFirewall.kind !== "inline") {
       throw new Error("Expected the legacy custom firewall snapshot");
     }
-    expect(legacyCustomFirewall.customConnectorId).toBeUndefined();
+    expect(legacyCustomFirewall.customConnectorId).toBe(custom.id);
 
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -8304,7 +8307,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     };
     const target = {
       ...targetIdentity,
-      baseUrlVars: { subdomain: "pinned-routing-value" },
+      baseUrlVars: {},
     };
     const [initialRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
@@ -8312,7 +8315,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
     expect(initialAvailable.nextSyncAt).toBeUndefined();
     expect(initialAvailable.target).toStrictEqual(targetIdentity);
-    expect(initialAvailable.baseUrlVars).toBeUndefined();
+    expect(initialAvailable.baseUrlVars).toStrictEqual({});
     const { api: initialApi, body: currentAuthBody } =
       customConnectorRuntimeAuthBody(
         initialAvailable,
@@ -8408,19 +8411,23 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
+    context.mocks.ably.publish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, []);
-    const [absentRuntime] = await api.syncConnectorRuntime(run.runId, {
-      targets: [target],
-    });
-    if (!absentRuntime) {
-      throw new Error("Expected an absent custom connector runtime result");
-    }
-    expect(absentRuntime).toMatchObject({
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      { runId: run.runId, target: targetIdentity },
+    );
+    const [defaultPermissionRuntime] = await api.syncConnectorRuntime(
+      run.runId,
+      {
+        targets: [target],
+      },
+    );
+    expect(defaultPermissionRuntime).toMatchObject({
       target: targetIdentity,
-      state: "absent",
-      reason: "grant-unavailable",
+      state: "available",
     });
-    expect(absentRuntime.nextSyncAt).toBeUndefined();
+    expect(defaultPermissionRuntime?.nextSyncAt).toBeUndefined();
 
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
     const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
@@ -8517,6 +8524,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer restored-custom-secret-value" },
     });
 
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("Custom runtime wakeup unavailable"),
+    );
     await connectors.updateCustomConnector(actor, custom.id, {
       displayName: "BDD Internal API Updated",
       prefixTemplates: ["https://*.internal.example.com/v2/"],
@@ -8530,6 +8541,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       queryInjections: custom.queryInjections,
       authMode: custom.authMode,
     });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      { runId: run.runId, target: targetIdentity },
+    );
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
     const lastKnownGoodAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -9339,6 +9354,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const variableKey = `CUSTOM_${idPart}_V_SUBDOMAIN`;
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
     expect(customApis[0]?.base).toBe(`https://xn--mnich-kva.${rand}.test/v1/`);
+    const pinnedTarget = {
+      kind: "custom" as const,
+      customConnectorId: saved.connector.id,
+      baseUrlVars: { subdomain: "münich" },
+    };
+    expect(claim.connectorRuntimeTargets).toContainEqual(pinnedTarget);
     expect(customApis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
@@ -9366,6 +9387,39 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       Authorization: "Bearer runtime-proposal-secret",
     });
     expect(resolved.body.query).toStrictEqual({ tenant: "münich" });
+
+    context.mocks.ably.publish.mockClear();
+    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+      { key: "subdomain", kind: "variable", value: "later-run" },
+    ]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      expect.anything(),
+    );
+    const [pinnedRuntimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [pinnedTarget],
+    });
+    const pinnedRuntime = availableCustomConnectorRuntime(pinnedRuntimeResult);
+    expect(pinnedRuntime.baseUrlVars).toStrictEqual({ subdomain: "münich" });
+    expect(pinnedRuntime.firewall.firewall.apis[0]?.base).toBe(
+      `https://xn--mnich-kva.${rand}.test/v1/`,
+    );
+
+    const laterRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the updated custom connector route",
+      modelProvider: "anthropic-api-key",
+    });
+    const laterClaim = await api.claimRunnerJob(laterRun.runId);
+    expect(laterClaim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: saved.connector.id,
+      baseUrlVars: { subdomain: "later-run" },
+    });
+    expect(
+      inlineFirewallApis(laterClaim.firewalls, internalName)[0]?.base,
+    ).toBe(`https://later-run.${rand}.test/v1/`);
+    await api.requestCancelRun(actor, laterRun.runId, [200]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -9454,11 +9508,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
     expect(runtimeApi.auth.headers).toStrictEqual({
       Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-      "X-Secondary": `\${{ secrets.${secondarySecretKey} }}`,
     });
-    expect(runtimeApi.auth.query).toStrictEqual({
-      tenant: `\${{ secrets.${tenantVarKey} }}`,
-    });
+    expect(runtimeApi.auth.query).toStrictEqual({});
+    expect(JSON.stringify(runtime.firewall)).not.toContain(secondarySecretKey);
+    expect(JSON.stringify(runtime.firewall)).not.toContain(tenantVarKey);
     const runtimeResolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -9491,7 +9544,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("omits incompatible custom credentials initially while sync preserves firewall", async () => {
+  it("keeps the definition firewall while incompatible credentials stay unavailable", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -9546,8 +9599,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
-    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+    expect(findFirewallEntry(claim.firewalls, internalName)).toMatchObject({
+      kind: "inline",
+      customConnectorId: saved.connector.id,
+    });
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
@@ -9562,7 +9618,154 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await connectors.deleteCustomConnector(actor, saved.connector.id);
   });
 
-  it("keeps legacy omission while sync preserves optional-only firewall", async () => {
+  it("retains an unpinned custom target until complete credential recovery", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Unpinned Recovery Runtime",
+        prefixTemplates: [
+          `https://{{variables.subdomain}}.${rand}.recovery.test/v1/`,
+        ],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+          {
+            key: "subdomain",
+            label: "Subdomain",
+            kind: "variable",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        { key: "api_key", kind: "secret", value: "version-one-key" },
+        { key: "subdomain", kind: "variable", value: "version-one" },
+      ],
+      agentId,
+    });
+    const versionTwoFields = [
+      ...saved.connector.fields,
+      {
+        key: "tenant",
+        label: "Tenant",
+        kind: "variable" as const,
+        required: true,
+      },
+    ];
+    const versionTwo = await connectors.updateCustomConnector(
+      actor,
+      saved.connector.id,
+      {
+        displayName: saved.connector.displayName,
+        prefixTemplates: saved.connector.prefixTemplates,
+        fields: versionTwoFields,
+        headerInjections: saved.connector.headerInjections,
+        queryInjections: saved.connector.queryInjections,
+        authMode: "manual",
+      },
+    );
+    expect(versionTwo.storageVersion).toBe(2);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "wait for complete custom connector recovery",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const target = {
+      kind: "custom" as const,
+      customConnectorId: saved.connector.id,
+    };
+    expect(claim.connectorRuntimeTargets).toContainEqual(target);
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+
+    const [unresolved] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(unresolved).toMatchObject({
+      target,
+      state: "unresolved",
+      reason: "runtime-configuration-unavailable",
+    });
+
+    context.mocks.ably.publish.mockClear();
+    const longSubdomain = "a".repeat(55);
+    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+      { key: "api_key", kind: "secret", value: "version-two-key" },
+      { key: "subdomain", kind: "variable", value: longSubdomain },
+      { key: "tenant", kind: "variable", value: "tenant-two" },
+    ]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      { runId: run.runId, target },
+    );
+
+    const fixedPrefix = "very-long-fixed-prefix-for-custom-runtime-";
+    const rerouted = await connectors.updateCustomConnector(
+      actor,
+      saved.connector.id,
+      {
+        displayName: saved.connector.displayName,
+        prefixTemplates: [
+          `https://${fixedPrefix}{{variables.subdomain}}.${rand}.recovery.test/v1/`,
+        ],
+        fields: versionTwoFields,
+        headerInjections: saved.connector.headerInjections,
+        queryInjections: saved.connector.queryInjections,
+        authMode: "manual",
+      },
+    );
+    expect(rerouted.storageVersion).toBe(2);
+
+    const [invalidRouting] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(invalidRouting).toMatchObject({
+      target,
+      state: "unresolved",
+      reason: "runtime-configuration-unavailable",
+    });
+
+    context.mocks.ably.publish.mockClear();
+    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+      { key: "subdomain", kind: "variable", value: "version-two" },
+    ]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      expect.anything(),
+    );
+
+    const [restored] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const available = availableCustomConnectorRuntime(restored);
+    expect(available.baseUrlVars).toStrictEqual({ subdomain: "version-two" });
+    expect(available.firewall.firewall.apis[0]?.base).toBe(
+      `https://${fixedPrefix}version-two.${rand}.recovery.test/v1/`,
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, saved.connector.id);
+  });
+
+  it("keeps optional-only firewall policy while omitting absent auth", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -9613,8 +9816,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const idPart = saved.connector.id.replaceAll("-", "");
     const internalName = `custom_connector_${idPart}`;
     const secretKey = `CUSTOM_${idPart}_S_SECRET`;
-    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+    expect(findFirewallEntry(claim.firewalls, internalName)).toMatchObject({
+      kind: "inline",
+      customConnectorId: saved.connector.id,
+    });
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
@@ -9623,9 +9829,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(runtime.firewall.customConnectorId).toBe(saved.connector.id);
     const { api: runtimeApi, body: runtimeAuthBody } =
       customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
-    expect(runtimeApi.auth.headers).toStrictEqual({
-      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-    });
+    expect(runtimeApi.auth.headers).toStrictEqual({});
+    expect(JSON.stringify(runtime.firewall)).not.toContain(secretKey);
     const resolvedAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -9642,10 +9847,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("rejects a configured legacy custom connector with an invalid hostname", async () => {
+  it("keeps a configured legacy custom connector with an invalid hostname unresolved", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId } = await entitledRunActor();
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
     const secret = "legacy-invalid-host-secret";
     const custom = await connectors.createCustomConnector(actor, {
       slug: `_bdd-legacy-host-${randomUUID().slice(0, 8)}`,
@@ -9660,21 +9865,33 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const legacyPrefix = "https://\u088f.example/v1/";
     await replaceCustomConnectorPrefixes(context, custom.id, [legacyPrefix]);
 
-    const rejected = await api.requestCreateRun(
-      actor,
-      {
-        agentId,
-        prompt: "use the legacy invalid custom connector",
-        modelProvider: "anthropic-api-key",
-      },
-      [400],
-    );
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toBe(
-      'Custom connector "BDD Legacy Invalid Host" has an invalid configured hostname',
-    );
-    expect(JSON.stringify(rejected.body)).not.toContain(secret);
-    expect(JSON.stringify(rejected.body)).not.toContain("\u088f.example");
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the legacy invalid custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const target = {
+      kind: "custom" as const,
+      customConnectorId: custom.id,
+    };
+    expect(claim.connectorRuntimeTargets).toContainEqual(target);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+
+    const [unresolved] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(unresolved).toMatchObject({
+      target,
+      state: "unresolved",
+      reason: "runtime-configuration-unavailable",
+    });
+    expect(JSON.stringify(unresolved)).not.toContain(secret);
+    expect(JSON.stringify(unresolved)).not.toContain("\u088f.example");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("keeps connector-owned vars out of custom connector base urls", async () => {

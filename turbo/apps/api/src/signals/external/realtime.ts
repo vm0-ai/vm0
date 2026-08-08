@@ -5,6 +5,7 @@ import type {
   ConnectorChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
+  ConnectorRuntimeTarget,
   PiExecutionMode,
   RunnerPreference,
 } from "@vm0/api-contracts/contracts/runners";
@@ -380,6 +381,18 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   });
   L.debug(
     `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
+  );
+}
+
+export async function publishConnectorRuntimeSyncToRunnerGroup(
+  group: string,
+  runId: string,
+  target: ConnectorRuntimeTarget,
+): Promise<void> {
+  const channel = ablyClient().channels.get(`runner-group:${group}`);
+  await channel.publish("connector-runtime-sync", { runId, target });
+  L.debug(
+    `Published connector runtime sync ${runId}/${target.kind} to runner-group:${group}`,
   );
 }
 

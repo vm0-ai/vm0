@@ -38,7 +38,7 @@ function customConnectorPermissionBundleSlug(
 }
 
 export async function loadCustomConnectorPermissionBundle(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: Pick<ConnectorRuntimeSnapshot, "serverFirewalls">;
   readonly ref: CustomConnectorPermissionBundleRef;
 }): Promise<CustomConnectorPermissionBundle | null> {
   if (args.ref === FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF) {
