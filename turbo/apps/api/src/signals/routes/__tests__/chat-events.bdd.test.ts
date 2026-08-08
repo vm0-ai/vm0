@@ -3735,6 +3735,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
+    await flushWaitUntilForTest();
     await waitForThreadMessages(actor, first.threadId, (items) => {
       return eventBackedContents(items, first.runId).some((message) => {
         return message.content === "opus answer";
@@ -3794,6 +3795,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
 
     // Follow-ups without a send model override go back to the thread's stored
     // model. Both models remain in the Claude family, so session continuity is
