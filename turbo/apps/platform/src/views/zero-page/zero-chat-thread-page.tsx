@@ -3457,12 +3457,9 @@ const RUN_SECTION_ROW_CLASS =
 
 function RunSectionDivider({ label }: { label: string }) {
   return (
-    <div className="flex min-h-5 flex-col justify-center gap-1.5">
-      <div className="h-px w-full bg-border/40" />
-      <div className="flex items-center gap-2">
-        <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
-        <div className="h-px flex-1 bg-border/40" />
-      </div>
+    <div className="flex min-h-5 items-center gap-2">
+      <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
+      <div className="h-px flex-1 bg-border/40" />
     </div>
   );
 }
