@@ -13,7 +13,7 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch-state.ts";
+import { setupForegroundAuthRecovery$ } from "./auth-retry.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -344,7 +344,7 @@ export const clerk$ = computed(async (get) => {
   const satelliteConfig = resolveClerkSatelliteConfig();
   await clerkInstance.load({
     ui,
-    touchSession: !get(foregroundAuthRecoveryEnabled$),
+    touchSession: false,
     ...(satelliteConfig
       ? {
           isSatellite: true,
@@ -368,6 +368,7 @@ export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
+    set(setupForegroundAuthRecovery$, clerk, signal);
 
     // Set initial Sentry user context
     if (clerk.user) {

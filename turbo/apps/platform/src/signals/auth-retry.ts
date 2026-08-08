@@ -12,20 +12,27 @@ import { command, computed, state } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
 import { isNetworkRequestError } from "../lib/network-error.ts";
 import { now } from "../lib/time.ts";
+import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch-state.ts";
+import { logger } from "./log.ts";
 import {
   createDeferredPromise,
   detach,
+  onDomEventFn,
   Reason,
+  resetSignal,
   retryWithFibonacciBackoff,
   withCleanup,
 } from "./utils";
 
 export type ClerkLike = Pick<
   Clerk,
-  "session" | "addListener" | "redirectToSignIn"
+  "session" | "organization" | "addListener" | "redirectToSignIn"
 >;
 
 const AUTH_TRANSITION_REDIRECT_SUPPRESSION_MS = 30_000;
+const FOREGROUND_CATCH_UP_EVENT = "catch-up";
+
+const L = logger("AuthRecovery");
 
 type FreshTokenResult =
   | { readonly status: "refreshed"; readonly token: string }
@@ -33,6 +40,8 @@ type FreshTokenResult =
 
 const unauthorizedRedirectSuppressionUntilState$ = state(0);
 const internalForegroundAuthRecovery$ = state<Promise<boolean> | null>(null);
+const foregroundCatchUpTarget$ = state(new EventTarget());
+const resetForegroundRecoverySignal$ = resetSignal();
 
 export const unauthorizedRedirectSuppressionUntil$ = computed((get) => {
   return get(unauthorizedRedirectSuppressionUntilState$);
@@ -42,17 +51,137 @@ export const foregroundAuthRecovery$ = computed((get) => {
   return get(internalForegroundAuthRecovery$);
 });
 
-export const setForegroundAuthRecovery$ = command(
+const setForegroundAuthRecovery$ = command(
   ({ set }, recovery: Promise<boolean>) => {
     set(internalForegroundAuthRecovery$, recovery);
   },
 );
 
-export const clearForegroundAuthRecovery$ = command(
+const clearForegroundAuthRecovery$ = command(
   ({ get, set }, recovery: Promise<boolean>) => {
     if (get(internalForegroundAuthRecovery$) === recovery) {
       set(internalForegroundAuthRecovery$, null);
     }
+  },
+);
+
+/**
+ * Subscribe to the centralized foreground catch-up gate. While the rollout is
+ * disabled, visibility resumes are emitted immediately to preserve the legacy
+ * realtime behavior. While enabled, they are emitted only after Clerk has
+ * touched the session and refreshed the active organization's token.
+ */
+export const subscribeForegroundCatchUp$ = command(
+  ({ get }, callback: () => void, signal: AbortSignal) => {
+    get(foregroundCatchUpTarget$).addEventListener(
+      FOREGROUND_CATCH_UP_EVENT,
+      callback,
+      { signal },
+    );
+  },
+);
+
+/**
+ * Own Clerk foreground session touch for every rollout state. Clerk's load
+ * options are one-shot, while feature-switch hydration is asynchronous, so
+ * ownership cannot safely be selected in `Clerk.load()`. The switch controls
+ * only whether downstream catch-up waits for this shared recovery.
+ */
+export const setupForegroundAuthRecovery$ = command(
+  ({ get, set }, clerk: ClerkLike, signal: AbortSignal) => {
+    let foregroundRecovery: Promise<boolean> | undefined;
+    let notifyAfterRecovery = false;
+    let catchUpNotified = false;
+
+    const notifyCatchUp = (): void => {
+      if (catchUpNotified) {
+        return;
+      }
+      catchUpNotified = true;
+      get(foregroundCatchUpTarget$).dispatchEvent(
+        new Event(FOREGROUND_CATCH_UP_EVENT),
+      );
+    };
+
+    const abortForegroundRecovery = (): void => {
+      set(resetForegroundRecoverySignal$);
+      if (foregroundRecovery) {
+        set(clearForegroundAuthRecovery$, foregroundRecovery);
+      }
+      foregroundRecovery = undefined;
+      notifyAfterRecovery = false;
+      catchUpNotified = false;
+    };
+
+    const recoverForeground = (
+      waitBeforeCatchUp: boolean,
+    ): Promise<boolean> => {
+      notifyAfterRecovery ||= waitBeforeCatchUp;
+      if (foregroundRecovery) {
+        return foregroundRecovery;
+      }
+
+      catchUpNotified = false;
+      const expectedOrgId = clerk.organization?.id ?? null;
+      const recoverySignal = set(resetForegroundRecoverySignal$, signal);
+      const recovery = withCleanup(
+        (async () => {
+          const ready = await resumeClerkSession(
+            clerk,
+            expectedOrgId,
+            recoverySignal,
+          );
+          recoverySignal.throwIfAborted();
+          if (!ready) {
+            return false;
+          }
+          if (notifyAfterRecovery) {
+            L.debug("foreground auth ready, notifying catch-up subscribers");
+            notifyCatchUp();
+          }
+          return true;
+        })(),
+        () => {
+          if (foregroundRecovery === recovery) {
+            foregroundRecovery = undefined;
+            notifyAfterRecovery = false;
+            catchUpNotified = false;
+          }
+          set(clearForegroundAuthRecovery$, recovery);
+        },
+      );
+      foregroundRecovery = recovery;
+      set(setForegroundAuthRecovery$, recovery);
+      return recovery;
+    };
+
+    const recoverOnFocus = onDomEventFn(async () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      await recoverForeground(get(foregroundAuthRecoveryEnabled$));
+    });
+
+    document.addEventListener(
+      "visibilitychange",
+      onDomEventFn(async () => {
+        if (document.visibilityState !== "visible") {
+          abortForegroundRecovery();
+          return;
+        }
+
+        const waitBeforeCatchUp = get(foregroundAuthRecoveryEnabled$);
+        const recovery = recoverForeground(waitBeforeCatchUp);
+        if (!waitBeforeCatchUp) {
+          L.debug("tab visible, notifying catch-up subscribers immediately");
+          notifyCatchUp();
+        }
+        await recovery;
+      }),
+      { signal },
+    );
+    window.addEventListener("focus", recoverOnFocus, { signal });
+    signal.addEventListener("abort", abortForegroundRecovery, { once: true });
   },
 );
 
@@ -159,9 +288,9 @@ function waitForForegroundRecovery(
  * Resume Clerk's foreground session before visibility-driven data catch-up.
  * The caller owns foreground lifecycle coalescing and cancellation.
  */
-export async function resumeClerkSession(
+async function resumeClerkSession(
   clerk: ClerkLike,
-  expectedOrgId: string,
+  expectedOrgId: string | null,
   signal: AbortSignal,
 ): Promise<boolean> {
   const session = await waitForSettledClerkSession(clerk, signal);
@@ -174,7 +303,11 @@ export async function resumeClerkSession(
     signal.throwIfAborted();
     return session.getToken({ skipCache: true });
   }, signal);
-  return Boolean(token && session.lastActiveOrganizationId === expectedOrgId);
+  return Boolean(
+    token &&
+    (expectedOrgId === null ||
+      session.lastActiveOrganizationId === expectedOrgId),
+  );
 }
 
 function isClerkOfflineError(error: unknown): boolean {

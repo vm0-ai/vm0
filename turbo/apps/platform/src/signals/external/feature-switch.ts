@@ -6,7 +6,10 @@ import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
-import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
+import {
+  foregroundAuthRecovery$,
+  unauthorizedRedirectSuppressionUntil$,
+} from "../auth-retry.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import {
   featureSwitchCacheState$,
@@ -23,6 +26,9 @@ const apiFeatureSwitchClient$ = computed((get) => {
     },
     getRootSignal: () => {
       return get(rootSignal$);
+    },
+    getForegroundAuthRecovery: () => {
+      return get(foregroundAuthRecovery$);
     },
     getUnauthorizedRedirectSuppressionUntil: () => {
       return get(unauthorizedRedirectSuppressionUntil$);

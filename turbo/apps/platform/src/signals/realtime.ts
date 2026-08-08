@@ -5,20 +5,11 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
-import {
-  clearForegroundAuthRecovery$,
-  resumeClerkSession,
-  setForegroundAuthRecovery$,
-  type ClerkLike,
-} from "./auth-retry.ts";
-import { clerk$ } from "./auth.ts";
-import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch-state.ts";
+import { subscribeForegroundCatchUp$ } from "./auth-retry.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import {
   createDeferredPromise,
-  onDomEventFn,
   onRejection,
-  resetSignal,
   setLoop,
   throwIfAbort,
   withCleanup,
@@ -124,93 +115,6 @@ interface RealtimePayloadLoopIterationArgs {
   readonly catchUpCommand$?: Command<Promise<boolean> | boolean, [AbortSignal]>;
   readonly pokeLoop: () => void;
 }
-
-interface SetupForegroundRecoveryArgs {
-  readonly clerk: ClerkLike;
-  readonly expectedOrgId: string;
-  readonly subscriberPokeTarget: EventTarget;
-}
-
-const resetForegroundRecoverySignal$ = resetSignal();
-
-const setupForegroundRecovery$ = command(
-  (
-    { get, set },
-    { clerk, expectedOrgId, subscriberPokeTarget }: SetupForegroundRecoveryArgs,
-    signal: AbortSignal,
-  ) => {
-    let foregroundRecovery: Promise<boolean> | undefined;
-
-    const abortForegroundRecovery = (): void => {
-      set(resetForegroundRecoverySignal$);
-      if (foregroundRecovery) {
-        set(clearForegroundAuthRecovery$, foregroundRecovery);
-      }
-      foregroundRecovery = undefined;
-    };
-
-    const recoverForeground = (): Promise<boolean> => {
-      if (foregroundRecovery) {
-        return foregroundRecovery;
-      }
-
-      const recoverySignal = set(resetForegroundRecoverySignal$, signal);
-      const recovery = withCleanup(
-        (async () => {
-          const ready = await resumeClerkSession(
-            clerk,
-            expectedOrgId,
-            recoverySignal,
-          );
-          recoverySignal.throwIfAborted();
-          if (!ready) {
-            return false;
-          }
-          L.debug("foreground auth ready, poking subscribers");
-          subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
-          return true;
-        })(),
-        () => {
-          if (foregroundRecovery === recovery) {
-            foregroundRecovery = undefined;
-          }
-          set(clearForegroundAuthRecovery$, recovery);
-        },
-      );
-      foregroundRecovery = recovery;
-      set(setForegroundAuthRecovery$, recovery);
-      return recovery;
-    };
-
-    const recoverOnForeground = onDomEventFn(async () => {
-      if (
-        document.visibilityState !== "visible" ||
-        !get(foregroundAuthRecoveryEnabled$)
-      ) {
-        return;
-      }
-      await recoverForeground();
-    });
-
-    document.addEventListener(
-      "visibilitychange",
-      (event) => {
-        if (document.visibilityState !== "visible") {
-          abortForegroundRecovery();
-          return;
-        }
-        if (!get(foregroundAuthRecoveryEnabled$)) {
-          L.debug("tab visible, poking subscribers");
-          subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
-          return;
-        }
-        recoverOnForeground(event);
-      },
-      { signal },
-    );
-    window.addEventListener("focus", recoverOnForeground, { signal });
-  },
-);
 
 async function waitForTransientRetry(
   signal: AbortSignal,
@@ -543,13 +447,6 @@ const runWithChannelPayload$ = command(
  */
 export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    const organization = clerk.organization;
-    if (!organization) {
-      throw new Error("Authenticated organization is required for realtime");
-    }
-
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
 
@@ -606,11 +503,10 @@ export const setupRealtime$ = command(
     });
 
     set(
-      setupForegroundRecovery$,
-      {
-        clerk,
-        expectedOrgId: organization.id,
-        subscriberPokeTarget,
+      subscribeForegroundCatchUp$,
+      () => {
+        L.debug("foreground catch-up ready, poking subscribers");
+        subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
       },
       signal,
     );
