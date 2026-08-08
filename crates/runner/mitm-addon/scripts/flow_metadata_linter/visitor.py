@@ -141,11 +141,12 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
       a failing class body projects away class-bound names before propagating.
       Function and lambda bodies install boundaries, context managers retain paths
       they may suppress, and ``finally`` transfers normal and exceptional states.
-      Modeled implicit failures use one operation predicate, with ordered recording
-      for short-circuit, comparison, assertion, loop, and comprehension evaluation.
-      Deferred annotations, type parameters, and type-alias values retain the
-      linter's existing syntactic alias and key behavior without feeding runtime
-      exception collectors.
+      Expression-level modeled implicit failures use one operation predicate, with
+      ordered recording for short-circuit, comparison, assertion, loop, and
+      comprehension evaluation. Decorated definitions record their application-call
+      state after definition-time evaluation and before name binding. Deferred
+      annotations, type parameters, and type-alias values retain the linter's existing
+      syntactic alias and key behavior without feeding runtime exception collectors.
     * ``_class_nested_scope_alias_scopes`` holds the surrounding non-class alias
       base while a class body is active. Nested classes, function and lambda bodies,
       and implicit comprehension scopes use that base because they do not close over
