@@ -43,7 +43,11 @@ import {
   verifyFeishuOAuthState,
 } from "../services/feishu-oauth-state";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import { addUserCustomConnector } from "../services/user-connectors.service";
+import {
+  addUserCustomConnector,
+  lockUserCustomConnectorGrantScope,
+} from "../services/user-connectors.service";
+import { commitCustomConnectorRuntimeMutation } from "../services/custom-connector-runtime-wakeup.service";
 import {
   getCustomConnectorById,
   type CustomConnectorRow,
@@ -367,6 +371,17 @@ async function persistFeishuOAuthConnection(
     }
 > {
   return await args.db.transaction(async (tx) => {
+    const agentLocked = await lockUserCustomConnectorGrantScope(tx, {
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+      agentId: args.installation.defaultAgentId,
+    });
+    signal.throwIfAborted();
+    if (!agentLocked) {
+      throw new Error(
+        "Failed to authorize Feishu custom connector: agentNotFound",
+      );
+    }
     const connection = await upsertFeishuConnection(
       {
         db: tx,
@@ -397,12 +412,16 @@ async function persistFeishuOAuthConnection(
         })
         .where(eq(feishuOrgInstallations.id, args.state.installationId));
     }
-    const grant = await addUserCustomConnector(tx, {
-      orgId: args.state.orgId,
-      userId: args.state.userId,
-      agentId: args.installation.defaultAgentId,
-      customConnectorId: args.connector.id,
-    });
+    const grant = await addUserCustomConnector(
+      tx,
+      {
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        agentId: args.installation.defaultAgentId,
+        customConnectorId: args.connector.id,
+      },
+      { deferRuntimeWakeupUntilOuterCommit: true },
+    );
     if (grant.status !== "added") {
       throw new Error(
         `Failed to authorize Feishu custom connector: ${grant.status}`,
@@ -438,7 +457,19 @@ async function finishFeishuOAuthConnection(
   ) {
     return "tenant_mismatch";
   }
-  const connection = await persistFeishuOAuthConnection(args, signal);
+  const connectionPersistence = persistFeishuOAuthConnection(args, signal);
+  const connection = await commitCustomConnectorRuntimeMutation(
+    connectionPersistence,
+    (result) => {
+      return result.connected
+        ? {
+            db: args.db,
+            scope: { orgId: args.state.orgId, userId: args.state.userId },
+            customConnectorIds: [args.connector.id],
+          }
+        : undefined;
+    },
+  );
   signal.throwIfAborted();
   if (!connection.connected) {
     return "account_in_use";

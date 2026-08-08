@@ -2822,6 +2822,108 @@ describe("connector catalog valid lifecycle", () => {
     await runs.requestCancelRun(actor, run.runId, [200]);
   }, 15_000);
 
+  it("wakes claimed runs when a custom permission bundle changes", async () => {
+    const connectorSlug = "external-custom-permissions";
+    configureSource();
+    const initial = buildRelease({
+      version: "2026-07-15.external-custom-permissions-1",
+      connectorSlug,
+      label: "External Custom Permissions",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([initial], initial));
+    await syncCatalog();
+
+    const runs = createRunsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "External custom permission agent",
+      visibility: "private",
+    });
+    const custom = await connectorsApi.createCustomConnector(actor, {
+      displayName: "External custom permission API",
+      prefixes: ["https://custom-permissions.example.test/v1/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+      permissionBundleRef: `builtin:${connectorSlug}@1`,
+    });
+    await connectorsApi.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-permission-secret",
+    );
+    const grant = {
+      customConnectorId: custom.id,
+      permissionNames: ["items.read"],
+    };
+    const grantResponse =
+      await connectorsApi.requestUpdateAgentCustomConnectorGrants(
+        actor,
+        agent.agentId,
+        [grant],
+        [200],
+      );
+    if (grantResponse.status !== 200) {
+      throw new Error("Expected custom connector permission grant");
+    }
+
+    const created: { runId?: string } = {};
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      if (created.runId) {
+        await runs.requestCancelRun(actor, created.runId, [200, 404]);
+      }
+      await connectorsApi.deleteCustomConnector(actor, custom.id);
+      await bdd.deleteAgent(actor, agent.agentId);
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "Use the custom permission bundle",
+      modelProvider: "anthropic-api-key",
+    });
+    created.runId = run.runId;
+    await runs.heartbeatRunner(runnerGroup);
+    await runs.claimRunnerJob(run.runId);
+
+    context.mocks.ably.publish.mockClear();
+    const replacement = buildRelease({
+      version: "2026-07-15.external-custom-permissions-2",
+      connectorSlug,
+      label: "External Custom Permissions",
+      generatedFirewall: true,
+      mutateFirewall: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        const firewall = recordValue(connector.firewall, "firewall");
+        const config = recordValue(firewall.config, "firewall.config");
+        const api = firstRecord(config.apis, "firewall.apis");
+        const permission = firstRecord(api.permissions, "permissions");
+        permission.rules = ["GET /items", "GET /items/:id"];
+      },
+    });
+    serveObjects(catalogObjects([initial, replacement], replacement));
+    await syncCatalog();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      {
+        runId: run.runId,
+        target: { kind: "custom", customConnectorId: custom.id },
+      },
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await syncCatalog();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      expect.anything(),
+    );
+  }, 15_000);
+
   it("composes accepted connector and local model-provider runner firewalls", async () => {
     const connectorSlug = "external-runner-firewall";
     configureSource();

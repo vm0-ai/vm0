@@ -762,14 +762,80 @@ function canonicalDefinitionFromForm(
 function buildCreateBody(
   form: CustomConnectorCreateForm,
 ): CreateCustomConnectorBody {
-  return canonicalDefinitionFromForm(form);
+  return { ...canonicalDefinitionFromForm(form), storageVersion: 1 };
+}
+
+function credentialFieldContract(
+  fields: UpdateCustomConnectorBody["fields"],
+): readonly {
+  readonly key: string;
+  readonly kind: "secret" | "variable";
+  readonly required: boolean;
+}[] {
+  return fields
+    .map((field) => {
+      return {
+        key: field.key,
+        kind: field.kind,
+        required: field.required,
+      };
+    })
+    .sort((left, right) => {
+      return (
+        left.key.localeCompare(right.key) || left.kind.localeCompare(right.kind)
+      );
+    });
+}
+
+function updateChangesCredentialContract(
+  connector: CustomConnectorResponse,
+  body: UpdateCustomConnectorBody,
+): boolean {
+  const currentAuthMode = connector.authMode ?? "manual";
+  const nextAuthMode = body.authMode ?? "manual";
+  if (
+    currentAuthMode !== nextAuthMode ||
+    JSON.stringify(credentialFieldContract(connector.fields)) !==
+      JSON.stringify(credentialFieldContract(body.fields))
+  ) {
+    return true;
+  }
+  if (nextAuthMode !== "oauth") {
+    return false;
+  }
+  const current = connector.oauthConfig;
+  const next = body.oauthConfig;
+  return (
+    !current ||
+    !next ||
+    next.clientSecret !== undefined ||
+    current.providerAdapter !== next.providerAdapter ||
+    current.clientId !== next.clientId ||
+    current.authorizationUrl !== next.authorizationUrl ||
+    current.tokenUrl !== next.tokenUrl ||
+    current.tokenEndpointAuthMethod !== next.tokenEndpointAuthMethod ||
+    current.pkceMethod !== next.pkceMethod ||
+    JSON.stringify(current.scopes) !== JSON.stringify(next.scopes) ||
+    JSON.stringify(current.authorizationParams) !==
+      JSON.stringify(next.authorizationParams)
+  );
 }
 
 function buildUpdateBody(
   form: CustomConnectorCreateForm,
   connector: CustomConnectorResponse,
 ): UpdateCustomConnectorBody {
-  return canonicalDefinitionFromForm(form, connector);
+  const body = canonicalDefinitionFromForm(form, connector);
+  const currentStorageVersion = connector.storageVersion;
+  if (currentStorageVersion === undefined) {
+    return body;
+  }
+  return {
+    ...body,
+    storageVersion: updateChangesCredentialContract(connector, body)
+      ? currentStorageVersion + 1
+      : currentStorageVersion,
+  };
 }
 
 function updateDisconnectsOAuthConnections(

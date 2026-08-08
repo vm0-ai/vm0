@@ -10,6 +10,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import { commitCustomConnectorRuntimeMutation } from "./custom-connector-runtime-wakeup.service";
 import type { Tx } from "../../lib/db-types";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
@@ -51,6 +52,7 @@ interface ExistingFeishuCustomConnector {
 interface ReconciledFeishuCustomConnector {
   readonly connectorId: string;
   readonly displayName: string;
+  readonly runtimeChanged: boolean;
 }
 
 const FEISHU_SKILL_MARKDOWN = `Use Feishu OpenAPI as the connected user to find coworkers, collaborate in chats, work with cloud content, manage calendars, and organize tasks.
@@ -263,6 +265,7 @@ async function createFeishuCustomConnector(
   return {
     connectorId: connector.id,
     displayName: feishuCustomConnectorDisplayName(installation.botName),
+    runtimeChanged: false,
   };
 }
 
@@ -273,11 +276,18 @@ async function repairFeishuCustomConnector(
   existing: ExistingFeishuCustomConnector,
   signal: AbortSignal,
 ): Promise<ReconciledFeishuCustomConnector> {
+  const credentialContractChanged =
+    existing.connector.authMode !== "oauth" ||
+    !isDeepStrictEqual(existing.connector.fields, []) ||
+    !oauthConfigMatches(existing.oauthConfig, installation);
   await tx
     .update(orgCustomConnectors)
     .set({
       ...desiredConnectorDefinition(installation),
       revision: existing.connector.revision + 1,
+      storageVersion: credentialContractChanged
+        ? existing.connector.storageVersion + 1
+        : existing.connector.storageVersion,
       updatedAt: nowDate(),
     })
     .where(eq(orgCustomConnectors.id, existing.connector.id));
@@ -297,18 +307,10 @@ async function repairFeishuCustomConnector(
       },
     });
   signal.throwIfAborted();
-  await tx
-    .delete(connectors)
-    .where(
-      and(
-        eq(connectors.customConnectorId, existing.connector.id),
-        eq(connectors.orgId, args.orgId),
-      ),
-    );
-  signal.throwIfAborted();
   return {
     connectorId: existing.connector.id,
     displayName: feishuCustomConnectorDisplayName(installation.botName),
+    runtimeChanged: true,
   };
 }
 
@@ -362,6 +364,7 @@ async function reconcileFeishuCustomConnector(
         eq(orgCustomConnectors.slug, slug),
       ),
     )
+    .for("update", { of: orgCustomConnectors })
     .limit(1);
   signal.throwIfAborted();
   if (!existing) {
@@ -381,6 +384,7 @@ async function reconcileFeishuCustomConnector(
     return {
       connectorId: existing.connector.id,
       displayName: feishuCustomConnectorDisplayName(installation.botName),
+      runtimeChanged: false,
     };
   }
   return await repairFeishuCustomConnector(
@@ -399,9 +403,21 @@ export const ensureFeishuCustomConnector$ = command(
     signal: AbortSignal,
   ): Promise<string | null> => {
     const db = set(writeDb$);
-    const result = await db.transaction(async (tx) => {
+    const reconciliation = db.transaction(async (tx) => {
       return await reconcileFeishuCustomConnector(tx, args, signal);
     });
+    const result = await commitCustomConnectorRuntimeMutation(
+      reconciliation,
+      (connector) => {
+        return connector?.runtimeChanged
+          ? {
+              db,
+              scope: { orgId: args.orgId },
+              customConnectorIds: [connector.connectorId],
+            }
+          : undefined;
+      },
+    );
     signal.throwIfAborted();
     if (!result) {
       return null;
@@ -433,7 +449,7 @@ export const deleteFeishuCustomConnector$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const [deleted] = await set(writeDb$)
+    const deletion = set(writeDb$)
       .delete(orgCustomConnectors)
       .where(
         and(
@@ -445,6 +461,18 @@ export const deleteFeishuCustomConnector$ = command(
         ),
       )
       .returning({ id: orgCustomConnectors.id });
+    const [deleted] = await commitCustomConnectorRuntimeMutation(
+      deletion,
+      ([connector]) => {
+        return connector
+          ? {
+              db: set(writeDb$),
+              scope: { orgId: args.orgId },
+              customConnectorIds: [connector.id],
+            }
+          : undefined;
+      },
+    );
     signal.throwIfAborted();
     if (!deleted) {
       return;

@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
@@ -56,6 +56,10 @@ import {
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import {
+  commitCustomConnectorRuntimeMutation,
+  publishCustomConnectorRuntimeSyncWakeups,
+} from "./custom-connector-runtime-wakeup.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -386,6 +390,57 @@ function grantConfigurationChanged(args: {
     args.existing.permissionBundleRef !== args.definition.permissionBundleRef ||
     !oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig)
   );
+}
+
+function credentialFieldsEqual(
+  left: readonly CustomConnectorField[],
+  right: readonly CustomConnectorField[],
+): boolean {
+  const comparable = (fields: readonly CustomConnectorField[]) => {
+    return fields
+      .map((field) => {
+        return {
+          key: field.key,
+          kind: field.kind,
+          required: field.required,
+        };
+      })
+      .sort((a, b) => {
+        return a.key.localeCompare(b.key) || a.kind.localeCompare(b.kind);
+      });
+  };
+  return jsonValuesEqual(comparable(left), comparable(right));
+}
+
+function credentialContractChanged(args: {
+  readonly existing: CustomConnectorRow;
+  readonly definition: ValidatedDefinition;
+  readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
+}): boolean {
+  return (
+    args.existing.authMode !== args.definition.authMode ||
+    !credentialFieldsEqual(args.existing.fields, args.definition.fields) ||
+    !oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig)
+  );
+}
+
+function resolveUpdatedStorageVersion(args: {
+  readonly current: number;
+  readonly requested: number | undefined;
+  readonly contractChanged: boolean;
+}): number | BadRequestResponse {
+  if (args.requested === undefined) {
+    return args.contractChanged ? args.current + 1 : args.current;
+  }
+  if (args.requested < args.current) {
+    return badRequestMessage("Storage version cannot decrease");
+  }
+  if (args.contractChanged && args.requested === args.current) {
+    return badRequestMessage(
+      "Storage version must increase when the credential contract changes",
+    );
+  }
+  return args.requested;
 }
 
 function serialiseOAuthConfig(
@@ -1358,6 +1413,7 @@ export const createCustomConnector$ = command(
           authMode: v.authMode,
           permissionBundleRef: v.permissionBundleRef,
           skillMarkdown: v.skillMarkdown,
+          storageVersion: args.input.storageVersion ?? 1,
           createdBy: args.userId,
         })
         .returning();
@@ -1462,18 +1518,20 @@ function nextOAuthConfigForUpdate(args: {
   };
 }
 
+interface PersistCustomConnectorUpdateArgs {
+  readonly orgId: string;
+  readonly id: string;
+  readonly definition: ValidatedDefinition;
+  readonly existing: CustomConnectorRow;
+  readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+  readonly encryptedClientSecret: string | null;
+  readonly grantConfigurationChanged: boolean;
+  readonly storageVersion: number;
+}
+
 async function persistCustomConnectorUpdate(
   db: Db,
-  args: {
-    readonly orgId: string;
-    readonly id: string;
-    readonly definition: ValidatedDefinition;
-    readonly existing: CustomConnectorRow;
-    readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
-    readonly encryptedClientSecret: string | null;
-    readonly grantConfigurationChanged: boolean;
-    readonly oauthConfigurationChanged: boolean;
-  },
+  args: PersistCustomConnectorUpdateArgs,
 ): Promise<
   | {
       readonly row: typeof orgCustomConnectors.$inferSelect;
@@ -1506,6 +1564,7 @@ async function persistCustomConnectorUpdate(
         authMode: args.definition.authMode,
         permissionBundleRef: args.definition.permissionBundleRef,
         skillMarkdown: args.definition.skillMarkdown,
+        storageVersion: args.storageVersion,
         revision: args.grantConfigurationChanged
           ? args.existing.revision + 1
           : args.existing.revision,
@@ -1515,11 +1574,32 @@ async function persistCustomConnectorUpdate(
         and(
           eq(orgCustomConnectors.id, args.id),
           eq(orgCustomConnectors.orgId, args.orgId),
+          eq(orgCustomConnectors.storageVersion, args.existing.storageVersion),
+          eq(orgCustomConnectors.revision, args.existing.revision),
+          gte(orgCustomConnectors.updatedAt, args.existing.updatedAt),
+          lt(
+            orgCustomConnectors.updatedAt,
+            new Date(args.existing.updatedAt.getTime() + 1),
+          ),
         ),
       )
       .returning();
     if (!updated) {
-      return null;
+      const [current] = await tx
+        .select({ id: orgCustomConnectors.id })
+        .from(orgCustomConnectors)
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.id),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        )
+        .limit(1);
+      return current
+        ? badRequestMessage(
+            "Custom connector changed while the definition was being saved; retry",
+          )
+        : null;
     }
     let storedOAuthConfig: CustomConnectorOAuthConfigRow | null = null;
     if (args.oauthConfigUpdate.kind === "none") {
@@ -1556,18 +1636,30 @@ async function persistCustomConnectorUpdate(
         .returning();
       storedOAuthConfig = upserted ?? null;
     }
-    if (args.oauthConfigurationChanged) {
-      await tx
-        .delete(connectors)
-        .where(
-          and(
-            eq(connectors.customConnectorId, args.id),
-            eq(connectors.orgId, args.orgId),
-          ),
-        );
-    }
     return { row: updated, oauthConfig: storedOAuthConfig };
   });
+}
+
+async function persistCustomConnectorUpdateAndPublishRuntimeWakeup(
+  db: Db,
+  args: PersistCustomConnectorUpdateArgs,
+): Promise<CustomConnectorRow | BadRequestResponse | null> {
+  const result = await persistCustomConnectorUpdate(db, args);
+  if (isBadRequest(result) || !result) {
+    return result;
+  }
+  const connector = normaliseCustomConnectorRow(result.row, result.oauthConfig);
+  if (
+    args.grantConfigurationChanged ||
+    connector.storageVersion !== args.existing.storageVersion
+  ) {
+    await publishCustomConnectorRuntimeSyncWakeups({
+      db,
+      scope: { orgId: args.orgId },
+      customConnectorIds: [connector.id],
+    });
+  }
+  return connector;
 }
 
 export const updateCustomConnectorDefinition$ = command(
@@ -1630,35 +1722,42 @@ export const updateCustomConnectorDefinition$ = command(
       update: oauthConfigUpdate,
       encryptedClientSecret,
     });
-    const oauthConfigurationChanged =
-      existingConnector.authMode !== v.authMode ||
-      !oauthConfigsEqual(existingConnector.oauthConfig, nextOAuthConfig);
+    const contractChanged = credentialContractChanged({
+      existing: existingConnector,
+      definition: v,
+      nextOAuthConfig,
+    });
+    const storageVersion = resolveUpdatedStorageVersion({
+      current: existingConnector.storageVersion,
+      requested: args.input.storageVersion,
+      contractChanged,
+    });
+    if (isBadRequest(storageVersion)) {
+      return storageVersion;
+    }
     const connectorGrantConfigurationChanged = grantConfigurationChanged({
       existing: existingConnector,
       definition: v,
       nextOAuthConfig,
     });
-    const result = await persistCustomConnectorUpdate(writeDb, {
-      orgId: args.orgId,
-      id: args.id,
-      definition: v,
-      existing: existingConnector,
-      oauthConfigUpdate,
-      encryptedClientSecret,
-      grantConfigurationChanged: connectorGrantConfigurationChanged,
-      oauthConfigurationChanged,
-    });
+    const normalized =
+      await persistCustomConnectorUpdateAndPublishRuntimeWakeup(writeDb, {
+        orgId: args.orgId,
+        id: args.id,
+        definition: v,
+        existing: existingConnector,
+        oauthConfigUpdate,
+        encryptedClientSecret,
+        grantConfigurationChanged: connectorGrantConfigurationChanged,
+        storageVersion,
+      });
     signal.throwIfAborted();
-    if (isBadRequest(result)) {
-      return result;
+    if (isBadRequest(normalized)) {
+      return normalized;
     }
-    if (!result) {
+    if (!normalized) {
       return notFound("Custom connector not found");
     }
-    const normalized = normaliseCustomConnectorRow(
-      result.row,
-      result.oauthConfig,
-    );
     if (
       normalized.skillMarkdown !== null ||
       args.input.skillMarkdown !== undefined
@@ -1687,7 +1786,7 @@ export const deleteCustomConnector$ = command(
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
-    const deleted = await writeDb.transaction(async (tx) => {
+    const deletion = writeDb.transaction(async (tx) => {
       const [existing] = await tx
         .select({ id: orgCustomConnectors.id })
         .from(orgCustomConnectors)
@@ -1717,6 +1816,18 @@ export const deleteCustomConnector$ = command(
         );
       return true;
     });
+    const deleted = await commitCustomConnectorRuntimeMutation(
+      deletion,
+      (result) => {
+        return result
+          ? {
+              db: writeDb,
+              scope: { orgId: args.orgId },
+              customConnectorIds: [args.id],
+            }
+          : undefined;
+      },
+    );
     signal.throwIfAborted();
     if (!deleted) {
       return notFound("Custom connector not found");
@@ -1951,6 +2062,304 @@ async function encryptCustomConnectorValues(
   return encryptedValues;
 }
 
+interface SetCustomConnectorValuesArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorId: string;
+  readonly values: readonly CustomConnectorValueInput[];
+  readonly syncLegacySecret?: boolean;
+}
+
+interface CustomConnectorValueWriteState {
+  readonly connector: CustomConnectorRow;
+  readonly replacingStoredValues: boolean;
+  readonly establishesCurrentCredentials: boolean;
+  readonly runtimeRecovered: boolean;
+}
+
+async function hasUnversionedCustomConnectorValues(
+  tx: Tx,
+  args: SetCustomConnectorValuesArgs,
+): Promise<boolean> {
+  const [storedValue] = await tx
+    .select({ id: orgCustomConnectorValues.id })
+    .from(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.connectorId, args.connectorId),
+        eq(orgCustomConnectorValues.userId, args.userId),
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  if (storedValue) {
+    return true;
+  }
+  const [storedLegacySecret] = await tx
+    .select({ connectorId: orgCustomConnectorSecrets.connectorId })
+    .from(orgCustomConnectorSecrets)
+    .where(
+      and(
+        eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
+        eq(orgCustomConnectorSecrets.userId, args.userId),
+        eq(orgCustomConnectorSecrets.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  return storedLegacySecret !== undefined;
+}
+
+async function prepareCustomConnectorValueWrite(args: {
+  readonly tx: Tx;
+  readonly request: SetCustomConnectorValuesArgs;
+  readonly expectedConnector: CustomConnectorRow;
+  readonly expectedValues: readonly CustomConnectorValueInput[];
+}): Promise<
+  CustomConnectorValueWriteState | BadRequestResponse | NotFoundResponse
+> {
+  const [lockedDefinition] = await args.tx
+    .select()
+    .from(orgCustomConnectors)
+    .where(
+      and(
+        eq(orgCustomConnectors.id, args.request.connectorId),
+        eq(orgCustomConnectors.orgId, args.request.orgId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!lockedDefinition) {
+    return notFound("Custom connector not found");
+  }
+  const connector = normaliseCustomConnectorRow(lockedDefinition);
+  if (connector.authMode !== "manual") {
+    return badRequestMessage(
+      "OAuth custom connectors must be connected through OAuth",
+    );
+  }
+  const currentValues = validateValueInputs({
+    connector,
+    values: args.request.values,
+  });
+  if (isBadRequest(currentValues)) {
+    return currentValues;
+  }
+  if (
+    connector.storageVersion !== args.expectedConnector.storageVersion ||
+    !jsonValuesEqual(currentValues, args.expectedValues)
+  ) {
+    return badRequestMessage(
+      "Custom connector changed while values were being saved; retry",
+    );
+  }
+
+  const [storedConnector] = await args.tx
+    .select({
+      authMethod: connectors.authMethod,
+      storageVersion: connectors.storageVersion,
+    })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.customConnectorId, args.request.connectorId),
+        eq(connectors.userId, args.request.userId),
+        eq(connectors.orgId, args.request.orgId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const supplied = new Set(
+    currentValues.map((value) => {
+      return customConnectorValueMarkerKey(value);
+    }),
+  );
+  const missingRequired = connector.fields.filter((field) => {
+    return (
+      field.required && !supplied.has(customConnectorValueMarkerKey(field))
+    );
+  });
+  const replacingIncompatibleValues =
+    storedConnector !== undefined &&
+    (storedConnector.authMethod !== connector.authMode ||
+      storedConnector.storageVersion !== connector.storageVersion);
+  const replacingUnversionedValues =
+    storedConnector === undefined &&
+    (await hasUnversionedCustomConnectorValues(args.tx, args.request));
+  const replacingStoredValues =
+    replacingIncompatibleValues || replacingUnversionedValues;
+  if (replacingStoredValues && missingRequired.length > 0) {
+    return badRequestMessage(
+      `All required fields must be provided when restoring this connector: ${missingRequired
+        .map((field) => {
+          return field.key;
+        })
+        .join(", ")}`,
+    );
+  }
+  const establishesCurrentCredentials =
+    storedConnector !== undefined || missingRequired.length === 0;
+  return {
+    connector,
+    replacingStoredValues,
+    establishesCurrentCredentials,
+    runtimeRecovered:
+      replacingStoredValues ||
+      (storedConnector === undefined && establishesCurrentCredentials),
+  };
+}
+
+async function deleteStoredCustomConnectorValues(
+  tx: Tx,
+  args: SetCustomConnectorValuesArgs,
+): Promise<void> {
+  await tx
+    .delete(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.connectorId, args.connectorId),
+        eq(orgCustomConnectorValues.userId, args.userId),
+        eq(orgCustomConnectorValues.orgId, args.orgId),
+      ),
+    );
+  await tx
+    .delete(orgCustomConnectorSecrets)
+    .where(
+      and(
+        eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
+        eq(orgCustomConnectorSecrets.userId, args.userId),
+        eq(orgCustomConnectorSecrets.orgId, args.orgId),
+      ),
+    );
+}
+
+async function upsertCustomConnectorValueParent(args: {
+  readonly tx: Tx;
+  readonly request: SetCustomConnectorValuesArgs;
+  readonly storageVersion: number;
+}): Promise<void> {
+  await args.tx
+    .insert(connectors)
+    .values({
+      customConnectorId: args.request.connectorId,
+      authMethod: "manual",
+      storageVersion: args.storageVersion,
+      userId: args.request.userId,
+      orgId: args.request.orgId,
+    })
+    .onConflictDoUpdate({
+      target: [
+        connectors.orgId,
+        connectors.userId,
+        connectors.customConnectorId,
+      ],
+      targetWhere: isNotNull(connectors.customConnectorId),
+      set: {
+        authMethod: "manual",
+        storageVersion: args.storageVersion,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
+async function upsertEncryptedCustomConnectorValues(
+  args: {
+    readonly tx: Tx;
+    readonly request: SetCustomConnectorValuesArgs;
+    readonly values: readonly EncryptedCustomConnectorValue[];
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  for (const value of args.values) {
+    await args.tx
+      .insert(orgCustomConnectorValues)
+      .values({
+        connectorId: args.request.connectorId,
+        userId: args.request.userId,
+        orgId: args.request.orgId,
+        kind: value.kind,
+        key: value.key,
+        encryptedValue: value.encryptedValue,
+      })
+      .onConflictDoUpdate({
+        target: [
+          orgCustomConnectorValues.connectorId,
+          orgCustomConnectorValues.userId,
+          orgCustomConnectorValues.kind,
+          orgCustomConnectorValues.key,
+        ],
+        set: { encryptedValue: value.encryptedValue, updatedAt: nowDate() },
+      });
+    signal.throwIfAborted();
+
+    if (
+      args.request.syncLegacySecret &&
+      value.kind === "secret" &&
+      value.key === LEGACY_SECRET_KEY
+    ) {
+      await args.tx
+        .insert(orgCustomConnectorSecrets)
+        .values({
+          connectorId: args.request.connectorId,
+          userId: args.request.userId,
+          orgId: args.request.orgId,
+          encryptedValue: value.encryptedValue,
+        })
+        .onConflictDoUpdate({
+          target: [
+            orgCustomConnectorSecrets.connectorId,
+            orgCustomConnectorSecrets.userId,
+          ],
+          set: { encryptedValue: value.encryptedValue, updatedAt: nowDate() },
+        });
+    }
+  }
+}
+
+async function persistCustomConnectorValues(
+  args: {
+    readonly tx: Tx;
+    readonly request: SetCustomConnectorValuesArgs;
+    readonly expectedConnector: CustomConnectorRow;
+    readonly expectedValues: readonly CustomConnectorValueInput[];
+    readonly encryptedValues: readonly EncryptedCustomConnectorValue[];
+  },
+  signal: AbortSignal,
+): Promise<
+  | {
+      readonly connector: CustomConnectorRow;
+      readonly runtimeRecovered: boolean;
+    }
+  | BadRequestResponse
+  | NotFoundResponse
+> {
+  const state = await prepareCustomConnectorValueWrite(args);
+  if ("status" in state) {
+    return state;
+  }
+  if (state.replacingStoredValues) {
+    await deleteStoredCustomConnectorValues(args.tx, args.request);
+  }
+  if (state.establishesCurrentCredentials) {
+    await upsertCustomConnectorValueParent({
+      tx: args.tx,
+      request: args.request,
+      storageVersion: state.connector.storageVersion,
+    });
+  }
+  await upsertEncryptedCustomConnectorValues(
+    {
+      tx: args.tx,
+      request: args.request,
+      values: args.encryptedValues,
+    },
+    signal,
+  );
+  return {
+    connector: state.connector,
+    runtimeRecovered: state.runtimeRecovered,
+  };
+}
+
 export const setCustomConnectorValues$ = command(
   async (
     { get, set },
@@ -1994,84 +2403,34 @@ export const setCustomConnectorValues$ = command(
       encryptionInput,
       signal,
     );
-    if (encryptedValues.length > 0) {
-      await writeDb.transaction(async (tx) => {
-        await tx
-          .insert(connectors)
-          .values({
-            customConnectorId: args.connectorId,
-            authMethod: "manual",
-            storageVersion: connector.storageVersion,
-            userId: args.userId,
-            orgId: args.orgId,
-          })
-          .onConflictDoUpdate({
-            target: [
-              connectors.orgId,
-              connectors.userId,
-              connectors.customConnectorId,
-            ],
-            targetWhere: isNotNull(connectors.customConnectorId),
-            set: {
-              authMethod: "manual",
-              storageVersion: connector.storageVersion,
-              updatedAt: nowDate(),
-            },
-          });
-
-        for (const value of encryptedValues) {
-          await tx
-            .insert(orgCustomConnectorValues)
-            .values({
-              connectorId: args.connectorId,
-              userId: args.userId,
-              orgId: args.orgId,
-              kind: value.kind,
-              key: value.key,
-              encryptedValue: value.encryptedValue,
-            })
-            .onConflictDoUpdate({
-              target: [
-                orgCustomConnectorValues.connectorId,
-                orgCustomConnectorValues.userId,
-                orgCustomConnectorValues.kind,
-                orgCustomConnectorValues.key,
-              ],
-              set: {
-                encryptedValue: value.encryptedValue,
-                updatedAt: nowDate(),
-              },
-            });
-          signal.throwIfAborted();
-
-          if (
-            args.syncLegacySecret &&
-            value.kind === "secret" &&
-            value.key === LEGACY_SECRET_KEY
-          ) {
-            await tx
-              .insert(orgCustomConnectorSecrets)
-              .values({
-                connectorId: args.connectorId,
-                userId: args.userId,
-                orgId: args.orgId,
-                encryptedValue: value.encryptedValue,
-              })
-              .onConflictDoUpdate({
-                target: [
-                  orgCustomConnectorSecrets.connectorId,
-                  orgCustomConnectorSecrets.userId,
-                ],
-                set: {
-                  encryptedValue: value.encryptedValue,
-                  updatedAt: nowDate(),
-                },
-              });
-          }
-        }
-      });
-    }
+    const valueWrite = writeDb.transaction(async (tx) => {
+      return await persistCustomConnectorValues(
+        {
+          tx,
+          request: args,
+          expectedConnector: connector,
+          expectedValues: values,
+          encryptedValues,
+        },
+        signal,
+      );
+    });
+    const writeResult = await commitCustomConnectorRuntimeMutation(
+      valueWrite,
+      (result) => {
+        return !("status" in result) && result.runtimeRecovered
+          ? {
+              db: writeDb,
+              scope: { orgId: args.orgId, userId: args.userId },
+              customConnectorIds: [args.connectorId],
+            }
+          : undefined;
+      },
+    );
     signal.throwIfAborted();
+    if ("status" in writeResult) {
+      return writeResult;
+    }
 
     const db = get(db$);
     const markers = await loadCurrentCustomConnectorValueMarkers(db, {
@@ -2079,7 +2438,10 @@ export const setCustomConnectorValues$ = command(
       userId: args.userId,
     });
     signal.throwIfAborted();
-    return serialiseCustomConnector({ row: connector, valueMarkers: markers });
+    return serialiseCustomConnector({
+      row: writeResult.connector,
+      valueMarkers: markers,
+    });
   },
 );
 

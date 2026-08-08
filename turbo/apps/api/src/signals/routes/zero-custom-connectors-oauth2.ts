@@ -23,6 +23,7 @@ import {
 } from "../services/custom-connector-oauth2.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { addUserCustomConnector } from "../services/user-connectors.service";
+import { commitCustomConnectorRuntimeMutation } from "../services/custom-connector-runtime-wakeup.service";
 import { getCustomConnectorById } from "../services/zero-custom-connector.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
@@ -251,7 +252,7 @@ const completeOAuth2Callback$ = command(
           signal,
         );
         signal.throwIfAborted();
-        await storeCustomConnectorOAuth2Connection({
+        const connectionStorage = storeCustomConnectorOAuth2Connection({
           db: set(writeDb$),
           orgId: claimed.state.orgId,
           userId: claimed.state.userId,
@@ -259,6 +260,16 @@ const completeOAuth2Callback$ = command(
           storageVersion: connector.storageVersion,
           token,
           featureContext,
+        });
+        await commitCustomConnectorRuntimeMutation(connectionStorage, () => {
+          return {
+            db: set(writeDb$),
+            scope: {
+              orgId: claimed.state.orgId,
+              userId: claimed.state.userId,
+            },
+            customConnectorIds: [connector.id],
+          };
         });
         signal.throwIfAborted();
         return true;
