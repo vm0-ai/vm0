@@ -1500,7 +1500,6 @@
       "message_one": "{{count}} mensagem",
       "message_many": "{{count}} mensagens",
       "message_other": "{{count}} mensagens",
-      "modelChangeAppliesNextRun": "O modelo selecionado será aplicado na próxima execução.",
       "openGoalDetails": "Abrir detalhes do objetivo",
       "pendingAutomationEvent": "Evento de automação pendente",
       "queuedMessage": "Mensagem na fila",
@@ -1555,7 +1554,9 @@
       "justNow": "agora mesmo",
       "keepGoing": "Continuar",
       "keepGoingAt": "Continuar · {{timestamp}}",
+      "modelChangedTo": "Modelo alterado para {{model}}",
       "queueEllipsis": "fila...",
+      "selectedModelAppliesAfterCurrentRun": "O modelo {{model}} selecionado entrará em vigor após esta execução",
       "thinking": {
         "assembling": "Juntando as peças...",
         "brewing": "Preparando uma resposta...",

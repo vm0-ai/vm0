@@ -1467,7 +1467,6 @@
       "loadingGoal": "목표 불러오는 중...",
       "message_one": "{{count}}개 메시지",
       "message_other": "{{count}}개 메시지",
-      "modelChangeAppliesNextRun": "선택한 모델은 다음 실행부터 적용됩니다.",
       "openGoalDetails": "목표 세부 정보 열기",
       "pendingAutomationEvent": "대기 중인 자동화 이벤트",
       "queuedMessage": "대기 중인 메시지",
@@ -1516,7 +1515,9 @@
       "justNow": "방금",
       "keepGoing": "계속 진행",
       "keepGoingAt": "계속 진행 · {{timestamp}}",
+      "modelChangedTo": "모델을 {{model}}로 변경했습니다",
       "queueEllipsis": "대기 중...",
+      "selectedModelAppliesAfterCurrentRun": "선택한 {{model}} 모델은 이번 실행 후에 적용됩니다",
       "thinking": {
         "assembling": "조립 중...",
         "brewing": "응답 준비 중...",

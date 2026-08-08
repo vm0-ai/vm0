@@ -107,6 +107,7 @@ import type {
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { r2ImageTransformUrl } from "@vm0/core";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
   PlatformConnectorPermissionMetadata,
@@ -363,6 +364,52 @@ function visibleUserMessage(
   inputEvent: ChatInputEvent | undefined,
 ): UserMessageDocument | undefined {
   return inputEvent?.userMessage;
+}
+
+function selectedModelFromUserMessage(
+  document: UserMessageDocument | undefined,
+): string | undefined {
+  const modelPart = document?.parts.find((part) => {
+    return part.type === "model";
+  });
+  return modelPart?.type === "model" ? modelPart.selectedModel : undefined;
+}
+
+function modelChangesByEventId(
+  groups: readonly ChatEventGroup[],
+): ReadonlyMap<string, string> {
+  const changes = new Map<string, string>();
+  let previousRunId: string | undefined;
+  let previousModel: string | undefined;
+  let hasPreviousRun = false;
+
+  for (const group of groups) {
+    for (const event of group.events) {
+      const inputEvent = asInputChatEvent(event);
+      if (
+        inputEvent?.runId === undefined ||
+        inputEvent.runId === previousRunId
+      ) {
+        continue;
+      }
+      const selectedModel = selectedModelFromUserMessage(
+        inputEvent.userMessage,
+      );
+      if (
+        hasPreviousRun &&
+        previousModel !== undefined &&
+        selectedModel !== undefined &&
+        selectedModel !== previousModel
+      ) {
+        changes.set(event.id, selectedModel);
+      }
+      previousRunId = inputEvent.runId;
+      previousModel = selectedModel;
+      hasPreviousRun = true;
+    }
+  }
+
+  return changes;
 }
 
 function userMessageNonContentPart(
@@ -2643,6 +2690,11 @@ function ChatThreadRenderedEventGroups({
     }) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedEventsForThinkingIndicator(renderedGroups);
+  const chatModelNoticesEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
+  const modelChanges = chatModelNoticesEnabled
+    ? modelChangesByEventId(renderedActiveGroups)
+    : new Map<string, string>();
   const scrollTargetEventId =
     useGet(thread.threadScrollPosition$)?.targetEventId ?? null;
   const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
@@ -2670,6 +2722,7 @@ function ChatThreadRenderedEventGroups({
     <ChatThreadEventGroups
       thread={thread}
       groups={visibleGroups}
+      modelChanges={modelChanges}
       runGroupFolding={runGroupFolding}
       onToggleRunGroup={toggleRunGroupExpanded}
       completedWorkFolding={completedWorkFolding}
@@ -2746,6 +2799,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatPanelSignals }) {
         <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
+        <ChatThreadNextRunModelNotice thread={thread} />
       </div>
     </main>
   );
@@ -2755,9 +2809,41 @@ function ChatThreadThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   return <ThinkingIndicator thread={thread} />;
 }
 
+function ChatThreadNextRunModelNotice({
+  thread,
+}: {
+  thread: ChatPanelSignals;
+}) {
+  const { t } = useTranslation();
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
+  const selectedModel = useLastResolved(
+    thread.composer.model.modelSelection$,
+  )?.selectedModel;
+  const runningModel = useLastResolved(thread.composer.model.runningModel$);
+  if (
+    !enabled ||
+    selectedModel === undefined ||
+    runningModel === undefined ||
+    runningModel === null ||
+    selectedModel === runningModel
+  ) {
+    return null;
+  }
+
+  const label = t(
+    ($) => {
+      return $.chat.run.selectedModelAppliesAfterCurrentRun;
+    },
+    { model: getModelDisplayName(selectedModel) },
+  );
+  return <RunSectionDividerRow label={label} announce />;
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
+  modelChanges,
   runGroupFolding,
   onToggleRunGroup,
   completedWorkFolding,
@@ -2766,6 +2852,7 @@ function ChatThreadEventGroups({
 }: {
   thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
+  modelChanges: ReadonlyMap<string, string>;
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
   completedWorkFolding: CompletedWorkFolding | null;
@@ -2806,6 +2893,7 @@ function ChatThreadEventGroups({
             <SelectablePagedGroupRow
               group={group}
               thread={thread}
+              modelChanges={modelChanges}
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -3362,7 +3450,50 @@ function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
 }
 
 const RUN_SECTION_LABEL_CLASS =
-  "shrink-0 font-serif text-[13px] italic text-muted-foreground/50";
+  "min-w-0 max-w-full shrink-0 break-words font-serif text-[13px] italic text-muted-foreground/50";
+const RUN_SECTION_ROW_CLASS =
+  "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
+
+function RunSectionDivider({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-5 items-center gap-2">
+      <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
+      <div className="h-px flex-1 bg-border/40" />
+    </div>
+  );
+}
+
+function RunSectionDividerRow({
+  label,
+  announce = false,
+}: {
+  label: string;
+  announce?: boolean;
+}) {
+  return (
+    <div
+      role={announce ? "status" : undefined}
+      aria-live={announce ? "polite" : undefined}
+      className={RUN_SECTION_ROW_CLASS}
+    >
+      <div className="hidden @[900px]:block" />
+      <div className="min-w-0">
+        <RunSectionDivider label={label} />
+      </div>
+    </div>
+  );
+}
+
+function ModelChangeDividerRow({ selectedModel }: { selectedModel: string }) {
+  const { t } = useTranslation();
+  const label = t(
+    ($) => {
+      return $.chat.run.modelChangedTo;
+    },
+    { model: getModelDisplayName(selectedModel) },
+  );
+  return <RunSectionDividerRow label={label} />;
+}
 
 function CompletedWorkFoldRow({
   groups,
@@ -4352,13 +4483,7 @@ function FinishedRunRow({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex h-5 flex-col justify-center gap-1.5">
-        <div className="h-px w-full bg-border/40" />
-        <div className="flex items-center gap-2">
-          <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
-          <div className="h-px flex-1 bg-border/40" />
-        </div>
-      </div>
+      <RunSectionDivider label={label} />
       {source ? (
         <RecommendedFollowupList thread={thread} source={source} />
       ) : null}
@@ -4438,7 +4563,7 @@ function AssistantThinkingStatusRow({
     <div
       {...thinkingIndicatorProps}
       data-role="assistant-thinking"
-      className="-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
+      className={RUN_SECTION_ROW_CLASS}
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
@@ -6359,11 +6484,13 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
 function PagedGroupRow({
   group,
   thread,
+  modelChanges,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
+  modelChanges: ReadonlyMap<string, string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6377,6 +6504,7 @@ function PagedGroupRow({
       <PagedUserGroup
         group={group}
         thread={thread}
+        modelChanges={modelChanges}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -6435,6 +6563,7 @@ function clickTargetsExistingInteraction(target: EventTarget | null): boolean {
 function SelectablePagedGroupRow({
   group,
   thread,
+  modelChanges,
   runGroupFolds,
   completedWorkFold,
 }: Parameters<typeof PagedGroupRow>[0]) {
@@ -6451,6 +6580,7 @@ function SelectablePagedGroupRow({
       <PagedGroupRow
         group={group}
         thread={thread}
+        modelChanges={modelChanges}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6493,6 +6623,7 @@ function SelectablePagedGroupRow({
       <PagedGroupRow
         group={group}
         thread={thread}
+        modelChanges={modelChanges}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6517,17 +6648,25 @@ function SelectablePagedGroupRow({
 function PagedUserGroup({
   group,
   thread,
+  modelChanges,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
+  modelChanges: ReadonlyMap<string, string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
     <>
       {group.events.map((event) => {
+        const changedModel = modelChanges.get(event.id);
         return (
-          <PagedUserMessage key={event.id} event={event} thread={thread} />
+          <div key={event.id} className="contents">
+            {changedModel === undefined ? null : (
+              <ModelChangeDividerRow selectedModel={changedModel} />
+            )}
+            <PagedUserMessage event={event} thread={thread} />
+          </div>
         );
       })}
       {runGroupFolds?.map((fold) => {

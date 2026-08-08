@@ -36,7 +36,8 @@ const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 const CANCELLATION_RECOVERY_COPY =
   "Finalizing the cancelled run before queued work continues.";
 const NEXT_RUN_MODEL_COPY =
-  "Your selected model will take effect on your next run.";
+  "Your selected Claude Opus 4.8 model will take effect after this run";
+const MODEL_CHANGED_COPY = "Model changed to Claude Sonnet 4.6";
 
 afterEach(async () => {
   await i18n.changeLanguage("en-US");
@@ -91,6 +92,21 @@ function buildProvider(
     createdAt: "2026-07-14T00:00:00.000Z",
     updatedAt: "2026-07-14T00:00:00.000Z",
     ...overrides,
+  };
+}
+
+function modelAnnotatedMessage(
+  text: string,
+  selectedModel: string | undefined,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      { type: "text", text },
+      ...(selectedModel === undefined
+        ? []
+        : [{ type: "model" as const, selectedModel }]),
+    ],
   };
 }
 
@@ -205,6 +221,50 @@ function mockActiveRunModelChange(): void {
         },
         runId: undefined,
         createdAt: "2026-08-06T10:00:02Z",
+      },
+    ],
+  });
+}
+
+function mockCompletedRunModelHistory({
+  previousModel,
+  nextModel,
+}: {
+  previousModel: string | undefined;
+  nextModel: string | undefined;
+}): void {
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatEvents: [
+      {
+        id: `${THREAD_ID}-previous-user`,
+        role: "user",
+        content: "First prompt",
+        userMessage: modelAnnotatedMessage("First prompt", previousModel),
+        runId: "run-previous",
+        createdAt: "2026-08-06T09:00:00Z",
+      },
+      {
+        id: `${THREAD_ID}-previous-assistant`,
+        role: "assistant",
+        content: "First answer",
+        runId: "run-previous",
+        createdAt: "2026-08-06T09:00:01Z",
+      },
+      {
+        id: `${THREAD_ID}-next-user`,
+        role: "user",
+        content: "Second prompt",
+        userMessage: modelAnnotatedMessage("Second prompt", nextModel),
+        runId: "run-next",
+        createdAt: "2026-08-06T09:01:00Z",
+      },
+      {
+        id: `${THREAD_ID}-next-assistant`,
+        role: "assistant",
+        content: "Second answer",
+        runId: "run-next",
+        createdAt: "2026-08-06T09:01:01Z",
       },
     ],
   });
@@ -357,7 +417,7 @@ describe("chat run queue", () => {
     expectTextBefore("Working on the first request.", "Steer this follow-up");
   });
 
-  it("shows a selected model change above queued work", async () => {
+  it("shows a selected model change at the bottom of the message area", async () => {
     mockActiveRunModelChange();
 
     detachedSetupPage({
@@ -366,9 +426,11 @@ describe("chat run queue", () => {
       path: CHAT_PATH,
     });
 
-    const notice = await screen.findByText(NEXT_RUN_MODEL_COPY);
-    expect(notice).toHaveAttribute("role", "status");
+    const label = await screen.findByText(NEXT_RUN_MODEL_COPY);
+    const notice = label.closest('[role="status"]');
     expect(notice).toHaveAttribute("aria-live", "polite");
+    expect(label.closest("[data-message-container]")).toBeInTheDocument();
+    expectTextBefore("Start the active run", NEXT_RUN_MODEL_COPY);
     expectTextBefore(NEXT_RUN_MODEL_COPY, "1 message waiting");
     expectTextBefore(NEXT_RUN_MODEL_COPY, "Follow up after the active run");
   });
@@ -386,6 +448,56 @@ describe("chat run queue", () => {
       screen.findByText("Follow up after the active run"),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByText(NEXT_RUN_MODEL_COPY)).not.toBeInTheDocument();
+  });
+
+  it("inserts a model change divider between adjacent runs", async () => {
+    mockCompletedRunModelHistory({
+      previousModel: "gpt-5.5",
+      nextModel: "claude-sonnet-4-6",
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
+      path: CHAT_PATH,
+    });
+
+    await expect(
+      screen.findByText(MODEL_CHANGED_COPY),
+    ).resolves.toBeInTheDocument();
+    expectTextBefore("First answer", MODEL_CHANGED_COPY);
+    expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
+  });
+
+  it.each([
+    {
+      name: "the models match",
+      previousModel: "claude-sonnet-4-6",
+      nextModel: "claude-sonnet-4-6",
+    },
+    {
+      name: "the previous run has no model",
+      previousModel: undefined,
+      nextModel: "claude-sonnet-4-6",
+    },
+    {
+      name: "the next run has no model",
+      previousModel: "gpt-5.5",
+      nextModel: undefined,
+    },
+  ])("does not insert a model change divider when $name", async (models) => {
+    mockCompletedRunModelHistory(models);
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
+      path: CHAT_PATH,
+    });
+
+    await expect(
+      screen.findByText("Second prompt"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
   });
 
   it("keeps an optimistic steer prompt at the bottom until persistence", async () => {

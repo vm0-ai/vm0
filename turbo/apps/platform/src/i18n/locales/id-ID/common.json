@@ -1467,7 +1467,6 @@
       "loadingGoal": "Memuat tujuan...",
       "message_one": "{{count}} pesan",
       "message_other": "{{count}} pesan",
-      "modelChangeAppliesNextRun": "Model yang Anda pilih akan diterapkan pada eksekusi berikutnya.",
       "openGoalDetails": "Buka detail tujuan",
       "pendingAutomationEvent": "Peristiwa otomatisasi tertunda",
       "queuedMessage": "Pesan dalam antrean",
@@ -1516,7 +1515,9 @@
       "justNow": "baru saja",
       "keepGoing": "Lanjutkan",
       "keepGoingAt": "Lanjutkan · {{timestamp}}",
+      "modelChangedTo": "Model diganti menjadi {{model}}",
       "queueEllipsis": "antrean...",
+      "selectedModelAppliesAfterCurrentRun": "Model {{model}} yang Anda pilih akan berlaku setelah eksekusi ini",
       "thinking": {
         "assembling": "Menyusun bagian-bagiannya...",
         "brewing": "Meracik respons...",
