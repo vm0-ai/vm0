@@ -3,7 +3,6 @@ import { command } from "ccstate";
 import {
   CANONICAL_ASSET_VERSION,
   canonicalAssetDeliveries,
-  chatEventAssetRefs,
   runUploadedFiles,
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
@@ -665,41 +664,12 @@ export const materializeCanonicalSlackInputAssets$ = command(
   },
 );
 
-async function attachCanonicalAssetsToEvent(
-  db: Db,
-  eventId: string,
-  assets: readonly {
-    readonly assetId: string;
-    readonly position: number;
-  }[],
-): Promise<void> {
-  if (assets.length === 0) {
-    return;
-  }
-  await db
-    .insert(chatEventAssetRefs)
-    .values(
-      assets.map((asset) => {
-        return {
-          chatEventId: eventId,
-          assetId: asset.assetId,
-          position: asset.position,
-        };
-      }),
-    )
-    .onConflictDoNothing();
-}
-
 /**
  * Registers web chat input files as canonical assets.
  *
  * Web input events carry their own ordered attachment list in
  * `chat_events.user_message` (`type: "file"` parts with fileId, filename, and
- * content type), and the only reader of `chat_event_asset_refs` is the Slack
- * queued-launch loader, which `active-input-prompt` and
- * `internal-chat-run-callback` reach only on the `contextType === "slack"`
- * branch. Web ref rows were therefore write-only, so this path registers the
- * canonical asset rows without also writing the join table.
+ * content type), so this path only needs the canonical asset rows.
  */
 export async function registerCanonicalWebInputAssets(
   db: Db,

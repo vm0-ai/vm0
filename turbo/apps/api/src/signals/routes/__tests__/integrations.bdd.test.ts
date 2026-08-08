@@ -27,7 +27,6 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import {
-  readChatEventAssetRefIds,
   setChatSlackContextAsPreviousApi,
   readThreadSessionBinding,
 } from "./helpers/runtime-state";
@@ -1584,10 +1583,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     }
     // The Slack context row is the complete launch snapshot: the bot user ID
     // the system prompt renders and the canonical asset the agent prompt
-    // renders both live here, so no ref row is written any more.
-    await expect(
-      readChatEventAssetRefIds(context, canonicalInputMessage.id),
-    ).resolves.toStrictEqual([]);
+    // renders both live here.
     await expect(
       readChatEventContextFixture(canonicalInputMessage.id),
     ).resolves.toMatchObject({
