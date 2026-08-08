@@ -1043,7 +1043,6 @@ describe("cron execute morning briefs", () => {
         agentId: agent.agentId,
         threadId: thread.id,
         prompt: "stale morning brief content",
-        generationTemplate,
         userMessage,
       },
       [201],

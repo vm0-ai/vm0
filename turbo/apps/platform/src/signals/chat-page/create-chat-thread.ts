@@ -217,7 +217,7 @@ function isInputChatEvent(
   );
 }
 
-function chatEventAttachFiles(
+function chatEventFileAttachments(
   event: ChatEvent,
 ): ResolvedAttachFile[] | undefined {
   return isInputChatEvent(event)
@@ -1115,7 +1115,7 @@ function registerEventAttachments(
   event: ChatEvent,
   artifactCardSignals: ArtifactCardSignalsRegistry,
 ): void {
-  for (const attachment of chatEventAttachFiles(event) ?? []) {
+  for (const attachment of chatEventFileAttachments(event) ?? []) {
     artifactCardSignals.register({
       filename: attachment.filename,
       url: attachment.url,
@@ -1263,7 +1263,8 @@ function isRenderableAssistantSemanticEvent(entry: SemanticChatEvent): boolean {
   const { event } = entry;
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    (Boolean(event.content) || ("error" in event && Boolean(event.error)))
+    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
+      ("error" in event && Boolean(event.error)))
   );
 }
 
@@ -2452,7 +2453,7 @@ function userMessageForSend({
 }): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
-        generationTemplate,
+        selectedTemplate: generationTemplate,
         attachments,
       })
     : textToMessageDocument(prompt, undefined, attachments);

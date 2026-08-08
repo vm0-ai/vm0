@@ -88,7 +88,7 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-followup",
           runLifecycleEvent: "completed",
-          recommendedFollowups: [
+          followups: [
             {
               prompt: followupPrompt,
               kind: "generate",
@@ -185,7 +185,7 @@ describe("chat lifecycle", () => {
       role: "assistant",
       content: null,
       runId: "run-followup",
-      recommendedFollowups: [
+      followups: [
         {
           prompt: followupPrompt,
           kind: "generate",
@@ -243,34 +243,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it.each([
-    {
-      wireShape: "legacy recommendedFollowups",
-      eventPayload: {
-        content: null,
-        recommendedFollowups: [
-          {
-            prompt: "Prepare the launch checklist",
-            kind: "talk" as const,
-          },
-        ],
-      },
-    },
-    {
-      wireShape: "version-1 content",
-      eventPayload: {
-        content: JSON.stringify({
-          version: 1,
-          followups: [
-            {
-              prompt: "Prepare the launch checklist",
-              kind: "talk",
-            },
-          ],
-        }),
-      },
-    },
-  ])("renders $wireShape follow-ups identically", async ({ eventPayload }) => {
+  it("renders strict version-1 follow-up content", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000732";
     mockChatLifecycle(context, {
       threadId,
@@ -290,7 +263,15 @@ describe("chat lifecycle", () => {
           runId: "run-followup-wire",
           seqId: 2,
           createdAt: "2026-06-09T10:00:01Z",
-          ...eventPayload,
+          content: JSON.stringify({
+            version: 1,
+            followups: [
+              {
+                prompt: "Prepare the launch checklist",
+                kind: "talk",
+              },
+            ],
+          }),
         },
       ],
     });
@@ -351,7 +332,7 @@ describe("chat lifecycle", () => {
       role: "assistant",
       content: null,
       runId: "run-followup-subscribe-gap",
-      recommendedFollowups: [
+      followups: [
         {
           prompt: followupPrompt,
           kind: "generate",
@@ -483,7 +464,7 @@ describe("chat lifecycle", () => {
           content: null,
           runId: "run-followup-old",
           runLifecycleEvent: "completed",
-          recommendedFollowups: [
+          followups: [
             {
               prompt: followupPrompt,
               kind: "generate",

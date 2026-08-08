@@ -307,14 +307,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
         agentId: agent.agentId,
         prompt: "Build a launch-plan presentation",
         userMessage: expectedUserMessage,
-        attachFiles: [
-          {
-            id: uploadId,
-            filename: "launch-plan.txt",
-            contentType: "text/plain",
-            size: 24,
-          },
-        ],
         hasTextContent: false,
         clientEventId,
       },
@@ -364,14 +356,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
       userMessage: expectedUserMessage,
       error: "insufficient_credits",
       revokesEventId: clientEventId,
-      attachFiles: [
-        {
-          id: uploadId,
-          filename: "launch-plan.txt",
-          contentType: "text/plain",
-          size: 24,
-        },
-      ],
     });
     expect(rejectedUserMessage).not.toHaveProperty("automationId");
     expect(rejectedUserMessage).not.toHaveProperty("triggerBrief");
@@ -523,11 +507,21 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Use an unknown template",
-        generationTemplate: {
-          type: "presentation",
-          selection: {
-            templateId: "template:html-ppt-missing",
-          },
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Use an unknown template" },
+            {
+              type: "template",
+              titleSnapshot: "Missing presentation template",
+              template: {
+                type: "presentation",
+                selection: {
+                  templateId: "template:html-ppt-missing",
+                },
+              },
+            },
+          ],
         },
       },
       [400],

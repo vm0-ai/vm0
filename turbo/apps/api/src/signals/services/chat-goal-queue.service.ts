@@ -20,14 +20,11 @@ import {
 } from "./zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import {
-  appendGoalEventMarker,
-  hiddenGoalStateEvent,
-} from "./zero-chat-goal-marker.service";
+import { appendGoalCloseMarker } from "./zero-chat-goal-marker.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { lockGoalThread } from "./zero-goal-lock.service";
 
-const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
+const goalInputRevoker = alias(chatEvents, "goal_input_revoker");
 
 export type GoalQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
@@ -74,9 +71,9 @@ async function pendingGoalEventExists(
         isNull(chatEvents.runId),
         notExists(
           db
-            .select({ id: goalEventRevoker.id })
-            .from(goalEventRevoker)
-            .where(eq(goalEventRevoker.revokesEventId, chatEvents.id)),
+            .select({ id: goalInputRevoker.id })
+            .from(goalInputRevoker)
+            .where(eq(goalInputRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     )
@@ -376,9 +373,8 @@ export async function settleFailedGoalQueueEvent(
     if (!paused) {
       throw new Error("Failed to pause the validated goal queue target");
     }
-    await appendGoalEventMarker(tx, {
+    await appendGoalCloseMarker(tx, {
       chatThreadId: goal.threadId,
-      event: hiddenGoalStateEvent("paused"),
     });
     return { kind: "rejected", goalId: paused.goalId };
   });

@@ -1333,7 +1333,6 @@ describe("OPS-01: user data export", () => {
       {
         agentId,
         prompt: "stale export content",
-        generationTemplate,
         userMessage,
       },
       [201],

@@ -636,7 +636,6 @@ async function seedTargetThreadRuns(
     content?: string;
     sequenceNumber: number;
     seqId: number;
-    attachFiles?: string[];
     userMessage?: UserMessageDocument;
     createdAt: Date;
   }[] = [];
@@ -678,7 +677,6 @@ async function seedTargetThreadRuns(
               userMessage: benchUserMessage(content, attachmentId),
             }
           : { content }),
-        ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
         createdAt: new Date(now + i * 1000 + m),
       });
     }

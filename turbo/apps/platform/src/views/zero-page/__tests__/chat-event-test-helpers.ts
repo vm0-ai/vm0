@@ -1,6 +1,8 @@
 import {
   chatEventSchema,
+  serializeChatFollowupsContent,
   type ChatEvent,
+  type ChatRecommendedFollowup,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
@@ -15,11 +17,18 @@ type OptionalUnionFields<T> = {
   [K in UnionKeys<T>]?: UnionValue<T, K>;
 };
 
+type UserMessageFilePart = Extract<
+  UserMessageDocument["parts"][number],
+  { readonly type: "file" }
+>;
+
 export type MockChatEventInput = OptionalUnionFields<ChatEvent> & {
   id?: string;
   role?: "user" | "assistant";
   content: string | null;
   createdAt: string;
+  fileParts?: readonly UserMessageFilePart[];
+  followups?: readonly ChatRecommendedFollowup[];
 };
 
 function inferredEventType(
@@ -52,13 +61,10 @@ function inferredEventType(
   if (message.runEventId === "queue:dequeued") {
     return "run.dequeued";
   }
-  if (message.goalEvent !== undefined) {
-    return "goal.changed";
-  }
   if (message.usage !== undefined) {
     return "usage.recorded";
   }
-  if (message.recommendedFollowups !== undefined) {
+  if (message.followups !== undefined) {
     return "output.followups";
   }
   if (message.thinking !== undefined || message.content === null) {
@@ -100,14 +106,7 @@ function requiredMockUserMessage(
     return message.userMessage;
   }
   const parts: UserMessageDocument["parts"] = [
-    ...(message.attachFiles ?? []).map((file) => {
-      return {
-        type: "file" as const,
-        fileId: file.id,
-        filenameSnapshot: file.filename,
-        contentType: file.contentType,
-      };
-    }),
+    ...(message.fileParts ?? []),
     ...(message.content
       ? [{ type: "text" as const, text: message.content }]
       : []),
@@ -123,8 +122,6 @@ const mockChatEventOverrides = {
     return {
       content: null,
       userMessage: requiredMockUserMessage(message),
-      attachFiles: message.attachFiles,
-      generationTemplate: message.generationTemplate,
     };
   },
   "input.automation": (message, id) => {
@@ -166,8 +163,6 @@ const mockChatEventOverrides = {
       content: null,
       error: message.error ?? "Mock input rejected",
       userMessage: requiredMockUserMessage(message),
-      attachFiles: message.attachFiles,
-      generationTemplate: message.generationTemplate,
     };
   },
   "output.message": (message) => {
@@ -184,10 +179,9 @@ const mockChatEventOverrides = {
   },
   "output.followups": (message) => {
     return {
-      content: message.content,
-      ...(message.recommendedFollowups === undefined
-        ? {}
-        : { recommendedFollowups: message.recommendedFollowups }),
+      content:
+        message.content ??
+        serializeChatFollowupsContent(message.followups ?? []),
     };
   },
   "run.queued": (message, id) => {
@@ -249,12 +243,6 @@ const mockChatEventOverrides = {
   "goal.close": () => {
     return { content: null };
   },
-  "goal.changed": (message) => {
-    return {
-      content: null,
-      goalEvent: message.goalEvent,
-    };
-  },
   "usage.recorded": (message, id) => {
     return {
       runId: message.runId ?? `mock-run-${id}`,
@@ -287,11 +275,11 @@ export function normalizeMockChatEvents(
     const seqId = message.seqId ?? nextSeqId;
     nextSeqId = Math.max(nextSeqId, seqId + 1);
     if (
-      message.recommendedFollowups !== undefined &&
+      message.followups !== undefined &&
       message.runLifecycleEvent !== undefined
     ) {
       const terminal = normalizeMockChatEvent(
-        { ...message, recommendedFollowups: undefined },
+        { ...message, followups: undefined },
         fallbackId,
         seqId,
       );
@@ -300,7 +288,7 @@ export function normalizeMockChatEvents(
           ...message,
           id: `${terminal.id}:followups`,
           seqId: nextSeqId,
-          content: null,
+          content: serializeChatFollowupsContent(message.followups),
           error: undefined,
           runLifecycleEvent: undefined,
           eventType: "output.followups",

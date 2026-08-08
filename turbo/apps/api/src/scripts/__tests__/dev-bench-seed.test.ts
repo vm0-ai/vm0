@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
+import { resolveChatEventRecommendedFollowups } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { buildProfileRows, DEV_BENCH_THREAD_PROFILES } from "../dev-bench-seed";
 
@@ -101,8 +102,10 @@ describe("dev bench seed profile rows", () => {
       expect(
         countWhere(rows.eventRows, (row) => {
           return (
-            row.recommendedFollowups !== null &&
-            row.recommendedFollowups !== undefined
+            row.eventType === "output.followups" &&
+            typeof row.content === "string" &&
+            resolveChatEventRecommendedFollowups({ content: row.content })
+              .length > 0
           );
         }),
       ).toBe(expected.recommendedFollowupEvents);

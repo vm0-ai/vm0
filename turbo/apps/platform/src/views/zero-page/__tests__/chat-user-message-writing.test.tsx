@@ -1,10 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type {
-  PersistedAttachment,
-  UserMessageDocument,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -23,18 +20,11 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000951";
 interface SentMessageCapture {
   readonly prompt?: string;
   readonly userMessage?: UserMessageDocument;
-  readonly attachFiles?: readonly {
-    readonly id: string;
-    readonly filename: string;
-    readonly contentType: string;
-    readonly size: number;
-  }[];
 }
 
 interface PendingMessageCapture {
   readonly content?: string;
   readonly userMessage?: UserMessageDocument;
-  readonly attachments?: readonly PersistedAttachment[];
 }
 
 describe("user-message writes", () => {

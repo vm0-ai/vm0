@@ -502,7 +502,6 @@ describe("chat lifecycle", () => {
   it("starts a new fallback-enabled text-only chat with an image above the direct recognition limit", async () => {
     const user = userEvent.setup({ delay: null });
     let sentUserMessage: UserMessageDocument | undefined;
-    let sentLegacyAttachFiles: unknown;
     context.mocks.data.userModelPreference({
       selectedModel: "glm-5.1",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -525,7 +524,6 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         sentUserMessage = body.userMessage;
-        sentLegacyAttachFiles = body.attachFiles;
       },
     });
     context.mocks.upload.success({
@@ -573,7 +571,6 @@ describe("chat lifecycle", () => {
         screen.getByText("Summarize this visual brief"),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(sentLegacyAttachFiles).toBeUndefined();
       expect(sentUserMessage?.parts).toContainEqual({
         type: "file",
         fileId: "upload-visual-brief",
@@ -587,7 +584,6 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000994";
     let sentUserMessage: UserMessageDocument | undefined;
-    let sentLegacyAttachFiles: unknown;
     context.mocks.data.userModelPreference({
       selectedModel: "glm-5.1",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -612,7 +608,6 @@ describe("chat lifecycle", () => {
       selectedModel: "glm-5.1",
       onRunCreate: (body) => {
         sentUserMessage = body.userMessage;
-        sentLegacyAttachFiles = body.attachFiles;
       },
     });
     context.mocks.upload.success({
@@ -650,7 +645,6 @@ describe("chat lifecycle", () => {
     await sendMessageInUI(user, textarea, "Inspect this existing video");
 
     await waitFor(() => {
-      expect(sentLegacyAttachFiles).toBeUndefined();
       expect(sentUserMessage?.parts).toContainEqual({
         type: "file",
         fileId: "upload-existing-visual",

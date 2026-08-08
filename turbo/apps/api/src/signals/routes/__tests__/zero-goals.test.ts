@@ -148,6 +148,20 @@ async function readThreadGoalWithSession(fixture: GoalApiFixture) {
   );
 }
 
+async function readGoalMarkerSummaries(fixture: GoalApiFixture) {
+  const chat = createChatFilesBddApi(context);
+  const page = await chat.listThreadEvents(fixture.actor, fixture.threadId);
+  return page.events
+    .filter((event) => {
+      return (
+        event.eventType === "goal.open" || event.eventType === "goal.close"
+      );
+    })
+    .map((event) => {
+      return { eventType: event.eventType, content: event.content };
+    });
+}
+
 describe("zero goals", () => {
   beforeEach(() => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
@@ -171,6 +185,9 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: created.body,
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+    ]);
 
     const duplicate = await accept(
       goalsClient().create({
@@ -189,6 +206,10 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "blocked" },
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
 
     await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
     const exhaustedResume = await accept(
@@ -224,6 +245,11 @@ describe("zero goals", () => {
     await expect(
       readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
     ).resolves.toBe(0);
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "ship thread goals" },
+    ]);
 
     const completed = await accept(
       goalsClient().complete({ headers: headers(fixture) }),
@@ -233,6 +259,12 @@ describe("zero goals", () => {
     await expect(readCurrentGoal(fixture)).resolves.toMatchObject({
       body: { status: "complete" },
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
 
     await setRunAutonomyBudgetFixture(context, fixture.runId, 0);
     const exhausted = await accept(
@@ -505,6 +537,13 @@ describe("zero goals", () => {
     await expect(
       readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
     ).resolves.toBe(0);
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship goals" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "ship goals v2" },
+      { eventType: "goal.close", content: null },
+      { eventType: "goal.open", content: "start the next goal" },
+    ]);
   });
 
   it("pauses a chat thread goal with session auth", async () => {
@@ -524,6 +563,10 @@ describe("zero goals", () => {
     await expect(readThreadGoalWithSession(fixture)).resolves.toMatchObject({
       body: { status: "paused" },
     });
+    await expect(readGoalMarkerSummaries(fixture)).resolves.toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
   });
 
   it("reads a chat thread goal with session auth", async () => {
@@ -577,12 +620,8 @@ describe("zero goals", () => {
     );
     expect(messages.events).toContainEqual(
       expect.objectContaining({
-        eventType: "goal.changed",
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: expectedBrief,
-        },
+        eventType: "goal.open",
+        content: expectedBrief,
       }),
     );
   });
@@ -622,12 +661,8 @@ describe("zero goals", () => {
     );
     expect(messages.events).toContainEqual(
       expect.objectContaining({
-        eventType: "goal.changed",
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: "---",
-        },
+        eventType: "goal.open",
+        content: "---",
       }),
     );
   });
@@ -662,19 +697,19 @@ describe("zero goals", () => {
       fixture.threadId,
     );
     expect(
-      messages.events.filter((event) => {
-        return (
-          event.eventType === "goal.open" || event.eventType === "goal.close"
-        );
-      }),
-    ).toStrictEqual([]);
-    expect(messages.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "goal.changed",
-        content: null,
-        goalEvent: { type: "cleared" },
-      }),
-    );
+      messages.events
+        .filter((event) => {
+          return (
+            event.eventType === "goal.open" || event.eventType === "goal.close"
+          );
+        })
+        .map((event) => {
+          return { eventType: event.eventType, content: event.content };
+        }),
+    ).toStrictEqual([
+      { eventType: "goal.open", content: "ship thread goals" },
+      { eventType: "goal.close", content: null },
+    ]);
   });
 
   it("enforces user-control and agent-result capability boundaries", async () => {

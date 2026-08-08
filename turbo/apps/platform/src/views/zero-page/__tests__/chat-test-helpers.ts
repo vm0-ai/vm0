@@ -18,8 +18,6 @@ import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ChatRunOptionsRequest,
   type CodexServiceTier,
-  type GenerationTemplateRequest,
-  type PersistedAttachment,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
@@ -454,9 +452,7 @@ export function mockChatLifecycle(
     onQueuedEventAppend?: (body: {
       content?: string;
       hasTextContent?: boolean;
-      attachments?: PersistedAttachment[];
       clientEventId: string;
-      generationTemplate?: GenerationTemplateRequest;
       userMessage?: UserMessageDocument;
       modelSelection?: ModelSelectionRequest | null;
       runOptions?: ChatRunOptionsRequest;
@@ -498,14 +494,7 @@ export function mockChatLifecycle(
       prompt?: string;
       clientEventId?: string;
       clientThreadId?: string;
-      attachFiles?: {
-        id: string;
-        filename: string;
-        contentType: string;
-        size: number;
-      }[];
       hasTextContent?: boolean;
-      generationTemplate?: GenerationTemplateRequest;
       userMessage?: UserMessageDocument;
       model?: string;
       modelSelection?: ModelSelectionRequest | null;
@@ -739,33 +728,18 @@ export function mockChatLifecycle(
 
   const appendQueuedUserMessage = async (body: {
     prompt?: string;
-    attachFiles?: {
-      id: string;
-      filename: string;
-      contentType: string;
-      size: number;
-    }[];
     clientEventId?: string;
     hasTextContent?: boolean;
-    generationTemplate?: GenerationTemplateRequest;
     userMessage?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;
   }) => {
     const clientEventId = body.clientEventId ?? crypto.randomUUID();
-    const attachFiles = body.attachFiles?.map((file) => {
-      return {
-        ...file,
-        url: `https://cdn.vm7.io/artifacts/test/${file.id}/${file.filename}`,
-      };
-    });
     const modelSelection = modelSelectionFromBody(body);
     options?.onQueuedEventAppend?.({
       content: body.prompt,
       hasTextContent: body.hasTextContent,
-      attachments: attachFiles,
       clientEventId,
-      generationTemplate: body.generationTemplate,
       userMessage: body.userMessage,
       modelSelection,
       runOptions: body.runOptions,
@@ -778,8 +752,6 @@ export function mockChatLifecycle(
       id: clientEventId,
       role: "user" as const,
       content: body.prompt ?? "",
-      attachFiles,
-      generationTemplate: body.generationTemplate,
       ...(body.userMessage ? { userMessage: body.userMessage } : {}),
       createdAt: now,
     });
@@ -789,14 +761,7 @@ export function mockChatLifecycle(
   const startRunFromUserMessage = async (body: {
     prompt?: string;
     clientEventId?: string;
-    attachFiles?: {
-      id: string;
-      filename: string;
-      contentType: string;
-      size: number;
-    }[];
     hasTextContent?: boolean;
-    generationTemplate?: GenerationTemplateRequest;
     userMessage?: UserMessageDocument;
     model?: string;
     runOptions?: ChatRunOptionsRequest;

@@ -149,7 +149,6 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        expect(body.generationTemplate).toBeUndefined();
         const template = templateFromUserMessage(body.userMessage);
         stylePresetId =
           template?.type === "video"
@@ -191,7 +190,6 @@ describe("prompt query parameter injection", () => {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
         userMessage = body.userMessage;
-        expect(body.generationTemplate).toBeUndefined();
         const template = templateFromUserMessage(body.userMessage);
         selection =
           template?.type === "presentation" ? template.selection : undefined;
@@ -239,7 +237,6 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        expect(body.generationTemplate).toBeUndefined();
         const template = templateFromUserMessage(body.userMessage);
         illustrationStyleId =
           template?.type === "illustration"
@@ -273,7 +270,6 @@ describe("prompt query parameter injection", () => {
     mockChatLifecycle(context, {
       onRunCreate: (body) => {
         runPrompt = body.prompt;
-        expect(body.generationTemplate).toBeUndefined();
         const template = templateFromUserMessage(body.userMessage);
         websiteTemplateId =
           template?.type === "website"

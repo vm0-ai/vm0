@@ -15,7 +15,7 @@ export function assistantEventIdForRunEvent(
   return uuidv5(`${runId}:${runEventId}`, ASSISTANT_EVENT_ID_NAMESPACE);
 }
 
-export function recommendedFollowupsEventIdForRun(runId: string): string {
+export function followupsEventIdForRun(runId: string): string {
   return uuidv5(runId, RECOMMENDED_FOLLOWUPS_EVENT_ID_NAMESPACE);
 }
 

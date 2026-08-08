@@ -133,8 +133,8 @@ export async function materializeActiveInputPrompt(
     );
   }
   const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
-    explicit: projection.generationTemplate,
-    explicitTemplates: projection.generationTemplates,
+    explicit: projection.primaryTemplate,
+    explicitTemplates: projection.templates,
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

@@ -2971,7 +2971,7 @@ describe("CHAT-01 chat search index", () => {
       threadId,
       content: JSON.stringify({
         version: 1,
-        followups: [{ prompt: followupOnlyNeedle }],
+        followups: [{ prompt: followupOnlyNeedle, kind: "talk" }],
       }),
     });
 

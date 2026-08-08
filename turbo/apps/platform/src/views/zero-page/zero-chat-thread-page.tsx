@@ -85,7 +85,7 @@ import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatEventUsagePayload,
   FeedbackNotePart,
-  ChatFollowupsEvent,
+  ChatRecommendedFollowup,
   GenerationTemplateRequest,
   ResolvedAttachFile,
   UserMessageDocument,
@@ -94,6 +94,7 @@ import type {
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
+  isChatEventContentTextType,
   terminatedChatRunIds,
 } from "@vm0/api-contracts/contracts/chat-events";
 import {
@@ -314,9 +315,7 @@ import {
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
-type RecommendedFollowup = NonNullable<
-  ChatFollowupsEvent["recommendedFollowups"]
->[number];
+type RecommendedFollowup = ChatRecommendedFollowup;
 
 type UserMessageNonContentPart = Extract<
   UserMessagePart,
@@ -3108,7 +3107,7 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
-    (Boolean(event.content) ||
+    ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
       Boolean(chatEventError(event)) ||
       event.blocks.length > 0 ||
       Boolean(chatEventAttachments(event)?.length))
@@ -3457,8 +3456,8 @@ function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
 }
 
 function runGroupFoldGoalLabel(fold: RunGroupFold): string {
-  const goalEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
-  const part = goalEvent ? eventNonContentPart(goalEvent) : undefined;
+  const goalInputEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
+  const part = goalInputEvent ? eventNonContentPart(goalInputEvent) : undefined;
   const content = part?.type === "goal" ? part.goalBrief.trim() : null;
   return content
     ? normalizedInlineLabel(content)
@@ -3949,10 +3948,10 @@ function reportRecommendedFollowupsShown(
   }
 
   const shownKey = recommendedFollowupShownKey(source);
-  if (element.dataset.recommendedFollowupsShownKey === shownKey) {
+  if (element.dataset.followupsShownKey === shownKey) {
     return;
   }
-  element.dataset.recommendedFollowupsShownKey = shownKey;
+  element.dataset.followupsShownKey = shownKey;
 
   captureRecommendedFollowupsShown({
     messageId: source.eventId,
@@ -4547,26 +4546,6 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
       serverThinkingLabel={serverThinkingLabel}
     />
   );
-}
-
-/**
- * Parse inline attachment lines from event content.
- * Matches `[Attached file: name](url)` optionally followed by a curl line.
- * Returns the cleaned content and parsed attachments.
- */
-function parseInlineAttachments(content: string): {
-  cleanContent: string;
-  parsed: { filename: string; url: string }[];
-} {
-  const parsed: { filename: string; url: string }[] = [];
-  const cleaned = content.replace(
-    /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
-    (_match, filename: string, url: string) => {
-      parsed.push({ filename, url });
-      return "";
-    },
-  );
-  return { cleanContent: cleaned.trim(), parsed };
 }
 
 function BodyContentBlocks({
@@ -6580,12 +6559,9 @@ type OpenMessageImagePreview = (url: string, filename?: string) => void;
 
 function resolveAttachments(
   event: EnrichedChatEvent,
-  parsed: { filename: string; url: string }[],
   artifactSignalsForUrl: ChatPanelSignals["artifactSignalsForUrl"],
 ): ResolvedMessageAttachment[] {
-  const eventAttachments = chatEventAttachments(event);
-  const source =
-    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
+  const source = chatEventAttachments(event) ?? [];
   return source.map((f) => {
     const contentType =
       "contentType" in f && typeof f.contentType === "string"
@@ -6607,45 +6583,6 @@ function resolveAttachments(
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
       ...(text$ ? { text$ } : {}),
-    };
-  });
-}
-
-function attachmentIdFromUrl(url: string): string | null {
-  if (!URL.canParse(url, window.location.origin)) {
-    return null;
-  }
-  const parsed = new URL(url, window.location.origin);
-  const match = parsed.pathname.match(/^\/f\/[^/]+\/([^/]+)\/[^/]+$/);
-  return match?.[1] ?? null;
-}
-
-function clipboardAttachmentsFromEvent(
-  event: ChatEvent,
-  parsed: { filename: string; url: string }[],
-): ChatClipboardAttachment[] {
-  const eventAttachments = chatEventAttachments(event);
-  const source =
-    eventAttachments && eventAttachments.length > 0 ? eventAttachments : parsed;
-  return source.map((f) => {
-    const contentType =
-      "contentType" in f && typeof f.contentType === "string"
-        ? f.contentType
-        : undefined;
-    const kind = classifyChatAttachment({
-      filename: f.filename,
-      url: f.url,
-      contentType,
-    });
-    return {
-      id:
-        "id" in f && typeof f.id === "string"
-          ? f.id
-          : attachmentIdFromUrl(f.url),
-      filename: f.filename,
-      url: f.url,
-      contentType: contentType ?? contentTypeForBodyPreviewKind(kind),
-      size: "size" in f && typeof f.size === "number" ? f.size : 0,
     };
   });
 }
@@ -7811,42 +7748,29 @@ function GoalUserMessage({
 }
 
 function resolvePagedUserMessageRendering({
-  event,
-  inputEvent,
   userMessage,
 }: {
-  event: EnrichedChatEvent;
-  inputEvent: ChatInputEvent | undefined;
   userMessage: UserMessageDocument | undefined;
 }) {
-  const legacyContent = event.content ?? "";
-  const { cleanContent, parsed } = parseInlineAttachments(
-    inputEvent ? "" : legacyContent,
-  );
   const canonicalUserMessage = userMessage;
-  const attachFiles = canonicalUserMessage
+  const userMessageAttachments = canonicalUserMessage
     ? userMessageFileAttachments(canonicalUserMessage)
     : undefined;
   const copyText = canonicalUserMessage
     ? (messageDocumentToPrompt(canonicalUserMessage) ?? "")
-    : cleanContent;
-  const legacyClipboardAttachments = clipboardAttachmentsFromEvent(
-    event,
-    parsed,
-  );
+    : "";
   const clipboardAttachments = canonicalUserMessage
     ? clipboardAttachmentsFromUserMessage(
         canonicalUserMessage,
-        legacyClipboardAttachments,
+        userMessageAttachments ?? [],
       )
-    : legacyClipboardAttachments;
+    : [];
 
   return {
-    attachFiles,
+    userMessageAttachments,
     canonicalUserMessage,
     clipboardAttachments,
     copyText,
-    parsed,
   };
 }
 
@@ -7883,14 +7807,11 @@ function PagedUserMessage({
   const inputEvent = asInputChatEvent(event);
   const userMessage = visibleUserMessage(inputEvent);
   const {
-    attachFiles,
+    userMessageAttachments,
     canonicalUserMessage,
     clipboardAttachments,
     copyText,
-    parsed,
   } = resolvePagedUserMessageRendering({
-    event,
-    inputEvent,
     userMessage,
   });
   const bodyBlocks = event.blocks;
@@ -7905,7 +7826,7 @@ function PagedUserMessage({
   const copied = copiedId === event.id;
   const copyEvent = useSet(thread.copyEvent$);
   const findArtifact = thread.artifactSignalsForUrl;
-  const allAttachments = resolveAttachments(event, parsed, findArtifact);
+  const allAttachments = resolveAttachments(event, findArtifact);
   const canCopy =
     userMessage !== undefined ||
     copyText.trim().length > 0 ||
@@ -7968,7 +7889,7 @@ function PagedUserMessage({
             <UserMessageContent
               document={canonicalUserMessage}
               attachments={allAttachments}
-              referenceAttachments={attachFiles ?? []}
+              referenceAttachments={userMessageAttachments ?? []}
               onImageClick={openLightbox}
               agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
             />
@@ -8130,7 +8051,10 @@ function PagedAssistantEventItem({
     );
   }
 
-  if (event.content || event.blocks.length > 0) {
+  if (
+    (isChatEventContentTextType(event.eventType) && event.content) ||
+    event.blocks.length > 0
+  ) {
     const { blocks } = event;
     return (
       <div

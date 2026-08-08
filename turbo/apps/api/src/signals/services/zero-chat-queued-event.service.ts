@@ -162,7 +162,7 @@ export type QueueFirstRunAssociation =
       readonly automationId: string;
     }
   | {
-      readonly kind: "goal_event";
+      readonly kind: "goal_input";
       readonly threadId: string;
       readonly eventId: string;
       readonly prompt: string;
@@ -194,7 +194,7 @@ export type QueueFirstRunSessionSnapshotState =
 /** Keep the exact goal source row stable through the later chat queue claim. */
 export async function lockGoalQueueFirstRunSource(
   db: DbTransaction,
-  args: Extract<QueueFirstRunAssociation, { readonly kind: "goal_event" }>,
+  args: Extract<QueueFirstRunAssociation, { readonly kind: "goal_input" }>,
 ): Promise<void> {
   await db
     .select({ id: threadGoals.id })
@@ -458,7 +458,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
 
 async function resolveGoalQueueFirstClaimSnapshot(
   db: DbTransaction,
-  args: Extract<QueueFirstClaimArgs, { readonly kind: "goal_event" }>,
+  args: Extract<QueueFirstClaimArgs, { readonly kind: "goal_input" }>,
 ): Promise<QueueFirstClaimSnapshot | null> {
   const [head] = await db
     .select({
