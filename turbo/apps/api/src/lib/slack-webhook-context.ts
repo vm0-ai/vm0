@@ -1,4 +1,7 @@
-import type { ChatSlackMessageFile } from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type {
+  ChatSlackMessageAssets,
+  ChatSlackMessageFile,
+} from "@vm0/db/jsonb-contracts/chat-slack-context";
 
 import {
   formatSenderBlock,
@@ -362,29 +365,22 @@ function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
 }
 
-export interface SlackPromptAsset {
-  readonly assetId: string;
-  readonly position: number;
-  readonly filename: string;
-  readonly contentType: string;
-  readonly status: "pending" | "ready" | "failed";
-}
-
 function canonicalSlackFilesPrompt(
   files: readonly SlackFile[] | undefined,
-  assets: readonly SlackPromptAsset[],
+  assets: ChatSlackMessageAssets,
 ): string {
   if (!files || files.length === 0) {
     return "";
   }
-  const assetByPosition = new Map(
+  const assetBySlackFileId = new Map(
     assets.map((asset) => {
-      return [asset.position, asset] as const;
+      return [asset.slackFileId, asset] as const;
     }),
   );
   return files
-    .flatMap((file, position) => {
-      const asset = assetByPosition.get(position);
+    .flatMap((file) => {
+      const asset =
+        file.id === undefined ? undefined : assetBySlackFileId.get(file.id);
       if (asset?.status === "ready") {
         return [
           `[Web file] ${asset.filename} (${asset.contentType})\n   [ID] ${asset.assetId}`,
@@ -399,7 +395,7 @@ function canonicalSlackFilesPrompt(
 export function canonicalSlackAgentPrompt(
   messagePrompt: string,
   files: readonly SlackFile[] | undefined,
-  assets: readonly SlackPromptAsset[],
+  assets: ChatSlackMessageAssets,
 ): string {
   return [messagePrompt, canonicalSlackFilesPrompt(files, assets)]
     .filter(Boolean)

@@ -46,7 +46,7 @@ const SLACK_INPUT_IMPORT_TIMEOUT_MS = 10_000;
 
 export interface CanonicalSlackInputAsset {
   readonly assetId: string;
-  readonly position: number;
+  readonly slackFileId: string;
   readonly filename: string;
   readonly contentType: string;
   readonly size: number;
@@ -67,7 +67,6 @@ interface CanonicalSlackInputFileArgs {
   readonly messageTs: string;
   readonly botToken?: string;
   readonly file: SlackFile;
-  readonly position: number;
 }
 
 interface CanonicalAssetRow {
@@ -308,7 +307,7 @@ async function ensureSlackInputAsset(
 
 function canonicalSlackInputResult(
   asset: CanonicalAssetRow,
-  position: number,
+  slackFileId: string,
 ): CanonicalSlackInputAsset {
   if (
     asset.filename === null ||
@@ -320,7 +319,7 @@ function canonicalSlackInputResult(
   const status = asset.materializationStatus;
   return {
     assetId: asset.id,
-    position,
+    slackFileId,
     filename: asset.filename,
     contentType: asset.contentType,
     size: asset.sizeBytes ?? 0,
@@ -470,7 +469,7 @@ const importCanonicalSlackInputFile$ = command(
     args: {
       readonly asset: CanonicalAssetRow;
       readonly userId: string;
-      readonly position: number;
+      readonly slackFileId: string;
       readonly downloadUrl: string;
       readonly botToken: string;
       readonly contentType: string;
@@ -536,7 +535,7 @@ const importCanonicalSlackInputFile$ = command(
         ),
       });
       signal.throwIfAborted();
-      return canonicalSlackInputResult(failed, args.position);
+      return canonicalSlackInputResult(failed, args.slackFileId);
     }
     const ready = await markCanonicalInputReady(db, {
       asset: args.asset,
@@ -545,7 +544,7 @@ const importCanonicalSlackInputFile$ = command(
       checksumSha256: imported.value.checksumSha256,
     });
     signal.throwIfAborted();
-    return canonicalSlackInputResult(ready, args.position);
+    return canonicalSlackInputResult(ready, args.slackFileId);
   },
 );
 
@@ -579,13 +578,13 @@ const materializeCanonicalSlackInputFile$ = command(
     });
     signal.throwIfAborted();
     if (asset.materializationStatus === "ready") {
-      return canonicalSlackInputResult(asset, args.position);
+      return canonicalSlackInputResult(asset, fileId);
     }
     if (
       asset.materializationStatus === "failed" &&
       asset.materializationError?.retryable === false
     ) {
-      return canonicalSlackInputResult(asset, args.position);
+      return canonicalSlackInputResult(asset, fileId);
     }
 
     const immediateError = immediateSlackInputError(args.file, contentType);
@@ -595,7 +594,7 @@ const materializeCanonicalSlackInputFile$ = command(
         userId: args.userId,
         error: immediateError,
       });
-      return canonicalSlackInputResult(asset, args.position);
+      return canonicalSlackInputResult(asset, fileId);
     }
     if (!args.botToken) {
       asset = await markCanonicalInputFailed(db, {
@@ -607,7 +606,7 @@ const materializeCanonicalSlackInputFile$ = command(
           retryable: true,
         },
       });
-      return canonicalSlackInputResult(asset, args.position);
+      return canonicalSlackInputResult(asset, fileId);
     }
     const downloadUrl = args.file.url_private_download;
     if (!downloadUrl) {
@@ -624,7 +623,7 @@ const materializeCanonicalSlackInputFile$ = command(
       (asset.materializationStatus === "failed" &&
         asset.materializationError?.retryable === false)
     ) {
-      return canonicalSlackInputResult(asset, args.position);
+      return canonicalSlackInputResult(asset, fileId);
     }
 
     return set(
@@ -632,7 +631,7 @@ const materializeCanonicalSlackInputFile$ = command(
       {
         asset,
         userId: args.userId,
-        position: args.position,
+        slackFileId: fileId,
         downloadUrl,
         botToken: args.botToken,
         contentType,
@@ -645,16 +644,16 @@ const materializeCanonicalSlackInputFile$ = command(
 export const materializeCanonicalSlackInputAssets$ = command(
   async (
     { set },
-    args: Omit<CanonicalSlackInputFileArgs, "file" | "position"> & {
+    args: Omit<CanonicalSlackInputFileArgs, "file"> & {
       readonly files: readonly SlackFile[];
     },
     signal: AbortSignal,
   ): Promise<readonly CanonicalSlackInputAsset[]> => {
     const assets: CanonicalSlackInputAsset[] = [];
-    for (const [position, file] of args.files.entries()) {
+    for (const file of args.files) {
       const asset = await set(
         materializeCanonicalSlackInputFile$,
-        { ...args, file, position },
+        { ...args, file },
         signal,
       );
       signal.throwIfAborted();
@@ -666,7 +665,7 @@ export const materializeCanonicalSlackInputAssets$ = command(
   },
 );
 
-export async function attachCanonicalAssetsToEvent(
+async function attachCanonicalAssetsToEvent(
   db: Db,
   eventId: string,
   assets: readonly {

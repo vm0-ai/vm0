@@ -4,6 +4,7 @@ import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-ev
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
+  ChatSlackMessageAssets,
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
@@ -45,9 +46,11 @@ type ChatEventDisplayContext =
       readonly slackContext: {
         readonly channelId: string;
         readonly messageTs: string;
+        readonly botUserId: string;
         readonly conversationContext: string;
         readonly messageText: string;
         readonly messageFiles: ChatSlackMessageFiles;
+        readonly messageAssets: ChatSlackMessageAssets;
         readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
         readonly senderDisplayName: string | null;
         readonly senderUserId: string | null;
@@ -441,9 +444,11 @@ type NewDisplayContext =
       readonly chatThreadId: string;
       readonly channelId: string;
       readonly messageTs: string;
+      readonly botUserId: string;
       readonly conversationContext: string;
       readonly messageText: string;
       readonly messageFiles: ChatSlackMessageFiles;
+      readonly messageAssets: ChatSlackMessageAssets;
       readonly mentionDisplayNames: ChatSlackMentionDisplayNames;
       readonly senderDisplayName: string | null;
       readonly senderUserId: string | null;
@@ -612,9 +617,11 @@ function newDisplayContext(
       chatThreadId: values.chatThreadId,
       channelId: slackContext.channelId,
       messageTs: slackContext.messageTs,
+      botUserId: slackContext.botUserId,
       conversationContext: slackContext.conversationContext,
       messageText: slackContext.messageText,
       messageFiles: slackContext.messageFiles,
+      messageAssets: slackContext.messageAssets,
       mentionDisplayNames: slackContext.mentionDisplayNames,
       senderDisplayName: slackContext.senderDisplayName,
       senderUserId: slackContext.senderUserId,
@@ -830,9 +837,11 @@ async function insertDisplayContext(
       chatThreadId: context.chatThreadId,
       channelId: context.channelId,
       messageTs: context.messageTs,
+      botUserId: context.botUserId,
       conversationContext: context.conversationContext,
       messageText: context.messageText,
       messageFiles: context.messageFiles,
+      messageAssets: context.messageAssets,
       mentionDisplayNames: context.mentionDisplayNames,
       senderDisplayName: context.senderDisplayName,
       senderUserId: context.senderUserId,
