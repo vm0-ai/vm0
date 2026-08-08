@@ -35,6 +35,7 @@ import {
   ingestToAxiom,
 } from "./signals/external/axiom";
 import type { RouteEntry } from "./signals/route-entry";
+import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
 import {
   isAbortError,
@@ -540,6 +541,7 @@ export function createAppWithRoutes({
   routes,
   signal,
 }: CreateAppWithRoutesOptions): Hono {
+  configureChatRunFinishedEventDispatcher();
   configurePiEdgeTurnDispatcher();
   const app = new Hono();
   app.onError(handleError);
