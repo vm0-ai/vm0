@@ -15,7 +15,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import type {
-  ChatEventRetainedLegacyPayload,
   ChatEventUserMessage,
   ChatEventUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-event";
@@ -116,7 +115,6 @@ export const chatEvents = pgTable(
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
-    activeInputSequence: integer("active_input_sequence"),
     runEventSequenceNumber: integer("run_event_sequence_number"),
     /**
      * Upstream run-event ID or a deterministic seed for synthesized rows.
@@ -127,18 +125,6 @@ export const chatEvents = pgTable(
     runEventId: text("run_event_id"),
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
-    // The outgoing API still declares these physical columns. This reader-only
-    // release removes every active use; drop them only after this API drains.
-    legacyGoalPayload:
-      jsonb("goal_event").$type<ChatEventRetainedLegacyPayload>(),
-    legacyAttachedFiles:
-      jsonb("attach_files").$type<ChatEventRetainedLegacyPayload>(),
-    legacyTemplatePayload: jsonb(
-      "generation_template",
-    ).$type<ChatEventRetainedLegacyPayload>(),
-    legacyFollowupsPayload: jsonb(
-      "recommended_followups",
-    ).$type<ChatEventRetainedLegacyPayload>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -172,9 +158,6 @@ export const chatEvents = pgTable(
         table.runId,
         table.runEventSequenceNumber,
       ),
-      uniqueIndex("chat_events_run_active_input_seq_unique")
-        .on(table.runId, table.activeInputSequence)
-        .where(sql`${table.activeInputSequence} IS NOT NULL`),
       uniqueIndex("chat_events_thread_seq_unique").on(
         table.chatThreadId,
         table.seqId,
@@ -248,13 +231,8 @@ export const chatEvents = pgTable(
             AND ${table.userMessage} IS NULL
             AND ${table.thinking} IS NULL
             AND ${table.error} IS NULL
-            AND ${table.activeInputSequence} IS NULL
             AND ${table.runEventSequenceNumber} IS NULL
             AND ${table.runEventId} IS NULL
-            AND ${table.legacyGoalPayload} IS NULL
-            AND ${table.legacyAttachedFiles} IS NULL
-            AND ${table.legacyTemplatePayload} IS NULL
-            AND ${table.legacyFollowupsPayload} IS NULL
           )`,
       ),
       check(

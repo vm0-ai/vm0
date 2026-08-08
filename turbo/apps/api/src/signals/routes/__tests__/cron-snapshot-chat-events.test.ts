@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzipSync } from "node:zlib";
 
 import {
   cronProjectChatEventSearchContract,
@@ -16,10 +16,7 @@ import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import {
-  readChatEventSnapshotHead,
-  setChatEventSnapshotHeadAsV1,
-} from "./helpers/runtime-state";
+import { readChatEventSnapshotHead } from "./helpers/runtime-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -110,14 +107,6 @@ const ARCHIVE_V2_KEYS = [
   "userMessage",
 ] as const;
 
-const REMOVED_ARCHIVE_V1_KEYS = [
-  "activeInputSequence",
-  "attachFiles",
-  "generationTemplate",
-  "goalEvent",
-  "recommendedFollowups",
-] as const;
-
 function archivedLines(body: Buffer): readonly ArchivedLine[] {
   const raw = gunzipSync(body).toString("utf8");
   expect(raw.endsWith("\n")).toBeTruthy();
@@ -145,11 +134,6 @@ function expectArchiveInvariants(
   expect(String(lastLine?.seqId)).toBe(match?.[2]);
   for (const [index, line] of lines.entries()) {
     expect(Object.keys(line).sort()).toStrictEqual(ARCHIVE_V2_KEYS);
-    for (const removedKey of REMOVED_ARCHIVE_V1_KEYS) {
-      expect(line).not.toHaveProperty(removedKey);
-    }
-    expect(line.eventType).not.toBe("browser.started");
-    expect(line.eventType).not.toBe("browser.stopped");
     expect(line.chatThreadId).toBe(threadId);
     expect(Number.isInteger(line.seqId)).toBeTruthy();
     expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
@@ -159,54 +143,6 @@ function expectArchiveInvariants(
     }
   }
   return lines;
-}
-
-function v1SnapshotFixture(
-  source: RecordedPut,
-  retiredBrowserEventType: "browser.started" | "browser.stopped",
-): {
-  readonly body: Buffer;
-  readonly canonicalLines: readonly ArchivedLine[];
-  readonly key: string;
-} {
-  const sourceLines = archivedLines(source.body);
-  const v1Lines = sourceLines.map((line, index) => {
-    return {
-      ...line,
-      eventType: index === 0 ? retiredBrowserEventType : line.eventType,
-      activeInputSequence: null,
-      attachFiles: null,
-      generationTemplate: null,
-      goalEvent: null,
-      recommendedFollowups: null,
-    };
-  });
-  const raw = `${v1Lines
-    .map((line) => {
-      return JSON.stringify(line);
-    })
-    .join("\n")}\n`;
-  const body = gzipSync(Buffer.from(raw));
-  const lastSeqId = sourceLines.at(-1)?.seqId;
-  if (lastSeqId === undefined) {
-    throw new Error("Expected a non-empty source snapshot");
-  }
-  const threadId = sourceLines[0]?.chatThreadId;
-  if (threadId === undefined) {
-    throw new Error("Expected a source snapshot thread");
-  }
-  const key = `chat-events/${threadId}/${lastSeqId}-${createHash("sha256").update(body).digest("hex")}.ndjson.gz`;
-  const canonicalEventType =
-    retiredBrowserEventType === "browser.started"
-      ? "browser.open"
-      : "browser.close";
-  return {
-    body,
-    canonicalLines: sourceLines.map((line, index) => {
-      return index === 0 ? { ...line, eventType: canonicalEventType } : line;
-    }),
-    key,
-  };
 }
 
 describe("cron snapshot chat events", () => {
@@ -328,14 +264,8 @@ describe("cron snapshot chat events", () => {
     await runSnapshotCron();
     expect(putsForThread(threadId)).toHaveLength(1);
 
-    // Recreate the active head as a verified historical v1 object. Its first
-    // row also exercises the retired browser value mapping during transcode.
-    const v1Parent = v1SnapshotFixture(firstPut, "browser.started");
-    fakeR2Objects.set(v1Parent.key, v1Parent.body);
-    await setChatEventSnapshotHeadAsV1(context, threadId, v1Parent.key);
-
     // A new Postgres tail beyond the projected watermark triggers a rebuild
-    // that transcodes the v1 parent and appends v2 tail rows.
+    // that verifies the canonical parent and appends only the new tail rows.
     await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       threadId,
@@ -353,57 +283,13 @@ describe("cron snapshot chat events", () => {
     }
     const secondLines = expectArchiveInvariants(secondPut, threadId);
     expect(secondLines.length).toBeGreaterThan(firstLines.length);
-    expect(secondLines.slice(0, firstLines.length)).toStrictEqual(
-      v1Parent.canonicalLines,
-    );
+    expect(secondLines.slice(0, firstLines.length)).toStrictEqual(firstLines);
 
     const secondRaw = gunzipSync(secondPut.body).toString("utf8");
     expect(secondRaw).toContain(`${marker} third`);
     const secondHead = await readChatEventSnapshotHead(context, threadId);
     expect(secondHead.archive_schema_version).toBe(2);
     expect(secondHead.object_key).toBe(secondPut.key);
-
-    await runSnapshotCron();
-    expect(putsForThread(threadId)).toHaveLength(2);
-  }, 60_000);
-
-  it("upgrades a v1 head to homogeneous v2 without a Postgres tail", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Version-only snapshot agent",
-    });
-
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `version-only-${randomUUID()}`,
-    });
-    await projectChatEventSearch();
-    await runSnapshotCron();
-
-    const firstPut = putsForThread(threadId)[0];
-    if (firstPut === undefined) {
-      throw new Error("Expected a first-generation snapshot object");
-    }
-    const firstHead = await readChatEventSnapshotHead(context, threadId);
-    const v1Parent = v1SnapshotFixture(firstPut, "browser.stopped");
-    fakeR2Objects.set(v1Parent.key, v1Parent.body);
-    await setChatEventSnapshotHeadAsV1(context, threadId, v1Parent.key);
-
-    const upgraded = await runSnapshotCron();
-    expect(upgraded.success).toBeTruthy();
-    const puts = putsForThread(threadId);
-    expect(puts).toHaveLength(2);
-    const upgradedPut = puts[1];
-    if (upgradedPut === undefined) {
-      throw new Error("Expected a version-only v2 snapshot object");
-    }
-    const upgradedLines = expectArchiveInvariants(upgradedPut, threadId);
-    expect(upgradedLines).toStrictEqual(v1Parent.canonicalLines);
-
-    const upgradedHead = await readChatEventSnapshotHead(context, threadId);
-    expect(upgradedHead.archive_schema_version).toBe(2);
-    expect(upgradedHead.last_seq_id).toBe(firstHead.last_seq_id);
-    expect(upgradedHead.object_key).toBe(upgradedPut.key);
 
     await runSnapshotCron();
     expect(putsForThread(threadId)).toHaveLength(2);

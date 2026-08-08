@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-import {
-  chatEventTypeSchema,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { chatEventTypeSchema } from "@vm0/api-contracts/contracts/chat-events";
 import { command, type Computed } from "ccstate";
 import { and, asc, eq, gt, isNotNull, lte, ne, or, sql } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
@@ -35,11 +32,7 @@ interface SnapshotCandidate {
   readonly headArchiveSchemaVersion: number | null;
 }
 
-/**
- * Version of the NDJSON line shape written by archiveLine. Bump it whenever
- * that shape changes. Existing heads keep their recorded version and are
- * selected for a verified rewrite even when they have no new Postgres tail.
- */
+/** Version of the canonical NDJSON line shape written by archiveLine. */
 const ARCHIVE_SCHEMA_VERSION = 2;
 const ARCHIVE_CONTENT_TYPE = "application/gzip";
 /**
@@ -80,10 +73,6 @@ function createArchiveLineShape() {
 }
 
 const archiveLineV2Schema = z.object(createArchiveLineShape()).strict();
-const archiveLineV1Schema = z.object({
-  ...createArchiveLineShape(),
-  eventType: z.string(),
-});
 
 type ArchiveLineV2 = z.infer<typeof archiveLineV2Schema>;
 type ArchiveEventRow = Pick<
@@ -127,16 +116,6 @@ function chatEventSnapshotThreadBatchSize(): number {
  * that a chat_events schema change forces a conscious decision here instead
  * of silently changing the persisted archive shape.
  */
-function canonicalArchiveEventType(eventType: string): ChatEventType {
-  if (eventType === "browser.started") {
-    return "browser.open";
-  }
-  if (eventType === "browser.stopped") {
-    return "browser.close";
-  }
-  return chatEventTypeSchema.parse(eventType);
-}
-
 function encodeArchiveLine(line: ArchiveLineV2): Buffer {
   return Buffer.from(`${JSON.stringify(line)}\n`);
 }
@@ -150,7 +129,7 @@ function archiveLine(row: ArchiveEventRow): Buffer {
     revokesEventId: row.revokesEventId,
     interruptsRunId: row.interruptsRunId,
     runGroupId: row.runGroupId,
-    eventType: canonicalArchiveEventType(row.eventType),
+    eventType: row.eventType,
     contextType: row.contextType,
     contextId: row.contextId,
     content: row.content,
@@ -180,33 +159,12 @@ function parseArchiveLines(raw: Buffer): readonly unknown[] {
     });
 }
 
-/**
- * Persisted-data migration for active v1 heads, not deployed-version skew.
- * Remove only after every active head is v2; immutable v1 objects then belong
- * to the separate R2 retention/GC lifecycle.
- */
-function currentArchiveRaw(raw: Buffer, archiveSchemaVersion: number): Buffer {
+function validatedArchiveRaw(raw: Buffer): Buffer {
   const lines = parseArchiveLines(raw);
-  if (archiveSchemaVersion === ARCHIVE_SCHEMA_VERSION) {
-    for (const line of lines) {
-      archiveLineV2Schema.parse(line);
-    }
-    return raw;
+  for (const line of lines) {
+    archiveLineV2Schema.parse(line);
   }
-  if (archiveSchemaVersion !== 1) {
-    throw new Error(
-      `unsupported chat event snapshot schema version: ${archiveSchemaVersion}`,
-    );
-  }
-  return Buffer.concat(
-    lines.map((line) => {
-      const parsed = archiveLineV1Schema.parse(line);
-      return encodeArchiveLine({
-        ...parsed,
-        eventType: canonicalArchiveEventType(parsed.eventType),
-      });
-    }),
-  );
+  return raw;
 }
 
 function sha256Hex(buffer: Buffer): string {
@@ -347,10 +305,15 @@ async function archiveThread(
 ): Promise<number | null> {
   const tail = await readTailEvents(db, candidate);
   signal.throwIfAborted();
-  const needsSchemaUpgrade =
+  if (
     candidate.headId !== null &&
-    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION;
-  if (tail.count === 0 && !needsSchemaUpgrade) {
+    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      `unsupported chat event snapshot schema version: ${candidate.headArchiveSchemaVersion}`,
+    );
+  }
+  if (tail.count === 0) {
     return null;
   }
 
@@ -369,9 +332,8 @@ async function archiveThread(
       downloadS3Buffer(bucket, candidate.headObjectKey),
     );
     signal.throwIfAborted();
-    parentRaw = currentArchiveRaw(
+    parentRaw = validatedArchiveRaw(
       verifiedArchiveRaw(candidate.headObjectKey, parentCompressed),
-      candidate.headArchiveSchemaVersion,
     );
   }
 

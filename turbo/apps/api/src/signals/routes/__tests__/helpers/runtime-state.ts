@@ -435,18 +435,6 @@ export async function insertChatEventAssetRefFixture(
   });
 }
 
-export async function setChatEventSnapshotHeadAsV1(
-  context: TestContext,
-  threadId: string,
-  objectKey: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-chat-event-snapshot-head-as-v1",
-    thread_id: threadId,
-    object_key: objectKey,
-  });
-}
-
 export async function readChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
