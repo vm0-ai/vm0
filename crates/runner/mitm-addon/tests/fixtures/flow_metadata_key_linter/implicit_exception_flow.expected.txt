@@ -36,3 +36,7 @@ implicit_exception_flow.py:509: use metadata_keys.CONNECTOR_ROUTE_CANDIDATES for
 implicit_exception_flow.py:550: use metadata_keys.VM_RUN_ID for flow.metadata access
 implicit_exception_flow.py:558: use metadata_keys.FIREWALL_NAME for flow.metadata access
 implicit_exception_flow.py:573: use metadata_keys.NETWORK_LOG_TARGET for flow.metadata access
+implicit_exception_flow.py:586: use metadata_keys.VM_RUN_ID for flow.metadata access
+implicit_exception_flow.py:598: use metadata_keys.FIREWALL_NAME for flow.metadata access
+implicit_exception_flow.py:613: use metadata_keys.ORIGINAL_URL for flow.metadata access
+implicit_exception_flow.py:625: use metadata_keys.FIREWALL_BASE for flow.metadata access

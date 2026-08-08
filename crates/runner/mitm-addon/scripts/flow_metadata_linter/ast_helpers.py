@@ -592,7 +592,7 @@ def _assertion_may_raise(node: ast.Assert) -> bool:
 
 
 def _function_definition_may_raise(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return _expressions_may_raise(
+    return bool(node.decorator_list) or _expressions_may_raise(
         [
             *node.decorator_list,
             *node.args.defaults,
@@ -602,7 +602,7 @@ def _function_definition_may_raise(node: ast.FunctionDef | ast.AsyncFunctionDef)
 
 
 def _class_definition_may_raise(node: ast.ClassDef) -> bool:
-    return _expressions_may_raise(
+    return bool(node.decorator_list) or _expressions_may_raise(
         [
             *node.decorator_list,
             *node.bases,
