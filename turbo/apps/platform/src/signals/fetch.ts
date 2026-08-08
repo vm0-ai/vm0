@@ -4,6 +4,7 @@ import { clerk$ } from "./auth.ts";
 import {
   authRecoverySignal,
   fetchFreshToken,
+  foregroundAuthRecovery$,
   handleUnauthorizedRedirect,
   retryAuthRecoveryOperation,
   unauthorizedRedirectSuppressionUntil$,
@@ -180,7 +181,11 @@ export const fetch$ = computed((get) => {
         get(rootSignal$),
         options?.signal ?? (url instanceof Request ? url.signal : undefined),
       );
-      const refreshResult = await fetchFreshToken(clerk, recoverySignal);
+      const refreshResult = await fetchFreshToken(
+        clerk,
+        recoverySignal,
+        get(foregroundAuthRecovery$),
+      );
       if (refreshResult.status === "refreshed") {
         response = await retryAuthRecoveryOperation(async () => {
           return await performFetch(refreshResult.token, recoverySignal);

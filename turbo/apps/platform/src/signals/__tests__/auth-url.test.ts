@@ -1,4 +1,5 @@
 import { waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
@@ -211,7 +212,7 @@ describe("platform auth redirects", () => {
     });
   });
 
-  it("uses app auth for non-preview org selection", async () => {
+  it("keeps foreground touch under one owner outside the rollout", async () => {
     setBrowserUrl("https://app.vm0.ai/agents");
 
     detachedSetupPage({
@@ -235,10 +236,33 @@ describe("platform auth redirects", () => {
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
+      touchSession: false,
       ui: expect.objectContaining({
         ClerkUI: expect.any(Function),
         version: "1.27.0",
       }),
+    });
+  });
+
+  it("keeps the same foreground touch owner inside the rollout", async () => {
+    setBrowserUrl("https://app.vm0.ai/agents");
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ForegroundAuthRecovery]: true,
+      },
+      org: {
+        activeOrg: null,
+        memberships: [{ id: "org_member" }],
+      },
+      path: "/agents",
+    });
+
+    await waitFor(() => {
+      expect(mockedClerkLoad).toHaveBeenCalledWith(
+        expect.objectContaining({ touchSession: false }),
+      );
     });
   });
 
@@ -270,6 +294,7 @@ describe("platform auth redirects", () => {
       satelliteAutoSync: true,
       signInUrl: "https://app.vm0.ai/sign-in",
       signUpUrl: "https://app.vm0.ai/sign-up",
+      touchSession: false,
       ui: expect.objectContaining({
         ClerkUI: expect.any(Function),
         version: "1.27.0",
