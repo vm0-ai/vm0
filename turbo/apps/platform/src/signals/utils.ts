@@ -319,11 +319,21 @@ function runRetriedLoad<T>(load: () => Promise<T>): Promise<T> {
 /**
  * Retry idempotent read/lazy-load operations that can fail on transient
  * network or chunk-loading errors. Do not wrap mutations: `load` may run more
- * than once.
+ * than once. The caller must pass the lifecycle that owns both the request and
+ * its retry delay; computed reads that outlive invalidation use the app root.
  */
-export function retryTransientLoad<T>(load: () => Promise<T>): Promise<T> {
+export function retryTransientLoad<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
   async function attemptLoad(attempt: number): Promise<T> {
-    const result = await settle(runRetriedLoad(load));
+    signal.throwIfAborted();
+    const result = await settle(
+      runRetriedLoad(() => {
+        return load(signal);
+      }),
+      signal,
+    );
     if (result.ok) {
       return result.value;
     }
@@ -331,7 +341,7 @@ export function retryTransientLoad<T>(load: () => Promise<T>): Promise<T> {
     if (delayMs === undefined || !isRetryableError(result.error)) {
       throw result.error;
     }
-    await delay(IN_VITEST ? 0 : delayMs);
+    await delay(IN_VITEST ? 0 : delayMs, { signal });
     return attemptLoad(attempt + 1);
   }
 

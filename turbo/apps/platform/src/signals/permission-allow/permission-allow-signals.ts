@@ -17,6 +17,7 @@ import { agentById, currentAgentId$ } from "../agent.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -141,14 +142,15 @@ export function userPermissionGrantsByAgent(
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const result = await retryTransientLoad(() => {
+    const result = await retryTransientLoad((signal) => {
       return accept(
         client.list({
           query: params,
+          fetchOptions: { signal },
         }),
         [200],
       );
-    });
+    }, get(rootSignal$));
     return result.body;
   });
 }
@@ -159,14 +161,15 @@ export function userPermissionGrantsByAgentIfExists(
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
-    const result = await retryTransientLoad(() => {
+    const result = await retryTransientLoad((signal) => {
       return accept(
         client.list({
           query: params,
+          fetchOptions: { signal },
         }),
         [200, 404],
       );
-    });
+    }, get(rootSignal$));
     return result.status === 404 ? null : result.body;
   });
 }
