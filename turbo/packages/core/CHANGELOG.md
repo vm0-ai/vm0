@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.530.9](https://github.com/vm0-ai/vm0/compare/core-v8.530.8...core-v8.530.9) (2026-08-08)
+
+
+### Bug Fixes
+
+* **platform:** gate foreground catch-up on clerk recovery ([#25794](https://github.com/vm0-ai/vm0/issues/25794)) ([042faf4](https://github.com/vm0-ai/vm0/commit/042faf45c0c22f87022371e4861a6c56bae8631f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.2
+
 ## [8.530.8](https://github.com/vm0-ai/vm0/compare/core-v8.530.7...core-v8.530.8) (2026-08-08)
 
 
