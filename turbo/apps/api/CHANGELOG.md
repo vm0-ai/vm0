@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.405.1](https://github.com/vm0-ai/vm0/compare/api-v1.405.0...api-v1.405.1) (2026-08-08)
+
+
+### Refactoring
+
+* **runner:** remove runner preference migration bridge ([#25796](https://github.com/vm0-ai/vm0/issues/25796)) ([bde4228](https://github.com/vm0-ai/vm0/commit/bde4228117d5f4dfd43040feb9eec41c9af09337))
+
+
+### Performance Improvements
+
+* **api:** run chat event snapshot cron every ten minutes ([#25793](https://github.com/vm0-ai/vm0/issues/25793)) ([6478e9d](https://github.com/vm0-ai/vm0/commit/6478e9df3127ea3d9d02403a93111ae18552b34a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.1
+    * @vm0/core bumped to 8.530.8
+    * @vm0/db bumped to 1.180.3
+    * @vm0/pi-agent-runtime bumped to 1.3.11
+
 ## [1.405.0](https://github.com/vm0-ai/vm0/compare/api-v1.404.1...api-v1.405.0) (2026-08-08)
 
 

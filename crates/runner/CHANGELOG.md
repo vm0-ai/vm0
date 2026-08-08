@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.161.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.0...runner-rs-v0.161.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **runner:** reject mismatched local result identities ([#25792](https://github.com/vm0-ai/vm0/issues/25792)) ([80cb44a](https://github.com/vm0-ai/vm0/commit/80cb44a8acc3047025de8a3369cb2169d1303114))
+
+
+### Refactoring
+
+* **runner:** centralize org name validation ([#25791](https://github.com/vm0-ai/vm0/issues/25791)) ([ec215ce](https://github.com/vm0-ai/vm0/commit/ec215cec3f7d9387a8aaa9a7a01847c1a322a34d))
+* **runner:** remove runner preference migration bridge ([#25796](https://github.com/vm0-ai/vm0/issues/25796)) ([bde4228](https://github.com/vm0-ai/vm0/commit/bde4228117d5f4dfd43040feb9eec41c9af09337))
+
 ## [0.161.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.9...runner-rs-v0.161.0) (2026-08-08)
 
 
