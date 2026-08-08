@@ -40,8 +40,15 @@ export const chatEventSearchDocs = pgTable(
     /**
      * Mirrors chat_threads.agent_compose_id, which equals the zero agent id.
      * Projected so an agent-scoped search never has to join back to the thread.
+     *
+     * Nullable only for the deploy window: migrations run before API traffic is
+     * promoted, so the previous API's projector keeps inserting rows without
+     * this column for up to the observed DB/API skew (~102 minutes). Those rows
+     * simply never match an agent-scoped search, and the projector replay
+     * refills them. Tighten to NOT NULL in a follow-up release once no API
+     * without this column is serving.
      */
-    agentComposeId: uuid("agent_compose_id").notNull(),
+    agentComposeId: uuid("agent_compose_id"),
     role: text("role").$type<"user" | "assistant">().notNull(),
     createdAt: timestamp("created_at").notNull(),
     /** Raw searchable text, also used for fallback ILIKE matching. */

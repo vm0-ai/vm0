@@ -100,9 +100,14 @@ async function projectThread(
       .orderBy(asc(chatEvents.seqId))
       .limit(THREAD_EVENT_LIMIT);
 
+    // Any event type can revoke an earlier one: replaceLoadedChatEvent appends
+    // the replacement with revokes_event_id set and keeps the replacement's own
+    // type, so a queued prompt is usually revoked by an input.rejected rather
+    // than a control.revoke. Matching on revokes_event_id alone keeps this in
+    // step with the visibility rule readers apply to chat_events.
     const revokedEventIds = new Set<string>();
     for (const row of rows) {
-      if (row.eventType === "control.revoke" && row.revokesEventId !== null) {
+      if (row.revokesEventId !== null) {
         revokedEventIds.add(row.revokesEventId);
       }
     }

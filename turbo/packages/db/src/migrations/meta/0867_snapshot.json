@@ -1,5 +1,5 @@
 {
-  "id": "4f3737da-eb40-4462-bb9b-8196e36bfe67",
+  "id": "dd45be22-3788-4f82-8cef-921430623443",
   "prevId": "d60a0b04-120d-4426-9045-499c2bdc09e7",
   "version": "7",
   "dialect": "postgresql",
@@ -4400,7 +4400,7 @@
           "name": "agent_compose_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "role": {
           "name": "role",
