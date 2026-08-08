@@ -389,7 +389,124 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   });
 });
 
-test("responsive follow-up rail aligns its edges and equalizes card heights", async ({
+// The card rail only renders on coarse-pointer text-entry devices, so this
+// group emulates touch instead of relying on the viewport width alone.
+test.describe("mobile follow-up card rail", () => {
+  test.use({ hasTouch: true });
+
+  test("responsive follow-up rail aligns its edges and equalizes card heights", async ({
+    page,
+  }) => {
+    await enableResponsiveFollowupCards(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(appUrl);
+    await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+    const agentId = new URL(page.url()).pathname.match(
+      /^\/agents\/([^/]+)\/chat\/?$/,
+    )?.[1];
+    if (!agentId) {
+      throw new Error("Could not resolve the active agent from the chat URL");
+    }
+    await mockResponsiveFollowupThread(page, agentId);
+    await page.goto(
+      new URL(`/chats/${responsiveFollowupThreadId}`, appUrl).href,
+    );
+
+    const rail = page.getByRole("group", { name: "Keep going" });
+    const cards = responsiveFollowupPrompts.map((prompt) => {
+      return page.getByRole("button", { name: prompt, exact: true });
+    });
+    await expect(rail).toBeVisible();
+    for (const card of cards) {
+      await expect(card).toBeVisible();
+    }
+
+    await expect
+      .poll(async () => {
+        const railBox = await rail.boundingBox();
+        const firstBox = await cards[0].boundingBox();
+        if (!railBox || !firstBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+        return Math.abs(firstBox.x - railBox.x);
+      })
+      .toBeLessThan(1);
+    await expect
+      .poll(async () => {
+        const boxes = await Promise.all(
+          cards.map((card) => card.boundingBox()),
+        );
+        if (boxes.some((box) => box === null)) {
+          return Number.POSITIVE_INFINITY;
+        }
+        const heights = boxes.map((box) => box!.height);
+        return Math.max(...heights) - Math.min(...heights);
+      })
+      .toBeLessThan(1);
+
+    await cards[1].evaluate((element) => {
+      element.scrollIntoView({ block: "nearest", inline: "center" });
+    });
+    await expect
+      .poll(async () => {
+        const railBox = await rail.boundingBox();
+        const middleBox = await cards[1].boundingBox();
+        if (!railBox || !middleBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+        const railCenter = railBox.x + railBox.width / 2;
+        const cardCenter = middleBox.x + middleBox.width / 2;
+        return Math.abs(cardCenter - railCenter);
+      })
+      .toBeLessThan(2);
+
+    await rail.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+    await expect
+      .poll(async () => {
+        const railBox = await rail.boundingBox();
+        const lastBox = await cards[2].boundingBox();
+        if (!railBox || !lastBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+        return Math.abs(
+          lastBox.x + lastBox.width - (railBox.x + railBox.width),
+        );
+      })
+      .toBeLessThan(1);
+
+    // The rail is a device decision, so a wide viewport on the same touch
+    // device keeps the cards instead of collapsing them into full-width rows.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect
+      .poll(async () => {
+        const railBox = await rail.boundingBox();
+        const firstBox = await cards[0].boundingBox();
+        if (!railBox || !firstBox) {
+          return 0;
+        }
+        return railBox.width - firstBox.width;
+      })
+      .toBeGreaterThan(100);
+
+    await page.keyboard.press("Tab");
+    await cards[0].focus();
+    await expect
+      .poll(async () => {
+        return cards[0].evaluate((element) => {
+          return (
+            element.matches(":focus-visible") &&
+            getComputedStyle(element).boxShadow !== "none"
+          );
+        });
+      })
+      .toBe(true);
+  });
+});
+
+test("keeps the flat follow-up list in a narrow desktop window", async ({
   page,
 }) => {
   await enableResponsiveFollowupCards(page);
@@ -406,90 +523,39 @@ test("responsive follow-up rail aligns its edges and equalizes card heights", as
   await mockResponsiveFollowupThread(page, agentId);
   await page.goto(new URL(`/chats/${responsiveFollowupThreadId}`, appUrl).href);
 
-  const rail = page.getByRole("group", { name: "Keep going" });
-  const cards = responsiveFollowupPrompts.map((prompt) => {
+  const list = page.getByRole("group", { name: "Keep going" });
+  const rows = responsiveFollowupPrompts.map((prompt) => {
     return page.getByRole("button", { name: prompt, exact: true });
   });
-  await expect(rail).toBeVisible();
-  for (const card of cards) {
-    await expect(card).toBeVisible();
+  await expect(list).toBeVisible();
+  for (const row of rows) {
+    await expect(row).toBeVisible();
   }
 
+  // A fine-pointer window dragged this narrow keeps the flat vertical list:
+  // every follow-up spans the full width instead of becoming a card.
   await expect
     .poll(async () => {
-      const railBox = await rail.boundingBox();
-      const firstBox = await cards[0].boundingBox();
-      if (!railBox || !firstBox) {
+      const listBox = await list.boundingBox();
+      const boxes = await Promise.all(rows.map((row) => row.boundingBox()));
+      if (!listBox || boxes.some((box) => box === null)) {
         return Number.POSITIVE_INFINITY;
       }
-      return Math.abs(firstBox.x - railBox.x);
+      return Math.max(
+        ...boxes.map((box) => Math.abs(box!.width - listBox.width)),
+      );
     })
-    .toBeLessThan(1);
+    .toBeLessThan(2);
   await expect
     .poll(async () => {
-      const boxes = await Promise.all(cards.map((card) => card.boundingBox()));
+      const boxes = await Promise.all(rows.map((row) => row.boundingBox()));
       if (boxes.some((box) => box === null)) {
-        return Number.POSITIVE_INFINITY;
+        return 0;
       }
-      const heights = boxes.map((box) => box!.height);
-      return Math.max(...heights) - Math.min(...heights);
+      const tops = boxes.map((box) => box!.y);
+      return Math.max(...tops) - Math.min(...tops);
     })
-    .toBeLessThan(1);
-
-  await cards[1].evaluate((element) => {
-    element.scrollIntoView({ block: "nearest", inline: "center" });
-  });
-  await expect
-    .poll(async () => {
-      const railBox = await rail.boundingBox();
-      const middleBox = await cards[1].boundingBox();
-      if (!railBox || !middleBox) {
-        return Number.POSITIVE_INFINITY;
-      }
-      const railCenter = railBox.x + railBox.width / 2;
-      const cardCenter = middleBox.x + middleBox.width / 2;
-      return Math.abs(cardCenter - railCenter);
-    })
-    .toBeLessThan(2);
-
-  await rail.evaluate((element) => {
-    element.scrollLeft = element.scrollWidth;
-  });
-  await expect
-    .poll(async () => {
-      const railBox = await rail.boundingBox();
-      const lastBox = await cards[2].boundingBox();
-      if (!railBox || !lastBox) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return Math.abs(lastBox.x + lastBox.width - (railBox.x + railBox.width));
-    })
-    .toBeLessThan(1);
-
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await expect
-    .poll(async () => {
-      const railBox = await rail.boundingBox();
-      const firstBox = await cards[0].boundingBox();
-      if (!railBox || !firstBox) {
-        return Number.POSITIVE_INFINITY;
-      }
-      return Math.abs(firstBox.width - railBox.width);
-    })
-    .toBeLessThan(2);
-
-  await page.keyboard.press("Tab");
-  await cards[0].focus();
-  await expect
-    .poll(async () => {
-      return cards[0].evaluate((element) => {
-        return (
-          element.matches(":focus-visible") &&
-          getComputedStyle(element).boxShadow !== "none"
-        );
-      });
-    })
-    .toBe(true);
+    .toBeGreaterThan(0);
 });
 
 test("image lightbox centers and pans across the full viewer", async ({
