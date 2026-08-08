@@ -40,6 +40,7 @@ const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
 const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
 const SEEDANCE_2_5_MODEL = "dreamina-seedance-2-5-260628";
+const SEEDANCE_2_0_MINI_MODEL = "dreamina-seedance-2-0-mini-260615";
 const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 const BYTEPLUS_VIDEO_URL =
@@ -113,6 +114,18 @@ const VIDEO_PRICING_DEFAULTS = [
     provider: "dreamina-seedance-2-0-fast-260128",
     category: "output_video_tokens.480p_720p.with_video",
     unitPrice: 4125,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_0_MINI_MODEL,
+    category: "output_video_tokens.480p_720p.no_video",
+    unitPrice: 4375,
+    unitSize: 1_000_000,
+  },
+  {
+    provider: SEEDANCE_2_0_MINI_MODEL,
+    category: "output_video_tokens.480p_720p.with_video",
+    unitPrice: 2625,
     unitSize: 1_000_000,
   },
   {
@@ -882,6 +895,96 @@ describe("POST /api/zero/video-io/generate", () => {
     // asserted through the result body above and the exact org balance drop,
     // observed on the product billing surface.
     await expect(orgCredits(fixture)).resolves.toBe(10_000 - 865);
+  });
+
+  it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {
+    const fixture = await seedVideoFixture({ withPricing: true });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let observedBody: unknown = null;
+    server.use(
+      http.post(BYTEPLUS_VIDEO_TASKS_URL, async ({ request }) => {
+        observedBody = await request.json();
+        return HttpResponse.json({
+          id: "seedance-2-0-mini-video-task",
+          status: "queued",
+        });
+      }),
+      http.get(BYTEPLUS_VIDEO_URL, () => {
+        return new HttpResponse(VIDEO_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        });
+      }),
+    );
+
+    const app = createVideoIoTestApp();
+    const response = await app.request("/api/zero/video-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "a cinematic product reveal",
+        model: "dreamina-seedance-2.0-mini",
+        duration: "8s",
+        resolution: "720p",
+        aspectRatio: "16:9",
+        videoUrls: ["https://example.com/reference.mp4"],
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+    const callbackUrl = readCallbackUrl(observedBody);
+    expect(observedBody).toMatchObject({
+      model: SEEDANCE_2_0_MINI_MODEL,
+      callback_url: callbackUrl,
+      resolution: "720p",
+      ratio: "16:9",
+      duration: 8,
+      generate_audio: true,
+    });
+    const content = asRecord(observedBody).content;
+    expect(Array.isArray(content)).toBeTruthy();
+    if (!Array.isArray(content)) {
+      throw new Error("Expected BytePlus content array");
+    }
+    expect(content).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "video_url",
+          video_url: { url: "https://example.com/reference.mp4" },
+          role: "reference_video",
+        }),
+      ]),
+    );
+
+    await postBytePlusWebhook(app, callbackUrl, {
+      id: "seedance-2-0-mini-video-task",
+      model: SEEDANCE_2_0_MINI_MODEL,
+      status: "succeeded",
+      content: { video_url: BYTEPLUS_VIDEO_URL },
+      usage: { completion_tokens: 100_000 },
+    });
+    await flushWaitUntilForTest();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      creditsCharged: 263,
+      model: SEEDANCE_2_0_MINI_MODEL,
+      duration: "8s",
+      durationSeconds: 8,
+      resolution: "720p",
+      sourceUrl: BYTEPLUS_VIDEO_URL,
+      requestId: "seedance-2-0-mini-video-task",
+    });
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 263);
   });
 
   it("generates Seedance 2.5 with expanded references and 20% gross-margin pricing", async () => {

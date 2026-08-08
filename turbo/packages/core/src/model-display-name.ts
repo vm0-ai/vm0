@@ -68,6 +68,7 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "dreamina-seedance-2-5-260628": "Seedance 2.5",
   "dreamina-seedance-2-0-260128": "Seedance 2.0",
   "dreamina-seedance-2-0-fast-260128": "Seedance 2.0 Fast",
+  "dreamina-seedance-2-0-mini-260615": "Seedance 2.0 Mini",
   "seedance-2-0-260128": "Seedance 2.0",
   "seedance-2-0-fast-260128": "Seedance 2.0 Fast",
   "seedance-1-5-pro-251215": "Seedance 1.5 Pro",

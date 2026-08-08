@@ -400,6 +400,13 @@
       "when": 1786180825748,
       "tag": "0864_finalize_chat_event_contraction",
       "breakpoints": true
+    },
+    {
+      "idx": 865,
+      "version": "7",
+      "when": 1786186816388,
+      "tag": "0865_add_seedance_2_0_mini_video_pricing",
+      "breakpoints": true
     }
   ]
 }

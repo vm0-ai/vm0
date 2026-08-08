@@ -323,6 +323,7 @@ describe("zero generate video command", () => {
     expect(helpOutput).toContain("dreamina-seedance-2.5");
     expect(helpOutput).toContain("dreamina-seedance-2.0-fast");
     expect(helpOutput).toContain("dreamina-seedance-2.0");
+    expect(helpOutput).toContain("dreamina-seedance-2.0-mini");
     expect(helpOutput).toContain("seedance-1.5-pro");
     expect(helpOutput).toContain("minimax-h3");
     expect(helpOutput).toContain("veo3.1-fast");

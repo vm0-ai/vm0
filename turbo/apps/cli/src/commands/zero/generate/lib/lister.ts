@@ -139,6 +139,13 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
     },
     {
       label: "Built-in",
+      model: "dreamina-seedance-2-0-mini-260615",
+      command:
+        "zero generate video --provider built-in --model dreamina-seedance-2.0-mini -h",
+      reason: "availability depends on the current workspace plan",
+    },
+    {
+      label: "Built-in",
       model: "seedance-1-5-pro-251215",
       command:
         "zero generate video --provider built-in --model seedance-1.5-pro -h",
@@ -191,7 +198,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in video generation",
     command: "zero generate video --provider built-in -h",
     models:
-      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
+      "dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
   },
   presentation: {
     label: "Built-in presentation generation",
