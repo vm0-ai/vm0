@@ -32,37 +32,12 @@ pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
     }
 }
 
-/// Validate that a profile name follows the `org/name` format.
-/// Each part must be non-empty lowercase alphanumeric + hyphens.
-///
-/// Mirrors the server-side Zod contract `experimental_profile` regex
-/// in `turbo/packages/core/src/contracts/composes.ts`:
-///   `/^[a-z0-9-]+\/[a-z0-9-]+$/`
-/// Keep the two in sync.
-fn validate_name(name: &str) -> bool {
-    let Some((org, profile_name)) = name.split_once('/') else {
-        return false;
-    };
-    if org.is_empty() || profile_name.is_empty() {
-        return false;
-    }
-    // No additional slashes
-    if profile_name.contains('/') {
-        return false;
-    }
-    let valid_part = |s: &str| {
-        s.chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-    };
-    valid_part(org) && valid_part(profile_name)
-}
-
 /// Validate `name` and return a `RunnerError::Config` with a uniform
 /// message if it fails. Use this at every callsite that takes a profile
 /// name from the user (CLI flags, YAML config) so the error wording
 /// stays consistent.
 pub fn validate_or_err(name: &str) -> RunnerResult<()> {
-    if !validate_name(name) {
+    if !crate::org_name::is_valid(name) {
         return Err(RunnerError::Config(format!(
             "invalid profile name: {name} (must be org/name format, lowercase alphanumeric + hyphens)"
         )));
@@ -89,32 +64,6 @@ mod tests {
     }
 
     #[test]
-    fn validate_name_valid() {
-        assert!(validate_name("vm0/default"));
-        assert!(validate_name("my-org/data-science"));
-        assert!(validate_name("acme/my-profile-123"));
-    }
-
-    #[test]
-    fn validate_name_invalid() {
-        assert!(!validate_name("default")); // no org
-        assert!(!validate_name("/default")); // empty org
-        assert!(!validate_name("vm0/")); // empty name
-        assert!(!validate_name("vm0/my/nested")); // extra slash
-        assert!(!validate_name("VM0/default")); // uppercase
-        assert!(!validate_name("vm0/Default")); // uppercase
-        assert!(!validate_name("vm0/def ault")); // space
-    }
-
-    #[test]
-    fn validate_name_accepts_edge_hyphens() {
-        // TS contract `[a-z0-9-]+/[a-z0-9-]+` accepts leading/trailing
-        // hyphens, so we accept them too for cross-language consistency.
-        assert!(validate_name("-vm0/default"));
-        assert!(validate_name("vm0/default-"));
-    }
-
-    #[test]
     fn validate_or_err_passes_for_valid_name() {
         assert!(validate_or_err("vm0/default").is_ok());
     }
@@ -122,8 +71,9 @@ mod tests {
     #[test]
     fn validate_or_err_carries_offending_name_in_message() {
         let err = validate_or_err("/etc").unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("invalid profile name"), "got: {msg}");
-        assert!(msg.contains("/etc"), "got: {msg}");
+        assert_eq!(
+            err.to_string(),
+            "config error: invalid profile name: /etc (must be org/name format, lowercase alphanumeric + hyphens)"
+        );
     }
 }
