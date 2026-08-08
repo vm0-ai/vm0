@@ -15,10 +15,6 @@ import { logger } from "../log.ts";
 import { settle } from "../utils.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";
 import {
-  goalRunIdsForThread,
-  recordGoalRunIds$,
-} from "./chat-event-goal-run-ids.ts";
-import {
   loadIndexedDbChatEvents$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
@@ -313,17 +309,14 @@ function createSyncRemoteRowsCommand({
   mergePersistentEvents$,
 }: RowSyncDependencies): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const goalRunIds$ = goalRunIdsForThread(threadId);
     const mergeRows = async (rows: readonly ChatEventRow[]): Promise<void> => {
       if (rows.length === 0) {
         return;
       }
-      set(recordGoalRunIds$, threadId, rows);
-      const goalRunIds = get(goalRunIds$);
       await set(
         mergePersistentEvents$,
         rows.map((row) => {
-          return chatEventFromRow(row, goalRunIds);
+          return chatEventFromRow(row);
         }),
         signal,
       );
@@ -396,7 +389,7 @@ function createRowCacheSignals(
   persistentEvents$: PersistentChatEvents$,
 ) {
   const loadRowCacheIntoPersistentEvents$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async ({ set }, signal: AbortSignal): Promise<void> => {
       const rows = await set(
         loadIndexedDbChatEventRowsAfter$,
         threadId,
@@ -407,13 +400,11 @@ function createRowCacheSignals(
       if (rows.length === 0) {
         return;
       }
-      set(recordGoalRunIds$, threadId, rows);
-      const goalRunIds = get(goalRunIdsForThread(threadId));
       set(persistentEvents$, (previous) => {
         return mergePersistentEvents([
           previous,
           rows.map((row) => {
-            return chatEventFromRow(row, goalRunIds);
+            return chatEventFromRow(row);
           }),
         ]);
       });

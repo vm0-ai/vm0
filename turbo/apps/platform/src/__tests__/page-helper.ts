@@ -127,11 +127,12 @@ export async function setupPage(options: {
   const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
   const featureSwitchOverrides = {
+    // Generic page fixtures use projected ChatEvents. Snapshot behavior has a
+    // dedicated suite with v3 archive and raw-row endpoint fixtures.
+    [FeatureSwitchKey.ChatEventSnapshotRead]: false,
     ...options.featureSwitches,
   };
-  if (options.featureSwitches) {
-    setMockFeatureSwitches(featureSwitchOverrides);
-  }
+  setMockFeatureSwitches(featureSwitchOverrides);
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
     getAllFeatureStates({

@@ -3616,7 +3616,7 @@ function isGoalUserMessage(
   );
 }
 
-function isGoalRunGroupFold(fold: RunGroupFold): boolean {
+function isGoalGroupFold(fold: RunGroupFold): boolean {
   return fold.labelGroups.some((group) => {
     return group.events.some(isGoalUserMessage);
   });
@@ -3672,7 +3672,7 @@ function verboseDurationLabelForRunGroupFold(
 }
 
 function runGroupFoldLabel(fold: RunGroupFold): string {
-  if (isGoalRunGroupFold(fold)) {
+  if (isGoalGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
     return duration
@@ -3711,7 +3711,7 @@ function RunGroupFoldRow({
   const { t } = useTranslation();
   const { fold, expanded, onToggle } = control;
   const label = runGroupFoldLabel(fold);
-  const isGoal = isGoalRunGroupFold(fold);
+  const isGoal = isGoalGroupFold(fold);
   const Icon = isGoal ? IconTarget : IconPackage;
   return (
     <div

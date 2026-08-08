@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 
-import {
-  goalRunIdsFromChatEventRows,
-  chatEventFromRow,
-} from "@vm0/api-contracts/contracts/chat-event-row-projection";
+import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import { chatEventRowSchema } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -15,6 +13,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
+import { mockNow, now } from "../../../lib/time";
+import {
+  insertContentFollowupsEventFixture,
+  insertSnapshotReclaimEventsFixture,
+  readChatEventPayloadFixture,
+  setRunCompletedAtFixture,
+} from "../../../test-fixtures/chat-events";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
@@ -22,8 +27,11 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
+  ageFakeChatEventObject,
   FAKE_CHAT_EVENT_SNAPSHOT_URL,
   installFakeChatEventR2,
+  readFakeChatEventObject,
+  writeFakeChatEventObject,
 } from "./helpers/fake-chat-event-r2";
 import {
   readChatEventSnapshotHead,
@@ -53,14 +61,15 @@ function eventsClient() {
   );
 }
 
-async function runSnapshotCron(): Promise<void> {
+async function runSnapshotCron() {
   const client = setupApp({ context, routes: cronSnapshotChatEventsRoutes })(
     cronSnapshotChatEventsContract,
   );
-  await accept(
+  const response = await accept(
     client.snapshot({ headers: { authorization: `Bearer ${CRON_SECRET}` } }),
     [200],
   );
+  return response.body;
 }
 
 async function projectChatEventSearch(): Promise<void> {
@@ -97,6 +106,7 @@ describe("chat event snapshot read endpoints", () => {
     // assertions about this file's threads never depend on batch ordering.
     mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "10000");
     mockOptionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE", "10000");
+    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", "fff");
   });
 
   it("serves a presigned download only for a current-version head", async () => {
@@ -140,7 +150,7 @@ describe("chat event snapshot read endpoints", () => {
       lastSeqId: head.last_seq_id,
     });
 
-    // Older heads behave as missing until the archiver rewrites them.
+    // Unsupported heads fail closed instead of entering a rewrite fallback.
     await setChatEventSnapshotHeadVersion(context, threadId, 2);
     await accept(
       eventsClient().snapshot({
@@ -205,9 +215,8 @@ describe("chat event snapshot read endpoints", () => {
       expect(row.chatThreadId).toBe(threadId);
     }
 
-    const goalRunIds = goalRunIdsFromChatEventRows(rows.body.rows);
     const projected = rows.body.rows.map((row) => {
-      return chatEventFromRow(row, goalRunIds);
+      return chatEventFromRow(row);
     });
     const expected = events.body.events.filter((event) => {
       return event.seqId > firstSeqId;
@@ -238,4 +247,126 @@ describe("chat event snapshot read endpoints", () => {
       },
     });
   }, 60_000);
+
+  it("reclaims only verified archived payloads and garbage-collects unreferenced objects", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    await api.grantProEntitlement(owner);
+    await api.ensureOrgModelProvider(owner);
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Snapshot maintenance agent",
+    });
+    const thread = await chat.createThread(owner, { agentId: agent.agentId });
+    const run = await api.createRun(owner, {
+      agentId: agent.agentId,
+      prompt: "Create snapshot maintenance fixtures",
+    });
+    const fixture = await insertSnapshotReclaimEventsFixture({
+      threadId: thread.id,
+      runId: run.runId,
+    });
+    await setRunCompletedAtFixture({
+      runId: run.runId,
+      completedAt: new Date(now() - 2 * 60 * 60 * 1000),
+    });
+    mockOptionalEnv("CHAT_EVENT_PAYLOAD_RECLAIM_GRACE_HOURS", "1");
+    mockOptionalEnv("CHAT_EVENT_PAYLOAD_RECLAIM_DRY_RUN", "true");
+
+    await projectChatEventSearch();
+    const dryRun = await runSnapshotCron();
+    expect(dryRun).toMatchObject({
+      corsChanged: true,
+      payloadRowsMeasured: 2,
+      payloadRowsReclaimed: 0,
+    });
+    await expect(
+      readChatEventPayloadFixture(fixture.thinkingEventId),
+    ).resolves.toMatchObject({ thinking: "archived thinking payload" });
+
+    const head = await readChatEventSnapshotHead(context, thread.id);
+    const snapshotBody = readFakeChatEventObject(head.object_key);
+    if (!snapshotBody) {
+      throw new Error("Expected the fake snapshot object");
+    }
+    const snapshotRows = gunzipSync(snapshotBody)
+      .toString("utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => {
+        return JSON.parse(line) as { id: string; thinking?: string | null };
+      });
+    expect(
+      snapshotRows.find((row) => {
+        return row.id === fixture.thinkingEventId;
+      }),
+    ).toMatchObject({ thinking: "archived thinking payload" });
+
+    mockOptionalEnv("CHAT_EVENT_PAYLOAD_RECLAIM_DRY_RUN", "false");
+    const applied = await runSnapshotCron();
+    expect(applied).toMatchObject({
+      corsChanged: false,
+      payloadRowsMeasured: 2,
+      payloadRowsReclaimed: 2,
+    });
+    await expect(
+      readChatEventPayloadFixture(fixture.thinkingEventId),
+    ).resolves.toStrictEqual({ content: null, thinking: null });
+    await expect(
+      readChatEventPayloadFixture(fixture.followupsEventId),
+    ).resolves.toStrictEqual({ content: null, thinking: null });
+    await expect(
+      readChatEventPayloadFixture(fixture.messageEventId),
+    ).resolves.toStrictEqual({
+      content: "preserved conversation payload",
+      thinking: null,
+    });
+    const idempotent = await runSnapshotCron();
+    expect(idempotent).toMatchObject({
+      payloadRowsMeasured: 0,
+      payloadRowsReclaimed: 0,
+    });
+
+    const future = new Date(now() + 8 * 24 * 60 * 60 * 1000);
+    mockNow(future);
+    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", thread.id.slice(0, 3));
+    ageFakeChatEventObject(
+      head.object_key,
+      new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
+    );
+    const protectedHead = await runSnapshotCron();
+    expect(protectedHead.r2ObjectsDeleted).toBe(0);
+    expect(readFakeChatEventObject(head.object_key)).toBeDefined();
+
+    const orphanKey = `chat-events/${thread.id.slice(0, 3)}-orphan.ndjson.gz`;
+    writeFakeChatEventObject(orphanKey, Buffer.from("orphan"));
+    ageFakeChatEventObject(
+      orphanKey,
+      new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
+    );
+    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", "true");
+    const orphanDryRun = await runSnapshotCron();
+    expect(orphanDryRun).toMatchObject({
+      r2ObjectsMeasured: 1,
+      r2ObjectsDeleted: 0,
+    });
+    expect(readFakeChatEventObject(orphanKey)).toBeDefined();
+    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_DRY_RUN", "false");
+    const orphanGc = await runSnapshotCron();
+    expect(orphanGc).toMatchObject({
+      r2ObjectsMeasured: 1,
+      r2ObjectsDeleted: 1,
+    });
+    expect(readFakeChatEventObject(orphanKey)).toBeUndefined();
+
+    await insertContentFollowupsEventFixture({
+      threadId: thread.id,
+      content: JSON.stringify({ version: 1, followups: [] }),
+    });
+    await projectChatEventSearch();
+    const replacement = await runSnapshotCron();
+    expect(replacement.r2ObjectsDeleted).toBe(1);
+    expect(readFakeChatEventObject(head.object_key)).toBeUndefined();
+    const newHead = await readChatEventSnapshotHead(context, thread.id);
+    expect(newHead.object_key).not.toBe(head.object_key);
+    expect(readFakeChatEventObject(newHead.object_key)).toBeDefined();
+  }, 120_000);
 });

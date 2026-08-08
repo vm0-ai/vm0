@@ -166,7 +166,7 @@ function latestCandidate(
   return latest;
 }
 
-function eventMessageId(event: AgentEvent): string | undefined {
+function eventMessageId(event: AgentEvent): string {
   const message = recordOf(event.message);
   if (typeof message?.id === "string") {
     return message.id;
@@ -177,7 +177,7 @@ function eventMessageId(event: AgentEvent): string | undefined {
     return item.id;
   }
 
-  return undefined;
+  return `event:${event.sequenceNumber}`;
 }
 
 function nextProjectionSequenceState(

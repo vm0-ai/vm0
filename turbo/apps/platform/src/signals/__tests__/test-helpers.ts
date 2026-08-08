@@ -1,7 +1,10 @@
 import { createStore, type Store } from "ccstate";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach } from "vitest";
 import { logger, resetLoggerForTest } from "../log";
 import { resetLocalStorageForTest$ } from "../external/local-storage";
+import { setFeatureSwitchLocalStorage$ } from "../external/feature-switch-state";
 import { resetAllMockHandlers } from "../../mocks/handlers";
 import { createTestMocks, type TestMocks } from "./test-mocks.ts";
 
@@ -32,6 +35,16 @@ export function testContext(): TestContext {
       if (!store) {
         L.debug("create store");
         store = createStore();
+        // Generic chat fixtures exercise the projected-event pipeline. The
+        // dedicated snapshot-reader suite opts into the production-default
+        // raw-row pipeline and owns its endpoint/object fixtures explicitly.
+        store.set(
+          setFeatureSwitchLocalStorage$,
+          JSON.stringify({
+            ...getAllFeatureStates({}),
+            [FeatureSwitchKey.ChatEventSnapshotRead]: false,
+          }),
+        );
         context.signal.addEventListener("abort", () => {
           store?.set(resetLocalStorageForTest$);
           resetLoggerForTest();

@@ -5,10 +5,6 @@ import { chatEventSnapshotReadEnabled$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
 import {
-  goalRunIdsForThread,
-  recordGoalRunIds$,
-} from "./chat-event-goal-run-ids.ts";
-import {
   loadIndexedDbChatEventBounds$,
   writeIndexedDbChatEvents$,
 } from "./chat-event-indexed-db.ts";
@@ -81,7 +77,7 @@ function createdMessageSyncThroughSeqId(message: unknown): number | null {
  */
 const syncChatThreadRowsToIndexedDb$ = command(
   async (
-    { get, set },
+    { set },
     {
       threadId,
       syncThroughSeqId,
@@ -127,11 +123,9 @@ const syncChatThreadRowsToIndexedDb$ = command(
       }
       await set(writeIndexedDbChatEventRows$, page.rows, signal);
       signal.throwIfAborted();
-      set(recordGoalRunIds$, threadId, page.rows);
-      const goalRunIds = get(goalRunIdsForThread(threadId));
       syncedEvents.push(
         ...page.rows.map((row) => {
-          return chatEventFromRow(row, goalRunIds);
+          return chatEventFromRow(row);
         }),
       );
       sinceSeqId = page.rows.at(-1)!.seqId;

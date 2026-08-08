@@ -90,8 +90,19 @@ const cronProjectChatEventSearchResponseSchema = z.object({
 
 const cronSnapshotChatEventsResponseSchema = z.object({
   success: z.literal(true),
+  corsChanged: z.boolean(),
   snapshots: z.number(),
   archivedEvents: z.number(),
+  payloadRowsMeasured: z.number().int().nonnegative(),
+  payloadRowsReclaimed: z.number().int().nonnegative(),
+  payloadReclaimHasMore: z.boolean(),
+  r2ObjectsScanned: z.number().int().nonnegative(),
+  r2ObjectsMeasured: z.number().int().nonnegative(),
+  r2ObjectsDeleted: z.number().int().nonnegative(),
+  r2BytesMeasured: z.number().int().nonnegative(),
+  r2BytesDeleted: z.number().int().nonnegative(),
+  r2GcShardsScanned: z.number().int().nonnegative(),
+  r2GcSubpartitionedShards: z.number().int().nonnegative(),
 });
 
 const cronCompactUsageEventsResponseSchema = z.object({

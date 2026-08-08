@@ -85,7 +85,6 @@ function baseEvent(
     content,
     runId: message.runId,
     runGroupId: message.runGroupId,
-    isGoalRun: message.isGoalRun,
     runEventId: message.runEventId,
     revokesEventId: message.revokesEventId,
     seqId: message.seqId ?? fallbackSeqId,

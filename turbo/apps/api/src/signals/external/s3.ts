@@ -5,11 +5,13 @@ import {
   CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
+  GetBucketCorsCommand,
   type GetObjectCommandOutput,
   HeadObjectCommand,
   ListPartsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
+  PutBucketCorsCommand,
   S3Client,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
@@ -23,10 +25,15 @@ import {
 import { env } from "../../lib/env";
 import { detach, Mechanism, settle } from "../utils";
 
-interface S3Object {
+export interface S3Object {
   readonly key: string;
   readonly size: number;
   readonly lastModified: Date;
+}
+
+export interface S3ObjectPage {
+  readonly objects: readonly S3Object[];
+  readonly isTruncated: boolean;
 }
 
 interface S3FileEntry {
@@ -218,6 +225,108 @@ export function listS3Objects(
   });
 }
 
+const CHAT_EVENT_SNAPSHOT_CORS_RULE_ID = "vm0-chat-event-snapshot-read";
+
+function missingCorsConfiguration(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const value = error as { readonly name?: unknown; readonly Code?: unknown };
+  return (
+    value.name === "NoSuchCORSConfiguration" ||
+    value.Code === "NoSuchCORSConfiguration"
+  );
+}
+
+/**
+ * Idempotently adds browser GET access for one exact application origin while
+ * preserving every unrelated bucket CORS rule.
+ */
+export function ensureS3CorsGetOrigin(
+  bucket: string,
+  origin: string,
+): Computed<Promise<{ readonly changed: boolean }>> {
+  return computed(async (get): Promise<{ readonly changed: boolean }> => {
+    const client = get(s3ClientForBucket(bucket));
+    const current = await settle(
+      client.send(new GetBucketCorsCommand({ Bucket: bucket })),
+    );
+    if (!current.ok && !missingCorsConfiguration(current.error)) {
+      throw current.error;
+    }
+    const rules = current.ok ? (current.value.CORSRules ?? []) : [];
+    const alreadyAllowed = rules.some((rule) => {
+      return (
+        (rule.AllowedOrigins ?? []).includes(origin) &&
+        (rule.AllowedMethods ?? []).includes("GET")
+      );
+    });
+    if (alreadyAllowed) {
+      return { changed: false };
+    }
+    const retained = rules.filter((rule) => {
+      return rule.ID !== CHAT_EVENT_SNAPSHOT_CORS_RULE_ID;
+    });
+    await client.send(
+      new PutBucketCorsCommand({
+        Bucket: bucket,
+        CORSConfiguration: {
+          CORSRules: [
+            ...retained,
+            {
+              ID: CHAT_EVENT_SNAPSHOT_CORS_RULE_ID,
+              AllowedOrigins: [origin],
+              AllowedMethods: ["GET", "HEAD"],
+              AllowedHeaders: ["*"],
+              ExposeHeaders: ["Content-Encoding", "Content-Type", "ETag"],
+              MaxAgeSeconds: 7200,
+            },
+          ],
+        },
+      }),
+    );
+    return { changed: true };
+  });
+}
+
+/**
+ * One bounded, lexicographically ordered object page. Callers that perform
+ * maintenance must supply their own durable or deterministic partitioning;
+ * this helper never follows continuation tokens implicitly.
+ */
+export function listS3ObjectsPage(
+  bucket: string,
+  prefix: string,
+  maxKeys: number,
+): Computed<Promise<S3ObjectPage>> {
+  if (!Number.isInteger(maxKeys) || maxKeys <= 0 || maxKeys > 1000) {
+    throw new Error("S3 list page size must be an integer between 1 and 1000");
+  }
+  return computed(async (get): Promise<S3ObjectPage> => {
+    const client = get(s3ClientForBucket(bucket));
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        MaxKeys: maxKeys,
+      }),
+    );
+    const objects = (response.Contents ?? []).flatMap((item) => {
+      if (!item.Key || item.Size === undefined || !item.LastModified) {
+        return [];
+      }
+      return [
+        {
+          key: item.Key,
+          size: item.Size,
+          lastModified: item.LastModified,
+        },
+      ];
+    });
+    return { objects, isTruncated: response.IsTruncated === true };
+  });
+}
+
 export function listS3ObjectsUnderPrefix(
   bucket: string,
   prefix: string,
@@ -235,7 +344,7 @@ export function deleteS3Objects(
       return;
     }
     const client = get(s3ClientForBucket(bucket));
-    await client.send(
+    const response = await client.send(
       new DeleteObjectsCommand({
         Bucket: bucket,
         Delete: {
@@ -245,6 +354,11 @@ export function deleteS3Objects(
         },
       }),
     );
+    if ((response.Errors?.length ?? 0) > 0) {
+      throw new Error(
+        `S3 object deletion failed for ${response.Errors?.length.toString() ?? "0"} object(s)`,
+      );
+    }
   });
 }
 

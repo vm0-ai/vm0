@@ -98,7 +98,6 @@ type ChatEventRow = {
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
-  readonly isGoalRun: boolean;
   readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
   readonly error: string | null;
@@ -174,26 +173,8 @@ const eventColumns = {
   interruptsRunId: chatEvents.interruptsRunId,
 } as const;
 
-function chatEventMetadataSubquery(db: Pick<Db, "select">) {
-  return db
-    .select({
-      goalId: zeroRuns.goalId,
-    })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, chatEvents.runId))
-    .limit(1)
-    .as("chat_event_metadata");
-}
-
-function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
-  const metadata = chatEventMetadataSubquery(db);
-  return db
-    .select({
-      ...eventColumns,
-      isGoalRun: isNotNull(metadata.goalId).mapWith(pgBooleanDecoder),
-    })
-    .from(chatEvents)
-    .leftJoinLateral(metadata, sql`true`);
+function selectChatEvents(db: Pick<Db, "select">) {
+  return db.select(eventColumns).from(chatEvents);
 }
 
 const searchMessageColumns = {
@@ -406,7 +387,6 @@ function baseChatEventFromRow(row: ChatEventRow, content: string | null) {
     content,
     runId: row.runId ?? undefined,
     runGroupId: row.runGroupId ?? undefined,
-    isGoalRun: row.isGoalRun || undefined,
     runEventId: row.runEventId ?? undefined,
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,
@@ -1337,20 +1317,20 @@ export function zeroChatThreadEventsPage(args: {
     let rows: ChatEventRow[];
 
     if (args.sinceSeqId !== undefined) {
-      rows = await selectChatEventsWithMetadata(db)
+      rows = await selectChatEvents(db)
         .where(and(threadFilter, gt(chatEvents.seqId, args.sinceSeqId)))
         .orderBy(asc(chatEvents.seqId))
         .limit(args.limit);
     } else if (args.beforeSeqId !== undefined) {
       rows = (
-        await selectChatEventsWithMetadata(db)
+        await selectChatEvents(db)
           .where(and(threadFilter, lt(chatEvents.seqId, args.beforeSeqId)))
           .orderBy(desc(chatEvents.seqId))
           .limit(args.limit)
       ).reverse();
     } else {
       rows = (
-        await selectChatEventsWithMetadata(db)
+        await selectChatEvents(db)
           .where(threadFilter)
           .orderBy(desc(chatEvents.seqId))
           .limit(args.limit)
@@ -1373,7 +1353,7 @@ export function zeroChatThreadEventById(args: {
     }
 
     const db = get(db$);
-    const [row] = await selectChatEventsWithMetadata(db)
+    const [row] = await selectChatEvents(db)
       .where(
         and(
           eq(chatEvents.id, args.eventId),

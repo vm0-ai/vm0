@@ -499,7 +499,6 @@ const chatEventBaseSchema = z.object({
   content: z.string().nullable(),
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
-  isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   revokesEventId: z.string().optional(),
   /** Server-assigned strict position within the chat thread. */
@@ -588,7 +587,6 @@ const inputGoalEventSchema = chatEventBaseSchema
     // the user-facing document and stream ordering contract.
     runId: z.never().optional(),
     runGroupId: z.never().optional(),
-    isGoalRun: z.never().optional(),
     runEventId: z.never().optional(),
     revokesEventId: z.never().optional(),
     sequenceNumber: z.never().optional(),
@@ -717,7 +715,6 @@ const browserCloseEventSchema = chatEventBaseSchema
 const goalMarkerMetadataSchema = {
   runId: z.never().optional(),
   runGroupId: z.never().optional(),
-  isGoalRun: z.never().optional(),
   runEventId: z.never().optional(),
   revokesEventId: z.never().optional(),
   sequenceNumber: z.never().optional(),

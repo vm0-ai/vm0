@@ -655,7 +655,6 @@ function isGoalContinuationUserMessage(
     return part.type === "goal";
   });
   return (
-    message.isGoalRun === true &&
     message.runId !== undefined &&
     goalPart?.type === "goal" &&
     goalPart.goalBrief === objectiveBrief

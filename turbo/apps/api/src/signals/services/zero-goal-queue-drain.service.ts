@@ -124,7 +124,6 @@ function buildGoalChatCallbacks(args: {
       payload: {
         threadId: args.threadId,
         agentId: args.agentId,
-        isGoalRun: true,
       },
     },
   ];
