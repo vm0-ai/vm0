@@ -19,6 +19,7 @@ import {
   PI_BASE_SYSTEM_PROMPT as PI_BASE_SYSTEM_PROMPT_IMPL,
   renderPiSystemPrompt as renderPiSystemPromptImpl,
 } from "./runtime";
+import { createPiNoopExecutionEnv as createPiNoopExecutionEnvImpl } from "./noop";
 import {
   isPiEdgeToolName as isPiEdgeToolNameImpl,
   piMessageRequiresSandbox as piMessageRequiresSandboxImpl,
@@ -36,6 +37,10 @@ import type {
   Result,
   Skill,
 } from "./types";
+
+/** An {@link ExecutionEnv} that reports every operation as unavailable. */
+export const createPiNoopExecutionEnv: () => ExecutionEnv =
+  createPiNoopExecutionEnvImpl;
 
 /**
  * Every export below is annotated with this package's own types from

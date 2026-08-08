@@ -61,8 +61,8 @@ async function writeSkill(
 }
 
 describe("Pi run Skill runtime", () => {
-  it("routes only sandbox-dependent tool batches out of the API loop", () => {
-    expect(piMessageRequiresSandbox(assistantToolCall("read"))).toBe(false);
+  it("routes every tool batch out of the API edge loop to the sandbox", () => {
+    expect(piMessageRequiresSandbox(assistantToolCall("read"))).toBe(true);
     expect(piMessageRequiresSandbox(assistantToolCall("bash"))).toBe(true);
   });
 
