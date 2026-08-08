@@ -151,13 +151,14 @@ async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
 
 
 @pytest.mark.parametrize(
-    ("api_url", "host", "scheme", "port"),
+    ("api_url", "host", "scheme", "port", "expected_api_allow"),
     [
         pytest.param(
             "https://api.vm0.ai",
             "api.vm0.ai",
             "https",
             443,
+            True,
             id="https-default-port",
         ),
         pytest.param(
@@ -165,6 +166,7 @@ async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
             "api.vm0.ai",
             "http",
             80,
+            True,
             id="http-default-port",
         ),
         pytest.param(
@@ -172,6 +174,7 @@ async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
             "api.vm0.ai",
             "https",
             8443,
+            True,
             id="explicit-non-default-port",
         ),
         pytest.param(
@@ -179,18 +182,53 @@ async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
             "preview.api.vm0.ai",
             "https",
             443,
+            True,
             id="subdomain",
+        ),
+        pytest.param(
+            "https://api.vm0.ai",
+            "notapi.vm0.ai",
+            "https",
+            443,
+            False,
+            id="adjacent-label",
+        ),
+        pytest.param(
+            "https://api.vm0.ai",
+            "api.vm0.ai.example.com",
+            "https",
+            443,
+            False,
+            id="superdomain",
+        ),
+        pytest.param(
+            "https://api.vm0.ai",
+            "api.vm0.ai",
+            "https",
+            8443,
+            False,
+            id="wrong-default-port",
+        ),
+        pytest.param(
+            "https://api.vm0.ai:8443",
+            "api.vm0.ai",
+            "https",
+            443,
+            False,
+            id="wrong-explicit-port",
         ),
     ],
 )
-async def test_vm0_api_auto_allowed(
+async def test_vm0_api_auto_allow_respects_authority_boundary(
     registry_file,
     real_flow,
     mitm_ctx,
+    monkeypatch,
     api_url,
     host,
     scheme,
     port,
+    expected_api_allow,
 ):
     flow = real_flow(
         with_response=False,
@@ -198,6 +236,7 @@ async def test_vm0_api_auto_allowed(
         scheme=scheme,
         port=port,
     )
+    monkeypatch.setattr(platform_api, "VERCEL_BYPASS", "preview-secret")
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url=api_url),
@@ -205,10 +244,16 @@ async def test_vm0_api_auto_allowed(
         await mitm_addon.request(flow)
 
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == host
-    assert binding.port == port
-    assert binding.kinds == frozenset(("api_allow",))
+    bindings = upstream_destination_binding.binding_snapshot_for_tests()
+    if expected_api_allow:
+        binding = bindings[flow.server_conn.id]
+        assert binding.host == host
+        assert binding.port == port
+        assert binding.kinds == frozenset(("api_allow",))
+        assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
+    else:
+        assert bindings == {}
+        assert "x-vercel-protection-bypass" not in flow.request.headers
 
 
 async def test_vm0_api_wrong_port_uses_matching_firewall_deny_policy(
