@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.406.0](https://github.com/vm0-ai/vm0/compare/api-v1.405.2...api-v1.406.0) (2026-08-08)
+
+
+### Features
+
+* add seedance 2.0 mini video generation ([#25814](https://github.com/vm0-ai/vm0/issues/25814)) ([97efe50](https://github.com/vm0-ai/vm0/commit/97efe506aefcea94e602ce05c7113c8a7c82aac6))
+* cold-start chat threads from r2 snapshots behind a switch ([#25802](https://github.com/vm0-ai/vm0/issues/25802)) ([8a9e38a](https://github.com/vm0-ai/vm0/commit/8a9e38afac1f74984d60dbea9dd61f35497c150f))
+* include selected models in client chat messages ([#25809](https://github.com/vm0-ai/vm0/issues/25809)) ([ca9e914](https://github.com/vm0-ai/vm0/commit/ca9e9145c217556075496f346b7322a67eb1ada9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.297.0
+    * @vm0/core bumped to 8.531.0
+    * @vm0/db bumped to 1.181.0
+    * @vm0/pi-agent-runtime bumped to 1.3.13
+
 ## [1.405.2](https://github.com/vm0-ai/vm0/compare/api-v1.405.1...api-v1.405.2) (2026-08-08)
 
 
