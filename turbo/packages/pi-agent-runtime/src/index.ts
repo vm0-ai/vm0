@@ -20,10 +20,7 @@ import {
   renderPiSystemPrompt as renderPiSystemPromptImpl,
 } from "./runtime";
 import { createPiNoopExecutionEnv as createPiNoopExecutionEnvImpl } from "./noop";
-import {
-  isPiEdgeToolName as isPiEdgeToolNameImpl,
-  piMessageRequiresSandbox as piMessageRequiresSandboxImpl,
-} from "./tools";
+import { piMessageRequiresSandbox as piMessageRequiresSandboxImpl } from "./tools";
 import { parsePiAgentMessages as parsePiAgentMessagesImpl } from "./transcript";
 import type {
   ExecutionEnv,
@@ -123,9 +120,6 @@ export const renderPiSystemPrompt: (args: {
   } | null;
   readonly skills: readonly Skill[];
 }) => string = renderPiSystemPromptImpl;
-
-/** Whether a tool name runs on the API-backed edge ExecutionEnv. */
-export const isPiEdgeToolName: (name: string) => boolean = isPiEdgeToolNameImpl;
 
 /** Whether an assistant batch must leave the API-backed ExecutionEnv. */
 export const piMessageRequiresSandbox: (message: PiAgentMessage) => boolean =
