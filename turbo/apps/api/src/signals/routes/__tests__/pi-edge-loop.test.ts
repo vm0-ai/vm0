@@ -914,7 +914,7 @@ async function expectQueuedPiEdgePromotion(args: {
 }
 
 describe("PiLoop edge turn", () => {
-  it("uses the org gate, mounts Pi memory, and completes in the API", async () => {
+  it("uses the org gate, mounts Pi memory, and hands off the first tool to the Sandbox", async () => {
     const fixture = await piEdgeFixture();
     const legacyPrompt = "legacy context must not enter the Pi transcript";
     const legacy = await sendChatRun(fixture, legacyPrompt);
@@ -954,9 +954,7 @@ describe("PiLoop edge turn", () => {
             thinking: "inspect the pinned skill",
           });
         }
-        return currentCall === 1
-          ? assistantTextStream("edge answer", "edge reasoning")
-          : assistantTextStream("follow-up answer", "follow-up reasoning");
+        return assistantTextStream("follow-up answer", "follow-up reasoning");
       }),
     );
 
@@ -1069,7 +1067,7 @@ describe("PiLoop edge turn", () => {
     releaseModel.resolve();
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(2);
+    expect(completionRequests).toHaveLength(1);
     expect(completionRequests[0]).toMatchObject({
       model: MODEL,
       messages: [
@@ -1087,32 +1085,63 @@ describe("PiLoop edge turn", () => {
         }),
       ]),
     });
-    expect(completionRequests[1]).toMatchObject({
-      model: MODEL,
-      messages: [
-        { role: "system", content: piSystemPrompt },
-        {
-          role: "user",
-          content: [{ type: "text", text: edgePrompt }],
-        },
-        expect.objectContaining({
-          role: "assistant",
-          tool_calls: [
-            expect.objectContaining({
-              id: "read_skill_1",
-              function: expect.objectContaining({ name: "read" }),
-            }),
-          ],
-        }),
-        expect.objectContaining({
-          role: "tool",
-          tool_call_id: "read_skill_1",
-        }),
-      ],
-      stream: true,
-    });
-    expect(systemPromptFromRequest(completionRequests[1])).toBe(piSystemPrompt);
+    expect(systemPromptFromRequest(completionRequests[0])).toBe(piSystemPrompt);
     expect(JSON.stringify(completionRequests)).not.toContain(legacyPrompt);
+
+    // The first-round read hands off to the Sandbox: it executes the read
+    // against its own filesystem and resumes the turn.
+    const sandboxHeaders = webhooks.sandboxWebhookHeaders({
+      runId: edge.runId,
+    });
+    const resumeEvents: AgentEventsBody = {
+      runId: edge.runId,
+      events: [
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 3,
+          messageId: `${edge.runId}/3`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 2,
+          message: {
+            role: "toolResult",
+            toolCallId: "read_skill_1",
+            toolName: "read",
+            content: [
+              {
+                type: "text",
+                text: `---\nname: ${fixture.workflowSkillName}\ndescription: fixture.\n---\n`,
+              },
+            ],
+            details: {},
+            isError: false,
+            timestamp: 2,
+          },
+        },
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 4,
+          messageId: `${edge.runId}/4`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 3,
+          message: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "edge reasoning" },
+              { type: "text", text: "edge answer" },
+            ],
+            stopReason: "stop",
+            timestamp: 3,
+          },
+        },
+      ],
+    };
+    await webhooks.requestAgentEvents(resumeEvents, sandboxHeaders, [200]);
+    await webhooks.requestAgentComplete(
+      { runId: edge.runId, exitCode: 0, lastEventSequence: 4 },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
 
     const transcript = await readTranscript(edge.runId);
     expect(transcript).toMatchObject({
@@ -1237,8 +1266,8 @@ describe("PiLoop edge turn", () => {
     const followUp = await sendChatRun(fixture, followUpPrompt, edge.threadId);
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(3);
-    expect(completionRequests[2]).toMatchObject({
+    expect(completionRequests).toHaveLength(2);
+    expect(completionRequests[1]).toMatchObject({
       model: MODEL,
       messages: [
         { role: "system", content: piSystemPrompt },
@@ -1259,7 +1288,7 @@ describe("PiLoop edge turn", () => {
       ],
       stream: true,
     });
-    expect(JSON.stringify(completionRequests[2])).not.toContain(legacyPrompt);
+    expect(JSON.stringify(completionRequests[1])).not.toContain(legacyPrompt);
     const continuedTranscript = await readTranscript(followUp.runId);
     expect(continuedTranscript).toMatchObject({
       version: 1,
@@ -1300,7 +1329,7 @@ describe("PiLoop edge turn", () => {
     );
   });
 
-  it("injects the MEMORY.md prefix and keeps the complete file readable on the edge", async () => {
+  it("injects the MEMORY.md prefix and hands the complete file to the Sandbox", async () => {
     const fixture = await piEdgeFixture();
     await enablePiLoop(fixture);
     const visibleMemory = "- Preferred editor: Helix";
@@ -1346,7 +1375,7 @@ describe("PiLoop edge turn", () => {
     const run = await sendChatRun(fixture, "use my durable memory");
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(2);
+    expect(completionRequests).toHaveLength(1);
     const systemPrompt = systemPromptFromRequest(completionRequests[0]);
     if (systemPrompt === undefined) {
       throw new Error("Expected the Pi request to contain a system prompt");
@@ -1356,7 +1385,77 @@ describe("PiLoop edge turn", () => {
     expect(systemPrompt).toContain("### MEMORY.md prefix");
     expect(systemPrompt).toContain(visibleMemory);
     expect(systemPrompt).not.toContain(hiddenMemory);
-    expect(JSON.stringify(completionRequests[1])).toContain(hiddenMemory);
+
+    // The read of the complete MEMORY.md hands off to the Sandbox, which
+    // reads the full file (including the private tail) on its own filesystem.
+    const standbyPoll = await api.requestPollRunner(
+      true,
+      {
+        group: fixture.runnerGroup,
+        supportedProfiles: [fixture.runnerProfile],
+      },
+      [200],
+    );
+    if (standbyPoll.status !== 200) {
+      throw new Error("Expected Pi standby poll to return 200");
+    }
+    expect(standbyPoll.body.job?.runId).toBe(run.runId);
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    expect(standbyContext.piExecutionMode).toBe("standby");
+    expect(standbyContext.storageManifest?.storageMounts).toContainEqual(
+      expect.objectContaining({
+        name: "memory",
+        mountPath: PI_MEMORY_ROOT,
+      }),
+    );
+
+    const sandboxHeaders = webhooks.sandboxWebhookHeaders({ runId: run.runId });
+    const resumeEvents: AgentEventsBody = {
+      runId: run.runId,
+      events: [
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 3,
+          messageId: `${run.runId}/3`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 2,
+          message: {
+            role: "toolResult",
+            toolCallId: "read_memory_1",
+            toolName: "read",
+            content: [{ type: "text", text: memoryContent }],
+            isError: false,
+            timestamp: 2,
+          },
+        },
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 4,
+          messageId: `${run.runId}/4`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 3,
+          message: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "memory considered" },
+              { type: "text", text: "memory read" },
+            ],
+            stopReason: "stop",
+            timestamp: 3,
+          },
+        },
+      ],
+    };
+    await webhooks.requestAgentEvents(resumeEvents, sandboxHeaders, [200]);
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const transcribed = await readTranscript(run.runId);
+    expect(JSON.stringify(transcribed)).toContain(hiddenMemory);
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "completed",
     );
@@ -1535,46 +1634,32 @@ describe("PiLoop edge turn", () => {
     });
   });
 
-  it("bills every vm0-managed API response once using normalized canonical-model usage", async () => {
+  it("bills each vm0-managed edge response once using normalized canonical-model usage", async () => {
     await unitPriceModelTokens(MANAGED_MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
     const completionRequests: unknown[] = [];
-    let modelCall = 0;
     server.use(
       http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
         completionRequests.push(await request.json());
-        const currentCall = modelCall;
-        modelCall += 1;
-        if (currentCall === 0) {
-          return assistantToolStream({
-            id: "read_billing_1",
-            name: "read",
-            arguments: {
-              path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
-            },
-            thinking: "read before answering",
-            responseModel: "untrusted-response-model",
-            usage: {
-              prompt_tokens: 100,
-              completion_tokens: 11,
-              prompt_tokens_details: {
-                cached_tokens: 20,
-                cache_write_tokens: 5,
-              },
-              completion_tokens_details: { reasoning_tokens: 4 },
-            },
-          });
-        }
-        return assistantTextStream("billed edge answer", "billed reasoning", {
+        return assistantToolStream({
+          id: "read_billing_1",
+          name: "read",
+          arguments: {
+            path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+          },
+          thinking: "read before answering",
           responseModel: "untrusted-response-model",
           usage: {
-            prompt_tokens: 80,
-            completion_tokens: 7,
-            prompt_tokens_details: { cached_tokens: 10 },
-            completion_tokens_details: { reasoning_tokens: 3 },
+            prompt_tokens: 100,
+            completion_tokens: 11,
+            prompt_tokens_details: {
+              cached_tokens: 20,
+              cache_write_tokens: 5,
+            },
+            completion_tokens_details: { reasoning_tokens: 4 },
           },
         });
       }),
@@ -1583,64 +1668,105 @@ describe("PiLoop edge turn", () => {
     const clientEventId = randomUUID();
     const run = await sendChatRun(
       fixture,
-      "bill both managed model responses",
+      "bill the managed edge response",
       undefined,
       fixture.model,
       clientEventId,
     );
     await flushWaitUntilForTest();
 
+    expect(completionRequests).toHaveLength(1);
+    expect(completionRequests[0]).toMatchObject({
+      model: MANAGED_MODEL,
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+
+    // The read hands off to the Sandbox, which resumes and completes the run.
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    expect(standbyContext.piExecutionMode).toBe("standby");
+    const sandboxHeaders = webhooks.sandboxWebhookHeaders({ runId: run.runId });
+    const resumeEvents: AgentEventsBody = {
+      runId: run.runId,
+      events: [
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 3,
+          messageId: `${run.runId}/3`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 2,
+          message: {
+            role: "toolResult",
+            toolCallId: "read_billing_1",
+            toolName: "read",
+            content: [{ type: "text", text: "skill bytes\n" }],
+            isError: false,
+            timestamp: 2,
+          },
+        },
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 4,
+          messageId: `${run.runId}/4`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 3,
+          message: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "billed reasoning" },
+              { type: "text", text: "billed edge answer" },
+            ],
+            stopReason: "stop",
+            timestamp: 3,
+          },
+        },
+      ],
+    };
+    await webhooks.requestAgentEvents(resumeEvents, sandboxHeaders, [200]);
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
     const runState = await api.readRun(fixture.actor, run.runId);
     expect(runState.error).toBeUndefined();
     expect(runState.status).toBe("completed");
-    expect(completionRequests).toHaveLength(2);
-    for (const request of completionRequests) {
-      expect(request).toMatchObject({
-        model: MANAGED_MODEL,
-        stream: true,
-        stream_options: { include_usage: true },
-      });
-    }
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
       runId: run.runId,
       model: MANAGED_MODEL,
-      inputTokens: 145,
-      outputTokens: 18,
-      cacheTokens: 35,
-      creditsCharged: 198,
+      inputTokens: 75,
+      outputTokens: 11,
+      cacheTokens: 25,
+      creditsCharged: 111,
     });
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
-      creditsBefore - 198,
+      creditsBefore - 111,
     );
-    const observationKeys = [
-      piEdgeUsageObservationKey(run.runId, 2),
-      piEdgeUsageObservationKey(run.runId, 4),
-    ];
+    const observationKeys = [piEdgeUsageObservationKey(run.runId, 2)];
     const observations = await readModelStatsObservations(
       context,
       observationKeys,
     );
-    expect(observations).toHaveLength(2);
     expect(observations).toStrictEqual(
-      expect.arrayContaining(
-        observationKeys.map((idempotencyKey) => {
-          return { idempotencyKey, aggregatedAt: null };
-        }),
-      ),
+      observationKeys.map((idempotencyKey) => {
+        return { idempotencyKey, aggregatedAt: null };
+      }),
     );
 
     const replay = await sendChatRun(
       fixture,
-      "bill both managed model responses",
+      "bill the managed edge response",
       run.threadId,
       fixture.model,
       clientEventId,
     );
     await flushWaitUntilForTest();
     expect(replay).toStrictEqual(run);
-    expect(completionRequests).toHaveLength(2);
+    expect(completionRequests).toHaveLength(1);
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      creditsCharged: 198,
+      creditsCharged: 111,
     });
   });
 
@@ -1716,32 +1842,27 @@ describe("PiLoop edge turn", () => {
     ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
   });
 
-  it("settles successful managed usage when a later edge model call fails", async () => {
+  it("settles successful managed usage when the run later fails in the Sandbox", async () => {
     await unitPriceModelTokens(MANAGED_MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
+    const completionRequests: unknown[] = [];
     let modelCall = 0;
     server.use(
-      http.post(OPENAI_COMPLETIONS_URL, () => {
-        const currentCall = modelCall;
+      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
+        completionRequests.push(await request.json());
         modelCall += 1;
-        if (currentCall === 0) {
-          return assistantToolStream({
-            id: "read_before_failure_1",
-            name: "read",
-            arguments: {
-              path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
-            },
-            thinking: "this successful call must still be billed",
-            usage: { prompt_tokens: 20, completion_tokens: 3 },
-          });
-        }
-        return HttpResponse.json(
-          { error: "provider unavailable after the first response" },
-          { status: 503 },
-        );
+        return assistantToolStream({
+          id: "read_before_failure_1",
+          name: "read",
+          arguments: {
+            path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+          },
+          thinking: "this successful call must still be billed",
+          usage: { prompt_tokens: 20, completion_tokens: 3 },
+        });
       }),
     );
 
@@ -1751,7 +1872,24 @@ describe("PiLoop edge turn", () => {
     );
     await flushWaitUntilForTest();
 
-    expect(modelCall).toBe(2);
+    expect(modelCall).toBe(1);
+    expect(completionRequests).toHaveLength(1);
+
+    // The read hands off to the Sandbox, which then fails; the edge's
+    // successful managed response must still be settled.
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "the Sandbox failed after the handoff",
+        lastEventSequence: 2,
+      },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
       model: MANAGED_MODEL,
