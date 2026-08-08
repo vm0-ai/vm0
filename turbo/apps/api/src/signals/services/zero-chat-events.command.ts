@@ -2850,6 +2850,7 @@ function buildCreateZeroRunArgs(params: {
     ...(prepared.thread.isNewThread
       ? {
           appendSystemPrompt: buildWebChatAppendSystemPrompt({
+            threadId: prepared.thread.threadId,
             incompleteContext: "",
             priorContext: "",
             context: webChatSessionPromptContext,
