@@ -1146,7 +1146,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      deployment-url: ${{ steps.pages-deploy.outputs.url }}
+      preview-url: ${{ steps.app-preview.outputs.url }}
     concurrency:
       group: deploy-app-${{ github.sha }}
       cancel-in-progress: false
@@ -1748,8 +1748,8 @@ jobs:
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.deployment-url }}
-          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.deployment-url }}/_/skeleton
+          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
           VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -1851,7 +1851,7 @@ jobs:
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          ZERO_APP_URL: ${{ needs.deploy-app.outputs.deployment-url }}
+          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}

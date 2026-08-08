@@ -43,12 +43,13 @@ unless artifact_step.fetch("run").include?("resolve-build-commit-sha.sh")
   raise "deploy-app artifact identity must derive from the checked-out commit"
 end
 
-expected_output = "${{ steps.pages-deploy.outputs.url }}"
-unless deploy_app.fetch("outputs").fetch("deployment-url") == expected_output
-  raise "deploy-app deployment-url output changed"
+expected_deployment_url = "${{ steps.pages-deploy.outputs.url }}"
+if deploy_app.fetch("outputs").key?("deployment-url")
+  raise "deploy-app must not expose the immutable Pages deployment URL"
 end
-if deploy_app.fetch("outputs").key?("preview-url")
-  raise "deploy-app must not expose the mutable preview gateway to downstream E2E"
+expected_gateway_url = "${{ steps.app-preview.outputs.url }}"
+unless deploy_app.fetch("outputs").fetch("preview-url") == expected_gateway_url
+  raise "deploy-app preview-url must expose the app preview gateway"
 end
 
 deploy_step = find_step.call("Deploy Cloudflare Pages preview")
@@ -57,7 +58,7 @@ if deploy_step.key?("if")
 end
 
 readiness_step = find_step.call("Wait for Cloudflare Pages deployment readiness")
-unless readiness_step.fetch("env").fetch("PAGES_URL") == expected_output
+unless readiness_step.fetch("env").fetch("PAGES_URL") == expected_deployment_url
   raise "Pages readiness must probe the immutable deployment URL"
 end
 readiness_source = readiness_step.fetch("run")
@@ -93,7 +94,6 @@ smoke_step = find_step.call("Smoke test app preview gateway")
 unless smoke_step.fetch("if").include?("steps.app-preview.outputs.url != ''")
   raise "gateway smoke test must run for every stable app preview"
 end
-expected_gateway_url = "${{ steps.app-preview.outputs.url }}"
 unless smoke_step.fetch("env").fetch("APP_PREVIEW_URL") == expected_gateway_url
   raise "gateway smoke test must use the stable app preview URL"
 end
@@ -117,20 +117,20 @@ browser_run = browser_e2e.fetch("steps").find do |step|
 end
 raise "missing browser E2E run step" unless browser_run
 browser_env = browser_run.fetch("env")
-expected_downstream_deployment = "${{ needs.deploy-app.outputs.deployment-url }}"
-unless browser_env.fetch("VM0_AUTH_URL") == expected_downstream_deployment
-  raise "browser E2E must use the verified immutable Pages deployment"
+expected_downstream_preview = "${{ needs.deploy-app.outputs.preview-url }}"
+unless browser_env.fetch("VM0_AUTH_URL") == expected_downstream_preview
+  raise "browser E2E must use the smoke-tested app preview gateway"
 end
-unless browser_env.fetch("VM0_AUTH_REDIRECT_URL") == "#{expected_downstream_deployment}/_/skeleton"
-  raise "browser E2E redirect must stay on the immutable Pages deployment"
+unless browser_env.fetch("VM0_AUTH_REDIRECT_URL") == "#{expected_downstream_preview}/_/skeleton"
+  raise "browser E2E redirect must stay on the app preview gateway"
 end
 
 playwright_run = playwright_e2e.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
 raise "missing Playwright E2E run step" unless playwright_run
-unless playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_deployment
-  raise "Playwright E2E must use the verified immutable Pages deployment"
+unless playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_preview
+  raise "Playwright E2E must use the smoke-tested app preview gateway"
 end
 
 turbo_source = File.read(ARGV.fetch(0))
