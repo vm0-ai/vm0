@@ -80,10 +80,13 @@ function archiveLine(row: typeof chatEvents.$inferSelect): Buffer {
       runEventSequenceNumber: row.runEventSequenceNumber,
       runEventId: row.runEventId,
       seqId: row.seqId,
-      goalEvent: row.goalEvent,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-      recommendedFollowups: row.recommendedFollowups,
+      // Archive keys track the physical columns; the legacy* accessors are
+      // the Stage 5 bridge names for goal_event, attach_files,
+      // generation_template, and recommended_followups (vm0-ai/vm0#25767).
+      goalEvent: row.legacyGoalPayload,
+      attachFiles: row.legacyAttachedFiles,
+      generationTemplate: row.legacyTemplatePayload,
+      recommendedFollowups: row.legacyFollowupsPayload,
       createdAt: row.createdAt.toISOString(),
     })}\n`,
   );
