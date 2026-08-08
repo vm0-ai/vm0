@@ -16,7 +16,7 @@ import {
   CHAT_MESSAGES_STORE,
 } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
-import { FEATURE_SWITCH_CACHE_KEY } from "../../external/feature-switch.ts";
+import { FEATURE_SWITCH_CACHE_KEY } from "../../external/feature-switch-state.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
