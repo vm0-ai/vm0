@@ -65,6 +65,7 @@ import {
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { cronPassCount, latestCronPassFields } from "./helpers/cron-pass-log";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { seedVm0ManagedDefaultModelKey } from "./helpers/runtime-state";
@@ -3435,4 +3436,90 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run2.runId, claim2.sandboxHeaders);
   }, 120_000);
+});
+
+describe("CHAT-01 catch-up cron metrics", () => {
+  const CATCH_UP_CRON_SECRET = "catch-up-metrics-cron-secret";
+
+  it("reports absolute chat search projection progress", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Search progress agent",
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `search-progress-${randomUUID()}`,
+    });
+
+    mockEnv("CRON_SECRET", CATCH_UP_CRON_SECRET);
+    const client = setupApp({
+      context,
+      routes: cronProjectChatEventSearchRoutes,
+    })(cronProjectChatEventSearchContract);
+    const pass = await accept(
+      client.project({
+        headers: { authorization: `Bearer ${CATCH_UP_CRON_SECRET}` },
+      }),
+      [200],
+    );
+    if (pass.status !== 200) {
+      throw new Error("Expected the search projection pass to succeed");
+    }
+
+    const event = latestCronPassFields(context, "project-chat-event-search");
+    expect(event.ok).toBeTruthy();
+    expect(event.passThreads).toBe(pass.body.threads);
+    expect(event.passIndexedEvents).toBe(pass.body.indexedEvents);
+    expect(event.passDeletedDocs).toBe(pass.body.deletedDocs);
+    cronPassCount(event, "passDurationMs");
+
+    // Absolute state: every thread the projection must cover, how many carry a
+    // watermark, and how many are still behind. The database is shared with
+    // other test files, so only the invariants between the gauges hold.
+    const targetThreads = cronPassCount(event, "targetThreads");
+    const watermarkThreads = cronPassCount(event, "watermarkThreads");
+    const laggingThreads = cronPassCount(event, "laggingThreads");
+    expect(watermarkThreads).toBeGreaterThanOrEqual(1);
+    expect(watermarkThreads).toBeLessThanOrEqual(targetThreads);
+    expect(laggingThreads).toBeLessThanOrEqual(targetThreads);
+  }, 60_000);
+
+  it("reports absolute thread event compaction progress and table scale", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Compaction progress agent",
+    });
+    await chat.createThread(owner, {
+      agentId: agent.agentId,
+      title: "Compaction progress thread",
+      eventId: randomUUID(),
+    });
+
+    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+    const pass = await compactChatThreadSnapshots();
+
+    const event = latestCronPassFields(
+      context,
+      "compact-chat-thread-snapshots",
+    );
+    expect(event.ok).toBeTruthy();
+    expect(event.passScopes).toBe(pass.scopes);
+    expect(event.passEventsApplied).toBe(pass.eventsApplied);
+    expect(event.passEventsPruned).toBe(pass.eventsPruned);
+    expect(event.passRemovedDeletedAgentThreads).toBe(
+      pass.removedDeletedAgentThreads,
+    );
+
+    const snapshotScopes = cronPassCount(event, "snapshotScopes");
+    expect(snapshotScopes).toBeGreaterThanOrEqual(1);
+    expect(cronPassCount(event, "staleScopes")).toBeLessThanOrEqual(
+      snapshotScopes,
+    );
+    // Table scale for the retention work that lands later. Every scope keeps
+    // its marker event forever, so rows stay above zero while the prunable
+    // count is what has to stay near zero.
+    expect(cronPassCount(event, "threadEventRows")).toBeGreaterThanOrEqual(1);
+    expect(cronPassCount(event, "threadEventBytes")).toBeGreaterThan(0);
+    cronPassCount(event, "prunableThreadEvents");
+  }, 60_000);
 });

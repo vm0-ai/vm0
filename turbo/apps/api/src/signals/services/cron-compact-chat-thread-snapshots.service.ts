@@ -20,9 +20,11 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { z } from "zod";
 import { executeRawRows } from "../../lib/db-raw-rows";
+import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import { withCronPassLog, type CronPassFields } from "./cron-pass-log.service";
 
 interface SnapshotCompactionStats {
   readonly scopes: number;
@@ -62,6 +64,8 @@ const snapshotBatchRowSchema = z.object({
 });
 
 const prunedEventsRowSchema = z.object({ count: z.int() });
+
+const COMPACT_CRON = "compact-chat-thread-snapshots";
 
 function allScopesCte(staleCutoff: Date): SQL {
   return sql`
@@ -294,6 +298,102 @@ async function compactChatThreadSnapshotBatch(
   };
 }
 
+/**
+ * Snapshot scopes joined to their marker event: the rows that decide which
+ * expired events are safe to delete. Shared by the prune statement and by the
+ * gauge that reports how many prunable events are still left afterwards.
+ */
+function markerJoinedSnapshots(): SQL {
+  return sql`
+    ${chatThreadSnapshots} ${snapshot}
+    INNER JOIN ${chatThreadEvents} ${marker}
+      ON ${and(
+        eq(marker.id, snapshot.latestEventId),
+        eq(marker.seqId, snapshot.latestEventSeqId),
+        eq(marker.userId, snapshot.userId),
+        eq(marker.orgId, snapshot.orgId),
+      )}
+  `;
+}
+
+function prunableEventCondition(cutoff: Date): SQL {
+  return sql`${and(
+    eq(event.userId, snapshot.userId),
+    eq(event.orgId, snapshot.orgId),
+    lt(event.createdAt, cutoff),
+    lt(event.seqId, marker.seqId),
+  )}`;
+}
+
+function chatThreadEventRetentionCutoff(): Date {
+  return new Date(nowDate().getTime() - CHAT_THREAD_EVENT_RETENTION_MS);
+}
+
+/**
+ * Absolute compaction progress: how many scopes carry a snapshot and how many
+ * are past the staleness target the compactor is supposed to hold.
+ */
+async function chatThreadSnapshotProgress(
+  db: SnapshotRootDb,
+): Promise<CronPassFields> {
+  const staleCutoff = new Date(
+    nowDate().getTime() - CHAT_THREAD_SNAPSHOT_STALE_MS,
+  );
+  const rows = await db
+    .select({
+      snapshotScopes: count(),
+      staleScopes: sql`count(*) FILTER (
+        WHERE ${lt(chatThreadSnapshots.updatedAt, staleCutoff)}
+      )`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("staleScopes"),
+    })
+    .from(chatThreadSnapshots);
+  const progress = rows[0];
+  if (progress === undefined) {
+    throw new Error("chat thread snapshot progress query returned no row");
+  }
+  return progress;
+}
+
+/**
+ * Size of the compacted source table plus the events the next prune would
+ * delete. Every scope keeps its marker event forever, so the row count stays
+ * above zero even when retention is healthy; `prunableThreadEvents` is the
+ * number that has to stay near zero.
+ */
+async function chatThreadEventScale(
+  db: SnapshotRootDb,
+): Promise<CronPassFields> {
+  const scaleRows = await db
+    .select({
+      threadEventRows: count(),
+      threadEventBytes: sql`pg_total_relation_size('chat_thread_events')`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("threadEventBytes"),
+    })
+    .from(chatThreadEvents);
+  const scale = scaleRows[0];
+  if (scale === undefined) {
+    throw new Error("chat thread event scale query returned no row");
+  }
+
+  const prunableRows = await executeRawRows(
+    db,
+    sql`
+      SELECT ${count()}::int AS "count"
+      FROM ${chatThreadEvents} ${event}, ${markerJoinedSnapshots()}
+      WHERE ${prunableEventCondition(chatThreadEventRetentionCutoff())}
+    `,
+    prunedEventsRowSchema,
+  );
+
+  return {
+    ...scale,
+    prunableThreadEvents: prunableRows[0]?.count ?? 0,
+  };
+}
+
 async function compactChatThreadSnapshotsForAllScopes(
   db: SnapshotRootDb,
   signal?: AbortSignal,
@@ -306,26 +406,13 @@ async function compactChatThreadSnapshotsForAllScopes(
   );
 
   signal?.throwIfAborted();
-  const cutoff = new Date(nowDate().getTime() - CHAT_THREAD_EVENT_RETENTION_MS);
   const pruned = await executeRawRows(
     db,
     sql`
       WITH pruned AS (
         DELETE FROM ${chatThreadEvents} ${event}
-        USING ${chatThreadSnapshots} ${snapshot}
-        INNER JOIN ${chatThreadEvents} ${marker}
-          ON ${and(
-            eq(marker.id, snapshot.latestEventId),
-            eq(marker.seqId, snapshot.latestEventSeqId),
-            eq(marker.userId, snapshot.userId),
-            eq(marker.orgId, snapshot.orgId),
-          )}
-        WHERE ${and(
-          eq(event.userId, snapshot.userId),
-          eq(event.orgId, snapshot.orgId),
-          lt(event.createdAt, cutoff),
-          lt(event.seqId, marker.seqId),
-        )}
+        USING ${markerJoinedSnapshots()}
+        WHERE ${prunableEventCondition(chatThreadEventRetentionCutoff())}
         RETURNING 1
       )
       SELECT ${count()}::int AS "count"
@@ -344,6 +431,24 @@ async function compactChatThreadSnapshotsForAllScopes(
 
 export const compactChatThreadSnapshots$ = command(
   async ({ set }, signal: AbortSignal): Promise<SnapshotCompactionStats> => {
-    return await compactChatThreadSnapshotsForAllScopes(set(writeDb$), signal);
+    const db = set(writeDb$);
+    return await withCronPassLog(COMPACT_CRON, async () => {
+      const stats = await compactChatThreadSnapshotsForAllScopes(db, signal);
+      const progress = await chatThreadSnapshotProgress(db);
+      signal.throwIfAborted();
+      const scale = await chatThreadEventScale(db);
+      signal.throwIfAborted();
+      return {
+        result: stats,
+        fields: {
+          ...progress,
+          ...scale,
+          passScopes: stats.scopes,
+          passEventsApplied: stats.eventsApplied,
+          passEventsPruned: stats.eventsPruned,
+          passRemovedDeletedAgentThreads: stats.removedDeletedAgentThreads,
+        },
+      };
+    });
   },
 );

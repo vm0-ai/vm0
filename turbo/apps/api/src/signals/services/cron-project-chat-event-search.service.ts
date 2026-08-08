@@ -1,5 +1,15 @@
 import { command } from "ccstate";
-import { and, asc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   chatEventSearchDocs,
@@ -9,7 +19,9 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatSearchIndexText } from "../../lib/chat-search-bigram";
 import { optionalEnv } from "../../lib/env";
+import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { writeDb$, type Db } from "../external/db";
+import { withCronPassLog, type CronPassFields } from "./cron-pass-log.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -34,6 +46,7 @@ type SearchableRole = "user" | "assistant";
 
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const THREAD_EVENT_LIMIT = 1000;
+const SEARCH_PROJECTION_CRON = "project-chat-event-search";
 
 function chatEventSearchThreadBatchSize(): number {
   const raw = optionalEnv("CHAT_EVENT_SEARCH_PROJECTION_BATCH_SIZE");
@@ -182,6 +195,44 @@ async function projectThread(
   });
 }
 
+/** A thread is lagging while its event tail is ahead of the search watermark. */
+function laggingThreadCondition(): SQL {
+  return gt(
+    chatThreads.lastChatEventSeqId,
+    sql`COALESCE(${chatEventSearchWatermarks.indexedSeqId}, 0)`,
+  );
+}
+
+/**
+ * Absolute projection progress for the metric dashboard. One scan of the same
+ * thread join the pass itself selects from answers all three questions: how
+ * many threads the projection has to cover, how many already carry a
+ * watermark, and how many are still behind.
+ */
+async function chatEventSearchProgress(db: Db): Promise<CronPassFields> {
+  const rows = await db
+    .select({
+      targetThreads: count(),
+      watermarkThreads: count(chatEventSearchWatermarks.indexedSeqId),
+      laggingThreads: sql`count(*) FILTER (
+        WHERE ${laggingThreadCondition()}
+      )`
+        .mapWith(pgInt8ToSafeIntegerDecoder)
+        .as("laggingThreads"),
+    })
+    .from(chatThreads)
+    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
+    .leftJoin(
+      chatEventSearchWatermarks,
+      eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
+    );
+  const progress = rows[0];
+  if (progress === undefined) {
+    throw new Error("chat event search progress query returned no row");
+  }
+  return progress;
+}
+
 /**
  * Advances the per-thread chat search projection: finds threads whose
  * chat_events tail is ahead of the search watermark and mirrors their new
@@ -196,42 +247,54 @@ export const projectChatEventSearch$ = command(
     signal: AbortSignal,
   ): Promise<ChatEventSearchProjectionStats> => {
     const db = set(writeDb$);
-    const laggingThreads = await db
-      .select({
-        chatThreadId: chatThreads.id,
-        userId: chatThreads.userId,
-        orgId: agentComposes.orgId,
-        agentComposeId: chatThreads.agentComposeId,
-        lastChatEventSeqId: chatThreads.lastChatEventSeqId,
-        indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
-      })
-      .from(chatThreads)
-      .innerJoin(
-        agentComposes,
-        eq(chatThreads.agentComposeId, agentComposes.id),
-      )
-      .leftJoin(
-        chatEventSearchWatermarks,
-        eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-      )
-      .where(
-        gt(
-          chatThreads.lastChatEventSeqId,
-          sql`COALESCE(${chatEventSearchWatermarks.indexedSeqId}, 0)`,
-        ),
-      )
-      .orderBy(asc(chatThreads.id))
-      .limit(chatEventSearchThreadBatchSize());
-    signal.throwIfAborted();
-
-    let indexedEvents = 0;
-    let deletedDocs = 0;
-    for (const thread of laggingThreads) {
-      const stats = await projectThread(db, thread);
+    return await withCronPassLog(SEARCH_PROJECTION_CRON, async () => {
+      const laggingThreads = await db
+        .select({
+          chatThreadId: chatThreads.id,
+          userId: chatThreads.userId,
+          orgId: agentComposes.orgId,
+          agentComposeId: chatThreads.agentComposeId,
+          lastChatEventSeqId: chatThreads.lastChatEventSeqId,
+          indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
+        })
+        .from(chatThreads)
+        .innerJoin(
+          agentComposes,
+          eq(chatThreads.agentComposeId, agentComposes.id),
+        )
+        .leftJoin(
+          chatEventSearchWatermarks,
+          eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
+        )
+        .where(laggingThreadCondition())
+        .orderBy(asc(chatThreads.id))
+        .limit(chatEventSearchThreadBatchSize());
       signal.throwIfAborted();
-      indexedEvents += stats.indexedEvents;
-      deletedDocs += stats.deletedDocs;
-    }
-    return { threads: laggingThreads.length, indexedEvents, deletedDocs };
+
+      let indexedEvents = 0;
+      let deletedDocs = 0;
+      for (const thread of laggingThreads) {
+        const stats = await projectThread(db, thread);
+        signal.throwIfAborted();
+        indexedEvents += stats.indexedEvents;
+        deletedDocs += stats.deletedDocs;
+      }
+      const result = {
+        threads: laggingThreads.length,
+        indexedEvents,
+        deletedDocs,
+      };
+      const progress = await chatEventSearchProgress(db);
+      signal.throwIfAborted();
+      return {
+        result,
+        fields: {
+          ...progress,
+          passThreads: result.threads,
+          passIndexedEvents: indexedEvents,
+          passDeletedDocs: deletedDocs,
+        },
+      };
+    });
   },
 );

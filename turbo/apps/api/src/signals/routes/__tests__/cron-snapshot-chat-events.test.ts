@@ -20,6 +20,7 @@ import {
   writeFakeChatEventObject,
   type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
+import { cronPassCount, latestCronPassFields } from "./helpers/cron-pass-log";
 import {
   readChatEventSnapshotHead,
   setChatEventSnapshotHeadVersion,
@@ -306,6 +307,89 @@ describe("cron snapshot chat events", () => {
     expect(recoveredHead.object_key).not.toBe(firstPut.key);
   }, 60_000);
 
+  it("reports absolute archiver progress, head versions, and table scale", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Progress snapshot agent",
+    });
+
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `progress-${randomUUID()}`,
+    });
+    await projectChatEventSearch();
+    const pass = await runSnapshotCron();
+
+    const event = latestCronPassFields(context, "snapshot-chat-events");
+    expect(event.ok).toBeTruthy();
+    expect(event.passSnapshots).toBe(pass.snapshots);
+    expect(event.passArchivedEvents).toBe(pass.archivedEvents);
+    cronPassCount(event, "passDurationMs");
+
+    // Absolute state after the pass: the batch drained every candidate, so
+    // nothing is pending and every archiving target carries a head snapshot.
+    const targetThreads = cronPassCount(event, "targetThreads");
+    const headThreads = cronPassCount(event, "headThreads");
+    expect(headThreads).toBeGreaterThanOrEqual(1);
+    expect(headThreads).toBeLessThanOrEqual(targetThreads);
+    expect(cronPassCount(event, "pendingThreads")).toBe(0);
+
+    // Head count per archive schema version: the signal for when no head is
+    // older than ARCHIVE_SCHEMA_VERSION and the rewrite branch can be removed.
+    const versionHeads = event.versionHeads;
+    if (typeof versionHeads !== "object" || versionHeads === null) {
+      throw new Error("Expected per-version head counts");
+    }
+    const heads = versionHeads as Record<string, unknown>;
+    expect(cronPassCount(heads, "3")).toBeGreaterThanOrEqual(1);
+    expect(
+      Object.values(heads).reduce((total: number, value) => {
+        return total + (typeof value === "number" ? value : 0);
+      }, 0),
+    ).toBe(headThreads);
+
+    // Source table scale for the payload reclaim and cleanup work that follows.
+    expect(cronPassCount(event, "chatEventRows")).toBeGreaterThanOrEqual(1);
+    expect(cronPassCount(event, "chatEventBytes")).toBeGreaterThan(0);
+    expect(event.corsReconciled).toBeTruthy();
+
+    const head = await readChatEventSnapshotHead(context, threadId);
+    expect(head.archive_schema_version).toBe(3);
+  }, 60_000);
+
+  it("keeps archiving when bucket CORS reconciliation is denied", async () => {
+    // An R2 credential scoped to object read/write answers the CORS
+    // control-plane commands with AccessDenied. Reconciliation runs before the
+    // first thread, so letting it throw stops archiving entirely.
+    installFakeChatEventR2(context, recordedPuts, { denyBucketCors: true });
+
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Cors denied agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `cors-denied-${randomUUID()}`,
+    });
+    await projectChatEventSearch();
+
+    const pass = await runSnapshotCron();
+    expect(pass.success).toBeTruthy();
+    expect(pass.corsChanged).toBeFalsy();
+    expect(pass.snapshots).toBeGreaterThanOrEqual(1);
+    expect(putsForThread(threadId)).toHaveLength(1);
+
+    const head = await readChatEventSnapshotHead(context, threadId);
+    expect(head.archive_schema_version).toBe(3);
+
+    // The denial is reported instead of thrown, so the dashboard sees a healthy
+    // pass with CORS flagged.
+    const event = latestCronPassFields(context, "snapshot-chat-events");
+    expect(event.ok).toBeTruthy();
+    expect(event.corsReconciled).toBeFalsy();
+    expect(cronPassCount(event, "pendingThreads")).toBe(0);
+  }, 60_000);
+
   it("fails the pass when a parent object no longer matches its content hash", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
@@ -345,6 +429,15 @@ describe("cron snapshot chat events", () => {
     );
     expect(failed.body).toStrictEqual({ error: "Internal server error" });
     expect(putsForThread(threadId)).toHaveLength(1);
+
+    // A failed pass still reports, without state, so the newest event can never
+    // show a stale success while the archiver is broken.
+    const failedEvent = latestCronPassFields(context, "snapshot-chat-events");
+    expect(failedEvent.ok).toBeFalsy();
+    expect(failedEvent.targetThreads).toBeUndefined();
+    expect(failedEvent.error).toMatchObject({
+      message: expect.stringContaining("content hash mismatch"),
+    });
 
     // Restoring the object bytes lets the next pass archive the thread again,
     // and keeps the shared database healthy for the remaining tests.
