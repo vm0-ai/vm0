@@ -846,27 +846,6 @@ export async function setQueuedUserMessageCreatedAtFixture(args: {
 }
 
 /**
- * Append one canonical follow-up content event for focused BDD coverage.
- */
-export async function insertContentFollowupsEventFixture(args: {
-  readonly threadId: string;
-  readonly content: string;
-}): Promise<{ readonly id: string; readonly seqId: number }> {
-  const event = await db().transaction(async (tx) => {
-    return await insertChatEvent(tx, {
-      chatThreadId: args.threadId,
-      eventType: "output.followups",
-      content: args.content,
-      runId: null,
-    });
-  });
-  if (!event) {
-    throw new Error("Expected the content follow-up event insert");
-  }
-  return event;
-}
-
-/**
  * Complete one claimed run without dispatching its terminal callbacks. This
  * reproduces the missed-callback state that the stale queue sweep recovers.
  */

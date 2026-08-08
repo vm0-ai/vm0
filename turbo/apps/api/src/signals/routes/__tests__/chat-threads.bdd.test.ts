@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
+import { HttpResponse, http } from "msw";
 import {
   cronCleanupSandboxesContract,
   cronCompactChatThreadSnapshotsContract,
@@ -26,13 +27,13 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
 import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
-  insertContentFollowupsEventFixture,
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
@@ -2953,32 +2954,57 @@ describe("CHAT-01 chat search index", () => {
   }, 60_000);
 
   it("excludes future follow-up content from indexed matches and context", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const owner = bdd.user({ orgId });
-    bdd.acceptAgentStorageWrites();
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Follow-up search exclusion agent",
-    });
-    await enableChatSearchIndex(owner);
-
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Follow-up search exclusion agent",
+    );
+    await enableChatSearchIndex(actor);
     const visibleNeedle = `visiblemessage${randomUUID().replaceAll("-", "")}`;
     const followupOnlyNeedle = `futurefollowup${randomUUID().replaceAll("-", "")}`;
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
+    mockOptionalEnv("OPENROUTER_API_KEY", "follow-up-search-key");
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const body = await request.text();
+          return HttpResponse.json({
+            choices: [
+              {
+                message: {
+                  content: body.includes("concise follow-up prompts")
+                    ? JSON.stringify([
+                        { prompt: followupOnlyNeedle, kind: "talk" },
+                      ])
+                    : "Follow-up search exclusion",
+                },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
       prompt: visibleNeedle,
     });
-    await insertContentFollowupsEventFixture({
-      threadId,
-      content: JSON.stringify({
-        version: 1,
-        followups: [{ prompt: followupOnlyNeedle, kind: "talk" }],
-      }),
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantOutputEvent(0, "Follow-up search response"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    await waitForThreadMessages(actor, run.threadId, (messages) => {
+      return messages.some((message) => {
+        return (
+          message.eventType === "output.followups" &&
+          (message.content?.includes(followupOnlyNeedle) ?? false)
+        );
+      });
     });
 
     const tick = await projectChatEventSearch();
     expect(tick.success).toBeTruthy();
 
-    const visibleHit = await chat.searchChat(owner, visibleNeedle);
+    const visibleHit = await chat.searchChat(actor, visibleNeedle);
     expect(visibleHit.results).toHaveLength(1);
     const context = [
       ...(visibleHit.results[0]?.contextBefore ?? []),
@@ -2990,7 +3016,7 @@ describe("CHAT-01 chat search index", () => {
       }),
     ).toBeFalsy();
 
-    const followupHit = await chat.searchChat(owner, followupOnlyNeedle);
+    const followupHit = await chat.searchChat(actor, followupOnlyNeedle);
     expect(followupHit.results).toStrictEqual([]);
   }, 60_000);
 

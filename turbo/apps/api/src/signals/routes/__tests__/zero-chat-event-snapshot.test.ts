@@ -13,7 +13,6 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
-import { insertContentFollowupsEventFixture } from "../../../test-fixtures/chat-events";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
@@ -263,13 +262,9 @@ describe("chat event snapshot read endpoints", () => {
     const agent = await bdd.createAgent(owner, {
       displayName: "Snapshot maintenance agent",
     });
-    const thread = await chat.createThread(owner, { agentId: agent.agentId });
-    await insertContentFollowupsEventFixture({
-      threadId: thread.id,
-      content: JSON.stringify({
-        version: 1,
-        followups: [{ prompt: "Archived follow-up", kind: "talk" }],
-      }),
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `snapshot-maintenance-${randomUUID()}`,
     });
 
     await projectChatEventSearch();
@@ -277,12 +272,12 @@ describe("chat event snapshot read endpoints", () => {
     const archived = await runSnapshotCron();
     expect(archived.corsChanged).toBeTruthy();
 
-    const head = await readChatEventSnapshotHead(context, thread.id);
+    const head = await readChatEventSnapshotHead(context, threadId);
     expect(readFakeChatEventObject(head.object_key)).toBeDefined();
 
     const future = new Date(now() + 8 * 24 * 60 * 60 * 1000);
     mockNow(future);
-    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", thread.id.slice(0, 3));
+    mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", threadId.slice(0, 3));
     ageFakeChatEventObject(
       head.object_key,
       new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
@@ -291,7 +286,7 @@ describe("chat event snapshot read endpoints", () => {
     expect(protectedHead.r2ObjectsDeleted).toBe(0);
     expect(readFakeChatEventObject(head.object_key)).toBeDefined();
 
-    const orphanKey = `chat-events/${thread.id.slice(0, 3)}-orphan.ndjson.gz`;
+    const orphanKey = `chat-events/${threadId.slice(0, 3)}-orphan.ndjson.gz`;
     writeFakeChatEventObject(orphanKey, Buffer.from("orphan"));
     ageFakeChatEventObject(
       orphanKey,
@@ -312,15 +307,16 @@ describe("chat event snapshot read endpoints", () => {
     });
     expect(readFakeChatEventObject(orphanKey)).toBeUndefined();
 
-    await insertContentFollowupsEventFixture({
-      threadId: thread.id,
-      content: JSON.stringify({ version: 1, followups: [] }),
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `snapshot-replacement-${randomUUID()}`,
     });
     await projectChatEventSearch();
     const replacement = await runSnapshotCron();
     expect(replacement.r2ObjectsDeleted).toBe(1);
     expect(readFakeChatEventObject(head.object_key)).toBeUndefined();
-    const newHead = await readChatEventSnapshotHead(context, thread.id);
+    const newHead = await readChatEventSnapshotHead(context, threadId);
     expect(newHead.object_key).not.toBe(head.object_key);
     expect(readFakeChatEventObject(newHead.object_key)).toBeDefined();
   }, 120_000);
