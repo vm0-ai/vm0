@@ -1106,6 +1106,7 @@ describe("chat run queue", () => {
               filenameSnapshot: "queued.mp4",
               contentType: "video/mp4",
             },
+            { type: "model", selectedModel: "glm-5.1" },
           ],
         },
       });

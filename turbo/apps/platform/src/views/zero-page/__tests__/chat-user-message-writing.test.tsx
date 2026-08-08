@@ -75,6 +75,7 @@ describe("user-message writes", () => {
               contentType: "text/plain",
             },
             { type: "text", text: "Review the launch brief" },
+            { type: "model", selectedModel: "deepseek-v4-flash" },
           ],
         },
       });

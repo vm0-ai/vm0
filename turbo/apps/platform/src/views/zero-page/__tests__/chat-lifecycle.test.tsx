@@ -24,6 +24,9 @@ import {
   linkByText,
   chatScrollContainer,
   chatComposerTextarea,
+  parseChatClipboardPayload,
+  readClipboardItemText,
+  readSingleRichClipboardWrite,
 } from "./chat-lifecycle-test-helpers.ts";
 import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
 
@@ -656,9 +659,11 @@ describe("chat lifecycle", () => {
 
   it("projects the first-run model from the optimistic created event", async () => {
     const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWrite();
     const prompt = "Start with my preferred model";
     const sendGate = context.mocks.deferred<void>();
     let clientThreadId: string | undefined;
+    let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -684,6 +689,9 @@ describe("chat lifecycle", () => {
         clientThreadId = body.clientThreadId;
         expect(body.modelSelection.selectedModel).toBe("claude-sonnet-4-6");
       },
+      onSendRequest: ({ userMessage }) => {
+        sentUserMessage = userMessage;
+      },
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
@@ -704,6 +712,81 @@ describe("chat lifecycle", () => {
       context.store.get(eventDrivenChatThread(clientThreadId)),
     ).toMatchObject({
       selectedModel: "claude-sonnet-4-6",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Copy message"));
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const html = await readClipboardItemText(item, "text/html");
+    expect(parseChatClipboardPayload(html).userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
+    expect(sentUserMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel: "claude-sonnet-4-6" },
+      ],
+    });
+  });
+
+  it("includes the selected model in optimistic and sent user messages", async () => {
+    const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWrite();
+    const sendGate = context.mocks.deferred<void>();
+    onTestFinished(() => {
+      if (!sendGate.settled()) {
+        sendGate.resolve();
+      }
+    });
+    const threadId = "b0000000-0000-4000-a000-000000000993";
+    const prompt = "Keep the model visible while sending";
+    const selectedModel = "claude-sonnet-4-6";
+    let sentUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel,
+      sendGate: sendGate.promise,
+      onSendRequest: ({ userMessage }) => {
+        sentUserMessage = userMessage;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, prompt);
+
+    await waitFor(() => {
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Copy message")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Copy message"));
+
+    const item = await readSingleRichClipboardWrite(clipboard);
+    const html = await readClipboardItemText(item, "text/html");
+    expect(parseChatClipboardPayload(html).userMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel },
+      ],
+    });
+    expect(sentUserMessage).toStrictEqual({
+      version: 1,
+      parts: [
+        { type: "text", text: prompt },
+        { type: "model", selectedModel },
+      ],
     });
   });
 

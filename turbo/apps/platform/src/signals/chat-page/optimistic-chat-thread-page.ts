@@ -5,6 +5,7 @@ import {
   chatThreadsContract,
   type GenerationTemplateRequest,
   type ResolvedAttachFile,
+  type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -41,7 +42,10 @@ import {
 } from "../external/feature-switch.ts";
 import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
 import { logger } from "../log.ts";
-import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
+import {
+  runOptionsFromModelProviderSelection,
+  withSelectedModelAnnotation,
+} from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
@@ -127,7 +131,7 @@ function createNewThreadOptimisticEventEntry({
 }: {
   threadId: string;
   clientEventId: string;
-  userMessage: UserMessageInputDocument;
+  userMessage: UserMessageDocument;
 }): OptimisticChatEventInput {
   return {
     threadId,
@@ -162,7 +166,7 @@ function newThreadSendBody({
   modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
   realAgentInPreviewEnabled: boolean;
-  userMessage: UserMessageInputDocument;
+  userMessage: UserMessageDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
 }) {
@@ -509,6 +513,10 @@ const sendNewThreadMessage$ = command(
     }
     const features = get(featureSwitch$);
     const userMessage = userMessageForNewThread(request, prepared);
+    const annotatedUserMessage = withSelectedModelAnnotation(
+      userMessage,
+      resolvedModelSelection.selectedModel,
+    );
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
@@ -518,7 +526,7 @@ const sendNewThreadMessage$ = command(
         createNewThreadOptimisticEventEntry({
           threadId,
           clientEventId,
-          userMessage,
+          userMessage: annotatedUserMessage,
         }),
       ),
     );
@@ -566,7 +574,7 @@ const sendNewThreadMessage$ = command(
       codexFastModeEnabled: codexFastModeSwitchEnabled(features),
       realAgentInPreviewEnabled:
         features[FeatureSwitchKey.RealAgentInPreview] ?? false,
-      userMessage,
+      userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
     });

@@ -312,7 +312,7 @@ describe("chat thread generation template contract", () => {
     ).toMatchObject({ success: true });
   });
 
-  it("accepts one server-owned model annotation but rejects it upstream", () => {
+  it("accepts one model annotation in sends but rejects it in draft input", () => {
     const userMessage = {
       version: 1,
       parts: [
@@ -323,6 +323,15 @@ describe("chat thread generation template contract", () => {
     expect(userMessageDocumentSchema.safeParse(userMessage)).toMatchObject({
       success: true,
     });
+    expect(
+      chatEventsContract.send.body.safeParse({
+        agentId: "agent-1",
+        prompt: "Run with this model",
+        hasTextContent: true,
+        model: "claude-sonnet-4-6",
+        userMessage,
+      }),
+    ).toMatchObject({ success: true });
     expect(
       userMessageDocumentSchema.safeParse({
         version: 1,

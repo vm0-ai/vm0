@@ -20,6 +20,7 @@ import {
   type ChatThreadEvent,
   type GenerationTemplateRequest,
   type ChatEvent,
+  type UserMessageDocument,
   type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
@@ -7082,7 +7083,7 @@ describe("CHAT-02: shared user message queue", () => {
 
     const messageId = randomUUID();
     const referencedThreadId = randomUUID();
-    const userMessage: UserMessageInputDocument = {
+    const userMessage: UserMessageDocument = {
       version: 1,
       parts: [
         { type: "text", text: "queue-first " },
@@ -7091,6 +7092,7 @@ describe("CHAT-02: shared user message queue", () => {
           threadId: referencedThreadId,
           titleSnapshot: "direct dispatch",
         },
+        { type: "model", selectedModel: "gpt-5.6-sol" },
       ],
     };
     const sent = await chat.requestSendEvent(
@@ -7131,7 +7133,9 @@ describe("CHAT-02: shared user message queue", () => {
       userMessage: {
         version: 1,
         parts: [
-          ...userMessage.parts,
+          ...userMessage.parts.filter((part) => {
+            return part.type !== "model";
+          }),
           {
             type: "model",
             selectedModel: "claude-sonnet-4-6",

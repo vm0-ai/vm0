@@ -97,7 +97,10 @@ describe("prompt query parameter injection", () => {
       expect(runPrompt).toBe("Build a launch recap");
       expect(userMessage).toStrictEqual({
         version: 1,
-        parts: [{ type: "text", text: "Build a launch recap" }],
+        parts: [
+          { type: "text", text: "Build a launch recap" },
+          { type: "model", selectedModel: "deepseek-v4-flash" },
+        ],
       });
       expect(createdThreadModel).toBe("deepseek-v4-flash");
     });
@@ -221,6 +224,7 @@ describe("prompt query parameter injection", () => {
             },
           },
           { type: "text", text: "Make a launch deck" },
+          { type: "model", selectedModel: "deepseek-v4-flash" },
         ],
       });
     });
