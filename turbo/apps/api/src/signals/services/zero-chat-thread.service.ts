@@ -1221,9 +1221,7 @@ function chatSearchKeywordCondition(pattern: string): SQL {
 
 /**
  * Index-backed keyword condition over the chat_event_search_docs projection.
- * Returns null when the keyword has no bigram-indexable form (for example a
- * single CJK character), in which case the caller falls back to the legacy
- * ILIKE condition.
+ * Keywords without a bigram-indexable form cannot match the projection.
  */
 function chatSearchIndexCondition(
   db: ReadonlyDb,
@@ -1232,10 +1230,10 @@ function chatSearchIndexCondition(
     readonly orgId: string;
     readonly keyword: string;
   },
-): SQL | null {
+): SQL {
   const tsquery = chatSearchBigramTsquery(args.keyword);
   if (tsquery === null) {
-    return null;
+    return sql`false`;
   }
   return inArray(
     chatEvents.id,
@@ -1394,19 +1392,18 @@ export function zeroChatSearch(args: {
 > {
   return computed(async (get) => {
     const db = get(db$);
-    const pattern = `%${escapeLikePattern(args.keyword)}%`;
     const sinceDate = args.since ? new Date(args.since) : undefined;
 
-    const indexCondition = args.useSearchIndex
+    const keywordCondition = args.useSearchIndex
       ? chatSearchIndexCondition(db, args)
-      : null;
+      : chatSearchKeywordCondition(`%${escapeLikePattern(args.keyword)}%`);
     const matchConditions = [
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
       chatEventTextCondition(),
       visibleChatEventCondition(db),
       excludeGoalMarkerCondition(),
-      indexCondition ?? chatSearchKeywordCondition(pattern),
+      keywordCondition,
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatEvents.createdAt, sinceDate));

@@ -2903,7 +2903,7 @@ describe("CHAT-01 chat search index", () => {
 
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
-      prompt: "今天天气很好 vercel 部署完成",
+      prompt: "今天天气很好，vercel 部署完成",
     });
     await sendNoCreditMessage(peer, {
       agentId: peerAgent.agentId,
@@ -2928,13 +2928,16 @@ describe("CHAT-01 chat search index", () => {
       expect(found.results).toHaveLength(1);
       expect(found.results[0]?.chatThreadId).toBe(threadId);
       expect(found.results[0]?.matchedMessage.content).toBe(
-        "今天天气很好 vercel 部署完成",
+        "今天天气很好，vercel 部署完成",
       );
     }
 
-    // A single CJK character has no bigram form and falls back to ILIKE.
+    // Unindexable keywords stay on the index path instead of falling back to
+    // ILIKE, so neither a single CJK character nor punctuation can match.
     const singleChar = await chat.searchChat(owner, "好");
-    expect(singleChar.results).toHaveLength(1);
+    expect(singleChar.results).toStrictEqual([]);
+    const punctuation = await chat.searchChat(owner, "，");
+    expect(punctuation.results).toStrictEqual([]);
 
     // Word tokens match whole words only under the index path.
     const partialWord = await chat.searchChat(owner, "verce");
