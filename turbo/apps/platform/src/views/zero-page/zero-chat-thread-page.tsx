@@ -1094,6 +1094,7 @@ type ChatImagePreviewLinkProps = {
   linkClassName: string;
   onPreview: () => void;
   placeholderClassName: string;
+  resourceUrl$: ArtifactSignals["resourceUrl$"];
   url: string;
 };
 
@@ -1126,17 +1127,22 @@ function ChatImagePreviewLink({
   linkClassName,
   onPreview,
   placeholderClassName,
+  resourceUrl$,
   url,
 }: ChatImagePreviewLinkProps) {
   const imageLoadStatuses = useGet(imageLoadStatusByKey$);
   const imageLoadStatusRef = useSet(imageLoadStatusRef$);
   const setImageLoadStatus = useSet(setImageLoadStatus$);
   const imageUrl = publicAttachmentUrl(url);
-  const previewImageUrl = r2ImageTransformUrl(imageUrl, {
-    width: 800,
-    height: 720,
-  });
-  const imageLoadKey = `chat-image-preview:${previewImageUrl}`;
+  const resourceUrl = useLastResolved(resourceUrl$) ?? null;
+  const previewImageUrl =
+    resourceUrl === null
+      ? null
+      : r2ImageTransformUrl(resourceUrl, {
+          width: 800,
+          height: 720,
+        });
+  const imageLoadKey = `chat-image-preview:${previewImageUrl ?? imageUrl}`;
   const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
   const showPlaceholder = imageStatus !== "loaded";
@@ -1157,7 +1163,7 @@ function ChatImagePreviewLink({
 
   return (
     <a
-      href={imageUrl}
+      href={resourceUrl ?? imageUrl}
       onClick={openPreview}
       className={cn(
         "group/image-preview relative inline-flex self-start items-center justify-center overflow-hidden",
@@ -1182,25 +1188,27 @@ function ChatImagePreviewLink({
           )}
         </span>
       )}
-      <img
-        key={imageLoadKey}
-        ref={imageLoadStatusRef}
-        src={previewImageUrl}
-        alt={alt}
-        data-image-load-key={imageLoadKey}
-        loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
-        className={cn(
-          "absolute inset-0",
-          imageClassName,
-          showPlaceholder && "opacity-0",
-        )}
-      />
+      {previewImageUrl !== null ? (
+        <img
+          key={imageLoadKey}
+          ref={imageLoadStatusRef}
+          src={previewImageUrl}
+          alt={alt}
+          data-image-load-key={imageLoadKey}
+          loading="lazy"
+          onLoad={() => {
+            setImageLoadStatus(imageLoadKey, "loaded");
+          }}
+          onError={() => {
+            setImageLoadStatus(imageLoadKey, "error");
+          }}
+          className={cn(
+            "absolute inset-0",
+            imageClassName,
+            showPlaceholder && "opacity-0",
+          )}
+        />
+      ) : null}
     </a>
   );
 }
@@ -4854,6 +4862,7 @@ function ArtifactBodyRenderBlockView({
           openLightbox(signals.url);
         }}
         placeholderClassName="h-full w-full"
+        resourceUrl$={signals.resourceUrl$}
         url={signals.url}
       />
     );
@@ -6725,6 +6734,7 @@ interface ResolvedMessageAttachment {
   readonly contentType: string | undefined;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
+  readonly resourceUrl$: ArtifactSignals["resourceUrl$"];
   readonly text$?: TextPreviewComputed;
 }
 
@@ -6745,9 +6755,11 @@ function resolveAttachments(
       url: f.url,
       contentType,
     });
-    const text$ = isTextPreviewKind(kind)
-      ? artifactSignalsForUrl(f.url)?.text$
-      : undefined;
+    const artifactSignals = artifactSignalsForUrl(f.url);
+    if (!artifactSignals) {
+      throw new Error(`Attachment signals not registered for ${f.url}`);
+    }
+    const text$ = isTextPreviewKind(kind) ? artifactSignals.text$ : undefined;
     return {
       id: "id" in f && typeof f.id === "string" ? f.id : null,
       filename: f.filename,
@@ -6755,6 +6767,7 @@ function resolveAttachments(
       contentType,
       isImage: kind === "image" || isImageFilename(f.filename),
       kind,
+      resourceUrl$: artifactSignals.resourceUrl$,
       ...(text$ ? { text$ } : {}),
     };
   });
@@ -6812,6 +6825,7 @@ function MessageAttachment({
           onImageClick(a.url, a.filename);
         }}
         placeholderClassName="h-full w-full"
+        resourceUrl$={a.resourceUrl$}
         url={a.url}
       />
     );

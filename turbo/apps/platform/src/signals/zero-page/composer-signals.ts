@@ -131,7 +131,7 @@ interface ComposerDraftSignals {
   readonly seed$: DraftSignals["seed$"];
   readonly setDraftInput$: Command<void, [string]>;
   readonly attachments$: Computed<ZeroChatAttachment[]>;
-  readonly attachmentUploadsReady$: Computed<boolean | Promise<boolean>>;
+  readonly attachmentUploadsReady$: Computed<boolean>;
   readonly uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   readonly restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   readonly removeAttachment$: Command<void, [ZeroChatAttachment]>;
@@ -628,7 +628,7 @@ function createComposerSubmissionSignals(
         return "disabled";
       }
 
-      const uploadsReady = await get(draft.attachmentUploadsReady$);
+      const uploadsReady = get(draft.attachmentUploadsReady$);
       const attachments = get(draft.attachments$);
       let hasContent = get(workflowComposer.hasInput$);
       if (!hasContent && attachments.length > 0) {
@@ -667,6 +667,9 @@ function createComposerSubmissionSignals(
       if (action !== "send" && action !== "queue") {
         return false;
       }
+      if (!get(draft.attachmentUploadsReady$)) {
+        return false;
+      }
       if (get(internalSubmissionPending$)) {
         return false;
       }
@@ -697,6 +700,9 @@ function createComposerSubmissionSignals(
             ) {
               return false;
             }
+          }
+          if (!get(draft.attachmentUploadsReady$)) {
+            return false;
           }
           return await set(
             options.submitMessage$,

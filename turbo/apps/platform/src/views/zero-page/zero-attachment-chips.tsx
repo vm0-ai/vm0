@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
+import type { Computed } from "ccstate";
 import {
   useGet,
   useLastLoadable,
@@ -740,24 +741,30 @@ function ArtifactDialogTextBody({
   );
 }
 
-function ArtifactDialogBody({
+function ArtifactDialogImageStage({
+  filename,
   imageNavigation,
   preview,
+  resourceUrl,
 }: {
+  filename: string;
   imageNavigation?: ArtifactImageNavigationActions;
-  preview: AttachmentLightboxState;
+  preview: Extract<AttachmentLightboxState, { kind: "image" }>;
+  resourceUrl: string | null;
 }) {
-  const { t } = useTranslation();
-  const filename = artifactDialogFilename(preview);
   const fullscreen = useGet(lightboxDialogFullscreen$);
 
-  if (preview.kind === "image") {
-    return (
-      <ArtifactDialogStage flush scrollable={false}>
-        <ArtifactDialogCard fillHeight>
-          <div className="relative h-full min-h-0">
+  return (
+    <ArtifactDialogStage flush scrollable={false}>
+      <ArtifactDialogCard fillHeight>
+        <div className="relative h-full min-h-0">
+          {resourceUrl === null ? (
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <IconLoader2 className="animate-spin" />
+            </div>
+          ) : (
             <ZoomableArtifactImageCanvas
-              src={publicAttachmentUrl(preview.url)}
+              src={resourceUrl}
               alt={filename}
               zoomKey={artifactDialogImageZoomKey(preview.url, fullscreen)}
               imageTestId="attachment-lightbox-image"
@@ -769,12 +776,63 @@ function ArtifactDialogBody({
                 return <ArtifactDialogImageZoomControls controls={controls} />;
               }}
             </ZoomableArtifactImageCanvas>
-            <ArtifactDialogImageNavigationControls
-              navigation={imageNavigation}
-            />
-          </div>
-        </ArtifactDialogCard>
-      </ArtifactDialogStage>
+          )}
+          <ArtifactDialogImageNavigationControls navigation={imageNavigation} />
+        </div>
+      </ArtifactDialogCard>
+    </ArtifactDialogStage>
+  );
+}
+
+function ArtifactDialogImageBody({
+  filename,
+  imageNavigation,
+  preview,
+  resourceUrl$,
+}: {
+  filename: string;
+  imageNavigation?: ArtifactImageNavigationActions;
+  preview: Extract<AttachmentLightboxState, { kind: "image" }>;
+  resourceUrl$: Computed<Promise<string>>;
+}) {
+  const resourceUrl = useLastResolved(resourceUrl$) ?? null;
+  return (
+    <ArtifactDialogImageStage
+      filename={filename}
+      imageNavigation={imageNavigation}
+      preview={preview}
+      resourceUrl={resourceUrl}
+    />
+  );
+}
+
+function ArtifactDialogBody({
+  imageResourceUrl$,
+  imageNavigation,
+  preview,
+}: {
+  imageResourceUrl$?: Computed<Promise<string>>;
+  imageNavigation?: ArtifactImageNavigationActions;
+  preview: AttachmentLightboxState;
+}) {
+  const { t } = useTranslation();
+  const filename = artifactDialogFilename(preview);
+
+  if (preview.kind === "image") {
+    return imageResourceUrl$ ? (
+      <ArtifactDialogImageBody
+        filename={filename}
+        imageNavigation={imageNavigation}
+        preview={preview}
+        resourceUrl$={imageResourceUrl$}
+      />
+    ) : (
+      <ArtifactDialogImageStage
+        filename={filename}
+        imageNavigation={imageNavigation}
+        preview={preview}
+        resourceUrl={publicAttachmentUrl(preview.url)}
+      />
     );
   }
 
@@ -991,6 +1049,10 @@ function ArtifactPreviewDialogThreadResolver({
   });
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const imageResourceUrl$ =
+    preview.kind === "image"
+      ? thread.artifactSignalsForUrl(preview.url)?.resourceUrl$
+      : undefined;
   const item =
     loadable.state === "hasData"
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
@@ -1052,6 +1114,7 @@ function ArtifactPreviewDialogThreadResolver({
           onNext: imageNavigationAction(imageNavigation.next),
           onPrevious: imageNavigationAction(imageNavigation.previous),
         }}
+        imageResourceUrl$={imageResourceUrl$}
         preview={preview}
       />
     );
@@ -1076,6 +1139,7 @@ function ArtifactPreviewDialogThreadResolver({
         onNext: imageNavigationAction(imageNavigation.next),
         onPrevious: imageNavigationAction(imageNavigation.previous),
       }}
+      imageResourceUrl$={imageResourceUrl$}
       preview={preview}
     />
   );
@@ -1194,10 +1258,12 @@ function ArtifactPreviewDialogActions({
 function ArtifactPreviewDialogContent({
   artifact,
   imageNavigation,
+  imageResourceUrl$,
   preview,
 }: {
   artifact: AttachmentArtifactMetadata | undefined;
   imageNavigation?: ArtifactImageNavigationActions;
+  imageResourceUrl$?: Computed<Promise<string>>;
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
@@ -1268,6 +1334,7 @@ function ArtifactPreviewDialogContent({
         </div>
         <div className="min-h-0 flex-1 bg-background">
           <ArtifactDialogBody
+            imageResourceUrl$={imageResourceUrl$}
             imageNavigation={imageNavigation}
             preview={preview}
           />
