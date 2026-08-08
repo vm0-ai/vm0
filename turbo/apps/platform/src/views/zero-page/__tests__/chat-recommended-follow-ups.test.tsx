@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { artifactCatalogContract } from "@vm0/api-contracts/contracts/artifact-catalog";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click, fill } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
@@ -145,6 +146,9 @@ describe("chat lifecycle", () => {
       expect(buttonByText("Generate launch artifact")).toBeInTheDocument();
       expect(buttonByText("Draft launch copy")).toBeInTheDocument();
     });
+    expect(
+      document.querySelector("[data-responsive-followup-cards]"),
+    ).toBeNull();
 
     click(buttonByText(followupPrompt));
 
@@ -163,6 +167,78 @@ describe("chat lifecycle", () => {
     });
     expect(composer.textContent).toBe(`${existingDraft}\n${followupPrompt}`);
     expect(sentMessages).toHaveLength(0);
+  });
+
+  it("renders equal-height centered follow-up cards only when enabled", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000734";
+    const prompts = [
+      "Draft launch copy",
+      "Create a detailed presentation outline with speaker notes",
+      "Generate a hero image",
+    ];
+    const completedAt = "2026-06-09T10:01:01Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Responsive follow-ups",
+      chatEvents: [
+        {
+          id: "msg-responsive-followups-assistant",
+          eventType: "output.message",
+          role: "assistant",
+          content: "The launch plan is ready.",
+          runId: "run-responsive-followups",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        {
+          id: "msg-responsive-followups-completed",
+          eventType: "run.completed",
+          role: "assistant",
+          content: null,
+          runId: "run-responsive-followups",
+          runLifecycleEvent: "completed",
+          followups: prompts.map((prompt) => {
+            return { prompt, kind: "talk" as const };
+          }),
+          createdAt: completedAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ResponsiveFollowupCards]: true,
+      },
+    });
+
+    await screen.findByText("The launch plan is ready.");
+    expect(
+      screen.getByText(`Keep going · ${completedAtLabel}`),
+    ).toBeInTheDocument();
+    const rail = document.querySelector("[data-responsive-followup-cards]");
+    expect(rail).toHaveClass(
+      "flex",
+      "items-stretch",
+      "snap-x",
+      "@[900px]:block",
+    );
+    for (const prompt of prompts) {
+      const card = buttonByText(prompt);
+      expect(card.textContent).toBe(prompt);
+      expect(card).toHaveClass(
+        "self-stretch",
+        "snap-center",
+        "@[900px]:w-full",
+      );
+    }
   });
 
   it("shows recommended follow-ups after an appended follow-up event", async () => {
