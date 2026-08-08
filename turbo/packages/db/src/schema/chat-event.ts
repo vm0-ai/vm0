@@ -127,10 +127,8 @@ export const chatEvents = pgTable(
     runEventId: text("run_event_id"),
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
-    // Untyped physical compatibility columns used only by the Stage 5
-    // DB-before-API insert bridge. Stage 7 drops all four after the old API
-    // fleet and the Stage 6 client-floor rollout have fully drained; tracked by
-    // https://github.com/vm0-ai/vm0/issues/25767.
+    // The outgoing API still declares these physical columns. This reader-only
+    // release removes every active use; drop them only after this API drains.
     legacyGoalPayload:
       jsonb("goal_event").$type<ChatEventRetainedLegacyPayload>(),
     legacyAttachedFiles:
@@ -208,11 +206,6 @@ export const chatEvents = pgTable(
           'control.revoke',
           'browser.open',
           'browser.close',
-          -- Retired physical values still written by the pre-cleanup API while
-          -- it drains. Narrow this list to open/close in a later release, once
-          -- that API is gone and the rows have been backfilled again.
-          'browser.started',
-          'browser.stopped',
           'goal.open',
           'goal.close',
           'usage.recorded'

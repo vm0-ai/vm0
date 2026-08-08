@@ -386,6 +386,13 @@
       "when": 1786158733563,
       "tag": "0862_first_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 863,
+      "version": "7",
+      "when": 1786168490158,
+      "tag": "0863_prepare_chat_event_contraction",
+      "breakpoints": true
     }
   ]
 }

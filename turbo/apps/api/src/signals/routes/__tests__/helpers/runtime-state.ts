@@ -435,6 +435,34 @@ export async function insertChatEventAssetRefFixture(
   });
 }
 
+export async function setChatEventSnapshotHeadAsV1(
+  context: TestContext,
+  threadId: string,
+  objectKey: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-chat-event-snapshot-head-as-v1",
+    thread_id: threadId,
+    object_key: objectKey,
+  });
+}
+
+export async function readChatEventSnapshotHead(
+  context: TestContext,
+  threadId: string,
+): Promise<
+  NonNullable<TestRuntimeStateActionResponse["chat_event_snapshot_head"]>
+> {
+  const response = await postAction(context, {
+    action: "read-chat-event-snapshot-head",
+    thread_id: threadId,
+  });
+  if (!response.chat_event_snapshot_head) {
+    throw new Error("readChatEventSnapshotHead missing snapshot head");
+  }
+  return response.chat_event_snapshot_head;
+}
+
 export async function insertHostedSiteAsPreviousApi(
   context: TestContext,
   args: {

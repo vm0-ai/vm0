@@ -15,6 +15,7 @@ import {
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
@@ -26,7 +27,7 @@ import {
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
-import { desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -1210,6 +1211,80 @@ type CompatibilityFixtureAction =
   | ChatEventAssetRefFixtureAction
   | ConnectorPermissionBaselineMutationAction;
 
+type ChatEventSnapshotFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "set-chat-event-snapshot-head-as-v1"
+      | "read-chat-event-snapshot-head";
+  }
+>;
+
+function isChatEventSnapshotFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is ChatEventSnapshotFixtureAction {
+  return (
+    body.action === "set-chat-event-snapshot-head-as-v1" ||
+    body.action === "read-chat-event-snapshot-head"
+  );
+}
+
+async function chatEventSnapshotFixtureActionResponse(
+  db: Db,
+  body: ChatEventSnapshotFixtureAction,
+  signal: AbortSignal,
+) {
+  if (body.action === "set-chat-event-snapshot-head-as-v1") {
+    const [updated] = await db
+      .update(chatEventSnapshots)
+      .set({
+        archiveSchemaVersion: 1,
+        objectKey: body.object_key,
+      })
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    signal.throwIfAborted();
+    if (!updated) {
+      throw new Error("Expected a chat event snapshot head fixture");
+    }
+    return { status: 200 as const, body: { ok: true as const } };
+  }
+
+  const [head] = await db
+    .select({
+      archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+      lastSeqId: chatEventSnapshots.lastSeqId,
+      objectKey: chatEventSnapshots.objectKey,
+    })
+    .from(chatEventSnapshots)
+    .where(
+      and(
+        eq(chatEventSnapshots.chatThreadId, body.thread_id),
+        eq(chatEventSnapshots.isHead, true),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      chat_event_snapshot_head: head
+        ? {
+            archive_schema_version: head.archiveSchemaVersion,
+            last_seq_id: head.lastSeqId,
+            object_key: head.objectKey,
+          }
+        : null,
+    },
+  };
+}
+
 function isCompatibilityFixtureAction(
   body: TestRuntimeStateActionBody,
 ): body is CompatibilityFixtureAction {
@@ -1314,6 +1389,9 @@ const postRuntimeStateAction$ = command(
     }
     if (isThreadSessionStateAction(body)) {
       return await threadSessionStateActionResponse(db, body, signal);
+    }
+    if (isChatEventSnapshotFixtureAction(body)) {
+      return await chatEventSnapshotFixtureActionResponse(db, body, signal);
     }
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);

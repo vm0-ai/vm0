@@ -129,6 +129,15 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     position: z.int().nonnegative(),
   }),
   z.object({
+    action: z.literal("set-chat-event-snapshot-head-as-v1"),
+    thread_id: z.uuid(),
+    object_key: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("read-chat-event-snapshot-head"),
+    thread_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("clear-run-api-start"),
     run_id: z.uuid(),
   }),
@@ -208,6 +217,14 @@ export const testRuntimeStateActionResponseSchema = z.object({
   admission_lock_waiting: z.boolean().optional(),
   uploaded_file_sources: z.array(z.string()).optional(),
   chat_event_asset_ref_ids: z.array(z.uuid()).optional(),
+  chat_event_snapshot_head: z
+    .object({
+      archive_schema_version: z.int().positive(),
+      last_seq_id: z.int().positive(),
+      object_key: z.string(),
+    })
+    .nullable()
+    .optional(),
   api_started_at: z.string().nullable().optional(),
   thread_session_binding: z
     .object({

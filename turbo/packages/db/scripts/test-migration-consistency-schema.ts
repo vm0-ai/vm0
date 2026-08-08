@@ -284,12 +284,11 @@ async function validateExpandedBrowserSchema(dbUrl: string): Promise<void> {
     );
     assert.equal(lifecycleConstraint.rows.length, 1);
     const lifecycleDefinition = lifecycleConstraint.rows[0]?.definition ?? "";
-    // Both generations must be accepted: the new API writes the canonical
-    // values while the draining pre-cleanup API still writes the retired ones.
+    // Only the canonical lifecycle values remain after the old API drain.
     assert.match(lifecycleDefinition, /browser\.open/u);
     assert.match(lifecycleDefinition, /browser\.close/u);
-    assert.match(lifecycleDefinition, /browser\.started/u);
-    assert.match(lifecycleDefinition, /browser\.stopped/u);
+    assert.doesNotMatch(lifecycleDefinition, /browser\.started/u);
+    assert.doesNotMatch(lifecycleDefinition, /browser\.stopped/u);
     assert.match(lifecycleDefinition, /goal\.open/u);
     assert.match(lifecycleDefinition, /goal\.close/u);
     assert.doesNotMatch(lifecycleDefinition, /goal\.changed/u);
@@ -297,7 +296,7 @@ async function validateExpandedBrowserSchema(dbUrl: string): Promise<void> {
       "   ✅ retired browser tables and identity columns still exist",
     );
     console.log(
-      "   ✅ browser compatibility remains while goal events are canonical\n",
+      "   ✅ browser lifecycle and goal event constraints are canonical\n",
     );
   } finally {
     await client.end();
@@ -1420,13 +1419,6 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
-      "CREATE TRIGGER canonicalize_legacy_chat_event_insert_0861 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'goal.changed'::text) OR ((new.event_type = 'output.followups'::text) AND (new.recommended_followups IS NOT NULL)))) EXECUTE FUNCTION canonicalize_legacy_chat_event_insert_0861()",
-    schemaName: "public",
-    tableName: "chat_events",
-    triggerName: "canonicalize_legacy_chat_event_insert_0861",
-  },
-  {
-    definition:
       "CREATE TRIGGER bridge_invalidated_goal_continuation_0829 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'input.rejected'::text) AND (new.error = 'Goal continuation no longer matches the active goal'::text))) EXECUTE FUNCTION bridge_invalidated_goal_continuation_0829()",
     schemaName: "public",
     tableName: "chat_events",
@@ -1575,20 +1567,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
-  {
-    bodyHash: "1e430d67f4901395c8bd13311d6b4cf5",
-    functionName: "canonicalize_legacy_chat_event_insert_0861",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "1f8be130fa2529cfad49239ff450ea58",
-    functionName: "is_supported_legacy_followups_0861",
-    identityArguments: "payload jsonb",
-    kind: "f",
-    schemaName: "public",
-  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -4067,11 +4045,6 @@ async function validateChatEventContractCutover(): Promise<void> {
     followupsRevokerId: "00000000-0000-4000-8000-000000086110",
     legacyPausedMarkerId: "00000000-0000-4000-8000-000000086111",
     historicalRunId: "00000000-0000-4000-8000-000000086112",
-    lateOpenId: "00000000-0000-4000-8000-000000086113",
-    lateCloseId: "00000000-0000-4000-8000-000000086114",
-    lateFollowupsId: "00000000-0000-4000-8000-000000086115",
-    canonicalOpenId: "00000000-0000-4000-8000-000000086116",
-    canonicalFollowupsId: "00000000-0000-4000-8000-000000086117",
   } as const;
   const historicalFollowups = [
     {
@@ -4345,131 +4318,6 @@ async function validateChatEventContractCutover(): Promise<void> {
         { revokesEventId: fixture.followupsEventId },
       ]);
 
-      const lateRows = await client.query<{
-        content: string | null;
-        eventType: string;
-        goalEvent: unknown;
-        id: string;
-        recommendedFollowups: unknown;
-      }>(
-        `
-          INSERT INTO "chat_events" (
-            "id",
-            "chat_thread_id",
-            "event_type",
-            "content",
-            "goal_event",
-            "recommended_followups",
-            "seq_id"
-          ) VALUES
-            (
-              $1, $6, 'goal.changed', NULL,
-              '{"type":"state","status":"active","objectiveBrief":"  Late objective  "}'::jsonb,
-              NULL, 7
-            ),
-            (
-              $2, $6, 'goal.changed', NULL,
-              '{"type":"state","status":"blocked"}'::jsonb,
-              NULL, 8
-            ),
-            ($3, $6, 'output.followups', NULL, NULL, $7::jsonb, 9),
-            ($4, $6, 'goal.open', 'Canonical objective', NULL, NULL, 10),
-            ($5, $6, 'output.followups', $8, NULL, NULL, 11)
-          RETURNING
-            "id",
-            "event_type" AS "eventType",
-            "content",
-            "goal_event" AS "goalEvent",
-            "recommended_followups" AS "recommendedFollowups"
-        `,
-        [
-          fixture.lateOpenId,
-          fixture.lateCloseId,
-          fixture.lateFollowupsId,
-          fixture.canonicalOpenId,
-          fixture.canonicalFollowupsId,
-          fixture.activeThreadId,
-          JSON.stringify(historicalFollowups),
-          JSON.stringify({ version: 1, followups: historicalFollowups }),
-        ],
-      );
-      assert.deepEqual(
-        lateRows.rows.map((row) => {
-          return {
-            ...row,
-            content:
-              row.eventType === "output.followups" && row.content !== null
-                ? JSON.parse(row.content)
-                : row.content,
-          };
-        }),
-        [
-          {
-            id: fixture.lateOpenId,
-            eventType: "goal.open",
-            content: "Late objective",
-            goalEvent: null,
-            recommendedFollowups: null,
-          },
-          {
-            id: fixture.lateCloseId,
-            eventType: "goal.close",
-            content: null,
-            goalEvent: null,
-            recommendedFollowups: null,
-          },
-          {
-            id: fixture.lateFollowupsId,
-            eventType: "output.followups",
-            content: { version: 1, followups: historicalFollowups },
-            goalEvent: null,
-            recommendedFollowups: null,
-          },
-          {
-            id: fixture.canonicalOpenId,
-            eventType: "goal.open",
-            content: "Canonical objective",
-            goalEvent: null,
-            recommendedFollowups: null,
-          },
-          {
-            id: fixture.canonicalFollowupsId,
-            eventType: "output.followups",
-            content: { version: 1, followups: historicalFollowups },
-            goalEvent: null,
-            recommendedFollowups: null,
-          },
-        ],
-      );
-
-      await assert.rejects(
-        client.query(
-          `
-            INSERT INTO "chat_events" (
-              "chat_thread_id", "event_type", "recommended_followups", "seq_id"
-            ) VALUES ($1, 'output.followups', '[{"prompt":4,"kind":"talk"}]'::jsonb, 12)
-          `,
-          [fixture.activeThreadId],
-        ),
-        /Malformed legacy output\.followups payload/u,
-      );
-      await assert.rejects(
-        client.query(
-          `
-            INSERT INTO "chat_events" (
-              "chat_thread_id", "event_type", "goal_event", "seq_id"
-            ) VALUES (
-              $1,
-              'goal.changed',
-              '{"type":"state","status":"blocked","reason":"legacy"}'::jsonb,
-              13
-            )
-          `,
-          [fixture.activeThreadId],
-        ),
-        /Malformed legacy goal\.changed state/u,
-      );
-
       const eventTypeConstraint = await client.query<{ definition: string }>(`
         SELECT pg_get_constraintdef("oid") AS "definition"
         FROM "pg_constraint"
@@ -4488,10 +4336,329 @@ async function validateChatEventContractCutover(): Promise<void> {
         "   ✅ historical goal markers and dependent revokes were deleted",
       );
       console.log("   ✅ followups migrated in place without identity loss");
-      console.log(
-        "   ✅ old-pod inserts upgrade and malformed payloads fail safely",
+      console.log("   ✅ the historical cutover constraint is canonical\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const CHAT_EVENT_CONTRACTION_PREPARE_PREVIOUS_MIGRATION =
+  "0862_first_pepper_potts";
+const CHAT_EVENT_CONTRACTION_PREPARE_MIGRATION =
+  "0863_prepare_chat_event_contraction";
+
+async function validateChatEventContractionPreparation(): Promise<void> {
+  console.log("=== Validate chat-event contraction preparation ===\n");
+  const testDb = "migration_chat_event_contraction_prepare_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000086301",
+    threadId: "00000000-0000-4000-8000-000000086302",
+    startedId: "00000000-0000-4000-8000-000000086303",
+    stoppedId: "00000000-0000-4000-8000-000000086304",
+    openId: "00000000-0000-4000-8000-000000086305",
+    closeId: "00000000-0000-4000-8000-000000086306",
+    payloadId: "00000000-0000-4000-8000-000000086307",
+    canonicalOpenId: "00000000-0000-4000-8000-000000086308",
+    canonicalCloseId: "00000000-0000-4000-8000-000000086309",
+    goalOpenId: "00000000-0000-4000-8000-000000086310",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CHAT_EVENT_CONTRACTION_PREPARE_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'final-contract-user', 'final-contract', 'final-contract-org')
+        `,
+        [fixture.composeId],
       );
-      console.log("   ✅ canonical inserts remain unchanged\n");
+      await client.query(
+        `
+          INSERT INTO "zero_agents" (
+            "id", "org_id", "owner", "name", "visibility"
+          ) VALUES (
+            $1,
+            'final-contract-org',
+            'final-contract-user',
+            'final-contract',
+            'private'
+          )
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id", "user_id", "agent_compose_id", "last_chat_event_seq_id"
+          ) VALUES ($1, 'final-contract-user', $2, 5)
+        `,
+        [fixture.threadId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "active_input_sequence",
+            "goal_event",
+            "attach_files",
+            "generation_template",
+            "recommended_followups",
+            "seq_id"
+          ) VALUES
+            ($1, $6, 'browser.started', NULL, NULL, NULL, NULL, NULL, 1),
+            ($2, $6, 'browser.stopped', NULL, NULL, NULL, NULL, NULL, 2),
+            ($3, $6, 'browser.open', NULL, NULL, NULL, NULL, NULL, 3),
+            ($4, $6, 'browser.close', NULL, NULL, NULL, NULL, NULL, 4),
+            (
+              $5,
+              $6,
+              'output.message',
+              7,
+              '{"retired":true}'::jsonb,
+              '[]'::jsonb,
+              '{"retired":true}'::jsonb,
+              '[]'::jsonb,
+              5
+            )
+        `,
+        [
+          fixture.startedId,
+          fixture.stoppedId,
+          fixture.openId,
+          fixture.closeId,
+          fixture.payloadId,
+          fixture.threadId,
+        ],
+      );
+
+      await applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_CONTRACTION_PREPARE_MIGRATION,
+      );
+
+      const browserEvents = await client.query<{
+        eventType: string;
+        id: string;
+      }>(
+        `
+          SELECT "id", "event_type" AS "eventType"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2, $3, $4)
+          ORDER BY "seq_id"
+        `,
+        [fixture.startedId, fixture.stoppedId, fixture.openId, fixture.closeId],
+      );
+      assert.deepEqual(browserEvents.rows, [
+        { id: fixture.startedId, eventType: "browser.open" },
+        { id: fixture.stoppedId, eventType: "browser.close" },
+        { id: fixture.openId, eventType: "browser.open" },
+        { id: fixture.closeId, eventType: "browser.close" },
+      ]);
+
+      const retainedColumns = await client.query<{ columnName: string }>(`
+        SELECT "column_name" AS "columnName"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'chat_events'
+          AND "column_name" IN (
+            'active_input_sequence',
+            'goal_event',
+            'attach_files',
+            'generation_template',
+            'recommended_followups'
+          )
+        ORDER BY "column_name"
+      `);
+      assert.deepEqual(retainedColumns.rows, [
+        { columnName: "active_input_sequence" },
+        { columnName: "attach_files" },
+        { columnName: "generation_template" },
+        { columnName: "goal_event" },
+        { columnName: "recommended_followups" },
+      ]);
+
+      // Migration 0863 runs before the Phase 7A API is promoted. Exercise the
+      // exact outgoing full-row column set so the currently deployed API stays
+      // legal throughout that overlap.
+      const outgoingRows = await client.query<{
+        row: Record<string, unknown>;
+      }>(
+        `
+          SELECT to_jsonb("outgoing_row") AS "row"
+          FROM (
+            SELECT
+              "id",
+              "chat_thread_id",
+              "run_id",
+              "usage_payload",
+              "revokes_event_id",
+              "interrupts_run_id",
+              "run_group_id",
+              "event_type",
+              "context_type",
+              "context_id",
+              "content",
+              "user_message",
+              "thinking",
+              "error",
+              "active_input_sequence",
+              "run_event_sequence_number",
+              "run_event_id",
+              "seq_id",
+              "goal_event",
+              "attach_files",
+              "generation_template",
+              "recommended_followups",
+              "created_at"
+            FROM "chat_events"
+            WHERE "id" = $1
+          ) AS "outgoing_row"
+        `,
+        [fixture.payloadId],
+      );
+      const outgoingRow = outgoingRows.rows[0]?.row;
+      assert.ok(outgoingRow);
+      assert.deepEqual(Object.keys(outgoingRow).sort(), [
+        "active_input_sequence",
+        "attach_files",
+        "chat_thread_id",
+        "content",
+        "context_id",
+        "context_type",
+        "created_at",
+        "error",
+        "event_type",
+        "generation_template",
+        "goal_event",
+        "id",
+        "interrupts_run_id",
+        "recommended_followups",
+        "revokes_event_id",
+        "run_event_id",
+        "run_event_sequence_number",
+        "run_group_id",
+        "run_id",
+        "seq_id",
+        "thinking",
+        "usage_payload",
+        "user_message",
+      ]);
+      assert.equal(outgoingRow.active_input_sequence, 7);
+      assert.deepEqual(outgoingRow.goal_event, { retired: true });
+      assert.deepEqual(outgoingRow.attach_files, []);
+      assert.deepEqual(outgoingRow.generation_template, { retired: true });
+      assert.deepEqual(outgoingRow.recommended_followups, []);
+
+      const compatibilityObjects = await client.query<{
+        functionCount: number;
+        indexCount: number;
+        triggerCount: number;
+      }>(`
+        SELECT
+          (
+            SELECT count(*)::int
+            FROM "pg_proc"
+            WHERE "proname" IN (
+              'canonicalize_legacy_chat_event_insert_0861',
+              'is_supported_legacy_followups_0861'
+            )
+          ) AS "functionCount",
+          (
+            SELECT count(*)::int
+            FROM "pg_indexes"
+            WHERE "schemaname" = 'public'
+              AND "indexname" = 'chat_events_run_active_input_seq_unique'
+          ) AS "indexCount",
+          (
+            SELECT count(*)::int
+            FROM "pg_trigger"
+            WHERE "tgname" = 'canonicalize_legacy_chat_event_insert_0861'
+              AND NOT "tgisinternal"
+          ) AS "triggerCount"
+      `);
+      assert.deepEqual(compatibilityObjects.rows, [
+        { functionCount: 0, indexCount: 1, triggerCount: 0 },
+      ]);
+
+      const eventTypeConstraint = await client.query<{ definition: string }>(`
+        SELECT pg_get_constraintdef("oid") AS "definition"
+        FROM "pg_constraint"
+        WHERE "conname" = 'chat_events_event_type_check'
+      `);
+      const eventTypeDefinition = eventTypeConstraint.rows[0]?.definition ?? "";
+      assert.match(eventTypeDefinition, /browser\.open/u);
+      assert.match(eventTypeDefinition, /browser\.close/u);
+      assert.doesNotMatch(eventTypeDefinition, /browser\.started/u);
+      assert.doesNotMatch(eventTypeDefinition, /browser\.stopped/u);
+
+      const canonicalBrowserRows = await client.query<{ eventType: string }>(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "seq_id"
+          ) VALUES
+            ($1, $3, 'browser.open', 6),
+            ($2, $3, 'browser.close', 7)
+          RETURNING "event_type" AS "eventType"
+        `,
+        [fixture.canonicalOpenId, fixture.canonicalCloseId, fixture.threadId],
+      );
+      assert.deepEqual(canonicalBrowserRows.rows, [
+        { eventType: "browser.open" },
+        { eventType: "browser.close" },
+      ]);
+
+      await assert.rejects(
+        client.query(
+          `
+            INSERT INTO "chat_events" (
+              "chat_thread_id", "event_type", "seq_id"
+            ) VALUES ($1, 'browser.started', 8)
+          `,
+          [fixture.threadId],
+        ),
+        /chat_events_event_type_check/u,
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "content", "seq_id"
+          ) VALUES ($1, $2, 'goal.open', 'Canonical objective', 9)
+        `,
+        [fixture.goalOpenId, fixture.threadId],
+      );
+      await assert.rejects(
+        client.query(
+          `
+            INSERT INTO "chat_events" (
+              "chat_thread_id", "event_type", "content", "error", "seq_id"
+            ) VALUES ($1, 'goal.open', 'Invalid marker', 'payload', 10)
+          `,
+          [fixture.threadId],
+        ),
+        /chat_events_goal_marker_payload_check/u,
+      );
+      await assertChatEventsAppendOnlyProtection(client, fixture.startedId);
+
+      console.log("   ✅ retired browser lifecycle rows are canonicalized");
+      console.log("   ✅ only browser.open and browser.close remain allowed");
+      console.log("   ✅ the drained 0861 insert bridge is absent");
+      console.log(
+        "   ✅ outgoing ORM columns and active-input index remain compatible",
+      );
+      console.log("   ✅ strict append-only and goal marker checks remain\n");
     } finally {
       await client.end();
     }
@@ -4614,6 +4781,7 @@ async function main(): Promise<void> {
     await validateInvalidatedGoalContinuationCleanup();
     await validateCustomCredentialStorageGenerationBackfill();
     await validateChatEventContractCutover();
+    await validateChatEventContractionPreparation();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
