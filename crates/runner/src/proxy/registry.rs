@@ -284,7 +284,7 @@ fn initial_connector_routing_variables(
     registration: &VmRegistration<'_>,
 ) -> HashMap<String, HashMap<String, String>> {
     let mut routing_variables = HashMap::new();
-    let run_vars = registration.vars.cloned().unwrap_or_default();
+    let run_vars = registration.vars;
     let builtin_connector_slugs = registration
         .connector_runtime_targets
         .unwrap_or_default()
@@ -310,7 +310,11 @@ fn initial_connector_routing_variables(
                 |resolved_values| {
                     resolved_values
                         .keys()
-                        .map(|key| run_vars.get(key).map(|value| (key.clone(), value.clone())))
+                        .map(|key| {
+                            run_vars
+                                .and_then(|values| values.get(key))
+                                .map(|value| (key.clone(), value.clone()))
+                        })
                         .collect::<Option<HashMap<_, _>>>()
                 },
             );
