@@ -1,4 +1,7 @@
-import type { ChatSlackMessageFile } from "@vm0/db/jsonb-contracts/chat-slack-context";
+import type {
+  ChatSlackMessageAssets,
+  ChatSlackMessageFile,
+} from "@vm0/db/jsonb-contracts/chat-slack-context";
 
 import {
   formatSenderBlock,
@@ -362,22 +365,9 @@ function formatCurrentMessageFiles(files: readonly SlackFile[]): string {
   return files.map(formatFileInfo).join("\n");
 }
 
-/**
- * Canonical input asset resolved for one Slack file. `slackFileId` is the
- * upstream Slack file ID the asset was imported from, which is how a prompt
- * line pairs a raw Slack file with its canonical replacement.
- */
-export interface SlackPromptAsset {
-  readonly assetId: string;
-  readonly slackFileId: string;
-  readonly filename: string;
-  readonly contentType: string;
-  readonly status: "pending" | "ready" | "failed";
-}
-
 function canonicalSlackFilesPrompt(
   files: readonly SlackFile[] | undefined,
-  assets: readonly SlackPromptAsset[],
+  assets: ChatSlackMessageAssets,
 ): string {
   if (!files || files.length === 0) {
     return "";
@@ -405,7 +395,7 @@ function canonicalSlackFilesPrompt(
 export function canonicalSlackAgentPrompt(
   messagePrompt: string,
   files: readonly SlackFile[] | undefined,
-  assets: readonly SlackPromptAsset[],
+  assets: ChatSlackMessageAssets,
 ): string {
   return [messagePrompt, canonicalSlackFilesPrompt(files, assets)]
     .filter(Boolean)

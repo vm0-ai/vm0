@@ -1,11 +1,20 @@
 import type {
   ChatSlackMentionDisplayNames,
+  ChatSlackMessageAssets,
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";
 
+/**
+ * Complete launch context for one Slack-triggered chat run, addressed by the
+ * owning chat event through `(context_type = 'slack', context_id)`.
+ *
+ * Every value the agent prompt and Slack system prompt render from is
+ * snapshotted here at ingress, so a launch reads exactly one row and never has
+ * to re-resolve Slack state, workspace state, or canonical input assets.
+ */
 export const chatSlackContext = pgTable("chat_slack_context", {
   id: uuid("id").defaultRandom().primaryKey(),
   chatThreadId: uuid("chat_thread_id")
@@ -18,6 +27,8 @@ export const chatSlackContext = pgTable("chat_slack_context", {
     ),
   channelId: text("channel_id"),
   messageTs: text("message_ts"),
+  /** Bot user ID of the installation that received the message. */
+  botUserId: text("bot_user_id"),
   /**
    * Server-private Slack launch material retained with the trigger context.
    * Raw third-party content is intentionally retained permanently; read paths
@@ -26,6 +37,8 @@ export const chatSlackContext = pgTable("chat_slack_context", {
   conversationContext: text("conversation_context"),
   messageText: text("message_text"),
   messageFiles: jsonb("message_files").$type<ChatSlackMessageFiles>(),
+  /** Canonical input assets materialized for `message_files`. */
+  messageAssets: jsonb("message_assets").$type<ChatSlackMessageAssets>(),
   mentionDisplayNames: jsonb(
     "mention_display_names",
   ).$type<ChatSlackMentionDisplayNames>(),

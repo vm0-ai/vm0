@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
+  ChatSlackMessageAssets,
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
@@ -66,9 +67,11 @@ interface ChatEventContextFixture {
   readonly workflowEventPayload: JsonObject | null;
   readonly slackChannelId: string | null;
   readonly slackMessageTs: string | null;
+  readonly slackBotUserId: string | null;
   readonly slackConversationContext: string | null;
   readonly slackMessageText: string | null;
   readonly slackMessageFiles: ChatSlackMessageFiles | null;
+  readonly slackMessageAssets: ChatSlackMessageAssets | null;
   readonly slackMentionDisplayNames: ChatSlackMentionDisplayNames | null;
   readonly slackSenderDisplayName: string | null;
   readonly slackSenderUserId: string | null;
@@ -162,9 +165,11 @@ export async function readChatEventContextFixture(
       workflowEventPayload: chatAutomationContext.eventPayload,
       slackChannelId: chatSlackContext.channelId,
       slackMessageTs: chatSlackContext.messageTs,
+      slackBotUserId: chatSlackContext.botUserId,
       slackConversationContext: chatSlackContext.conversationContext,
       slackMessageText: chatSlackContext.messageText,
       slackMessageFiles: chatSlackContext.messageFiles,
+      slackMessageAssets: chatSlackContext.messageAssets,
       slackMentionDisplayNames: chatSlackContext.mentionDisplayNames,
       slackSenderDisplayName: chatSlackContext.senderDisplayName,
       slackSenderUserId: chatSlackContext.senderUserId,
@@ -265,9 +270,11 @@ const annotationProjectionInputs = [
       slackContext: {
         channelId: "C123",
         messageTs: "1753257600.000100",
+        botUserId: "U_BOT123",
         conversationContext: "",
         messageText: "slack linked",
         messageFiles: [],
+        messageAssets: [],
         mentionDisplayNames: {},
         senderDisplayName: "Slack User",
         senderUserId: "U123",
@@ -724,9 +731,11 @@ export async function insertQueuedSlackMissingContextFixture(args: {
       slackContext: {
         channelId: "C_MONITOR_FAILURE",
         messageTs: "1.000001",
+        botUserId: "U_MONITOR_FAILURE_BOT",
         conversationContext: "",
         messageText: args.content,
         messageFiles: [],
+        messageAssets: [],
         mentionDisplayNames: {},
         senderDisplayName: "Queue Monitor Fixture",
         senderUserId: "U_MONITOR_FAILURE",

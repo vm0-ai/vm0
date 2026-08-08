@@ -1581,16 +1581,26 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!canonicalInputMessage) {
       throw new Error("Expected the canonical Slack input message");
     }
-    // Slack input assets are owned by the user message document alone. The
-    // test-only state boundary pins that the ref-table writer stopped, while
-    // the launch prompt below covers the document-backed read path.
+    // The Slack context row is the complete launch snapshot: the bot user ID
+    // the system prompt renders and the canonical asset the agent prompt
+    // renders both live here, so no ref row is written any more.
     await expect(
       readChatEventAssetRefIds(context, canonicalInputMessage.id),
     ).resolves.toStrictEqual([]);
     await expect(
       readChatEventContextFixture(canonicalInputMessage.id),
     ).resolves.toMatchObject({
+      slackBotUserId: botUserId,
       slackMessageText: `admit this event once with <@${mentionedSlackUserId}>`,
+      slackMessageAssets: [
+        {
+          assetId: canonicalInputAssetId,
+          slackFileId: "F_CANONICAL_INPUT",
+          filename: "source-notes.txt",
+          contentType: "text/plain",
+          status: "ready",
+        },
+      ],
       slackMentionDisplayNames: {
         [mentionedSlackUserId]: "Slack User",
       },
