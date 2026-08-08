@@ -35,8 +35,7 @@ const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 const CANCELLATION_RECOVERY_COPY =
   "Finalizing the cancelled run before queued work continues.";
-const NEXT_RUN_MODEL_COPY =
-  "Your selected Claude Opus 4.8 model will take effect after this run";
+const NEXT_RUN_MODEL_COPY = "Next run will use Claude Opus 4.8";
 const MODEL_CHANGED_COPY = "Model changed to Claude Sonnet 4.6";
 
 afterEach(async () => {
