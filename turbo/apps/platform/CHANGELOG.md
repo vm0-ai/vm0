@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.711.1](https://github.com/vm0-ai/vm0/compare/app-v0.711.0...app-v0.711.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **connectors:** activate stable custom runtime targets ([#25806](https://github.com/vm0-ai/vm0/issues/25806)) ([d75c2d7](https://github.com/vm0-ai/vm0/commit/d75c2d70f930fe68299c3bb4d142927472fbbc48))
+
+
+### Refactoring
+
+* **chat:** finish post-contraction event cleanup ([#25818](https://github.com/vm0-ai/vm0/issues/25818)) ([83eab57](https://github.com/vm0-ai/vm0/commit/83eab57dd2f44588f200f101e0ae62e09063c8ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.1
+    * @vm0/core bumped to 8.532.2
+
 ## [0.711.0](https://github.com/vm0-ai/vm0/compare/app-v0.710.0...app-v0.711.0) (2026-08-08)
 
 

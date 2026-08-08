@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.407.1](https://github.com/vm0-ai/vm0/compare/api-v1.407.0...api-v1.407.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **api:** replay web chat history only when the session rotates ([#25835](https://github.com/vm0-ai/vm0/issues/25835)) ([3e4e9e2](https://github.com/vm0-ai/vm0/commit/3e4e9e2ab756437a0afa603b8b99342f27e19c7a))
+* **connectors:** activate stable custom runtime targets ([#25806](https://github.com/vm0-ai/vm0/issues/25806)) ([d75c2d7](https://github.com/vm0-ai/vm0/commit/d75c2d70f930fe68299c3bb4d142927472fbbc48))
+
+
+### Refactoring
+
+* **chat:** finish post-contraction event cleanup ([#25818](https://github.com/vm0-ai/vm0/issues/25818)) ([83eab57](https://github.com/vm0-ai/vm0/commit/83eab57dd2f44588f200f101e0ae62e09063c8ef))
+
+
+### Performance Improvements
+
+* **chat-search:** answer indexed search from the projection alone ([#25836](https://github.com/vm0-ai/vm0/issues/25836)) ([08abaef](https://github.com/vm0-ai/vm0/commit/08abaef1ab86f40a9c74809610b6996148ac6875))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.1
+    * @vm0/core bumped to 8.532.2
+    * @vm0/db bumped to 1.181.3
+    * @vm0/pi-agent-runtime bumped to 1.3.16
+
 ## [1.407.0](https://github.com/vm0-ai/vm0/compare/api-v1.406.1...api-v1.407.0) (2026-08-08)
 
 
