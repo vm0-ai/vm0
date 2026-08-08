@@ -2769,6 +2769,7 @@ describe("zero attachment chips", () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
     context.mocks.browser.clipboardWriteText();
     context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
+      expect(request.credentials).toBe("include");
       const fileId = new URL(request.url).searchParams.get("file_id");
       if (fileId === "attachment-markdown") {
         return new Response("# Release notes\n\nThe rollout is ready.", {

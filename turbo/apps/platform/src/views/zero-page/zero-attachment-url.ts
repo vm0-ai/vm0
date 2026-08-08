@@ -238,6 +238,7 @@ async function fetchBlobForDownload(
   try {
     const res = await fetch(fetchUrl, {
       cache: "reload",
+      credentials: "include",
       mode: "cors",
       signal,
     });

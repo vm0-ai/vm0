@@ -100,6 +100,7 @@ async function loadRuntimeSurfaces() {
     apiBase,
     auth,
     attachmentUrl,
+    userMessageFiles,
     platformHost,
     plausible,
     posthog,
@@ -108,6 +109,7 @@ async function loadRuntimeSurfaces() {
     import("../signals/api-base.ts"),
     import("../signals/auth.ts"),
     import("../views/zero-page/zero-attachment-url.ts"),
+    import("../signals/chat-page/user-message-files.ts"),
     import("../lib/platform-host.ts"),
     import("../lib/plausible.ts"),
     import("../lib/posthog.ts"),
@@ -118,6 +120,7 @@ async function loadRuntimeSurfaces() {
     apiBase,
     attachmentUrl,
     auth,
+    userMessageFiles,
     platformHost,
     plausible,
     posthog,
@@ -165,6 +168,11 @@ describe("portable platform runtime environment", () => {
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
+    expect(
+      runtime.userMessageFiles.canonicalUserMessageFileUrl("attachment-photo"),
+    ).toBe(
+      "https://api.vm0.ai/api/zero/web/download-file?file_id=attachment-photo",
+    );
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe("https://www.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(isOkouProductionHostname("okou.ai.evil.example")).toBeFalsy();
