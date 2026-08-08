@@ -1,9 +1,12 @@
 use std::process::ExitCode;
 
-use super::super::SubmitArgs;
-use super::support::{run_submit_and_write_result, submit_queue_entry, write_queue_job_file};
+use super::super::{SubmitArgs, run_submit_with_home};
+use super::support::{
+    TEST_SUBMIT_RENDEZVOUS_TIMEOUT, run_submit_and_write_result, submit_args_for_test,
+    submit_queue_entry, wait_for_job_and_write_result, write_queue_job_file,
+};
 use crate::ids::RunId;
-use crate::local_queue;
+use crate::local_queue::{self, JobResponse};
 use crate::paths::HomePaths;
 
 #[tokio::test]
@@ -40,6 +43,51 @@ async fn submit_returns_failure_for_nonzero_job_response() {
         !result_path.exists(),
         "completed cleanup should remove nonzero result files"
     );
+}
+
+#[tokio::test]
+async fn submit_rejects_mismatched_result_identity_before_cleanup() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().to_path_buf());
+    let args = submit_args_for_test();
+    let group_dir = home.groups_dir().join(&args.group);
+    let actual_run_id = RunId::new_v4();
+
+    let (result, request) = tokio::time::timeout(TEST_SUBMIT_RENDEZVOUS_TIMEOUT, async {
+        tokio::join!(
+            run_submit_with_home(args, home),
+            wait_for_job_and_write_result(
+                group_dir.clone(),
+                crate::profile::DEFAULT_PROFILE.to_owned(),
+                0,
+                None,
+                Some(actual_run_id),
+            ),
+        )
+    })
+    .await
+    .expect("local submit mismatch rendezvous should not time out");
+    let error = result.expect_err("mismatched result identity should fail local submit");
+    let queue = submit_queue_entry(&group_dir, request.job_id);
+
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "internal error: local result run_id mismatch: expected {}, actual {}",
+            request.job_id, actual_run_id
+        )
+    );
+    assert!(
+        queue.job.exists(),
+        "mismatched results must not finalize the submitted job"
+    );
+    assert!(
+        queue.result.exists(),
+        "mismatched results must remain available for diagnosis"
+    );
+    let response: JobResponse =
+        serde_json::from_slice(&std::fs::read(&queue.result).unwrap()).unwrap();
+    assert_eq!(response.run_id, actual_run_id);
 }
 
 #[test]

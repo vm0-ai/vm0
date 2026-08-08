@@ -8,7 +8,7 @@ use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::paths::HomePaths;
 
-const TEST_SUBMIT_RENDEZVOUS_TIMEOUT: Duration = Duration::from_secs(5);
+pub(super) const TEST_SUBMIT_RENDEZVOUS_TIMEOUT: Duration = Duration::from_secs(5);
 const TEST_SUBMIT_QUEUE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 pub(super) fn submit_queue_entry(group_dir: &Path, job_id: RunId) -> SubmitQueueEntry {
@@ -26,11 +26,12 @@ pub(super) fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
-async fn wait_for_job_and_write_result(
+pub(super) async fn wait_for_job_and_write_result(
     group_dir: std::path::PathBuf,
     profile: String,
     exit_code: i32,
     error: Option<String>,
+    response_run_id: Option<RunId>,
 ) -> JobRequest {
     let job_dir = local_queue::profile_jobs_dir(&group_dir, &profile).unwrap();
     loop {
@@ -43,7 +44,7 @@ async fn wait_for_job_and_write_result(
                 let request: JobRequest =
                     serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
                 let response = JobResponse {
-                    run_id: request.job_id,
+                    run_id: response_run_id.unwrap_or(request.job_id),
                     exit_code,
                     error: error.clone(),
                 };
@@ -91,8 +92,14 @@ async fn run_submit_and_write_result_with_timeout(
     let rendezvous = async move {
         tokio::try_join!(run_submit_with_home(args, home), async move {
             Ok::<JobRequest, crate::error::RunnerError>(
-                wait_for_job_and_write_result(watched_group_dir, watched_profile, exit_code, error)
-                    .await,
+                wait_for_job_and_write_result(
+                    watched_group_dir,
+                    watched_profile,
+                    exit_code,
+                    error,
+                    None,
+                )
+                .await,
             )
         })
     };
