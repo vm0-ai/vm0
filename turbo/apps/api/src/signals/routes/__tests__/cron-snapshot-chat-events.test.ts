@@ -86,7 +86,7 @@ interface ArchivedLine {
 
 function archivedLines(body: Buffer): readonly ArchivedLine[] {
   const raw = gunzipSync(body).toString("utf8");
-  expect(raw.endsWith("\n")).toBe(true);
+  expect(raw.endsWith("\n")).toBeTruthy();
   return raw
     .slice(0, -1)
     .split("\n")
@@ -111,8 +111,8 @@ function expectArchiveInvariants(
   expect(String(lastLine?.seqId)).toBe(match?.[2]);
   for (const [index, line] of lines.entries()) {
     expect(line.chatThreadId).toBe(threadId);
-    expect(Number.isInteger(line.seqId)).toBe(true);
-    expect(Number.isNaN(Date.parse(line.createdAt))).toBe(false);
+    expect(Number.isInteger(line.seqId)).toBeTruthy();
+    expect(Number.isNaN(Date.parse(line.createdAt))).toBeFalsy();
     const previous = lines[index - 1];
     if (previous !== undefined) {
       expect(line.seqId).toBeGreaterThan(previous.seqId);
@@ -219,7 +219,7 @@ describe("cron snapshot chat events", () => {
     await projectChatEventSearch();
 
     const first = await runSnapshotCron();
-    expect(first.success).toBe(true);
+    expect(first.success).toBeTruthy();
     expect(first.snapshots).toBeGreaterThanOrEqual(1);
 
     const firstPuts = putsForThread(threadId);
@@ -246,7 +246,7 @@ describe("cron snapshot chat events", () => {
     });
     await projectChatEventSearch();
     const second = await runSnapshotCron();
-    expect(second.success).toBe(true);
+    expect(second.success).toBeTruthy();
 
     const secondPuts = putsForThread(threadId);
     expect(secondPuts).toHaveLength(2);
@@ -259,7 +259,7 @@ describe("cron snapshot chat events", () => {
     expect(secondLines.slice(0, firstLines.length)).toStrictEqual(firstLines);
 
     const secondRaw = gunzipSync(secondPut.body).toString("utf8");
-    expect(secondRaw.startsWith(firstRaw)).toBe(true);
+    expect(secondRaw.startsWith(firstRaw)).toBeTruthy();
     expect(secondRaw).toContain(`${marker} third`);
 
     await runSnapshotCron();
