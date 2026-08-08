@@ -2,7 +2,7 @@ import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-thre
 
 export type ChatEventUserMessage = UserMessageDocument;
 
-/** Opaque Stage 5 storage type for the four physical columns dropped in Stage 7. */
+/** Opaque Stage 5 storage type for the four physical columns dropped after the reader-only release drains. */
 export type ChatEventRetainedLegacyPayload = unknown;
 
 export interface ChatEventUsageProviderBreakdown {

@@ -1,12 +1,17 @@
 import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
+import {
+  chatEventTypeSchema,
+  type ChatEventType,
+} from "@vm0/api-contracts/contracts/chat-events";
 import { command, type Computed } from "ccstate";
-import { and, asc, eq, gt, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, lte, ne, or, sql } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
@@ -27,14 +32,15 @@ interface SnapshotCandidate {
   readonly headId: string | null;
   readonly headLastSeqId: number | null;
   readonly headObjectKey: string | null;
+  readonly headArchiveSchemaVersion: number | null;
 }
 
 /**
  * Version of the NDJSON line shape written by archiveLine. Bump it whenever
- * that shape changes; existing objects keep their recorded version and get
- * rewritten to the current one on the next rebuild of their thread.
+ * that shape changes. Existing heads keep their recorded version and are
+ * selected for a verified rewrite even when they have no new Postgres tail.
  */
-const ARCHIVE_SCHEMA_VERSION = 1;
+const ARCHIVE_SCHEMA_VERSION = 2;
 const ARCHIVE_CONTENT_TYPE = "application/gzip";
 /**
  * Sized for the initial backfill: ~130k candidate threads at 48 runs/day
@@ -46,6 +52,61 @@ const ARCHIVE_CONTENT_TYPE = "application/gzip";
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const EVENT_PAGE_SIZE = 1000;
 const OBJECT_KEY_CONTENT_SHA256 = /-([0-9a-f]{64})\.ndjson\.gz$/;
+
+const requiredJsonValueSchema = z.unknown().refine((value) => {
+  return value !== undefined;
+}, "Expected a JSON value");
+function createArchiveLineShape() {
+  return {
+    id: z.string(),
+    chatThreadId: z.string(),
+    runId: z.string().nullable(),
+    usagePayload: requiredJsonValueSchema,
+    revokesEventId: z.string().nullable(),
+    interruptsRunId: z.string().nullable(),
+    runGroupId: z.string().nullable(),
+    eventType: chatEventTypeSchema,
+    contextType: z.string().nullable(),
+    contextId: z.string().nullable(),
+    content: z.string().nullable(),
+    userMessage: requiredJsonValueSchema,
+    thinking: z.string().nullable(),
+    error: z.string().nullable(),
+    runEventSequenceNumber: z.number().int().nullable(),
+    runEventId: z.string().nullable(),
+    seqId: z.number().int(),
+    createdAt: z.iso.datetime(),
+  };
+}
+
+const archiveLineV2Schema = z.object(createArchiveLineShape()).strict();
+const archiveLineV1Schema = z.object({
+  ...createArchiveLineShape(),
+  eventType: z.string(),
+});
+
+type ArchiveLineV2 = z.infer<typeof archiveLineV2Schema>;
+type ArchiveEventRow = Pick<
+  typeof chatEvents.$inferSelect,
+  | "id"
+  | "chatThreadId"
+  | "runId"
+  | "usagePayload"
+  | "revokesEventId"
+  | "interruptsRunId"
+  | "runGroupId"
+  | "eventType"
+  | "contextType"
+  | "contextId"
+  | "content"
+  | "userMessage"
+  | "thinking"
+  | "error"
+  | "runEventSequenceNumber"
+  | "runEventId"
+  | "seqId"
+  | "createdAt"
+>;
 
 function chatEventSnapshotThreadBatchSize(): number {
   const raw = optionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE");
@@ -66,36 +127,85 @@ function chatEventSnapshotThreadBatchSize(): number {
  * that a chat_events schema change forces a conscious decision here instead
  * of silently changing the persisted archive shape.
  */
-function archiveLine(row: typeof chatEvents.$inferSelect): Buffer {
-  return Buffer.from(
-    `${JSON.stringify({
-      id: row.id,
-      chatThreadId: row.chatThreadId,
-      runId: row.runId,
-      usagePayload: row.usagePayload,
-      revokesEventId: row.revokesEventId,
-      interruptsRunId: row.interruptsRunId,
-      runGroupId: row.runGroupId,
-      eventType: row.eventType,
-      contextType: row.contextType,
-      contextId: row.contextId,
-      content: row.content,
-      userMessage: row.userMessage,
-      thinking: row.thinking,
-      error: row.error,
-      activeInputSequence: row.activeInputSequence,
-      runEventSequenceNumber: row.runEventSequenceNumber,
-      runEventId: row.runEventId,
-      seqId: row.seqId,
-      // Archive keys track the physical columns; the legacy* accessors are
-      // the Stage 5 bridge names for goal_event, attach_files,
-      // generation_template, and recommended_followups (vm0-ai/vm0#25767).
-      goalEvent: row.legacyGoalPayload,
-      attachFiles: row.legacyAttachedFiles,
-      generationTemplate: row.legacyTemplatePayload,
-      recommendedFollowups: row.legacyFollowupsPayload,
-      createdAt: row.createdAt.toISOString(),
-    })}\n`,
+function canonicalArchiveEventType(eventType: string): ChatEventType {
+  if (eventType === "browser.started") {
+    return "browser.open";
+  }
+  if (eventType === "browser.stopped") {
+    return "browser.close";
+  }
+  return chatEventTypeSchema.parse(eventType);
+}
+
+function encodeArchiveLine(line: ArchiveLineV2): Buffer {
+  return Buffer.from(`${JSON.stringify(line)}\n`);
+}
+
+function archiveLine(row: ArchiveEventRow): Buffer {
+  return encodeArchiveLine({
+    id: row.id,
+    chatThreadId: row.chatThreadId,
+    runId: row.runId,
+    usagePayload: row.usagePayload,
+    revokesEventId: row.revokesEventId,
+    interruptsRunId: row.interruptsRunId,
+    runGroupId: row.runGroupId,
+    eventType: canonicalArchiveEventType(row.eventType),
+    contextType: row.contextType,
+    contextId: row.contextId,
+    content: row.content,
+    userMessage: row.userMessage,
+    thinking: row.thinking,
+    error: row.error,
+    runEventSequenceNumber: row.runEventSequenceNumber,
+    runEventId: row.runEventId,
+    seqId: row.seqId,
+    createdAt: row.createdAt.toISOString(),
+  });
+}
+
+function parseArchiveLines(raw: Buffer): readonly unknown[] {
+  const text = raw.toString("utf8");
+  if (text.length === 0 || !text.endsWith("\n")) {
+    throw new Error(
+      "chat event snapshot must be non-empty newline-delimited JSON",
+    );
+  }
+  return text
+    .slice(0, -1)
+    .split("\n")
+    .map((line) => {
+      const parsed: unknown = JSON.parse(line);
+      return parsed;
+    });
+}
+
+/**
+ * Persisted-data migration for active v1 heads, not deployed-version skew.
+ * Remove only after every active head is v2; immutable v1 objects then belong
+ * to the separate R2 retention/GC lifecycle.
+ */
+function currentArchiveRaw(raw: Buffer, archiveSchemaVersion: number): Buffer {
+  const lines = parseArchiveLines(raw);
+  if (archiveSchemaVersion === ARCHIVE_SCHEMA_VERSION) {
+    for (const line of lines) {
+      archiveLineV2Schema.parse(line);
+    }
+    return raw;
+  }
+  if (archiveSchemaVersion !== 1) {
+    throw new Error(
+      `unsupported chat event snapshot schema version: ${archiveSchemaVersion}`,
+    );
+  }
+  return Buffer.concat(
+    lines.map((line) => {
+      const parsed = archiveLineV1Schema.parse(line);
+      return encodeArchiveLine({
+        ...parsed,
+        eventType: canonicalArchiveEventType(parsed.eventType),
+      });
+    }),
   );
 }
 
@@ -145,7 +255,26 @@ async function readTailEvents(
   let count = 0;
   for (;;) {
     const rows = await db
-      .select()
+      .select({
+        id: chatEvents.id,
+        chatThreadId: chatEvents.chatThreadId,
+        runId: chatEvents.runId,
+        usagePayload: chatEvents.usagePayload,
+        revokesEventId: chatEvents.revokesEventId,
+        interruptsRunId: chatEvents.interruptsRunId,
+        runGroupId: chatEvents.runGroupId,
+        eventType: chatEvents.eventType,
+        contextType: chatEvents.contextType,
+        contextId: chatEvents.contextId,
+        content: chatEvents.content,
+        userMessage: chatEvents.userMessage,
+        thinking: chatEvents.thinking,
+        error: chatEvents.error,
+        runEventSequenceNumber: chatEvents.runEventSequenceNumber,
+        runEventId: chatEvents.runEventId,
+        seqId: chatEvents.seqId,
+        createdAt: chatEvents.createdAt,
+      })
       .from(chatEvents)
       .where(
         and(
@@ -218,7 +347,10 @@ async function archiveThread(
 ): Promise<number | null> {
   const tail = await readTailEvents(db, candidate);
   signal.throwIfAborted();
-  if (tail.count === 0) {
+  const needsSchemaUpgrade =
+    candidate.headId !== null &&
+    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION;
+  if (tail.count === 0 && !needsSchemaUpgrade) {
     return null;
   }
 
@@ -226,12 +358,21 @@ async function archiveThread(
   // payloads below the head watermark are reclaimed later, so rebuilds never
   // query that range. Re-reading the parent also re-verifies its hash.
   let parentRaw: Buffer = Buffer.alloc(0);
-  if (candidate.headObjectKey !== null) {
+  if (candidate.headId !== null) {
+    if (
+      candidate.headObjectKey === null ||
+      candidate.headArchiveSchemaVersion === null
+    ) {
+      throw new Error("chat event snapshot head metadata is incomplete");
+    }
     const parentCompressed = await get(
       downloadS3Buffer(bucket, candidate.headObjectKey),
     );
     signal.throwIfAborted();
-    parentRaw = verifiedArchiveRaw(candidate.headObjectKey, parentCompressed);
+    parentRaw = currentArchiveRaw(
+      verifiedArchiveRaw(candidate.headObjectKey, parentCompressed),
+      candidate.headArchiveSchemaVersion,
+    );
   }
 
   const compressed = gzipSync(Buffer.concat([parentRaw, ...tail.lines]));
@@ -290,6 +431,7 @@ export const snapshotChatEvents$ = command(
         headId: chatEventSnapshots.id,
         headLastSeqId: chatEventSnapshots.lastSeqId,
         headObjectKey: chatEventSnapshots.objectKey,
+        headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
       })
       .from(chatThreads)
       .innerJoin(
@@ -304,9 +446,15 @@ export const snapshotChatEvents$ = command(
         ),
       )
       .where(
-        gt(
-          chatEventSearchWatermarks.indexedSeqId,
-          sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
+        or(
+          gt(
+            chatEventSearchWatermarks.indexedSeqId,
+            sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
+          ),
+          and(
+            isNotNull(chatEventSnapshots.id),
+            ne(chatEventSnapshots.archiveSchemaVersion, ARCHIVE_SCHEMA_VERSION),
+          ),
         ),
       )
       .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
