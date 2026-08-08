@@ -654,6 +654,10 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["output_video_tokens.480p_720p.no_video", videoUsd(5.6), 1_000_000],
     ["output_video_tokens.480p_720p.with_video", videoUsd(3.3), 1_000_000],
   ]),
+  ...usageGroup("video", "dreamina-seedance-2-0-mini-260615", [
+    ["output_video_tokens.480p_720p.no_video", videoUsd(3.5), 1_000_000],
+    ["output_video_tokens.480p_720p.with_video", videoUsd(2.1), 1_000_000],
+  ]),
   ...usageGroup("video", "seedance-1-5-pro-251215", [
     ["output_video_tokens.audio", videoUsd(2.4), 1_000_000],
     ["output_video_tokens.silent", videoUsd(1.2), 1_000_000],

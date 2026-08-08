@@ -395,7 +395,7 @@ export function createVideoGenerateCommand(
     .option("--json", "Print the complete generation result as JSON")
     .option(
       "--model <model>",
-      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k",
+      "Model: dreamina-seedance-2.0-fast, dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, or kling-v3-4k",
       "dreamina-seedance-2.0-fast",
     )
     .option(
@@ -457,9 +457,11 @@ Models:
     480p/720p, optional audio, up to 30 image references, and up to 10
     video and 10 audio references, plus first/last frames.
   - Dreamina Seedance 2.0: dreamina-seedance-2.0,
-    dreamina-seedance-2.0-fast (default). Supports 4s-15s,
+    dreamina-seedance-2.0-fast (default), dreamina-seedance-2.0-mini.
+    Supports 4s-15s,
     480p/720p, seed, optional audio, image references, and first/last
-    frames. The non-fast model also supports 1080p and video/audio references.
+    frames. The full model also supports 1080p; the full and Mini models
+    support video/audio references.
   - Seedance 1.5 Pro: seedance-1.5-pro. Supports 4s-12s,
     480p/720p/1080p, seed, optional audio, image references, and
     first/last frames.

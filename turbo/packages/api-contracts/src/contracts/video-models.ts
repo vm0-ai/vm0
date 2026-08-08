@@ -10,6 +10,7 @@ export const VIDEO_MODEL_IDS = [
   "dreamina-seedance-2-5-260628",
   "dreamina-seedance-2-0-260128",
   "dreamina-seedance-2-0-fast-260128",
+  "dreamina-seedance-2-0-mini-260615",
   "seedance-1-5-pro-251215",
   "fal-ai/veo3.1/fast",
   "fal-ai/kling-video/v3/4k/text-to-video",
