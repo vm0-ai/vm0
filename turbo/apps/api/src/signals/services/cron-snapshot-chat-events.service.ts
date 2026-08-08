@@ -91,9 +91,9 @@ export const ARCHIVE_SCHEMA_VERSION = 3;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
- * At the steady-state 30-minute cadence this cap permits 24k changed threads
- * per day. Normal traffic re-archives roughly 700 active threads per day, so
- * the cap leaves ample room for bursts while keeping each invocation bounded.
+ * At the 10-minute cron cadence this cap permits 72k changed threads per day.
+ * Normal traffic re-archives roughly 700 active threads per day, so the cap
+ * leaves ample room for bursts while keeping each invocation bounded.
  */
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const EVENT_PAGE_SIZE = 1000;
@@ -105,7 +105,11 @@ const DEFAULT_R2_GC_GRACE_HOURS = 24 * 7;
 const R2_GC_SHARDS_PER_RUN = 16;
 const R2_GC_SHARD_COUNT = 16 ** 3;
 const R2_GC_PAGE_SIZE = 1000;
-const R2_GC_SLOT_MS = 30 * 60 * 1000;
+/**
+ * Matches the cron cadence so every invocation advances to the next shard
+ * window; the 4096 shards are swept in about 1.8 days.
+ */
+const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const HEX_DIGITS = "0123456789abcdef";
 
 const PRESERVED_USER_MESSAGE_EVENT_TYPES = [
