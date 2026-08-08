@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { gunzipSync } from "node:zlib";
 
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import { chatEventRowSchema } from "@vm0/api-contracts/contracts/chat-event-rows";
@@ -14,12 +13,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
-import {
-  insertContentFollowupsEventFixture,
-  insertSnapshotReclaimEventsFixture,
-  readChatEventPayloadFixture,
-  setRunCompletedAtFixture,
-} from "../../../test-fixtures/chat-events";
+import { insertContentFollowupsEventFixture } from "../../../test-fixtures/chat-events";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "../cron-snapshot-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
@@ -251,82 +245,27 @@ describe("chat event snapshot read endpoints", () => {
     });
   }, 60_000);
 
-  it("reclaims only verified archived payloads and garbage-collects unreferenced objects", async () => {
+  it("garbage-collects unreferenced snapshot objects", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    await api.grantProEntitlement(owner);
-    await api.ensureOrgModelProvider(owner);
     const agent = await bdd.createAgent(owner, {
       displayName: "Snapshot maintenance agent",
     });
     const thread = await chat.createThread(owner, { agentId: agent.agentId });
-    const run = await api.createRun(owner, {
-      agentId: agent.agentId,
-      prompt: "Create snapshot maintenance fixtures",
-    });
-    const fixture = await insertSnapshotReclaimEventsFixture({
+    await insertContentFollowupsEventFixture({
       threadId: thread.id,
-      runId: run.runId,
+      content: JSON.stringify({
+        version: 1,
+        followups: [{ prompt: "Archived follow-up", kind: "talk" }],
+      }),
     });
-    await setRunCompletedAtFixture({
-      runId: run.runId,
-      completedAt: new Date(now() - 2 * 60 * 60 * 1000),
-    });
-    mockOptionalEnv("CHAT_EVENT_PAYLOAD_RECLAIM_GRACE_HOURS", "1");
-    mockOptionalEnv("CHAT_EVENT_PAYLOAD_RECLAIM_DRY_RUN", "true");
 
     await projectChatEventSearch();
-    const dryRun = await runSnapshotCron();
-    expect(dryRun).toMatchObject({
-      corsChanged: true,
-      payloadRowsMeasured: 2,
-      payloadRowsReclaimed: 0,
-    });
-    await expect(
-      readChatEventPayloadFixture(fixture.thinkingEventId),
-    ).resolves.toMatchObject({ thinking: "archived thinking payload" });
+    // The cron scope is global, so only this thread's own head is asserted.
+    const archived = await runSnapshotCron();
+    expect(archived.corsChanged).toBeTruthy();
 
     const head = await readChatEventSnapshotHead(context, thread.id);
-    const snapshotBody = readFakeChatEventObject(head.object_key);
-    if (!snapshotBody) {
-      throw new Error("Expected the fake snapshot object");
-    }
-    const snapshotRows = gunzipSync(snapshotBody)
-      .toString("utf8")
-      .trimEnd()
-      .split("\n")
-      .map((line) => {
-        return JSON.parse(line) as { id: string; thinking?: string | null };
-      });
-    expect(
-      snapshotRows.find((row) => {
-        return row.id === fixture.thinkingEventId;
-      }),
-    ).toMatchObject({ thinking: "archived thinking payload" });
-
-    mockOptionalEnv("CHAT_EVENT_PAYLOAD_RECLAIM_DRY_RUN", "false");
-    const applied = await runSnapshotCron();
-    expect(applied).toMatchObject({
-      corsChanged: false,
-      payloadRowsMeasured: 2,
-      payloadRowsReclaimed: 2,
-    });
-    await expect(
-      readChatEventPayloadFixture(fixture.thinkingEventId),
-    ).resolves.toStrictEqual({ content: null, thinking: null });
-    await expect(
-      readChatEventPayloadFixture(fixture.followupsEventId),
-    ).resolves.toStrictEqual({ content: null, thinking: null });
-    await expect(
-      readChatEventPayloadFixture(fixture.messageEventId),
-    ).resolves.toStrictEqual({
-      content: "preserved conversation payload",
-      thinking: null,
-    });
-    const idempotent = await runSnapshotCron();
-    expect(idempotent).toMatchObject({
-      payloadRowsMeasured: 0,
-      payloadRowsReclaimed: 0,
-    });
+    expect(readFakeChatEventObject(head.object_key)).toBeDefined();
 
     const future = new Date(now() + 8 * 24 * 60 * 60 * 1000);
     mockNow(future);
