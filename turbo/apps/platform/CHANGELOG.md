@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.709.0](https://github.com/vm0-ai/vm0/compare/app-v0.708.2...app-v0.709.0) (2026-08-08)
+
+
+### Features
+
+* cold-start chat threads from r2 snapshots behind a switch ([#25802](https://github.com/vm0-ai/vm0/issues/25802)) ([8a9e38a](https://github.com/vm0-ai/vm0/commit/8a9e38afac1f74984d60dbea9dd61f35497c150f))
+* include selected models in client chat messages ([#25809](https://github.com/vm0-ai/vm0/issues/25809)) ([ca9e914](https://github.com/vm0-ai/vm0/commit/ca9e9145c217556075496f346b7322a67eb1ada9))
+
+
+### Bug Fixes
+
+* **platform:** shorten next-run model notice ([#25808](https://github.com/vm0-ai/vm0/issues/25808)) ([64f308a](https://github.com/vm0-ai/vm0/commit/64f308a4fa564f0390a52233b5be8fba5234b777))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.297.0
+    * @vm0/core bumped to 8.531.0
+
 ## [0.708.2](https://github.com/vm0-ai/vm0/compare/app-v0.708.1...app-v0.708.2) (2026-08-08)
 
 

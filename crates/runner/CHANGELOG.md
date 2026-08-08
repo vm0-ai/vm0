@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.161.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.2...runner-rs-v0.161.3) (2026-08-08)
+
+
+### Bug Fixes
+
+* **runner:** wait briefly for workspace cache lock ([#25812](https://github.com/vm0-ai/vm0/issues/25812)) ([87a3ece](https://github.com/vm0-ai/vm0/commit/87a3ece7e19c8a24bff80a60136c4dba50bc1efc))
+
 ## [0.161.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.1...runner-rs-v0.161.2) (2026-08-08)
 
 
