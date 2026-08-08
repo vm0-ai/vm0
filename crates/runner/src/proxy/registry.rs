@@ -285,12 +285,26 @@ fn initial_connector_routing_variables(
 ) -> HashMap<String, HashMap<String, String>> {
     let mut routing_variables = HashMap::new();
     let run_vars = registration.vars.cloned().unwrap_or_default();
+    let builtin_connector_slugs = registration
+        .connector_runtime_targets
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|target| match target {
+            ConnectorRuntimeTargetRegistration::Builtin { connector_slug } => {
+                Some(connector_slug.as_str())
+            }
+            ConnectorRuntimeTargetRegistration::Custom { .. } => None,
+        })
+        .collect::<HashSet<_>>();
     for firewall in registration.firewalls.unwrap_or_default() {
         if let FirewallEntry::Builtin {
             name,
             base_url_vars,
         } = firewall
         {
+            if !builtin_connector_slugs.contains(name.as_str()) {
+                continue;
+            }
             let raw_values = base_url_vars.as_ref().map_or_else(
                 || Some(HashMap::new()),
                 |resolved_values| {
@@ -1095,7 +1109,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn registration_marks_pinned_targets_without_firewalls_as_omitted() {
+    async fn registration_tracks_runtime_target_availability_and_routing_variables() {
         let harness = RegistryHarness::new().await;
         let available_custom_id = "550e8400-e29b-41d4-a716-446655440000";
         let omitted_custom_id = "550e8400-e29b-41d4-a716-446655440001";
@@ -1106,6 +1120,10 @@ mod tests {
                     "SLACK_HOST".to_string(),
                     "xn--mnich-kva.example.test".to_string(),
                 )])),
+            },
+            FirewallEntry::Builtin {
+                name: "model-provider:openai".to_string(),
+                base_url_vars: None,
             },
             custom_runtime_firewall(available_custom_id, "custom_connector_available"),
         ];
@@ -1160,6 +1178,41 @@ mod tests {
                 ),
                 (format!("custom:{available_custom_id}"), HashMap::new(),),
             ])
+        );
+    }
+
+    #[tokio::test]
+    async fn registration_omits_builtin_routing_pin_without_raw_run_values() {
+        let harness = RegistryHarness::new().await;
+        let firewalls = vec![FirewallEntry::Builtin {
+            name: "slack".to_string(),
+            base_url_vars: Some(HashMap::from([(
+                "SLACK_HOST".to_string(),
+                "resolved.example.test".to_string(),
+            )])),
+        }];
+        let targets = vec![ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "slack".to_string(),
+        }];
+
+        harness
+            .handle
+            .register_vm(
+                "10.200.0.2",
+                &VmRegistration {
+                    firewalls: Some(&firewalls),
+                    connector_runtime_targets: Some(&targets),
+                    ..base_registration()
+                },
+            )
+            .await
+            .unwrap();
+
+        let registry = read_registry(harness.registry_path()).await.unwrap();
+        assert!(
+            !registry.vms["10.200.0.2"]
+                .connector_routing_variables
+                .contains_key("builtin:slack")
         );
     }
 
