@@ -18,6 +18,12 @@ function isAuthenticatedAttachmentUrl(url: string): boolean {
   );
 }
 
+/**
+ * Persisted chat attachments live in a private bucket behind an authenticated
+ * API route, and `<img src>` cannot carry an Authorization header. Exchange the
+ * canonical API URL for a short-lived presigned object URL the browser can load
+ * on its own; the API still runs the ownership check before signing.
+ */
 export function createAttachmentResourceUrl$(
   url: string,
 ): Computed<Promise<string>> {
@@ -34,22 +40,23 @@ export function createAttachmentResourceUrl$(
     const signal = get(pageSignal$);
     const client = get(zeroClient$)(zeroWebFilesContract);
     const response = await accept(
-      client.download({
+      client.fileUrl({
         query: { file_id: fileId },
         fetchOptions: { signal },
       }),
-      [200],
+      [200, 404],
       signal,
     );
-    signal.throwIfAborted();
-    const resourceUrl = URL.createObjectURL(response.body);
-    signal.addEventListener(
-      "abort",
-      () => {
-        URL.revokeObjectURL(resourceUrl);
-      },
-      { once: true },
-    );
-    return resourceUrl;
+    // A newly promoted app can briefly reach an API build from before this
+    // additive route existed. Surface: old web clients, ~2 days observed
+    // maximum exposure. Falling back to the canonical URL keeps the existing
+    // broken-image placeholder instead of raising one error toast per
+    // attachment; the same branch also covers a genuinely deleted file.
+    // Remove once this API version is outside the production rollback window;
+    // follow-up #25828.
+    if (response.status === 404) {
+      return url;
+    }
+    return response.body.url;
   });
 }
