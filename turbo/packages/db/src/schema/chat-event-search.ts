@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  customType,
   index,
   pgTable,
   text,
@@ -8,6 +9,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
+
+const tsvectorColumn = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 /**
  * Search projection over the canonical chat_events stream: one row per
@@ -30,12 +37,25 @@ export const chatEventSearchDocs = pgTable(
       .notNull(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    /**
+     * Mirrors chat_threads.agent_compose_id, which equals the zero agent id.
+     * Projected so an agent-scoped search never has to join back to the thread.
+     */
+    agentComposeId: uuid("agent_compose_id").notNull(),
     role: text("role").$type<"user" | "assistant">().notNull(),
     createdAt: timestamp("created_at").notNull(),
     /** Raw searchable text, also used for fallback ILIKE matching. */
     text: text("text").notNull(),
     /** CJK-bigram normalized form fed to to_tsvector('simple', ...). */
     textBigram: text("text_bigram").notNull(),
+    /**
+     * Materialized tsvector of textBigram. Storing it keeps the parsed form on
+     * the row, so an index recheck — or any plan that filters without the GIN
+     * index — reads it instead of re-running to_tsvector per scanned row.
+     */
+    tsv: tsvectorColumn("tsv").generatedAlwaysAs(
+      sql`to_tsvector('simple', text_bigram)`,
+    ),
   },
   (table) => {
     return [
@@ -45,10 +65,7 @@ export const chatEventSearchDocs = pgTable(
         table.createdAt.desc(),
       ),
       index("chat_event_search_docs_thread_idx").on(table.chatThreadId),
-      index("chat_event_search_docs_tsv_idx").using(
-        "gin",
-        sql`to_tsvector('simple', ${table.textBigram})`,
-      ),
+      index("chat_event_search_docs_tsv_idx").using("gin", table.tsv),
     ];
   },
 );

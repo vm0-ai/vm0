@@ -3032,6 +3032,68 @@ describe("CHAT-01 chat search index", () => {
     const both = await chat.searchChat(actor, "部署");
     expect(both.results).toHaveLength(2);
   }, 60_000);
+
+  it("applies agent, since and limit filters inside the projection", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = bdd.user({ orgId });
+    bdd.acceptAgentStorageWrites();
+    const agentA = await bdd.createAgent(owner, {
+      displayName: "Index filter agent A",
+    });
+    const agentB = await bdd.createAgent(owner, {
+      displayName: "Index filter agent B",
+    });
+    await enableChatSearchIndex(owner);
+
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "旧的水豚记录一",
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "旧的水豚记录二",
+    });
+    const sinceBoundary = now();
+    const recentThreadA = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "新的水豚记录",
+    });
+    const threadB = await sendNoCreditMessage(owner, {
+      agentId: agentB.agentId,
+      prompt: "另一个水豚记录",
+    });
+    const tick = await projectChatEventSearch();
+    expect(tick.success).toBeTruthy();
+
+    const all = await chat.searchChat(owner, "水豚");
+    expect(all.results).toHaveLength(4);
+
+    // `since` is answered by the projection's own created_at.
+    const since = await chat.searchChat(owner, "水豚", {
+      since: sinceBoundary,
+    });
+    expect(
+      since.results.map((result) => {
+        return result.chatThreadId;
+      }),
+    ).toStrictEqual([threadB, recentThreadA]);
+
+    // The agent scope comes from the projected agent_compose_id, so no join
+    // takes part in selecting rows.
+    const byAgent = await chat.searchChat(owner, "水豚", {
+      agentId: agentB.agentId,
+    });
+    expect(byAgent.results).toHaveLength(1);
+    expect(byAgent.results[0]?.chatThreadId).toBe(threadB);
+
+    // The limit and its hasMore probe are applied while matching.
+    const limited = await chat.searchChat(owner, "水豚", { limit: 2 });
+    expect(limited.results).toHaveLength(2);
+    expect(limited.hasMore).toBeTruthy();
+    const exact = await chat.searchChat(owner, "水豚", { limit: 4 });
+    expect(exact.results).toHaveLength(4);
+    expect(exact.hasMore).toBeFalsy();
+  }, 60_000);
 });
 
 describe("CHAT-03 thread artifacts and google drive status", () => {

@@ -25,6 +25,7 @@ interface LaggingThread {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly agentComposeId: string;
   readonly lastChatEventSeqId: number;
   readonly indexedSeqId: number | null;
 }
@@ -121,6 +122,7 @@ async function projectThread(
           chatThreadId: thread.chatThreadId,
           orgId: thread.orgId,
           userId: thread.userId,
+          agentComposeId: thread.agentComposeId,
           role,
           createdAt: row.createdAt,
           text,
@@ -187,6 +189,7 @@ export const projectChatEventSearch$ = command(
         chatThreadId: chatThreads.id,
         userId: chatThreads.userId,
         orgId: agentComposes.orgId,
+        agentComposeId: chatThreads.agentComposeId,
         lastChatEventSeqId: chatThreads.lastChatEventSeqId,
         indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
       })
