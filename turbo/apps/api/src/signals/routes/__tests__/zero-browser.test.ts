@@ -2310,7 +2310,7 @@ describe("zero browser route", () => {
     await deleteAgentRunRootFixture(first.runId);
   }, 120_000);
 
-  it("records browser close events for UI actions and automatic reclamation", async () => {
+  it("records browser lifecycle events only for UI actions and automatic reclamation", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -2367,6 +2367,7 @@ describe("zero browser route", () => {
       client().use({ headers: first.claim.browserHeaders, body: {} }),
       [200],
     );
+    expect(firstStart.body.lifecycleEventId).toBeNull();
 
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const beforeReclaimCloseEventId = randomUUID();
@@ -2397,19 +2398,20 @@ describe("zero browser route", () => {
       threadId: firstStart.body.browser.threadId,
       status: "active",
     });
+    expect(resumed.body.lifecycleEventId).toBeNull();
     expect(providerCreates).toBe(2);
 
-    const noOpEventId = randomUUID();
+    const openEventId = randomUUID();
     const alreadyActive = await accept(
       client().open({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId: first.threadId },
-        body: { eventId: noOpEventId },
+        body: { eventId: openEventId },
       }),
       [200],
     );
     expect(alreadyActive.body).toMatchObject({
-      lifecycleEventId: null,
+      lifecycleEventId: openEventId,
       browser: { threadId: first.threadId, status: "active" },
     });
 
@@ -2459,11 +2461,6 @@ describe("zero browser route", () => {
       }),
     ).toStrictEqual([
       {
-        id: firstStart.body.lifecycleEventId,
-        eventType: "browser.open",
-        content: null,
-      },
-      {
         id: beforeReclaimCloseEventId,
         eventType: "browser.close",
         content: null,
@@ -2474,7 +2471,7 @@ describe("zero browser route", () => {
         content: null,
       },
       {
-        id: resumed.body.lifecycleEventId,
+        id: openEventId,
         eventType: "browser.open",
         content: null,
       },
@@ -2484,11 +2481,6 @@ describe("zero browser route", () => {
         content: null,
       },
     ]);
-    expect(
-      events.body.events.some((event) => {
-        return event.id === noOpEventId;
-      }),
-    ).toBeFalsy();
 
     const collided = await createApp({
       signal: context.signal,

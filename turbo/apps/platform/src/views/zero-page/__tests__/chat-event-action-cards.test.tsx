@@ -3864,6 +3864,15 @@ describe("chat event action cards", () => {
       browserRequests += 1;
       return respond(200, { browser });
     });
+    const browserOpenEventIds: string[] = [];
+    context.mocks.api(zeroBrowserContract.open, ({ body, params, respond }) => {
+      expect(params.threadId).toBe(threadId);
+      browserOpenEventIds.push(body.eventId);
+      return respond(200, {
+        browser,
+        lifecycleEventId: body.eventId,
+      });
+    });
     let leaseRequests = 0;
     context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       leaseRequests += 1;
@@ -3920,6 +3929,7 @@ describe("chat event action cards", () => {
     expect(
       document.querySelector('iframe[title="Live browser: booking"]'),
     ).toBeNull();
+    expect(browserOpenEventIds).toHaveLength(0);
 
     const firstCard = cards.at(0);
     if (!firstCard) {
@@ -3928,6 +3938,10 @@ describe("chat event action cards", () => {
     await user.click(firstCard);
 
     const frame = await screen.findByTitle("Live browser: booking");
+    await waitFor(() => {
+      expect(browserOpenEventIds).toHaveLength(1);
+      expect(browserOpenEventIds[0]).toBeTypeOf("string");
+    });
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();

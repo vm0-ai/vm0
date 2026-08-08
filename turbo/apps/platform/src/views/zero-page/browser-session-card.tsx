@@ -8,6 +8,8 @@ import {
   activeSidebarBrowserThreadId$,
   openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface BrowserSessionCardProps {
@@ -141,7 +143,9 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
   const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.session$);
   const selectedBrowserThreadId = useGet(activeSidebarBrowserThreadId$);
+  const pageSignal = useGet(pageSignal$);
   const openSidebar = useSet(openThreadBrowserSession$);
+  const start = useSet(signals.start$);
 
   if (sessionLoadable.state === "loading") {
     return <BrowserSessionCardSkeleton />;
@@ -168,6 +172,9 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
         { name: session.name },
       )}
       onClick={() => {
+        if (live && !selected) {
+          detach(start(pageSignal), Reason.DomCallback);
+        }
         openSidebar(signals.threadId);
       }}
       className={cn(
