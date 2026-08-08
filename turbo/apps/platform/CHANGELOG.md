@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.708.0](https://github.com/vm0-ai/vm0/compare/app-v0.707.2...app-v0.708.0) (2026-08-08)
+
+
+### Features
+
+* show model changes in chat history ([#25769](https://github.com/vm0-ai/vm0/issues/25769)) ([4abbd65](https://github.com/vm0-ai/vm0/commit/4abbd65dbe90c4105aad5db54c614653c7979dff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.0
+    * @vm0/core bumped to 8.530.7
+
 ## [0.707.2](https://github.com/vm0-ai/vm0/compare/app-v0.707.1...app-v0.707.2) (2026-08-08)
 
 
