@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { locale$ } from "../../signals/locale.ts";
+import { foregroundAuthRecoveryEnabled$ } from "../../signals/external/feature-switch-state.ts";
 import {
   clerkInstance$,
   clerkUi$,
@@ -29,6 +30,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const clerkUi = useGet(clerkUi$);
   const brandName = useGet(brandName$);
   const locale = useGet(locale$);
+  const foregroundAuthRecoveryEnabled = useGet(foregroundAuthRecoveryEnabled$);
 
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
@@ -46,7 +48,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
     signUpUrl: resolveAppAuthUrl("/sign-up"),
-    touchSession: false,
+    touchSession: !foregroundAuthRecoveryEnabled,
     ui: clerkUi,
   };
   return satelliteConfig ? (

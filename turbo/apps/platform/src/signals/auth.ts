@@ -13,6 +13,7 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
+import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch-state.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -343,7 +344,7 @@ export const clerk$ = computed(async (get) => {
   const satelliteConfig = resolveClerkSatelliteConfig();
   await clerkInstance.load({
     ui,
-    touchSession: false,
+    touchSession: !get(foregroundAuthRecoveryEnabled$),
     ...(satelliteConfig
       ? {
           isSatellite: true,

@@ -22,7 +22,7 @@ import {
 import { setRootSignal$ } from "../root-signal.ts";
 import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
-import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch.ts";
+import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch-state.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 
 const context = testContext();
@@ -167,7 +167,7 @@ describe("api client headers", () => {
     expect(second.requestId).not.toBe(first.requestId);
   });
 
-  it("retries fetch$ auth recovery network failures without redirecting", async () => {
+  it("recovers an enabled non-realtime 401 without a foreground task", async () => {
     mockSignedInUser();
     enableForegroundAuthRecovery();
     context.store.set(setRootSignal$, context.signal);
@@ -215,7 +215,7 @@ describe("api client headers", () => {
     await expect(response.json()).resolves.toStrictEqual({ recovered: true });
     expect(requests).toBe(3);
     expect(forcedTokenRefreshes).toBe(3);
-    expect(mockedClerk.sessionTouch).not.toHaveBeenCalled();
+    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(3);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 

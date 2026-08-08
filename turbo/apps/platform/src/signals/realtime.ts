@@ -5,9 +5,14 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
-import { resumeClerkSession, type ClerkLike } from "./auth-retry.ts";
+import {
+  clearForegroundAuthRecovery$,
+  resumeClerkSession,
+  setForegroundAuthRecovery$,
+  type ClerkLike,
+} from "./auth-retry.ts";
 import { clerk$ } from "./auth.ts";
-import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch.ts";
+import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch-state.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import {
   createDeferredPromise,
@@ -134,14 +139,17 @@ const setupForegroundRecovery$ = command(
     { clerk, expectedOrgId, subscriberPokeTarget }: SetupForegroundRecoveryArgs,
     signal: AbortSignal,
   ) => {
-    let foregroundRecovery: Promise<void> | undefined;
+    let foregroundRecovery: Promise<boolean> | undefined;
 
     const abortForegroundRecovery = (): void => {
       set(resetForegroundRecoverySignal$);
+      if (foregroundRecovery) {
+        set(clearForegroundAuthRecovery$, foregroundRecovery);
+      }
       foregroundRecovery = undefined;
     };
 
-    const recoverForeground = (): Promise<void> => {
+    const recoverForeground = (): Promise<boolean> => {
       if (foregroundRecovery) {
         return foregroundRecovery;
       }
@@ -156,18 +164,21 @@ const setupForegroundRecovery$ = command(
           );
           recoverySignal.throwIfAborted();
           if (!ready) {
-            return;
+            return false;
           }
           L.debug("foreground auth ready, poking subscribers");
           subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+          return true;
         })(),
         () => {
           if (foregroundRecovery === recovery) {
             foregroundRecovery = undefined;
           }
+          set(clearForegroundAuthRecovery$, recovery);
         },
       );
       foregroundRecovery = recovery;
+      set(setForegroundAuthRecovery$, recovery);
       return recovery;
     };
 

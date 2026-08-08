@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { HttpResponse } from "msw";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -18,9 +19,11 @@ import {
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
+import { fetch$ } from "../fetch.ts";
+import { setRootSignal$ } from "../root-signal.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
-import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch.ts";
+import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch-state.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 
 const context = testContext();
@@ -353,6 +356,63 @@ describe("realtime signals", () => {
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("shares an in-flight foreground recovery with a concurrent 401", async () => {
+    mockSignedInUser();
+    enableForegroundAuthRecovery();
+    context.store.set(setRootSignal$, context.signal);
+    const touchCanFinish = context.mocks.deferred<void>();
+    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
+    let requests = 0;
+    let forcedTokenRefreshes = 0;
+    context.mocks.http.get("*/api/zero/foreground-auth-race-test", () => {
+      requests += 1;
+      if (requests === 1) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Unauthorized",
+            },
+          },
+          { status: 401 },
+        );
+      }
+      return HttpResponse.json({ recovered: true });
+    });
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      if (options?.skipCache) {
+        forcedTokenRefreshes += 1;
+        return Promise.resolve("fresh-token");
+      }
+      return Promise.resolve("test-token");
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+
+    // eslint-disable-next-line ccstate/no-direct-fetch -- this regression verifies fetch$ joins the foreground barrier.
+    const responsePromise = context.store.get(fetch$)(
+      "/api/zero/foreground-auth-race-test",
+    );
+    await waitFor(() => {
+      expect(requests).toBe(1);
+    });
+    expect(forcedTokenRefreshes).toBe(0);
+
+    touchCanFinish.resolve();
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ recovered: true });
+    expect(requests).toBe(2);
+    expect(forcedTokenRefreshes).toBe(2);
+    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
   it("retries Clerk-wrapped foreground network failures before catch-up", async () => {

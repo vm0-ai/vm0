@@ -2,12 +2,11 @@
  * Auth retry helpers shared by `fetch$` (signals/fetch.ts) and
  * `zeroClient$` (signals/api-client.ts).
  *
- * On a 401 response we refresh Clerk and replay the request. During the
- * foreground-recovery rollout, the legacy arm touches the session first while
- * the enabled arm relies on the foreground barrier's completed touch.
- * Network failures during recovery or replay retry with fibonacci backoff.
- * Only an explicit 401 after recovery falls back to
- * `clerk.redirectToSignIn()`.
+ * On a 401 response we refresh Clerk and replay the request. A request that
+ * observes an active foreground recovery joins that exact task; every other
+ * request touches the session itself. Network failures during recovery or
+ * replay retry with fibonacci backoff. Only an explicit 401 after recovery
+ * falls back to `clerk.redirectToSignIn()`.
  */
 import { command, computed, state } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
@@ -18,6 +17,7 @@ import {
   detach,
   Reason,
   retryWithFibonacciBackoff,
+  withCleanup,
 } from "./utils";
 
 export type ClerkLike = Pick<
@@ -32,10 +32,29 @@ type FreshTokenResult =
   | { readonly status: "unavailable" };
 
 const unauthorizedRedirectSuppressionUntilState$ = state(0);
+const internalForegroundAuthRecovery$ = state<Promise<boolean> | null>(null);
 
 export const unauthorizedRedirectSuppressionUntil$ = computed((get) => {
   return get(unauthorizedRedirectSuppressionUntilState$);
 });
+
+export const foregroundAuthRecovery$ = computed((get) => {
+  return get(internalForegroundAuthRecovery$);
+});
+
+export const setForegroundAuthRecovery$ = command(
+  ({ set }, recovery: Promise<boolean>) => {
+    set(internalForegroundAuthRecovery$, recovery);
+  },
+);
+
+export const clearForegroundAuthRecovery$ = command(
+  ({ get, set }, recovery: Promise<boolean>) => {
+    if (get(internalForegroundAuthRecovery$) === recovery) {
+      set(internalForegroundAuthRecovery$, null);
+    }
+  },
+);
 
 export const suppressUnauthorizedRedirectForAuthTransition$ = command(
   ({ get, set }) => {
@@ -91,20 +110,25 @@ function waitForSettledClerkSession(
 /**
  * Refresh the Clerk session token. Network failures retry until the request's
  * owning signal aborts, so a temporarily offline browser does not turn into a
- * sign-in redirect. The rollout's legacy arm also touches the session first.
+ * sign-in redirect. Only a request that joins a successful active foreground
+ * recovery can reuse its completed session touch.
  */
 export async function fetchFreshToken(
   clerk: ClerkLike,
   signal: AbortSignal,
-  touchSession: boolean,
+  foregroundRecovery: Promise<boolean> | null = null,
 ): Promise<FreshTokenResult> {
   const session = await waitForSettledClerkSession(clerk, signal);
   if (session === null) {
     return { status: "unavailable" };
   }
 
+  const foregroundReady = foregroundRecovery
+    ? await waitForForegroundRecovery(foregroundRecovery, signal)
+    : false;
+
   const token = await retryAuthRecoveryOperation(async () => {
-    if (touchSession) {
+    if (!foregroundReady) {
       await session.touch({ intent: "focus" });
       signal.throwIfAborted();
     }
@@ -114,6 +138,21 @@ export async function fetchFreshToken(
     return { status: "unavailable" };
   }
   return { status: "refreshed", token };
+}
+
+function waitForForegroundRecovery(
+  recovery: Promise<boolean>,
+  signal: AbortSignal,
+): Promise<boolean> {
+  signal.throwIfAborted();
+  const aborted = createDeferredPromise<never>(signal);
+  return withCleanup(Promise.race([recovery, aborted.promise]), () => {
+    if (!aborted.settled()) {
+      aborted.reject(
+        new DOMException("Foreground recovery settled", "AbortError"),
+      );
+    }
+  });
 }
 
 /**

@@ -4,6 +4,7 @@ import { clerk$ } from "./auth.ts";
 import {
   authRecoverySignal,
   fetchFreshToken,
+  foregroundAuthRecovery$,
   handleUnauthorizedRedirect,
   retryAuthRecoveryOperation,
   unauthorizedRedirectSuppressionUntil$,
@@ -12,7 +13,6 @@ import { resolveApiBase, resolveOAuthApiBase } from "./api-base.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { foregroundAuthRecoveryEnabled$ } from "./external/feature-switch.ts";
 
 /**
  * OAuth navigation uses the direct API in preview/development so those
@@ -184,7 +184,7 @@ export const fetch$ = computed((get) => {
       const refreshResult = await fetchFreshToken(
         clerk,
         recoverySignal,
-        !get(foregroundAuthRecoveryEnabled$),
+        get(foregroundAuthRecovery$),
       );
       if (refreshResult.status === "refreshed") {
         response = await retryAuthRecoveryOperation(async () => {

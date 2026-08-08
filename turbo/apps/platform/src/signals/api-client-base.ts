@@ -24,7 +24,7 @@ interface AuthedClientOptions {
   readonly baseUrl: string;
   readonly getClerk: () => Promise<ClerkLike>;
   readonly getRootSignal: () => AbortSignal;
-  readonly shouldTouchSessionOnUnauthorized?: () => boolean;
+  readonly getForegroundAuthRecovery?: () => Promise<boolean> | null;
   readonly getUnauthorizedRedirectSuppressionUntil?: () => number;
   readonly resolvePath?: (
     path: string,
@@ -80,7 +80,7 @@ export function createAuthedContractClient<T extends AppRouter>(
         const refreshResult = await fetchFreshToken(
           clerk,
           recoverySignal,
-          options.shouldTouchSessionOnUnauthorized?.() ?? true,
+          options.getForegroundAuthRecovery?.() ?? null,
         );
         if (refreshResult.status === "refreshed") {
           response = await retryAuthRecoveryOperation(() => {
