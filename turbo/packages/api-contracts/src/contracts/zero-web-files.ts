@@ -23,4 +23,18 @@ export const zeroWebFilesContract = c.router({
     },
     summary: "Download a web-uploaded file",
   },
+  fileUrl: {
+    method: "GET",
+    path: "/api/zero/web/file-url",
+    headers: authHeadersSchema,
+    query: z.object({ file_id: z.string().min(1) }),
+    responses: {
+      200: z.object({ url: z.string() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Resolve a temporary direct URL for a web-uploaded file",
+  },
 });

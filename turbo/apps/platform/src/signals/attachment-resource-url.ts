@@ -18,6 +18,12 @@ function isAuthenticatedAttachmentUrl(url: string): boolean {
   );
 }
 
+/**
+ * Persisted chat attachments live in a private bucket behind an authenticated
+ * API route, and `<img src>` cannot carry an Authorization header. Exchange the
+ * canonical API URL for a short-lived presigned object URL the browser can load
+ * on its own; the API still runs the ownership check before signing.
+ */
 export function createAttachmentResourceUrl$(
   url: string,
 ): Computed<Promise<string>> {
@@ -34,22 +40,13 @@ export function createAttachmentResourceUrl$(
     const signal = get(pageSignal$);
     const client = get(zeroClient$)(zeroWebFilesContract);
     const response = await accept(
-      client.download({
+      client.fileUrl({
         query: { file_id: fileId },
         fetchOptions: { signal },
       }),
       [200],
       signal,
     );
-    signal.throwIfAborted();
-    const resourceUrl = URL.createObjectURL(response.body);
-    signal.addEventListener(
-      "abort",
-      () => {
-        URL.revokeObjectURL(resourceUrl);
-      },
-      { once: true },
-    );
-    return resourceUrl;
+    return response.body.url;
   });
 }

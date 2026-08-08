@@ -11,6 +11,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -22,6 +23,11 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000050";
+
+/** Mirrors the presigned object URL the API signs for a private attachment. */
+function presignedFileUrl(fileId: string): string {
+  return `https://r2.example.com/artifacts/${fileId}?sig=test`;
+}
 
 function artifactFile(
   url: string,
@@ -123,6 +129,10 @@ beforeEach(() => {
     return new Response(new Uint8Array([137, 80, 78, 71]), {
       headers: { "Content-Type": "image/png" },
     });
+  });
+  context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
+    const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
+    return HttpResponse.json({ url: presignedFileUrl(fileId) });
   });
 });
 
@@ -890,15 +900,13 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
+    context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
       expect(request.credentials).toBe("include");
       expect(request.headers.get("authorization")).toMatch(/^Bearer /);
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
         "attachment-photo",
       );
-      return new Response(new Uint8Array([137, 80, 78, 71]), {
-        headers: { "Content-Type": "image/png" },
-      });
+      return HttpResponse.json({ url: presignedFileUrl("attachment-photo") });
     });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -924,13 +932,19 @@ describe("zero attachment chips", () => {
 
     const image = await screen.findByAltText("photo.png");
     await waitFor(() => {
-      expect(image.getAttribute("src")).toMatch(/^blob:mock-download-/);
+      expect(image.getAttribute("src")).toBe(
+        presignedFileUrl("attachment-photo"),
+      );
     });
     const preview = image.closest("a");
     const text = await screen.findByText("Review this image");
     const textBubble = text.closest(".zero-chat-bubble-user");
 
     expect(preview).not.toBeNull();
+    expect(preview).toHaveAttribute(
+      "href",
+      presignedFileUrl("attachment-photo"),
+    );
     expect(textBubble).not.toBeNull();
     expect(preview?.closest(".zero-chat-bubble-user")).toBeNull();
     expect(
