@@ -235,6 +235,8 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return _ResponseUsageStreamSetup(None, False)
+    if not _response_can_have_body(flow, response):
+        return _ResponseUsageStreamSetup(None, False)
     if is_observable_model_provider:
         if _response_has_event_stream_media_type(response):
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
