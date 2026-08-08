@@ -792,7 +792,7 @@ async fn execute_inner_cache_hit_retry_requires_completed_cleanup() {
 }
 
 #[tokio::test]
-async fn execute_inner_uses_workspace_cache_when_configured() {
+async fn execute_inner_waits_for_transient_workspace_cache_lock() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = WorkspaceImageCache::new(runner_paths.clone());
@@ -801,29 +801,51 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    set_reuse_and_session_identity(&mut ctx, "sess-cache-default", r#"{"type":"init"}"#);
+    let session_id = "sess-cache-transient-lock";
+    set_reuse_and_session_identity(&mut ctx, session_id, r#"{"type":"init"}"#);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
     };
-    let seeded_cache =
-        seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-default", 16).await;
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &params,
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
-    )
+    let seeded_cache = seed_workspace_image_cache(&cache, &runner_paths, session_id, 16).await;
+    let cache_key = scoped_workspace_image_cache_key(
+        "",
+        &params.profile_name,
+        &format!("thread:workspace-cache-{session_id}"),
+        CANONICAL_WORKING_DIR,
+        u64::from(params.workspace_disk_mb) * 1024 * 1024,
+    );
+    let held_lock = crate::lock::acquire(crate::paths::workspace_image_cache_lock_path(
+        &runner_paths.base_dir().join("locks"),
+        &cache_key,
+    ))
     .await
     .unwrap();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(20));
+        drop(held_lock);
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        ),
+    )
+    .await
+    .expect("transient workspace lock wait should remain bounded")
+    .unwrap();
+    release.join().unwrap();
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_some());
@@ -890,19 +912,23 @@ async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
     .unwrap();
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    let outcome = execute_new_sandbox(
-        &factory,
-        &ctx,
-        NewSandboxDispatch {
-            id: SandboxId::new_v4(),
-            reuse_result: SandboxReuseResult::PoolMiss,
-        },
-        &config,
-        &params,
-        &mut telemetry,
-        tokio_util::sync::CancellationToken::new(),
+    let outcome = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        ),
     )
     .await
+    .expect("persistent workspace lock wait should remain bounded")
     .unwrap();
 
     assert_eq!(outcome.exit_code(), 0);

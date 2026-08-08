@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use nix::fcntl::Flock;
@@ -41,6 +41,8 @@ use super::types::{
     WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarPublication,
 };
 use super::{CACHE_FORMAT_VERSION, WORKSPACE_DRIVE_LAYOUT, WorkspaceImageCache};
+
+const WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT: Duration = Duration::from_millis(50);
 
 pub(crate) struct WorkspaceImageLease {
     cache: WorkspaceImageCache,
@@ -395,14 +397,35 @@ impl WorkspaceImageCache {
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
-        let lock = match crate::lock::try_acquire(lock_path).await {
-            Ok(lock) => lock,
-            Err(e) => {
+        let lock = match tokio::time::timeout(
+            WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT,
+            crate::lock::acquire(lock_path),
+        )
+        .await
+        {
+            Ok(Ok(lock)) => lock,
+            Ok(Err(e)) => {
                 info!(
                     run_id = %common.run_id,
                     cache_key,
                     error = %e,
-                    "workspace image cache lock busy or unavailable; using fresh workspace image"
+                    "workspace image cache lock unavailable; using fresh workspace image"
+                );
+                return workspace_drive(
+                    WorkspaceCacheCheckoutResult::LockBusy,
+                    None,
+                    None,
+                    None,
+                    None,
+                    true,
+                );
+            }
+            Err(_) => {
+                info!(
+                    run_id = %common.run_id,
+                    cache_key,
+                    wait_ms = duration_ms(WORKSPACE_IMAGE_PREPARE_LOCK_TIMEOUT),
+                    "workspace image cache lock remained busy; using fresh workspace image"
                 );
                 return workspace_drive(
                     WorkspaceCacheCheckoutResult::LockBusy,
