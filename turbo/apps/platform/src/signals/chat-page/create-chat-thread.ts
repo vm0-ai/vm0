@@ -2568,6 +2568,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
             prompt: result.prompt,
             hasTextContent: result.hasTextContent,
             userMessage,
+            selectedModel: request.modelSelection?.selectedModel ?? null,
             ...(runOptions === undefined ? {} : { runOptions }),
             ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             ...(request.options && "computerUseHostId" in request.options
@@ -2719,6 +2720,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             prompt: result.prompt,
             hasTextContent: result.hasTextContent,
             userMessage,
+            selectedModel: modelSelection?.selectedModel ?? null,
             ...(runOptions === undefined ? {} : { runOptions }),
             ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             ...(options.computerUseHostId === undefined

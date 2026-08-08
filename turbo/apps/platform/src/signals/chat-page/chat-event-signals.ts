@@ -34,6 +34,7 @@ import {
   chatEventDebugSummaries,
   chatEventTraceTime,
 } from "./chat-event-debug.ts";
+import { withSelectedModelAnnotation } from "./model-selection-request.ts";
 
 const L = logger("ChatEventSignals");
 
@@ -44,6 +45,7 @@ export interface SendInputChatEvent {
   readonly prompt: string;
   readonly hasTextContent: boolean;
   readonly userMessage: UserMessageInputDocument;
+  readonly selectedModel?: string | null;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly realAgentInPreview?: boolean;
   readonly computerUseHostId?: string | null;
@@ -98,6 +100,10 @@ function createSendInputChatEvent({
       const clientEventId = crypto.randomUUID();
       const createdAt = nowDate().toISOString();
       const chatThreadSortEventId = crypto.randomUUID();
+      const userMessage = withSelectedModelAnnotation(
+        input.userMessage,
+        input.selectedModel,
+      );
       L.debug("send input prepared", {
         traceTime: chatEventTraceTime(),
         threadId,
@@ -121,7 +127,7 @@ function createSendInputChatEvent({
             threadId,
             eventType: "input.prompt",
             content: null,
-            userMessage: input.userMessage,
+            userMessage,
             ...(input.revokesEventId === undefined
               ? {}
               : { revokesEventId: input.revokesEventId }),
@@ -151,7 +157,7 @@ function createSendInputChatEvent({
           ...(input.realAgentInPreview === true
             ? { realAgentInPreview: true }
             : {}),
-          userMessage: input.userMessage,
+          userMessage,
           ...(input.computerUseHostId === undefined
             ? {}
             : { computerUseHostId: input.computerUseHostId }),

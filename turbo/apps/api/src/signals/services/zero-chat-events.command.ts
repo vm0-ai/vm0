@@ -8,7 +8,6 @@ import {
   type CodexServiceTier,
   type GenerationTemplateRequest,
   type UserMessageDocument,
-  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -136,7 +135,7 @@ interface NormalSendBody {
   readonly runOptions?: {
     readonly codexServiceTier?: CodexServiceTier;
   };
-  readonly userMessage: UserMessageInputDocument;
+  readonly userMessage: UserMessageDocument;
   readonly hasTextContent: boolean;
   readonly computerUseHostId?: string | null;
   readonly cloudBrowserEnabled?: boolean;
