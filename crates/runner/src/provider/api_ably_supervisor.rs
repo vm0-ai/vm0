@@ -1047,42 +1047,18 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         },
         None => None,
     };
-    let runner_preference_context = match parse_runner_preference(
-        msg.data.get("runnerPreference").cloned(),
-    ) {
-        Ok(Some(context)) => Some(context),
-        Ok(None) => {
-            match parse_runner_preference(msg.data.get("runnerPreferenceDecision").cloned()) {
-                Ok(context) => context,
-                Err(error) => {
-                    warn!(
-                        run_id = %run_id,
-                        error = %error,
-                        "ably: invalid compatibility runner preference, using ordinary admission"
-                    );
-                    None
-                }
+    let runner_preference_context =
+        match parse_runner_preference(msg.data.get("runnerPreference").cloned()) {
+            Ok(context) => context,
+            Err(error) => {
+                warn!(
+                    run_id = %run_id,
+                    error = %error,
+                    "ably: invalid runner preference, using ordinary admission"
+                );
+                None
             }
-        }
-        Err(error) => {
-            warn!(
-                run_id = %run_id,
-                error = %error,
-                "ably: invalid canonical runner preference, trying compatibility field"
-            );
-            match parse_runner_preference(msg.data.get("runnerPreferenceDecision").cloned()) {
-                Ok(context) => context,
-                Err(error) => {
-                    warn!(
-                        run_id = %run_id,
-                        error = %error,
-                        "ably: invalid compatibility runner preference, using ordinary admission"
-                    );
-                    None
-                }
-            }
-        }
-    };
+        };
     Some(JobNotification {
         run_id,
         profile,
@@ -2039,10 +2015,6 @@ mod tests {
                     },
                     "tier": "reusableSandbox",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
-                },
-                "runnerPreferenceDecision": {
-                    "kind": "noPreference",
-                    "reason": "noReuseKey"
                 }
             }),
         );
@@ -2117,7 +2089,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_canonical_preference_uses_compatibility_value() {
+    async fn malformed_preference_preserves_direct_candidate() {
         let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
@@ -2143,10 +2115,6 @@ mod tests {
                     },
                     "tier": "workspaceCache",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
-                },
-                "runnerPreferenceDecision": {
-                    "kind": "noPreference",
-                    "reason": "noViableHolder"
                 }
             }),
         );
@@ -2158,14 +2126,40 @@ mod tests {
             .into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
         assert!(candidate.runner_preference().is_none());
-        let telemetry = candidate
-            .runner_preference_claim_telemetry()
-            .expect("compatibility preference telemetry");
-        assert!(matches!(
-            telemetry.runner_preference,
-            RunnerPreference::NoPreference { .. }
-        ));
-        assert_eq!(telemetry.state, None);
+        assert!(candidate.runner_preference_claim_telemetry().is_none());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn missing_preference_preserves_direct_candidate() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000012",
+                "profile": "vm0/default",
+                "reuseKey": "thread:missing-preference"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert_eq!(candidate.reuse_key(), Some("thread:missing-preference"));
+        assert!(candidate.runner_preference().is_none());
+        assert!(candidate.runner_preference_claim_telemetry().is_none());
         assert_no_direct_candidate(&direct_candidates).await;
     }
 

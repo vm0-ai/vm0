@@ -133,22 +133,10 @@ export const runnerPreferenceSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
-export const runnerPreferenceResolutionSchema = z.enum([
-  "exact_history_generation",
-  "finalizing_predecessor",
-  "matching_reusable_sandbox",
-  "matching_workspace_cache",
-  "no_reuse_key",
-  "expired",
-  "no_viable_holder",
-  "lookup_error",
-]);
-
 export const runnerPreferenceClaimStateSchema = z.enum([
   "active",
   "expired",
   "cleared",
-  "absent",
 ]);
 
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
@@ -169,9 +157,7 @@ const runnerClaimTelemetrySchema = z
     pollHttpRequestMs: z.number().int().nonnegative().optional(),
     pollReason: runnerClaimPollReasonSchema.optional(),
     runnerPreference: runnerPreferenceSchema.optional().catch(undefined),
-    runnerPreferenceResolution: runnerPreferenceResolutionSchema.optional(),
     runnerPreferenceClaimState: runnerPreferenceClaimStateSchema.optional(),
-    runnerPreferenceTargetedSelf: z.boolean().optional(),
   })
   .catch({});
 
@@ -451,9 +437,6 @@ export const jobSchema = z.object({
   historyGenerationRunId: z.uuid().optional(),
   piExecutionMode: piExecutionModeSchema.optional(),
   runnerPreference: runnerPreferenceSchema,
-  // Keep the compatibility field until every pre-migration runner is unable
-  // to claim. Cleanup is tracked by #25751.
-  runnerPreferenceDecision: runnerPreferenceSchema,
 });
 
 const heldWorkspaceCacheSchema = z.object({
@@ -1192,9 +1175,6 @@ export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
-export type RunnerPreferenceResolution = z.infer<
-  typeof runnerPreferenceResolutionSchema
->;
 export type RunnerPreferenceClaimState = z.infer<
   typeof runnerPreferenceClaimStateSchema
 >;

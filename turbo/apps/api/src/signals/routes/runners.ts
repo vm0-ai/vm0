@@ -23,7 +23,6 @@ import {
   type PiExecutionMode,
   type RunnerPreference,
   type RunnerPreferenceClaimState,
-  type RunnerPreferenceResolution,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -120,12 +119,13 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  runnerPreferenceResolution,
+  runnerPreferenceTelemetryResolution,
   runnerPreferenceTelemetryDimensions,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupError,
   runnerReusePreferencePollPriority,
   resolveRunnerReusePreference,
+  type RunnerPreferenceTelemetryResolution,
 } from "../services/runner-reuse-preference";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
@@ -785,7 +785,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         ...(piExecutionMode ? { piExecutionMode } : {}),
         runnerPreference,
-        runnerPreferenceDecision: runnerPreference,
       },
     },
   };
@@ -2035,14 +2034,14 @@ interface ClaimTimingTelemetry {
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
   readonly runnerPreference?: RunnerPreference;
-  readonly runnerPreferenceResolution?: RunnerPreferenceResolution;
   readonly runnerPreferenceClaimState?: RunnerPreferenceClaimState;
-  readonly runnerPreferenceTargetedSelf?: boolean;
 }
 
+type RunnerPreferenceTelemetryState = RunnerPreferenceClaimState | "absent";
+
 interface SuccessfulClaimPreferenceTelemetry {
-  readonly resolution: RunnerPreferenceResolution | undefined;
-  readonly claimState: RunnerPreferenceClaimState | undefined;
+  readonly resolution: RunnerPreferenceTelemetryResolution | undefined;
+  readonly claimState: RunnerPreferenceTelemetryState | undefined;
   readonly targetedSelf: boolean | undefined;
 }
 
@@ -2053,15 +2052,15 @@ function successfulClaimPreferenceTelemetry(args: {
   const preference = args.telemetry?.runnerPreference;
   if (!preference) {
     return {
-      resolution: args.telemetry?.runnerPreferenceResolution,
-      claimState: args.telemetry?.runnerPreferenceClaimState,
-      targetedSelf: args.telemetry?.runnerPreferenceTargetedSelf,
+      resolution: undefined,
+      claimState: undefined,
+      targetedSelf: undefined,
     };
   }
 
   if (preference.kind === "noPreference") {
     return {
-      resolution: runnerPreferenceResolution(preference),
+      resolution: runnerPreferenceTelemetryResolution(preference),
       claimState: "absent",
       targetedSelf: undefined,
     };
@@ -2069,8 +2068,8 @@ function successfulClaimPreferenceTelemetry(args: {
 
   const claimState = args.telemetry?.runnerPreferenceClaimState;
   return {
-    resolution: runnerPreferenceResolution(preference),
-    claimState: claimState === "absent" ? undefined : claimState,
+    resolution: runnerPreferenceTelemetryResolution(preference),
+    claimState,
     targetedSelf: args.runnerIdentity
       ? preference.runnerIdentity.runnerId.toLowerCase() ===
           args.runnerIdentity.runnerId.toLowerCase() &&
@@ -2138,9 +2137,9 @@ function scheduleSuccessfulClaimSideEffects(args: {
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
     pollReason: args.telemetry?.pollReason,
-    runnerPreferenceResolution: preferenceTelemetry.resolution,
-    runnerPreferenceClaimState: preferenceTelemetry.claimState,
-    runnerPreferenceTargetedSelf: preferenceTelemetry.targetedSelf,
+    preferenceResolution: preferenceTelemetry.resolution,
+    preferenceClaimState: preferenceTelemetry.claimState,
+    preferenceTargetedSelf: preferenceTelemetry.targetedSelf,
     historyGenerationRunId: historyGenerationRunIdForStoredExecutionContext(
       args.storedContext,
     ),
@@ -2169,9 +2168,11 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
-  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
-  readonly runnerPreferenceTargetedSelf: boolean | undefined;
+  readonly preferenceResolution:
+    | RunnerPreferenceTelemetryResolution
+    | undefined;
+  readonly preferenceClaimState: RunnerPreferenceTelemetryState | undefined;
+  readonly preferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
@@ -2208,9 +2209,11 @@ interface ClaimTimingMetricArgs {
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolution | undefined;
-  readonly runnerPreferenceClaimState: RunnerPreferenceClaimState | undefined;
-  readonly runnerPreferenceTargetedSelf: boolean | undefined;
+  readonly preferenceResolution:
+    | RunnerPreferenceTelemetryResolution
+    | undefined;
+  readonly preferenceClaimState: RunnerPreferenceTelemetryState | undefined;
+  readonly preferenceTargetedSelf: boolean | undefined;
   readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }
@@ -2339,28 +2342,26 @@ function claimSuccessfulPreferenceDimensions(
   dimensions: Record<string, string>,
 ): Record<string, string> {
   if (
-    args.runnerPreferenceResolution === undefined &&
-    args.runnerPreferenceClaimState === undefined &&
-    args.runnerPreferenceTargetedSelf === undefined
+    args.preferenceResolution === undefined &&
+    args.preferenceClaimState === undefined &&
+    args.preferenceTargetedSelf === undefined
   ) {
     return dimensions;
   }
 
   return {
     ...dimensions,
-    ...(args.runnerPreferenceResolution
+    ...(args.preferenceResolution
       ? {
-          runner_preference_resolution: args.runnerPreferenceResolution,
+          runner_preference_resolution: args.preferenceResolution,
         }
       : {}),
-    ...(args.runnerPreferenceClaimState
-      ? { runner_preference_claim_state: args.runnerPreferenceClaimState }
+    ...(args.preferenceClaimState
+      ? { runner_preference_claim_state: args.preferenceClaimState }
       : {}),
-    ...(args.runnerPreferenceTargetedSelf !== undefined
+    ...(args.preferenceTargetedSelf !== undefined
       ? {
-          runner_preference_targeted_self: String(
-            args.runnerPreferenceTargetedSelf,
-          ),
+          runner_preference_targeted_self: String(args.preferenceTargetedSelf),
         }
       : {}),
   };

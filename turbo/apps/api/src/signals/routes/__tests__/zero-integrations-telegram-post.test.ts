@@ -1371,7 +1371,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       runId,
       cliAgentSessionId: null,
       reuseKey,
-      runnerPreferenceDecision: {
+      runnerPreference: {
         kind: "preference",
         runnerIdentity: {
           runnerId,

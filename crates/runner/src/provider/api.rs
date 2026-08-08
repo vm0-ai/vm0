@@ -593,40 +593,18 @@ impl JobProvider for ApiProvider {
                     let reuse_key = job.reuse_key().map(str::to_owned);
                     let history_generation_run_id = job.history_generation_run_id;
                     let pi_execution_mode = job.pi_execution_mode;
-                    let runner_preference_context = match parse_runner_preference(
-                        job.runner_preference,
-                    ) {
-                        Ok(Some(context)) => Some(context),
-                        Ok(None) => match parse_runner_preference(job.runner_preference_decision) {
+                    let runner_preference_context =
+                        match parse_runner_preference(job.runner_preference) {
                             Ok(context) => context,
                             Err(error) => {
                                 warn!(
                                     run_id = %run_id,
                                     error = %error,
-                                    "poll: invalid compatibility runner preference, using ordinary admission"
+                                    "poll: invalid runner preference, using ordinary admission"
                                 );
                                 None
                             }
-                        },
-                        Err(error) => {
-                            warn!(
-                                run_id = %run_id,
-                                error = %error,
-                                "poll: invalid canonical runner preference, trying compatibility field"
-                            );
-                            match parse_runner_preference(job.runner_preference_decision) {
-                                Ok(context) => context,
-                                Err(error) => {
-                                    warn!(
-                                        run_id = %run_id,
-                                        error = %error,
-                                        "poll: invalid compatibility runner preference, using ordinary admission"
-                                    );
-                                    None
-                                }
-                            }
-                        }
-                    };
+                        };
                     let profile = job.experimental_profile;
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
@@ -2359,17 +2337,7 @@ mod tests {
         assert!(body["telemetry"].get("runnerPreference").is_none());
         assert!(
             body["telemetry"]
-                .get("runnerPreferenceResolution")
-                .is_none()
-        );
-        assert!(
-            body["telemetry"]
                 .get("runnerPreferenceClaimState")
-                .is_none()
-        );
-        assert!(
-            body["telemetry"]
-                .get("runnerPreferenceTargetedSelf")
                 .is_none()
         );
         assert!(!body.to_string().contains("rawSizeBytes"));
@@ -2406,16 +2374,6 @@ mod tests {
         assert_eq!(
             active_body["telemetry"]["runnerPreferenceClaimState"],
             "active"
-        );
-        assert!(
-            active_body["telemetry"]
-                .get("runnerPreferenceResolution")
-                .is_none()
-        );
-        assert!(
-            active_body["telemetry"]
-                .get("runnerPreferenceTargetedSelf")
-                .is_none()
         );
 
         let expired_preference = ActiveRunnerPreference::ranked_for_test(
@@ -2694,10 +2652,6 @@ mod tests {
                             },
                             "tier": "exactSandbox",
                             "expiresAt": "2999-01-01T00:00:00.000Z"
-                        },
-                        "runnerPreferenceDecision": {
-                            "kind": "noPreference",
-                            "reason": "noReuseKey"
                         }
                     }
                 }));
@@ -2751,10 +2705,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_falls_back_to_compatibility_poll_preference() {
+    async fn discover_parses_canonical_no_preference() {
         let server = MockServer::start_async().await;
         let run_id = RunId::new_v4();
-        let selected_runner_id = "00000000-0000-0000-0000-000000000005";
         let mock = server
             .mock_async(|when, then| {
                 when.method(POST).path(routes::runners::poll::POLL.path);
@@ -2762,67 +2715,7 @@ mod tests {
                     "job": {
                         "runId": run_id,
                         "experimentalProfile": "vm0/default",
-                        "reuseKey": "thread:decision-poll",
                         "runnerPreference": {
-                            "kind": "futurePreference"
-                        },
-                        "runnerPreferenceDecision": {
-                            "kind": "preference",
-                            "runnerIdentity": {
-                                "runnerId": selected_runner_id,
-                                "heartbeatGeneration": 7
-                            },
-                            "tier": "workspaceCache",
-                            "expiresAt": "2999-01-01T00:00:00.000Z"
-                        }
-                    }
-                }));
-            })
-            .await;
-        let provider = api_provider_for_test_with_supported_profiles(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-            vec!["vm0/default".to_string()],
-        );
-
-        let candidate = tokio::time::timeout(Duration::from_secs(1), provider.discover())
-            .await
-            .expect("discover should poll after wakeup")
-            .expect("job candidate");
-
-        assert_eq!(
-            candidate
-                .runner_preference()
-                .map(ActiveRunnerPreference::tier),
-            Some(RunnerPreferenceTier::WorkspaceCache)
-        );
-        let telemetry = candidate
-            .runner_preference_claim_telemetry()
-            .expect("compatibility preference telemetry");
-        assert!(matches!(
-            telemetry.runner_preference,
-            RunnerPreference::Preference {
-                tier: RunnerPreferenceTier::WorkspaceCache,
-                ..
-            }
-        ));
-        assert_eq!(telemetry.state, Some(RunnerPreferenceClaimState::Active));
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn discover_parses_negative_compatibility_poll_preference() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::new_v4();
-        let mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(routes::runners::poll::POLL.path);
-                then.status(200).json_body(serde_json::json!({
-                    "job": {
-                        "runId": run_id,
-                        "experimentalProfile": "vm0/default",
-                        "runnerPreferenceDecision": {
                             "kind": "noPreference",
                             "reason": "noViableHolder"
                         }
@@ -2845,7 +2738,7 @@ mod tests {
         assert!(candidate.runner_preference().is_none());
         let telemetry = candidate
             .runner_preference_claim_telemetry()
-            .expect("negative compatibility preference telemetry");
+            .expect("no-preference telemetry");
         assert!(matches!(
             telemetry.runner_preference,
             RunnerPreference::NoPreference {
@@ -2857,7 +2750,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_preserves_poll_job_after_malformed_compatibility_preference() {
+    async fn discover_preserves_poll_job_after_malformed_preference() {
         let server = MockServer::start_async().await;
         let run_id = RunId::new_v4();
         let mock = server
@@ -2868,7 +2761,7 @@ mod tests {
                         "runId": run_id,
                         "experimentalProfile": "vm0/default",
                         "reuseKey": "thread:malformed-preference",
-                        "runnerPreferenceDecision": {
+                        "runnerPreference": {
                             "kind": "preference",
                             "runnerIdentity": {
                                 "runnerId": TEST_RUNNER_ID,
@@ -2895,6 +2788,41 @@ mod tests {
 
         assert_eq!(candidate.run_id(), run_id);
         assert_eq!(candidate.reuse_key(), Some("thread:malformed-preference"));
+        assert!(candidate.runner_preference().is_none());
+        assert!(candidate.runner_preference_claim_telemetry().is_none());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_preserves_poll_job_without_preference() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": run_id,
+                        "experimentalProfile": "vm0/default",
+                        "reuseKey": "thread:missing-preference"
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test_with_supported_profiles(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+            vec!["vm0/default".to_string()],
+        );
+
+        let candidate = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("discover should preserve the job")
+            .expect("job candidate");
+
+        assert_eq!(candidate.run_id(), run_id);
+        assert_eq!(candidate.reuse_key(), Some("thread:missing-preference"));
         assert!(candidate.runner_preference().is_none());
         assert!(candidate.runner_preference_claim_telemetry().is_none());
         mock.assert_async().await;
