@@ -56,7 +56,7 @@ export function chatSearchIndexText(text: string): string {
  * one CJK run are chained with `<->` (adjacent-phrase, i.e. exact substring
  * semantics) and groups are combined with `&`. Returns null when the keyword
  * cannot be answered from the bigram index — a single-character CJK run or a
- * keyword with no indexable token — so the caller can fall back to ILIKE.
+ * keyword with no indexable token.
  */
 export function chatSearchBigramTsquery(keyword: string): string | null {
   const groups = tokenGroups(keyword);
