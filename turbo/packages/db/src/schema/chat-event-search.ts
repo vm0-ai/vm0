@@ -43,10 +43,11 @@ export const chatEventSearchDocs = pgTable(
      *
      * Nullable only for the deploy window: migrations run before API traffic is
      * promoted, so the previous API's projector keeps inserting rows without
-     * this column for up to the observed DB/API skew (~102 minutes). Those rows
-     * simply never match an agent-scoped search, and the projector replay
-     * refills them. Tighten to NOT NULL in a follow-up release once no API
-     * without this column is serving.
+     * this column for up to the observed DB/API skew (~102 minutes). Until the
+     * projector rewrites such a row, it never matches an agent-scoped search;
+     * the upsert in cron-project-chat-event-search fills it on the next tick
+     * that reaches the same event. Tighten to NOT NULL in a follow-up release
+     * once no API without this column is serving.
      */
     agentComposeId: uuid("agent_compose_id"),
     role: text("role").$type<"user" | "assistant">().notNull(),
