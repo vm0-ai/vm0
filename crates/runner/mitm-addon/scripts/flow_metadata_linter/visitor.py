@@ -561,6 +561,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._exception_alias_scopes.append(_ExceptionAliasState())
         self._visit_scoped_body(node.body, shadowed_names, metadata_defaults, body_base_aliases)
         self._exception_alias_scopes.pop()
+        if node.decorator_list:
+            self._record_implicit_exception_aliases()
         self._metadata_aliases.discard(node.name)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -618,6 +620,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             class_failure_aliases.difference_update(outer_visible_names)
             class_failure_aliases.update(class_exception_state.aliases & outer_visible_names)
             self._record_exception_aliases(class_failure_aliases)
+        if node.decorator_list:
+            self._record_implicit_exception_aliases()
         self._metadata_aliases.discard(node.name)
 
     def visit_TypeAlias(self, node: ast.AST) -> None:
