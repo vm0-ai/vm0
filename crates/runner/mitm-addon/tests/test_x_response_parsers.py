@@ -18,6 +18,62 @@ from tests.x_flow_helpers import (
 _OVERSIZED_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 
 
+class TestBodylessXResponseParserAdmission:
+    """Tests HTTP body semantics at the shared connector response parser gate."""
+
+    @pytest.mark.parametrize(
+        ("request_method", "response_status", "content_encoding", "path"),
+        [
+            pytest.param("GET", 204, "", "/2/tweets", id="no-content"),
+            pytest.param("GET", 205, "", "/2/tweets", id="reset-content"),
+            pytest.param("HEAD", 200, "", "/2/tweets", id="head"),
+            pytest.param("CONNECT", 200, "", "/2/tweets", id="successful-connect"),
+            pytest.param("GET", 204, "gzip", "/2/tweets", id="gzip"),
+            pytest.param("GET", 204, "deflate", "/2/tweets", id="deflate"),
+            pytest.param(
+                "GET",
+                204,
+                "",
+                "/2/tweets/search/stream",
+                id="ndjson-constructor-state",
+            ),
+        ],
+    )
+    def test_bodyless_response_skips_parser_and_keeps_byte_accounting(
+        self,
+        real_flow,
+        request_method: str,
+        response_status: int,
+        content_encoding: str,
+        path: str,
+    ) -> None:
+        flow = make_x_response_flow(
+            real_flow,
+            path=path,
+            response_status=response_status,
+            content_encoding=content_encoding,
+        )
+        flow.request.method = request_method
+
+        mitm_addon.responseheaders(flow)
+
+        assert "connector_response_finish" not in flow.metadata
+        assert "connector_response_report_on_interruption" not in flow.metadata
+        assert metadata_keys.X_JSON_STATE not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
+
+        unexpected_wire_bytes = b"bodyless-response-wire-bytes"
+        assert response_stream(flow)(unexpected_wire_bytes) == unexpected_wire_bytes
+        assert flow.metadata[metadata_keys.RESPONSE_STREAM_STATE]["total_bytes"] == len(
+            unexpected_wire_bytes
+        )
+
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert metadata_keys.X_JSON_STATE not in flow.metadata
+        assert metadata_keys.X_NDJSON_STATE not in flow.metadata
+
+
 class TestNdjsonExtractor:
     """Tests for X NDJSON extraction through responseheaders (issue #9534)."""
 
