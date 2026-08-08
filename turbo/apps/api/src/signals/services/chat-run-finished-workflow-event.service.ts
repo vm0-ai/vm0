@@ -3,7 +3,6 @@ import { v5 as uuidv5 } from "uuid";
 import {
   chatRunFinishedEventConfigSchema,
   type ChatRunFinishedEventConfig,
-  type ChatRunFinishedRunStatus,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   workflowUserAutomationThreads,
@@ -19,6 +18,7 @@ import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { loadRunAutonomyBudget } from "./autonomy-budget.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import type { ChatRunFinishedEvent } from "./chat-run-finished-event";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
@@ -62,13 +62,6 @@ async function appendAutonomyBudgetError(args: {
     );
     return true;
   });
-}
-
-export interface ChatRunFinishedEvent {
-  readonly chatThreadId: string;
-  readonly runId: string;
-  readonly runStatus: ChatRunFinishedRunStatus;
-  readonly lastResultText: string | null;
 }
 
 /**
