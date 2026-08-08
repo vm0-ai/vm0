@@ -7,7 +7,7 @@ import {
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   normalizeMockChatEvents,
@@ -19,6 +19,7 @@ import {
   KEYBOARD_CURRENT_THREAD_ID,
   KEYBOARD_PREV_THREAD_ID,
   chatScrollContainer,
+  linkByText,
   mockKeyboardNavigationThreads,
 } from "./chat-lifecycle-test-helpers.ts";
 
@@ -604,6 +605,78 @@ function mockBackfilledHistoryScroll({
     ]),
   );
   return { historyGate, historyMessage, currentMessage };
+}
+
+function mockKeyboardThreadScrollLayout({
+  currentThreadTop,
+  currentScrollHeight = () => {
+    return 1200;
+  },
+}: {
+  readonly currentThreadTop: () => number;
+  readonly currentScrollHeight?: () => number;
+}): void {
+  mockKeyboardNavigationThreads();
+  context.mocks.api(
+    chatThreadEventsContract.list,
+    ({ params, query, respond }) => {
+      if (query.beforeSeqId !== undefined || query.sinceSeqId !== undefined) {
+        return respond(200, { events: [] });
+      }
+      const contentByThreadId = new Map([
+        [KEYBOARD_CURRENT_THREAD_ID, "Current thread launch note"],
+        [KEYBOARD_PREV_THREAD_ID, "Previous thread launch note"],
+      ]);
+      const content = contentByThreadId.get(params.threadId);
+      return respond(200, {
+        events: content
+          ? normalizeMockChatEvents([
+              {
+                id: `${params.threadId}-message`,
+                threadId: params.threadId,
+                role: "assistant",
+                content,
+                createdAt: "2026-06-01T00:00:00Z",
+              },
+            ]).map(chatEventResponse)
+          : [],
+      });
+    },
+  );
+  installChatLayout(
+    new Map([
+      [
+        KEYBOARD_CURRENT_THREAD_ID,
+        {
+          clientHeight: () => {
+            return 300;
+          },
+          scrollHeight: currentScrollHeight,
+          eventRect: (eventId) => {
+            return eventId === `${KEYBOARD_CURRENT_THREAD_ID}-message`
+              ? { top: currentThreadTop(), height: 80 }
+              : undefined;
+          },
+        },
+      ],
+      [
+        KEYBOARD_PREV_THREAD_ID,
+        {
+          clientHeight: () => {
+            return 300;
+          },
+          scrollHeight: () => {
+            return 600;
+          },
+          eventRect: (eventId) => {
+            return eventId === `${KEYBOARD_PREV_THREAD_ID}-message`
+              ? { top: 100, height: 80 }
+              : undefined;
+          },
+        },
+      ],
+    ]),
+  );
 }
 
 describe("chat scroll position", () => {
@@ -1311,69 +1384,11 @@ describe("chat scroll position", () => {
 
   it("restores a thread after its old DOM collapses", async () => {
     let currentThreadTargetTop = 400;
-    mockKeyboardNavigationThreads();
-    context.mocks.api(
-      chatThreadEventsContract.list,
-      ({ params, query, respond }) => {
-        if (query.beforeSeqId !== undefined || query.sinceSeqId !== undefined) {
-          return respond(200, { events: [] });
-        }
-        const contentByThreadId = new Map([
-          [KEYBOARD_CURRENT_THREAD_ID, "Current thread launch note"],
-          [KEYBOARD_PREV_THREAD_ID, "Previous thread launch note"],
-        ]);
-        const content = contentByThreadId.get(params.threadId);
-        return respond(200, {
-          events: content
-            ? normalizeMockChatEvents([
-                {
-                  id: `${params.threadId}-message`,
-                  threadId: params.threadId,
-                  role: "assistant",
-                  content,
-                  createdAt: "2026-06-01T00:00:00Z",
-                },
-              ]).map(chatEventResponse)
-            : [],
-        });
+    mockKeyboardThreadScrollLayout({
+      currentThreadTop: () => {
+        return currentThreadTargetTop;
       },
-    );
-    installChatLayout(
-      new Map([
-        [
-          KEYBOARD_CURRENT_THREAD_ID,
-          {
-            clientHeight: () => {
-              return 300;
-            },
-            scrollHeight: () => {
-              return 1200;
-            },
-            eventRect: (eventId) => {
-              return eventId === `${KEYBOARD_CURRENT_THREAD_ID}-message`
-                ? { top: currentThreadTargetTop, height: 80 }
-                : undefined;
-            },
-          },
-        ],
-        [
-          KEYBOARD_PREV_THREAD_ID,
-          {
-            clientHeight: () => {
-              return 300;
-            },
-            scrollHeight: () => {
-              return 600;
-            },
-            eventRect: (eventId) => {
-              return eventId === `${KEYBOARD_PREV_THREAD_ID}-message`
-                ? { top: 100, height: 80 }
-                : undefined;
-            },
-          },
-        ],
-      ]),
-    );
+    });
 
     detachedSetupPage({
       context,
@@ -1424,6 +1439,62 @@ describe("chat scroll position", () => {
         -20,
       );
       expect(chatScrollContainer().scrollTop).toBe(670);
+    });
+  });
+
+  it("restores the visible anchor after the reader switches threads from the sidebar", async () => {
+    // Opening another thread empties this container before the thread it
+    // returns to has rendered, so between the two the container is as tall as
+    // its viewport — which reads as "at the bottom".
+    mockKeyboardThreadScrollLayout({
+      currentThreadTop: () => {
+        return 400;
+      },
+      currentScrollHeight: () => {
+        return document.body.textContent?.includes("Current thread launch note")
+          ? 1200
+          : 300;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
+    });
+
+    const currentContainer = await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      return chatScrollContainer();
+    });
+    await waitFor(() => {
+      expect(
+        eventAnchor(`${KEYBOARD_CURRENT_THREAD_ID}-message`),
+      ).toBeInTheDocument();
+    });
+    scrollTo(currentContainer, 420);
+    expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+      -20,
+    );
+
+    // Opening another thread from the sidebar unmounts this one. Its reader is
+    // parked mid-history, and coming back must land them where they left.
+    click(linkByText("Previous keyboard thread"));
+    await expect(
+      screen.findByText("Previous thread launch note"),
+    ).resolves.toBeInTheDocument();
+
+    click(linkByText("Current keyboard thread"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+        -20,
+      );
+      expect(chatScrollContainer().scrollTop).toBe(420);
     });
   });
 

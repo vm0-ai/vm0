@@ -11,6 +11,10 @@ import {
   recordOptimisticReadMark$,
 } from "./sidebar-unread-threads.ts";
 import { listChatEvents } from "./chat-event-api.ts";
+import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
 
 const L = logger("ChatEventRemote");
 export const CHAT_EVENTS_PAGE_LIMIT = 50;
@@ -43,15 +47,11 @@ export const listEventsAfter$ = command(
     );
     signal.throwIfAborted();
     L.debug("listEventsAfter$", {
+      traceTime: chatEventTraceTime(),
       threadId,
       sinceSeqId,
       count: events.length,
-      runEvents: events.flatMap((event) => {
-        if (!event.runId) {
-          return [];
-        }
-        return [{ id: event.id, runId: event.runId }];
-      }),
+      events: chatEventDebugSummaries(events),
     });
     return events;
   },

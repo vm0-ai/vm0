@@ -41,6 +41,10 @@ import type {
   OptimisticUserMessageAssociation,
 } from "./chat-event-types.ts";
 import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
+import {
   chatThreadArtifactsContract,
   resolveChatEventRecommendedFollowups,
   type GenerationTemplateRequest,
@@ -1957,9 +1961,27 @@ function createEventChangeEffects(
   );
   const afterEventsChange$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const scrollPosition = get(chatEvents.hasOptimisticUserMessage$)
+      const hasOptimisticUserMessage = get(
+        chatEvents.hasOptimisticUserMessage$,
+      );
+      // Scroll events own the DOM-aware decision: reaching the tail clears the
+      // held position there. An event batch can run while this thread's DOM is
+      // empty or stale, so restoration must read only the position already
+      // captured for the reader.
+      const scrollPosition = hasOptimisticUserMessage
         ? null
-        : set(scroll.readRenderedThreadScrollPosition$);
+        : get(scroll.threadScrollPosition$);
+      L.debug("events change scroll decision", {
+        traceTime: chatEventTraceTime(),
+        threadId,
+        hasOptimisticUserMessage,
+        storedTargetEventId:
+          get(scroll.threadScrollPosition$)?.targetEventId ?? null,
+        targetEventId: scrollPosition?.targetEventId ?? null,
+        eventTail: chatEventDebugSummaries(
+          get(chatEvents.chatEvents$).slice(-10),
+        ),
+      });
       await Promise.all([
         set(syncRegisteredEvents$, signal),
         set(autoOpenSidebar$, signal),

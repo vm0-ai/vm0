@@ -16,6 +16,10 @@ import {
 } from "./chat-event-signal-registry.ts";
 import { sidebarActiveThreadIds$ } from "./chat-thread-event-sourcing.ts";
 import { allUnreadThreadIds$ } from "./sidebar-unread-threads.ts";
+import {
+  chatEventDebugSummaries,
+  chatEventTraceTime,
+} from "./chat-event-debug.ts";
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
@@ -126,12 +130,24 @@ const handleUserChannelMessage$ = command(
     }
 
     const syncThroughSeqId = createdMessageSyncThroughSeqId(message);
+    L.debug("chat event notification received", {
+      traceTime: chatEventTraceTime(),
+      threadId,
+      syncThroughSeqId,
+    });
     const events = await set(
       syncChatThreadEventsToIndexedDb$,
       { threadId, syncThroughSeqId },
       signal,
     );
     signal.throwIfAborted();
+    L.debug("chat event notification synced", {
+      traceTime: chatEventTraceTime(),
+      threadId,
+      syncThroughSeqId,
+      count: events.length,
+      events: chatEventDebugSummaries(events),
+    });
     await set(receiveActiveChatEvents$, threadId, events, signal);
     signal.throwIfAborted();
     return false;
