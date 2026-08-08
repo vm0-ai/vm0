@@ -2109,14 +2109,14 @@ describe("PiLoop edge turn", () => {
         .slice(publishedBeforeRelease)
         .some(([topic, payload]) => {
           const job = recordOf(payload);
-          const decision = recordOf(job?.runnerPreferenceDecision);
+          const preference = recordOf(job?.runnerPreference);
           return (
             topic === "job" &&
             job?.runId === run.runId &&
             job.profile === fixture.runnerProfile &&
             job.piExecutionMode === "cold-start" &&
-            decision?.kind === "noPreference" &&
-            decision.reason === "noReuseKey"
+            preference?.kind === "noPreference" &&
+            preference.reason === "noReuseKey"
           );
         }),
     ).toBeTruthy();
