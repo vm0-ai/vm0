@@ -1088,11 +1088,12 @@ async function commitValidatedCandidate(
     },
     signal,
   );
-  signal.throwIfAborted();
   if (outcome === "retry") {
+    signal.throwIfAborted();
     return { kind: "retry" };
   }
   if (typeof outcome !== "string") {
+    signal.throwIfAborted();
     return await rejectSyncAttempt(
       runtime,
       args.baseline,

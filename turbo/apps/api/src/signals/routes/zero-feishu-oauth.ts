@@ -47,7 +47,7 @@ import {
   addUserCustomConnector,
   lockUserCustomConnectorGrantScope,
 } from "../services/user-connectors.service";
-import { publishCustomConnectorRuntimeSyncWakeups } from "../services/custom-connector-runtime-wakeup.service";
+import { commitCustomConnectorRuntimeMutation } from "../services/custom-connector-runtime-wakeup.service";
 import {
   getCustomConnectorById,
   type CustomConnectorRow,
@@ -457,18 +457,23 @@ async function finishFeishuOAuthConnection(
   ) {
     return "tenant_mismatch";
   }
-  const connection = await persistFeishuOAuthConnection(args, signal);
+  const connectionPersistence = persistFeishuOAuthConnection(args, signal);
+  const connection = await commitCustomConnectorRuntimeMutation(
+    connectionPersistence,
+    (result) => {
+      return result.connected
+        ? {
+            db: args.db,
+            scope: { orgId: args.state.orgId, userId: args.state.userId },
+            customConnectorIds: [args.connector.id],
+          }
+        : undefined;
+    },
+  );
   signal.throwIfAborted();
   if (!connection.connected) {
     return "account_in_use";
   }
-
-  await publishCustomConnectorRuntimeSyncWakeups({
-    db: args.db,
-    scope: { orgId: args.state.orgId, userId: args.state.userId },
-    customConnectorIds: [args.connector.id],
-  });
-  signal.throwIfAborted();
 
   await publishFeishuOrgChanged(
     args.db,

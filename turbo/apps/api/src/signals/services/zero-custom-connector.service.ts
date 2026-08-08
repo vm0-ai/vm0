@@ -56,7 +56,10 @@ import {
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
-import { publishCustomConnectorRuntimeSyncWakeups } from "./custom-connector-runtime-wakeup.service";
+import {
+  commitCustomConnectorRuntimeMutation,
+  publishCustomConnectorRuntimeSyncWakeups,
+} from "./custom-connector-runtime-wakeup.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -1515,18 +1518,20 @@ function nextOAuthConfigForUpdate(args: {
   };
 }
 
+interface PersistCustomConnectorUpdateArgs {
+  readonly orgId: string;
+  readonly id: string;
+  readonly definition: ValidatedDefinition;
+  readonly existing: CustomConnectorRow;
+  readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+  readonly encryptedClientSecret: string | null;
+  readonly grantConfigurationChanged: boolean;
+  readonly storageVersion: number;
+}
+
 async function persistCustomConnectorUpdate(
   db: Db,
-  args: {
-    readonly orgId: string;
-    readonly id: string;
-    readonly definition: ValidatedDefinition;
-    readonly existing: CustomConnectorRow;
-    readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
-    readonly encryptedClientSecret: string | null;
-    readonly grantConfigurationChanged: boolean;
-    readonly storageVersion: number;
-  },
+  args: PersistCustomConnectorUpdateArgs,
 ): Promise<
   | {
       readonly row: typeof orgCustomConnectors.$inferSelect;
@@ -1635,6 +1640,28 @@ async function persistCustomConnectorUpdate(
   });
 }
 
+async function persistCustomConnectorUpdateAndPublishRuntimeWakeup(
+  db: Db,
+  args: PersistCustomConnectorUpdateArgs,
+): Promise<CustomConnectorRow | BadRequestResponse | null> {
+  const result = await persistCustomConnectorUpdate(db, args);
+  if (isBadRequest(result) || !result) {
+    return result;
+  }
+  const connector = normaliseCustomConnectorRow(result.row, result.oauthConfig);
+  if (
+    args.grantConfigurationChanged ||
+    connector.storageVersion !== args.existing.storageVersion
+  ) {
+    await publishCustomConnectorRuntimeSyncWakeups({
+      db,
+      scope: { orgId: args.orgId },
+      customConnectorIds: [connector.id],
+    });
+  }
+  return connector;
+}
+
 export const updateCustomConnectorDefinition$ = command(
   async (
     { get, set },
@@ -1713,37 +1740,23 @@ export const updateCustomConnectorDefinition$ = command(
       definition: v,
       nextOAuthConfig,
     });
-    const result = await persistCustomConnectorUpdate(writeDb, {
-      orgId: args.orgId,
-      id: args.id,
-      definition: v,
-      existing: existingConnector,
-      oauthConfigUpdate,
-      encryptedClientSecret,
-      grantConfigurationChanged: connectorGrantConfigurationChanged,
-      storageVersion,
-    });
-    signal.throwIfAborted();
-    if (isBadRequest(result)) {
-      return result;
-    }
-    if (!result) {
-      return notFound("Custom connector not found");
-    }
-    const normalized = normaliseCustomConnectorRow(
-      result.row,
-      result.oauthConfig,
-    );
-    if (
-      connectorGrantConfigurationChanged ||
-      normalized.storageVersion !== existingConnector.storageVersion
-    ) {
-      await publishCustomConnectorRuntimeSyncWakeups({
-        db: writeDb,
-        scope: { orgId: args.orgId },
-        customConnectorIds: [normalized.id],
+    const normalized =
+      await persistCustomConnectorUpdateAndPublishRuntimeWakeup(writeDb, {
+        orgId: args.orgId,
+        id: args.id,
+        definition: v,
+        existing: existingConnector,
+        oauthConfigUpdate,
+        encryptedClientSecret,
+        grantConfigurationChanged: connectorGrantConfigurationChanged,
+        storageVersion,
       });
-      signal.throwIfAborted();
+    signal.throwIfAborted();
+    if (isBadRequest(normalized)) {
+      return normalized;
+    }
+    if (!normalized) {
+      return notFound("Custom connector not found");
     }
     if (
       normalized.skillMarkdown !== null ||
@@ -1773,7 +1786,7 @@ export const deleteCustomConnector$ = command(
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
-    const deleted = await writeDb.transaction(async (tx) => {
+    const deletion = writeDb.transaction(async (tx) => {
       const [existing] = await tx
         .select({ id: orgCustomConnectors.id })
         .from(orgCustomConnectors)
@@ -1803,16 +1816,22 @@ export const deleteCustomConnector$ = command(
         );
       return true;
     });
+    const deleted = await commitCustomConnectorRuntimeMutation(
+      deletion,
+      (result) => {
+        return result
+          ? {
+              db: writeDb,
+              scope: { orgId: args.orgId },
+              customConnectorIds: [args.id],
+            }
+          : undefined;
+      },
+    );
     signal.throwIfAborted();
     if (!deleted) {
       return notFound("Custom connector not found");
     }
-    await publishCustomConnectorRuntimeSyncWakeups({
-      db: writeDb,
-      scope: { orgId: args.orgId },
-      customConnectorIds: [args.id],
-    });
-    signal.throwIfAborted();
     await set(
       syncCustomConnectorSkillVolume$,
       {
@@ -2384,7 +2403,7 @@ export const setCustomConnectorValues$ = command(
       encryptionInput,
       signal,
     );
-    const writeResult = await writeDb.transaction(async (tx) => {
+    const valueWrite = writeDb.transaction(async (tx) => {
       return await persistCustomConnectorValues(
         {
           tx,
@@ -2396,17 +2415,21 @@ export const setCustomConnectorValues$ = command(
         signal,
       );
     });
+    const writeResult = await commitCustomConnectorRuntimeMutation(
+      valueWrite,
+      (result) => {
+        return !("status" in result) && result.runtimeRecovered
+          ? {
+              db: writeDb,
+              scope: { orgId: args.orgId, userId: args.userId },
+              customConnectorIds: [args.connectorId],
+            }
+          : undefined;
+      },
+    );
     signal.throwIfAborted();
     if ("status" in writeResult) {
       return writeResult;
-    }
-    if (writeResult.runtimeRecovered) {
-      await publishCustomConnectorRuntimeSyncWakeups({
-        db: writeDb,
-        scope: { orgId: args.orgId, userId: args.userId },
-        customConnectorIds: [args.connectorId],
-      });
-      signal.throwIfAborted();
     }
 
     const db = get(db$);

@@ -26,6 +26,22 @@ interface CustomConnectorRuntimeWakeupArgs {
   readonly customConnectorIds: readonly string[];
 }
 
+/**
+ * Treats a committed mutation and its best-effort wakeup as one cancellation
+ * boundary. Callers may observe request cancellation only after this returns.
+ */
+export async function commitCustomConnectorRuntimeMutation<T>(
+  commit: Promise<T>,
+  wakeupForResult: (result: T) => CustomConnectorRuntimeWakeupArgs | undefined,
+): Promise<T> {
+  const result = await commit;
+  const wakeup = wakeupForResult(result);
+  if (wakeup) {
+    await publishCustomConnectorRuntimeSyncWakeups(wakeup);
+  }
+  return result;
+}
+
 interface CustomConnectorRuntimeWakeup {
   readonly runId: string;
   readonly runnerGroup: string;
@@ -138,6 +154,10 @@ async function publishCustomConnectorRuntimeSyncWakeupsInner(
   });
 }
 
+/**
+ * Best-effort post-commit notification. Once a runtime mutation commits,
+ * callers must invoke this before observing request cancellation.
+ */
 export async function publishCustomConnectorRuntimeSyncWakeups(
   args: CustomConnectorRuntimeWakeupArgs,
 ): Promise<void> {
