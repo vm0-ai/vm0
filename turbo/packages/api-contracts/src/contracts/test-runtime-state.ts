@@ -129,11 +129,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     position: z.int().nonnegative(),
   }),
   z.object({
-    action: z.literal("set-chat-event-snapshot-head-as-v1"),
-    thread_id: z.uuid(),
-    object_key: z.string().min(1),
-  }),
-  z.object({
     action: z.literal("read-chat-event-snapshot-head"),
     thread_id: z.uuid(),
   }),

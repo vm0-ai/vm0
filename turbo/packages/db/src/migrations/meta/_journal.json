@@ -393,6 +393,13 @@
       "when": 1786168490158,
       "tag": "0863_prepare_chat_event_contraction",
       "breakpoints": true
+    },
+    {
+      "idx": 864,
+      "version": "7",
+      "when": 1786180825748,
+      "tag": "0864_finalize_chat_event_contraction",
+      "breakpoints": true
     }
   ]
 }
