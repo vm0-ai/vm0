@@ -1454,6 +1454,98 @@ function connectorRuntimeTargetsForClaim(
   return targets.length > 0 ? targets : undefined;
 }
 
+interface ClaimCustomConnectorRuntimeResolution {
+  readonly targets: ConnectorRuntimeTargetRegistration[] | undefined;
+  readonly results: Awaited<ReturnType<typeof resolveConnectorRuntimeTargets>>;
+}
+
+async function resolveClaimCustomConnectorRuntime(args: {
+  readonly db: Db;
+  readonly run: ClaimedRun;
+  readonly storedContext: StoredExecutionContext;
+}): Promise<ClaimCustomConnectorRuntimeResolution> {
+  const targets = connectorRuntimeTargetsForClaim(args.storedContext);
+  const customTargets = (targets ?? []).filter((target) => {
+    return target.kind === "custom";
+  });
+  if (customTargets.length === 0) {
+    return { targets, results: [] };
+  }
+  const results = await resolveConnectorRuntimeTargets({
+    db: args.db,
+    scope: {
+      orgId: args.run.orgId,
+      userId: args.run.userId,
+      agentId: args.run.agentId,
+    },
+    targets: customTargets,
+  });
+  return { targets, results };
+}
+
+function applyClaimCustomConnectorRuntime(args: {
+  readonly storedContext: StoredExecutionContext;
+  readonly networkPolicies: StoredExecutionContext["networkPolicies"];
+  readonly resolution: ClaimCustomConnectorRuntimeResolution;
+}): Pick<
+  StoredExecutionContext,
+  "connectorRuntimeTargets" | "firewalls" | "networkPolicies"
+> {
+  let firewalls = [...(args.storedContext.firewalls ?? [])];
+  const networkPolicies = { ...args.networkPolicies };
+  let connectorRuntimeTargets = args.resolution.targets?.map((target) => {
+    return { ...target };
+  });
+
+  for (const result of args.resolution.results) {
+    if (result.target.kind !== "custom") {
+      throw new Error(
+        "Claim Custom runtime resolution returned Builtin target",
+      );
+    }
+    if (result.state === "unresolved") {
+      continue;
+    }
+    const customConnectorId = result.target.customConnectorId;
+    const replacedFirewallNames = firewalls.flatMap((entry) => {
+      return entry.kind === "inline" &&
+        entry.customConnectorId === customConnectorId
+        ? [entry.firewall.name]
+        : [];
+    });
+    firewalls = firewalls.filter((entry) => {
+      return !(
+        entry.kind === "inline" && entry.customConnectorId === customConnectorId
+      );
+    });
+    for (const firewallName of replacedFirewallNames) {
+      delete networkPolicies[firewallName];
+    }
+    if (result.state === "absent") {
+      continue;
+    }
+    if (!("firewall" in result)) {
+      throw new Error("Claim Custom runtime result is missing a firewall");
+    }
+
+    firewalls.push(result.firewall);
+    networkPolicies[result.firewall.firewall.name] = result.networkPolicy;
+    connectorRuntimeTargets = connectorRuntimeTargets?.map((target) => {
+      return target.kind === "custom" &&
+        target.customConnectorId === customConnectorId
+        ? { ...target, baseUrlVars: { ...result.baseUrlVars } }
+        : target;
+    });
+  }
+
+  return {
+    connectorRuntimeTargets,
+    firewalls: firewalls.length > 0 ? firewalls : undefined,
+    networkPolicies:
+      Object.keys(networkPolicies).length > 0 ? networkPolicies : undefined,
+  };
+}
+
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
@@ -1892,33 +1984,40 @@ async function buildClaimResponseBody(
     "claim_route_response_assembly",
     "top_level",
     async () => {
-      const [resumeSessionResult, refreshedPoliciesResult] =
-        await Promise.allSettled([
-          resolveResumeSessionForClaim({
-            resumeSession: args.storedContext.resumeSession,
-            timing: args.timing,
-            loadIdentityRepresentation(hash: string) {
-              return args.loadIdentityRepresentation(hash);
-            },
-            loadCompressedRepresentation(
-              hash: string,
-              encoding: CompressedSessionHistoryBlobEncoding,
-            ) {
-              return args.loadCompressedRepresentation(hash, encoding);
-            },
-            generateResumeSessionHistoryUrl:
-              args.generateResumeSessionHistoryUrl,
-            generateResumeSessionHistoryObjectUrl:
-              args.generateResumeSessionHistoryObjectUrl,
-          }),
-          refreshClaimNetworkPolicies({
-            db: args.db,
-            run: args.run,
-            storedContext: args.storedContext,
-            connectorPermissionBaseline: args.connectorPermissionBaseline,
-            timing: args.timing,
-          }),
-        ]);
+      const [
+        resumeSessionResult,
+        refreshedPoliciesResult,
+        customRuntimeResult,
+      ] = await Promise.allSettled([
+        resolveResumeSessionForClaim({
+          resumeSession: args.storedContext.resumeSession,
+          timing: args.timing,
+          loadIdentityRepresentation(hash: string) {
+            return args.loadIdentityRepresentation(hash);
+          },
+          loadCompressedRepresentation(
+            hash: string,
+            encoding: CompressedSessionHistoryBlobEncoding,
+          ) {
+            return args.loadCompressedRepresentation(hash, encoding);
+          },
+          generateResumeSessionHistoryUrl: args.generateResumeSessionHistoryUrl,
+          generateResumeSessionHistoryObjectUrl:
+            args.generateResumeSessionHistoryObjectUrl,
+        }),
+        refreshClaimNetworkPolicies({
+          db: args.db,
+          run: args.run,
+          storedContext: args.storedContext,
+          connectorPermissionBaseline: args.connectorPermissionBaseline,
+          timing: args.timing,
+        }),
+        resolveClaimCustomConnectorRuntime({
+          db: args.db,
+          run: args.run,
+          storedContext: args.storedContext,
+        }),
+      ]);
       if (resumeSessionResult.status === "rejected") {
         const error: unknown = resumeSessionResult.reason;
         throw error;
@@ -1935,6 +2034,16 @@ async function buildClaimResponseBody(
         throw error;
       }
       const refreshedPolicies = refreshedPoliciesResult.value;
+      signal.throwIfAborted();
+      if (customRuntimeResult.status === "rejected") {
+        const error: unknown = customRuntimeResult.reason;
+        throw error;
+      }
+      const currentCustomRuntime = applyClaimCustomConnectorRuntime({
+        storedContext: args.storedContext,
+        networkPolicies: refreshedPolicies.networkPolicies,
+        resolution: customRuntimeResult.value,
+      });
       signal.throwIfAborted();
       const {
         connectorPermissionBaseline: _connectorPermissionBaseline,
@@ -1963,10 +2072,9 @@ async function buildClaimResponseBody(
         resumeSession,
         sandboxToken,
         secretValues,
-        connectorRuntimeTargets: connectorRuntimeTargetsForClaim(
-          args.storedContext,
-        ),
-        networkPolicies: refreshedPolicies.networkPolicies,
+        connectorRuntimeTargets: currentCustomRuntime.connectorRuntimeTargets,
+        firewalls: currentCustomRuntime.firewalls,
+        networkPolicies: currentCustomRuntime.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
     },

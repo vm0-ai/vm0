@@ -8592,6 +8592,85 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("reconciles queued custom connector targets before claim", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replaceAll("-", "").slice(0, 8);
+    const updated = await connectors.createCustomConnector(actor, {
+      slug: `_bdd-claim-updated-${rand}`,
+      displayName: "BDD Claim Updated API",
+      prefixes: [`https://${rand}.claim-updated.test/v1/`],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    const deleted = await connectors.createCustomConnector(actor, {
+      slug: `_bdd-claim-deleted-${rand}`,
+      displayName: "BDD Claim Deleted API",
+      prefixes: [`https://${rand}.claim-deleted.test/v1/`],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      updated.id,
+      "claim-updated-secret",
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      deleted.id,
+      "claim-deleted-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      updated.id,
+      deleted.id,
+    ]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use current custom connector state at claim",
+      modelProvider: "anthropic-api-key",
+    });
+    await connectors.updateCustomConnector(actor, updated.id, {
+      displayName: updated.displayName,
+      prefixTemplates: [`https://${rand}.claim-updated.test/v2/`],
+      fields: updated.fields,
+      headerInjections: updated.headerInjections,
+      queryInjections: updated.queryInjections,
+      authMode: updated.authMode,
+    });
+    await connectors.deleteCustomConnector(actor, deleted.id);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const updatedInternalName = `custom_connector_${updated.id.replaceAll("-", "")}`;
+    const deletedInternalName = `custom_connector_${deleted.id.replaceAll("-", "")}`;
+    expect(
+      inlineFirewallApis(claim.firewalls, updatedInternalName)[0]?.base,
+    ).toBe(`https://${rand}.claim-updated.test/v2/`);
+    expect(
+      findFirewallEntry(claim.firewalls, deletedInternalName),
+    ).toBeUndefined();
+    expect(claim.networkPolicies).not.toHaveProperty(deletedInternalName);
+    expect(claim.connectorRuntimeTargets).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "custom",
+          customConnectorId: updated.id,
+          baseUrlVars: {},
+        },
+        {
+          kind: "custom",
+          customConnectorId: deleted.id,
+          baseUrlVars: {},
+        },
+      ]),
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, updated.id);
+  });
+
   it("enforces custom connector permission grants and mounts its generated skill", async () => {
     const api = createRunsApi(context);
     createBddApi(context).acceptAgentStorageWrites();
