@@ -56,6 +56,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
+  setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -261,7 +262,10 @@ function encryptPayload(payload: unknown): string {
   });
 }
 
-function signedHeaders(body: string, timestamp: number): HeadersInit {
+function signedHeaders(
+  body: string,
+  timestamp: number,
+): Record<string, string> {
   const nonce = randomUUID();
   const signature = createHash("sha256")
     .update(`${String(timestamp)}${nonce}${ENCRYPT_KEY}${body}`)
@@ -840,7 +844,7 @@ describe("Feishu integration", () => {
     const connectBody = feishuConnectBody(connectUrl);
     const statusResponse = await connectApp.request(
       `/api/zero/feishu/connect/status?${new URLSearchParams(
-        Object.entries(connectBody).map(([key, value]) => {
+        Object.entries(connectBody).map(([key, value]): [string, string] => {
           return [key, String(value)];
         }),
       )}`,
@@ -1555,6 +1559,50 @@ describe("Feishu integration", () => {
       isConnected: true,
       connectedUserName: "Feishu User",
     });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requireValue(
+        admin.orgId,
+        "Expected Feishu admin to have an organization",
+      ),
+      userId: admin.userId,
+      customConnectorId: managedConnector.id,
+      authMethod: "oauth",
+      storageVersion: 2,
+    });
+    const incompatibleFeishuStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(incompatibleFeishuStatus.body.isConnected).toBeFalsy();
+    const incompatibleConnectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(incompatibleConnectorList.body.connectors[0]).toMatchObject({
+      id: managedConnector.id,
+      connected: false,
+    });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requireValue(
+        admin.orgId,
+        "Expected Feishu admin to have an organization",
+      ),
+      userId: admin.userId,
+      customConnectorId: managedConnector.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    const restoredFeishuStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(restoredFeishuStatus.body.isConnected).toBeTruthy();
     await accept(
       setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
         zeroCustomConnectorSecretContract,
@@ -3234,7 +3282,10 @@ describe("Feishu integration", () => {
     });
     await postEvent(callbackUrl, queuedPayload, { encrypted: true });
     await flushWaitUntilForTest();
-    const queuedEvent = await findPendingChatEventByPromptFixture(queuedPrompt);
+    const queuedEvent = await findPendingChatEventByPromptFixture({
+      userId: fixture.actor.userId,
+      prompt: queuedPrompt,
+    });
     if (!queuedEvent) {
       throw new Error("Expected the queued Feishu input event");
     }
@@ -3425,8 +3476,10 @@ describe("Feishu integration", () => {
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const failedDeliveryEvent =
-      await findPendingChatEventByPromptFixture(failedDeliveryPrompt);
+    const failedDeliveryEvent = await findPendingChatEventByPromptFixture({
+      userId: fixture.actor.userId,
+      prompt: failedDeliveryPrompt,
+    });
     if (!failedDeliveryEvent) {
       throw new Error("Expected the failed-delivery Feishu input event");
     }
@@ -3601,8 +3654,10 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-    const queuedFeishuParams =
-      await findPendingChatEventByPromptFixture(secondPrompt);
+    const queuedFeishuParams = await findPendingChatEventByPromptFixture({
+      userId: secondActor.userId,
+      prompt: secondPrompt,
+    });
     expect(queuedFeishuParams).toMatchObject({
       eventId: expect.any(String),
     });

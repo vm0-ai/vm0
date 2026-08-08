@@ -135,12 +135,14 @@ function validateClaimedState(storedState: StoredOAuthState):
   return { ok: true, context };
 }
 
-async function authorizeCustomConnectorAgent(args: {
-  readonly db: Db;
-  readonly state: StoredOAuthState;
-  readonly connectorId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function authorizeCustomConnectorAgent(
+  args: {
+    readonly db: Db;
+    readonly state: StoredOAuthState;
+    readonly connectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   if (!args.state.authorizeAgent || !args.state.agentId) {
     return null;
   }
@@ -150,7 +152,7 @@ async function authorizeCustomConnectorAgent(args: {
     agentId: args.state.agentId,
     customConnectorId: args.connectorId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   switch (authorization.status) {
     case "added": {
       return null;
@@ -238,14 +240,16 @@ const completeOAuth2Callback$ = command(
     }
     const completed = await tapError(
       (async () => {
-        const token = await exchangeCustomConnectorOAuth2Code({
-          config: oauthConfig,
-          clientSecret: credentials.clientSecret,
-          code: authorizationCode,
-          codeVerifier: claimed.state.codeVerifier,
-          redirectUri: claimed.state.redirectUri,
+        const token = await exchangeCustomConnectorOAuth2Code(
+          {
+            config: oauthConfig,
+            clientSecret: credentials.clientSecret,
+            code: authorizationCode,
+            codeVerifier: claimed.state.codeVerifier,
+            redirectUri: claimed.state.redirectUri,
+          },
           signal,
-        });
+        );
         signal.throwIfAborted();
         await storeCustomConnectorOAuth2Connection({
           db: set(writeDb$),
@@ -267,12 +271,14 @@ const completeOAuth2Callback$ = command(
         "OAuth token exchange failed - please try again",
       );
     }
-    const authorizationError = await authorizeCustomConnectorAgent({
-      db: set(writeDb$),
-      state: claimed.state,
-      connectorId: connector.id,
+    const authorizationError = await authorizeCustomConnectorAgent(
+      {
+        db: set(writeDb$),
+        state: claimed.state,
+        connectorId: connector.id,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (authorizationError) {
       return callbackError(origin, authorizationError);

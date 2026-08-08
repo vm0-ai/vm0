@@ -51,7 +51,6 @@ interface OpenIdVerifyFlowArgs {
   readonly callbackParams: Readonly<Record<string, string>>;
   readonly expectedReturnTo: string;
   readonly expectedRealm: string;
-  readonly signal: AbortSignal;
 }
 
 interface OAuthDeviceAuthStartFlowArgs {
@@ -67,7 +66,6 @@ interface OAuthDeviceAuthPollFlowArgs {
 interface ExternalCodeCompleteFlowArgs {
   readonly code: string;
   readonly providerState: string;
-  readonly signal: AbortSignal;
 }
 
 export interface ExternalCodeAuthorizationStartResult {
@@ -250,7 +248,6 @@ export type ConnectorAuthProviderRevokeArgs<
     ConnectorSlug,
     AuthMethodId
   >;
-  readonly signal: AbortSignal;
 };
 
 export type ConnectorDeviceAuthorizationStartArgs<

@@ -104,7 +104,8 @@ import {
 } from "./connector-credential-access.service";
 import {
   CustomConnectorOAuth2TokenRefreshError,
-  resolveLiveCustomConnectorOAuth2AccessToken,
+  resolveCurrentCustomConnectorOAuth2AccessToken,
+  resolveRevisionPinnedCustomConnectorOAuth2AccessToken,
 } from "./custom-connector-oauth2.service";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
@@ -2116,54 +2117,68 @@ async function markAndReturnRefreshFailure(
   return refreshFailedResult(failureReason);
 }
 
-function refreshPreparedAccessToken(args: {
-  readonly prepared: PreparedRefreshTokenContext;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}) {
+function refreshPreparedAccessToken(
+  args: {
+    readonly prepared: PreparedRefreshTokenContext;
+    readonly inputs: Readonly<Record<string, string>>;
+  },
+  signal: AbortSignal,
+) {
   if (args.prepared.sourceType === "connector") {
-    return refreshPreparedConnectorAccessToken({
-      prepared: args.prepared,
-      inputs: args.inputs,
-      signal: args.signal,
-    });
+    return refreshPreparedConnectorAccessToken(
+      {
+        prepared: args.prepared,
+        inputs: args.inputs,
+      },
+      signal,
+    );
   }
 
-  return refreshPreparedModelProviderAccessToken({
-    prepared: args.prepared,
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+  return refreshPreparedModelProviderAccessToken(
+    {
+      prepared: args.prepared,
+      inputs: args.inputs,
+    },
+    signal,
+  );
 }
 
-function refreshPreparedModelProviderAccessToken(args: {
-  readonly prepared: ModelProviderPreparedRefreshTokenContext;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}) {
-  return refreshPreparedModelProviderAccess({
-    providerKey: args.prepared.providerKey,
-    currentEnv: args.prepared.currentEnv,
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+function refreshPreparedModelProviderAccessToken(
+  args: {
+    readonly prepared: ModelProviderPreparedRefreshTokenContext;
+    readonly inputs: Readonly<Record<string, string>>;
+  },
+  signal: AbortSignal,
+) {
+  return refreshPreparedModelProviderAccess(
+    {
+      providerKey: args.prepared.providerKey,
+      currentEnv: args.prepared.currentEnv,
+      inputs: args.inputs,
+    },
+    signal,
+  );
 }
 
-function refreshPreparedConnectorAccessToken(args: {
-  readonly prepared: ConnectorPreparedRefreshTokenContext;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}) {
-  return refreshConnectorAuthProviderAccessTokenWithMethod({
-    connectorSlug: args.prepared.connectorSlug,
-    authMethodId: args.prepared.authMethodId,
-    method: args.prepared.runtimeMethod.method,
-    ...(args.prepared.authClient
-      ? { authClient: args.prepared.authClient }
-      : {}),
-    inputs: args.inputs,
-    signal: args.signal,
-  });
+function refreshPreparedConnectorAccessToken(
+  args: {
+    readonly prepared: ConnectorPreparedRefreshTokenContext;
+    readonly inputs: Readonly<Record<string, string>>;
+  },
+  signal: AbortSignal,
+) {
+  return refreshConnectorAuthProviderAccessTokenWithMethod(
+    {
+      connectorSlug: args.prepared.connectorSlug,
+      authMethodId: args.prepared.authMethodId,
+      method: args.prepared.runtimeMethod.method,
+      ...(args.prepared.authClient
+        ? { authClient: args.prepared.authClient }
+        : {}),
+      inputs: args.inputs,
+    },
+    signal,
+  );
 }
 
 async function lockPreparedRefreshSource(
@@ -2389,14 +2404,16 @@ async function refreshLockedAccessToken(args: {
 
   const refreshSignal = firewallAuthRefreshTimeoutSignal();
   const refreshResult = await settle(
-    refreshPreparedAccessToken({
-      prepared: args.prepared,
-      inputs: refreshInputsFromLockedState({
-        accessSourceKey: args.refreshArgs.accessSourceKey,
-        state: lockedState,
-      }),
-      signal: refreshSignal,
-    }),
+    refreshPreparedAccessToken(
+      {
+        prepared: args.prepared,
+        inputs: refreshInputsFromLockedState({
+          accessSourceKey: args.refreshArgs.accessSourceKey,
+          state: lockedState,
+        }),
+      },
+      refreshSignal,
+    ),
   );
   if (!refreshResult.ok) {
     return markAndReturnRefreshFailure(
@@ -3058,6 +3075,18 @@ async function syncCustomConnectorRuntimeSecrets(args: {
       ),
     );
 
+  if (rows.length > 0) {
+    L.debug("Revision-pinned custom connector auth references remain in use", {
+      runId: args.runId,
+      connectorCount: new Set(
+        rows.map((row) => {
+          return row.connectorId;
+        }),
+      ).size,
+      authRefCount: rows.length,
+    });
+  }
+
   for (const row of rows) {
     if (Object.hasOwn(args.secrets, row.secretName)) {
       continue;
@@ -3065,16 +3094,18 @@ async function syncCustomConnectorRuntimeSecrets(args: {
     let encryptedValue = row.encryptedValue;
     if (row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY) {
       const accessToken = await tapError(
-        resolveLiveCustomConnectorOAuth2AccessToken({
-          db: args.db,
-          orgId: args.orgId,
-          userId: args.userId,
-          connectorId: row.connectorId,
-          connectorRevision: row.connectorRevision,
-          featureContext: args.featureSwitchContext,
-          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-          forceRefresh: args.forceRefresh,
-        }),
+        resolveRevisionPinnedCustomConnectorOAuth2AccessToken(
+          {
+            db: args.db,
+            orgId: args.orgId,
+            userId: args.userId,
+            connectorId: row.connectorId,
+            connectorRevision: row.connectorRevision,
+            featureContext: args.featureSwitchContext,
+            forceRefresh: args.forceRefresh,
+          },
+          AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+        ),
         (error) => {
           L.warn("Failed to resolve live custom connector OAuth token", {
             runId: args.runId,
@@ -4167,7 +4198,6 @@ function hasEmptyAwsSigv4Credential(
 interface CurrentCustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
-  readonly connectorRevision: number;
   readonly key: string;
   readonly encryptedValue: string | null;
   readonly required: boolean;
@@ -4185,6 +4215,9 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     connectorIds: [args.customConnectorId],
   });
   if (!runtime) {
+    return undefined;
+  }
+  if (runtime.credentialAccess.kind === "incompatible") {
     return undefined;
   }
 
@@ -4214,7 +4247,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
-      connectorRevision: runtime.connector.revision,
       key: value.key,
       encryptedValue: value.encryptedValue,
       required: field.required,
@@ -4227,7 +4259,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
-      connectorRevision: runtime.connector.revision,
       key: field.key,
       encryptedValue: null,
       required: field.required,
@@ -4242,7 +4273,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
-      connectorRevision: runtime.connector.revision,
       key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
       encryptedValue: null,
       required: true,
@@ -4311,16 +4341,17 @@ async function resolveCurrentCustomConnectorSecrets(args: {
       ref.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
     ) {
       const accessToken = await settle(
-        resolveLiveCustomConnectorOAuth2AccessToken({
-          db: args.db,
-          orgId: args.auth.orgId,
-          userId: args.auth.userId,
-          connectorId: ref.connectorId,
-          connectorRevision: ref.connectorRevision,
-          featureContext: featureSwitchContext,
-          signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-          forceRefresh: args.forceRefresh,
-        }),
+        resolveCurrentCustomConnectorOAuth2AccessToken(
+          {
+            db: args.db,
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            connectorId: ref.connectorId,
+            featureContext: featureSwitchContext,
+            forceRefresh: args.forceRefresh,
+          },
+          AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+        ),
       );
       if (!accessToken.ok) {
         if (

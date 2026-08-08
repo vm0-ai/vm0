@@ -1,15 +1,11 @@
 import { command } from "ccstate";
-import type { Block, KnownBlock } from "@slack/web-api";
 import { integrationsSlackMessageContract } from "@vm0/api-contracts/contracts/integrations";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import {
-  createSlackClient,
-  openDMChannel,
-  postMessage,
-} from "../external/slack-message-client";
+import type { SlackAnyBlock } from "../external/slack-block-kit";
+import { createSlackClient } from "../external/slack-message-client";
 import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
 import {
   resolveCurrentUserSlackId,
@@ -83,7 +79,7 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
       slackUserId = resolved;
     }
 
-    const dm = await openDMChannel(client, slackUserId);
+    const dm = await client.openDMChannel(slackUserId);
     signal.throwIfAborted();
     if (dm.kind === "slack_error") {
       return {
@@ -101,7 +97,7 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
     targetChannel = body.channel!;
   }
 
-  let finalBlocks = body.blocks as (Block | KnownBlock)[] | undefined;
+  let finalBlocks = body.blocks as SlackAnyBlock[] | undefined;
   if (footerText) {
     const footerBlocks = buildFooterBlocks(footerText);
     if (finalBlocks && finalBlocks.length > 0) {
@@ -116,7 +112,7 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
     }
   }
 
-  const result = await postMessage(client, targetChannel, body.text ?? "", {
+  const result = await client.postMessage(targetChannel, body.text ?? "", {
     threadTs: body.threadTs,
     blocks: finalBlocks,
   });

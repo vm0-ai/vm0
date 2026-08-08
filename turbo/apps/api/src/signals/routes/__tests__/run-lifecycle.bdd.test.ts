@@ -88,7 +88,10 @@ import {
   seedSlackEnvironmentAgent$,
   seedSlackOrgInstallation$,
 } from "./helpers/zero-integrations-slack";
-import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
+import {
+  setConnectorCredentialStorageState,
+  setCustomConnectorCredentialStorageState,
+} from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
   enableFakeKms,
@@ -131,15 +134,7 @@ const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
-function runnerPreference(
-  job: RunnerJob | null | undefined,
-): RunnerJob["runnerPreference"] {
-  return job?.runnerPreference;
-}
-
-function runnerPreferenceDecision(
-  job: RunnerJob | null | undefined,
-): RunnerJob["runnerPreferenceDecision"] {
+function runnerPreferenceDecision(job: RunnerJob | null | undefined) {
   return job?.runnerPreferenceDecision;
 }
 
@@ -3650,7 +3645,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "noPreference",
       reason: "noReuseKey",
     });
-    expect(runnerPreference(poll.body.job)).toBeUndefined();
 
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim.reuseKey).toBeNull();
@@ -3778,10 +3772,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "noPreference",
       reason: "noViableHolder",
     });
-    expect(runnerPreference(canonicalHeartbeatHolder.job)).toBeUndefined();
-    expect(canonicalHeartbeatHolder.job?.runnerPreferenceResolution).toBe(
-      "no_viable_holder",
-    );
 
     await api.requestHeartbeatRunner(true, [200], {
       runnerId: reuseRunnerId,
@@ -3813,17 +3803,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       tier: "workspaceCache",
       expiresAt: expect.any(String),
     });
-    expect(runnerPreference(workspaceOnlyHolder.job)).toStrictEqual({
-      runnerIdentity: {
-        runnerId: reuseRunnerId,
-        heartbeatGeneration: 1,
-      },
-      reason: "matchingReuseKey",
-      expiresAt: expect.any(String),
-    });
-    expect(workspaceOnlyHolder.job?.runnerPreferenceResolution).toBe(
-      "matching_workspace_cache",
-    );
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [
@@ -3833,12 +3812,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const capableWorkspaceHolder = await pollFollowUp(
       "continue with a capable workspace holder",
     );
-    expect(runnerPreference(capableWorkspaceHolder.job)).toMatchObject({
-      reason: "matchingReuseKey",
+    expect(runnerPreferenceDecision(capableWorkspaceHolder.job)).toMatchObject({
+      kind: "preference",
+      tier: "workspaceCache",
     });
-    expect(capableWorkspaceHolder.job?.runnerPreferenceResolution).toBe(
-      "matching_workspace_cache",
-    );
 
     const reusableRunnerId = randomUUID();
     await api.requestHeartbeatRunner(true, [200], {
@@ -3873,29 +3850,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (reusableDecision?.kind !== "preference") {
       throw new Error("Expected a reusable sandbox preference decision");
     }
-    const reusablePreference = {
-      runnerIdentity: reusableDecision.runnerIdentity,
-      reason: "matchingReuseKey" as const,
-      expiresAt: reusableDecision.expiresAt,
-    };
-    expect(runnerPreference(reusableOverWorkspace.job)).toStrictEqual(
-      reusablePreference,
-    );
-    expect(reusableOverWorkspace.job?.runnerPreferenceResolution).toBe(
-      "matching_reusable_sandbox",
-    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: reusableOverWorkspace.run.runId,
         runnerPreferenceDecision: {
           kind: "preference",
-          runnerIdentity: reusablePreference.runnerIdentity,
+          runnerIdentity: reusableDecision.runnerIdentity,
           tier: "reusableSandbox",
-          expiresAt: reusablePreference.expiresAt,
+          expiresAt: reusableDecision.expiresAt,
         },
-        runnerPreference: reusablePreference,
-        runnerPreferenceResolution: "matching_reusable_sandbox",
       }),
     );
     await api.requestHeartbeatRunner(true, [200], {
@@ -3920,10 +3884,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "noPreference",
       reason: "noViableHolder",
     });
-    expect(runnerPreference(mismatchedCapableWorkspace.job)).toBeUndefined();
-    expect(mismatchedCapableWorkspace.job?.runnerPreferenceResolution).toBe(
-      "no_viable_holder",
-    );
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3946,17 +3906,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       tier: "reusableSandbox",
       expiresAt: expect.any(String),
     });
-    expect(runnerPreference(differentGenerationHolder.job)).toStrictEqual({
-      runnerIdentity: {
-        runnerId: reuseRunnerId,
-        heartbeatGeneration: 1,
-      },
-      reason: "matchingReuseKey",
-      expiresAt: expect.any(String),
-    });
-    expect(differentGenerationHolder.job?.runnerPreferenceResolution).toBe(
-      "matching_reusable_sandbox",
-    );
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -3977,17 +3926,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       tier: "exactSandbox",
       expiresAt: expect.any(String),
     });
-    expect(runnerPreference(exactGenerationHolder.job)).toStrictEqual({
-      runnerIdentity: {
-        runnerId: reuseRunnerId,
-        heartbeatGeneration: 1,
-      },
-      reason: "exactHistoryGeneration",
-      expiresAt: expect.any(String),
-    });
-    expect(exactGenerationHolder.job?.runnerPreferenceResolution).toBe(
-      "exact_history_generation",
-    );
 
     for (const { runId, resolution, tier } of [
       {
@@ -4063,16 +4001,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       threadId: first.threadId,
       prompt: "continue while the exact source is finalizing",
     });
-    const finalizingPreference = {
-      runnerIdentity: sourceRunnerIdentity,
-      reason: "finalizingPredecessor" as const,
-      expiresAt: new Date(sourceCompletedAt + 1500).toISOString(),
-    };
     const finalizingDecision = {
       kind: "preference" as const,
       runnerIdentity: sourceRunnerIdentity,
       tier: "finalizingPredecessor" as const,
-      expiresAt: finalizingPreference.expiresAt,
+      expiresAt: new Date(sourceCompletedAt + 1500).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
@@ -4081,8 +4014,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         reuseKey,
         historyGenerationRunId: first.runId,
         runnerPreferenceDecision: finalizingDecision,
-        runnerPreference: finalizingPreference,
-        runnerPreferenceResolution: "finalizing_predecessor",
       }),
     );
 
@@ -4101,12 +4032,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(sourcePoll.body.job?.runId).toBe(successor.runId);
     expect(runnerPreferenceDecision(sourcePoll.body.job)).toStrictEqual(
       finalizingDecision,
-    );
-    expect(runnerPreference(sourcePoll.body.job)).toStrictEqual(
-      finalizingPreference,
-    );
-    expect(sourcePoll.body.job?.runnerPreferenceResolution).toBe(
-      "finalizing_predecessor",
     );
     for (const actionType of [
       "runner_notification_affinity_lookup",
@@ -4138,17 +4063,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected generic fallback poll to succeed");
     }
     expect(genericPoll.body.job?.runId).toBe(successor.runId);
-    expect(runnerPreference(genericPoll.body.job)).toStrictEqual({
+    expect(runnerPreferenceDecision(genericPoll.body.job)).toStrictEqual({
+      kind: "preference",
       runnerIdentity: {
         runnerId: genericRunnerId,
         heartbeatGeneration: 3,
       },
-      reason: "matchingReuseKey",
+      tier: "reusableSandbox",
       expiresAt: new Date(successorCreatedAt + 2000).toISOString(),
     });
-    expect(genericPoll.body.job?.runnerPreferenceResolution).toBe(
-      "matching_reusable_sandbox",
-    );
 
     const claimed = await api.requestClaimRunnerJob(
       true,
@@ -4244,23 +4167,17 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       threadId: first.threadId,
       prompt: "continue with exact history already advertised",
     });
-    const exactPreference = {
-      runnerIdentity: exactRunnerIdentity,
-      reason: "exactHistoryGeneration" as const,
-      expiresAt: new Date(successorCreatedAt + 1000).toISOString(),
-    };
     const exactDecision = {
       kind: "preference" as const,
       runnerIdentity: exactRunnerIdentity,
       tier: "exactSandbox" as const,
-      expiresAt: exactPreference.expiresAt,
+      expiresAt: new Date(successorCreatedAt + 1000).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "job",
       expect.objectContaining({
         runId: successor.runId,
         runnerPreferenceDecision: exactDecision,
-        runnerPreference: exactPreference,
       }),
     );
     const poll = await api.requestPollRunner(
@@ -4279,7 +4196,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(runnerPreferenceDecision(poll.body.job)).toStrictEqual(
       exactDecision,
     );
-    expect(runnerPreference(poll.body.job)).toStrictEqual(exactPreference);
 
     await api.requestCancelRun(actor, successor.runId, [200]);
     await flushWaitUntilForTest();
@@ -4324,7 +4240,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected restarted-source poll to succeed");
     }
     expect(poll.body.job?.runId).toBe(successor.runId);
-    expect(runnerPreference(poll.body.job)).toBeUndefined();
+    expect(runnerPreferenceDecision(poll.body.job)).toStrictEqual({
+      kind: "noPreference",
+      reason: "noViableHolder",
+    });
 
     await api.requestCancelRun(actor, successor.runId, [200]);
     await flushWaitUntilForTest();
@@ -4350,7 +4269,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue while holder is starting",
     );
     expect(startingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(runnerPreference(startingHolder.job)).toBeUndefined();
+    expect(runnerPreferenceDecision(startingHolder.job)).toMatchObject({
+      kind: "noPreference",
+    });
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -4360,7 +4281,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       false,
     );
     expect(unavailableHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(runnerPreference(unavailableHolder.job)).toBeUndefined();
+    expect(runnerPreferenceDecision(unavailableHolder.job)).toMatchObject({
+      kind: "noPreference",
+    });
     const unavailableClaim = await api.claimRunnerJob(
       unavailableHolder.run.runId,
     );
@@ -4393,7 +4316,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue after holder heartbeat is stale",
     );
     expect(staleHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(runnerPreference(staleHolder.job)).toBeUndefined();
+    expect(runnerPreferenceDecision(staleHolder.job)).toMatchObject({
+      kind: "noPreference",
+    });
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -4408,7 +4333,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(profileIncompatibleHolder.job?.cliAgentSessionId).toBe(
       cliAgentSessionId,
     );
-    expect(runnerPreference(profileIncompatibleHolder.job)).toBeUndefined();
+    expect(
+      runnerPreferenceDecision(profileIncompatibleHolder.job),
+    ).toMatchObject({
+      kind: "noPreference",
+    });
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -4422,7 +4351,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue while holder is draining",
     );
     expect(drainingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(runnerPreference(drainingHolder.job)).toBeUndefined();
+    expect(runnerPreferenceDecision(drainingHolder.job)).toMatchObject({
+      kind: "noPreference",
+    });
   });
 
   it("preserves same-thread reuse-preference timing across queued admission", async () => {
@@ -4512,9 +4443,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await releaseOrgAdmissionLock(context);
     await admissionLockRequest;
     const protectedFollowUp = await protectedFollowUpRequest;
-    const exactRunnerPreference = {
+    const exactRunnerPreferenceDecision = {
+      kind: "preference" as const,
       runnerIdentity: preferredExactRunner,
-      reason: "exactHistoryGeneration" as const,
+      tier: "exactSandbox" as const,
       expiresAt: new Date(queueInsertedAt + 1000).toISOString(),
     };
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
@@ -4523,7 +4455,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runId: protectedFollowUp.runId,
         reuseKey,
         historyGenerationRunId: first.runId,
-        runnerPreference: exactRunnerPreference,
+        runnerPreferenceDecision: exactRunnerPreferenceDecision,
       }),
     );
 
@@ -4538,8 +4470,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
     expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
     expect(protectedPoll.body.job?.reuseKey).toBe(reuseKey);
-    expect(runnerPreference(protectedPoll.body.job)).toStrictEqual(
-      exactRunnerPreference,
+    expect(runnerPreferenceDecision(protectedPoll.body.job)).toStrictEqual(
+      exactRunnerPreferenceDecision,
     );
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
@@ -4635,9 +4567,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(generationExpiredPoll.body.job?.runId).toBe(
       generationExpiredRun.runId,
     );
-    expect(runnerPreference(generationExpiredPoll.body.job)).toStrictEqual({
+    expect(
+      runnerPreferenceDecision(generationExpiredPoll.body.job),
+    ).toStrictEqual({
+      kind: "preference",
       runnerIdentity: preferredExactRunner,
-      reason: "matchingReuseKey",
+      tier: "reusableSandbox",
       expiresAt: new Date(generationExpiredAt + 2000).toISOString(),
     });
     await api.requestCancelRun(actor, generationExpiredRun.runId, [200]);
@@ -4662,8 +4597,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "noPreference",
       reason: "expired",
     });
-    expect(runnerPreference(expiredPoll.body.job)).toBeUndefined();
-    expect(expiredPoll.body.job?.runnerPreferenceResolution).toBe("expired");
     const expiredClaim = await api.requestClaimRunnerJob(
       true,
       expiredFollowUp.runId,
@@ -4772,16 +4705,22 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }
       expect(poll.body.job?.runId).toBe(followUp.runId);
       if (expectedResource) {
-        expect(runnerPreference(poll.body.job)).toMatchObject({
+        expect(runnerPreferenceDecision(poll.body.job)).toMatchObject({
+          kind: "preference",
           runnerIdentity: {
             runnerId,
             heartbeatGeneration: 1,
           },
-          reason: "matchingReuseKey",
+          tier:
+            expectedResource === "reusableSandbox"
+              ? "reusableSandbox"
+              : "workspaceCache",
           expiresAt: expect.any(String),
         });
       } else {
-        expect(runnerPreference(poll.body.job)).toBeUndefined();
+        expect(runnerPreferenceDecision(poll.body.job)).toMatchObject({
+          kind: "noPreference",
+        });
       }
       await api.requestCancelRun(actor, followUp.runId, [200]);
       await flushWaitUntilForTest();
@@ -4902,12 +4841,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected reusable-holder poll to return 200");
     }
     expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
-    expect(runnerPreference(protectedPoll.body.job)).toMatchObject({
+    expect(runnerPreferenceDecision(protectedPoll.body.job)).toMatchObject({
+      kind: "preference",
       runnerIdentity: {
         runnerId: reuseRunnerId,
         heartbeatGeneration: 1,
       },
-      reason: "exactHistoryGeneration",
+      tier: "exactSandbox",
       expiresAt: expect.any(String),
     });
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
@@ -5084,12 +5024,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected workspace-priority poll to return 200");
     }
     expect(workspacePoll.body.job?.runId).toBe(newerWorkspace.runId);
-    expect(runnerPreference(workspacePoll.body.job)).toMatchObject({
+    expect(runnerPreferenceDecision(workspacePoll.body.job)).toMatchObject({
+      kind: "preference",
       runnerIdentity: {
         runnerId: workspaceRunnerId,
         heartbeatGeneration: 1,
       },
-      reason: "matchingReuseKey",
+      tier: "workspaceCache",
     });
 
     await api.requestCancelRun(actor, newerWorkspace.runId, [200]);
@@ -5335,7 +5276,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           kind: "noPreference",
           reason: "noReuseKey",
         },
-        runnerPreferenceResolution: "no_reuse_key",
       }),
     );
     const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);
@@ -8473,6 +8413,92 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       state: "available",
     });
 
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "manual",
+      storageVersion: 2,
+    });
+    const [incompatibleRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const incompatibleAvailable =
+      availableCustomConnectorRuntime(incompatibleRuntime);
+    expect(incompatibleAvailable.firewall).toStrictEqual(
+      updatedAvailable.firewall,
+    );
+    expect(incompatibleAvailable.networkPolicy).toStrictEqual(
+      updatedAvailable.networkPolicy,
+    );
+    const incompatibleAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (incompatibleAuth.status !== 424) {
+      throw new Error("Expected incompatible custom connector credentials");
+    }
+    expect(incompatibleAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    const [incompatibleAuthMethodRuntime] = await api.syncConnectorRuntime(
+      run.runId,
+      { targets: [target] },
+    );
+    const incompatibleAuthMethodAvailable = availableCustomConnectorRuntime(
+      incompatibleAuthMethodRuntime,
+    );
+    expect(incompatibleAuthMethodAvailable.firewall).toStrictEqual(
+      updatedAvailable.firewall,
+    );
+    expect(incompatibleAuthMethodAvailable.networkPolicy).toStrictEqual(
+      updatedAvailable.networkPolicy,
+    );
+    const incompatibleAuthMethod = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (incompatibleAuthMethod.status !== 424) {
+      throw new Error("Expected incompatible custom connector auth method");
+    }
+    expect(incompatibleAuthMethod.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "manual",
+      storageVersion: 1,
+    });
+    const [compatibleRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(compatibleRuntime).toMatchObject({
+      target,
+      state: "available",
+    });
+    const compatibleAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(compatibleAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer restored-custom-secret-value" },
+    });
+
     await connectors.updateCustomConnector(actor, custom.id, {
       displayName: "BDD Internal API Updated",
       prefixTemplates: ["https://*.internal.example.com/v2/"],
@@ -8695,6 +8721,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.secretValues).not.toContain(
       "Bearer custom-oauth-initial-access-token",
     );
+    const revisionPinnedAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+        },
+      },
+      [200],
+    );
+    expect(revisionPinnedAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-oauth-initial-access-token" },
+    });
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "custom", customConnectorId: custom.id }],
     });
@@ -8772,6 +8811,36 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       refreshedSecrets: [],
     });
     expect(provider.tokenBodies).toHaveLength(2);
+
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "oauth",
+      storageVersion: 2,
+    });
+    const incompatibleOAuthAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [424],
+    );
+    if (incompatibleOAuthAuth.status !== 424) {
+      throw new Error("Expected incompatible custom OAuth credentials");
+    }
+    expect(incompatibleOAuthAuth.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+    expect(provider.tokenBodies).toHaveLength(2);
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
 
     const forceRefreshAt = firstRefreshAt + 10 * 60_000;
     mockNow(forceRefreshAt);
@@ -9402,6 +9471,77 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("omits incompatible custom credentials initially while sync preserves firewall", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Incompatible Runtime",
+        prefixTemplates: [`https://${rand}.incompatible.test/v1/`],
+        fields: [
+          {
+            key: "secret",
+            label: "API key",
+            kind: "secret",
+            required: false,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "X-Connector",
+            valueTemplate: "incompatible-runtime",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "secret",
+          kind: "secret",
+          value: "incompatible-runtime-secret",
+        },
+      ],
+      agentId,
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: saved.connector.id,
+      authMethod: "manual",
+      storageVersion: 2,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use the incompatible custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
+    });
+    const availableRuntime = availableCustomConnectorRuntime(runtimeResult);
+    expect(availableRuntime.firewall.customConnectorId).toBe(
+      saved.connector.id,
+    );
+    expect(availableRuntime.networkPolicy.unknownPolicy).toBe("allow");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, saved.connector.id);
   });
 
   it("keeps legacy omission while sync preserves optional-only firewall", async () => {

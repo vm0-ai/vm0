@@ -3,14 +3,15 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "scripts": {
+    "test": "node --test no-abort-signal-in-object-params.test.js"
+  },
   "exports": {
     "./base": "./base.js",
-    "./next-js": "./next.js",
     "./react-internal": "./react-internal.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
-    "@next/eslint-plugin-next": "^15.5.2",
     "eslint": "^9.34.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-oxlint": "^1.75.0",

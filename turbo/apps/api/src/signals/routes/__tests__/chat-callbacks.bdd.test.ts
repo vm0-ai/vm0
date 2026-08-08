@@ -22,6 +22,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
+  clearLegacyChatEventInputColumnsFixture,
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   holdGoalThreadLockFixture,
@@ -312,6 +313,7 @@ async function queueChatEvent(
     readonly prompt: string;
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
+    readonly userMessage?: UserMessageInputDocument;
   },
 ): Promise<string> {
   const messageId = randomUUID();
@@ -328,6 +330,9 @@ async function queueChatEvent(
       ...(body.generationTemplate === undefined
         ? {}
         : { generationTemplate: body.generationTemplate }),
+      ...(body.userMessage === undefined
+        ? {}
+        : { userMessage: body.userMessage }),
     },
     [201],
   );
@@ -701,7 +706,7 @@ function recommendedFollowupEvents(
     return (
       message.eventType === "output.followups" &&
       message.runId === runId &&
-      message.recommendedFollowups.length > 0
+      (message.recommendedFollowups?.length ?? 0) > 0
     );
   });
 }
@@ -1061,11 +1066,22 @@ describe("CHAT-02: completed chat callback", () => {
         templateId: template.templateId,
       },
     };
+    const queuedUserMessage: UserMessageInputDocument = {
+      version: 1,
+      parts: [
+        {
+          type: "template",
+          titleSnapshot: template.title,
+          template: generationTemplate,
+        },
+        { type: "text", text: "queued next turn" },
+      ],
+    };
     await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued next turn",
-      generationTemplate,
+      userMessage: queuedUserMessage,
     });
     const beforeComplete = await chat.listThreadEvents(actor, first.threadId);
     const queued = userMessages(beforeComplete.events).find((message) => {
@@ -1074,6 +1090,7 @@ describe("CHAT-02: completed chat callback", () => {
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
     }
+    await clearLegacyChatEventInputColumnsFixture(queued.id);
 
     // Sentinel thread with a later lastMessageAt than thread X, so the
     // run-end bump on X is observable through thread-list reordering.
@@ -1128,6 +1145,7 @@ describe("CHAT-02: completed chat callback", () => {
     if (!recommender) {
       throw new Error("Expected a recommended follow-up message");
     }
+    expect(recommender.content).toBeNull();
     expect(recommender.recommendedFollowups).toStrictEqual([
       { prompt: longFollowupPrompt, kind: "talk" },
       {
@@ -1261,12 +1279,14 @@ describe("CHAT-02: completed chat callback", () => {
     );
 
     const autoContext = await waitForRunContext(actor, claimed.runId);
-    expect(autoContext.body.prompt).toBe("queued next turn");
+    expect(autoContext.body.prompt).toBe(
+      `[Template #1: ${template.title} (presentation)]queued next turn`,
+    );
     const appended = autoContext.body.appendSystemPrompt ?? "";
     expect(appended).toContain(
       "# Current Integration\nYou are currently running inside: Web",
     );
-    expect(appended).toContain("# Artifact Template Context");
+    expect(appended).toContain("# Inline Templates");
     expect(appended).toContain(
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );

@@ -66,12 +66,14 @@ function createAppJwt(appId: string, privateKeyPemOrBase64: string): string {
   return `${signingInput}.${signature}`;
 }
 
-export async function getGithubInstallationAccessToken(args: {
-  readonly appId: string;
-  readonly privateKey: string;
-  readonly installationId: string;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly token: string; readonly expiresAt: string }> {
+export async function getGithubInstallationAccessToken(
+  args: {
+    readonly appId: string;
+    readonly privateKey: string;
+    readonly installationId: string;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly token: string; readonly expiresAt: string }> {
   const installationId = validateInstallationId(args.installationId);
   const jwt = createAppJwt(args.appId, args.privateKey);
   const response = await fetch(
@@ -83,7 +85,7 @@ export async function getGithubInstallationAccessToken(args: {
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
-      signal: args.signal,
+      signal,
     },
   );
 

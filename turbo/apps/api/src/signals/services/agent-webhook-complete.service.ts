@@ -1,11 +1,7 @@
 import { command } from "ccstate";
 import type { z } from "zod";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import {
-  DEFAULT_PROFILE,
-  PI_STANDBY_PROFILE,
-  PI_STANDBY_TTL_RELEASE_EXIT_CODE,
-} from "@vm0/api-contracts/contracts/runners";
+import { PI_STANDBY_TTL_RELEASE_EXIT_CODE } from "@vm0/api-contracts/contracts/runners";
 import type { RunResult, RunStatus } from "@vm0/api-contracts/contracts/runs";
 import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -22,6 +18,10 @@ import {
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
@@ -172,19 +172,17 @@ async function transitionRunStatus(
   if (!updated) {
     return false;
   }
-  // Pi standby jobs stay in the queue after being claimed so a later handoff
-  // can wake the prewarmed sandbox. Nothing consumes them once the run settles,
-  // so drop them here. Every other profile is already removed by the normal
-  // claim/expiry lifecycle, and deleting those rows here would turn a stale
-  // claim's "Run not found" into "Job not found in queue".
-  await db
-    .delete(runnerJobQueue)
-    .where(
-      and(
-        eq(runnerJobQueue.runId, runId),
-        eq(runnerJobQueue.profile, PI_STANDBY_PROFILE),
-      ),
-    );
+  // Pi jobs can stay in the queue after a standby claim or while cold-start
+  // handoff data is still being persisted. Nothing consumes them once the run
+  // settles. Ordinary rows are already removed by the normal claim/expiry
+  // lifecycle, and deleting those rows here would change stale-claim errors.
+  await db.delete(runnerJobQueue).where(
+    and(
+      eq(runnerJobQueue.runId, runId),
+      sql`${runnerJobQueue.executionContext}->>'piExecutionMode'
+          IN ('standby', 'cold-start')`,
+    ),
+  );
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "run_terminal_transition_committed",
@@ -250,12 +248,16 @@ async function tryReleasePiStandbyForColdStart(
       .select({
         profile: runnerJobQueue.profile,
         runnerGroup: runnerJobQueue.runnerGroup,
+        piExecutionMode:
+          sql`${runnerJobQueue.executionContext}->>'piExecutionMode'`.mapWith(
+            nullableDriverValueDecoder(pgTextDecoder),
+          ),
       })
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, input.body.runId))
       .for("update");
     signal.throwIfAborted();
-    if (!job || job.profile !== PI_STANDBY_PROFILE) {
+    if (!job || job.piExecutionMode !== "standby") {
       return null;
     }
 
@@ -267,7 +269,12 @@ async function tryReleasePiStandbyForColdStart(
     await tx
       .update(runnerJobQueue)
       .set({
-        profile: DEFAULT_PROFILE,
+        executionContext: sql`jsonb_set(
+          ${runnerJobQueue.executionContext},
+          '{piExecutionMode}',
+          to_jsonb(${"cold-start"}::text),
+          true
+        )`,
         createdAt: timestamps.createdAt,
         expiresAt: timestamps.expiresAt,
       })
@@ -286,6 +293,7 @@ async function tryReleasePiStandbyForColdStart(
     signal.throwIfAborted();
     return {
       coldStartReady,
+      profile: job.profile,
       runnerGroup: job.runnerGroup,
       userId: run.userId,
     };
@@ -311,11 +319,16 @@ async function tryReleasePiStandbyForColdStart(
       status: "pending",
     });
     signal.throwIfAborted();
-    await publishRunnerJobNotification(
-      requeued.runnerGroup,
-      input.body.runId,
-      DEFAULT_PROFILE,
-    );
+    await publishRunnerJobNotification({
+      group: requeued.runnerGroup,
+      runId: input.body.runId,
+      profile: requeued.profile,
+      piExecutionMode: "cold-start",
+      runnerPreferenceDecision: {
+        kind: "noPreference",
+        reason: "noReuseKey",
+      },
+    });
     signal.throwIfAborted();
   }
   return true;
@@ -347,17 +360,22 @@ const activatePiColdStartForHandoff$ = command(
         .select({
           profile: runnerJobQueue.profile,
           runnerGroup: runnerJobQueue.runnerGroup,
+          piExecutionMode:
+            sql`${runnerJobQueue.executionContext}->>'piExecutionMode'`.mapWith(
+              nullableDriverValueDecoder(pgTextDecoder),
+            ),
         })
         .from(runnerJobQueue)
         .where(eq(runnerJobQueue.runId, input.runId))
         .for("update");
       signal.throwIfAborted();
-      if (!job || job.profile !== DEFAULT_PROFILE) {
+      if (!job || job.piExecutionMode !== "cold-start") {
         return null;
       }
       if (run.status === "pending") {
         return {
           notify: false,
+          profile: job.profile,
           runnerGroup: job.runnerGroup,
           userId: run.userId,
         };
@@ -379,6 +397,7 @@ const activatePiColdStartForHandoff$ = command(
       signal.throwIfAborted();
       return {
         notify: true,
+        profile: job.profile,
         runnerGroup: job.runnerGroup,
         userId: run.userId,
       };
@@ -399,11 +418,16 @@ const activatePiColdStartForHandoff$ = command(
         status: "pending",
       });
       signal.throwIfAborted();
-      await publishRunnerJobNotification(
-        activation.runnerGroup,
-        input.runId,
-        DEFAULT_PROFILE,
-      );
+      await publishRunnerJobNotification({
+        group: activation.runnerGroup,
+        runId: input.runId,
+        profile: activation.profile,
+        piExecutionMode: "cold-start",
+        runnerPreferenceDecision: {
+          kind: "noPreference",
+          reason: "noReuseKey",
+        },
+      });
       signal.throwIfAborted();
     }
     return true;

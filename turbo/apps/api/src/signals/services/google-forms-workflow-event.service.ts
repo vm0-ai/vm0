@@ -28,7 +28,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
   connectorCredentialRuntimeValueRef,
@@ -200,16 +200,18 @@ function tokenNeedsRefresh(
   );
 }
 
-async function resolveGoogleFormsAccess(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId?: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsAccessResult> {
+async function resolveGoogleFormsAccess(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId?: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsAccessResult> {
   const currentTime = nowDate();
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const loaded = await loadConnectorCredentialConnection({
     db: args.db,
     snapshot,
@@ -220,7 +222,7 @@ async function resolveGoogleFormsAccess(args: {
       ? {}
       : { connectorId: args.connectorId }),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (loaded.kind === "missing") {
     return {
       kind: "bad_request",
@@ -252,7 +254,7 @@ async function resolveGoogleFormsAccess(args: {
     db: args.db,
     valueRefs: [accessTokenValueRef],
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const accessToken = values.get(accessTokenValueRef);
   if (!accessToken) {
     return {
@@ -267,15 +269,17 @@ async function resolveGoogleFormsAccess(args: {
       access: { connectorId: connection.connectorId, accessToken },
     };
   }
-  const refreshed = await refreshConnectorCredentialAccess({
-    connection,
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    runtimeEnvironmentName: GOOGLE_FORMS_ACCESS_TOKEN_ENVIRONMENT_NAME,
-    signal: args.signal,
-    persist: { db: args.db, markNeedsReconnectOnFailure: true },
-  });
+  const refreshed = await refreshConnectorCredentialAccess(
+    {
+      connection,
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      runtimeEnvironmentName: GOOGLE_FORMS_ACCESS_TOKEN_ENVIRONMENT_NAME,
+      persist: { db: args.db, markNeedsReconnectOnFailure: true },
+    },
+    signal,
+  );
   if (refreshed.kind === "configuration-unavailable") {
     return {
       kind: "bad_request",
@@ -298,17 +302,19 @@ async function resolveGoogleFormsAccess(args: {
   };
 }
 
-async function googleFormsFetchJson<T>(args: {
-  readonly schema: z.ZodType<T>;
-  readonly accessToken: string;
-  readonly url: string;
-  readonly init: RequestInit;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<T>> {
+async function googleFormsFetchJson<T>(
+  args: {
+    readonly schema: z.ZodType<T>;
+    readonly accessToken: string;
+    readonly url: string;
+    readonly init: RequestInit;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<T>> {
   const response = await tapError(
     fetch(args.url, {
       ...args.init,
-      signal: args.signal,
+      signal,
       headers: {
         Authorization: `Bearer ${args.accessToken}`,
         "Content-Type": "application/json",
@@ -316,7 +322,7 @@ async function googleFormsFetchJson<T>(args: {
       },
     }),
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!response) {
     return { kind: "error", status: 0, message: "Google Forms request failed" };
   }
@@ -377,18 +383,22 @@ function googleFormIdFromUrl(
     : { kind: "bad_request", message: FORM_EDIT_LINK_GUIDANCE };
 }
 
-async function fetchGoogleForm(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormSchema>>> {
-  return await googleFormsFetchJson({
-    schema: googleFormSchema,
-    accessToken: args.accessToken,
-    url: formApiUrl(args.formId),
-    init: { method: "GET" },
-    signal: args.signal,
-  });
+async function fetchGoogleForm(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormSchema>>> {
+  return await googleFormsFetchJson(
+    {
+      schema: googleFormSchema,
+      accessToken: args.accessToken,
+      url: formApiUrl(args.formId),
+      init: { method: "GET" },
+    },
+    signal,
+  );
 }
 
 function responsesListUrl(args: {
@@ -411,18 +421,22 @@ function responsesListUrl(args: {
   return url.toString();
 }
 
-async function newestGoogleFormResponseTime(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<string>> {
-  const result = await googleFormsFetchJson({
-    schema: googleFormResponsesSchema,
-    accessToken: args.accessToken,
-    url: responsesListUrl({ formId: args.formId, pageSize: 1 }),
-    init: { method: "GET" },
-    signal: args.signal,
-  });
+async function newestGoogleFormResponseTime(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<string>> {
+  const result = await googleFormsFetchJson(
+    {
+      schema: googleFormResponsesSchema,
+      accessToken: args.accessToken,
+      url: responsesListUrl({ formId: args.formId, pageSize: 1 }),
+      init: { method: "GET" },
+    },
+    signal,
+  );
   if (result.kind !== "ok") {
     return result;
   }
@@ -448,8 +462,8 @@ export async function prepareGoogleFormsResponseEventConfigForPersist(
     readonly orgId: string;
     readonly userId: string;
     readonly eventConfig: GoogleFormsResponseSubmittedEventCreateConfig;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<
   | {
       readonly kind: "ok";
@@ -470,22 +484,26 @@ export async function prepareGoogleFormsResponseEventConfigForPersist(
   ) {
     return { kind: "bad-request", message: PUBSUB_CONFIGURATION_ERROR };
   }
-  const access = await resolveGoogleFormsAccess({
-    db,
-    orgId: args.orgId,
-    userId: args.userId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const access = await resolveGoogleFormsAccess(
+    {
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (access.kind !== "ok") {
     return { kind: "bad-request", message: access.message };
   }
-  const form = await fetchGoogleForm({
-    accessToken: access.access.accessToken,
-    formId: parsedId.formId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const form = await fetchGoogleForm(
+    {
+      accessToken: access.access.accessToken,
+      formId: parsedId.formId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (form.kind !== "ok") {
     return {
       kind: "bad-request",
@@ -495,12 +513,14 @@ export async function prepareGoogleFormsResponseEventConfigForPersist(
           : "Unable to read that Google Form with the connected account",
     };
   }
-  const cursor = await newestGoogleFormResponseTime({
-    accessToken: access.access.accessToken,
-    formId: parsedId.formId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const cursor = await newestGoogleFormResponseTime(
+    {
+      accessToken: access.access.accessToken,
+      formId: parsedId.formId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (cursor.kind !== "ok") {
     return {
       kind: "bad-request",
@@ -542,13 +562,15 @@ async function lockGoogleFormsLifecycle(
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
-export async function hasEnabledGoogleFormsConsumer(args: {
-  readonly db: Db;
-  readonly userId: string;
-  readonly formId: string;
-  readonly excludedConnectorId?: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+export async function hasEnabledGoogleFormsConsumer(
+  args: {
+    readonly db: Db;
+    readonly userId: string;
+    readonly formId: string;
+    readonly excludedConnectorId?: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const [consumer] = await args.db
     .select({ id: zeroWorkflowAutomations.id })
     .from(zeroWorkflowAutomations)
@@ -573,54 +595,64 @@ export async function hasEnabledGoogleFormsConsumer(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return consumer !== undefined;
 }
 
-async function createGoogleFormsWatch(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly topicName: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchSchema>>> {
-  return await googleFormsFetchJson({
-    schema: googleFormsWatchSchema,
-    accessToken: args.accessToken,
-    url: formApiUrl(args.formId, "/watches"),
-    init: {
-      method: "POST",
-      body: JSON.stringify({
-        watch: {
-          target: { topic: { topicName: args.topicName } },
-          eventType: "RESPONSES",
-        },
-      }),
+async function createGoogleFormsWatch(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+    readonly topicName: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchSchema>>> {
+  return await googleFormsFetchJson(
+    {
+      schema: googleFormsWatchSchema,
+      accessToken: args.accessToken,
+      url: formApiUrl(args.formId, "/watches"),
+      init: {
+        method: "POST",
+        body: JSON.stringify({
+          watch: {
+            target: { topic: { topicName: args.topicName } },
+            eventType: "RESPONSES",
+          },
+        }),
+      },
     },
-    signal: args.signal,
-  });
+    signal,
+  );
 }
 
-async function listGoogleFormsWatches(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchesSchema>>> {
-  return await googleFormsFetchJson({
-    schema: googleFormsWatchesSchema,
-    accessToken: args.accessToken,
-    url: formApiUrl(args.formId, "/watches"),
-    init: { method: "GET" },
-    signal: args.signal,
-  });
+async function listGoogleFormsWatches(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchesSchema>>> {
+  return await googleFormsFetchJson(
+    {
+      schema: googleFormsWatchesSchema,
+      accessToken: args.accessToken,
+      url: formApiUrl(args.formId, "/watches"),
+      init: { method: "GET" },
+    },
+    signal,
+  );
 }
 
-async function createOrAdoptGoogleFormsWatch(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly topicName: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchSchema>>> {
-  const created = await createGoogleFormsWatch(args);
+async function createOrAdoptGoogleFormsWatch(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+    readonly topicName: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchSchema>>> {
+  const created = await createGoogleFormsWatch(args, signal);
   if (created.kind === "ok") {
     return created;
   }
@@ -629,7 +661,7 @@ async function createOrAdoptGoogleFormsWatch(args: {
   if (!duplicate) {
     return created;
   }
-  const listed = await listGoogleFormsWatches(args);
+  const listed = await listGoogleFormsWatches(args, signal);
   if (listed.kind !== "ok") {
     return listed;
   }
@@ -649,42 +681,50 @@ async function createOrAdoptGoogleFormsWatch(args: {
       };
 }
 
-async function renewGoogleFormsWatch(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly watchId: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchSchema>>> {
-  return await googleFormsFetchJson({
-    schema: googleFormsWatchSchema,
-    accessToken: args.accessToken,
-    url: formApiUrl(
-      args.formId,
-      `/watches/${encodeURIComponent(args.watchId)}:renew`,
-    ),
-    init: { method: "POST", body: JSON.stringify({}) },
-    signal: args.signal,
-  });
+async function renewGoogleFormsWatch(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+    readonly watchId: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<z.infer<typeof googleFormsWatchSchema>>> {
+  return await googleFormsFetchJson(
+    {
+      schema: googleFormsWatchSchema,
+      accessToken: args.accessToken,
+      url: formApiUrl(
+        args.formId,
+        `/watches/${encodeURIComponent(args.watchId)}:renew`,
+      ),
+      init: { method: "POST", body: JSON.stringify({}) },
+    },
+    signal,
+  );
 }
 
-async function deleteGoogleFormsWatch(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly watchId: string;
-  readonly signal: AbortSignal;
-}): Promise<
+async function deleteGoogleFormsWatch(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+    readonly watchId: string;
+  },
+  signal: AbortSignal,
+): Promise<
   GoogleFormsFetchResult<z.infer<typeof emptyGoogleFormsResponseSchema>>
 > {
-  return await googleFormsFetchJson({
-    schema: emptyGoogleFormsResponseSchema,
-    accessToken: args.accessToken,
-    url: formApiUrl(
-      args.formId,
-      `/watches/${encodeURIComponent(args.watchId)}`,
-    ),
-    init: { method: "DELETE" },
-    signal: args.signal,
-  });
+  return await googleFormsFetchJson(
+    {
+      schema: emptyGoogleFormsResponseSchema,
+      accessToken: args.accessToken,
+      url: formApiUrl(
+        args.formId,
+        `/watches/${encodeURIComponent(args.watchId)}`,
+      ),
+      init: { method: "DELETE" },
+    },
+    signal,
+  );
 }
 
 function missingGoogleFormsWatch(error: GoogleFormsFetchError): boolean {
@@ -731,16 +771,18 @@ async function upsertGoogleFormsCursor(args: {
     });
 }
 
-export async function ensureGoogleFormsWatchForUser(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly formId: string;
-  readonly connectorId?: string;
-  readonly resetAutomationId?: string;
-  readonly seedCursor?: string;
-  readonly signal: AbortSignal;
-}): Promise<EnsureGoogleFormsWatchResult> {
+export async function ensureGoogleFormsWatchForUser(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly formId: string;
+    readonly connectorId?: string;
+    readonly resetAutomationId?: string;
+    readonly seedCursor?: string;
+  },
+  signal: AbortSignal,
+): Promise<EnsureGoogleFormsWatchResult> {
   const topicName = optionalEnv("GOOGLE_FORMS_PUBSUB_TOPIC_NAME");
   if (
     !topicName ||
@@ -752,20 +794,22 @@ export async function ensureGoogleFormsWatchForUser(args: {
       message: PUBSUB_CONFIGURATION_ERROR,
     };
   }
-  const access = await resolveGoogleFormsAccess(args);
-  args.signal.throwIfAborted();
+  const access = await resolveGoogleFormsAccess(args, signal);
+  signal.throwIfAborted();
   if (access.kind !== "ok") {
     return access;
   }
   return await args.db.transaction(async (tx) => {
     await lockGoogleFormsLifecycle(tx, args.formId, args.userId);
-    args.signal.throwIfAborted();
-    const hasConsumer = await hasEnabledGoogleFormsConsumer({
-      db: tx,
-      userId: args.userId,
-      formId: args.formId,
-      signal: args.signal,
-    });
+    signal.throwIfAborted();
+    const hasConsumer = await hasEnabledGoogleFormsConsumer(
+      {
+        db: tx,
+        userId: args.userId,
+        formId: args.formId,
+      },
+      signal,
+    );
     if (!hasConsumer) {
       return { kind: "ok", watchStateId: null };
     }
@@ -781,13 +825,15 @@ export async function ensureGoogleFormsWatchForUser(args: {
       .limit(1);
     let state = existing;
     if (!state) {
-      const watch = await createOrAdoptGoogleFormsWatch({
-        accessToken: access.access.accessToken,
-        formId: args.formId,
-        topicName,
-        signal: args.signal,
-      });
-      args.signal.throwIfAborted();
+      const watch = await createOrAdoptGoogleFormsWatch(
+        {
+          accessToken: access.access.accessToken,
+          formId: args.formId,
+          topicName,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
       if (watch.kind !== "ok") {
         return {
           kind: "bad_request",
@@ -821,13 +867,15 @@ export async function ensureGoogleFormsWatchForUser(args: {
     if (args.resetAutomationId !== undefined) {
       const cursor =
         args.seedCursor === undefined
-          ? await newestGoogleFormResponseTime({
-              accessToken: access.access.accessToken,
-              formId: args.formId,
-              signal: args.signal,
-            })
+          ? await newestGoogleFormResponseTime(
+              {
+                accessToken: access.access.accessToken,
+                formId: args.formId,
+              },
+              signal,
+            )
           : { kind: "ok" as const, value: args.seedCursor };
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       if (cursor.kind !== "ok") {
         return {
           kind: "bad_request",
@@ -856,16 +904,18 @@ async function markGoogleFormsWatchForRetry(
     .where(eq(googleFormsWatchStates.id, stateId));
 }
 
-async function reconcileGoogleFormsWatchState(args: {
-  readonly db: Db;
-  readonly state: GoogleFormsWatchStateRow;
-  readonly excludedConnectorId?: string;
-  readonly renewBefore?: Date;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsWatchReconcileResult> {
+async function reconcileGoogleFormsWatchState(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleFormsWatchStateRow;
+    readonly excludedConnectorId?: string;
+    readonly renewBefore?: Date;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsWatchReconcileResult> {
   return await args.db.transaction(async (tx) => {
     await lockGoogleFormsLifecycle(tx, args.state.formId, args.state.userId);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     const [state] = await tx
       .select()
       .from(googleFormsWatchStates)
@@ -874,35 +924,41 @@ async function reconcileGoogleFormsWatchState(args: {
     if (!state) {
       return { kind: "unchanged" };
     }
-    const hasConsumer = await hasEnabledGoogleFormsConsumer({
-      db: tx,
-      userId: state.userId,
-      formId: state.formId,
-      ...(args.excludedConnectorId === undefined
-        ? {}
-        : { excludedConnectorId: args.excludedConnectorId }),
-      signal: args.signal,
-    });
-    const access = await resolveGoogleFormsAccess({
-      db: tx,
-      orgId: state.orgId,
-      userId: state.userId,
-      connectorId: state.connectorId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const hasConsumer = await hasEnabledGoogleFormsConsumer(
+      {
+        db: tx,
+        userId: state.userId,
+        formId: state.formId,
+        ...(args.excludedConnectorId === undefined
+          ? {}
+          : { excludedConnectorId: args.excludedConnectorId }),
+      },
+      signal,
+    );
+    const access = await resolveGoogleFormsAccess(
+      {
+        db: tx,
+        orgId: state.orgId,
+        userId: state.userId,
+        connectorId: state.connectorId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (access.kind !== "ok") {
       await markGoogleFormsWatchForRetry(tx, state.id);
       return { kind: "failed" };
     }
     if (!hasConsumer) {
-      const deleted = await deleteGoogleFormsWatch({
-        accessToken: access.access.accessToken,
-        formId: state.formId,
-        watchId: state.watchId,
-        signal: args.signal,
-      });
-      args.signal.throwIfAborted();
+      const deleted = await deleteGoogleFormsWatch(
+        {
+          accessToken: access.access.accessToken,
+          formId: state.formId,
+          watchId: state.watchId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
       if (deleted.kind !== "ok" && !missingGoogleFormsWatch(deleted)) {
         await markGoogleFormsWatchForRetry(tx, state.id);
         return { kind: "failed" };
@@ -919,20 +975,24 @@ async function reconcileGoogleFormsWatchState(args: {
     if (!renewalDue) {
       return { kind: "unchanged" };
     }
-    let renewed = await renewGoogleFormsWatch({
-      accessToken: access.access.accessToken,
-      formId: state.formId,
-      watchId: state.watchId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
-    if (renewed.kind !== "ok" && missingGoogleFormsWatch(renewed)) {
-      renewed = await createOrAdoptGoogleFormsWatch({
+    let renewed = await renewGoogleFormsWatch(
+      {
         accessToken: access.access.accessToken,
         formId: state.formId,
-        topicName: state.topicName,
-        signal: args.signal,
-      });
+        watchId: state.watchId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (renewed.kind !== "ok" && missingGoogleFormsWatch(renewed)) {
+      renewed = await createOrAdoptGoogleFormsWatch(
+        {
+          accessToken: access.access.accessToken,
+          formId: state.formId,
+          topicName: state.topicName,
+        },
+        signal,
+      );
     }
     if (renewed.kind !== "ok") {
       await markGoogleFormsWatchForRetry(tx, state.id);
@@ -955,13 +1015,15 @@ async function reconcileGoogleFormsWatchState(args: {
   });
 }
 
-export async function reconcileGoogleFormsWatchesForUser(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly formId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function reconcileGoogleFormsWatchesForUser(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly formId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const [state] = await args.db
     .select()
     .from(googleFormsWatchStates)
@@ -972,38 +1034,44 @@ export async function reconcileGoogleFormsWatchesForUser(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (state) {
-    await reconcileGoogleFormsWatchState({
-      db: args.db,
-      state,
-      signal: args.signal,
-    });
+    await reconcileGoogleFormsWatchState(
+      {
+        db: args.db,
+        state,
+      },
+      signal,
+    );
     return;
   }
-  const hasConsumer = await hasEnabledGoogleFormsConsumer(args);
+  const hasConsumer = await hasEnabledGoogleFormsConsumer(args, signal);
   if (hasConsumer) {
-    await ensureGoogleFormsWatchForUser(args);
+    await ensureGoogleFormsWatchForUser(args, signal);
   }
 }
 
-export async function cleanupGoogleFormsWatchesForConnector(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function cleanupGoogleFormsWatchesForConnector(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const states = await args.db
     .select()
     .from(googleFormsWatchStates)
     .where(eq(googleFormsWatchStates.connectorId, args.connectorId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   for (const state of states) {
-    await reconcileGoogleFormsWatchState({
-      db: args.db,
-      state,
-      excludedConnectorId: args.connectorId,
-      signal: args.signal,
-    });
+    await reconcileGoogleFormsWatchState(
+      {
+        db: args.db,
+        state,
+        excludedConnectorId: args.connectorId,
+      },
+      signal,
+    );
   }
 }
 
@@ -1022,10 +1090,12 @@ async function defaultPubSubOidcVerifier(
   };
 }
 
-async function verifyPubSubOidc(args: {
-  readonly authorization: string | null;
-  readonly signal: AbortSignal;
-}): Promise<
+async function verifyPubSubOidc(
+  args: {
+    readonly authorization: string | null;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "ok" }
   | { readonly kind: "unauthorized" }
   | { readonly kind: "config_error"; readonly message: string }
@@ -1046,9 +1116,9 @@ async function verifyPubSubOidc(args: {
   const verifier =
     pubSubOidcVerifierOverride.get() ?? defaultPubSubOidcVerifier;
   const claims = await tapError(
-    verifier(args.authorization.slice("Bearer ".length), audience, args.signal),
+    verifier(args.authorization.slice("Bearer ".length), audience, signal),
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return claims?.email === expectedEmail && claims.emailVerified
     ? { kind: "ok" }
     : { kind: "unauthorized" };
@@ -1094,16 +1164,18 @@ interface GoogleFormsEventAutomationRow {
   readonly cursor: string;
 }
 
-async function loadGoogleFormsWatchStates(args: {
-  readonly db: Db;
-  readonly decoded: DecodedGoogleFormsPubSubPush;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsWatchStateRow[]> {
+async function loadGoogleFormsWatchStates(
+  args: {
+    readonly db: Db;
+    readonly decoded: DecodedGoogleFormsPubSubPush;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsWatchStateRow[]> {
   const exact = await args.db
     .select()
     .from(googleFormsWatchStates)
     .where(eq(googleFormsWatchStates.watchId, args.decoded.watchId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (exact.length > 0) {
     return exact;
   }
@@ -1111,18 +1183,20 @@ async function loadGoogleFormsWatchStates(args: {
     .select()
     .from(googleFormsWatchStates)
     .where(eq(googleFormsWatchStates.formId, args.decoded.formId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return fallback;
 }
 
-async function loadGoogleFormsEventAutomations(args: {
-  readonly db: Db;
-  readonly state: GoogleFormsWatchStateRow;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsEventAutomationRow[]> {
+async function loadGoogleFormsEventAutomations(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleFormsWatchStateRow;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsEventAutomationRow[]> {
   const rows = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
@@ -1162,7 +1236,7 @@ async function loadGoogleFormsEventAutomations(args: {
         ),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const result: GoogleFormsEventAutomationRow[] = [];
   for (const row of rows) {
     const config = googleFormsResponseSubmittedEventConfigSchema.safeParse(
@@ -1171,11 +1245,14 @@ async function loadGoogleFormsEventAutomations(args: {
     if (!config.success || config.data.form.id !== args.state.formId) {
       continue;
     }
-    const canFire = await workflowAutomationCanFire(args.db, {
-      automation: row.automation,
-      agentId: row.agentId,
-      signal: args.signal,
-    });
+    const canFire = await workflowAutomationCanFire(
+      args.db,
+      {
+        automation: row.automation,
+        agentId: row.agentId,
+      },
+      signal,
+    );
     if (!canFire) {
       continue;
     }
@@ -1203,27 +1280,31 @@ async function loadGoogleFormsEventAutomations(args: {
   return result;
 }
 
-async function listGoogleFormResponses(args: {
-  readonly accessToken: string;
-  readonly formId: string;
-  readonly cursor: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsFetchResult<readonly GoogleFormResponse[]>> {
+async function listGoogleFormResponses(
+  args: {
+    readonly accessToken: string;
+    readonly formId: string;
+    readonly cursor: string;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsFetchResult<readonly GoogleFormResponse[]>> {
   let pageToken: string | undefined;
   const responses: GoogleFormResponse[] = [];
   do {
-    const page = await googleFormsFetchJson({
-      schema: googleFormResponsesSchema,
-      accessToken: args.accessToken,
-      url: responsesListUrl({
-        formId: args.formId,
-        cursor: args.cursor,
-        ...(pageToken === undefined ? {} : { pageToken }),
-      }),
-      init: { method: "GET" },
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const page = await googleFormsFetchJson(
+      {
+        schema: googleFormResponsesSchema,
+        accessToken: args.accessToken,
+        url: responsesListUrl({
+          formId: args.formId,
+          cursor: args.cursor,
+          ...(pageToken === undefined ? {} : { pageToken }),
+        }),
+        init: { method: "GET" },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (page.kind !== "ok") {
       return page;
     }
@@ -1298,15 +1379,17 @@ class GoogleFormsSourceTransitionChangedError extends Error {
   }
 }
 
-async function persistGoogleFormsSourceTransition(args: {
-  readonly tx: WorkflowQueueAdmissionTransaction;
-  readonly state: GoogleFormsWatchStateRow;
-  readonly automation: GoogleFormsEventAutomationRow;
-  readonly decoded: DecodedGoogleFormsPubSubPush;
-  readonly response: GoogleFormResponse;
-  readonly cursor: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function persistGoogleFormsSourceTransition(
+  args: {
+    readonly tx: WorkflowQueueAdmissionTransaction;
+    readonly state: GoogleFormsWatchStateRow;
+    readonly automation: GoogleFormsEventAutomationRow;
+    readonly decoded: DecodedGoogleFormsPubSubPush;
+    readonly response: GoogleFormResponse;
+    readonly cursor: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const [processed] = await args.tx
     .insert(googleFormsProcessedEvents)
     .values({
@@ -1339,7 +1422,7 @@ async function persistGoogleFormsSourceTransition(args: {
       ),
     )
     .returning({ automationId: googleFormsAutomationCursors.automationId });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!advanced) {
     throw new GoogleFormsSourceTransitionChangedError();
   }
@@ -1425,15 +1508,17 @@ const startGoogleFormsWorkflowRun$ = command(
           triggerSource: "workflow-event",
           triggerBrief: googleFormsTriggerBrief(args),
           persistSourceTransition: async (tx) => {
-            await persistGoogleFormsSourceTransition({
-              tx,
-              state: args.state,
-              automation: args.automation,
-              decoded: args.decoded,
-              response: args.response,
-              cursor: args.cursor,
+            await persistGoogleFormsSourceTransition(
+              {
+                tx,
+                state: args.state,
+                automation: args.automation,
+                decoded: args.decoded,
+                response: args.response,
+                cursor: args.cursor,
+              },
               signal,
-            });
+            );
           },
           dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           timing: args.timing.collectorForRunStart(),
@@ -1486,23 +1571,27 @@ async function eventAlreadyProcessed(args: {
   return processed !== undefined;
 }
 
-async function dispatchGoogleFormsAutomation(args: {
-  readonly db: Db;
-  readonly state: GoogleFormsWatchStateRow;
-  readonly automation: GoogleFormsEventAutomationRow;
-  readonly decoded: DecodedGoogleFormsPubSubPush;
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly startRun: GoogleFormsRunStarter;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsDispatchStateResult> {
-  const access = await resolveGoogleFormsAccess({
-    db: args.db,
-    orgId: args.automation.automation.orgId,
-    userId: args.automation.automation.ownerUserId,
-    connectorId: args.automation.config.connectorId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+async function dispatchGoogleFormsAutomation(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleFormsWatchStateRow;
+    readonly automation: GoogleFormsEventAutomationRow;
+    readonly decoded: DecodedGoogleFormsPubSubPush;
+    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly startRun: GoogleFormsRunStarter;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsDispatchStateResult> {
+  const access = await resolveGoogleFormsAccess(
+    {
+      db: args.db,
+      orgId: args.automation.automation.orgId,
+      userId: args.automation.automation.ownerUserId,
+      connectorId: args.automation.config.connectorId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
   if (access.kind !== "ok") {
     log.warn(
       "Google Forms event skipped because connector access is unavailable",
@@ -1516,12 +1605,14 @@ async function dispatchGoogleFormsAutomation(args: {
   const listed = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_external_events",
     async () => {
-      return await listGoogleFormResponses({
-        accessToken: access.access.accessToken,
-        formId: args.automation.config.form.id,
-        cursor: args.automation.cursor,
-        signal: args.signal,
-      });
+      return await listGoogleFormResponses(
+        {
+          accessToken: access.access.accessToken,
+          formId: args.automation.config.form.id,
+          cursor: args.automation.cursor,
+        },
+        signal,
+      );
     },
   );
   if (listed.kind !== "ok") {
@@ -1561,7 +1652,7 @@ async function dispatchGoogleFormsAutomation(args: {
       previouslyDelivered,
       timing: args.sourceTiming.createRunTiming(),
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (result === "error") {
       return {
         kind: "run_error",
@@ -1578,28 +1669,33 @@ async function dispatchGoogleFormsAutomation(args: {
   return { kind: "ok", dispatched, duplicates };
 }
 
-async function dispatchGoogleFormsWatchState(args: {
-  readonly db: Db;
-  readonly state: GoogleFormsWatchStateRow;
-  readonly decoded: DecodedGoogleFormsPubSubPush;
-  readonly sourceTiming: WorkflowEventSourceTiming;
-  readonly startRun: GoogleFormsRunStarter;
-  readonly signal: AbortSignal;
-}): Promise<GoogleFormsDispatchStateResult> {
+async function dispatchGoogleFormsWatchState(
+  args: {
+    readonly db: Db;
+    readonly state: GoogleFormsWatchStateRow;
+    readonly decoded: DecodedGoogleFormsPubSubPush;
+    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly startRun: GoogleFormsRunStarter;
+  },
+  signal: AbortSignal,
+): Promise<GoogleFormsDispatchStateResult> {
   const automations = await args.sourceTiming.measure(
     "api_dispatch_pre_create_zero_workflow_event_load_automations",
     async () => {
-      return await loadGoogleFormsEventAutomations(args);
+      return await loadGoogleFormsEventAutomations(args, signal);
     },
   );
   let dispatched = 0;
   let duplicates = 0;
   for (const automation of automations) {
-    const result = await dispatchGoogleFormsAutomation({
-      ...args,
-      automation,
-      sourceTiming: args.sourceTiming.fork(),
-    });
+    const result = await dispatchGoogleFormsAutomation(
+      {
+        ...args,
+        automation,
+        sourceTiming: args.sourceTiming.fork(),
+      },
+      signal,
+    );
     if (result.kind !== "ok") {
       return result;
     }
@@ -1631,10 +1727,12 @@ export const dispatchGoogleFormsPubSubPush$ = command(
     },
     signal: AbortSignal,
   ): Promise<GoogleFormsPubSubPushResult> => {
-    const auth = await verifyPubSubOidc({
-      authorization: args.authorization,
+    const auth = await verifyPubSubOidc(
+      {
+        authorization: args.authorization,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     if (auth.kind !== "ok") {
       return auth;
@@ -1657,7 +1755,7 @@ export const dispatchGoogleFormsPubSubPush$ = command(
     const states = await sourceTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
       async () => {
-        return await loadGoogleFormsWatchStates({ db, decoded, signal });
+        return await loadGoogleFormsWatchStates({ db, decoded }, signal);
       },
     );
     signal.throwIfAborted();
@@ -1671,14 +1769,16 @@ export const dispatchGoogleFormsPubSubPush$ = command(
     let dispatched = 0;
     let duplicates = 0;
     for (const state of states) {
-      const result = await dispatchGoogleFormsWatchState({
-        db,
-        state,
-        decoded,
-        sourceTiming: sourceTiming.fork(),
-        startRun,
+      const result = await dispatchGoogleFormsWatchState(
+        {
+          db,
+          state,
+          decoded,
+          sourceTiming: sourceTiming.fork(),
+          startRun,
+        },
         signal,
-      });
+      );
       if (result.kind !== "ok") {
         return result;
       }
@@ -1712,12 +1812,14 @@ export const renewGoogleFormsWatches$ = command(
     let renewed = 0;
     let failed = 0;
     for (const state of states) {
-      const result = await reconcileGoogleFormsWatchState({
-        db,
-        state,
-        renewBefore,
+      const result = await reconcileGoogleFormsWatchState(
+        {
+          db,
+          state,
+          renewBefore,
+        },
         signal,
-      });
+      );
       renewed += result.kind === "renewed" || result.kind === "created" ? 1 : 0;
       failed += result.kind === "failed" ? 1 : 0;
     }

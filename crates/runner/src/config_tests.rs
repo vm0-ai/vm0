@@ -158,34 +158,6 @@ fn default_profile_config() -> ProfileConfig {
     }
 }
 
-#[test]
-fn runtime_profiles_install_pi_standby_from_default_image() {
-    let mut profiles = make_profiles();
-    let default_profile = profiles[crate::profile::DEFAULT_PROFILE].clone();
-
-    install_internal_profile_aliases(&mut profiles);
-
-    assert_eq!(
-        profiles[crate::profile::PI_STANDBY_PROFILE],
-        default_profile
-    );
-}
-
-#[test]
-fn runtime_profiles_preserve_an_explicit_pi_standby_image() {
-    let mut profiles = make_profiles();
-    let explicit = ProfileConfig {
-        rootfs_hash: "explicit-rootfs".into(),
-        snapshot_hash: "explicit-snapshot".into(),
-        ..default_profile_config()
-    };
-    profiles.insert(crate::profile::PI_STANDBY_PROFILE.into(), explicit.clone());
-
-    install_internal_profile_aliases(&mut profiles);
-
-    assert_eq!(profiles[crate::profile::PI_STANDBY_PROFILE], explicit);
-}
-
 #[cfg(unix)]
 fn mode_of(path: &std::path::Path) -> u32 {
     use std::os::unix::fs::PermissionsExt;

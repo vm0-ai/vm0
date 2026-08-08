@@ -1,4 +1,3 @@
-import type { Stripe } from "stripe";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
@@ -16,7 +15,13 @@ import { logger } from "../../lib/log";
 import { now, nowDate, timestampWithoutTimeZone } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  isStripeResourceMissingError,
+  type StripePaymentIntent,
+  type StripeSubscription,
+  type StripeWebhookEvent,
+} from "../external/stripe-client";
 import { settle } from "../utils";
 import { getCampaign } from "./one-time-products";
 import {
@@ -1003,23 +1008,22 @@ async function handleUsageAllowanceInvoicePaid(
 }
 
 function stripePreviewMetadataForEvent(
-  event: Stripe.Event,
+  event: StripeWebhookEvent,
 ): readonly (Readonly<Record<string, string>> | null | undefined)[] | null {
-  switch (event.type) {
-    case "checkout.session.completed":
-    case "checkout.session.async_payment_succeeded": {
-      return [event.data.object.metadata];
+  switch (event.kind) {
+    case "checkout.session.paid": {
+      return [event.object.metadata];
     }
     case "invoice.paid": {
       return [
-        event.data.object.metadata,
-        event.data.object.parent?.subscription_details?.metadata,
+        event.object.metadata,
+        event.object.parent?.subscription_details?.metadata,
       ];
     }
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      return [event.data.object.metadata];
+      return [event.object.metadata];
     }
     default: {
       return null;
@@ -1027,7 +1031,7 @@ function stripePreviewMetadataForEvent(
   }
 }
 
-function shouldHandleStripePreviewEvent(event: Stripe.Event): boolean {
+function shouldHandleStripePreviewEvent(event: StripeWebhookEvent): boolean {
   const metadataCandidates = stripePreviewMetadataForEvent(event);
   if (metadataCandidates === null) {
     return true;
@@ -1049,7 +1053,7 @@ function stripeObjectId(value: unknown): string | null {
 
 async function paymentIntentMatchesCurrentStripePreview(
   stripe: ReturnType<typeof getStripeClient>,
-  paymentIntent: Stripe.PaymentIntent,
+  paymentIntent: StripePaymentIntent,
   customerId: string,
 ): Promise<boolean> {
   if (isCurrentStripePreviewMetadata(paymentIntent.metadata)) {
@@ -1064,7 +1068,7 @@ async function paymentIntentMatchesCurrentStripePreview(
 }
 
 async function handlePaymentIntentSucceeded(
-  paymentIntent: Stripe.PaymentIntent,
+  paymentIntent: StripePaymentIntent,
 ): Promise<void> {
   const customerId = stripeObjectId(paymentIntent.customer);
   const paymentMethodId = stripeObjectId(paymentIntent.payment_method);
@@ -2551,7 +2555,7 @@ function replacedProSubscriptionId(args: {
   return null;
 }
 
-function tierFromSubscription(subscription: Stripe.Subscription) {
+function tierFromSubscription(subscription: StripeSubscription) {
   const priceId = knownPlanPriceItem(subscription.items.data)?.price.id;
   if (!priceId) {
     return null;
@@ -2563,7 +2567,7 @@ function tierFromSubscription(subscription: Stripe.Subscription) {
 function isReplaceableProSubscription(args: {
   readonly orgId: string;
   readonly newSubscriptionId: string;
-  readonly subscription: Stripe.Subscription;
+  readonly subscription: StripeSubscription;
 }): boolean {
   const subscription = args.subscription;
   return (
@@ -2571,21 +2575,6 @@ function isReplaceableProSubscription(args: {
     subscription.metadata?.orgId === args.orgId &&
     (subscription.status === "active" || subscription.status === "trialing") &&
     tierFromSubscription(subscription) === "pro"
-  );
-}
-
-function isStripeResourceMissingError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-
-  const candidate = error as {
-    readonly code?: unknown;
-    readonly raw?: { readonly code?: unknown };
-  };
-  return (
-    candidate.code === "resource_missing" ||
-    candidate.raw?.code === "resource_missing"
   );
 }
 
@@ -2685,7 +2674,7 @@ async function cancelReplacedProSubscriptionsAfterTeamInvoice(args: {
 
 function isReplaceablePaidSubscriptionForAtomGrant(args: {
   readonly orgId: string;
-  readonly subscription: Stripe.Subscription;
+  readonly subscription: StripeSubscription;
 }): boolean {
   const subscription = args.subscription;
   return (
@@ -3943,7 +3932,7 @@ async function handleSubscriptionDeleted(
 export const handleStripeWebhookEvent$ = command(
   async (
     { get, set },
-    event: Stripe.Event,
+    event: StripeWebhookEvent,
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
@@ -3962,15 +3951,14 @@ export const handleStripeWebhookEvent$ = command(
       return;
     }
 
-    switch (event.type) {
+    switch (event.kind) {
       case "payment_intent.succeeded": {
-        await handlePaymentIntentSucceeded(event.data.object);
+        await handlePaymentIntentSucceeded(event.object);
         signal.throwIfAborted();
         break;
       }
-      case "checkout.session.completed":
-      case "checkout.session.async_payment_succeeded": {
-        const result = await handleCheckoutCompleted(db, event.data.object);
+      case "checkout.session.paid": {
+        const result = await handleCheckoutCompleted(db, event.object);
         signal.throwIfAborted();
         drainOrgId = result.drainOrgId;
         addBillingChangedOrgIds(billingChangedOrgIds, result.orgIds);
@@ -3980,7 +3968,7 @@ export const handleStripeWebhookEvent$ = command(
         const paidDrainOrgId = await handleInvoicePaid(
           db,
           getClerk,
-          event.data.object,
+          event.object,
         );
         signal.throwIfAborted();
         drainOrgId = paidDrainOrgId;
@@ -3993,7 +3981,7 @@ export const handleStripeWebhookEvent$ = command(
         const orgIds = await handleSubscriptionCreated(
           db,
           getClerk,
-          event.data.object,
+          event.object,
         );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
@@ -4002,15 +3990,15 @@ export const handleStripeWebhookEvent$ = command(
       case "customer.subscription.updated": {
         const orgIds = await handleSubscriptionUpdated(
           db,
-          event.data.object,
-          event.data.previous_attributes,
+          event.object,
+          event.previousAttributes,
         );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
       case "customer.subscription.deleted": {
-        const orgIds = await handleSubscriptionDeleted(db, event.data.object);
+        const orgIds = await handleSubscriptionDeleted(db, event.object);
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
@@ -4018,18 +4006,14 @@ export const handleStripeWebhookEvent$ = command(
       case "subscription_schedule.released": {
         const orgIds = await handleSubscriptionScheduleReleased(
           db,
-          event.data.object,
+          event.object,
         );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
-      case "subscription_schedule.canceled":
-      case "subscription_schedule.aborted": {
-        const orgIds = await handleSubscriptionScheduleEnded(
-          db,
-          event.data.object,
-        );
+      case "subscription_schedule.ended": {
+        const orgIds = await handleSubscriptionScheduleEnded(db, event.object);
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
@@ -4041,10 +4025,13 @@ export const handleStripeWebhookEvent$ = command(
 
     signal.throwIfAborted();
     for (const orgId of billingChangedOrgIds) {
-      await disableIneligibleWorkflowWebhookAutomationsForOrg(db, {
-        orgId,
+      await disableIneligibleWorkflowWebhookAutomationsForOrg(
+        db,
+        {
+          orgId,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
       await publishBillingChangedForOrg(db, orgId);
       signal.throwIfAborted();

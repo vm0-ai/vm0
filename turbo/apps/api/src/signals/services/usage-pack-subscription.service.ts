@@ -22,13 +22,17 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import type { Stripe } from "stripe";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  type StripeClient,
+  type StripeMetadataParam,
+  type StripePrice,
+} from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { upsertOrgPlanEntitlement } from "./org-plan-entitlements.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
@@ -231,7 +235,7 @@ function positiveMetadataInteger(
 function validateUsagePackPrice(
   usagePackUsd: UsagePackUsd,
   stripePriceId: string,
-  price: Stripe.Price,
+  price: StripePrice,
   requireActive: boolean,
 ): ValidatedUsagePackPrice {
   if (price.id !== stripePriceId) {
@@ -363,8 +367,8 @@ function usagePackCheckoutMetadata(args: {
   readonly adAttribution:
     | Readonly<Record<string, string | undefined>>
     | undefined;
-}): Stripe.MetadataParam {
-  const metadata: Stripe.MetadataParam = {
+}): StripeMetadataParam {
+  const metadata: StripeMetadataParam = {
     orgId: args.orgId,
     tier: args.tier,
     priceId: args.planPriceId,
@@ -1650,7 +1654,7 @@ interface ReconcileUsagePackSubscriptionResult {
 
 async function reconcileUsagePackSubscriptionCandidate(
   db: Db,
-  stripe: Stripe,
+  stripe: StripeClient,
   candidate: UsagePackSubscriptionRow,
   signal: AbortSignal,
 ): Promise<ReconcileUsagePackSubscriptionResult> {

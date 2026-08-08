@@ -1,5 +1,4 @@
 import { command, computed, type Computed } from "ccstate";
-import type { Block, KnownBlock } from "@slack/web-api";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getVm0VisibleModels,
@@ -40,11 +39,10 @@ import {
 import type { SlackFile } from "../../lib/slack-webhook-context";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
+import type { SlackAnyBlock } from "../external/slack-block-kit";
 import {
   createSlackClient,
-  openView,
-  postMessage,
-  publishAppHome,
+  type SlackClient,
 } from "../external/slack-message-client";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -266,7 +264,6 @@ interface CommandModelResponseArgs {
   readonly payload: SlackCommandPayload;
   readonly installation: SlackInstallation;
   readonly connection: SlackConnection;
-  readonly signal: AbortSignal;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -1029,8 +1026,7 @@ const refreshOrgAppHome$ = command(
     );
     const client = createSlackClient(botToken);
     if (!connection) {
-      await publishAppHome(
-        client,
+      await client.publishAppHome(
         slackUserId,
         buildAppHomeView({
           isLinked: false,
@@ -1089,8 +1085,7 @@ const refreshOrgAppHome$ = command(
       .where(eq(userCache.userId, connection.vm0UserId))
       .limit(1);
 
-    await publishAppHome(
-      client,
+    await client.publishAppHome(
       slackUserId,
       buildAppHomeView({
         isLinked: true,
@@ -1166,8 +1161,7 @@ const commandSwitchResponse$ = command(
       ),
     );
     const result = await tapError(
-      openView(
-        client,
+      client.openView(
         payload.trigger_id,
         buildAgentPickerModal({
           options,
@@ -1193,7 +1187,11 @@ const commandSwitchResponse$ = command(
 );
 
 const commandModelResponse$ = command(
-  async ({ get, set }, args: CommandModelResponseArgs): Promise<Response> => {
+  async (
+    { get, set },
+    args: CommandModelResponseArgs,
+    signal: AbortSignal,
+  ): Promise<Response> => {
     if (!args.installation.orgId) {
       return ephemeral(
         buildErrorMessage(
@@ -1212,7 +1210,7 @@ const commandModelResponse$ = command(
       slackModelPickerState$,
       args.installation.orgId,
       args.connection.vm0UserId,
-      args.signal,
+      signal,
     );
     if (!picker.enabled) {
       return ephemeral(
@@ -1234,9 +1232,9 @@ const commandModelResponse$ = command(
         }),
       ),
     );
+    signal.throwIfAborted();
     const result = await tapError(
-      openView(
-        client,
+      client.openView(
         args.payload.trigger_id,
         buildModelPickerModal({
           options: picker.options.slice(0, MODEL_PICKER_MAX_OPTIONS),
@@ -1250,6 +1248,7 @@ const commandModelResponse$ = command(
         L.warn("Failed to open model picker modal", { error });
       },
     );
+    signal.throwIfAborted();
     if (!result) {
       return ephemeral(
         buildErrorMessage(
@@ -1368,12 +1367,11 @@ export const handleZeroSlackCommands$ = command(
     }
 
     if (subCommand === "model") {
-      return set(commandModelResponse$, {
-        payload,
-        installation,
-        connection,
+      return set(
+        commandModelResponse$,
+        { payload, installation, connection },
         signal,
-      });
+      );
     }
 
     return ephemeral(
@@ -1386,30 +1384,33 @@ export const handleZeroSlackCommands$ = command(
 );
 
 async function postSlackUserNotice(args: {
-  readonly client: ReturnType<typeof createSlackClient>;
+  readonly client: SlackClient;
   readonly channelId: string;
   readonly channelType: SlackChannelType;
   readonly slackUserId: string;
   readonly threadTs: string;
   readonly ephemeralThreadTs?: string;
   readonly text: string;
-  readonly blocks?: (Block | KnownBlock)[];
+  readonly blocks?: SlackAnyBlock[];
 }): Promise<void> {
   if (args.channelType === "dm") {
-    await postMessage(args.client, args.channelId, args.text, {
+    await args.client.postMessage(args.channelId, args.text, {
       threadTs: args.threadTs,
       blocks: args.blocks,
     });
     return;
   }
 
-  await args.client.chat.postEphemeral({
+  const result = await args.client.postEphemeral({
     channel: args.channelId,
     user: args.slackUserId,
-    ...(args.ephemeralThreadTs && { thread_ts: args.ephemeralThreadTs }),
+    threadTs: args.ephemeralThreadTs,
     text: args.text,
-    ...(args.blocks && { blocks: args.blocks }),
+    blocks: args.blocks,
   });
+  if (result.kind === "slack_error") {
+    L.error("Failed to post Slack admission notice", { error: result.error });
+  }
 }
 
 const handleAppHomeOpened$ = command(
@@ -1475,15 +1476,14 @@ const handleMessagesTabOpened$ = command(
         : undefined;
       agentName = agent?.displayName ?? agent?.name;
     }
-    await postMessage(
-      createSlackClient(
-        await get(
-          decryptSlackBotToken({
-            installation,
-            userId: connection.vm0UserId,
-          }),
-        ),
+    await createSlackClient(
+      await get(
+        decryptSlackBotToken({
+          installation,
+          userId: connection.vm0UserId,
+        }),
       ),
+    ).postMessage(
       channelId,
       "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
       { blocks: buildWelcomeMessage(agentName) },
@@ -1774,16 +1774,14 @@ async function postEphemeralMessage(args: {
   readonly slackUserId: string;
   readonly text: string;
 }): Promise<void> {
-  await tapError(
-    createSlackClient(args.botToken).chat.postEphemeral({
-      channel: args.channel,
-      user: args.slackUserId,
-      text: args.text,
-    }),
-    (error) => {
-      L.warn("Failed to post ephemeral message", { error });
-    },
-  );
+  const result = await createSlackClient(args.botToken).postEphemeral({
+    channel: args.channel,
+    user: args.slackUserId,
+    text: args.text,
+  });
+  if (result.kind === "slack_error") {
+    L.warn("Failed to post ephemeral message", { error: result.error });
+  }
 }
 
 const handleAgentPickerSubmit$ = command(
@@ -1999,15 +1997,14 @@ const handleHomeSwitchAgent$ = command(
       ctx.orgId,
     );
     await tapError(
-      openView(
-        createSlackClient(
-          await get(
-            decryptSlackBotToken({
-              installation: ctx.installation,
-              userId: ctx.connection.vm0UserId,
-            }),
-          ),
+      createSlackClient(
+        await get(
+          decryptSlackBotToken({
+            installation: ctx.installation,
+            userId: ctx.connection.vm0UserId,
+          }),
         ),
+      ).openView(
         triggerId,
         buildAgentPickerModal({
           options,

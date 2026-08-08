@@ -17,10 +17,7 @@ import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import {
-  createSlackClient,
-  postMessage,
-} from "../external/slack-message-client";
+import { createSlackClient } from "../external/slack-message-client";
 import { now, nowDate } from "../../lib/time";
 import { settleIncludingAbort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
@@ -91,11 +88,13 @@ async function claimSlackChatDelivery(
   return callback;
 }
 
-async function loadSlackChatDeliveryContext(args: {
-  readonly db: Db;
-  readonly callback: ClaimedSlackChatDelivery;
-  readonly signal: AbortSignal;
-}) {
+async function loadSlackChatDeliveryContext(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedSlackChatDelivery;
+  },
+  signal: AbortSignal,
+) {
   const payload = slackChatCallbackPayloadSchema.parse(args.callback.payload);
   const [run] = await args.db
     .select({
@@ -114,7 +113,7 @@ async function loadSlackChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!run?.chatThreadId) {
     throw new Error("Slack chat delivery run context is unavailable");
   }
@@ -137,7 +136,7 @@ async function loadSlackChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const messageContent = event?.content;
   if (!messageContent) {
     throw new Error("Slack chat delivery message is unavailable");
@@ -175,7 +174,7 @@ async function loadSlackChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { payload, run, messageContent, binding };
 }
 
@@ -202,13 +201,15 @@ async function countCanonicalSlackMentioners(args: {
   return row?.count ?? 0;
 }
 
-async function deliverClaimedSlackChatCallback(args: {
-  readonly db: Db;
-  readonly callback: ClaimedSlackChatDelivery;
-  readonly signal: AbortSignal;
-}): Promise<"delivered" | "skipped_revoked"> {
+async function deliverClaimedSlackChatCallback(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedSlackChatDelivery;
+  },
+  signal: AbortSignal,
+): Promise<"delivered" | "skipped_revoked"> {
   const { payload, run, messageContent, binding } =
-    await loadSlackChatDeliveryContext(args);
+    await loadSlackChatDeliveryContext(args, signal);
   if (!binding) {
     return "skipped_revoked";
   }
@@ -222,27 +223,28 @@ async function deliverClaimedSlackChatCallback(args: {
     }),
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const [botToken, presentation] = await Promise.all([
     decryptPersistentSecretValue(binding.encryptedBotToken, featureContext),
-    resolveIntegrationAgentResponsePresentation({
-      db: args.db,
-      orgId: run.orgId,
-      userId: run.userId,
-      runId: args.callback.runId,
-      agentId: run.agentId,
-      replyToMention:
-        mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
-      getFeatureOverrides: () => {
-        return Promise.resolve(featureContext.overrides ?? {});
+    resolveIntegrationAgentResponsePresentation(
+      {
+        db: args.db,
+        orgId: run.orgId,
+        userId: run.userId,
+        runId: args.callback.runId,
+        agentId: run.agentId,
+        replyToMention:
+          mentionerCount > 1 ? `<@${binding.slackUserId}>` : undefined,
+        getFeatureOverrides: () => {
+          return Promise.resolve(featureContext.overrides ?? {});
+        },
       },
-      signal: args.signal,
-    }),
+      signal,
+    ),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
-  const postResult = await postMessage(
-    createSlackClient(botToken),
+  const postResult = await createSlackClient(botToken).postMessage(
     payload.channelId,
     messageContent,
     {
@@ -273,11 +275,13 @@ export async function dispatchSlackChatDeliveryOnce(
   }
 
   const delivery = await settleIncludingAbort(
-    deliverClaimedSlackChatCallback({
-      db,
-      callback,
+    deliverClaimedSlackChatCallback(
+      {
+        db,
+        callback,
+      },
       signal,
-    }),
+    ),
   );
   if (!delivery.ok) {
     const message =
@@ -314,18 +318,20 @@ export async function dispatchSlackChatDeliveryOnce(
   }
 }
 
-export async function deliverSlackChatAdmissionFailure(args: {
-  readonly db: Db;
-  readonly chatThreadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly agentId: string;
-  readonly channelId: string;
-  readonly threadTs: string;
-  readonly routeThreadTs?: string;
-  readonly chatEventId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function deliverSlackChatAdmissionFailure(
+  args: {
+    readonly db: Db;
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly channelId: string;
+    readonly threadTs: string;
+    readonly routeThreadTs?: string;
+    readonly chatEventId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
       .select({ content: chatEvents.content })
@@ -372,7 +378,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
       )
       .limit(1),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const event = eventRows[0];
   const binding = bindingRows[0];
   if (!event?.content || !binding) {
@@ -399,7 +405,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
         .where(eq(zeroAgents.id, args.agentId))
         .limit(1),
     ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const org = orgRows[0];
   const agent = agentRows[0];
 
@@ -418,9 +424,8 @@ export async function deliverSlackChatAdmissionFailure(args: {
     binding.encryptedBotToken,
     featureContext,
   );
-  args.signal.throwIfAborted();
-  const result = await postMessage(
-    createSlackClient(botToken),
+  signal.throwIfAborted();
+  const result = await createSlackClient(botToken).postMessage(
     args.channelId,
     event.content,
     {

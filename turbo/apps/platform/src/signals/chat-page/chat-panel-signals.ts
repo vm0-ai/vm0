@@ -1,10 +1,10 @@
 import type { Command, Computed } from "ccstate";
 import type {
   ChatFollowupsEvent,
-  ChatPromptEvent,
   GenerationTemplateRequest,
   ChatThreadArtifactRun,
   ChatThreadDraft,
+  UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
@@ -47,7 +47,7 @@ export type ThinkingIndicatorMode =
 export interface EventImageGroupProjection {
   readonly role: ChatEventGroup["role"];
   readonly events: readonly {
-    readonly attachFiles?: ChatPromptEvent["attachFiles"];
+    readonly userMessage?: UserMessageDocument;
     readonly blocks: readonly BodyRenderBlock[];
   }[];
 }

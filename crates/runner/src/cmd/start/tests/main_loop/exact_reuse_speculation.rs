@@ -1,18 +1,17 @@
 use super::super::super::*;
 use super::super::support::{
-    SpeculativeIdleSeedSpec, context_with_session, mock_run_config,
-    seed_idle_pool_with_speculative_timezone, shutdown, status_idle_reuse_keys_and_active_runs,
-    test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
-    wait_discover_entered, wait_idle_pool_len, wait_idle_pool_reuse_keys,
+    SpeculativeIdleSeedSpec, TEST_HEARTBEAT_GENERATION, TEST_RUNNER_ID, context_with_session,
+    mock_run_config, seed_idle_pool_with_speculative_timezone, shutdown,
+    status_idle_reuse_keys_and_active_runs, test_profiles, wait_budget_count, wait_cancel_handle,
+    wait_cancel_token_removed, wait_discover_entered, wait_idle_pool_len,
+    wait_idle_pool_reuse_keys,
 };
 use std::sync::Arc;
 
 use crate::guest_timezone::GuestTimezoneIntent;
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
-use crate::provider::{JobCandidate, RunnerPreference, RunnerPreferenceReason};
+use crate::provider::{JobCandidate, RunnerPreference, RunnerPreferenceTier};
 use crate::types::{ExecutionContext, SandboxReuseResult};
-
-const NON_SELECTED_RUNNER_ID: u128 = 1;
 
 fn exact_generation_candidate(
     run_id: RunId,
@@ -22,12 +21,12 @@ fn exact_generation_candidate(
     JobCandidate::new(run_id, "vm0/default".into())
         .with_reuse_key(Some(reuse_key.to_owned()))
         .with_history_generation_run_id(Some(history_generation_run_id))
-        .with_runner_preference(Some(RunnerPreference::for_test(
-            uuid::Uuid::from_u128(NON_SELECTED_RUNNER_ID),
-            1,
-            RunnerPreferenceReason::ExactHistoryGeneration,
+        .with_runner_preference_for_test(RunnerPreference::ranked_for_test(
+            TEST_RUNNER_ID.parse().unwrap(),
+            TEST_HEARTBEAT_GENERATION,
+            RunnerPreferenceTier::ExactSandbox,
             std::time::Instant::now() + Duration::from_secs(30),
-        )))
+        ))
 }
 
 fn claimed_context(run_id: RunId, reuse_key: &str, timezone: Option<&str>) -> ExecutionContext {

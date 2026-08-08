@@ -31,12 +31,7 @@ import {
   resolveRequiredDefaultChatThreadModelPin,
 } from "./zero-chat-thread-model.service";
 import { childAutonomyBudget } from "./autonomy-budget.service";
-import {
-  autonomyBudgetSchemaAvailable,
-  insertRolloutCompatibleThreadGoal,
-  rolloutCompatibleAutonomyBudgetColumn,
-  rolloutCompatibleThreadGoalColumns,
-} from "./autonomy-budget-schema.service";
+import { threadGoalColumns } from "./autonomy-budget-schema.service";
 
 export interface GoalBootstrap {
   readonly goalId: string;
@@ -78,7 +73,6 @@ interface CurrentGoalContext {
   readonly agentId: string;
   readonly runGoalId: string | null;
   readonly autonomyBudget: number;
-  readonly autonomyBudgetAvailable: boolean;
 }
 
 interface GoalAuth {
@@ -109,16 +103,12 @@ async function currentGoalContext(
   db: ReadonlyDb,
   auth: Pick<GoalAuth, "orgId" | "userId" | "runId">,
 ): Promise<CurrentGoalContext | null> {
-  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [row] = await db
     .select({
       threadId: zeroRuns.chatThreadId,
       agentId: agentSessions.agentComposeId,
       runGoalId: zeroRuns.goalId,
-      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
-        autonomyBudgetAvailable,
-        zeroRuns.autonomyBudget,
-      ),
+      autonomyBudget: zeroRuns.autonomyBudget,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -132,7 +122,7 @@ async function currentGoalContext(
     )
     .limit(1);
 
-  return row ? { ...row, autonomyBudgetAvailable } : null;
+  return row ?? null;
 }
 
 async function loadGoalForThread(
@@ -140,7 +130,7 @@ async function loadGoalForThread(
   args: { readonly orgId: string; readonly threadId: string },
 ): Promise<GoalRow | null> {
   const [row] = await db
-    .select(rolloutCompatibleThreadGoalColumns(false))
+    .select(threadGoalColumns())
     .from(threadGoals)
     .where(
       and(
@@ -170,7 +160,7 @@ async function loadOwnedGoalForThread(
   },
 ): Promise<GoalRow | null> {
   const [row] = await db
-    .select(rolloutCompatibleThreadGoalColumns(false))
+    .select(threadGoalColumns())
     .from(threadGoals)
     .where(
       and(
@@ -194,13 +184,12 @@ async function insertGoal(
     readonly objective: string;
     readonly objectiveBrief: string;
     readonly autonomyBudget: number;
-    readonly autonomyBudgetAvailable: boolean;
     readonly createdAt: Date;
   },
 ): Promise<GoalRow> {
-  const goal = await insertRolloutCompatibleThreadGoal(
-    tx,
-    {
+  const [goal] = await tx
+    .insert(threadGoals)
+    .values({
       orgId: args.orgId,
       ownerUserId: args.ownerUserId,
       agentId: args.agentId,
@@ -211,9 +200,8 @@ async function insertGoal(
       autonomyBudget: args.autonomyBudget,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
-    },
-    args.autonomyBudgetAvailable,
-  );
+    })
+    .returning(threadGoalColumns());
   if (!goal) {
     throw new Error("Failed to create thread goal");
   }
@@ -274,7 +262,7 @@ async function setGoalStatus(
     .update(threadGoals)
     .set({ status: args.status, updatedAt: args.updatedAt })
     .where(eq(threadGoals.id, args.goalId))
-    .returning(rolloutCompatibleThreadGoalColumns(false));
+    .returning(threadGoalColumns());
   if (!goal) {
     throw new Error("Failed to update thread goal");
   }
@@ -286,7 +274,6 @@ async function reactivateGoal(
   args: {
     readonly goal: GoalRow;
     readonly autonomyBudgetCeiling: number;
-    readonly autonomyBudgetAvailable: boolean;
     readonly objective?: string;
     readonly objectiveBrief?: string;
     readonly updatedAt: Date;
@@ -301,17 +288,13 @@ async function reactivateGoal(
       ...(args.objectiveBrief === undefined
         ? {}
         : { objectiveBrief: args.objectiveBrief }),
-      ...(args.autonomyBudgetAvailable
-        ? {
-            autonomyBudget: Math.min(
-              args.goal.autonomyBudget,
-              args.autonomyBudgetCeiling,
-            ),
-          }
-        : {}),
+      autonomyBudget: Math.min(
+        args.goal.autonomyBudget,
+        args.autonomyBudgetCeiling,
+      ),
     })
     .where(eq(threadGoals.id, args.goal.id))
-    .returning(rolloutCompatibleThreadGoalColumns(false));
+    .returning(threadGoalColumns());
   if (!goal) {
     throw new Error("Failed to reactivate thread goal");
   }
@@ -398,7 +381,6 @@ export async function createGoalForCurrentThread(
       objective: args.objective,
       objectiveBrief,
       autonomyBudget: derivedBudget.autonomyBudget,
-      autonomyBudgetAvailable: context.autonomyBudgetAvailable,
       createdAt,
     });
     await appendGoalEventMarker(tx, {
@@ -666,7 +648,6 @@ export async function resumeCurrentGoal(
     const row = await reactivateGoal(tx, {
       goal: current,
       autonomyBudgetCeiling: reactivationBudget.autonomyBudget,
-      autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
       updatedAt: resumedAt,
     });
     await appendGoalEventMarker(tx, {
@@ -732,7 +713,6 @@ export async function editCurrentGoal(
         objective: args.objective,
         objectiveBrief,
         autonomyBudget: replacementBudget.autonomyBudget,
-        autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
         createdAt: editedAt,
       });
       await appendGoalEventMarker(tx, {
@@ -745,7 +725,6 @@ export async function editCurrentGoal(
     const row = await reactivateGoal(tx, {
       goal: current,
       autonomyBudgetCeiling: replacementBudget.autonomyBudget,
-      autonomyBudgetAvailable: goal.context.autonomyBudgetAvailable,
       objective: args.objective,
       objectiveBrief,
       updatedAt: editedAt,

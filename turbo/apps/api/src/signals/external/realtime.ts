@@ -5,9 +5,8 @@ import type {
   ConnectorChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
-  RunnerPreference,
+  PiExecutionMode,
   RunnerPreferenceDecision,
-  RunnerPreferenceResolution,
 } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
@@ -429,50 +428,48 @@ export async function publishPiStandbyReleaseToRunnerGroupSafely(
   );
 }
 
-export async function publishRunnerJobNotification(
-  group: string,
-  runId: string,
-  profile: string,
-  metadata?: {
+export async function publishRunnerJobNotification(args: {
+  readonly group: string;
+  readonly runId: string;
+  readonly profile: string;
+  readonly piExecutionMode?: PiExecutionMode;
+  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
+  readonly metadata?: {
     /** Raw key required for runner-local reuse matching; it stays on the internal runner-group channel. */
     readonly reuseKey: string | null;
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationRunId: string | undefined;
-    readonly runnerPreferenceDecision: RunnerPreferenceDecision;
-    readonly runnerPreference?: RunnerPreference;
-    readonly runnerPreferenceResolution: RunnerPreferenceResolution;
-  },
-): Promise<boolean> {
+  };
+}): Promise<boolean> {
   const published = await tapError(
     (async () => {
-      const channel = ablyClient().channels.get(`runner-group:${group}`);
+      const channel = ablyClient().channels.get(`runner-group:${args.group}`);
       await channel.publish("job", {
-        runId,
-        profile,
-        ...(metadata?.reuseKey ? { reuseKey: metadata.reuseKey } : {}),
-        ...(metadata?.cliAgentSessionId
-          ? { cliAgentSessionId: metadata.cliAgentSessionId }
+        runId: args.runId,
+        profile: args.profile,
+        ...(args.piExecutionMode
+          ? { piExecutionMode: args.piExecutionMode }
           : {}),
-        ...(metadata?.historyGenerationRunId
-          ? { historyGenerationRunId: metadata.historyGenerationRunId }
+        ...(args.metadata?.reuseKey
+          ? { reuseKey: args.metadata.reuseKey }
           : {}),
-        ...(metadata?.runnerPreference
-          ? { runnerPreference: metadata.runnerPreference }
+        ...(args.metadata?.cliAgentSessionId
+          ? { cliAgentSessionId: args.metadata.cliAgentSessionId }
           : {}),
-        ...(metadata
-          ? {
-              runnerPreferenceDecision: metadata.runnerPreferenceDecision,
-              runnerPreferenceResolution: metadata.runnerPreferenceResolution,
-            }
+        ...(args.metadata?.historyGenerationRunId
+          ? { historyGenerationRunId: args.metadata.historyGenerationRunId }
           : {}),
+        runnerPreferenceDecision: args.runnerPreferenceDecision,
       });
-      L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);
+      L.debug(
+        `Published job ${args.runId} to runner-group:${args.group} (broadcast)`,
+      );
       return true;
     })(),
     (error) => {
       L.warn("Failed to publish runner job notification", {
-        group,
-        runId,
+        group: args.group,
+        runId: args.runId,
         error,
       });
     },

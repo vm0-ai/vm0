@@ -159,19 +159,21 @@ describe("Pi Codex subscription provider", () => {
     );
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
     try {
-      const messages = await runPiAgentPrompt({
-        model: {
-          provider: "codex",
-          baseUrl: CODEX_BASE_URL,
-          apiKey: accessToken,
-          model: "gpt-5.5",
+      const messages = await runPiAgentPrompt(
+        {
+          model: {
+            provider: "codex",
+            baseUrl: CODEX_BASE_URL,
+            apiKey: accessToken,
+            model: "gpt-5.5",
+          },
+          systemPrompt: "You are a test Pi agent.",
+          prompt: "say hello",
+          executionEnv: env,
+          onEvent() {},
         },
-        systemPrompt: "You are a test Pi agent.",
-        prompt: "say hello",
-        executionEnv: env,
-        signal: new AbortController().signal,
-        onEvent() {},
-      });
+        new AbortController().signal,
+      );
       expect(requestUrl).toBe(`${CODEX_BASE_URL}/codex/responses`);
       expect(requestHeaders?.get("authorization")).toBe(
         `Bearer ${accessToken}`,
@@ -209,19 +211,21 @@ describe("Pi Codex subscription provider", () => {
     );
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
     try {
-      await runPiAgentPrompt({
-        model: {
-          provider: "codex",
-          baseUrl: CODEX_BASE_URL,
-          apiKey: "chatgpt-token-CoffeeSafeLocal-not-a-jwt",
-          model: "gpt-5.5",
+      await runPiAgentPrompt(
+        {
+          model: {
+            provider: "codex",
+            baseUrl: CODEX_BASE_URL,
+            apiKey: "chatgpt-token-CoffeeSafeLocal-not-a-jwt",
+            model: "gpt-5.5",
+          },
+          systemPrompt: "You are a test Pi agent.",
+          prompt: "run in the sandbox",
+          executionEnv: env,
+          onEvent() {},
         },
-        systemPrompt: "You are a test Pi agent.",
-        prompt: "run in the sandbox",
-        executionEnv: env,
-        signal: new AbortController().signal,
-        onEvent() {},
-      });
+        new AbortController().signal,
+      );
       const authorization = requestHeaders?.get("authorization");
       expect(authorization).toBeDefined();
       const token = authorization?.slice("Bearer ".length) ?? "";

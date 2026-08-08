@@ -785,7 +785,7 @@ describe("chat lifecycle", () => {
   it("renders the latest chat groups first and prepends older in-memory groups near the top", async () => {
     mockResizeObserver();
     let markReadCalls = 0;
-    const threadId = "render-window-thread";
+    const threadId = "e5000000-0000-4000-a000-000000000001";
     const chatEvents: ChatEvent[] = Array.from({ length: 24 }, (_, index) => {
       return {
         id: `render-window-message-${index}`,
@@ -848,7 +848,7 @@ describe("chat lifecycle", () => {
   });
 
   it("counts a folded tail run group as one item in the initial chat window", async () => {
-    const threadId = "render-window-tail-run-group";
+    const threadId = "e5000000-0000-4000-a000-000000000002";
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Tail run group window",
@@ -884,7 +884,7 @@ describe("chat lifecycle", () => {
   });
 
   it("labels folded runs from their userMessage projection", async () => {
-    const threadId = "structured-run-group-label";
+    const threadId = "e5000000-0000-4000-a000-000000000003";
     const messages = makeRunGroupMessages({
       label: "legacy run label",
       count: 2,
@@ -933,7 +933,7 @@ describe("chat lifecycle", () => {
   });
 
   it("keeps the item before a folded middle run group in the initial chat window", async () => {
-    const threadId = "render-window-middle-run-group";
+    const threadId = "e5000000-0000-4000-a000-000000000004";
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Middle run group window",

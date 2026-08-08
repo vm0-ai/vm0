@@ -245,18 +245,20 @@ export async function resolveAgentPhoneReplyFooterText(args: {
   return label ? `Responded by ${label}` : undefined;
 }
 
-export async function resolveAgentPhoneAuditLogsUrl(args: {
-  readonly getFeatureOverrides: (
-    orgId: string,
-    userId: string,
-  ) => Promise<Record<string, boolean>>;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
+export async function resolveAgentPhoneAuditLogsUrl(
+  args: {
+    readonly getFeatureOverrides: (
+      orgId: string,
+      userId: string,
+    ) => Promise<Record<string, boolean>>;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runId: string;
+  },
+  signal: AbortSignal,
+): Promise<string | undefined> {
   const overrides = await args.getFeatureOverrides(args.orgId, args.userId);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const enabled = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
     userId: args.userId,
     orgId: args.orgId,

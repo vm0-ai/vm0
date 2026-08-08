@@ -25,10 +25,6 @@ import {
   hiddenGoalStateEvent,
 } from "./zero-chat-goal-marker.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import {
-  autonomyBudgetSchemaAvailable,
-  rolloutCompatibleAutonomyBudgetColumn,
-} from "./autonomy-budget-schema.service";
 import { lockGoalThread } from "./zero-goal-lock.service";
 
 const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
@@ -177,7 +173,6 @@ export async function loadGoalQueueTarget(
   db: Db,
   event: PendingGoalQueueEvent,
 ): Promise<GoalQueueTarget | null> {
-  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [goal] = await db
     .select({
       goalId: threadGoals.id,
@@ -187,10 +182,7 @@ export async function loadGoalQueueTarget(
       agentId: threadGoals.agentId,
       objective: threadGoals.objective,
       objectiveBrief: threadGoals.objectiveBrief,
-      autonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
-        autonomyBudgetAvailable,
-        threadGoals.autonomyBudget,
-      ),
+      autonomyBudget: threadGoals.autonomyBudget,
       status: threadGoals.status,
       // A Date decoder drops PostgreSQL microseconds needed by the final CAS.
       stateRevision: sql`${threadGoals.updatedAt}::text`.mapWith(pgTextDecoder),

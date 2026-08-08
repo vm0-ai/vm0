@@ -273,27 +273,31 @@ function throwCapturedAbort(error: unknown): void {
   }
 }
 
-async function finalizeConnectorStateChangeAfterCommit(args: {
-  readonly userId: string;
-  readonly connectorSlug: ConnectorSlug;
-  readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
-  readonly signal: AbortSignal;
-  readonly postCommitAbort: unknown;
-}): Promise<void> {
+async function finalizeConnectorStateChangeAfterCommit(
+  args: {
+    readonly userId: string;
+    readonly connectorSlug: ConnectorSlug;
+    readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
+    readonly postCommitAbort: unknown;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   let postCommitAbort = args.postCommitAbort;
   if (args.pendingTokenRevoke) {
-    await revokePendingConnectorToken({
-      pending: args.pendingTokenRevoke,
-      signal: args.signal,
-    });
-    if (args.signal.aborted) {
-      postCommitAbort ??= args.signal.reason;
+    await revokePendingConnectorToken(
+      {
+        pending: args.pendingTokenRevoke,
+      },
+      signal,
+    );
+    if (signal.aborted) {
+      postCommitAbort ??= signal.reason;
     }
   }
 
   await publishConnectorChangedForUserSafely(args.userId, args.connectorSlug);
-  if (args.signal.aborted) {
-    postCommitAbort ??= args.signal.reason;
+  if (signal.aborted) {
+    postCommitAbort ??= signal.reason;
   }
   throwCapturedAbort(postCommitAbort);
 }
@@ -378,11 +382,13 @@ function prepareManualGrantConnect(
   };
 }
 
-async function encryptManualGrantSecrets(args: {
-  readonly secretValues: readonly PreparedManualGrantField[];
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<readonly EncryptedManualGrantSecret[]> {
+async function encryptManualGrantSecrets(
+  args: {
+    readonly secretValues: readonly PreparedManualGrantField[];
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<readonly EncryptedManualGrantSecret[]> {
   const encryptedSecrets: EncryptedManualGrantSecret[] = [];
   for (const field of args.secretValues) {
     encryptedSecrets.push({
@@ -392,7 +398,7 @@ async function encryptManualGrantSecrets(args: {
         args.featureSwitchContext,
       ),
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
   return encryptedSecrets;
 }
@@ -597,12 +603,14 @@ export function zeroConnectorBySlug(args: {
   });
 }
 
-async function loadPendingConnectorTokenRevoke(args: {
-  readonly access: ConnectorCredentialAccess;
-  readonly db: Db | ReadonlyDb;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<PendingConnectorTokenRevoke | null> {
+async function loadPendingConnectorTokenRevoke(
+  args: {
+    readonly access: ConnectorCredentialAccess;
+    readonly db: Db | ReadonlyDb;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<PendingConnectorTokenRevoke | null> {
   const revokeMetadata = connectorAuthMethodRevokeMetadata(
     args.access.runtimeMethod.method,
   );
@@ -631,7 +639,7 @@ async function loadPendingConnectorTokenRevoke(args: {
         groups: [{ access: args.access, names: secretNames }],
       }),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const encryptedValuesByName = new Map(
     secretRows.flatMap((row) => {
@@ -668,26 +676,46 @@ async function decryptConnectorRevokeInputs(args: {
   return inputs;
 }
 
-async function revokePendingConnectorToken(args: {
-  readonly pending: PendingConnectorTokenRevoke;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function revokePendingConnectorToken(
+  args: {
+    readonly pending: PendingConnectorTokenRevoke;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
-    revokeConnectorAuthMethodAccessTokenWithMethod({
-      connectorSlug: args.pending.runtimeMethod.connectorSlug,
-      authMethodId: args.pending.runtimeMethod.authMethodId,
-      method: args.pending.runtimeMethod.method,
-      readEnv: optionalEnv,
-      signal: args.signal,
-      loadInputs: () => {
-        return decryptConnectorRevokeInputs({
-          encryptedInputs: args.pending.encryptedInputs,
-          featureSwitchContext: args.pending.featureSwitchContext,
-        });
+    revokeConnectorAuthMethodAccessTokenWithMethod(
+      {
+        connectorSlug: args.pending.runtimeMethod.connectorSlug,
+        authMethodId: args.pending.runtimeMethod.authMethodId,
+        method: args.pending.runtimeMethod.method,
+        readEnv: optionalEnv,
+        loadInputs: () => {
+          return decryptConnectorRevokeInputs({
+            encryptedInputs: args.pending.encryptedInputs,
+            featureSwitchContext: args.pending.featureSwitchContext,
+          });
+        },
       },
-    }),
+      signal,
+    ),
   );
+}
+
+async function cleanupConnectorWatchesForDisconnect(
+  db: Db,
+  connectorSlug: string,
+  connectorId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const args = { db, connectorId };
+  if (connectorSlug === "gmail") {
+    await bestEffort(cleanupGmailWatchesForConnector(args, signal));
+  } else if (connectorSlug === "google-calendar") {
+    await bestEffort(cleanupGoogleCalendarWatchesForConnector(args, signal));
+  } else if (connectorSlug === "google-forms") {
+    await bestEffort(cleanupGoogleFormsWatchesForConnector(args, signal));
+  }
 }
 
 export const deleteZeroConnectorLocalState$ = command(
@@ -762,46 +790,32 @@ export const deleteZeroConnectorLocalState$ = command(
         accessResult.kind === "ok" &&
         accessResult.access.runtimeMethod.method.revoke.kind === "token-revoke"
       ) {
-        pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
-          access: accessResult.access,
-          db: tx,
-          featureSwitchContext,
+        pendingTokenRevoke = await loadPendingConnectorTokenRevoke(
+          {
+            access: accessResult.access,
+            db: tx,
+            featureSwitchContext,
+          },
           signal,
-        });
-      }
-      signal.throwIfAborted();
-
-      if (args.connectorSlug === "gmail") {
-        await bestEffort(
-          cleanupGmailWatchesForConnector({
-            db: tx,
-            connectorId: existing.id,
-            signal,
-          }),
-        );
-      } else if (args.connectorSlug === "google-calendar") {
-        await bestEffort(
-          cleanupGoogleCalendarWatchesForConnector({
-            db: tx,
-            connectorId: existing.id,
-            signal,
-          }),
-        );
-      } else if (args.connectorSlug === "google-forms") {
-        await bestEffort(
-          cleanupGoogleFormsWatchesForConnector({
-            db: tx,
-            connectorId: existing.id,
-            signal,
-          }),
         );
       }
       signal.throwIfAborted();
 
-      await deleteConnectorOwnedCredentialRows(tx, {
-        connectorId: existing.id,
+      await cleanupConnectorWatchesForDisconnect(
+        tx,
+        args.connectorSlug,
+        existing.id,
         signal,
-      });
+      );
+      signal.throwIfAborted();
+
+      await deleteConnectorOwnedCredentialRows(
+        tx,
+        {
+          connectorId: existing.id,
+        },
+        signal,
+      );
       await tx.delete(connectors).where(eq(connectors.id, existing.id));
       signal.throwIfAborted();
 
@@ -816,13 +830,15 @@ export const deleteZeroConnectorLocalState$ = command(
       return false;
     }
 
-    await finalizeConnectorStateChangeAfterCommit({
-      userId: args.userId,
-      connectorSlug: args.connectorSlug,
-      pendingTokenRevoke: deleteResult.pendingTokenRevoke,
+    await finalizeConnectorStateChangeAfterCommit(
+      {
+        userId: args.userId,
+        connectorSlug: args.connectorSlug,
+        pendingTokenRevoke: deleteResult.pendingTokenRevoke,
+        postCommitAbort,
+      },
       signal,
-      postCommitAbort,
-    });
+    );
     signal.throwIfAborted();
 
     return true;
@@ -899,8 +915,8 @@ async function deleteUserSecretNames(
     readonly orgId: string;
     readonly userId: string;
     readonly names: readonly string[];
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<void> {
   for (const name of args.names) {
     await db
@@ -913,7 +929,7 @@ async function deleteUserSecretNames(
           eq(secrets.type, "user"),
         ),
       );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 }
 
@@ -923,8 +939,8 @@ async function deleteVariableNames(
     readonly orgId: string;
     readonly userId: string;
     readonly names: readonly string[];
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<void> {
   for (const name of args.names) {
     await db
@@ -937,7 +953,7 @@ async function deleteVariableNames(
           eq(variables.name, name),
         ),
       );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 }
 
@@ -945,13 +961,13 @@ async function deleteConnectorOwnedCredentialRows(
   db: Db,
   args: {
     readonly connectorId: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<void> {
   await db.delete(secrets).where(eq(secrets.connectorId, args.connectorId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   await db.delete(variables).where(eq(variables.connectorId, args.connectorId));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 async function cleanupExistingStoredConnectorForLocalConnect(
@@ -962,8 +978,8 @@ async function cleanupExistingStoredConnectorForLocalConnect(
     readonly connectorSlug: string;
     readonly snapshot: ConnectorRuntimeSnapshot;
     readonly featureSwitchContext: FeatureSwitchContext;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<PendingConnectorTokenRevoke | null> {
   const [existing] = await db
     .select({
@@ -981,7 +997,7 @@ async function cleanupExistingStoredConnectorForLocalConnect(
     )
     .for("update")
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!existing) {
     return null;
   }
@@ -1002,18 +1018,23 @@ async function cleanupExistingStoredConnectorForLocalConnect(
     accessResult.kind === "ok" &&
     accessResult.access.runtimeMethod.method.revoke.kind === "token-revoke"
   ) {
-    pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
-      access: accessResult.access,
-      db,
-      featureSwitchContext: args.featureSwitchContext,
-      signal: args.signal,
-    });
+    pendingTokenRevoke = await loadPendingConnectorTokenRevoke(
+      {
+        access: accessResult.access,
+        db,
+        featureSwitchContext: args.featureSwitchContext,
+      },
+      signal,
+    );
   }
 
-  await deleteConnectorOwnedCredentialRows(db, {
-    connectorId: existing.id,
-    signal: args.signal,
-  });
+  await deleteConnectorOwnedCredentialRows(
+    db,
+    {
+      connectorId: existing.id,
+    },
+    signal,
+  );
 
   return pendingTokenRevoke;
 }
@@ -1025,10 +1046,10 @@ async function writeManualGrantCredentials(
     readonly encryptedSecrets: readonly EncryptedManualGrantSecret[];
     readonly method: ConnectorRuntimeMethod["method"];
     readonly orgId: string;
-    readonly signal: AbortSignal;
     readonly userId: string;
     readonly variableValues: readonly PreparedManualGrantField[];
   },
+  signal: AbortSignal,
 ): Promise<void> {
   for (const field of args.encryptedSecrets) {
     await upsertConnectorOwnedSecret(db, {
@@ -1041,7 +1062,7 @@ async function writeManualGrantCredentials(
       description: null,
       updatedDescription: null,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 
   for (const field of args.variableValues) {
@@ -1055,7 +1076,7 @@ async function writeManualGrantCredentials(
       description: null,
       updatedDescription: null,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 }
 
@@ -1084,11 +1105,13 @@ export const connectManualGrantConnector$ = command(
     );
     signal.throwIfAborted();
 
-    const encryptedSecrets = await encryptManualGrantSecrets({
-      secretValues: preparedResult.prepared.secretValues,
-      featureSwitchContext,
+    const encryptedSecrets = await encryptManualGrantSecrets(
+      {
+        secretValues: preparedResult.prepared.secretValues,
+        featureSwitchContext,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
     let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
@@ -1111,8 +1134,8 @@ export const connectManualGrantConnector$ = command(
           connectorSlug: args.runtimeMethod.connectorSlug,
           snapshot: args.snapshot,
           featureSwitchContext,
-          signal,
         },
+        signal,
       );
 
       connectorRow = await upsertLocalConnectorRow(tx, {
@@ -1124,28 +1147,37 @@ export const connectManualGrantConnector$ = command(
       });
       signal.throwIfAborted();
 
-      await writeManualGrantCredentials(tx, {
-        connectorId: connectorRow.id,
-        encryptedSecrets,
-        method: args.runtimeMethod.method,
-        orgId: args.orgId,
+      await writeManualGrantCredentials(
+        tx,
+        {
+          connectorId: connectorRow.id,
+          encryptedSecrets,
+          method: args.runtimeMethod.method,
+          orgId: args.orgId,
+          userId: args.userId,
+          variableValues: preparedResult.prepared.variableValues,
+        },
         signal,
-        userId: args.userId,
-        variableValues: preparedResult.prepared.variableValues,
-      });
+      );
 
-      await deleteUserSecretNames(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        names: preparedResult.prepared.configuredSecretNames,
+      await deleteUserSecretNames(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          names: preparedResult.prepared.configuredSecretNames,
+        },
         signal,
-      });
-      await deleteVariableNames(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        names: preparedResult.prepared.configuredVariableNames,
+      );
+      await deleteVariableNames(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          names: preparedResult.prepared.configuredVariableNames,
+        },
         signal,
-      });
+      );
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
@@ -1155,13 +1187,15 @@ export const connectManualGrantConnector$ = command(
       throw new Error("Expected manual grant connector upsert to return a row");
     }
 
-    await finalizeConnectorStateChangeAfterCommit({
-      userId: args.userId,
-      connectorSlug: args.runtimeMethod.connectorSlug,
-      pendingTokenRevoke,
+    await finalizeConnectorStateChangeAfterCommit(
+      {
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        pendingTokenRevoke,
+        postCommitAbort,
+      },
       signal,
-      postCommitAbort,
-    });
+    );
     signal.throwIfAborted();
 
     return {
@@ -1212,8 +1246,8 @@ export const connectNoAuthConnector$ = command(
           connectorSlug: args.runtimeMethod.connectorSlug,
           snapshot: args.snapshot,
           featureSwitchContext,
-          signal,
         },
+        signal,
       );
 
       connectorRow = await upsertLocalConnectorRow(tx, {
@@ -1233,13 +1267,15 @@ export const connectNoAuthConnector$ = command(
       throw new Error("Expected no-auth connector upsert to return a row");
     }
 
-    await finalizeConnectorStateChangeAfterCommit({
-      userId: args.userId,
-      connectorSlug: args.runtimeMethod.connectorSlug,
-      pendingTokenRevoke,
+    await finalizeConnectorStateChangeAfterCommit(
+      {
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        pendingTokenRevoke,
+        postCommitAbort,
+      },
       signal,
-      postCommitAbort,
-    });
+    );
     signal.throwIfAborted();
 
     return {
@@ -1465,12 +1501,14 @@ function connectorOutputSecretNames(
   return secretNames;
 }
 
-async function encryptExtraConnectorTokenSecrets(args: {
-  readonly connectorSlug: string;
-  readonly extraSecrets: readonly (readonly [string, string])[];
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<readonly EncryptedConnectorTokenSecret[]> {
+async function encryptExtraConnectorTokenSecrets(
+  args: {
+    readonly connectorSlug: string;
+    readonly extraSecrets: readonly (readonly [string, string])[];
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<readonly EncryptedConnectorTokenSecret[]> {
   const encryptedSecrets: EncryptedConnectorTokenSecret[] = [];
   for (const [name, value] of args.extraSecrets) {
     encryptedSecrets.push(
@@ -1481,21 +1519,23 @@ async function encryptExtraConnectorTokenSecrets(args: {
         featureSwitchContext: args.featureSwitchContext,
       }),
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
   return encryptedSecrets;
 }
 
-async function prepareConnectorTokenState(args: {
-  readonly connectorSlug: string;
-  readonly outputTargets: Readonly<Record<string, ConnectorOutputTarget>>;
-  readonly requiredOutputNames: readonly string[];
-  readonly requiredExtraSecretNames: readonly string[];
-  readonly outputs: ConnectorTokenOutputValues;
-  readonly extraSecrets: readonly (readonly [string, string])[];
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<PreparedConnectorTokenState> {
+async function prepareConnectorTokenState(
+  args: {
+    readonly connectorSlug: string;
+    readonly outputTargets: Readonly<Record<string, ConnectorOutputTarget>>;
+    readonly requiredOutputNames: readonly string[];
+    readonly requiredExtraSecretNames: readonly string[];
+    readonly outputs: ConnectorTokenOutputValues;
+    readonly extraSecrets: readonly (readonly [string, string])[];
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<PreparedConnectorTokenState> {
   validateConnectorTokenOutputRequirements({
     connectorSlug: args.connectorSlug,
     outputs: args.outputs,
@@ -1528,16 +1568,18 @@ async function prepareConnectorTokenState(args: {
     } else {
       connectorTokenVariables.push({ name: target.name, value });
     }
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 
   encryptedConnectorTokenSecrets.push(
-    ...(await encryptExtraConnectorTokenSecrets({
-      connectorSlug: args.connectorSlug,
-      extraSecrets: args.extraSecrets,
-      featureSwitchContext: args.featureSwitchContext,
-      signal: args.signal,
-    })),
+    ...(await encryptExtraConnectorTokenSecrets(
+      {
+        connectorSlug: args.connectorSlug,
+        extraSecrets: args.extraSecrets,
+        featureSwitchContext: args.featureSwitchContext,
+      },
+      signal,
+    )),
   );
   return {
     secrets: encryptedConnectorTokenSecrets,
@@ -1545,15 +1587,17 @@ async function prepareConnectorTokenState(args: {
   };
 }
 
-async function upsertConnectorTokenSecrets(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly secrets: readonly EncryptedConnectorTokenSecret[];
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function upsertConnectorTokenSecrets(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly method: ConnectorAuthMethodRuntimeConfig;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly secrets: readonly EncryptedConnectorTokenSecret[];
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (args.secrets.length === 0) {
     return;
   }
@@ -1569,19 +1613,21 @@ async function upsertConnectorTokenSecrets(args: {
       description: secret.description,
       updatedDescription: secret.description,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 }
 
-async function upsertConnectorTokenVariables(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly variables: readonly PreparedConnectorTokenVariable[];
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function upsertConnectorTokenVariables(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly method: ConnectorAuthMethodRuntimeConfig;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly variables: readonly PreparedConnectorTokenVariable[];
+  },
+  signal: AbortSignal,
+): Promise<void> {
   for (const variable of args.variables) {
     await upsertConnectorOwnedVariable(args.db, {
       connectorId: args.connectorId,
@@ -1593,37 +1639,43 @@ async function upsertConnectorTokenVariables(args: {
       description: null,
       updatedDescription: null,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
   }
 }
 
-async function upsertPreparedConnectorTokenState(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly method: ConnectorAuthMethodRuntimeConfig;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly state: PreparedConnectorTokenState;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await upsertConnectorTokenSecrets({
-    db: args.db,
-    connectorId: args.connectorId,
-    method: args.method,
-    orgId: args.orgId,
-    userId: args.userId,
-    secrets: args.state.secrets,
-    signal: args.signal,
-  });
-  await upsertConnectorTokenVariables({
-    db: args.db,
-    connectorId: args.connectorId,
-    method: args.method,
-    orgId: args.orgId,
-    userId: args.userId,
-    variables: args.state.variables,
-    signal: args.signal,
-  });
+async function upsertPreparedConnectorTokenState(
+  args: {
+    readonly db: Db;
+    readonly connectorId: string;
+    readonly method: ConnectorAuthMethodRuntimeConfig;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly state: PreparedConnectorTokenState;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await upsertConnectorTokenSecrets(
+    {
+      db: args.db,
+      connectorId: args.connectorId,
+      method: args.method,
+      orgId: args.orgId,
+      userId: args.userId,
+      secrets: args.state.secrets,
+    },
+    signal,
+  );
+  await upsertConnectorTokenVariables(
+    {
+      db: args.db,
+      connectorId: args.connectorId,
+      method: args.method,
+      orgId: args.orgId,
+      userId: args.userId,
+      variables: args.state.variables,
+    },
+    signal,
+  );
 }
 
 async function loadExistingConnectorIdentity(
@@ -1632,8 +1684,8 @@ async function loadExistingConnectorIdentity(
     readonly orgId: string;
     readonly userId: string;
     readonly connectorSlug: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<{
   readonly authMethod: string;
   readonly id: string;
@@ -1654,7 +1706,7 @@ async function loadExistingConnectorIdentity(
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return existingConnector ?? null;
 }
 
@@ -1669,8 +1721,8 @@ async function upsertConnectorTokenConnectionRow(
     readonly userInfo: ExternalUserInfo;
     readonly oauthScopes: readonly string[];
     readonly tokenExpiresAt: Date | null;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<StoredConnectorRow> {
   const [connectorRow] = await db
     .insert(connectors)
@@ -1718,7 +1770,7 @@ async function upsertConnectorTokenConnectionRow(
       createdAt: connectors.createdAt,
       updatedAt: connectors.updatedAt,
     });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!connectorRow) {
     throw new Error("Failed to upsert connector");
@@ -1727,19 +1779,21 @@ async function upsertConnectorTokenConnectionRow(
   return connectorRow;
 }
 
-async function commitConnectorTokenConnection(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly runtimeMethod: ConnectorRuntimeMethod;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly connectorTokenState: PreparedConnectorTokenState;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly userInfo: ExternalUserInfo;
-  readonly oauthScopes: readonly string[];
-  readonly tokenExpiresAt: Date | null;
-  readonly signal: AbortSignal;
-}): Promise<{
+async function commitConnectorTokenConnection(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly runtimeMethod: ConnectorRuntimeMethod;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+    readonly connectorTokenState: PreparedConnectorTokenState;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly userInfo: ExternalUserInfo;
+    readonly oauthScopes: readonly string[];
+    readonly tokenExpiresAt: Date | null;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly connectorRow: StoredConnectorRow;
   readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
 }> {
@@ -1748,14 +1802,17 @@ async function commitConnectorTokenConnection(args: {
     userId: args.userId,
     connectorSlug: args.runtimeMethod.connectorSlug,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
-  const existingConnector = await loadExistingConnectorIdentity(args.db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorSlug: args.runtimeMethod.connectorSlug,
-    signal: args.signal,
-  });
+  const existingConnector = await loadExistingConnectorIdentity(
+    args.db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorSlug: args.runtimeMethod.connectorSlug,
+    },
+    signal,
+  );
   const existingAccessResult = existingConnector
     ? resolveConnectorCredentialAccess({
         snapshot: args.snapshot,
@@ -1774,42 +1831,52 @@ async function commitConnectorTokenConnection(args: {
   const pendingTokenRevoke =
     existingAccess?.runtimeMethod.method.revoke.kind === "token-revoke" &&
     existingAccess.runtimeMethod.method.revoke.revokePreviousOnReplace === true
-      ? await loadPendingConnectorTokenRevoke({
-          access: existingAccess,
-          db: args.db,
-          featureSwitchContext: args.featureSwitchContext,
-          signal: args.signal,
-        })
+      ? await loadPendingConnectorTokenRevoke(
+          {
+            access: existingAccess,
+            db: args.db,
+            featureSwitchContext: args.featureSwitchContext,
+          },
+          signal,
+        )
       : null;
 
   if (existingConnector !== null) {
-    await deleteConnectorOwnedCredentialRows(args.db, {
-      connectorId: existingConnector.id,
-      signal: args.signal,
-    });
+    await deleteConnectorOwnedCredentialRows(
+      args.db,
+      {
+        connectorId: existingConnector.id,
+      },
+      signal,
+    );
   }
-  const connectorRow = await upsertConnectorTokenConnectionRow(args.db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorSlug: args.runtimeMethod.connectorSlug,
-    authMethod: args.runtimeMethod.authMethodId,
-    storageVersion: args.runtimeMethod.method.storage.version,
-    userInfo: args.userInfo,
-    oauthScopes: args.oauthScopes,
-    tokenExpiresAt: args.tokenExpiresAt,
-    signal: args.signal,
-  });
+  const connectorRow = await upsertConnectorTokenConnectionRow(
+    args.db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorSlug: args.runtimeMethod.connectorSlug,
+      authMethod: args.runtimeMethod.authMethodId,
+      storageVersion: args.runtimeMethod.method.storage.version,
+      userInfo: args.userInfo,
+      oauthScopes: args.oauthScopes,
+      tokenExpiresAt: args.tokenExpiresAt,
+    },
+    signal,
+  );
 
-  await upsertPreparedConnectorTokenState({
-    db: args.db,
-    connectorId: connectorRow.id,
-    method: args.runtimeMethod.method,
-    orgId: args.orgId,
-    userId: args.userId,
-    state: args.connectorTokenState,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  await upsertPreparedConnectorTokenState(
+    {
+      db: args.db,
+      connectorId: connectorRow.id,
+      method: args.runtimeMethod.method,
+      orgId: args.orgId,
+      userId: args.userId,
+      state: args.connectorTokenState,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   return { connectorRow, pendingTokenRevoke };
 }
@@ -1857,45 +1924,51 @@ export const upsertConnectorTokenConnection$ = command(
     );
     signal.throwIfAborted();
 
-    const connectorTokenState = await prepareConnectorTokenState({
-      connectorSlug: args.runtimeMethod.connectorSlug,
-      outputTargets: outputMetadata.outputTargets,
-      requiredOutputNames: outputMetadata.requiredOutputNames,
-      requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
-      outputs: args.outputs,
-      extraSecrets,
-      featureSwitchContext,
+    const connectorTokenState = await prepareConnectorTokenState(
+      {
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        outputTargets: outputMetadata.outputTargets,
+        requiredOutputNames: outputMetadata.requiredOutputNames,
+        requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
+        outputs: args.outputs,
+        extraSecrets,
+        featureSwitchContext,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     let postCommitAbort: unknown = null;
     const connectionResult = await writeDb.transaction(async (tx) => {
-      return await commitConnectorTokenConnection({
-        db: tx,
-        orgId: args.orgId,
-        userId: args.userId,
-        runtimeMethod: args.runtimeMethod,
-        snapshot: args.snapshot,
-        connectorTokenState,
-        featureSwitchContext,
-        userInfo: args.userInfo,
-        oauthScopes: args.oauthScopes,
-        tokenExpiresAt,
+      return await commitConnectorTokenConnection(
+        {
+          db: tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          runtimeMethod: args.runtimeMethod,
+          snapshot: args.snapshot,
+          connectorTokenState,
+          featureSwitchContext,
+          userInfo: args.userInfo,
+          oauthScopes: args.oauthScopes,
+          tokenExpiresAt,
+        },
         signal,
-      });
+      );
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
     }
 
-    await finalizeConnectorStateChangeAfterCommit({
-      userId: args.userId,
-      connectorSlug: args.runtimeMethod.connectorSlug,
-      pendingTokenRevoke: connectionResult.pendingTokenRevoke,
+    await finalizeConnectorStateChangeAfterCommit(
+      {
+        userId: args.userId,
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        pendingTokenRevoke: connectionResult.pendingTokenRevoke,
+        postCommitAbort,
+      },
       signal,
-      postCommitAbort,
-    });
+    );
     signal.throwIfAborted();
 
     return {

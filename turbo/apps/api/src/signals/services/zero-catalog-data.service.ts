@@ -1,11 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
-import { connectors as connectorConnections } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
@@ -13,10 +9,10 @@ import {
   normaliseCustomConnectorRow,
   serialiseCustomConnector,
 } from "./zero-custom-connector.service";
-
-function valueMarkerKey(args: { readonly kind: string; readonly key: string }) {
-  return `${args.kind}:${args.key}`;
-}
+import {
+  loadCurrentCustomConnectorOAuthConnectionIds,
+  loadCurrentCustomConnectorValueMarkers,
+} from "./custom-connector-credential-access.service";
 
 export function zeroCustomConnectorList(args: {
   readonly orgId: string;
@@ -24,108 +20,28 @@ export function zeroCustomConnectorList(args: {
 }): Computed<Promise<readonly CustomConnectorResponse[]>> {
   return computed(async (get): Promise<readonly CustomConnectorResponse[]> => {
     const db = get(db$);
-    const [connectorRows, valueRows, legacySecretRows, oauthRows] =
-      await Promise.all([
-        db
-          .select({
-            connector: orgCustomConnectors,
-            oauthConfig: orgCustomConnectorOauthConfigs,
-          })
-          .from(orgCustomConnectors)
-          .leftJoin(
-            orgCustomConnectorOauthConfigs,
-            and(
-              eq(
-                orgCustomConnectorOauthConfigs.connectorId,
-                orgCustomConnectors.id,
-              ),
-              eq(
-                orgCustomConnectorOauthConfigs.orgId,
-                orgCustomConnectors.orgId,
-              ),
+    const [connectorRows, markers, oauthConnected] = await Promise.all([
+      db
+        .select({
+          connector: orgCustomConnectors,
+          oauthConfig: orgCustomConnectorOauthConfigs,
+        })
+        .from(orgCustomConnectors)
+        .leftJoin(
+          orgCustomConnectorOauthConfigs,
+          and(
+            eq(
+              orgCustomConnectorOauthConfigs.connectorId,
+              orgCustomConnectors.id,
             ),
-          )
-          .where(eq(orgCustomConnectors.orgId, args.orgId))
-          .orderBy(orgCustomConnectors.displayName),
-        db
-          .select({
-            connectorId: orgCustomConnectorValues.connectorId,
-            kind: orgCustomConnectorValues.kind,
-            key: orgCustomConnectorValues.key,
-          })
-          .from(orgCustomConnectorValues)
-          .where(
-            and(
-              eq(orgCustomConnectorValues.orgId, args.orgId),
-              eq(orgCustomConnectorValues.userId, args.userId),
-            ),
+            eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
           ),
-        db
-          .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-          .from(orgCustomConnectorSecrets)
-          .where(
-            and(
-              eq(orgCustomConnectorSecrets.orgId, args.orgId),
-              eq(orgCustomConnectorSecrets.userId, args.userId),
-            ),
-          ),
-        db
-          .select({
-            customConnectorId: connectorConnections.customConnectorId,
-          })
-          .from(connectorConnections)
-          .innerJoin(
-            secrets,
-            and(
-              eq(secrets.connectorId, connectorConnections.id),
-              eq(secrets.name, "access_token"),
-            ),
-          )
-          .where(
-            and(
-              eq(connectorConnections.orgId, args.orgId),
-              eq(connectorConnections.userId, args.userId),
-              eq(connectorConnections.authMethod, "oauth"),
-              eq(connectorConnections.needsReconnect, false),
-            ),
-          ),
-      ]);
-
-    const markers = valueRows
-      .filter((row) => {
-        return row.kind === "secret" || row.kind === "variable";
-      })
-      .map((row) => {
-        return {
-          connectorId: row.connectorId,
-          kind:
-            row.kind === "secret" ? ("secret" as const) : ("variable" as const),
-          key: row.key,
-        };
-      });
-    const seen = new Set(
-      markers.map((marker) => {
-        return `${marker.connectorId}:${valueMarkerKey(marker)}`;
-      }),
-    );
-    for (const row of legacySecretRows) {
-      const marker = {
-        connectorId: row.connectorId,
-        kind: "secret" as const,
-        key: "secret",
-      };
-      const key = `${marker.connectorId}:${valueMarkerKey(marker)}`;
-      if (!seen.has(key)) {
-        markers.push(marker);
-        seen.add(key);
-      }
-    }
-
-    const oauthConnected = new Set(
-      oauthRows.flatMap((row) => {
-        return row.customConnectorId ? [row.customConnectorId] : [];
-      }),
-    );
+        )
+        .where(eq(orgCustomConnectors.orgId, args.orgId))
+        .orderBy(orgCustomConnectors.displayName),
+      loadCurrentCustomConnectorValueMarkers(db, args),
+      loadCurrentCustomConnectorOAuthConnectionIds(db, args),
+    ]);
     return connectorRows.map((row) => {
       return serialiseCustomConnector({
         row: normaliseCustomConnectorRow(row.connector, row.oauthConfig),

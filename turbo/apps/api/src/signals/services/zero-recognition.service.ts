@@ -210,7 +210,8 @@ export const zeroRecognition$ = command(
         ZERO_RECOGNITION_MODEL,
         [{ role: "user", content }],
         ZERO_RECOGNITION_MAX_TOKENS,
-        { signal: requestSignal },
+        {},
+        requestSignal,
       ),
     );
     signal.throwIfAborted();

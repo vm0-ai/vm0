@@ -208,18 +208,20 @@ function buildQueueFirstGoalRunInput(args: {
   };
 }
 
-async function resolveModelContext(args: {
-  readonly db: Db;
-  readonly goal: GoalQueueTarget;
-  readonly signal: AbortSignal;
-}): Promise<ModelContext> {
+async function resolveModelContext(
+  args: {
+    readonly db: Db;
+    readonly goal: GoalQueueTarget;
+  },
+  signal: AbortSignal,
+): Promise<ModelContext> {
   const threadModelContext = await resolveRunChatThreadModelContext({
     db: args.db,
     orgId: args.goal.orgId,
     userId: args.goal.userId,
     threadId: args.goal.threadId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if ("status" in threadModelContext) {
     return {
       ok: false,
@@ -234,7 +236,7 @@ async function resolveModelContext(args: {
   }
 
   const { pin, providerAdmission, runCodexServiceTier } = threadModelContext;
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (providerAdmission.error) {
     return {
       ok: false,
@@ -297,11 +299,13 @@ const launchQueuedGoal$ = command(
       "api_dispatch_pre_create_zero_goal_drain_resolve_model_context",
       "nested",
       async () => {
-        return await resolveModelContext({
-          db,
-          goal: args.goal,
+        return await resolveModelContext(
+          {
+            db,
+            goal: args.goal,
+          },
           signal,
-        });
+        );
       },
       phaseDimensions,
     );

@@ -1,5 +1,4 @@
 import {
-  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -7,24 +6,14 @@ import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-thre
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  not,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { BEFORE_DISPATCH_CANCELLED_ERROR } from "./agent-run-create.service";
 import type { ChatThreadSessionResolutionAction } from "./chat-session-continuity.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./zero-chat-event-type.service";
 import {
   type ChatAgentRunSourceAnnotation,
   projectUserMessage,
@@ -39,7 +28,6 @@ interface WebChatPriorRunEvent {
   readonly role: "user" | "assistant";
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
-  readonly attachFiles: readonly string[] | null;
 }
 
 interface WebChatPriorRun {
@@ -135,19 +123,6 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
-}
-
 function formatPriorRunEvent(event: WebChatPriorRunEvent): string {
   const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
@@ -158,13 +133,11 @@ function formatPriorRunEvent(event: WebChatPriorRunEvent): string {
     const prompt = projectUserMessage(userMessage).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
-  const attach = formatAttachFileIds(event.attachFiles);
-  const body = `${roleLabel}: ${
+  return `${roleLabel}: ${
     event.content === null
       ? "[empty message]"
       : truncatePrior(event.content) || "[empty message]"
   }`;
-  return attach ? `${body}\n${attach}` : body;
 }
 
 function buildWebChatPriorRunsContext(
@@ -258,24 +231,13 @@ async function getLatestRunsByThreadId(
       eventType: chatEvents.eventType,
       content: chatEvents.content,
       userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
     })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
-        or(
-          and(
-            chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatEvents.userMessage),
-          ),
-          and(
-            not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatEvents.content),
-          ),
-        ),
+        chatEventTextCondition(),
         inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
       ),
     )
@@ -292,7 +254,6 @@ async function getLatestRunsByThreadId(
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
       userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
     });
     eventsByRunId.set(row.runId, existing);
   }

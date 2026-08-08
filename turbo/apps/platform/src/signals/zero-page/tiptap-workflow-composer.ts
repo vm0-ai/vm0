@@ -81,9 +81,12 @@ import {
 import { createComposerWorkflows } from "./composer-workflows.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
-import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
-import { resolveVideoGenerationOptions } from "@vm0/core/video-model-catalog";
 import { videoTemplateOptionsEnabled$ } from "../external/feature-switch.ts";
+import {
+  videoTemplateSpec,
+  videoTemplateSpecText,
+  type VideoTemplateSpec,
+} from "./video-template-spec.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -894,46 +897,34 @@ interface InlineTemplateNodeActions {
   readonly optionsEnabled: () => boolean;
 }
 
-/**
- * Aspect ratio and duration for a text-to-video template, resolved against the
- * model catalog so a chip shows the parameters the run will actually use even
- * when the user has overridden none of them. Talking-avatar templates share the
- * "video" envelope but take none of these parameters.
- */
-function inlineTemplateSpecSegments(node: ProseMirrorNode): readonly string[] {
+function inlineTemplateSpec(node: ProseMirrorNode): VideoTemplateSpec | null {
   const parsed = generationTemplateRequestSchema.safeParse(node.attrs.template);
-  if (!parsed.success || parsed.data.type !== "video") {
-    return [];
-  }
-  const { selection } = parsed.data;
-  if (parseAvatarTemplateStylePresetId(selection.stylePresetId) !== undefined) {
-    return [];
-  }
-  const resolved = resolveVideoGenerationOptions(selection.videoOptions);
-  return [resolved.aspectRatio, resolved.duration];
+  return parsed.success ? videoTemplateSpec(parsed.data) : null;
 }
 
 function createInlineTemplateSpecZone(): {
   readonly zone: HTMLButtonElement;
-  readonly render: (segments: readonly string[]) => void;
+  readonly render: (spec: VideoTemplateSpec) => void;
 } {
   const zone = document.createElement("button");
   zone.type = "button";
   zone.className = INLINE_TEMPLATE_SPEC_ZONE_CLASS;
-  const lead = document.createElement("span");
-  // Everything after the ratio is dropped on narrow viewports so the chip
-  // stays readable inside a prompt sentence.
+  // The model name and everything after the duration are dropped on narrow
+  // viewports so the chip stays readable inside a prompt sentence.
+  const model = document.createElement("span");
+  model.className = "hidden sm:inline";
+  const core = document.createElement("span");
   const rest = document.createElement("span");
   rest.className = "hidden sm:inline";
   const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
   chevron.setAttribute("class", "shrink-0 opacity-70");
-  zone.append(lead, rest, chevron);
+  zone.append(model, core, rest, chevron);
   return {
     zone,
-    render(segments) {
-      lead.textContent = segments[0] ?? "";
-      rest.textContent = segments
-        .slice(1)
+    render(spec) {
+      model.textContent = `${spec.model} \u00b7 `;
+      core.textContent = spec.core.join(" \u00b7 ");
+      rest.textContent = spec.rest
         .map((segment) => {
           return ` \u00b7 ${segment}`;
         })
@@ -944,7 +935,7 @@ function createInlineTemplateSpecZone(): {
           ($) => {
             return $.chat.templates.videoOptionsLabel;
           },
-          { spec: segments.join(" \u00b7 ") },
+          { spec: videoTemplateSpecText(spec) },
         ),
       );
     },
@@ -984,29 +975,29 @@ function createInlineTemplateNodeView(
   const spec = createInlineTemplateSpecZone();
 
   let currentNode = node;
-  function localize(): void {
-    openButton.setAttribute(
-      "aria-label",
-      templateAttachmentPreviewLabel(
-        templateAttachmentNodeAttributes(currentNode),
-      ),
-    );
-  }
   function render(nextNode: ProseMirrorNode): void {
     const attachment = templateAttachmentNodeAttributes(nextNode);
     title.textContent = attachment.title;
-    const segments = actions.optionsEnabled()
-      ? inlineTemplateSpecSegments(nextNode)
-      : [];
-    if (segments.length > 0) {
-      spec.render(segments);
+    openButton.setAttribute(
+      "aria-label",
+      templateAttachmentPreviewLabel(attachment),
+    );
+    const nextSpec = actions.optionsEnabled()
+      ? inlineTemplateSpec(nextNode)
+      : null;
+    if (nextSpec) {
+      spec.render(nextSpec);
       if (spec.zone.parentNode === null) {
         dom.append(spec.zone);
       }
     } else {
       spec.zone.remove();
     }
-    localize();
+  }
+  // The audio segment is localized, so a locale switch has to re-render the
+  // chip rather than only refresh its labels.
+  function localize(): void {
+    render(currentNode);
   }
   openButton.addEventListener("mousedown", (event) => {
     event.preventDefault();

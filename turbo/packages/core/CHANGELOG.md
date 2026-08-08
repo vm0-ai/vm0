@@ -1,5 +1,55 @@
 # Changelog
 
+## [8.530.3](https://github.com/vm0-ai/vm0/compare/core-v8.530.2...core-v8.530.3) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.3
+
+## [8.530.2](https://github.com/vm0-ai/vm0/compare/core-v8.530.1...core-v8.530.2) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.2
+
+## [8.530.1](https://github.com/vm0-ai/vm0/compare/core-v8.530.0...core-v8.530.1) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.1
+
+## [8.530.0](https://github.com/vm0-ai/vm0/compare/core-v8.529.1...core-v8.530.0) (2026-08-07)
+
+
+### Features
+
+* **chat:** serve chat search from a projected search index behind a switch ([#25736](https://github.com/vm0-ai/vm0/issues/25736)) ([4bf1a07](https://github.com/vm0-ai/vm0/commit/4bf1a0773458c915c4443ed027dd202878765088))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.0
+
+## [8.529.1](https://github.com/vm0-ai/vm0/compare/core-v8.529.0...core-v8.529.1) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.1
+
 ## [8.529.0](https://github.com/vm0-ai/vm0/compare/core-v8.528.2...core-v8.529.0) (2026-08-07)
 
 

@@ -339,13 +339,15 @@ async function createSession(args: {
   return session;
 }
 
-function registerStartAbortCancellation(args: {
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-  readonly session: ModelProviderAuthSession;
-  readonly orgId: string;
-  readonly userId: string;
-}): () => void {
+function registerStartAbortCancellation(
+  args: {
+    readonly writeDb: Db;
+    readonly session: ModelProviderAuthSession;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): () => void {
   const cleanupOnAbort = () => {
     detach(
       cancelSession({
@@ -359,9 +361,9 @@ function registerStartAbortCancellation(args: {
       "cancel aborted Claude Code device auth session",
     );
   };
-  args.signal.addEventListener("abort", cleanupOnAbort, { once: true });
+  signal.addEventListener("abort", cleanupOnAbort, { once: true });
   return () => {
-    args.signal.removeEventListener("abort", cleanupOnAbort);
+    signal.removeEventListener("abort", cleanupOnAbort);
   };
 }
 
@@ -507,12 +509,14 @@ function assertStateMatches(
   }
 }
 
-async function exchangeClaudeCodeAuthorizationCode(args: {
-  readonly authorizationCode: string;
-  readonly state: string;
-  readonly codeVerifier: string;
-  readonly signal: AbortSignal;
-}): Promise<ClaudeCodeOAuthTokens> {
+async function exchangeClaudeCodeAuthorizationCode(
+  args: {
+    readonly authorizationCode: string;
+    readonly state: string;
+    readonly codeVerifier: string;
+  },
+  signal: AbortSignal,
+): Promise<ClaudeCodeOAuthTokens> {
   const response = await fetch(CLAUDE_CODE_DEVICE_AUTH_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -525,7 +529,7 @@ async function exchangeClaudeCodeAuthorizationCode(args: {
       state: args.state,
       expires_in: CLAUDE_CODE_DEVICE_AUTH_TOKEN_TTL_SECONDS,
     }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {
@@ -545,13 +549,15 @@ async function exchangeClaudeCodeAuthorizationCode(args: {
   return { accessToken: parsed.data.access_token };
 }
 
-export async function startClaudeCodeDeviceAuth(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly scope: ClaudeCodeDeviceAuthScope;
-  readonly signal: AbortSignal;
-}): Promise<ClaudeCodeDeviceAuthStartResult> {
+export async function startClaudeCodeDeviceAuth(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly scope: ClaudeCodeDeviceAuthScope;
+  },
+  signal: AbortSignal,
+): Promise<ClaudeCodeDeviceAuthStartResult> {
   const startedAt = nowDate();
   await cancelActiveSessions({
     writeDb: args.writeDb,
@@ -566,13 +572,15 @@ export async function startClaudeCodeDeviceAuth(args: {
     userId: args.userId,
     expiresAt: expiresAt(startedAt),
   });
-  const unregisterAbortCancellation = registerStartAbortCancellation({
-    signal: args.signal,
-    writeDb: args.writeDb,
-    session,
-    orgId: args.orgId,
-    userId: args.userId,
-  });
+  const unregisterAbortCancellation = registerStartAbortCancellation(
+    {
+      writeDb: args.writeDb,
+      session,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+    signal,
+  );
 
   const codeVerifier = randomBase64Url();
   const state = randomBase64Url();
@@ -587,12 +595,12 @@ export async function startClaudeCodeDeviceAuth(args: {
         codeVerifier,
         approvalUrl,
       }),
-      args.signal,
+      signal,
     ),
     unregisterAbortCancellation,
   );
   unregisterAbortCancellation();
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!updatedResult.ok) {
     const message = unknownErrorMessage(
@@ -709,10 +717,12 @@ const importClaudeCodeOAuthToken$ = command(
     readonly created: boolean;
   }> => {
     const metadata = await tapError(
-      fetchClaudeCodeSubscriptionMetadata({
-        accessToken: args.accessToken,
+      fetchClaudeCodeSubscriptionMetadata(
+        {
+          accessToken: args.accessToken,
+        },
         signal,
-      }),
+      ),
     );
     signal.throwIfAborted();
 
@@ -858,12 +868,14 @@ const importClaimedClaudeCodeDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<ClaudeCodeDeviceAuthCompleteResult> => {
     const tokens = await settle(
-      exchangeClaudeCodeAuthorizationCode({
-        authorizationCode: args.authorizationCode,
-        state: args.state,
-        codeVerifier: args.codeVerifier,
+      exchangeClaudeCodeAuthorizationCode(
+        {
+          authorizationCode: args.authorizationCode,
+          state: args.state,
+          codeVerifier: args.codeVerifier,
+        },
         signal,
-      }),
+      ),
       signal,
     );
     signal.throwIfAborted();

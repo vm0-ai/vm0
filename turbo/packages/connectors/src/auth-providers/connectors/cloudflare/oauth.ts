@@ -47,7 +47,7 @@ function parseScopes(scope: string | undefined): readonly string[] {
 function cloudflareTokenRequestHeaders(
   clientId: string,
   clientSecret: string,
-): HeadersInit {
+): Record<string, string> {
   return {
     Authorization: basicAuthHeader(clientId, clientSecret),
     "Content-Type": "application/x-www-form-urlencoded",

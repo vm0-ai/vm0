@@ -1,5 +1,9 @@
 import { command } from "ccstate";
 import {
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   parsePiAgentMessages,
   piMessageRequiresSandbox,
   runPiAgentPrompt,
@@ -17,6 +21,8 @@ import { settle } from "../utils";
 import {
   materializeRunOutputEvents$,
   publishMaterializedChatProjection,
+  type PiEdgeModelUsage,
+  type PiEdgeModelUsageEntry,
 } from "./agent-event-consumer-run-output.service";
 import {
   completeAgentRun$,
@@ -33,6 +39,111 @@ import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
 const L = logger("pi:edge");
 
 class PiHandoffRequested extends Error {}
+
+interface PiEdgeUsageQuantities {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheCreation: number;
+}
+
+function modelUsageQuantity(value: number, category: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Pi edge model returned invalid ${category} usage`);
+  }
+  return value;
+}
+
+function piEdgeBillingEntries(
+  model: SupportedRunModel,
+  quantities: PiEdgeUsageQuantities,
+): PiEdgeModelUsageEntry[] {
+  const totalInput =
+    quantities.input + quantities.cacheRead + quantities.cacheCreation;
+  const longContextMinimum = MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS[model];
+  const tier =
+    longContextMinimum !== undefined && totalInput >= longContextMinimum
+      ? "long-context"
+      : "base";
+  const categories: Readonly<
+    Record<
+      "input" | "output" | "cacheRead" | "cacheCreation",
+      PiEdgeModelUsageEntry["category"]
+    >
+  > =
+    tier === "long-context"
+      ? {
+          input: "tokens.input.long_context",
+          output: "tokens.output.long_context",
+          cacheRead: "tokens.cache_read.long_context",
+          cacheCreation: "tokens.cache_creation.long_context",
+        }
+      : {
+          input: "tokens.input",
+          output: "tokens.output",
+          cacheRead: "tokens.cache_read",
+          cacheCreation: "tokens.cache_creation",
+        };
+  const entries: PiEdgeModelUsageEntry[] = [
+    { category: categories.input, quantity: quantities.input },
+    { category: categories.output, quantity: quantities.output },
+    {
+      category: categories.cacheRead,
+      quantity: quantities.cacheRead,
+    },
+    {
+      category: categories.cacheCreation,
+      quantity: quantities.cacheCreation,
+    },
+  ].filter((entry) => {
+    return entry.quantity > 0;
+  });
+  return entries;
+}
+
+function piEdgeModelUsage(args: {
+  readonly messageId: string;
+  readonly usage: PiEdgeTurnArgs["usage"];
+  readonly message: PiAgentMessage;
+}): PiEdgeModelUsage | undefined {
+  if (args.usage === undefined || args.message.role !== "assistant") {
+    return undefined;
+  }
+
+  const quantities: PiEdgeUsageQuantities = {
+    input: modelUsageQuantity(args.message.usage.input, "input"),
+    output: modelUsageQuantity(args.message.usage.output, "output"),
+    cacheRead: modelUsageQuantity(args.message.usage.cacheRead, "cache read"),
+    cacheCreation: modelUsageQuantity(
+      args.message.usage.cacheWrite,
+      "cache creation",
+    ),
+  };
+  const hasPositiveUsage = Object.values(quantities).some((quantity) => {
+    return quantity > 0;
+  });
+  if (!hasPositiveUsage) {
+    const failed =
+      args.message.stopReason === "error" ||
+      args.message.stopReason === "aborted";
+    if (args.usage.billable && !failed) {
+      throw new Error("Pi edge model returned no billable usage");
+    }
+    return undefined;
+  }
+
+  return {
+    messageId: args.messageId,
+    model: args.usage.model,
+    inputTokens: quantities.input,
+    outputTokens: quantities.output,
+    cacheReadInputTokens: quantities.cacheRead,
+    cacheCreationInputTokens: quantities.cacheCreation,
+    billingEntries: args.usage.billable
+      ? piEdgeBillingEntries(args.usage.model, quantities)
+      : [],
+  };
+}
 
 function piMessageEvent(args: {
   readonly runId: string;
@@ -66,6 +177,12 @@ function piEdgeFailure(runId: string, error: unknown): string {
   return error instanceof Error ? error.message : "Pi edge turn failed";
 }
 
+function transcriptMessagePayload(message: {
+  readonly payload: unknown;
+}): unknown {
+  return message.payload;
+}
+
 /**
  * Runs an eligible Pi turn inside the API with Pi's native agent loop. Read
  * batches execute against the pinned Storage ExecutionEnv. A complete
@@ -89,9 +206,7 @@ export const runPiEdgeTurn$ = command(
         const transcript = await readPiTranscript(db, thread.chatThreadId);
         signal.throwIfAborted();
         const priorMessages = parsePiAgentMessages(
-          transcript.messages.map((message) => {
-            return message.payload;
-          }),
+          transcript.messages.map(transcriptMessagePayload),
         );
         let sequenceNumber = 1;
         let expectedLastOrdinal = transcript.lastOrdinal;
@@ -109,10 +224,16 @@ export const runPiEdgeTurn$ = command(
             events: [event],
             context,
           };
+          const modelUsage = piEdgeModelUsage({
+            messageId: `${args.runId}/${sequenceNumber}`,
+            usage: args.usage,
+            message,
+          });
           const projection = await set(
             materializeRunOutputEvents$,
             payload,
             signal,
+            modelUsage,
           );
           signal.throwIfAborted();
           if (projection) {
@@ -128,31 +249,33 @@ export const runPiEdgeTurn$ = command(
           expectedLastOrdinal += 1;
         };
 
-        await runPiAgentPrompt({
-          model: args.model,
-          systemPrompt: args.systemPrompt,
-          prompt: args.prompt,
-          messages: priorMessages,
-          executionEnv: args.executionEnv,
-          signal,
-          async onMessage(message) {
-            await project(message);
-            modelFailure ??= failedAssistantMessage(message);
-            if (!piMessageRequiresSandbox(message)) {
-              return;
-            }
-            await set(
-              dispatchPiSandboxHandoff$,
-              {
-                runId: args.runId,
-                userId: args.userId,
-                runnerGroup: args.runnerGroup,
-              },
-              signal,
-            );
-            throw new PiHandoffRequested();
+        await runPiAgentPrompt(
+          {
+            model: args.model,
+            systemPrompt: args.systemPrompt,
+            prompt: args.prompt,
+            messages: priorMessages,
+            executionEnv: args.executionEnv,
+            async onMessage(message) {
+              await project(message);
+              modelFailure ??= failedAssistantMessage(message);
+              if (!piMessageRequiresSandbox(message)) {
+                return;
+              }
+              await set(
+                dispatchPiSandboxHandoff$,
+                {
+                  runId: args.runId,
+                  userId: args.userId,
+                  runnerGroup: args.runnerGroup,
+                },
+                signal,
+              );
+              throw new PiHandoffRequested();
+            },
           },
-        });
+          signal,
+        );
         if (modelFailure !== null) {
           throw new Error(modelFailure);
         }

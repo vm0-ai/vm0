@@ -1,4 +1,3 @@
-import type StripeSDK from "stripe";
 import { command } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
@@ -15,7 +14,11 @@ import {
 } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  type StripeClient,
+  type StripeRef,
+} from "../external/stripe-client";
 import { nowDate } from "../../lib/time";
 import { tapError } from "../utils";
 import { logger } from "../../lib/log";
@@ -38,9 +41,7 @@ interface ClaimedRechargeState {
   readonly autoRechargePendingAt: Date | null;
 }
 
-function resolvePaymentMethodId(
-  pm: string | StripeSDK.PaymentMethod | null | undefined,
-): string | null {
+function resolvePaymentMethodId(pm: StripeRef | undefined): string | null {
   if (typeof pm === "string") {
     return pm;
   }
@@ -48,7 +49,7 @@ function resolvePaymentMethodId(
 }
 
 async function resolvePaymentMethod(
-  stripe: StripeSDK,
+  stripe: StripeClient,
   org: ClaimedRechargeState,
 ): Promise<string | null> {
   const customer = await stripe.customers.retrieve(org.stripeCustomerId);
@@ -59,7 +60,7 @@ async function resolvePaymentMethod(
     return null;
   }
   const customerPm = resolvePaymentMethodId(
-    (customer as StripeSDK.Customer).invoice_settings?.default_payment_method,
+    customer.invoice_settings?.default_payment_method,
   );
   if (customerPm) {
     return customerPm;

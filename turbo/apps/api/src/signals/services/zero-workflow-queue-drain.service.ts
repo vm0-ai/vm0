@@ -14,10 +14,7 @@ import {
   childAutonomyBudget,
   loadRunAutonomyBudget,
 } from "./autonomy-budget.service";
-import {
-  autonomyBudgetSchemaAvailable,
-  rolloutCompatibleWorkflowAutomationColumns,
-} from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import {
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
@@ -45,12 +42,9 @@ async function loadDequeueTarget(
   db: Db,
   event: PendingWorkflowQueueEvent,
 ): Promise<DequeueTarget | null> {
-  const autonomyBudgetAvailable = await autonomyBudgetSchemaAvailable(db);
   const [row] = await db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(
-        autonomyBudgetAvailable,
-      ),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
     })
     .from(zeroWorkflowAutomations)

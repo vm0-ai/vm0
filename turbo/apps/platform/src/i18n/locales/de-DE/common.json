@@ -1158,11 +1158,9 @@
       "file": "Datei {{filename}}",
       "fileTooLarge": "{{filename}} überschreitet die 1-GB-Grenze",
       "imageUnavailable": "[Bild nicht verfügbar: {{filename}}]",
-      "importing": "Anhang wird importiert",
       "loadingFile": "{{filename}} wird geladen",
       "previewFile": "Vorschau von {{filename}}",
       "title": "Anhänge",
-      "unavailable": "Anhang nicht verfügbar",
       "uploadFailed": "Hochladen von {{filename}} fehlgeschlagen",
       "uploadFailedRetry": "Fehler beim Hochladen von {{filename}}. Versuchen Sie es erneut.",
       "uploadsFailed": "Einige Anhänge konnten nicht hochgeladen werden. Versuchen Sie es erneut."
@@ -1600,7 +1598,9 @@
       "videoOptionsLabel": "Videooptionen {{spec}}",
       "videoOptionsModel": "Modell",
       "videoOptionsRatio": "Seitenverhältnis",
-      "videoOptionsResolution": "Auflösung"
+      "videoOptionsResolution": "Auflösung",
+      "videoSpecAudioOff": "Stumm",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Chat-Thread",
@@ -1621,6 +1621,7 @@
       "icon": "Chat-Thread-Symbol",
       "loadingEarlier": "Frühere Nachrichten werden geladen",
       "noEmojiFound": "Kein Emoji gefunden",
+      "notFound": "Chat-Thread nicht gefunden",
       "openArtifacts": "Artefakte öffnen",
       "openBrowser": "Browser öffnen",
       "openNamedAgent": "Agent {{name}} öffnen",

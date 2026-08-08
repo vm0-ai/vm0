@@ -161,14 +161,16 @@ describe("internal Pi standby agent loop", () => {
     }) satisfies PiAgentResume;
 
     try {
-      await runPiStandbyAgentLoop({
-        io,
-        config: CONFIG,
-        executionEnv,
-        signal: new AbortController().signal,
-        standbyTtlSeconds: 1,
-        resume,
-      });
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: CONFIG,
+          executionEnv,
+          standbyTtlSeconds: 1,
+          resume,
+        },
+        new AbortController().signal,
+      );
     } finally {
       await executionEnv.cleanup();
     }
@@ -210,14 +212,16 @@ describe("internal Pi standby agent loop", () => {
     }) satisfies PiAgentResume;
 
     try {
-      await runPiStandbyAgentLoop({
-        io,
-        config: CONFIG,
-        executionEnv,
-        signal: new AbortController().signal,
-        standbyTtlSeconds: 0.05,
-        resume,
-      });
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: CONFIG,
+          executionEnv,
+          standbyTtlSeconds: 0.05,
+          resume,
+        },
+        new AbortController().signal,
+      );
     } finally {
       await executionEnv.cleanup();
     }
@@ -253,14 +257,16 @@ describe("internal Pi standby agent loop", () => {
     }) satisfies PiAgentResume;
 
     try {
-      await runPiStandbyAgentLoop({
-        io,
-        config: CONFIG,
-        executionEnv,
-        signal: new AbortController().signal,
-        standbyTtlSeconds: 1,
-        resume,
-      });
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: CONFIG,
+          executionEnv,
+          standbyTtlSeconds: 1,
+          resume,
+        },
+        new AbortController().signal,
+      );
     } finally {
       await executionEnv.cleanup();
     }
@@ -323,14 +329,16 @@ describe("internal Pi standby agent loop", () => {
     }) satisfies PiAgentResume;
 
     try {
-      await runPiStandbyAgentLoop({
-        io,
-        config: CONFIG,
-        executionEnv,
-        signal: new AbortController().signal,
-        standbyTtlSeconds: 1,
-        resume,
-      });
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: CONFIG,
+          executionEnv,
+          standbyTtlSeconds: 1,
+          resume,
+        },
+        new AbortController().signal,
+      );
     } finally {
       await executionEnv.cleanup();
     }

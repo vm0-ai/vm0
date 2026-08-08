@@ -2488,8 +2488,10 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}?sidebar=${OTHER_AGENT_THREAD_ID}`,
     });
 
-    const threadRegions = await screen.findAllByLabelText("Chat thread");
-    expect(threadRegions).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const threadRegions = screen.getAllByLabelText("Chat thread");
     await waitFor(() => {
       expect(authorizationRequestCount).toBe(1);
     });
@@ -2603,8 +2605,10 @@ describe("chat composer models", () => {
       },
     });
 
-    const threadRegions = await screen.findAllByLabelText("Chat thread");
-    expect(threadRegions).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const threadRegions = screen.getAllByLabelText("Chat thread");
     const sideThread = threadRegions[1];
     if (!sideThread) {
       throw new Error("Side chat thread not found");

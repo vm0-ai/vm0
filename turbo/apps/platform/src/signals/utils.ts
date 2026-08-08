@@ -227,7 +227,9 @@ export async function tapError<T>(
 /**
  * Await `p` and invoke `fn` on any rejection (including abort), then re-throw.
  * Use as a `.catch(handler)` replacement when the caller needs to run a
- * cleanup side effect before the rejection propagates.
+ * cleanup side effect before the rejection propagates. `fn` runs on abort by
+ * design so cleanup still happens when the page is cancelled, which is why
+ * `ccstate/no-catch-abort` cannot apply to this file.
  */
 export async function onRejection<T>(
   p: Promise<T>,

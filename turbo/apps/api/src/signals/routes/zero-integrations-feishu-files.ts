@@ -83,12 +83,14 @@ function feishuUploadSizeError(size: number) {
     : undefined;
 }
 
-async function resolveInstallation(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly installationId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<InstallationResolution> {
+async function resolveInstallation(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly installationId: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<InstallationResolution> {
   const installations = await args.db
     .select({ id: feishuOrgInstallations.id })
     .from(feishuOrgInstallations)
@@ -102,7 +104,7 @@ async function resolveInstallation(args: {
       ),
     )
     .limit(2);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const installation = installations[0];
   if (!installation) {
     return { kind: "not_found" };
@@ -238,13 +240,15 @@ function uploadMetadata(args: {
   };
 }
 
-async function resolveUserOpenId(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly userId: string;
-  readonly requestedOpenId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<
+async function resolveUserOpenId(
+  args: {
+    readonly db: Db;
+    readonly installationId: string;
+    readonly userId: string;
+    readonly requestedOpenId: string | undefined;
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly kind: "resolved"; readonly openId: string | undefined }
   | { readonly kind: "not_found" }
 > {
@@ -261,46 +265,52 @@ async function resolveUserOpenId(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return connection
     ? { kind: "resolved", openId: connection.openId }
     : { kind: "not_found" };
 }
 
-function deliverUploadedFile(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly body: FeishuUploadCompleteBody;
-  readonly userOpenId: string | undefined;
-  readonly fileKey: string;
-  readonly signal: AbortSignal;
-}): ReturnType<typeof sendFeishuMessage> | null {
+function deliverUploadedFile(
+  args: {
+    readonly db: Db;
+    readonly installationId: string;
+    readonly body: FeishuUploadCompleteBody;
+    readonly userOpenId: string | undefined;
+    readonly fileKey: string;
+  },
+  signal: AbortSignal,
+): ReturnType<typeof sendFeishuMessage> | null {
   const message: FeishuOutboundMessage = {
     msgType: "file",
     content: { file_key: args.fileKey },
   };
   if (args.body.replyToMessageId) {
-    return replyWithFeishuMessage({
-      db: args.db,
-      installationId: args.installationId,
-      messageId: args.body.replyToMessageId,
-      message,
-      replyInThread: args.body.replyInThread,
-      signal: args.signal,
-    });
+    return replyWithFeishuMessage(
+      {
+        db: args.db,
+        installationId: args.installationId,
+        messageId: args.body.replyToMessageId,
+        message,
+        replyInThread: args.body.replyInThread,
+      },
+      signal,
+    );
   }
   const receiveId = args.userOpenId ?? args.body.chat;
   if (!receiveId) {
     return null;
   }
-  return sendFeishuMessage({
-    db: args.db,
-    installationId: args.installationId,
-    receiveIdType: args.userOpenId ? "open_id" : "chat_id",
-    receiveId,
-    message,
-    signal: args.signal,
-  });
+  return sendFeishuMessage(
+    {
+      db: args.db,
+      installationId: args.installationId,
+      receiveIdType: args.userOpenId ? "open_id" : "chat_id",
+      receiveId,
+      message,
+    },
+    signal,
+  );
 }
 
 const download$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -319,25 +329,29 @@ const download$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!target) {
     return apiError(400, "BAD_REQUEST", "Invalid Feishu file id");
   }
-  const installation = await resolveInstallation({
-    db,
-    orgId: auth.orgId,
-    installationId: target.installationId,
+  const installation = await resolveInstallation(
+    {
+      db,
+      orgId: auth.orgId,
+      installationId: target.installationId,
+    },
     signal,
-  });
+  );
   if (installation.kind !== "resolved") {
     return installationError(installation, target.installationId);
   }
 
   const downloaded = await settle(
-    downloadFeishuMessageResource({
-      db,
-      installationId: installation.id,
-      messageId: target.messageId,
-      fileKey: target.fileKey,
-      resourceType: target.type,
+    downloadFeishuMessageResource(
+      {
+        db,
+        installationId: installation.id,
+        messageId: target.messageId,
+        fileKey: target.fileKey,
+        resourceType: target.type,
+      },
       signal,
-    }),
+    ),
     signal,
   );
   if (!downloaded.ok) {
@@ -434,23 +448,27 @@ const completeUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const body = bodyResult.data;
   const db = set(writeDb$);
-  const installation = await resolveInstallation({
-    db,
-    orgId: auth.orgId,
-    installationId: body.installationId,
+  const installation = await resolveInstallation(
+    {
+      db,
+      orgId: auth.orgId,
+      installationId: body.installationId,
+    },
     signal,
-  });
+  );
   if (installation.kind !== "resolved") {
     return installationError(installation, body.installationId);
   }
 
-  const user = await resolveUserOpenId({
-    db,
-    installationId: installation.id,
-    userId: auth.userId,
-    requestedOpenId: body.user,
+  const user = await resolveUserOpenId(
+    {
+      db,
+      installationId: installation.id,
+      userId: auth.userId,
+      requestedOpenId: body.user,
+    },
     signal,
-  });
+  );
   if (user.kind === "not_found") {
     return apiError(
       404,
@@ -478,17 +496,14 @@ const completeUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const content = await get(downloadS3Buffer(bucket, object.key));
   signal.throwIfAborted();
-  const uploaded = await settle(
-    uploadFeishuFile({
-      db,
-      installationId: installation.id,
-      filename,
-      contentType,
-      content,
-      signal,
-    }),
-    signal,
-  );
+  const uploadInput = {
+    db,
+    installationId: installation.id,
+    filename,
+    contentType,
+    content,
+  };
+  const uploaded = await settle(uploadFeishuFile(uploadInput, signal), signal);
   if (!uploaded.ok) {
     if (uploaded.error instanceof FeishuApiError) {
       return feishuApiError(uploaded.error);
@@ -496,14 +511,14 @@ const completeUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw uploaded.error;
   }
 
-  const delivery = deliverUploadedFile({
+  const deliveryInput = {
     db,
     installationId: installation.id,
     body,
     userOpenId: user.openId,
     fileKey: uploaded.value,
-    signal,
-  });
+  };
+  const delivery = deliverUploadedFile(deliveryInput, signal);
   if (!delivery) {
     return apiError(400, "BAD_REQUEST", "A Feishu file target is required");
   }
@@ -515,29 +530,26 @@ const completeUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
     }
     throw sent.error;
   }
-  await set(
-    recordFeishuUploadedFile$,
-    {
-      runId,
-      externalId: sent.value.messageId,
-      userId: auth.userId,
-      orgId: auth.orgId,
-      filename,
-      contentType,
-      sizeBytes: object.size,
-      url: fileUrl,
-      metadata: uploadMetadata({
-        body,
-        installationId: installation.id,
-        s3Key: object.key,
-        sourceUrl: fileUrl,
-        messageId: sent.value.messageId,
-        chatId: sent.value.chatId,
-        fileKey: uploaded.value,
-      }),
-    },
-    signal,
-  );
+  const recordInput = {
+    runId,
+    externalId: sent.value.messageId,
+    userId: auth.userId,
+    orgId: auth.orgId,
+    filename,
+    contentType,
+    sizeBytes: object.size,
+    url: fileUrl,
+    metadata: uploadMetadata({
+      body,
+      installationId: installation.id,
+      s3Key: object.key,
+      sourceUrl: fileUrl,
+      messageId: sent.value.messageId,
+      chatId: sent.value.chatId,
+      fileKey: uploaded.value,
+    }),
+  };
+  await set(recordFeishuUploadedFile$, recordInput, signal);
   signal.throwIfAborted();
   return {
     status: 200 as const,

@@ -29,10 +29,9 @@ import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { ORG_SENTINEL_USER_ID } from "./feature-switches.service";
 import { stripeInvoicePaidWorkflowAutomationEnabledForOwnerInDb } from "./stripe-invoice-paid-workflow-automation-feature-switch.service";
-import { stripeWorkflowEventSchemaAvailable } from "./stripe-workflow-event-schema.service";
 import { validateStripeInvoicePaidAutomationBinding } from "./stripe-invoice-paid-workflow-automation.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { storedWorkflowAutomationContext } from "./workflow-automation-context.service";
@@ -72,6 +71,103 @@ const stripeSupportedEventBaseSchema = z
   })
   .passthrough();
 
+const nullableIdentifierObjectSchema = z
+  .object({ id: z.string().trim().min(1).max(255) })
+  .passthrough();
+
+const stripeIdentifierValueSchema = z.union([
+  z.string(),
+  nullableIdentifierObjectSchema,
+]);
+
+function optionalStripeSnapshotField<T>(schema: z.ZodType<T>) {
+  // Optional Stripe expansions must not invalidate an otherwise usable invoice.
+  const nullableSchema = schema.nullable();
+  return z
+    .preprocess((value) => {
+      const parsed = nullableSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }, nullableSchema)
+    .optional();
+}
+
+const stripeCustomerSchema = z
+  .object({
+    id: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const stripeCustomerValueSchema = z.union([z.string(), stripeCustomerSchema]);
+
+const stripeLinePriceSchema = z
+  .object({
+    id: z.string().nullable().optional(),
+    product: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    currency: z.string().nullable().optional(),
+    unit_amount: z.number().nullable().optional(),
+    recurring: z
+      .object({ interval: z.string().nullable().optional() })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+const stripeLinePricingSchema = z
+  .object({
+    type: z.string().nullable().optional(),
+    price_details: z
+      .object({
+        price: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+        product: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+      })
+      .nullable()
+      .optional(),
+    unit_amount_decimal: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const stripeInvoiceParentSchema = z
+  .object({
+    subscription_details: z
+      .object({
+        subscription: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+const stripeInvoicePaymentRelationshipSchema = z
+  .object({
+    payment_intent: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    charge: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    payment_record: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+  })
+  .passthrough();
+
+const stripeInvoicePaymentValueSchema = z.union([
+  stripeIdentifierValueSchema,
+  stripeInvoicePaymentRelationshipSchema,
+]);
+
+const stripeInvoicePaymentsSchema = z
+  .object({
+    data: z.array(
+      z
+        .object({
+          id: z.string().trim().min(1).max(255).nullable().optional(),
+          payment: optionalStripeSnapshotField(stripeInvoicePaymentValueSchema),
+          payment_intent: optionalStripeSnapshotField(
+            stripeIdentifierValueSchema,
+          ),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
 const stripeInvoiceLineSchema = z
   .object({
     id: z.string().nullable().optional(),
@@ -88,8 +184,8 @@ const stripeInvoiceLineSchema = z
       })
       .nullable()
       .optional(),
-    price: z.unknown().optional(),
-    pricing: z.unknown().optional(),
+    price: optionalStripeSnapshotField(stripeLinePriceSchema),
+    pricing: optionalStripeSnapshotField(stripeLinePricingSchema),
   })
   .passthrough();
 
@@ -111,11 +207,11 @@ const stripeInvoiceSchema = z
       has_more: z.boolean(),
       total_count: z.number().int().nonnegative().nullable().optional(),
     }),
-    customer: z.unknown().optional(),
-    subscription: z.unknown().optional(),
-    payment_intent: z.unknown().optional(),
-    payments: z.unknown().optional(),
-    parent: z.unknown().optional(),
+    customer: optionalStripeSnapshotField(stripeCustomerValueSchema),
+    subscription: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    payment_intent: optionalStripeSnapshotField(stripeIdentifierValueSchema),
+    payments: optionalStripeSnapshotField(stripeInvoicePaymentsSchema),
+    parent: optionalStripeSnapshotField(stripeInvoiceParentSchema),
   })
   .passthrough();
 
@@ -140,54 +236,6 @@ const stripeDeauthorizedEventSchema = stripeDeauthorizedEventBaseSchema.extend({
   account: z.string().trim().min(1).max(255),
   livemode: z.literal(true),
 });
-
-const nullableIdentifierObjectSchema = z
-  .object({ id: z.string().trim().min(1).max(255) })
-  .passthrough();
-
-const stripeLinePriceSchema = z
-  .object({
-    id: z.string().nullable().optional(),
-    product: z.unknown().optional(),
-    currency: z.string().nullable().optional(),
-    unit_amount: z.number().nullable().optional(),
-    recurring: z
-      .object({ interval: z.string().nullable().optional() })
-      .nullable()
-      .optional(),
-  })
-  .passthrough();
-
-const stripeLinePricingSchema = z
-  .object({
-    type: z.string().nullable().optional(),
-    price_details: z
-      .object({
-        price: z.unknown().optional(),
-        product: z.unknown().optional(),
-      })
-      .nullable()
-      .optional(),
-    unit_amount_decimal: z.string().nullable().optional(),
-  })
-  .passthrough();
-
-const stripeInvoiceParentSchema = z
-  .object({
-    subscription_details: z
-      .object({ subscription: z.unknown().optional() })
-      .nullable()
-      .optional(),
-  })
-  .passthrough();
-
-const stripeInvoicePaymentRelationshipSchema = z
-  .object({
-    payment_intent: z.unknown().optional(),
-    charge: z.unknown().optional(),
-    payment_record: z.unknown().optional(),
-  })
-  .passthrough();
 
 type StripeWorkflowDeliveryRow = typeof stripeWorkflowDeliveries.$inferSelect;
 type StripeWorkflowTransaction = Tx;
@@ -299,14 +347,7 @@ function normalizeCustomer(
   if (typeof value === "string") {
     return { id: value, name: null, email: null };
   }
-  const customer = z
-    .object({
-      id: z.string().nullable().optional(),
-      name: z.string().nullable().optional(),
-      email: z.string().nullable().optional(),
-    })
-    .passthrough()
-    .safeParse(value);
+  const customer = stripeCustomerSchema.safeParse(value);
   return customer.success
     ? {
         id: customer.data.id ?? null,
@@ -322,20 +363,7 @@ function normalizePayments(value: unknown): {
   readonly chargeIds: readonly string[];
   readonly paymentRecordIds: readonly string[];
 } {
-  const payments = z
-    .object({
-      data: z.array(
-        z
-          .object({
-            id: z.string().trim().min(1).max(255).nullable().optional(),
-            payment: z.unknown().optional(),
-            payment_intent: z.unknown().optional(),
-          })
-          .passthrough(),
-      ),
-    })
-    .passthrough()
-    .safeParse(value);
+  const payments = stripeInvoicePaymentsSchema.safeParse(value);
   if (!payments.success) {
     return {
       paymentIds: [],
@@ -468,11 +496,13 @@ function eventMode(event: unknown): "live" | "test" | "unknown" {
   return parsed.data.livemode ? "live" : "test";
 }
 
-async function markStripeConnectorsDeauthorized(args: {
-  readonly tx: StripeWorkflowTransaction;
-  readonly accountId: string;
-  readonly signal: AbortSignal;
-}): Promise<number> {
+async function markStripeConnectorsDeauthorized(
+  args: {
+    readonly tx: StripeWorkflowTransaction;
+    readonly accountId: string;
+  },
+  signal: AbortSignal,
+): Promise<number> {
   const updated = await args.tx
     .update(connectors)
     .set({
@@ -488,17 +518,19 @@ async function markStripeConnectorsDeauthorized(args: {
       ),
     )
     .returning({ id: connectors.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return updated.length;
 }
 
-async function insertStripeWorkflowDelivery(args: {
-  readonly tx: StripeWorkflowTransaction;
-  readonly candidate: StripeInvoiceFanoutCandidate;
-  readonly snapshot: StripeWorkflowEventSnapshot;
-  readonly receivedAt: Date;
-  readonly signal: AbortSignal;
-}): Promise<"queued" | "duplicate"> {
+async function insertStripeWorkflowDelivery(
+  args: {
+    readonly tx: StripeWorkflowTransaction;
+    readonly candidate: StripeInvoiceFanoutCandidate;
+    readonly snapshot: StripeWorkflowEventSnapshot;
+    readonly receivedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<"queued" | "duplicate"> {
   const [delivery] = await args.tx
     .insert(stripeWorkflowDeliveries)
     .values({
@@ -517,7 +549,7 @@ async function insertStripeWorkflowDelivery(args: {
     })
     .onConflictDoNothing()
     .returning({ id: stripeWorkflowDeliveries.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!delivery) {
     return "duplicate";
   }
@@ -535,15 +567,17 @@ async function insertStripeWorkflowDelivery(args: {
         args.candidate.automation.id,
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return "queued";
 }
 
-async function lockMappedStripeConnectors(args: {
-  readonly tx: StripeWorkflowTransaction;
-  readonly accountId: string;
-  readonly signal: AbortSignal;
-}): Promise<readonly { readonly id: string }[]> {
+async function lockMappedStripeConnectors(
+  args: {
+    readonly tx: StripeWorkflowTransaction;
+    readonly accountId: string;
+  },
+  signal: AbortSignal,
+): Promise<readonly { readonly id: string }[]> {
   const mapped = await args.tx
     .select({ id: connectors.id })
     .from(connectors)
@@ -556,33 +590,18 @@ async function lockMappedStripeConnectors(args: {
     )
     .orderBy(asc(connectors.id))
     .for("update");
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return mapped;
 }
 
-async function recordInvoiceFanout(args: {
-  readonly tx: StripeWorkflowTransaction;
-  readonly snapshot: StripeWorkflowEventSnapshot;
-  readonly signal: AbortSignal;
-}): Promise<StripeInvoiceFanoutResult> {
-  const mappedConnectors = await lockMappedStripeConnectors({
-    tx: args.tx,
-    accountId: args.snapshot.event.connectedAccountId,
-    signal: args.signal,
-  });
-  if (mappedConnectors.length === 0) {
-    return {
-      mappedConnectors: 0,
-      candidates: 0,
-      matched: 0,
-      filtered: 0,
-      queued: 0,
-      duplicates: 0,
-    };
-  }
-  const rows = await args.tx
+async function loadStripeInvoiceFanoutCandidates(
+  tx: StripeWorkflowTransaction,
+  connectorIds: readonly string[],
+  signal: AbortSignal,
+) {
+  const rows = await tx
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       connectorId: connectors.id,
     })
     .from(connectors)
@@ -597,12 +616,7 @@ async function recordInvoiceFanout(args: {
       and(
         eq(connectors.connectorSlug, "stripe"),
         eq(connectors.authMethod, "oauth"),
-        inArray(
-          connectors.id,
-          mappedConnectors.map((connector) => {
-            return connector.id;
-          }),
-        ),
+        inArray(connectors.id, connectorIds),
         eq(zeroWorkflowAutomations.kind, "event"),
         eq(zeroWorkflowAutomations.eventType, "stripe-invoice-paid"),
         eq(zeroWorkflowAutomations.enabled, true),
@@ -610,7 +624,42 @@ async function recordInvoiceFanout(args: {
     )
     .orderBy(asc(zeroWorkflowAutomations.id))
     .for("update", { of: zeroWorkflowAutomations });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
+  return rows;
+}
+
+async function recordInvoiceFanout(
+  args: {
+    readonly tx: StripeWorkflowTransaction;
+    readonly snapshot: StripeWorkflowEventSnapshot;
+  },
+  signal: AbortSignal,
+): Promise<StripeInvoiceFanoutResult> {
+  const mappedConnectors = await lockMappedStripeConnectors(
+    {
+      tx: args.tx,
+      accountId: args.snapshot.event.connectedAccountId,
+    },
+    signal,
+  );
+  if (mappedConnectors.length === 0) {
+    return {
+      mappedConnectors: 0,
+      candidates: 0,
+      matched: 0,
+      filtered: 0,
+      queued: 0,
+      duplicates: 0,
+    };
+  }
+  const connectorIds = mappedConnectors.map((connector) => {
+    return connector.id;
+  });
+  const rows = await loadStripeInvoiceFanoutCandidates(
+    args.tx,
+    connectorIds,
+    signal,
+  );
 
   let matched = 0;
   let filtered = 0;
@@ -632,17 +681,19 @@ async function recordInvoiceFanout(args: {
         row.automation.ownerUserId,
       ))
     ) {
-      args.signal.throwIfAborted();
+      signal.throwIfAborted();
       continue;
     }
-    args.signal.throwIfAborted();
-    const binding = await validateStripeInvoicePaidAutomationBinding({
-      db: args.tx,
-      eventConfig: config.data,
-      orgId: row.automation.orgId,
-      userId: row.automation.ownerUserId,
-      signal: args.signal,
-    });
+    signal.throwIfAborted();
+    const binding = await validateStripeInvoicePaidAutomationBinding(
+      {
+        db: args.tx,
+        eventConfig: config.data,
+        orgId: row.automation.orgId,
+        userId: row.automation.ownerUserId,
+      },
+      signal,
+    );
     if (binding.kind !== "ok") {
       continue;
     }
@@ -662,19 +713,21 @@ async function recordInvoiceFanout(args: {
           updatedAt: receivedAt,
         },
       });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     if (!filterMatches(config.data.billingReasons, billingReason)) {
       filtered += 1;
       continue;
     }
-    const delivery = await insertStripeWorkflowDelivery({
-      tx: args.tx,
-      candidate: row,
-      snapshot: args.snapshot,
-      receivedAt,
-      signal: args.signal,
-    });
+    const delivery = await insertStripeWorkflowDelivery(
+      {
+        tx: args.tx,
+        candidate: row,
+        snapshot: args.snapshot,
+        receivedAt,
+      },
+      signal,
+    );
     if (delivery === "duplicate") {
       duplicates += 1;
       continue;
@@ -723,11 +776,13 @@ async function dispatchStripeDeauthorization(
     return { kind: "bad_request" };
   }
   const updated = await db.transaction(async (tx) => {
-    return await markStripeConnectorsDeauthorized({
-      tx,
-      accountId: parsed.data.account,
+    return await markStripeConnectorsDeauthorized(
+      {
+        tx,
+        accountId: parsed.data.account,
+      },
       signal,
-    });
+    );
   });
   signal.throwIfAborted();
   log.debug("Processed Stripe workflow ingress", {
@@ -776,11 +831,13 @@ async function dispatchStripeInvoice(
     return { kind: "bad_request" };
   }
   const fanout = await db.transaction(async (tx) => {
-    return await recordInvoiceFanout({
-      tx,
-      snapshot: invoiceSnapshot(parsed.data),
+    return await recordInvoiceFanout(
+      {
+        tx,
+        snapshot: invoiceSnapshot(parsed.data),
+      },
       signal,
-    });
+    );
   });
   signal.throwIfAborted();
   log.debug("Processed Stripe workflow ingress", {
@@ -840,10 +897,12 @@ function deliveryClaimCondition(delivery: StripeWorkflowDeliveryRow) {
   );
 }
 
-async function claimDueDelivery(args: {
-  readonly db: Db;
-  readonly signal: AbortSignal;
-}): Promise<StripeWorkflowDeliveryRow | null> {
+async function claimDueDelivery(
+  args: {
+    readonly db: Db;
+  },
+  signal: AbortSignal,
+): Promise<StripeWorkflowDeliveryRow | null> {
   const claimed = await args.db.transaction(async (tx) => {
     const currentTime = nowDate();
     const [due] = await tx
@@ -865,7 +924,7 @@ async function claimDueDelivery(args: {
       )
       .limit(1)
       .for("update", { skipLocked: true });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!due) {
       return null;
     }
@@ -881,10 +940,10 @@ async function claimDueDelivery(args: {
       })
       .where(deliveryClaimCondition(due))
       .returning();
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return updatedClaim ?? null;
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return claimed;
 }
 
@@ -895,7 +954,7 @@ async function loadDeliveryTarget(
 ): Promise<StripeDeliveryValidation> {
   const [row] = await db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       chatThreadId: workflowUserAutomationThreads.chatThreadId,
@@ -966,21 +1025,26 @@ async function loadDeliveryTarget(
     return { kind: "skip", reason: "feature_disabled" };
   }
   signal.throwIfAborted();
-  const binding = await validateStripeInvoicePaidAutomationBinding({
-    db,
-    eventConfig: config.data,
-    orgId: row.automation.orgId,
-    userId: row.automation.ownerUserId,
+  const binding = await validateStripeInvoicePaidAutomationBinding(
+    {
+      db,
+      eventConfig: config.data,
+      orgId: row.automation.orgId,
+      userId: row.automation.ownerUserId,
+    },
     signal,
-  });
+  );
   if (binding.kind !== "ok") {
     return { kind: "skip", reason: "connector_unavailable" };
   }
-  const canFire = await workflowAutomationCanFire(db, {
-    automation: row.automation,
-    agentId: row.agentId,
+  const canFire = await workflowAutomationCanFire(
+    db,
+    {
+      automation: row.automation,
+      agentId: row.agentId,
+    },
     signal,
-  });
+  );
   if (!canFire) {
     return { kind: "skip", reason: "automation_access_revoked" };
   }
@@ -1033,18 +1097,20 @@ class StripeDeliveryTargetChangedError extends Error {
   }
 }
 
-async function lockDeliveryTargetState(args: {
-  readonly tx: WorkflowQueueAdmissionTransaction;
-  readonly delivery: StripeWorkflowDeliveryRow;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function lockDeliveryTargetState(
+  args: {
+    readonly tx: WorkflowQueueAdmissionTransaction;
+    readonly delivery: StripeWorkflowDeliveryRow;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   await args.tx
     .select({ id: connectors.id })
     .from(connectors)
     .where(eq(connectors.id, args.delivery.connectorId))
     .limit(1)
     .for("update");
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const [automation] = await args.tx
     .select({
       orgId: zeroWorkflowAutomations.orgId,
@@ -1054,7 +1120,7 @@ async function lockDeliveryTargetState(args: {
     .where(eq(zeroWorkflowAutomations.id, args.delivery.automationId))
     .limit(1)
     .for("update");
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!automation) {
     return;
   }
@@ -1071,20 +1137,18 @@ async function lockDeliveryTargetState(args: {
       ),
     )
     .for("update");
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function persistDeliveryAdmission(args: {
-  readonly tx: WorkflowQueueAdmissionTransaction;
-  readonly delivery: StripeWorkflowDeliveryRow;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await lockDeliveryTargetState(args);
-  const validation = await loadDeliveryTarget(
-    args.tx,
-    args.delivery,
-    args.signal,
-  );
+async function persistDeliveryAdmission(
+  args: {
+    readonly tx: WorkflowQueueAdmissionTransaction;
+    readonly delivery: StripeWorkflowDeliveryRow;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await lockDeliveryTargetState(args, signal);
+  const validation = await loadDeliveryTarget(args.tx, args.delivery, signal);
   if (validation.kind === "skip") {
     throw new StripeDeliveryTargetChangedError(validation.reason);
   }
@@ -1100,7 +1164,7 @@ async function persistDeliveryAdmission(args: {
     })
     .where(deliveryClaimCondition(args.delivery))
     .returning({ id: stripeWorkflowDeliveries.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!delivered) {
     throw new StripeDeliveryClaimChangedError();
   }
@@ -1110,16 +1174,18 @@ async function persistDeliveryAdmission(args: {
     status: "delivered",
     statusAt: currentTime,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
-async function finishDelivery(args: {
-  readonly db: Db;
-  readonly delivery: StripeWorkflowDeliveryRow;
-  readonly status: "skipped" | "failed";
-  readonly reason: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
+async function finishDelivery(
+  args: {
+    readonly db: Db;
+    readonly delivery: StripeWorkflowDeliveryRow;
+    readonly status: "skipped" | "failed";
+    readonly reason: string;
+  },
+  signal: AbortSignal,
+): Promise<boolean> {
   const finished = await args.db.transaction(async (tx) => {
     const currentTime = nowDate();
     const [updated] = await tx
@@ -1135,7 +1201,7 @@ async function finishDelivery(args: {
       })
       .where(deliveryClaimCondition(args.delivery))
       .returning({ id: stripeWorkflowDeliveries.id });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!updated) {
       return false;
     }
@@ -1145,10 +1211,10 @@ async function finishDelivery(args: {
       status: args.status,
       statusAt: currentTime,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return true;
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return finished;
 }
 
@@ -1173,23 +1239,27 @@ function logDeliveryOutcome(args: {
   });
 }
 
-async function retryDelivery(args: {
-  readonly db: Db;
-  readonly delivery: StripeWorkflowDeliveryRow;
-  readonly signal: AbortSignal;
-}): Promise<"retried" | "failed" | "lost"> {
+async function retryDelivery(
+  args: {
+    readonly db: Db;
+    readonly delivery: StripeWorkflowDeliveryRow;
+  },
+  signal: AbortSignal,
+): Promise<"retried" | "failed" | "lost"> {
   const currentTime = nowDate();
   if (
     currentTime.getTime() - args.delivery.receivedAt.getTime() >=
     STRIPE_DELIVERY_RETRY_CUTOFF_MS
   ) {
-    const failed = await finishDelivery({
-      db: args.db,
-      delivery: args.delivery,
-      status: "failed",
-      reason: "retry_window_exhausted",
-      signal: args.signal,
-    });
+    const failed = await finishDelivery(
+      {
+        db: args.db,
+        delivery: args.delivery,
+        status: "failed",
+        reason: "retry_window_exhausted",
+      },
+      signal,
+    );
     if (failed) {
       logDeliveryOutcome({
         delivery: args.delivery,
@@ -1213,7 +1283,7 @@ async function retryDelivery(args: {
     })
     .where(deliveryClaimCondition(args.delivery))
     .returning({ id: stripeWorkflowDeliveries.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!updated) {
     return "lost";
   }
@@ -1240,28 +1310,28 @@ function deliveryContext(args: {
   });
 }
 
-async function processClaimedDelivery(args: {
-  readonly db: Db;
-  readonly delivery: StripeWorkflowDeliveryRow;
-  readonly signal: AbortSignal;
-  readonly startRun: (
-    input: RunWorkflowAutomationNowArgs,
-    signal: AbortSignal,
-  ) => Promise<RunWorkflowAutomationResult>;
-}): Promise<"executed" | "skipped" | "failed" | "retried" | "lost"> {
-  const validation = await loadDeliveryTarget(
-    args.db,
-    args.delivery,
-    args.signal,
-  );
+async function processClaimedDelivery(
+  args: {
+    readonly db: Db;
+    readonly delivery: StripeWorkflowDeliveryRow;
+    readonly startRun: (
+      input: RunWorkflowAutomationNowArgs,
+      signal: AbortSignal,
+    ) => Promise<RunWorkflowAutomationResult>;
+  },
+  signal: AbortSignal,
+): Promise<"executed" | "skipped" | "failed" | "retried" | "lost"> {
+  const validation = await loadDeliveryTarget(args.db, args.delivery, signal);
   if (validation.kind === "skip") {
-    const skipped = await finishDelivery({
-      db: args.db,
-      delivery: args.delivery,
-      status: "skipped",
-      reason: validation.reason,
-      signal: args.signal,
-    });
+    const skipped = await finishDelivery(
+      {
+        db: args.db,
+        delivery: args.delivery,
+        status: "skipped",
+        reason: validation.reason,
+      },
+      signal,
+    );
     if (skipped) {
       logDeliveryOutcome({
         delivery: args.delivery,
@@ -1290,17 +1360,19 @@ async function processClaimedDelivery(args: {
         triggerBrief: `Stripe invoice paid: ${args.delivery.snapshot.invoice.id}`,
         coalescePendingScheduleRun: false,
         persistSourceTransition: async (tx) => {
-          await persistDeliveryAdmission({
-            tx,
-            delivery: args.delivery,
-            signal: args.signal,
-          });
+          await persistDeliveryAdmission(
+            {
+              tx,
+              delivery: args.delivery,
+            },
+            signal,
+          );
         },
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
-      args.signal,
+      signal,
     ),
-    args.signal,
+    signal,
   );
   if (started.ok) {
     // A conflict or immediate run error is observed only after durable queue
@@ -1316,13 +1388,15 @@ async function processClaimedDelivery(args: {
     return "lost";
   }
   if (started.error instanceof StripeDeliveryTargetChangedError) {
-    const skipped = await finishDelivery({
-      db: args.db,
-      delivery: args.delivery,
-      status: "skipped",
-      reason: started.error.reason,
-      signal: args.signal,
-    });
+    const skipped = await finishDelivery(
+      {
+        db: args.db,
+        delivery: args.delivery,
+        status: "skipped",
+        reason: started.error.reason,
+      },
+      signal,
+    );
     if (skipped) {
       logDeliveryOutcome({
         delivery: args.delivery,
@@ -1333,42 +1407,41 @@ async function processClaimedDelivery(args: {
     }
     return "lost";
   }
-  return await retryDelivery(args);
+  return await retryDelivery(args, signal);
 }
 
-async function executeDueStripeWorkflowEvents(args: {
-  readonly db: Db;
-  readonly signal: AbortSignal;
-  readonly startRun: (
-    input: RunWorkflowAutomationNowArgs,
-    signal: AbortSignal,
-  ) => Promise<RunWorkflowAutomationResult>;
-}): Promise<ExecuteDueStripeWorkflowEventsResult> {
+async function executeDueStripeWorkflowEvents(
+  args: {
+    readonly db: Db;
+    readonly startRun: (
+      input: RunWorkflowAutomationNowArgs,
+      signal: AbortSignal,
+    ) => Promise<RunWorkflowAutomationResult>;
+  },
+  signal: AbortSignal,
+): Promise<ExecuteDueStripeWorkflowEventsResult> {
   const result = {
     executed: 0,
     skipped: 0,
     failed: 0,
     retried: 0,
   };
-  if (!(await stripeWorkflowEventSchemaAvailable(args.db))) {
-    args.signal.throwIfAborted();
-    return result;
-  }
-  args.signal.throwIfAborted();
   for (let index = 0; index < STRIPE_DELIVERY_BATCH_SIZE; index += 1) {
-    const delivery = await claimDueDelivery(args);
-    args.signal.throwIfAborted();
+    const delivery = await claimDueDelivery(args, signal);
+    signal.throwIfAborted();
     if (!delivery) {
       break;
     }
     const processed = await settle(
-      processClaimedDelivery({
-        db: args.db,
-        delivery,
-        signal: args.signal,
-        startRun: args.startRun,
-      }),
-      args.signal,
+      processClaimedDelivery(
+        {
+          db: args.db,
+          delivery,
+          startRun: args.startRun,
+        },
+        signal,
+      ),
+      signal,
     );
     if (!processed.ok) {
       log.error("Stripe workflow delivery processing failed", {
@@ -1377,11 +1450,13 @@ async function executeDueStripeWorkflowEvents(args: {
         attempt: delivery.attempts,
         category: "unexpected",
       });
-      const retry = await retryDelivery({
-        db: args.db,
-        delivery,
-        signal: args.signal,
-      });
+      const retry = await retryDelivery(
+        {
+          db: args.db,
+          delivery,
+        },
+        signal,
+      );
       if (retry === "retried") {
         result.retried += 1;
       } else if (retry === "failed") {
@@ -1402,12 +1477,14 @@ export const executeDueStripeWorkflowEvents$ = command(
     { set },
     signal: AbortSignal,
   ): Promise<ExecuteDueStripeWorkflowEventsResult> => {
-    return await executeDueStripeWorkflowEvents({
-      db: set(writeDb$),
-      signal,
-      startRun: (input, childSignal) => {
-        return set(runWorkflowAutomationNow$, input, childSignal);
+    return await executeDueStripeWorkflowEvents(
+      {
+        db: set(writeDb$),
+        startRun: (input, childSignal) => {
+          return set(runWorkflowAutomationNow$, input, childSignal);
+        },
       },
-    });
+      signal,
+    );
   },
 );

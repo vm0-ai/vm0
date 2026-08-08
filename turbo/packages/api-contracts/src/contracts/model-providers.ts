@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import DEEPSEEK_MODEL_CATALOG from "./deepseek-model-catalog.json" with { type: "json" };
 import {
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,
@@ -24,6 +25,7 @@ export type {
 } from "./model-provider-types";
 
 export {
+  MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   type SupportedRunModel,

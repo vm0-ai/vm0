@@ -1158,11 +1158,9 @@
       "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} exceeds the 1 GB limit",
       "imageUnavailable": "[Image unavailable: {{filename}}]",
-      "importing": "Importing attachment",
       "loadingFile": "Loading {{filename}}",
       "previewFile": "Preview {{filename}}",
       "title": "Attachments",
-      "unavailable": "Attachment unavailable",
       "uploadFailed": "Failed to upload {{filename}}",
       "uploadFailedRetry": "Failed to upload {{filename}}. Try again.",
       "uploadsFailed": "Some attachments failed to upload. Try again."
@@ -1600,7 +1598,9 @@
       "videoOptionsLabel": "Video options {{spec}}",
       "videoOptionsModel": "Model",
       "videoOptionsRatio": "Ratio",
-      "videoOptionsResolution": "Resolution"
+      "videoOptionsResolution": "Resolution",
+      "videoSpecAudioOff": "Muted",
+      "videoSpecAudioOn": "Audio"
     },
     "thread": {
       "ariaLabel": "Chat thread",
@@ -1621,6 +1621,7 @@
       "icon": "Chat thread icon",
       "loadingEarlier": "Loading earlier messages",
       "noEmojiFound": "No emoji found",
+      "notFound": "Chat thread not found",
       "openArtifacts": "Open artifacts",
       "openBrowser": "Open browser",
       "openNamedAgent": "Open agent {{name}}",

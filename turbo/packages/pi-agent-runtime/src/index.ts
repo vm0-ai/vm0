@@ -139,46 +139,54 @@ export const parsePiAgentMessages: (
  * Run the native Pi agent loop with the same model, prompt, messages, and
  * ExecutionEnv-driven tools used on both sides of a handoff.
  */
-export async function runPiAgentPrompt(args: {
-  readonly model: PiAgentModelConfig;
-  readonly systemPrompt: string;
-  readonly prompt: string;
-  readonly messages?: readonly PiAgentMessage[];
-  readonly executionEnv: ExecutionEnv;
-  readonly signal: AbortSignal;
-  readonly onMessage: (message: PiAgentMessage) => Promise<void> | void;
-}): Promise<void> {
-  await runPiAgentPromptImpl({
-    model: args.model,
-    systemPrompt: args.systemPrompt,
-    prompt: args.prompt,
-    messages: args.messages,
-    executionEnv: args.executionEnv,
-    signal: args.signal,
-    onEvent: messageSink(args.onMessage),
-  });
+export async function runPiAgentPrompt(
+  args: {
+    readonly model: PiAgentModelConfig;
+    readonly systemPrompt: string;
+    readonly prompt: string;
+    readonly messages?: readonly PiAgentMessage[];
+    readonly executionEnv: ExecutionEnv;
+    readonly onMessage: (message: PiAgentMessage) => Promise<void> | void;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await runPiAgentPromptImpl(
+    {
+      model: args.model,
+      systemPrompt: args.systemPrompt,
+      prompt: args.prompt,
+      messages: args.messages,
+      executionEnv: args.executionEnv,
+      onEvent: messageSink(args.onMessage),
+    },
+    signal,
+  );
 }
 
 /**
  * Resume a handed-off Pi turn by executing the latest unresolved assistant
  * tool batch in the Sandbox, then continuing the native model loop.
  */
-export async function runPiAgentResume(args: {
-  readonly model: PiAgentModelConfig;
-  readonly systemPrompt: string;
-  readonly messages: readonly PiAgentMessage[];
-  readonly executionEnv: ExecutionEnv;
-  readonly signal: AbortSignal;
-  readonly onMessage: (message: PiAgentMessage) => Promise<void> | void;
-}): Promise<void> {
-  await runPiAgentResumeImpl({
-    model: args.model,
-    systemPrompt: args.systemPrompt,
-    messages: args.messages,
-    executionEnv: args.executionEnv,
-    signal: args.signal,
-    onEvent: messageSink(args.onMessage),
-  });
+export async function runPiAgentResume(
+  args: {
+    readonly model: PiAgentModelConfig;
+    readonly systemPrompt: string;
+    readonly messages: readonly PiAgentMessage[];
+    readonly executionEnv: ExecutionEnv;
+    readonly onMessage: (message: PiAgentMessage) => Promise<void> | void;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await runPiAgentResumeImpl(
+    {
+      model: args.model,
+      systemPrompt: args.systemPrompt,
+      messages: args.messages,
+      executionEnv: args.executionEnv,
+      onEvent: messageSink(args.onMessage),
+    },
+    signal,
+  );
 }
 
 /** Error returned by {@link ExecutionEnv} file operations. */
@@ -187,6 +195,7 @@ export type FileError = NativeFileErrorShape;
 /** Error returned by {@link ExecutionEnv.exec}. */
 export type ExecutionError = NativeExecutionErrorShape;
 
+export { PI_OPENAI_COMPATIBLE_PROVIDERS } from "./types";
 export type {
   ExecutionEnv,
   FileInfo,

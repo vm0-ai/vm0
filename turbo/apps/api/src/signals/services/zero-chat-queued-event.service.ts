@@ -1,17 +1,10 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
-import { command } from "ccstate";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import {
   chatEvents,
-  type ChatEventAttachFileMetadata,
-  type ChatEventGenerationTemplate,
   type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
-import {
-  CANONICAL_ASSET_VERSION,
-  runUploadedFiles,
-} from "@vm0/db/schema/run-uploaded-file";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -30,7 +23,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 
 import { pgNullDecoder } from "../../lib/db-structured-result";
-import { db$, type Db } from "../external/db";
+import type { Db } from "../external/db";
 import {
   chatQueueEventPriority,
   listPendingChatQueueEvents,
@@ -50,23 +43,16 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { resolveArtifactObject$ } from "./artifact-storage.service";
-import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
 import {
   childAutonomyBudget,
   type ChildAutonomyBudget,
 } from "./autonomy-budget.service";
 import { INITIAL_AUTONOMY_BUDGET } from "./autonomy-budget.constants";
-import {
-  autonomyBudgetSchemaAvailable,
-  rolloutCompatibleAutonomyBudgetColumn,
-} from "./autonomy-budget-schema.service";
 import type { Tx } from "../../lib/db-types";
 import {
   createUserMessageDocument,
   withRunModelAnnotation,
 } from "./zero-chat-user-message.service";
-import { chatAgentRunContextSchemaAvailable } from "./chat-agent-run-context-schema.service";
 
 type DbTransaction = Tx;
 
@@ -91,14 +77,8 @@ function unreachableQueuedContextType(contextType: never): never {
 
 function requiredQueuedUserMessageContextType(
   contextType: QueuedUserMessageContextType | null,
-  agentRunContextAvailable: boolean,
 ): QueuedUserMessageContextType {
   if (contextType === null) {
-    // Before migration 0830, delegated agent prompts are the only queued input
-    // rows without a context type. Current schemas fail loudly on any NULL.
-    if (!agentRunContextAvailable) {
-      return "agent_run";
-    }
     throw new Error("Queued user message is missing its context type");
   }
   return contextType;
@@ -156,8 +136,6 @@ export interface QueuedUserMessage {
   readonly id: string;
   readonly createdAt: Date;
   readonly userMessage: ChatEventUserMessage;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatEventGenerationTemplate | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -173,12 +151,7 @@ export type QueueFirstRunAssociation =
       readonly kind: "user_message";
       readonly threadId: string;
       readonly eventId: string;
-      readonly orgId: string;
-      readonly userId: string;
       readonly admissionTime: number;
-      readonly attachFileMetadata:
-        | readonly ChatEventAttachFileMetadata[]
-        | null;
       readonly morningBriefDeliveryId?: string;
     }
   | {
@@ -249,56 +222,6 @@ export async function lockUserMessageQueueThread(
   return await lockChatQueueThread(db, threadId);
 }
 
-export const resolveAttachFileMetadata$ = command(
-  async (
-    { get, set },
-    args: {
-      readonly userId: string;
-      readonly attachFiles: readonly string[] | null;
-    },
-    signal: AbortSignal,
-  ): Promise<ChatEventAttachFileMetadata[] | null> => {
-    if (!args.attachFiles || args.attachFiles.length === 0) {
-      return null;
-    }
-    const db = get(db$);
-    const metadata: ChatEventAttachFileMetadata[] = [];
-    for (const id of args.attachFiles) {
-      const [object, [asset]] = await Promise.all([
-        set(resolveArtifactObject$, { userId: args.userId, id }, signal),
-        db
-          .select({
-            filename: runUploadedFiles.filename,
-            contentType: runUploadedFiles.contentType,
-            size: runUploadedFiles.sizeBytes,
-          })
-          .from(runUploadedFiles)
-          .where(
-            and(
-              eq(runUploadedFiles.userId, args.userId),
-              eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
-              eq(runUploadedFiles.idempotencyScope, "web-input"),
-              eq(runUploadedFiles.idempotencyKey, id),
-            ),
-          )
-          .limit(1),
-      ]);
-      signal.throwIfAborted();
-      if (!object) {
-        throw new Error(`Queued attachment not found: ${id}`);
-      }
-      metadata.push({
-        id,
-        filename: asset?.filename ?? object.filename,
-        contentType: asset?.contentType ?? object.contentType,
-        size: asset?.size ?? object.size,
-        objectKey: object.key,
-      });
-    }
-    return metadata;
-  },
-);
-
 /** Whether the outer ChatEvent row is an unclaimed, unrevoked prompt. */
 export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
   return exists(
@@ -337,26 +260,17 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!head || head.eventType !== "input.prompt") {
     return null;
   }
-  const [schemaAvailable, agentRunContextAvailable] = await Promise.all([
-    autonomyBudgetSchemaAvailable(db),
-    chatAgentRunContextSchemaAvailable(db),
-  ]);
   const [event] = await db
     .select({
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
       userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
-      generationTemplate: chatEvents.generationTemplate,
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       contextType: chatEvents.contextType,
-      sourceAutonomyBudget: rolloutCompatibleAutonomyBudgetColumn(
-        schemaAvailable,
-        zeroRuns.autonomyBudget,
-      ),
+      sourceAutonomyBudget: zeroRuns.autonomyBudget,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
@@ -382,12 +296,9 @@ export async function loadNextUnclaimedQueuedUserMessage(
   if (!event.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  const contextType = requiredQueuedUserMessageContextType(
-    event.contextType,
-    agentRunContextAvailable,
-  );
+  const contextType = requiredQueuedUserMessageContextType(event.contextType);
   const autonomyBudget: QueuedUserMessage["autonomyBudget"] =
-    !schemaAvailable || event.contextType !== "agent_run"
+    contextType !== "agent_run"
       ? { kind: "ok", autonomyBudget: INITIAL_AUTONOMY_BUDGET }
       : event.sourceAutonomyBudget === null
         ? {
@@ -445,8 +356,6 @@ async function resolveUserQueueFirstClaimSnapshot(
     .select({
       ...queueFirstReplacementTargetFields,
       userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
-      generationTemplate: chatEvents.generationTemplate,
     })
     .from(chatEvents)
     .where(
@@ -468,10 +377,7 @@ async function resolveUserQueueFirstClaimSnapshot(
   if (!head.userMessage) {
     throw new Error("Queued input event is missing userMessage");
   }
-  const contextType = requiredQueuedUserMessageContextType(
-    head.contextType,
-    await chatAgentRunContextSchemaAvailable(db),
-  );
+  const contextType = requiredQueuedUserMessageContextType(head.contextType);
   return {
     target: replacementTargetFromQueueHead(head),
     routingContextType: contextType,
@@ -483,8 +389,6 @@ async function resolveUserQueueFirstClaimSnapshot(
           ? head.userMessage
           : withRunModelAnnotation(head.userMessage, args.selectedModel),
       runId: args.runId,
-      attachFiles: head.attachFiles ? [...head.attachFiles] : null,
-      generationTemplate: head.generationTemplate,
     },
   };
 }
@@ -754,20 +658,6 @@ export async function claimQueueFirstRunAssociation(
         outcome = "lost";
         return { kind: "lost" };
       }
-      if (
-        args.kind === "user_message" &&
-        isWebChatContextType(snapshot.routingContextType) &&
-        args.attachFileMetadata
-      ) {
-        await attachCanonicalWebInputAssetsToEvent(db, {
-          eventId: claimed.id,
-          chatThreadId: args.threadId,
-          userId: args.userId,
-          orgId: args.orgId,
-          files: args.attachFileMetadata,
-        });
-      }
-
       outcome = "claimed";
       return {
         kind: "claimed",
@@ -936,8 +826,6 @@ export async function failQueuedUserMessage(
     const [queued] = await tx
       .select({
         userMessage: chatEvents.userMessage,
-        attachFiles: chatEvents.attachFiles,
-        generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
@@ -965,8 +853,6 @@ export async function failQueuedUserMessage(
       chatThreadId: args.threadId,
       eventType: "input.rejected",
       userMessage: queued.userMessage,
-      attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
-      generationTemplate: queued.generationTemplate,
       runId: null,
       error: args.errorMarker,
       createdAt: terminalAt,

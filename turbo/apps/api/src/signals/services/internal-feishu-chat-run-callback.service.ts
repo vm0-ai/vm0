@@ -89,11 +89,13 @@ async function claimFeishuChatDelivery(
   return callback;
 }
 
-async function loadFeishuChatDeliveryContext(args: {
-  readonly db: Db;
-  readonly callback: ClaimedFeishuChatDelivery;
-  readonly signal: AbortSignal;
-}) {
+async function loadFeishuChatDeliveryContext(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedFeishuChatDelivery;
+  },
+  signal: AbortSignal,
+) {
   const payload = feishuChatCallbackPayloadSchema.parse(args.callback.payload);
   const [run] = await args.db
     .select({
@@ -112,7 +114,7 @@ async function loadFeishuChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!run?.chatThreadId) {
     throw new Error("Feishu chat delivery run context is unavailable");
   }
@@ -135,7 +137,7 @@ async function loadFeishuChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!event?.content) {
     throw new Error("Feishu chat delivery message is unavailable");
   }
@@ -167,7 +169,7 @@ async function loadFeishuChatDeliveryContext(args: {
       ),
     )
     .limit(1);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return { payload, run, messageContent: event.content, binding };
 }
 
@@ -194,15 +196,17 @@ async function countFeishuMentioners(args: {
   return row?.count ?? 0;
 }
 
-async function loadFeishuAdmissionFailureContext(args: {
-  readonly db: Db;
-  readonly chatThreadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly target: FeishuDeliveryTarget;
-  readonly chatEventId: string;
-  readonly signal: AbortSignal;
-}): Promise<{ readonly messageContent: string }> {
+async function loadFeishuAdmissionFailureContext(
+  args: {
+    readonly db: Db;
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly target: FeishuDeliveryTarget;
+    readonly chatEventId: string;
+  },
+  signal: AbortSignal,
+): Promise<{ readonly messageContent: string }> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
       .select({ content: chatEvents.content })
@@ -242,7 +246,7 @@ async function loadFeishuAdmissionFailureContext(args: {
       )
       .limit(1),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const event = eventRows[0];
   if (!event?.content || !bindingRows[0]) {
     throw new Error("Feishu admission failure delivery context is unavailable");
@@ -250,48 +254,56 @@ async function loadFeishuAdmissionFailureContext(args: {
   return { messageContent: event.content };
 }
 
-export async function deliverFeishuChatAdmissionFailure(args: {
-  readonly db: Db;
-  readonly chatThreadId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly target: FeishuDeliveryTarget;
-  readonly chatEventId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const context = await loadFeishuAdmissionFailureContext(args);
+export async function deliverFeishuChatAdmissionFailure(
+  args: {
+    readonly db: Db;
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly target: FeishuDeliveryTarget;
+    readonly chatEventId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const context = await loadFeishuAdmissionFailureContext(args, signal);
   const message = buildFeishuAgentResponseMessage({
     text: context.messageContent,
   });
   if (args.target.replyInThread) {
-    await replyWithFeishuMessage({
-      db: args.db,
-      installationId: args.target.installationId,
-      messageId: args.target.messageId,
-      message,
-      replyInThread: true,
-      signal: args.signal,
-    });
+    await replyWithFeishuMessage(
+      {
+        db: args.db,
+        installationId: args.target.installationId,
+        messageId: args.target.messageId,
+        message,
+        replyInThread: true,
+      },
+      signal,
+    );
     return;
   }
-  await sendFeishuMessage({
-    db: args.db,
-    installationId: args.target.installationId,
-    receiveIdType: "chat_id",
-    receiveId: args.target.chatId,
-    message,
-    idempotencyKey: args.chatEventId,
-    signal: args.signal,
-  });
+  await sendFeishuMessage(
+    {
+      db: args.db,
+      installationId: args.target.installationId,
+      receiveIdType: "chat_id",
+      receiveId: args.target.chatId,
+      message,
+      idempotencyKey: args.chatEventId,
+    },
+    signal,
+  );
 }
 
-async function deliverClaimedFeishuChatCallback(args: {
-  readonly db: Db;
-  readonly callback: ClaimedFeishuChatDelivery;
-  readonly signal: AbortSignal;
-}): Promise<"delivered" | "skipped_revoked"> {
+async function deliverClaimedFeishuChatCallback(
+  args: {
+    readonly db: Db;
+    readonly callback: ClaimedFeishuChatDelivery;
+  },
+  signal: AbortSignal,
+): Promise<"delivered" | "skipped_revoked"> {
   const { payload, run, messageContent, binding } =
-    await loadFeishuChatDeliveryContext(args);
+    await loadFeishuChatDeliveryContext(args, signal);
   if (!binding) {
     return "skipped_revoked";
   }
@@ -305,48 +317,54 @@ async function deliverClaimedFeishuChatCallback(args: {
     }),
     loadUserFeatureSwitchContext(args.db, run.orgId, run.userId),
   ]);
-  args.signal.throwIfAborted();
-  const presentation = await resolveIntegrationAgentResponsePresentation({
-    db: args.db,
-    orgId: run.orgId,
-    userId: run.userId,
-    runId: args.callback.runId,
-    agentId: run.agentId,
-    defaultAgentId: binding.defaultAgentId,
-    replyToMention:
-      payload.replyInThread && mentionerCount > 1
-        ? `<at id=${binding.feishuOpenId}></at>`
-        : undefined,
-    getFeatureOverrides: () => {
-      return Promise.resolve(featureContext.overrides ?? {});
+  signal.throwIfAborted();
+  const presentation = await resolveIntegrationAgentResponsePresentation(
+    {
+      db: args.db,
+      orgId: run.orgId,
+      userId: run.userId,
+      runId: args.callback.runId,
+      agentId: run.agentId,
+      defaultAgentId: binding.defaultAgentId,
+      replyToMention:
+        payload.replyInThread && mentionerCount > 1
+          ? `<at id=${binding.feishuOpenId}></at>`
+          : undefined,
+      getFeatureOverrides: () => {
+        return Promise.resolve(featureContext.overrides ?? {});
+      },
     },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+    signal,
+  );
+  signal.throwIfAborted();
   const message = buildFeishuAgentResponseMessage({
     text: messageContent,
     auditUrl: presentation.logsUrl,
     footerText: presentation.footerText,
   });
   if (payload.replyInThread) {
-    await replyWithFeishuMessage({
-      db: args.db,
-      installationId: payload.installationId,
-      messageId: payload.messageId,
-      message,
-      replyInThread: true,
-      signal: args.signal,
-    });
+    await replyWithFeishuMessage(
+      {
+        db: args.db,
+        installationId: payload.installationId,
+        messageId: payload.messageId,
+        message,
+        replyInThread: true,
+      },
+      signal,
+    );
   } else {
-    await sendFeishuMessage({
-      db: args.db,
-      installationId: payload.installationId,
-      receiveIdType: "chat_id",
-      receiveId: payload.chatId,
-      message,
-      idempotencyKey: args.callback.runId,
-      signal: args.signal,
-    });
+    await sendFeishuMessage(
+      {
+        db: args.db,
+        installationId: payload.installationId,
+        receiveIdType: "chat_id",
+        receiveId: payload.chatId,
+        message,
+        idempotencyKey: args.callback.runId,
+      },
+      signal,
+    );
   }
   return "delivered";
 }
@@ -359,13 +377,15 @@ export async function clearCanonicalFeishuThinkingReaction(
   if (!target.reactionId) {
     return;
   }
-  await removeFeishuMessageReaction({
-    db,
-    installationId: target.installationId,
-    messageId: target.messageId,
-    reactionId: target.reactionId,
+  await removeFeishuMessageReaction(
+    {
+      db,
+      installationId: target.installationId,
+      messageId: target.messageId,
+      reactionId: target.reactionId,
+    },
     signal,
-  });
+  );
 }
 
 export async function dispatchFeishuChatDeliveryOnce(
@@ -381,11 +401,13 @@ export async function dispatchFeishuChatDeliveryOnce(
   }
 
   const delivery = await settleIncludingAbort(
-    deliverClaimedFeishuChatCallback({
-      db,
-      callback,
+    deliverClaimedFeishuChatCallback(
+      {
+        db,
+        callback,
+      },
       signal,
-    }),
+    ),
   );
   if (!delivery.ok) {
     const message =

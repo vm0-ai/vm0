@@ -116,17 +116,19 @@ describe("connector/providers/google-maps", () => {
       });
       server.use(handler);
 
-      const result = await googleMapsProvider.access.refresh({
-        authClient: {
-          ...testAuthClient,
-          clientId: "client-id",
-          clientSecret: "client-secret",
+      const result = await googleMapsProvider.access.refresh(
+        {
+          authClient: {
+            ...testAuthClient,
+            clientId: "client-id",
+            clientSecret: "client-secret",
+          },
+          inputs: {
+            refreshToken: "refresh-token",
+          },
         },
-        inputs: {
-          refreshToken: "refresh-token",
-        },
-        signal: testRefreshSignal(),
-      });
+        testRefreshSignal(),
+      );
 
       expect(result).toEqual({
         outputs: {

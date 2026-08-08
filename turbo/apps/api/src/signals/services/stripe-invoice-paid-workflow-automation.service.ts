@@ -48,15 +48,17 @@ function badRequest(message: string): ReadyStripeConnectionResult {
   return { kind: "bad_request", message };
 }
 
-async function loadReadyStripeConnection(args: {
-  readonly connectorId?: string;
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-  readonly userId: string;
-}): Promise<ReadyStripeConnectionResult> {
+async function loadReadyStripeConnection(
+  args: {
+    readonly connectorId?: string;
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<ReadyStripeConnectionResult> {
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const loaded = await loadConnectorCredentialConnection({
     db: args.db,
     snapshot,
@@ -67,7 +69,7 @@ async function loadReadyStripeConnection(args: {
       ? {}
       : { connectorId: args.connectorId }),
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (loaded.kind === "missing") {
     return badRequest(
       args.connectorId === undefined
@@ -103,7 +105,7 @@ async function loadReadyStripeConnection(args: {
     db: args.db,
     valueRefs: [STRIPE_LIVEMODE_VALUE_REF],
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const livemode = values.get(STRIPE_LIVEMODE_VALUE_REF);
   if (livemode === "false") {
     return badRequest(STRIPE_LIVE_MODE_REQUIRED_MESSAGE);
@@ -115,13 +117,15 @@ async function loadReadyStripeConnection(args: {
   return { kind: "ok", connection, stripeAccountId };
 }
 
-export async function resolveStripeInvoicePaidAutomationBinding(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-  readonly userId: string;
-}): Promise<StripeInvoicePaidAutomationReadinessResult> {
-  const ready = await loadReadyStripeConnection(args);
+export async function resolveStripeInvoicePaidAutomationBinding(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<StripeInvoicePaidAutomationReadinessResult> {
+  const ready = await loadReadyStripeConnection(args, signal);
   if (ready.kind === "bad_request") {
     return ready;
   }
@@ -135,20 +139,24 @@ export async function resolveStripeInvoicePaidAutomationBinding(args: {
   };
 }
 
-export async function validateStripeInvoicePaidAutomationBinding(args: {
-  readonly db: ReadonlyDb;
-  readonly eventConfig: StripeInvoicePaidEventConfig;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-  readonly userId: string;
-}): Promise<StripeInvoicePaidAutomationReadinessResult> {
-  const ready = await loadReadyStripeConnection({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorId: args.eventConfig.connectorId,
-    signal: args.signal,
-  });
+export async function validateStripeInvoicePaidAutomationBinding(
+  args: {
+    readonly db: ReadonlyDb;
+    readonly eventConfig: StripeInvoicePaidEventConfig;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<StripeInvoicePaidAutomationReadinessResult> {
+  const ready = await loadReadyStripeConnection(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorId: args.eventConfig.connectorId,
+    },
+    signal,
+  );
   if (ready.kind === "bad_request") {
     return ready;
   }

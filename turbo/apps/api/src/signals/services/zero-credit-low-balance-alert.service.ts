@@ -1,4 +1,3 @@
-import type { createClerkClient } from "@clerk/backend";
 import { command } from "ccstate";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
@@ -9,7 +8,11 @@ import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { clerk$ } from "../external/clerk";
+import {
+  clerk$,
+  type ClerkClient,
+  type ClerkOrganizationMembership,
+} from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import {
@@ -21,10 +24,7 @@ import {
   type EmailTemplate,
 } from "./zero-email-common.service";
 
-type ClerkClient = ReturnType<typeof createClerkClient>;
-type OrganizationMembership = Awaited<
-  ReturnType<ClerkClient["organizations"]["getOrganizationMembershipList"]>
->["data"][number];
+type OrganizationMembership = ClerkOrganizationMembership;
 
 export const LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS = 5000;
 

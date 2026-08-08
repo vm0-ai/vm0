@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.160.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.7...runner-rs-v0.160.8) (2026-08-07)
+
+
+### Bug Fixes
+
+* **runner:** consume explicit pi execution mode ([#25738](https://github.com/vm0-ai/vm0/issues/25738)) ([d1af021](https://github.com/vm0-ai/vm0/commit/d1af0212e7e74fcd7563bdfcd83ddb3c336e4829))
+
+## [0.160.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.6...runner-rs-v0.160.7) (2026-08-07)
+
+
+### Refactoring
+
+* **runner:** remove preference compatibility bridge ([#25734](https://github.com/vm0-ai/vm0/issues/25734)) ([5e2edaf](https://github.com/vm0-ai/vm0/commit/5e2edafe9ca7958f4c37566566762f34f5fffd01))
+
+## [0.160.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.5...runner-rs-v0.160.6) (2026-08-07)
+
+
+### Bug Fixes
+
+* **api:** account for pi edge model usage ([#25668](https://github.com/vm0-ai/vm0/issues/25668)) ([ec55732](https://github.com/vm0-ai/vm0/commit/ec55732fa303284e24b119ac8210438c650024d8))
+
 ## [0.160.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.4...runner-rs-v0.160.5) (2026-08-07)
 
 

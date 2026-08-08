@@ -1158,11 +1158,9 @@
       "file": "फ़ाइल {{filename}}",
       "fileTooLarge": "{{filename}} 1 GB सीमा से अधिक है",
       "imageUnavailable": "[छवि अनुपलब्ध: {{filename}}]",
-      "importing": "अनुलग्नक आयात किया जा रहा है",
       "loadingFile": "{{filename}} लोड हो रहा है",
       "previewFile": "पूर्वावलोकन {{filename}}",
       "title": "संलग्नक",
-      "unavailable": "अनुलग्नक अनुपलब्ध",
       "uploadFailed": "{{filename}} अपलोड करने में विफल",
       "uploadFailedRetry": "{{filename}} अपलोड करने में विफल. पुनः प्रयास करें।",
       "uploadsFailed": "कुछ अनुलग्नक अपलोड करने में विफल रहे. पुनः प्रयास करें।"
@@ -1600,7 +1598,9 @@
       "videoOptionsLabel": "वीडियो विकल्प {{spec}}",
       "videoOptionsModel": "मॉडल",
       "videoOptionsRatio": "अनुपात",
-      "videoOptionsResolution": "रिज़ॉल्यूशन"
+      "videoOptionsResolution": "रिज़ॉल्यूशन",
+      "videoSpecAudioOff": "म्यूट",
+      "videoSpecAudioOn": "ऑडियो"
     },
     "thread": {
       "ariaLabel": "चैट थ्रेड",
@@ -1621,6 +1621,7 @@
       "icon": "चैट थ्रेड आइकन",
       "loadingEarlier": "पहले के संदेश लोड हो रहे हैं",
       "noEmojiFound": "कोई इमोजी नहीं मिला",
+      "notFound": "चैट थ्रेड नहीं मिला",
       "openArtifacts": "आर्टिफ़ैक्ट खोलें",
       "openBrowser": "खुला ब्राउज़र",
       "openNamedAgent": "ओपन एजेंट {{name}}",

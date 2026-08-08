@@ -4,7 +4,7 @@ import { isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
 
 import { command } from "ccstate";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, exists, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
@@ -294,20 +294,22 @@ function tokenRequestAuthentication(args: {
   ).toString("base64")}`;
 }
 
-async function requestToken(args: {
-  readonly config: CustomConnectorOAuthConfigRow;
-  readonly clientSecret: string;
-  readonly form: URLSearchParams;
-  readonly signal: AbortSignal;
-}): Promise<OAuthTokenResult> {
+async function requestToken(
+  args: {
+    readonly config: CustomConnectorOAuthConfigRow;
+    readonly clientSecret: string;
+    readonly form: URLSearchParams;
+  },
+  signal: AbortSignal,
+): Promise<OAuthTokenResult> {
   const authorization = tokenRequestAuthentication(args);
   const response = await postPublicHttpsForm(
     new URL(args.config.tokenUrl),
     args.form,
     authorization,
-    args.signal,
+    signal,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return tokenResult(response);
 }
 
@@ -358,24 +360,28 @@ function throwCustomConnectorFeishuOAuthError(error: unknown): never {
   );
 }
 
-export async function exchangeCustomConnectorOAuth2Code(args: {
-  readonly config: CustomConnectorOAuthConfigRow;
-  readonly clientSecret: string;
-  readonly code: string;
-  readonly codeVerifier: string | null;
-  readonly redirectUri: string;
-  readonly signal: AbortSignal;
-}): Promise<OAuthTokenResult> {
+export async function exchangeCustomConnectorOAuth2Code(
+  args: {
+    readonly config: CustomConnectorOAuthConfigRow;
+    readonly clientSecret: string;
+    readonly code: string;
+    readonly codeVerifier: string | null;
+    readonly redirectUri: string;
+  },
+  signal: AbortSignal,
+): Promise<OAuthTokenResult> {
   if (args.config.providerAdapter === "feishu") {
     const result = await settle(
-      exchangeFeishuOAuthCode({
-        appId: args.config.clientId,
-        appSecret: args.clientSecret,
-        code: args.code,
-        redirectUri: args.redirectUri,
-        signal: args.signal,
-      }),
-      args.signal,
+      exchangeFeishuOAuthCode(
+        {
+          appId: args.config.clientId,
+          appSecret: args.clientSecret,
+          code: args.code,
+          redirectUri: args.redirectUri,
+        },
+        signal,
+      ),
+      signal,
     );
     if (!result.ok) {
       throwCustomConnectorFeishuOAuthError(result.error);
@@ -390,24 +396,28 @@ export async function exchangeCustomConnectorOAuth2Code(args: {
   if (args.codeVerifier) {
     form.set("code_verifier", args.codeVerifier);
   }
-  return await requestToken({ ...args, form });
+  return await requestToken({ ...args, form }, signal);
 }
 
-async function refreshCustomConnectorOAuth2Token(args: {
-  readonly config: CustomConnectorOAuthConfigRow;
-  readonly clientSecret: string;
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-}): Promise<OAuthTokenResult> {
+async function refreshCustomConnectorOAuth2Token(
+  args: {
+    readonly config: CustomConnectorOAuthConfigRow;
+    readonly clientSecret: string;
+    readonly refreshToken: string;
+  },
+  signal: AbortSignal,
+): Promise<OAuthTokenResult> {
   if (args.config.providerAdapter === "feishu") {
     const result = await settle(
-      refreshFeishuOAuthToken({
-        appId: args.config.clientId,
-        appSecret: args.clientSecret,
-        refreshToken: args.refreshToken,
-        signal: args.signal,
-      }),
-      args.signal,
+      refreshFeishuOAuthToken(
+        {
+          appId: args.config.clientId,
+          appSecret: args.clientSecret,
+          refreshToken: args.refreshToken,
+        },
+        signal,
+      ),
+      signal,
     );
     if (!result.ok) {
       throwCustomConnectorFeishuOAuthError(result.error);
@@ -418,7 +428,7 @@ async function refreshCustomConnectorOAuth2Token(args: {
     grant_type: "refresh_token",
     refresh_token: args.refreshToken,
   });
-  return await requestToken({ ...args, form });
+  return await requestToken({ ...args, form }, signal);
 }
 
 function createPkceVerifier(): string {
@@ -799,6 +809,7 @@ async function loadConnection(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly connectorId: string;
+  readonly storageVersion: number;
   readonly lockRow?: boolean;
 }): Promise<StoredConnection | null> {
   const query = args.db
@@ -814,6 +825,20 @@ async function loadConnection(args: {
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
+        eq(connectors.storageVersion, args.storageVersion),
+        exists(
+          args.db
+            .select({ id: orgCustomConnectors.id })
+            .from(orgCustomConnectors)
+            .where(
+              and(
+                eq(orgCustomConnectors.id, args.connectorId),
+                eq(orgCustomConnectors.orgId, args.orgId),
+                eq(orgCustomConnectors.authMode, "oauth"),
+                eq(orgCustomConnectors.storageVersion, args.storageVersion),
+              ),
+            ),
+        ),
       ),
     );
   const rows = args.lockRow
@@ -823,13 +848,34 @@ async function loadConnection(args: {
   if (!connection) {
     return null;
   }
+  // Re-check the complete identity at the secret read boundary because the
+  // organization definition can change after the parent lookup.
   const tokenRows = await args.db
     .select({
       secretName: secrets.name,
       encryptedValue: secrets.encryptedValue,
     })
     .from(secrets)
-    .where(eq(secrets.connectorId, connection.id));
+    .innerJoin(connectors, eq(connectors.id, secrets.connectorId))
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, connectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, connectors.orgId),
+        eq(orgCustomConnectors.authMode, "oauth"),
+        eq(orgCustomConnectors.storageVersion, args.storageVersion),
+      ),
+    )
+    .where(
+      and(
+        eq(connectors.id, connection.id),
+        eq(connectors.customConnectorId, args.connectorId),
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.authMethod, "oauth"),
+        eq(connectors.storageVersion, args.storageVersion),
+      ),
+    );
   return {
     id: connection.id,
     tokenExpiresAt: connection.tokenExpiresAt,
@@ -924,18 +970,29 @@ function withRuntimeOAuthToken(
   ];
 }
 
+async function markCustomConnectorNeedsReconnect(
+  db: Db,
+  connectorId: string,
+  reconnectReason: "missing_refresh_token" | "authorization_expired_or_revoked",
+): Promise<void> {
+  await db
+    .update(connectors)
+    .set({ needsReconnect: true, reconnectReason, updatedAt: nowDate() })
+    .where(eq(connectors.id, connectorId));
+}
+
 interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly connector: CustomConnectorRow;
   readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
   readonly forceRefresh?: boolean;
 }
 
 async function resolveCustomConnectorOAuth2AccessToken(
   args: ResolveCustomConnectorOAuth2AccessTokenArgs,
+  signal: AbortSignal,
 ): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   if (args.connector.authMode !== "oauth" || !args.connector.oauthConfig) {
     return { kind: "unavailable" };
@@ -946,8 +1003,9 @@ async function resolveCustomConnectorOAuth2AccessToken(
     orgId: args.orgId,
     userId: args.userId,
     connectorId: args.connector.id,
+    storageVersion: args.connector.storageVersion,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!connection) {
     return { kind: "unavailable" };
   }
@@ -964,9 +1022,10 @@ async function resolveCustomConnectorOAuth2AccessToken(
       orgId: args.orgId,
       userId: args.userId,
       connectorId: args.connector.id,
+      storageVersion: args.connector.storageVersion,
       lockRow: true,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!lockedConnection) {
       return { kind: "unavailable" };
     }
@@ -989,14 +1048,11 @@ async function resolveCustomConnectorOAuth2AccessToken(
       return lockedAccessToken;
     }
     if (!lockedConnection.encryptedRefreshToken) {
-      await tx
-        .update(connectors)
-        .set({
-          needsReconnect: true,
-          reconnectReason: "missing_refresh_token",
-          updatedAt: nowDate(),
-        })
-        .where(eq(connectors.id, lockedConnection.id));
+      await markCustomConnectorNeedsReconnect(
+        tx,
+        lockedConnection.id,
+        "missing_refresh_token",
+      );
       return { kind: "reconnect-required" };
     }
     const [credentials, refreshToken] = await Promise.all([
@@ -1009,17 +1065,19 @@ async function resolveCustomConnectorOAuth2AccessToken(
         args.featureContext,
       ),
     ]);
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!credentials) {
       return { kind: "unavailable" };
     }
     const refreshResult = await settle(
-      refreshCustomConnectorOAuth2Token({
-        config: oauthConfig,
-        clientSecret: credentials.clientSecret,
-        refreshToken,
-        signal: args.signal,
-      }),
+      refreshCustomConnectorOAuth2Token(
+        {
+          config: oauthConfig,
+          clientSecret: credentials.clientSecret,
+          refreshToken,
+        },
+        signal,
+      ),
     );
     if (!refreshResult.ok) {
       if (
@@ -1028,17 +1086,14 @@ async function resolveCustomConnectorOAuth2AccessToken(
       ) {
         throw new CustomConnectorOAuth2TokenRefreshError(refreshResult.error);
       }
-      await tx
-        .update(connectors)
-        .set({
-          needsReconnect: true,
-          reconnectReason: "authorization_expired_or_revoked",
-          updatedAt: nowDate(),
-        })
-        .where(eq(connectors.id, lockedConnection.id));
+      await markCustomConnectorNeedsReconnect(
+        tx,
+        lockedConnection.id,
+        "authorization_expired_or_revoked",
+      );
       return { kind: "reconnect-required" };
     }
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     const encryptedAccessToken = await replaceConnectionTokens({
       db: tx,
       connectionId: lockedConnection.id,
@@ -1049,7 +1104,7 @@ async function resolveCustomConnectorOAuth2AccessToken(
       fallbackEncryptedIdToken: lockedConnection.encryptedIdToken ?? undefined,
       featureContext: args.featureContext,
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return {
       kind: "available",
       encryptedAccessToken,
@@ -1059,19 +1114,24 @@ async function resolveCustomConnectorOAuth2AccessToken(
   });
 }
 
-export async function refreshCustomConnectorOAuth2ValuesIfNeeded(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connector: CustomConnectorRow;
-  readonly values: readonly StoredValueRow[];
-  readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-}): Promise<readonly StoredValueRow[]> {
+export async function refreshCustomConnectorOAuth2ValuesIfNeeded(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connector: CustomConnectorRow;
+    readonly values: readonly StoredValueRow[];
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<readonly StoredValueRow[]> {
   if (args.connector.authMode !== "oauth") {
     return args.values;
   }
-  const accessToken = await resolveCustomConnectorOAuth2AccessToken(args);
+  const accessToken = await resolveCustomConnectorOAuth2AccessToken(
+    args,
+    signal,
+  );
   return accessToken.kind === "available"
     ? withRuntimeOAuthToken(
         args.values,
@@ -1112,18 +1172,45 @@ async function loadLiveCustomConnector(args: {
     : null;
 }
 
-export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId: string;
-  readonly connectorRevision: number;
-  readonly featureContext: FeatureSwitchContext;
-  readonly signal: AbortSignal;
-  readonly forceRefresh?: boolean;
-}): Promise<CustomConnectorOAuth2AccessTokenResolution> {
+export async function resolveCurrentCustomConnectorOAuth2AccessToken(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly featureContext: FeatureSwitchContext;
+    readonly forceRefresh?: boolean;
+  },
+  signal: AbortSignal,
+): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   const connector = await loadLiveCustomConnector(args);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
+  if (!connector || connector.authMode !== "oauth") {
+    return { kind: "unavailable" };
+  }
+  return await resolveCustomConnectorOAuth2AccessToken(
+    {
+      ...args,
+      connector,
+    },
+    signal,
+  );
+}
+
+export async function resolveRevisionPinnedCustomConnectorOAuth2AccessToken(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly connectorRevision: number;
+    readonly featureContext: FeatureSwitchContext;
+    readonly forceRefresh?: boolean;
+  },
+  signal: AbortSignal,
+): Promise<CustomConnectorOAuth2AccessTokenResolution> {
+  const connector = await loadLiveCustomConnector(args);
+  signal.throwIfAborted();
   if (
     !connector ||
     connector.revision !== args.connectorRevision ||
@@ -1131,8 +1218,11 @@ export async function resolveLiveCustomConnectorOAuth2AccessToken(args: {
   ) {
     return { kind: "unavailable" };
   }
-  return await resolveCustomConnectorOAuth2AccessToken({
-    ...args,
-    connector,
-  });
+  return await resolveCustomConnectorOAuth2AccessToken(
+    {
+      ...args,
+      connector,
+    },
+    signal,
+  );
 }

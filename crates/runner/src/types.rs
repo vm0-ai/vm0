@@ -29,6 +29,13 @@ pub struct PollResponse {
     pub job: Option<Job>,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PiExecutionMode {
+    Standby,
+    ColdStart,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Job {
@@ -39,11 +46,9 @@ pub struct Job {
     #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
+    pub pi_execution_mode: Option<PiExecutionMode>,
+    #[serde(default)]
     pub runner_preference_decision: Option<serde_json::Value>,
-    #[serde(default)]
-    pub runner_preference: Option<serde_json::Value>,
-    #[serde(default)]
-    pub runner_preference_resolution: Option<serde_json::Value>,
 }
 
 pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
@@ -142,6 +147,9 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
+    /// Claim-authoritative Pi lifecycle mode. Absence means ordinary execution.
+    #[serde(default)]
+    pub pi_execution_mode: Option<PiExecutionMode>,
     /// Complete Pi system prompt rendered once by the API for this run.
     #[serde(default)]
     pub pi_system_prompt: Option<String>,
@@ -1667,13 +1675,15 @@ mod tests {
             "job": {
                 "runId": "550e8400-e29b-41d4-a716-446655440000",
                 "experimentalProfile": "browser",
-                "cliAgentSessionId": "legacy-session",
-                "runnerPreference": {
+                "cliAgentSessionId": "session-id",
+                "piExecutionMode": "standby",
+                "runnerPreferenceDecision": {
+                    "kind": "preference",
                     "runnerIdentity": {
                         "runnerId": "b85bb257-21c1-4b8f-8676-a4051f35b7b0",
                         "heartbeatGeneration": 7
                     },
-                    "reason": "matchingReuseKey",
+                    "tier": "reusableSandbox",
                     "expiresAt": "2026-08-03T12:00:00.000Z"
                 }
             }
@@ -1687,8 +1697,35 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(job.experimental_profile, "browser");
-        assert!(job.runner_preference.is_some());
+        assert_eq!(job.pi_execution_mode, Some(PiExecutionMode::Standby));
+        assert!(job.runner_preference_decision.is_some());
         assert!(job.reuse_key().is_none());
+    }
+
+    #[test]
+    fn poll_response_without_pi_execution_mode_is_ordinary() {
+        let response: PollResponse = serde_json::from_value(json!({
+            "job": {
+                "runId": "550e8400-e29b-41d4-a716-446655440000",
+                "experimentalProfile": "vm0/default"
+            }
+        }))
+        .unwrap();
+
+        assert!(response.job.unwrap().pi_execution_mode.is_none());
+    }
+
+    #[test]
+    fn poll_response_rejects_unknown_pi_execution_mode() {
+        let result = serde_json::from_value::<PollResponse>(json!({
+            "job": {
+                "runId": "550e8400-e29b-41d4-a716-446655440000",
+                "experimentalProfile": "vm0/default",
+                "piExecutionMode": "future-mode"
+            }
+        }));
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -1713,6 +1750,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "codex",
+            "piExecutionMode": "cold-start",
             "piSystemPrompt": "fixed Pi prompt",
             "piModelConfig": {
                 "provider": "deepseek",
@@ -1739,6 +1777,7 @@ mod tests {
 
         let context: ExecutionContext = serde_json::from_value(json).unwrap();
 
+        assert_eq!(context.pi_execution_mode, Some(PiExecutionMode::ColdStart));
         assert_eq!(context.pi_system_prompt.as_deref(), Some("fixed Pi prompt"));
         assert_eq!(
             context

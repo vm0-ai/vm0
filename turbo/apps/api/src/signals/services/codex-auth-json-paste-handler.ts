@@ -96,7 +96,6 @@ type UpsertCodexProvider = (args: {
 interface CodexAuthJsonPasteCommonArgs {
   rawAuthJson: string;
   selectedModel: string | undefined;
-  signal: AbortSignal;
   upsert: UpsertCodexProvider;
 }
 
@@ -123,7 +122,10 @@ type CodexAuthJsonPasteArgs =
  *
  * Shared implementation for API org and personal model-provider paste routes.
  */
-export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
+export async function handleCodexAuthJsonPaste(
+  args: CodexAuthJsonPasteArgs,
+  signal: AbortSignal,
+) {
   const log = logger(
     args.scope === "personal"
       ? "api:zero-me-model-providers"
@@ -139,12 +141,14 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
       const parsed = parseCodexAuthJson(args.rawAuthJson);
       const usageMetadata =
         (await tapError(
-          fetchCodexUsageMetadata({
-            accessToken: parsed.accessToken,
-            accountId: parsed.accountId,
-            idToken: parsed.idToken,
-            signal: args.signal,
-          }),
+          fetchCodexUsageMetadata(
+            {
+              accessToken: parsed.accessToken,
+              accountId: parsed.accountId,
+              idToken: parsed.idToken,
+            },
+            signal,
+          ),
           () => {
             return undefined;
           },
@@ -177,7 +181,7 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
         body: { provider: serializeUpsertedProvider(provider), created },
       };
     })(),
-    args.signal,
+    signal,
   );
 
   if (pasteResult.ok) {

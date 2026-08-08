@@ -480,6 +480,8 @@ export async function hasFeishuCustomConnectorOAuthConnection(
       and(
         eq(connectors.customConnectorId, orgCustomConnectors.id),
         eq(connectors.orgId, orgCustomConnectors.orgId),
+        eq(connectors.authMethod, orgCustomConnectors.authMode),
+        eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
       ),
     )
     .innerJoin(

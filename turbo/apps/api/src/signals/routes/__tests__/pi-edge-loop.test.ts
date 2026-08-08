@@ -1,38 +1,60 @@
 import { randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
+import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
   PI_SKILLS_ROOT,
-  PI_STANDBY_PROFILE,
   PI_STANDBY_TTL_RELEASE_EXIT_CODE,
 } from "@vm0/api-contracts/contracts/runners";
-import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { parseGitHubTreeUrl, resolveSkillRef } from "@vm0/core/github-url";
+import { getSkillStorageName } from "@vm0/core/storage-names";
+import { GOAL_SKILL_NAME, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { HttpResponse, http } from "msw";
+import { v5 as uuidv5 } from "uuid";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
+import { generateSandboxToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
+import {
+  deleteUsagePricingRows,
+  seedUsagePricingRows,
+  type UsagePricingRow,
+} from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
+import { readModelStatsObservations } from "./helpers/model-stats-state";
+import {
+  secretKmsPlaintext,
+  useSecretKmsProbe,
+} from "./helpers/secret-kms-probe";
+import {
+  mutateRunnerJobSecretValueEnvironmentKeys,
+  seedVm0ManagedModelKey,
+} from "./helpers/runtime-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
+import {
+  createAgentComposeFixture,
+  readAgentComposeByIdFixture,
+} from "../../../test-fixtures/agent-composes";
+import { readSystemStorageVersionNameByS3KeyFixture } from "../../../test-fixtures/storage";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -42,14 +64,29 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const workflows = createWorkflowsBddApi(context);
+const billing = createBillingMediaApi(context);
+type AgentEventsBody = Parameters<typeof webhooks.requestAgentEvents>[0];
+type AgentUsageEventBody = Parameters<
+  typeof webhooks.requestAgentUsageEvent
+>[0];
 
 const MODEL = "deepseek-v4-flash";
+const MANAGED_MODEL = "gpt-5.6-luna";
 const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 const CODEX_MODEL = "gpt-5.5";
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const OPENAI_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
+const STORAGE_ARCHIVE_SUFFIX = "/archive.tar.gz";
+const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
+  "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
+
+interface CompletionStreamOptions {
+  readonly usage?: Readonly<Record<string, unknown>>;
+  readonly responseModel?: string;
+}
 
 function recordOf(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -59,15 +96,17 @@ function recordOf(value: unknown): Record<string, unknown> | null {
 
 function completionStream(
   deltas: readonly Record<string, unknown>[],
-  finishReason: "stop" | "tool_calls",
+  finishReason: "stop" | "tool_calls" | "content_filter",
+  options: CompletionStreamOptions = {},
 ): HttpResponse<string> {
+  const responseModel = options.responseModel ?? MODEL;
   const chunks = [
     ...deltas.map((delta) => {
       return {
         id: "chatcmpl-pi-edge",
         object: "chat.completion.chunk",
         created: 1,
-        model: MODEL,
+        model: responseModel,
         choices: [{ index: 0, delta, finish_reason: null }],
       };
     }),
@@ -75,8 +114,9 @@ function completionStream(
       id: "chatcmpl-pi-edge",
       object: "chat.completion.chunk",
       created: 1,
-      model: MODEL,
+      model: responseModel,
       choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+      ...(options.usage === undefined ? {} : { usage: options.usage }),
     },
   ];
   return HttpResponse.text(
@@ -92,10 +132,23 @@ function completionStream(
 function assistantTextStream(
   text: string,
   thinking: string,
+  options: CompletionStreamOptions = {},
 ): HttpResponse<string> {
   return completionStream(
     [{ role: "assistant", reasoning_content: thinking }, { content: text }],
     "stop",
+    options,
+  );
+}
+
+function assistantErrorAfterUsageStream(args: {
+  readonly text: string;
+  readonly usage: Readonly<Record<string, unknown>>;
+}): HttpResponse<string> {
+  return completionStream(
+    [{ role: "assistant", content: args.text }],
+    "content_filter",
+    { usage: args.usage },
   );
 }
 
@@ -105,6 +158,8 @@ function assistantToolStream(args: {
   readonly arguments: Record<string, unknown>;
   readonly thinking: string;
   readonly text?: string;
+  readonly usage?: Readonly<Record<string, unknown>>;
+  readonly responseModel?: string;
 }): HttpResponse<string> {
   return completionStream(
     [
@@ -125,6 +180,12 @@ function assistantToolStream(args: {
       },
     ],
     "tool_calls",
+    {
+      ...(args.usage === undefined ? {} : { usage: args.usage }),
+      ...(args.responseModel === undefined
+        ? {}
+        : { responseModel: args.responseModel }),
+    },
   );
 }
 
@@ -134,7 +195,8 @@ function systemPromptFromRequest(request: unknown): string | undefined {
     return undefined;
   }
   const systemMessage = recordOf(messages[0]);
-  return systemMessage?.role === "system" &&
+  return (systemMessage?.role === "system" ||
+    systemMessage?.role === "developer") &&
     typeof systemMessage.content === "string"
     ? systemMessage.content
     : undefined;
@@ -348,7 +410,44 @@ interface PiStorageObjects {
 function acceptPiStorageObjects(): PiStorageObjects {
   const objects = new Map<string, Buffer>();
   const seededObjects = new Map<string, Buffer>();
-  context.mocks.s3.send.mockImplementation((command: unknown) => {
+  const systemSkillNameByStorageName = new Map(
+    [...SEED_SKILLS, GOAL_SKILL_NAME].flatMap((skillRef) => {
+      const parsed = parseGitHubTreeUrl(resolveSkillRef(skillRef));
+      return parsed
+        ? [[getSkillStorageName(parsed.fullPath), parsed.skillName] as const]
+        : [];
+    }),
+  );
+  const systemSkillStorageNames = [...systemSkillNameByStorageName.keys()];
+  const resolveBody = async (
+    objectKey: string,
+    key: string,
+  ): Promise<Buffer | undefined> => {
+    const stored = objects.get(objectKey) ?? seededObjects.get(key);
+    if (stored || !key.endsWith(STORAGE_ARCHIVE_SUFFIX)) {
+      return stored;
+    }
+    const storageName = await readSystemStorageVersionNameByS3KeyFixture({
+      s3Key: key.slice(0, -STORAGE_ARCHIVE_SUFFIX.length),
+      storageNames: systemSkillStorageNames,
+    });
+    const skillName =
+      storageName === undefined
+        ? undefined
+        : systemSkillNameByStorageName.get(storageName);
+    if (skillName === undefined) {
+      return undefined;
+    }
+    const archive = createTarGz([
+      {
+        path: "SKILL.md",
+        content: `---\nname: ${skillName}\ndescription: Test fixture for the default ${skillName} Skill.\n---\n`,
+      },
+    ]);
+    seededObjects.set(key, archive);
+    return archive;
+  };
+  context.mocks.s3.send.mockImplementation(async (command: unknown) => {
     const input = commandInput(command);
     const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
     const key = typeof input.Key === "string" ? input.Key : "";
@@ -356,29 +455,26 @@ function acceptPiStorageObjects(): PiStorageObjects {
     switch (commandName(command)) {
       case "PutObjectCommand": {
         objects.set(objectKey, bodyBuffer(input.Body));
-        return Promise.resolve({});
+        return {};
       }
       case "GetObjectCommand": {
-        const body = objects.get(objectKey) ?? seededObjects.get(key);
-        return Promise.resolve(
-          body
-            ? { Body: streamBody(body), ContentLength: body.byteLength }
-            : { Body: undefined },
-        );
+        const body = await resolveBody(objectKey, key);
+        return body
+          ? { Body: streamBody(body), ContentLength: body.byteLength }
+          : { Body: undefined };
       }
       case "HeadObjectCommand": {
-        const body = objects.get(objectKey) ?? seededObjects.get(key);
-        return body
-          ? Promise.resolve({ ContentLength: body.byteLength })
-          : Promise.reject(
-              Object.assign(new Error(`Missing S3 object ${objectKey}`), {
-                name: "NotFound",
-                $metadata: { httpStatusCode: 404 },
-              }),
-            );
+        const body = await resolveBody(objectKey, key);
+        if (!body) {
+          throw Object.assign(new Error(`Missing S3 object ${objectKey}`), {
+            name: "NotFound",
+            $metadata: { httpStatusCode: 404 },
+          });
+        }
+        return { ContentLength: body.byteLength };
       }
       default: {
-        return Promise.resolve({});
+        return {};
       }
     }
   });
@@ -395,13 +491,68 @@ interface PiEdgeFixture {
   readonly agentId: string;
   readonly orgId: string;
   readonly runnerGroup: string;
+  readonly runnerProfile: string;
   readonly agentDisplayName: string;
   readonly agentInstructions: string;
   readonly workflowSkillName: string;
   readonly storageObjects: PiStorageObjects;
+  readonly model: SupportedRunModel;
 }
 
-async function piEdgeFixture(): Promise<PiEdgeFixture> {
+async function setFixtureAgentProfile(
+  actor: ApiTestUser,
+  agentId: string,
+  profile: string,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected the Pi fixture actor to belong to an org");
+  }
+  const fixtureActor = { userId: actor.userId, orgId: actor.orgId };
+  const composeResponse = await readAgentComposeByIdFixture({
+    actor: fixtureActor,
+    composeId: agentId,
+  });
+  if (composeResponse.status !== 200) {
+    throw new Error("Expected the Pi fixture agent compose to be readable");
+  }
+  const content = composeResponse.body.content;
+  if (!content) {
+    throw new Error("Expected the Pi fixture agent to have compose content");
+  }
+  const entries = Object.entries(content.agents);
+  if (entries.length !== 1) {
+    throw new Error("Expected the Pi fixture compose to contain one agent");
+  }
+  const entry = entries[0];
+  if (!entry) {
+    throw new Error("Expected the Pi fixture compose agent");
+  }
+  const [agentName, agent] = entry;
+  const updated = await createAgentComposeFixture({
+    actor: fixtureActor,
+    content: {
+      ...content,
+      agents: {
+        [agentName]: { ...agent, experimental_profile: profile },
+      },
+    },
+    signal: context.signal,
+  });
+  if (updated.status !== 200 || updated.body.composeId !== agentId) {
+    throw new Error("Expected the Pi fixture compose update to preserve id");
+  }
+}
+
+async function piEdgeFixture(
+  options: {
+    readonly provider?: "byok" | "vm0";
+    readonly model?: SupportedRunModel;
+    readonly runnerProfile?: string;
+  } = {},
+): Promise<PiEdgeFixture> {
+  const providerType = options.provider ?? "byok";
+  const model =
+    options.model ?? (providerType === "vm0" ? MANAGED_MODEL : MODEL);
   const orgId = `org_pi_edge_${randomUUID()}`;
   const actor = bdd.user({ orgId });
   const switchOwner = bdd.user({ orgId });
@@ -413,17 +564,23 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
-  const provider = await api.createOrgModelProvider(actor, {
-    type: "deepseek",
-    secret: "pi-edge-deepseek-key",
-  });
+  const provider =
+    providerType === "byok"
+      ? await api.createOrgModelProvider(actor, {
+          type: "deepseek",
+          secret: "pi-edge-deepseek-key",
+        })
+      : undefined;
+  if (providerType === "vm0") {
+    await seedVm0ManagedModelKey(context, model);
+  }
   await api.updateOrgModelPolicies(actor, [
     {
-      model: MODEL,
+      model,
       isDefault: true,
-      defaultProviderType: "deepseek",
+      defaultProviderType: providerType === "vm0" ? "vm0" : "deepseek",
       credentialScope: "org",
-      modelProviderId: provider.providerId,
+      modelProviderId: provider?.providerId ?? null,
     },
   ]);
   const agent = await bdd.createAgent(actor, {
@@ -434,6 +591,10 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
   const agentInstructions =
     "# Pinned Pi instructions\nAlways preserve the run snapshot.";
   await bdd.updateAgentInstructions(actor, agent.agentId, agentInstructions);
+  const runnerProfile = options.runnerProfile ?? DEFAULT_PROFILE;
+  if (runnerProfile !== DEFAULT_PROFILE) {
+    await setFixtureAgentProfile(actor, agent.agentId, runnerProfile);
+  }
   const workflowSkillName = `pi-snapshot-${randomUUID().slice(0, 8)}`;
   await workflows.createWorkflow(actor, {
     agentId: agent.agentId,
@@ -445,10 +606,12 @@ async function piEdgeFixture(): Promise<PiEdgeFixture> {
     agentId: agent.agentId,
     orgId,
     runnerGroup,
+    runnerProfile,
     agentDisplayName: AGENT_DISPLAY_NAME,
     agentInstructions,
     workflowSkillName,
     storageObjects,
+    model,
   };
 }
 
@@ -524,10 +687,12 @@ async function codexPiEdgeFixture(args?: {
     agentId: agent.agentId,
     orgId,
     runnerGroup,
+    runnerProfile: DEFAULT_PROFILE,
     agentDisplayName: AGENT_DISPLAY_NAME,
     agentInstructions,
     workflowSkillName,
     storageObjects,
+    model: CODEX_MODEL,
   };
 }
 
@@ -543,23 +708,12 @@ async function enablePiLoop(fixture: PiEdgeFixture): Promise<void> {
   );
 }
 
-async function disablePiLoop(fixture: PiEdgeFixture): Promise<void> {
-  await updateFeatureSwitchesForUser(
-    context,
-    {
-      userId: fixture.switchOwner.userId,
-      orgId: fixture.orgId,
-      orgRole: fixture.switchOwner.orgRole,
-    },
-    { [FeatureSwitchKey.PiLoop]: false },
-  );
-}
-
 async function sendChatRun(
   fixture: PiEdgeFixture,
   prompt: string,
   threadId?: string,
-  model: SupportedRunModel = MODEL,
+  model: SupportedRunModel = fixture.model,
+  clientEventId = randomUUID(),
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
   const sent = await chat.requestSendEvent(
     fixture.actor,
@@ -567,7 +721,7 @@ async function sendChatRun(
       agentId: fixture.agentId,
       prompt,
       model,
-      clientEventId: randomUUID(),
+      clientEventId,
       ...(threadId === undefined ? {} : { threadId }),
     },
     [201],
@@ -576,6 +730,67 @@ async function sendChatRun(
     throw new Error("Expected the chat send to create a run");
   }
   return { runId: sent.body.runId, threadId: sent.body.threadId };
+}
+
+async function withModelPricing(
+  model: string,
+  rows: readonly Omit<UsagePricingRow, "kind" | "provider">[],
+): Promise<void> {
+  const categories = rows.map((row) => {
+    return row.category;
+  });
+  const previousRows = await deleteUsagePricingRows({
+    kind: "model",
+    provider: model,
+    categories,
+  });
+  onTestFinished(async () => {
+    await deleteUsagePricingRows({
+      kind: "model",
+      provider: model,
+      categories,
+    });
+    await seedUsagePricingRows(previousRows);
+  });
+  await seedUsagePricingRows(
+    rows.map((row) => {
+      return { ...row, kind: "model", provider: model };
+    }),
+  );
+}
+
+async function unitPriceModelTokens(model: string): Promise<void> {
+  await withModelPricing(
+    model,
+    [
+      "tokens.input",
+      "tokens.output",
+      "tokens.cache_read",
+      "tokens.cache_creation",
+    ].map((category) => {
+      return { category, unitPrice: 1, unitSize: 1 };
+    }),
+  );
+}
+
+async function usageRun(actor: ApiTestUser, runId: string) {
+  const response = await billing.readUsageRuns(actor, [200]);
+  if (response.status !== 200) {
+    throw new Error("Expected usage runs read to succeed");
+  }
+  return response.body.runs.find((run) => {
+    return run.runId === runId;
+  });
+}
+
+function piEdgeUsageObservationKey(
+  runId: string,
+  sequenceNumber: number,
+): string {
+  return uuidv5(
+    `${runId}:${runId}/${String(sequenceNumber)}`,
+    PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE,
+  );
 }
 
 async function readTranscript(runId: string) {
@@ -598,141 +813,108 @@ async function outputMessages(actor: ApiTestUser, threadId: string) {
   });
 }
 
-describe("PiLoop edge turn", () => {
-  it("rejects saturated Pi launches while ordinary launches still queue", async () => {
-    const fixture = await piEdgeFixture();
-    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-    const kms = useSecretKmsProbe();
-    const blocker = await sendChatRun(
-      fixture,
-      "occupy the only organization concurrency slot",
-    );
-    expect((await api.readRun(fixture.actor, blocker.runId)).status).toBe(
-      "pending",
-    );
-    const targetThread = await chat.createThread(fixture.actor, {
-      agentId: fixture.agentId,
-      model: MODEL,
-    });
-    let completionRequests = 0;
-    server.use(
-      http.post(COMPLETIONS_URL, () => {
-        completionRequests += 1;
-        return assistantTextStream("unexpected answer", "unexpected turn");
-      }),
-    );
-    const jobNotificationCount = (): number => {
-      return context.mocks.ably.publish.mock.calls.filter(([topic]) => {
-        return topic === "job";
-      }).length;
-    };
-    const baselineDataKeys = kms.generateDataKeyCalls;
-    const baselineJobNotifications = jobNotificationCount();
-    const queueBeforePi = await api.readRunQueue(fixture.actor);
-    expect(queueBeforePi.body.concurrency).toMatchObject({
-      active: 1,
-      limit: 1,
-    });
+async function expectQueuedPiEdgePromotion(args: {
+  readonly fixture: PiEdgeFixture;
+  readonly model: SupportedRunModel;
+  readonly completionsUrl: string;
+  readonly completionResponse: () => Response;
+}): Promise<{ readonly runId: string; readonly threadId: string }> {
+  const occupyingRun = await sendChatRun(
+    args.fixture,
+    "occupy the only concurrency slot",
+    undefined,
+    args.model,
+  );
+  expect(
+    (await api.readRun(args.fixture.actor, occupyingRun.runId)).status,
+  ).toBe("pending");
 
-    await enablePiLoop(fixture);
-    const rejectedEventId = randomUUID();
-    const rejected = await chat.requestSendEvent(
-      fixture.actor,
-      {
-        agentId: fixture.agentId,
-        threadId: targetThread.id,
-        prompt: "reject this Pi turn instead of queuing it",
-        model: MODEL,
-        clientEventId: rejectedEventId,
-      },
-      [429],
-    );
-    if (rejected.status !== 429) {
-      throw new Error("Expected the saturated Pi launch to return 429");
+  await enablePiLoop(args.fixture);
+  const modelStarted = createDeferredPromise<void>(context.signal);
+  const releaseModel = createDeferredPromise<void>(context.signal);
+  onTestFinished(() => {
+    if (!releaseModel.settled()) {
+      releaseModel.resolve();
     }
-    expect(rejected.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
-    await flushWaitUntilForTest();
+  });
+  server.use(
+    http.post(args.completionsUrl, async () => {
+      modelStarted.resolve();
+      await releaseModel.promise;
+      return args.completionResponse();
+    }),
+  );
 
-    const rejectedQueue = await api.readRunQueue(fixture.actor);
-    expect(rejectedQueue.body.concurrency.active).toBe(1);
-    expect(rejectedQueue.body.queue).toStrictEqual([]);
-    expect(
-      (
-        await api.listAgentRuns(fixture.actor, {
-          status: "queued,pending,running,completed,failed,timeout,cancelled",
-          limit: 100,
-        })
-      ).runs.map((run) => {
-        return run.id;
-      }),
-    ).toStrictEqual([blocker.runId]);
-    const rejectedEvents = await chat.listThreadEvents(
-      fixture.actor,
-      targetThread.id,
-    );
-    expect(rejectedEvents.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "control.revoke",
-        revokesEventId: rejectedEventId,
-      }),
-    );
-    expect(completionRequests).toBe(0);
-    expect(jobNotificationCount()).toBe(baselineJobNotifications);
-    expect(kms.generateDataKeyCalls).toBe(baselineDataKeys + 1);
+  const queuedRun = await sendChatRun(
+    args.fixture,
+    "start Pi after the queue picks this run",
+    undefined,
+    args.model,
+  );
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "queued",
+  );
+  expect(modelStarted.settled()).toBeFalsy();
 
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: fixture.switchOwner.userId,
-        orgId: fixture.orgId,
-        orgRole: fixture.switchOwner.orgRole,
-      },
-      { [FeatureSwitchKey.PiLoop]: false },
-    );
-    const ordinary = await chat.requestSendEvent(
-      fixture.actor,
-      {
-        agentId: fixture.agentId,
-        threadId: targetThread.id,
-        prompt: "queue this ordinary launch behind the active run",
-        model: MODEL,
-        clientEventId: randomUUID(),
-      },
-      [201],
-    );
-    if (ordinary.status !== 201 || ordinary.body.runId === null) {
-      throw new Error("Expected the ordinary launch to create a queued run");
+  const promotionController = new AbortController();
+  context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+    if (topic === "queue:changed" && !promotionController.signal.aborted) {
+      const error = new Error("abort after queued run promotion commit");
+      error.name = "AbortError";
+      promotionController.abort(error);
     }
-    expect(ordinary.body.status).toBe("queued");
-    expect(kms.generateDataKeyCalls).toBe(baselineDataKeys + 3);
-    const ordinaryQueue = await api.readRunQueue(fixture.actor);
-    expect(ordinaryQueue.body.queue).toHaveLength(1);
-    expect(ordinaryQueue.body.queue[0]).toMatchObject({
-      runId: ordinary.body.runId,
-    });
-    expect(jobNotificationCount()).toBe(baselineJobNotifications);
-    expect(completionRequests).toBe(0);
+    return Promise.resolve(undefined);
+  });
+  const completed = await webhooks.requestAgentComplete(
+    {
+      runId: occupyingRun.runId,
+      exitCode: 1,
+      error: "release the concurrency slot for promotion",
+    },
+    {
+      authorization: `Bearer ${generateSandboxToken(
+        args.fixture.actor.userId,
+        occupyingRun.runId,
+        args.fixture.orgId,
+      )}`,
+    },
+    [200],
+    promotionController.signal,
+  );
+  expect(completed.status).toBe(200);
+  await modelStarted.promise;
+  expect(promotionController.signal.aborted).toBeTruthy();
 
-    await api.requestCancelRun(fixture.actor, blocker.runId, [200]);
-    await flushWaitUntilForTest();
-    const poll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [DEFAULT_PROFILE],
-      },
-      [200],
-    );
-    if (poll.status !== 200) {
-      throw new Error("Expected the runner poll to return 200");
-    }
-    expect(poll.body.job?.runId).toBe(ordinary.body.runId);
-    expect(jobNotificationCount()).toBe(baselineJobNotifications + 1);
-    expect(completionRequests).toBe(0);
-    await api.requestCancelRun(fixture.actor, ordinary.body.runId, [200]);
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "pending",
+  );
+  const standbyPoll = await api.requestPollRunner(
+    true,
+    {
+      group: args.fixture.runnerGroup,
+      supportedProfiles: [args.fixture.runnerProfile],
+    },
+    [200],
+  );
+  if (standbyPoll.status !== 200) {
+    throw new Error("Expected promoted Pi standby poll to return 200");
+  }
+  expect(standbyPoll.body.job).toMatchObject({
+    runId: queuedRun.runId,
+    experimentalProfile: args.fixture.runnerProfile,
+    piExecutionMode: "standby",
   });
 
-  it("uses the org gate, migrates legacy memory into Pi, and completes in the API", async () => {
+  releaseModel.resolve();
+  await flushWaitUntilForTest();
+  expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
+    "completed",
+  );
+  return queuedRun;
+}
+
+describe("PiLoop edge turn", () => {
+  it("uses the org gate, mounts Pi memory, and completes in the API", async () => {
     const fixture = await piEdgeFixture();
     const legacyPrompt = "legacy context must not enter the Pi transcript";
     const legacy = await sendChatRun(fixture, legacyPrompt);
@@ -742,6 +924,7 @@ describe("PiLoop edge turn", () => {
     );
     const legacyPoll = await api.pollRunner(fixture.runnerGroup);
     expect(legacyPoll.body.job?.runId).toBe(legacy.runId);
+    expect(legacyPoll.body.job).not.toHaveProperty("piExecutionMode");
     await api.requestCancelRun(fixture.actor, legacy.runId, [200]);
 
     await enablePiLoop(fixture);
@@ -779,16 +962,14 @@ describe("PiLoop edge turn", () => {
 
     const edgePrompt = "answer only this new message";
     const publishedBefore = context.mocks.ably.publish.mock.calls.length;
-    const edge = await sendChatRun(fixture, edgePrompt, legacy.threadId);
+    const edge = await sendChatRun(fixture, edgePrompt);
     await modelStarted.promise;
 
-    const defaultPoll = await api.pollRunner(fixture.runnerGroup);
-    expect(defaultPoll.body.job).toBeNull();
     const standbyPoll = await api.requestPollRunner(
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -797,9 +978,33 @@ describe("PiLoop edge turn", () => {
     }
     expect(standbyPoll.body.job).toMatchObject({
       runId: edge.runId,
-      experimentalProfile: PI_STANDBY_PROFILE,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "standby",
     });
+    expect(
+      context.mocks.ably.publish.mock.calls
+        .slice(publishedBefore)
+        .some(([topic, payload]) => {
+          const job = recordOf(payload);
+          return (
+            topic === "job" &&
+            job?.runId === edge.runId &&
+            job.profile === fixture.runnerProfile &&
+            job.piExecutionMode === "standby"
+          );
+        }),
+    ).toBeTruthy();
     const standbyContext = await api.claimRunnerJob(edge.runId);
+    expect(standbyContext.piExecutionMode).toBe("standby");
+    const duplicateStandbyClaim = await api.requestClaimRunnerJob(
+      true,
+      edge.runId,
+      [404],
+    );
+    if (duplicateStandbyClaim.status !== 404) {
+      throw new Error("Expected the duplicate standby claim to return 404");
+    }
+    expect(duplicateStandbyClaim.body.error.message).toBe("Run not found");
     const skillSnapshot = standbyContext.runSkillSnapshot;
     if (skillSnapshot === undefined) {
       throw new Error("Expected Pi standby context to include Skill snapshot");
@@ -999,6 +1204,17 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, edge.runId)).status).toBe(
       "completed",
     );
+    const settledStandbyClaim = await api.requestClaimRunnerJob(
+      true,
+      edge.runId,
+      [404],
+    );
+    if (settledStandbyClaim.status !== 404) {
+      throw new Error("Expected the settled standby claim to return 404");
+    }
+    expect(settledStandbyClaim.body.error.message).toBe(
+      "Job not found in queue",
+    );
     expect(
       context.mocks.ably.publish.mock.calls
         .slice(publishedBefore)
@@ -1082,108 +1298,6 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, followUp.runId)).status).toBe(
       "completed",
     );
-
-    await disablePiLoop(fixture);
-    const fallback = await sendChatRun(
-      fixture,
-      "continue after disabling PiLoop",
-      edge.threadId,
-    );
-    expect((await api.readRun(fixture.actor, fallback.runId)).status).toBe(
-      "pending",
-    );
-    const fallbackPoll = await api.pollRunner(fixture.runnerGroup);
-    expect(fallbackPoll.body.job?.runId).toBe(fallback.runId);
-    const fallbackContext = await api.claimRunnerJob(fallback.runId);
-    expect(fallbackContext.storageManifest?.storageMounts).toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-        missingRootPolicy: "preserveParentVersion",
-      }),
-    );
-    expect(fallbackContext.storageManifest?.storageMounts).not.toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        mountPath: PI_MEMORY_ROOT,
-      }),
-    );
-    await api.requestCancelRun(fixture.actor, fallback.runId, [200]);
-  });
-
-  it("migrates a Pi-first session memory path back to Codex", async () => {
-    const fixture = await piEdgeFixture();
-    await enablePiLoop(fixture);
-    const modelStarted = createDeferredPromise<void>(context.signal);
-    const releaseModel = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!releaseModel.settled()) {
-        releaseModel.resolve();
-      }
-    });
-    server.use(
-      http.post(COMPLETIONS_URL, async () => {
-        modelStarted.resolve();
-        await releaseModel.promise;
-        return assistantTextStream("Pi-first answer", "Pi-first reasoning");
-      }),
-    );
-
-    const piFirst = await sendChatRun(fixture, "start this session in PiLoop");
-    await modelStarted.promise;
-    const standbyPoll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
-      },
-      [200],
-    );
-    if (standbyPoll.status !== 200) {
-      throw new Error("Expected Pi standby poll to return 200");
-    }
-    expect(standbyPoll.body.job?.runId).toBe(piFirst.runId);
-    const piContext = await api.claimRunnerJob(piFirst.runId);
-    expect(piContext.storageManifest?.storageMounts).toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        mountPath: PI_MEMORY_ROOT,
-        missingRootPolicy: "preserveParentVersion",
-      }),
-    );
-
-    releaseModel.resolve();
-    await flushWaitUntilForTest();
-    expect((await api.readRun(fixture.actor, piFirst.runId)).status).toBe(
-      "completed",
-    );
-
-    await disablePiLoop(fixture);
-    const fallback = await sendChatRun(
-      fixture,
-      "continue the Pi-first session after disabling PiLoop",
-      piFirst.threadId,
-    );
-    expect((await api.readRun(fixture.actor, fallback.runId)).status).toBe(
-      "pending",
-    );
-    const fallbackPoll = await api.pollRunner(fixture.runnerGroup);
-    expect(fallbackPoll.body.job?.runId).toBe(fallback.runId);
-    const fallbackContext = await api.claimRunnerJob(fallback.runId);
-    expect(fallbackContext.storageManifest?.storageMounts).toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-        missingRootPolicy: "preserveParentVersion",
-      }),
-    );
-    expect(fallbackContext.storageManifest?.storageMounts).not.toContainEqual(
-      expect.objectContaining({
-        name: "memory",
-        mountPath: PI_MEMORY_ROOT,
-      }),
-    );
-    await api.requestCancelRun(fixture.actor, fallback.runId, [200]);
   });
 
   it("injects the MEMORY.md prefix and keeps the complete file readable on the edge", async () => {
@@ -1290,7 +1404,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1299,7 +1413,8 @@ describe("PiLoop edge turn", () => {
     }
     expect(standbyPoll.body.job).toMatchObject({
       runId: run.runId,
-      experimentalProfile: PI_STANDBY_PROFILE,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "standby",
     });
     const standbyContext = await api.claimRunnerJob(run.runId);
     expect(standbyContext.piModelConfig).toStrictEqual({
@@ -1420,7 +1535,341 @@ describe("PiLoop edge turn", () => {
     });
   });
 
-  it("requeues an expired standby onto the cold-start lane without settling the run", async () => {
+  it("bills every vm0-managed API response once using normalized canonical-model usage", async () => {
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    const completionRequests: unknown[] = [];
+    let modelCall = 0;
+    server.use(
+      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
+        completionRequests.push(await request.json());
+        const currentCall = modelCall;
+        modelCall += 1;
+        if (currentCall === 0) {
+          return assistantToolStream({
+            id: "read_billing_1",
+            name: "read",
+            arguments: {
+              path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+            },
+            thinking: "read before answering",
+            responseModel: "untrusted-response-model",
+            usage: {
+              prompt_tokens: 100,
+              completion_tokens: 11,
+              prompt_tokens_details: {
+                cached_tokens: 20,
+                cache_write_tokens: 5,
+              },
+              completion_tokens_details: { reasoning_tokens: 4 },
+            },
+          });
+        }
+        return assistantTextStream("billed edge answer", "billed reasoning", {
+          responseModel: "untrusted-response-model",
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 7,
+            prompt_tokens_details: { cached_tokens: 10 },
+            completion_tokens_details: { reasoning_tokens: 3 },
+          },
+        });
+      }),
+    );
+
+    const clientEventId = randomUUID();
+    const run = await sendChatRun(
+      fixture,
+      "bill both managed model responses",
+      undefined,
+      fixture.model,
+      clientEventId,
+    );
+    await flushWaitUntilForTest();
+
+    const runState = await api.readRun(fixture.actor, run.runId);
+    expect(runState.error).toBeUndefined();
+    expect(runState.status).toBe("completed");
+    expect(completionRequests).toHaveLength(2);
+    for (const request of completionRequests) {
+      expect(request).toMatchObject({
+        model: MANAGED_MODEL,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+    }
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      runId: run.runId,
+      model: MANAGED_MODEL,
+      inputTokens: 145,
+      outputTokens: 18,
+      cacheTokens: 35,
+      creditsCharged: 198,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 198,
+    );
+    const observationKeys = [
+      piEdgeUsageObservationKey(run.runId, 2),
+      piEdgeUsageObservationKey(run.runId, 4),
+    ];
+    const observations = await readModelStatsObservations(
+      context,
+      observationKeys,
+    );
+    expect(observations).toHaveLength(2);
+    expect(observations).toStrictEqual(
+      expect.arrayContaining(
+        observationKeys.map((idempotencyKey) => {
+          return { idempotencyKey, aggregatedAt: null };
+        }),
+      ),
+    );
+
+    const replay = await sendChatRun(
+      fixture,
+      "bill both managed model responses",
+      run.threadId,
+      fixture.model,
+      clientEventId,
+    );
+    await flushWaitUntilForTest();
+    expect(replay).toStrictEqual(run);
+    expect(completionRequests).toHaveLength(2);
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      creditsCharged: 198,
+    });
+  });
+
+  it("keeps BYOK API-edge usage out of vm0 billing", async () => {
+    const fixture = await piEdgeFixture();
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    server.use(
+      http.post(COMPLETIONS_URL, () => {
+        return assistantTextStream("BYOK answer", "BYOK reasoning", {
+          usage: {
+            prompt_tokens: 40,
+            completion_tokens: 9,
+            prompt_tokens_details: { cached_tokens: 7 },
+          },
+        });
+      }),
+    );
+
+    const run = await sendChatRun(fixture, "do not charge vm0 for BYOK");
+    await flushWaitUntilForTest();
+
+    const runState = await api.readRun(fixture.actor, run.runId);
+    expect(runState.error).toBeUndefined();
+    expect(runState.status).toBe("completed");
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore,
+    );
+    const idempotencyKey = piEdgeUsageObservationKey(run.runId, 2);
+    await expect(
+      readModelStatsObservations(context, [idempotencyKey]),
+    ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
+  });
+
+  it("bills known managed usage when the same model response ends in error", async () => {
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    server.use(
+      http.post(OPENAI_COMPLETIONS_URL, () => {
+        return assistantErrorAfterUsageStream({
+          text: "partial response before stream failure",
+          usage: {
+            prompt_tokens: 23,
+            completion_tokens: 5,
+            prompt_tokens_details: { cached_tokens: 3 },
+          },
+        });
+      }),
+    );
+
+    const run = await sendChatRun(fixture, "bill usage received before error");
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      model: MANAGED_MODEL,
+      inputTokens: 20,
+      outputTokens: 5,
+      cacheTokens: 3,
+      creditsCharged: 28,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 28,
+    );
+    const idempotencyKey = piEdgeUsageObservationKey(run.runId, 2);
+    await expect(
+      readModelStatsObservations(context, [idempotencyKey]),
+    ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
+  });
+
+  it("settles successful managed usage when a later edge model call fails", async () => {
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    let modelCall = 0;
+    server.use(
+      http.post(OPENAI_COMPLETIONS_URL, () => {
+        const currentCall = modelCall;
+        modelCall += 1;
+        if (currentCall === 0) {
+          return assistantToolStream({
+            id: "read_before_failure_1",
+            name: "read",
+            arguments: {
+              path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
+            },
+            thinking: "this successful call must still be billed",
+            usage: { prompt_tokens: 20, completion_tokens: 3 },
+          });
+        }
+        return HttpResponse.json(
+          { error: "provider unavailable after the first response" },
+          { status: 503 },
+        );
+      }),
+    );
+
+    const run = await sendChatRun(
+      fixture,
+      "bill the successful call before failure",
+    );
+    await flushWaitUntilForTest();
+
+    expect(modelCall).toBe(2);
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      model: MANAGED_MODEL,
+      inputTokens: 20,
+      outputTokens: 3,
+      cacheTokens: 0,
+      creditsCharged: 23,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 23,
+    );
+  });
+
+  it("fails closed without projecting a managed response that has no usage", async () => {
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
+    server.use(
+      http.post(OPENAI_COMPLETIONS_URL, () => {
+        return assistantTextStream(
+          "this answer must not be projected",
+          "usage is missing",
+        );
+      }),
+    );
+
+    const prompt = "reject a managed success without usage";
+    const run = await sendChatRun(fixture, prompt);
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
+    await expect(readTranscript(run.runId)).resolves.toMatchObject({
+      version: 1,
+      lastOrdinal: 1,
+      messages: [
+        {
+          ordinal: 1,
+          role: "user",
+          payload: {
+            role: "user",
+            content: [{ type: "text", text: prompt }],
+          },
+        },
+      ],
+    });
+    await expect(
+      outputMessages(fixture.actor, run.threadId),
+    ).resolves.toHaveLength(0);
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore,
+    );
+  });
+
+  it("uses the managed model long-context tier only above the exact boundary", async () => {
+    const model = "gpt-5.6-luna";
+    await withModelPricing(model, [
+      {
+        category: "tokens.input",
+        unitPrice: 1,
+        unitSize: 272_001,
+      },
+      {
+        category: "tokens.input.long_context",
+        unitPrice: 2,
+        unitSize: 272_001,
+      },
+    ]);
+    const fixture = await piEdgeFixture({ provider: "vm0", model });
+    await enablePiLoop(fixture);
+    const inputTokens = [272_000, 272_001] as const;
+    let modelCall = 0;
+    server.use(
+      http.post(OPENAI_COMPLETIONS_URL, () => {
+        const promptTokens = inputTokens[modelCall];
+        modelCall += 1;
+        if (promptTokens === undefined) {
+          throw new Error("Unexpected long-context model call");
+        }
+        return assistantTextStream(
+          `boundary response ${promptTokens}`,
+          "classify the canonical model tier",
+          {
+            responseModel: "untrusted-response-model",
+            usage: {
+              prompt_tokens: promptTokens,
+              completion_tokens: 0,
+            },
+          },
+        );
+      }),
+    );
+
+    const baseRun = await sendChatRun(fixture, "base context boundary");
+    await flushWaitUntilForTest();
+    const longRun = await sendChatRun(fixture, "long context boundary");
+    await flushWaitUntilForTest();
+
+    expect(modelCall).toBe(2);
+    await expect(usageRun(fixture.actor, baseRun.runId)).resolves.toMatchObject(
+      {
+        model,
+        inputTokens: 272_000,
+        creditsCharged: 1,
+      },
+    );
+    await expect(usageRun(fixture.actor, longRun.runId)).resolves.toMatchObject(
+      {
+        model,
+        inputTokens: 272_001,
+        creditsCharged: 2,
+      },
+    );
+  });
+
+  it("continues direct Pi activation when the request aborts after commit", async () => {
     const fixture = await piEdgeFixture();
     await enablePiLoop(fixture);
     const modelStarted = createDeferredPromise<void>(context.signal);
@@ -1428,6 +1877,132 @@ describe("PiLoop edge turn", () => {
     onTestFinished(() => {
       if (!releaseModel.settled()) {
         releaseModel.resolve();
+      }
+    });
+    server.use(
+      http.post(COMPLETIONS_URL, async () => {
+        modelStarted.resolve();
+        await releaseModel.promise;
+        return assistantTextStream(
+          "committed edge answer",
+          "committed edge reasoning",
+        );
+      }),
+    );
+
+    const controller = new AbortController();
+    context.mocks.axiom.ingest.mockImplementation((dataset: unknown) => {
+      if (
+        typeof dataset === "string" &&
+        dataset.includes("run-context") &&
+        !controller.signal.aborted
+      ) {
+        const error = new Error("abort after direct run commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return true;
+    });
+
+    const clientThreadId = randomUUID();
+    const clientEventId = randomUUID();
+    const request = {
+      agentId: fixture.agentId,
+      prompt: "finish Pi activation after the request aborts",
+      model: MODEL,
+      clientThreadId,
+      clientEventId,
+    } as const;
+    await expect(
+      chat.requestSendEvent(fixture.actor, request, [201], controller.signal),
+    ).rejects.toThrow();
+    expect(controller.signal.aborted).toBeTruthy();
+    await modelStarted.promise;
+
+    const retried = await chat.requestSendEvent(fixture.actor, request, [201]);
+    if (retried.status !== 201 || retried.body.runId === null) {
+      throw new Error("Expected the committed chat run to be recoverable");
+    }
+    releaseModel.resolve();
+    await flushWaitUntilForTest();
+    expect((await api.readRun(fixture.actor, retried.body.runId)).status).toBe(
+      "completed",
+    );
+  });
+
+  it("starts and bills a concurrency-queued managed OpenAI-compatible Pi run when promoted", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
+    const queuedRun = await expectQueuedPiEdgePromotion({
+      fixture,
+      model: fixture.model,
+      completionsUrl: OPENAI_COMPLETIONS_URL,
+      completionResponse: () => {
+        return assistantTextStream(
+          "promoted edge answer",
+          "promoted edge reasoning",
+          {
+            usage: {
+              prompt_tokens: 16,
+              completion_tokens: 3,
+              prompt_tokens_details: { cached_tokens: 2 },
+            },
+          },
+        );
+      },
+    });
+    await expect(
+      usageRun(fixture.actor, queuedRun.runId),
+    ).resolves.toMatchObject({
+      model: MANAGED_MODEL,
+      inputTokens: 14,
+      outputTokens: 3,
+      cacheTokens: 2,
+      creditsCharged: 19,
+    });
+  });
+
+  it("starts the Pi edge turn when a concurrency-queued Codex run is promoted", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const fixture = await codexPiEdgeFixture();
+    await expectQueuedPiEdgePromotion({
+      fixture,
+      model: CODEX_MODEL,
+      completionsUrl: CODEX_RESPONSES_URL,
+      completionResponse: () => {
+        return codexTextSseStream("promoted codex edge answer");
+      },
+    });
+  });
+
+  it("requeues an expired standby onto the cold-start lane without settling the run", async () => {
+    const fixture = await piEdgeFixture({
+      runnerProfile: "vm0/pi-lifecycle-integration",
+    });
+    await enablePiLoop(fixture);
+    const modelStarted = createDeferredPromise<void>(context.signal);
+    const releaseModel = createDeferredPromise<void>(context.signal);
+    const claimDecryptStarted = createDeferredPromise<void>(context.signal);
+    const releaseStaleClaim = createDeferredPromise<void>(context.signal);
+    let stallNextDecrypt = false;
+    useSecretKmsProbe(undefined, () => {
+      if (!stallNextDecrypt) {
+        return undefined;
+      }
+      stallNextDecrypt = false;
+      claimDecryptStarted.resolve();
+      return (async () => {
+        await releaseStaleClaim.promise;
+        return secretKmsPlaintext();
+      })();
+    });
+    onTestFinished(() => {
+      if (!releaseModel.settled()) {
+        releaseModel.resolve();
+      }
+      if (!releaseStaleClaim.settled()) {
+        releaseStaleClaim.resolve();
       }
     });
     server.use(
@@ -1449,15 +2024,38 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
     if (standbyPoll.status !== 200) {
       throw new Error("Expected Pi standby poll to return 200");
     }
-    expect(standbyPoll.body.job?.runId).toBe(run.runId);
+    expect(standbyPoll.body.job).toMatchObject({
+      runId: run.runId,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "standby",
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      run.runId,
+      "invalid",
+    );
+    stallNextDecrypt = true;
+    const staleStandbyClaim = api.claimRunnerJob(run.runId);
+    await claimDecryptStarted.promise;
     const standbyContext = await api.claimRunnerJob(run.runId);
+    expect(standbyContext.piExecutionMode).toBe("standby");
+    const duplicateStandbyClaim = await api.requestClaimRunnerJob(
+      true,
+      run.runId,
+      [404],
+    );
+    if (duplicateStandbyClaim.status !== 404) {
+      throw new Error("Expected the duplicate standby claim to return 404");
+    }
+    expect(duplicateStandbyClaim.body.error.message).toBe("Run not found");
+    const publishedBeforeRelease = context.mocks.ably.publish.mock.calls.length;
 
     const released = await webhooks.requestAgentComplete(
       {
@@ -1476,7 +2074,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [DEFAULT_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1490,12 +2088,11 @@ describe("PiLoop edge turn", () => {
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "pending",
     );
-
     const coldPoll = await api.requestPollRunner(
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [DEFAULT_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1504,15 +2101,45 @@ describe("PiLoop edge turn", () => {
     }
     expect(coldPoll.body.job).toMatchObject({
       runId: run.runId,
-      experimentalProfile: DEFAULT_PROFILE,
+      experimentalProfile: fixture.runnerProfile,
+      piExecutionMode: "cold-start",
     });
-    const coldContext = await api.claimRunnerJob(run.runId);
+    expect(
+      context.mocks.ably.publish.mock.calls
+        .slice(publishedBeforeRelease)
+        .some(([topic, payload]) => {
+          const job = recordOf(payload);
+          const decision = recordOf(job?.runnerPreferenceDecision);
+          return (
+            topic === "job" &&
+            job?.runId === run.runId &&
+            job.profile === fixture.runnerProfile &&
+            job.piExecutionMode === "cold-start" &&
+            decision?.kind === "noPreference" &&
+            decision.reason === "noReuseKey"
+          );
+        }),
+    ).toBeTruthy();
+    releaseStaleClaim.resolve();
+    const coldContext = await staleStandbyClaim;
+    expect(coldContext.piExecutionMode).toBe("cold-start");
     expect(coldContext.piSystemPrompt).toBe(standbyContext.piSystemPrompt);
     expect(coldContext.runSkillSnapshot).toStrictEqual(
       standbyContext.runSkillSnapshot,
     );
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "running",
+    );
+    const duplicateColdClaim = await api.requestClaimRunnerJob(
+      true,
+      run.runId,
+      [404],
+    );
+    if (duplicateColdClaim.status !== 404) {
+      throw new Error("Expected the duplicate cold claim to return 404");
+    }
+    expect(duplicateColdClaim.body.error.message).toBe(
+      "Job not found in queue",
     );
   });
 
@@ -1564,12 +2191,15 @@ describe("PiLoop edge turn", () => {
     ).resolves.toHaveLength(0);
   });
 
-  it("commits the complete sandbox tool batch, publishes handoff, and stops writing", async () => {
-    const fixture = await piEdgeFixture();
+  it("bills edge and runner usage once across a replayed sandbox handoff", async () => {
+    await unitPriceModelTokens(MANAGED_MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
+    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
+      .credits;
     const completionRequests: unknown[] = [];
     server.use(
-      http.post(COMPLETIONS_URL, async ({ request }) => {
+      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
         completionRequests.push(await request.json());
         return assistantToolStream({
           id: "bash_handoff_1",
@@ -1577,6 +2207,11 @@ describe("PiLoop edge turn", () => {
           arguments: { command: "pwd" },
           thinking: "the sandbox must execute this",
           text: "I will inspect the workspace.",
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 3,
+            prompt_tokens_details: { cached_tokens: 2 },
+          },
         });
       }),
     );
@@ -1638,7 +2273,7 @@ describe("PiLoop edge turn", () => {
       true,
       {
         group: fixture.runnerGroup,
-        supportedProfiles: [PI_STANDBY_PROFILE],
+        supportedProfiles: [fixture.runnerProfile],
       },
       [200],
     );
@@ -1657,49 +2292,79 @@ describe("PiLoop edge turn", () => {
     const sandboxHeaders = webhooks.sandboxWebhookHeaders({
       runId: run.runId,
     });
-    await webhooks.requestAgentEvents(
-      {
-        runId: run.runId,
-        events: [
-          {
-            type: "pi.message.completed",
-            sequenceNumber: 3,
-            messageId: `${run.runId}/3`,
-            expectedVersion: 1,
-            expectedLastOrdinal: 2,
-            message: {
-              role: "toolResult",
-              toolCallId: "bash_handoff_1",
-              toolName: "bash",
-              content: [{ type: "text", text: "/home/user/workspace\n" }],
-              details: {},
-              isError: false,
-              timestamp: 2,
-            },
+    const continuation: AgentEventsBody = {
+      runId: run.runId,
+      events: [
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 3,
+          messageId: `${run.runId}/3`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 2,
+          message: {
+            role: "toolResult",
+            toolCallId: "bash_handoff_1",
+            toolName: "bash",
+            content: [{ type: "text", text: "/home/user/workspace\n" }],
+            details: {},
+            isError: false,
+            timestamp: 2,
           },
-          {
-            type: "pi.message.completed",
-            sequenceNumber: 4,
-            messageId: `${run.runId}/4`,
-            expectedVersion: 1,
-            expectedLastOrdinal: 3,
-            message: {
-              role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text: "Sandbox resumed the handed-off tool call.",
-                },
-              ],
-              stopReason: "stop",
-              timestamp: 3,
+        },
+        {
+          type: "pi.message.completed",
+          sequenceNumber: 4,
+          messageId: `${run.runId}/4`,
+          expectedVersion: 1,
+          expectedLastOrdinal: 3,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "Sandbox resumed the handed-off tool call.",
+              },
+            ],
+            stopReason: "stop",
+            usage: {
+              input: 9999,
+              output: 9999,
+              cacheRead: 9999,
+              cacheWrite: 9999,
+              totalTokens: 39_996,
+              cost: {
+                input: 9999,
+                output: 9999,
+                cacheRead: 9999,
+                cacheWrite: 9999,
+                total: 39_996,
+              },
             },
+            timestamp: 3,
           },
-        ],
-      },
-      sandboxHeaders,
-      [200],
-    );
+        },
+      ],
+    };
+    await webhooks.requestAgentEvents(continuation, sandboxHeaders, [200]);
+    await webhooks.requestAgentEvents(continuation, sandboxHeaders, [200]);
+
+    const runnerUsage: AgentUsageEventBody = {
+      runId: run.runId,
+      events: [
+        {
+          idempotencyKey: randomUUID(),
+          kind: "model",
+          provider: MANAGED_MODEL,
+          category: "tokens.output",
+          quantity: 5,
+        },
+      ],
+    };
+    const usageHeaders = {
+      authorization: `Bearer ${standbyContext.sandboxToken}`,
+    };
+    await webhooks.requestAgentUsageEvent(runnerUsage, usageHeaders, [200]);
+    await webhooks.requestAgentUsageEvent(runnerUsage, usageHeaders, [200]);
     await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
@@ -1730,5 +2395,15 @@ describe("PiLoop edge turn", () => {
         }),
       ],
     });
+    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
+      model: MANAGED_MODEL,
+      inputTokens: 10,
+      outputTokens: 8,
+      cacheTokens: 2,
+      creditsCharged: 20,
+    });
+    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
+      creditsBefore - 20,
+    );
   });
 });

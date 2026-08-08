@@ -16,8 +16,41 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
+const THREAD_ID = "eb000000-0000-4000-a000-000000000001";
 
-function mockThread(content: string): void {
+function threadSnapshot(id: string, title: string) {
+  return {
+    id,
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    title,
+    sortAt: "2026-01-01T00:00:00Z",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    pinnedAt: null,
+    renamedAt: null,
+    selectedModel: null,
+    serviceTier: null,
+    computerUseHostId: null,
+  };
+}
+
+function mockThread(
+  content: string,
+  additionalThreads: ReturnType<typeof threadSnapshot>[] = [],
+): void {
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [
+        threadSnapshot(THREAD_ID, "Markdown thread"),
+        ...additionalThreads,
+      ],
+      latestEventId: null,
+      latestSeqId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
   context.mocks.api(
     chatThreadEventsContract.list,
     ({ params, query, respond }) => {
@@ -129,7 +162,10 @@ describe("assistant markdown", () => {
   it("renders formatted text and follows theme changes", async () => {
     mockThread("**bold text**");
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await waitFor(() => {
       expect(
@@ -159,7 +195,10 @@ describe("assistant markdown", () => {
   it("shows a raw style block as text instead of styling the page", async () => {
     mockThread("<style>\n.zero-injected { color: red }\n</style>");
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await waitFor(() => {
       expect(document.querySelector(".wmde-markdown")?.textContent).toContain(
@@ -178,7 +217,10 @@ describe("assistant markdown", () => {
   it("keeps allowlisted html blocks rendering as elements", async () => {
     mockThread("<div><strong>kept markup</strong></div>");
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     const kept = await screen.findByText("kept markup", { selector: "strong" });
     expect(kept).toBeInTheDocument();
@@ -189,7 +231,10 @@ describe("assistant markdown", () => {
     const videoSrc = "https://example.com/clip.mp4";
     mockThread(`[cat](${imageSrc})\n\n[clip](${videoSrc})`);
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await waitFor(() => {
       const img = document.querySelector(`img[src="${imageSrc}"]`);
@@ -209,7 +254,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     // The diagram is shown by an <img>, so the SVG itself never reaches the
@@ -239,7 +284,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     // Copies share one result entry. Mounting the second must not reset that
@@ -262,7 +307,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     const settingsDialog = await openSettingsDialog();
@@ -297,7 +342,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     const inlineDiagram = await screen.findByAltText("Diagram");
@@ -347,7 +392,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     const artifactsButton = await waitFor(() => {
@@ -395,35 +440,13 @@ describe("assistant markdown", () => {
   it("revokes a mermaid object URL when its chat panel signal aborts", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     const replacementThreadId = "c0000000-0000-4000-a000-000000000002";
-    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
-    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-      return respond(200, {
-        chatThreads: [
-          {
-            id: replacementThreadId,
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            title: "Replacement thread",
-            sortAt: "2026-01-01T00:00:01Z",
-            createdAt: "2026-01-01T00:00:01Z",
-            updatedAt: "2026-01-01T00:00:01Z",
-            pinnedAt: null,
-            renamedAt: null,
-            selectedModel: null,
-            serviceTier: null,
-            computerUseHostId: null,
-          },
-        ],
-        latestEventId: null,
-        latestSeqId: null,
-      });
-    });
-    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      return respond(200, { events: [], hasMore: false });
-    });
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```", [
+      threadSnapshot(replacementThreadId, "Replacement thread"),
+    ]);
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     const diagram = await screen.findByAltText("Diagram");
@@ -454,7 +477,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     await waitFor(() => {
@@ -471,7 +494,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     const diagram = await screen.findByAltText("Diagram");
@@ -485,7 +508,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     await waitFor(() => {
@@ -506,7 +529,10 @@ describe("assistant markdown", () => {
   it("keeps external links safe", async () => {
     mockThread("[example](https://example.com)");
 
-    detachedSetupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
     await waitFor(() => {
       const link = queryAllByRoleFast("link").find((el) => {
@@ -535,7 +561,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     await waitFor(() => {
@@ -561,7 +587,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     await waitFor(() => {
@@ -586,7 +612,7 @@ describe("assistant markdown", () => {
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-markdown",
+      path: `/chats/${THREAD_ID}`,
     });
 
     await waitFor(() => {

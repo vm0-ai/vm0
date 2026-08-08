@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 
-import type { createClerkClient } from "@clerk/backend";
 import { emailOutbox } from "@vm0/db/schema/email-outbox";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -16,15 +15,14 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import type { ClerkClient } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import type { Tx } from "../../lib/db-types";
 
-type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Tx;
 
 interface EmailOutboxDrainContext {
   readonly currentTimeMs: number;
-  readonly signal: AbortSignal;
 }
 
 const log = logger("zero:email");
@@ -493,14 +491,18 @@ async function drainNextOutboxItem(
 }
 
 export const drainEmailOutboxBatch$ = command(
-  async ({ set }, context: EmailOutboxDrainContext): Promise<number> => {
+  async (
+    { set },
+    context: EmailOutboxDrainContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
     const db = set(writeDb$);
     let processed = 0;
 
     for (let index = 0; index < MAX_OUTBOX_BATCH_SIZE; index++) {
-      context.signal.throwIfAborted();
+      signal.throwIfAborted();
       const hadItem = await drainNextOutboxItem(db, context.currentTimeMs);
-      context.signal.throwIfAborted();
+      signal.throwIfAborted();
       if (!hadItem) {
         break;
       }
@@ -509,7 +511,7 @@ export const drainEmailOutboxBatch$ = command(
       if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
         const delayMs = outboxDrainDelayMs();
         if (delayMs > 0) {
-          await delay(delayMs, { signal: context.signal });
+          await delay(delayMs, { signal });
         }
       }
     }
@@ -522,7 +524,11 @@ export const drainEmailOutboxBatch$ = command(
 );
 
 export const cleanupExpiredEmailOutbox$ = command(
-  async ({ set }, context: EmailOutboxDrainContext): Promise<number> => {
+  async (
+    { set },
+    context: EmailOutboxDrainContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
     const db = set(writeDb$);
     const cutoff = new Date(context.currentTimeMs - OUTBOX_TTL_MS);
     const deleted = await db
@@ -537,7 +543,7 @@ export const cleanupExpiredEmailOutbox$ = command(
         ),
       )
       .returning({ id: emailOutbox.id });
-    context.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     if (deleted.length > 0) {
       log.debug("Cleaned up expired email outbox items", {

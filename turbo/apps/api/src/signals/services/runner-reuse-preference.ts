@@ -1,5 +1,4 @@
 import type {
-  RunnerPreference,
   RunnerPreferenceDecision,
   RunnerPreferenceResolution,
 } from "@vm0/api-contracts/contracts/runners";
@@ -280,39 +279,17 @@ type NoRunnerPreferenceDecision = Extract<
   { kind: "noPreference" }
 >;
 
-interface RunnerPreferenceDeliveryFields {
-  readonly runnerPreferenceDecision: RunnerPreferenceDecision;
-  readonly runnerPreference?: RunnerPreference;
-  readonly runnerPreferenceResolution: RunnerPreferenceResolution;
-}
-
-// Remove this legacy projection in #25577 after old runners have drained.
-const legacyPreferenceByTier = {
-  exactSandbox: {
-    reason: "exactHistoryGeneration",
-    resolution: "exact_history_generation",
-  },
-  finalizingPredecessor: {
-    reason: "finalizingPredecessor",
-    resolution: "finalizing_predecessor",
-  },
-  reusableSandbox: {
-    reason: "matchingReuseKey",
-    resolution: "matching_reusable_sandbox",
-  },
-  workspaceCache: {
-    reason: "matchingReuseKey",
-    resolution: "matching_workspace_cache",
-  },
+const preferenceResolutionByTier = {
+  exactSandbox: "exact_history_generation",
+  finalizingPredecessor: "finalizing_predecessor",
+  reusableSandbox: "matching_reusable_sandbox",
+  workspaceCache: "matching_workspace_cache",
 } as const satisfies Record<
   PositiveRunnerPreferenceDecision["tier"],
-  {
-    readonly reason: RunnerPreference["reason"];
-    readonly resolution: RunnerPreferenceResolution;
-  }
+  RunnerPreferenceResolution
 >;
 
-const legacyResolutionByNoPreferenceReason = {
+const noPreferenceResolutionByReason = {
   noReuseKey: "no_reuse_key",
   expired: "expired",
   noViableHolder: "no_viable_holder",
@@ -329,36 +306,20 @@ export function runnerReusePreferenceLookupErrorDecision(): RunnerPreferenceDeci
   };
 }
 
-export function runnerPreferenceDeliveryFields(
+function runnerPreferenceDecisionResolution(
   decision: RunnerPreferenceDecision,
-): RunnerPreferenceDeliveryFields {
+): RunnerPreferenceResolution {
   if (decision.kind === "noPreference") {
-    return {
-      runnerPreferenceDecision: decision,
-      runnerPreferenceResolution:
-        legacyResolutionByNoPreferenceReason[decision.reason],
-    };
+    return noPreferenceResolutionByReason[decision.reason];
   }
-
-  const legacy = legacyPreferenceByTier[decision.tier];
-  return {
-    runnerPreferenceDecision: decision,
-    runnerPreference: {
-      runnerIdentity: decision.runnerIdentity,
-      reason: legacy.reason,
-      expiresAt: decision.expiresAt,
-    },
-    runnerPreferenceResolution: legacy.resolution,
-  };
+  return preferenceResolutionByTier[decision.tier];
 }
 
 export function runnerPreferenceDecisionTelemetryDimensions(
   decision: RunnerPreferenceDecision,
 ): Record<string, string> {
-  const { runnerPreferenceResolution } =
-    runnerPreferenceDeliveryFields(decision);
   return {
-    runner_preference_resolution: runnerPreferenceResolution,
+    runner_preference_resolution: runnerPreferenceDecisionResolution(decision),
     runner_preference_decision_kind: decision.kind,
     ...(decision.kind === "preference"
       ? { runner_preference_tier: decision.tier }

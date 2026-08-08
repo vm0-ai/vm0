@@ -26,7 +26,7 @@ interface ResponseLike {
   readonly status: number;
   readonly statusText?: string;
   readonly headers: HeadersLike;
-  readonly body: BodyInit | null;
+  readonly body: ConstructorParameters<typeof Response>[0];
 }
 
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
@@ -60,12 +60,15 @@ function cloneHeaders(headers: HeadersLike): Headers {
 }
 
 function toResponse(response: ResponseLike): Response {
-  const init: ResponseInit = {
+  const init = {
     headers: cloneHeaders(response.headers),
     status: response.status,
   };
   if (typeof response.statusText === "string") {
-    init.statusText = response.statusText;
+    return new Response(response.body, {
+      ...init,
+      statusText: response.statusText,
+    });
   }
   return new Response(response.body, init);
 }

@@ -100,39 +100,41 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     if (!raw) {
       return badRequestMessage("Missing CODEX_AUTH_JSON secret");
     }
-    return await handleCodexAuthJsonPaste({
-      scope: "personal",
-      orgId: auth.orgId,
-      userId: auth.userId,
-      rawAuthJson: raw,
-      selectedModel,
-      signal,
-      upsert: async (pasteArgs) => {
-        const result = await set(
-          upsertUserMultiAuthModelProvider$,
-          {
-            orgId: auth.orgId,
-            userId: auth.userId,
-            type: "codex-oauth-token",
-            authMethod: pasteArgs.authMethod,
-            secretValues: pasteArgs.secretValues,
-            selectedModel: pasteArgs.selectedModel,
-            metadata: pasteArgs.metadata,
-          },
-          signal,
-        );
-        if ("status" in result) {
-          // Defensive guard: the parsed paste produces well-formed inputs and
-          // codex-oauth-token has a known auth method config — this branch
-          // shouldn't fire. Surface as a typed Error so the paste handler's
-          // outer try/catch propagates it as a 500.
-          throw new Error(
-            "upsertUserMultiAuthModelProvider$ unexpectedly returned BAD_REQUEST during codex paste",
+    return await handleCodexAuthJsonPaste(
+      {
+        scope: "personal",
+        orgId: auth.orgId,
+        userId: auth.userId,
+        rawAuthJson: raw,
+        selectedModel,
+        upsert: async (pasteArgs) => {
+          const result = await set(
+            upsertUserMultiAuthModelProvider$,
+            {
+              orgId: auth.orgId,
+              userId: auth.userId,
+              type: "codex-oauth-token",
+              authMethod: pasteArgs.authMethod,
+              secretValues: pasteArgs.secretValues,
+              selectedModel: pasteArgs.selectedModel,
+              metadata: pasteArgs.metadata,
+            },
+            signal,
           );
-        }
-        return result;
+          if ("status" in result) {
+            // Defensive guard: the parsed paste produces well-formed inputs and
+            // codex-oauth-token has a known auth method config — this branch
+            // shouldn't fire. Surface as a typed Error so the paste handler's
+            // outer try/catch propagates it as a 500.
+            throw new Error(
+              "upsertUserMultiAuthModelProvider$ unexpectedly returned BAD_REQUEST during codex paste",
+            );
+          }
+          return result;
+        },
       },
-    });
+      signal,
+    );
   }
 
   // Branch 2: multi-auth provider

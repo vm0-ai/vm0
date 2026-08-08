@@ -2,10 +2,7 @@ import { createHash } from "node:crypto";
 import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
-import {
-  CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import type {
@@ -71,7 +68,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./zero-chat-event-type.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -118,7 +115,6 @@ interface CollectedData {
 interface ExportRuntime {
   readonly db: Db;
   readonly get: <T>(input: Computed<T>) => T;
-  readonly signal: AbortSignal;
   readonly bucket: string;
 }
 
@@ -401,6 +397,7 @@ async function loadStorageVolumeFiles(
     readonly orgId: string;
     readonly storageName: string;
   },
+  signal: AbortSignal,
 ): Promise<readonly VolumeFile[]> {
   const [storage] = await runtime.db
     .select({ id: storages.id, headVersionId: storages.headVersionId })
@@ -413,16 +410,20 @@ async function loadStorageVolumeFiles(
       ),
     )
     .limit(1);
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!storage?.headVersionId) {
     return [];
   }
 
-  return await loadStorageVersionFiles(runtime, {
-    storageId: storage.id,
-    headVersionId: storage.headVersionId,
-  });
+  return await loadStorageVersionFiles(
+    runtime,
+    {
+      storageId: storage.id,
+      headVersionId: storage.headVersionId,
+    },
+    signal,
+  );
 }
 
 async function loadStorageVersionFiles(
@@ -431,6 +432,7 @@ async function loadStorageVersionFiles(
     readonly storageId: string;
     readonly headVersionId: string | null;
   },
+  signal: AbortSignal,
 ): Promise<readonly VolumeFile[]> {
   if (!args.headVersionId) {
     return [];
@@ -446,7 +448,7 @@ async function loadStorageVersionFiles(
       ),
     )
     .limit(1);
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (!version) {
     return [];
@@ -455,7 +457,7 @@ async function loadStorageVersionFiles(
   const manifest = await runtime.get(
     downloadManifest(runtime.bucket, version.s3Key),
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const filesList = manifest.files.map((file) => {
     return {
@@ -466,7 +468,7 @@ async function loadStorageVersionFiles(
   const archiveBuffer = await runtime.get(
     downloadS3Buffer(runtime.bucket, `${version.s3Key}/archive.tar.gz`),
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const contents = extractFilesFromTarGz(
     archiveBuffer,
@@ -493,6 +495,7 @@ async function loadStorageVersionFiles(
 async function collectAgentInstructionFiles(
   runtime: ExportRuntime,
   userId: string,
+  signal: AbortSignal,
 ): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
   const entries: ZipEntry[] = [];
 
@@ -505,14 +508,18 @@ async function collectAgentInstructionFiles(
     .from(agentComposes)
     .where(eq(agentComposes.userId, userId))
     .orderBy(asc(agentComposes.orgId), asc(agentComposes.name));
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   for (const compose of composes) {
-    const files = await loadStorageVolumeFiles(runtime, {
-      orgId: compose.orgId,
-      storageName: getInstructionsStorageName(compose.name),
-    });
-    runtime.signal.throwIfAborted();
+    const files = await loadStorageVolumeFiles(
+      runtime,
+      {
+        orgId: compose.orgId,
+        storageName: getInstructionsStorageName(compose.name),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
 
     for (const file of files) {
       entries.push({
@@ -533,6 +540,7 @@ async function collectAgentInstructionFiles(
 async function collectWorkflowFiles(
   runtime: ExportRuntime,
   userId: string,
+  signal: AbortSignal,
 ): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
   const entries: ZipEntry[] = [];
 
@@ -550,7 +558,7 @@ async function collectWorkflowFiles(
       asc(zeroWorkflows.name),
       asc(zeroWorkflows.createdAt),
     );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   for (const workflow of workflows) {
     const files =
@@ -558,7 +566,7 @@ async function collectWorkflowFiles(
         orgId: workflow.orgId,
         workflowId: workflow.id,
       })) ?? [];
-    runtime.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     for (const file of files) {
       entries.push({
@@ -579,6 +587,7 @@ async function collectWorkflowFiles(
 async function collectMemoryFiles(
   runtime: ExportRuntime,
   userId: string,
+  signal: AbortSignal,
 ): Promise<{ readonly entries: readonly ZipEntry[]; readonly count: number }> {
   const entries: ZipEntry[] = [];
 
@@ -594,18 +603,22 @@ async function collectMemoryFiles(
       and(eq(storages.userId, userId), eq(storages.name, MEMORY_ARTIFACT_NAME)),
     )
     .orderBy(asc(storages.orgId));
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   for (const memoryStorage of memoryStorages) {
     if (memoryStorage.fileCount === 0) {
       continue;
     }
 
-    const files = await loadStorageVersionFiles(runtime, {
-      storageId: memoryStorage.id,
-      headVersionId: memoryStorage.headVersionId,
-    });
-    runtime.signal.throwIfAborted();
+    const files = await loadStorageVersionFiles(
+      runtime,
+      {
+        storageId: memoryStorage.id,
+        headVersionId: memoryStorage.headVersionId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
 
     for (const file of files) {
       entries.push({
@@ -621,38 +634,39 @@ async function collectMemoryFiles(
 }
 
 interface ResolveSessionHistoryArgs {
+  readonly sessionId: string;
   readonly hash: string | null;
   readonly encoding: string | null;
   readonly rawSize: number | null;
   readonly encodedSize: number | null;
-  readonly legacyText: string | null;
 }
 
 async function resolveSessionHistory(
   runtime: ExportRuntime,
   args: ResolveSessionHistoryArgs,
-): Promise<Buffer | string | null> {
-  if (args.hash) {
-    const normalizedEncoding = normalizeSessionHistoryBlobEncoding(
-      args.encoding,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  if (!args.hash) {
+    throw new Error(
+      `Session history invariant violated: agent session "${args.sessionId}" has no blob hash`,
     );
-    const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
-    const encodedSize =
-      args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
-    const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
-    const result = await loadSessionHistoryBlob(runtime, {
-      encoding: normalizedEncoding,
-      encodedSize,
-      hash: args.hash,
-      key,
-      rawSize,
-    });
-    runtime.signal.throwIfAborted();
-
-    return result;
   }
 
-  return args.legacyText;
+  const normalizedEncoding = normalizeSessionHistoryBlobEncoding(args.encoding);
+  const rawSize = args.rawSize && args.rawSize > 0 ? args.rawSize : undefined;
+  const encodedSize =
+    args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
+  const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
+  const result = await loadSessionHistoryBlob(runtime, {
+    encoding: normalizedEncoding,
+    encodedSize,
+    hash: args.hash,
+    key,
+    rawSize,
+  });
+  signal.throwIfAborted();
+
+  return result;
 }
 
 async function loadSessionHistoryBlob(
@@ -728,6 +742,7 @@ function verifySessionHistoryBuffer(
 async function collectConversationMessages(
   runtime: ExportRuntime,
   userId: string,
+  signal: AbortSignal,
 ): Promise<{
   readonly entries: readonly ZipEntry[];
   readonly threadCount: number;
@@ -742,7 +757,7 @@ async function collectConversationMessages(
     .from(chatThreads)
     .where(eq(chatThreads.userId, userId))
     .orderBy(asc(chatThreads.createdAt));
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   for (const thread of threads) {
     const rows = await runtime.db
@@ -754,13 +769,10 @@ async function collectConversationMessages(
       })
       .from(chatEvents)
       .where(
-        and(
-          eq(chatEvents.chatThreadId, thread.id),
-          chatEventTypeIn(CHAT_EVENT_TYPES),
-        ),
+        and(eq(chatEvents.chatThreadId, thread.id), chatEventTextCondition()),
       )
       .orderBy(asc(chatEvents.seqId));
-    runtime.signal.throwIfAborted();
+    signal.throwIfAborted();
 
     const messages: ExportTextMessage[] = rows.flatMap((message) => {
       const role = chatEventCompatibilityRole(message.eventType);
@@ -796,7 +808,6 @@ async function collectConversationMessages(
     .select({
       id: agentSessions.id,
       cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
       sessionHistoryBlobEncoding: blobs.encoding,
       sessionHistoryBlobEncodedSize: blobs.encodedSize,
       sessionHistoryBlobRawSize: blobs.rawSize,
@@ -809,24 +820,26 @@ async function collectConversationMessages(
     .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
     .where(eq(agentSessions.userId, userId))
     .orderBy(asc(agentSessions.createdAt), asc(agentSessions.id));
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   for (const session of sessionsWithHistory) {
-    const history = await resolveSessionHistory(runtime, {
-      hash: session.cliAgentSessionHistoryHash,
-      encoding: session.sessionHistoryBlobEncoding,
-      rawSize: session.sessionHistoryBlobRawSize,
-      encodedSize: session.sessionHistoryBlobEncodedSize,
-      legacyText: session.cliAgentSessionHistory,
-    });
+    const history = await resolveSessionHistory(
+      runtime,
+      {
+        sessionId: session.id,
+        hash: session.cliAgentSessionHistoryHash,
+        encoding: session.sessionHistoryBlobEncoding,
+        rawSize: session.sessionHistoryBlobRawSize,
+        encodedSize: session.sessionHistoryBlobEncodedSize,
+      },
+      signal,
+    );
 
-    if (history) {
-      entries.push({
-        path: `conversations/${session.id}-history.jsonl`,
-        content: history,
-      });
-      sessionHistoryCount += 1;
-    }
+    entries.push({
+      path: `conversations/${session.id}-history.jsonl`,
+      content: history,
+    });
+    sessionHistoryCount += 1;
   }
 
   return { entries, threadCount, sessionHistoryCount };
@@ -836,13 +849,19 @@ async function collectUserData(
   runtime: ExportRuntime,
   userId: string,
   orgId: string,
+  signal: AbortSignal,
 ): Promise<CollectedData> {
-  const agentInstructions = await collectAgentInstructionFiles(runtime, userId);
-  const workflows = await collectWorkflowFiles(runtime, userId);
-  const memory = await collectMemoryFiles(runtime, userId);
+  const agentInstructions = await collectAgentInstructionFiles(
+    runtime,
+    userId,
+    signal,
+  );
+  const workflows = await collectWorkflowFiles(runtime, userId, signal);
+  const memory = await collectMemoryFiles(runtime, userId, signal);
   const conversationsResult = await collectConversationMessages(
     runtime,
     userId,
+    signal,
   );
   const zipEntries: ZipEntry[] = [
     ...agentInstructions.entries,
@@ -938,13 +957,14 @@ async function isUserUnsubscribed(db: Db, userId: string): Promise<boolean> {
 async function getCachedUserEmail(
   runtime: ExportRuntime,
   userId: string,
+  signal: AbortSignal,
 ): Promise<string> {
   const [cached] = await runtime.db
     .select({ email: userCache.email, cachedAt: userCache.cachedAt })
     .from(userCache)
     .where(eq(userCache.userId, userId))
     .limit(1);
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   if (
     cached &&
@@ -955,7 +975,7 @@ async function getCachedUserEmail(
 
   const client = runtime.get(clerk$);
   const clerkUsers = await client.users.getUserList({ userId: [userId] });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const user = clerkUsers.data.find((candidate: ClerkEmailProfile) => {
     return candidate.id === userId;
@@ -987,7 +1007,7 @@ async function getCachedUserEmail(
         cachedAt: nowDate(),
       },
     });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return email;
 }
@@ -1000,6 +1020,7 @@ async function enqueueExportReadyEmail(
     readonly expiresAt: Date;
     readonly artifactCount: number;
   },
+  signal: AbortSignal,
 ): Promise<void> {
   if (await isUserUnsubscribed(runtime.db, args.userId)) {
     log.debug("export email skipped because user is unsubscribed", {
@@ -1007,9 +1028,9 @@ async function enqueueExportReadyEmail(
     });
     return;
   }
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
-  const email = await getCachedUserEmail(runtime, args.userId);
+  const email = await getCachedUserEmail(runtime, args.userId, signal);
   const unsubscribeUrl = buildUnsubscribeUrl(args.userId);
   const oneClickUnsubscribeUrl = buildOneClickUnsubscribeUrl(args.userId);
   const formattedExpiry = args.expiresAt.toLocaleDateString("en-US", {
@@ -1035,7 +1056,7 @@ async function enqueueExportReadyEmail(
     status: "pending",
     attempts: 0,
   });
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 function exportStartResponse(
@@ -1053,6 +1074,7 @@ export function toUserExportStartResponse(
 async function runExportJob(
   runtime: ExportRuntime,
   args: ExecuteUserExportJobArgs,
+  signal: AbortSignal,
 ): Promise<void> {
   await runtime.db
     .update(exportJobs)
@@ -1060,24 +1082,25 @@ async function runExportJob(
     .where(
       and(eq(exportJobs.id, args.jobId), eq(exportJobs.status, "pending")),
     );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const expiresAt = new Date(nowDate().getTime() + EXPORT_DOWNLOAD_EXPIRY_MS);
   const { zipEntries } = await collectUserData(
     runtime,
     args.userId,
     args.orgId,
+    signal,
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
-  const zipBuffer = await assembleZip(zipEntries, runtime.signal);
-  runtime.signal.throwIfAborted();
+  const zipBuffer = await assembleZip(zipEntries, signal);
+  signal.throwIfAborted();
 
   const s3Key = `exports/${args.userId}/${args.jobId}.zip`;
   await runtime.get(
     putS3Object(runtime.bucket, s3Key, zipBuffer, "application/zip"),
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const downloadUrl = await runtime.get(
     generatePresignedGetUrl(
@@ -1088,7 +1111,7 @@ async function runExportJob(
       true,
     ),
   );
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   await runtime.db
     .update(exportJobs)
@@ -1100,15 +1123,19 @@ async function runExportJob(
       expiresAt,
     })
     .where(eq(exportJobs.id, args.jobId));
-  runtime.signal.throwIfAborted();
+  signal.throwIfAborted();
 
-  await enqueueExportReadyEmail(runtime, {
-    userId: args.userId,
-    downloadUrl,
-    expiresAt,
-    artifactCount: 0,
-  });
-  runtime.signal.throwIfAborted();
+  await enqueueExportReadyEmail(
+    runtime,
+    {
+      userId: args.userId,
+      downloadUrl,
+      expiresAt,
+      artifactCount: 0,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   log.debug("export job completed", { jobId: args.jobId });
 }
@@ -1123,11 +1150,10 @@ export const executeUserExportJob$ = command(
     const runtime: ExportRuntime = {
       db,
       get,
-      signal,
       bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
     };
 
-    await tapError(runExportJob(runtime, args), async (error) => {
+    await tapError(runExportJob(runtime, args, signal), async (error) => {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
       log.error("export job failed", { jobId: args.jobId, error });

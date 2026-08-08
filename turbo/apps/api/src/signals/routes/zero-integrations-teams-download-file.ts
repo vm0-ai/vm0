@@ -229,14 +229,16 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
     );
   }
 
-  const downloadResult = await fetchTeamsFile({
-    tenantId: payload.tenantId,
-    url: payload.url,
-    downloadMode:
-      payload.downloadMode ??
-      (payload.contentType === "reference" ? "graph" : undefined),
+  const downloadResult = await fetchTeamsFile(
+    {
+      tenantId: payload.tenantId,
+      url: payload.url,
+      downloadMode:
+        payload.downloadMode ??
+        (payload.contentType === "reference" ? "graph" : undefined),
+    },
     signal,
-  });
+  );
   signal.throwIfAborted();
   if (downloadResult.kind === "teams-error") {
     return jsonResponse(

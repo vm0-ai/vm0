@@ -4,10 +4,13 @@ import oxlint from "eslint-plugin-oxlint";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
 
+import { noAbortSignalInObjectParams } from "./no-abort-signal-in-object-params.js";
+
 export { oxlint };
 
 const vm0Plugin = {
   rules: {
+    "no-abort-signal-in-object-params": noAbortSignalInObjectParams,
     "no-msw-bypass": {
       meta: {
         type: "problem",

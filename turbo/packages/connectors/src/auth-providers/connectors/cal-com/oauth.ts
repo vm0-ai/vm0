@@ -95,12 +95,14 @@ export async function exchangeCalComCode(args: {
   };
 }
 
-export async function refreshCalComToken(args: {
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-}) {
+export async function refreshCalComToken(
+  args: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly refreshToken: string;
+  },
+  signal: AbortSignal,
+) {
   const token = await requestToken(
     new URLSearchParams({
       client_id: args.clientId,
@@ -109,7 +111,7 @@ export async function refreshCalComToken(args: {
       refresh_token: args.refreshToken,
     }),
     "refresh",
-    args.signal,
+    signal,
   );
   return {
     accessToken: token.access_token,

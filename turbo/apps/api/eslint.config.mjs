@@ -25,7 +25,13 @@ const gatewayModules = JSON.parse(
 // Third-party declaration surfaces that only the gateway project may resolve.
 // Add a scope here once its clients move into tsconfig.gateways.json; see
 // the ablation numbers in PR #25714.
-const isolatedDependencies = ["@aws-sdk", "@smithy"];
+const isolatedDependencies = [
+  "@aws-sdk",
+  "@clerk",
+  "@slack",
+  "@smithy",
+  "stripe",
+];
 
 const gatewayBoundaryOptions = {
   modules: gatewayModules,
@@ -216,6 +222,36 @@ export default [
       "api/require-execute-row-schema": "error",
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",
+    },
+  },
+  {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/**/test/**",
+      "src/**/tests/**",
+      "src/**/mocks/**",
+      "src/**/test-fixtures/**",
+      "src/**/*.test.ts",
+      "src/**/*.spec.ts",
+      "src/**/test-context.ts",
+      "src/signals/routes/test-*.ts",
+    ],
+    rules: {
+      "vm0/no-abort-signal-in-object-params": [
+        "error",
+        {
+          allowedFunctions: [
+            "createApp",
+            "createAppWithRoutes",
+            "readTextLines",
+            "createDir",
+            "remove",
+            "createTempFile",
+            "exec",
+          ],
+        },
+      ],
     },
   },
   {

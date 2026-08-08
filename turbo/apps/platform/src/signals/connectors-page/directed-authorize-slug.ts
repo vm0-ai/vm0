@@ -61,7 +61,7 @@ export const agentEnabledConnectorSlugs$ = computed(async (get) => {
   };
 });
 
-export type DirectedAuthorizeConnectModalKey = {
+type DirectedAuthorizeConnectModalKey = {
   readonly connectorSlug: ConnectorSlug;
   readonly agentId: string;
   readonly signal: AbortSignal;

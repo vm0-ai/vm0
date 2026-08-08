@@ -1,5 +1,129 @@
 # Changelog
 
+## [1.403.0](https://github.com/vm0-ai/vm0/compare/api-v1.402.2...api-v1.403.0) (2026-08-07)
+
+
+### Features
+
+* **api:** force app.vm0.ai clients to upgrade to v0.706.3 ([#25754](https://github.com/vm0-ai/vm0/issues/25754)) ([4ff667e](https://github.com/vm0-ai/vm0/commit/4ff667e2846f539307b96e024f205ff993b7b9e2))
+
+
+### Refactoring
+
+* pass abort signals explicitly ([#25740](https://github.com/vm0-ai/vm0/issues/25740)) ([8618bd0](https://github.com/vm0-ai/vm0/commit/8618bd0c05833cea17fc5191e5c6d2afe522a11f))
+* reduce fallback slop in stripe snapshots ([#25760](https://github.com/vm0-ai/vm0/issues/25760)) ([de11d59](https://github.com/vm0-ai/vm0/commit/de11d59de6f34ba801ac27ffb33e472f76990ee7))
+* remove expired deployment compatibility probes ([#25761](https://github.com/vm0-ai/vm0/issues/25761)) ([e70e674](https://github.com/vm0-ai/vm0/commit/e70e67453550353be267d820e9a396f94704d633))
+
+
+### Performance Improvements
+
+* **api:** isolate the clerk sdk type surface behind the gateway typecheck project ([#25747](https://github.com/vm0-ai/vm0/issues/25747)) ([0040a48](https://github.com/vm0-ai/vm0/commit/0040a489dc64b0a908300c8e5bbbcb69643a62b9))
+* **api:** isolate the stripe sdk type surface behind the gateway typecheck project ([#25755](https://github.com/vm0-ai/vm0/issues/25755)) ([cb4984e](https://github.com/vm0-ai/vm0/commit/cb4984e8ce75ddb0852576143372626684975d6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.3
+    * @vm0/connectors bumped to 1.204.3
+    * @vm0/core bumped to 8.530.3
+    * @vm0/db bumped to 1.179.3
+    * @vm0/pi-agent-runtime bumped to 1.3.6
+
+## [1.402.2](https://github.com/vm0-ai/vm0/compare/api-v1.402.1...api-v1.402.2) (2026-08-07)
+
+
+### Refactoring
+
+* **chat:** prepare content-based events ([#25748](https://github.com/vm0-ai/vm0/issues/25748)) ([aa5fd7b](https://github.com/vm0-ai/vm0/commit/aa5fd7b5da87a3fe21f45e54bae1d1fea9d56ab2))
+* **pi:** remove memory path compatibility fallback ([#25744](https://github.com/vm0-ai/vm0/issues/25744)) ([c89952b](https://github.com/vm0-ai/vm0/commit/c89952b65528b4223109585f81249e21aaa52f2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.2
+    * @vm0/core bumped to 8.530.2
+    * @vm0/db bumped to 1.179.2
+    * @vm0/pi-agent-runtime bumped to 1.3.5
+
+## [1.402.1](https://github.com/vm0-ai/vm0/compare/api-v1.402.0...api-v1.402.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **connectors:** enforce exact custom credential readers ([#25724](https://github.com/vm0-ai/vm0/issues/25724)) ([bc85cc7](https://github.com/vm0-ai/vm0/commit/bc85cc7fab9ad03722c8d986f163408911c300e7))
+* **runner:** consume explicit pi execution mode ([#25738](https://github.com/vm0-ai/vm0/issues/25738)) ([d1af021](https://github.com/vm0-ai/vm0/commit/d1af0212e7e74fcd7563bdfcd83ddb3c336e4829))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.1
+    * @vm0/core bumped to 8.530.1
+    * @vm0/db bumped to 1.179.1
+    * @vm0/pi-agent-runtime bumped to 1.3.4
+
+## [1.402.0](https://github.com/vm0-ai/vm0/compare/api-v1.401.1...api-v1.402.0) (2026-08-07)
+
+
+### Features
+
+* **chat:** serve chat search from a projected search index behind a switch ([#25736](https://github.com/vm0-ai/vm0/issues/25736)) ([4bf1a07](https://github.com/vm0-ai/vm0/commit/4bf1a0773458c915c4443ed027dd202878765088))
+
+
+### Refactoring
+
+* **api:** separate pi execution mode from runner profile ([#25725](https://github.com/vm0-ai/vm0/issues/25725)) ([8ecebf9](https://github.com/vm0-ai/vm0/commit/8ecebf947852673f3ff36e3c0d3b08c2c35e696a))
+* **runner:** remove preference compatibility bridge ([#25734](https://github.com/vm0-ai/vm0/issues/25734)) ([5e2edaf](https://github.com/vm0-ai/vm0/commit/5e2edafe9ca7958f4c37566566762f34f5fffd01))
+
+
+### Performance Improvements
+
+* **api:** isolate the slack sdk type surface behind the gateway typecheck project ([#25733](https://github.com/vm0-ai/vm0/issues/25733)) ([ee6bb14](https://github.com/vm0-ai/vm0/commit/ee6bb14a86ad8deda722ce1fab406daccb788c24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.0
+    * @vm0/core bumped to 8.530.0
+    * @vm0/db bumped to 1.179.0
+    * @vm0/pi-agent-runtime bumped to 1.3.3
+
+## [1.401.1](https://github.com/vm0-ai/vm0/compare/api-v1.401.0...api-v1.401.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **api:** account for pi edge model usage ([#25668](https://github.com/vm0-ai/vm0/issues/25668)) ([ec55732](https://github.com/vm0-ai/vm0/commit/ec55732fa303284e24b119ac8210438c650024d8))
+
+
+### Refactoring
+
+* **api:** steer run time budget from a per-minute cron ([#25726](https://github.com/vm0-ai/vm0/issues/25726)) ([16693cb](https://github.com/vm0-ai/vm0/commit/16693cb6daa03a8486f0d9f2f6cb9184db2c54cf))
+* **chat:** make user message parts canonical ([#25717](https://github.com/vm0-ai/vm0/issues/25717)) ([2020c27](https://github.com/vm0-ai/vm0/commit/2020c2720a08dc98f3159299bc9b6e1897351c60))
+
+
+### Performance Improvements
+
+* **api:** drop the dom lib from the api type-check surface ([#25723](https://github.com/vm0-ai/vm0/issues/25723)) ([6845f42](https://github.com/vm0-ai/vm0/commit/6845f4200a9951ac0143b18f076e75eea5259b39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.1
+    * @vm0/connectors bumped to 1.204.2
+    * @vm0/core bumped to 8.529.1
+    * @vm0/db bumped to 1.178.1
+    * @vm0/pi-agent-runtime bumped to 1.3.2
+
 ## [1.401.0](https://github.com/vm0-ai/vm0/compare/api-v1.400.0...api-v1.401.0) (2026-08-07)
 
 

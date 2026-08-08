@@ -81,6 +81,13 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   eventsPruned: z.number(),
 });
 
+const cronProjectChatEventSearchResponseSchema = z.object({
+  success: z.literal(true),
+  threads: z.number(),
+  indexedEvents: z.number(),
+  deletedDocs: z.number(),
+});
+
 const cronCompactUsageEventsResponseSchema = z.object({
   success: z.literal(true),
   cutoff: z.string(),
@@ -106,6 +113,11 @@ const cronCompactUsageEventsResponseSchema = z.object({
 const cronMonitorChatEventQueueResponseSchema = z.object({
   success: z.literal(true),
   orphanedMessages: z.number().int().nonnegative(),
+});
+
+const cronSteerRunTimeBudgetResponseSchema = z.object({
+  scanned: z.number().int().nonnegative(),
+  steered: z.number().int().nonnegative(),
 });
 
 const cronReconcileBillingEntitlementsResponseSchema = z.object({
@@ -270,6 +282,19 @@ export const cronCompactChatThreadSnapshotsContract = c.router({
   },
 });
 
+export const cronProjectChatEventSearchContract = c.router({
+  project: {
+    method: "GET",
+    path: "/api/cron/project-chat-event-search",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronProjectChatEventSearchResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Project chat events into the search docs table",
+  },
+});
+
 export const cronCompactUsageEventsContract = c.router({
   compact: {
     method: "GET",
@@ -294,6 +319,19 @@ export const cronMonitorChatEventQueueContract = c.router({
       500: z.object({ error: z.string() }),
     },
     summary: "Monitor for orphaned queued chat messages",
+  },
+});
+
+export const cronSteerRunTimeBudgetContract = c.router({
+  steer: {
+    method: "GET",
+    path: "/api/cron/steer-run-time-budget",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSteerRunTimeBudgetResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Steer chat runs that reached their time budget",
   },
 });
 

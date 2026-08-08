@@ -8,26 +8,11 @@
  * failed source is annotated in the input JSON instead of blocking the brief.
  */
 import { z } from "zod";
-import {
-  CHAT_EVENT_TYPES,
-  chatEventCompatibilityRole,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import {
-  and,
-  desc,
-  eq,
-  gt,
-  gte,
-  isNotNull,
-  isNull,
-  lte,
-  ne,
-  not,
-  or,
-} from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNull, lte, ne, or } from "drizzle-orm";
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
@@ -43,7 +28,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./zero-chat-event-type.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -89,17 +74,19 @@ type ConnectorAccessResult =
   | { readonly kind: "ok"; readonly access: ConnectorAccess }
   | { readonly kind: "unavailable"; readonly message: string };
 
-async function resolveMorningBriefConnectorAccess(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorSlug: MorningBriefConnectorSlug;
-  readonly signal: AbortSignal;
-}): Promise<ConnectorAccessResult> {
+async function resolveMorningBriefConnectorAccess(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorSlug: MorningBriefConnectorSlug;
+  },
+  signal: AbortSignal,
+): Promise<ConnectorAccessResult> {
   const environmentName = connectorTokenEnvironmentName(args.connectorSlug);
   const currentTime = nowDate();
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const loaded = await loadConnectorCredentialConnection({
     db: args.db,
     snapshot,
@@ -107,7 +94,7 @@ async function resolveMorningBriefConnectorAccess(args: {
     userId: args.userId,
     connectorSlug: args.connectorSlug,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (loaded.kind !== "ok") {
     return {
       kind: "unavailable",
@@ -131,15 +118,17 @@ async function resolveMorningBriefConnectorAccess(args: {
       tokenExpiresAt.getTime() <=
         currentTime.getTime() + TOKEN_REFRESH_BUFFER_MS);
   if (needsRefresh) {
-    const refreshed = await refreshConnectorCredentialAccess({
-      connection,
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      runtimeEnvironmentName: environmentName,
-      signal: args.signal,
-      persist: { db: args.db, markNeedsReconnectOnFailure: true },
-    });
+    const refreshed = await refreshConnectorCredentialAccess(
+      {
+        connection,
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        runtimeEnvironmentName: environmentName,
+        persist: { db: args.db, markNeedsReconnectOnFailure: true },
+      },
+      signal,
+    );
     if (refreshed.kind === "ok") {
       return {
         kind: "ok",
@@ -172,7 +161,7 @@ async function resolveMorningBriefConnectorAccess(args: {
     db: args.db,
     valueRefs: [valueRef],
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const accessToken = values.get(valueRef);
   if (!accessToken) {
     return {
@@ -621,22 +610,7 @@ async function collectUnreadChatThreads(args: {
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.chatThreadId, row.id),
-          or(
-            and(
-              chatEventTypeIn(["input.prompt", "input.rejected"]),
-              isNotNull(chatEvents.userMessage),
-            ),
-            and(
-              not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-              isNotNull(chatEvents.content),
-            ),
-          ),
-          chatEventTypeIn(CHAT_EVENT_TYPES),
-        ),
-      )
+      .where(and(eq(chatEvents.chatThreadId, row.id), chatEventTextCondition()))
       .orderBy(desc(chatEvents.createdAt))
       .limit(MAX_THREAD_MESSAGES);
     threads.push({
@@ -721,20 +695,22 @@ interface CollectMorningBriefInputArgs {
   readonly dayEnd: Date;
   /** The member's Morning Brief thread; never reported as unread. */
   readonly excludeChatThreadId: string | null;
-  readonly signal: AbortSignal;
 }
 
 export async function collectMorningBriefInput(
   args: CollectMorningBriefInputArgs,
+  signal: AbortSignal,
 ): Promise<MorningBriefInput> {
   const accessFor = (connectorSlug: MorningBriefConnectorSlug) => {
-    return resolveMorningBriefConnectorAccess({
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorSlug,
-      signal: args.signal,
-    });
+    return resolveMorningBriefConnectorAccess(
+      {
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorSlug,
+      },
+      signal,
+    );
   };
 
   const withAccess = async <T>(
@@ -752,13 +728,13 @@ export async function collectMorningBriefInput(
 
   const [github, gmail, calendar, chatThreadsSource] = await Promise.all([
     withAccess("github", (access) => {
-      return collectGithub(access, args.since, args.signal);
+      return collectGithub(access, args.since, signal);
     }),
     withAccess("gmail", (access) => {
-      return collectGmail(access, args.since, args.signal);
+      return collectGmail(access, args.since, signal);
     }),
     withAccess("google-calendar", (access) => {
-      return collectCalendar(access, args.dayStart, args.dayEnd, args.signal);
+      return collectCalendar(access, args.dayStart, args.dayEnd, signal);
     }),
     collectSource(() => {
       return collectUnreadChatThreads({

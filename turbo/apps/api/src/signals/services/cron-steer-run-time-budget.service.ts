@@ -4,7 +4,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
-import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { runTimeBudgetEventIdForRun } from "./assistant-event-id";
@@ -17,6 +16,11 @@ const RUN_TIME_BUDGET_LIMIT_MS = 120 * 60 * 1000;
 const RUN_TIME_BUDGET_REMAINING_MS = 5 * 60 * 1000;
 const RUN_TIME_BUDGET_STEER_AT_MS =
   RUN_TIME_BUDGET_LIMIT_MS - RUN_TIME_BUDGET_REMAINING_MS;
+/**
+ * A run leaves the window as soon as the runner terminates it at the hard
+ * limit, so the scan only ever sees runs inside a five-minute band.
+ */
+const RUN_TIME_BUDGET_SCAN_LIMIT = 100;
 
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
@@ -27,51 +31,46 @@ A normal completion provides a reliable handoff for the next run. The handoff in
 Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
 
 interface RunTimeBudgetCandidate {
+  readonly runId: string;
   readonly chatThreadId: string;
 }
 
-async function loadRunTimeBudgetCandidate(
+async function loadRunTimeBudgetCandidates(
   db: Db,
-  args: {
-    readonly runId: string;
-    readonly userId: string;
-    readonly orgId: string;
-    readonly startedBefore: Date;
-  },
-): Promise<RunTimeBudgetCandidate | null> {
-  const [candidate] = await db
-    .select({ chatThreadId: zeroRuns.chatThreadId })
+  startedBefore: Date,
+): Promise<readonly RunTimeBudgetCandidate[]> {
+  return await db
+    .select({
+      runId: agentRuns.id,
+      chatThreadId: chatThreads.id,
+    })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
     .where(
       and(
-        eq(agentRuns.id, args.runId),
-        eq(agentRuns.userId, args.userId),
-        eq(agentRuns.orgId, args.orgId),
         eq(agentRuns.status, "running"),
-        lte(agentRuns.startedAt, args.startedBefore),
+        lte(agentRuns.startedAt, startedBefore),
       ),
     )
-    .limit(1);
-  return candidate?.chatThreadId
-    ? { chatThreadId: candidate.chatThreadId }
-    : null;
+    .orderBy(agentRuns.startedAt)
+    .limit(RUN_TIME_BUDGET_SCAN_LIMIT);
 }
 
+/**
+ * Insert the steer once per run. The event id is derived from the run id, so a
+ * later scan of the same run conflicts on it instead of steering twice.
+ */
 async function persistRunTimeBudgetInput(
   db: Db,
   args: {
-    readonly runId: string;
-    readonly userId: string;
-    readonly orgId: string;
-    readonly chatThreadId: string;
+    readonly candidate: RunTimeBudgetCandidate;
     readonly startedBefore: Date;
     readonly createdAt: Date;
   },
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
-    if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
+    if (!(await lockChatQueueThread(tx, args.candidate.chatThreadId))) {
       return false;
     }
     const [run] = await tx
@@ -84,11 +83,9 @@ async function persistRunTimeBudgetInput(
       .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
       .where(
         and(
-          eq(agentRuns.id, args.runId),
-          eq(agentRuns.userId, args.userId),
-          eq(agentRuns.orgId, args.orgId),
+          eq(agentRuns.id, args.candidate.runId),
           eq(agentRuns.status, "running"),
-          eq(zeroRuns.chatThreadId, args.chatThreadId),
+          eq(zeroRuns.chatThreadId, args.candidate.chatThreadId),
           lte(agentRuns.startedAt, args.startedBefore),
         ),
       )
@@ -98,10 +95,10 @@ async function persistRunTimeBudgetInput(
       return false;
     }
 
-    await insertChatEvent(
+    const inserted = await insertChatEvent(
       tx,
       {
-        id: runTimeBudgetEventIdForRun(args.runId),
+        id: runTimeBudgetEventIdForRun(args.candidate.runId),
         chatThreadId: run.chatThreadId,
         eventType: "input.budget",
         runId: null,
@@ -109,7 +106,7 @@ async function persistRunTimeBudgetInput(
           text: RUN_TIME_BUDGET_MESSAGE,
         }),
         agentRunContext: {
-          sourceRunId: args.runId,
+          sourceRunId: args.candidate.runId,
           sourceChatThreadId: run.chatThreadId,
           sourceAgentId: run.agentId,
         },
@@ -117,42 +114,41 @@ async function persistRunTimeBudgetInput(
       },
       "id",
     );
-    return true;
+    return inserted !== null;
   });
 }
 
-export const steerRunNearTimeBudget$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<{ status: 200 }> => {
-    const payload = get(eventConsumerPayload$);
+/**
+ * Steer every chat run that reached its time budget. A run stays a candidate
+ * until it ends, so an unclaimed steer is re-announced to the runner on the
+ * next scan.
+ */
+export const steerRunsNearTimeBudget$ = command(
+  async ({ set }, signal: AbortSignal) => {
     const db = set(writeDb$);
     const createdAt = nowDate();
     const startedBefore = new Date(
       createdAt.getTime() - RUN_TIME_BUDGET_STEER_AT_MS,
     );
-    const candidate = await loadRunTimeBudgetCandidate(db, {
-      runId: payload.runId,
-      userId: payload.context.userId,
-      orgId: payload.context.orgId,
-      startedBefore,
-    });
+    const candidates = await loadRunTimeBudgetCandidates(db, startedBefore);
     signal.throwIfAborted();
-    if (!candidate) {
-      return { status: 200 };
-    }
 
-    const persisted = await persistRunTimeBudgetInput(db, {
-      runId: payload.runId,
-      userId: payload.context.userId,
-      orgId: payload.context.orgId,
-      chatThreadId: candidate.chatThreadId,
-      startedBefore,
-      createdAt,
-    });
-    signal.throwIfAborted();
-    if (persisted) {
+    let steered = 0;
+    for (const candidate of candidates) {
+      if (
+        await persistRunTimeBudgetInput(db, {
+          candidate,
+          startedBefore,
+          createdAt,
+        })
+      ) {
+        steered += 1;
+      }
+      signal.throwIfAborted();
       await notifyRunningChatRunOfPendingInput(db, candidate.chatThreadId);
       signal.throwIfAborted();
     }
-    return { status: 200 };
+
+    return { scanned: candidates.length, steered };
   },
 );

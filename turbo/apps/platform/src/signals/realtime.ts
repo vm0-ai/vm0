@@ -136,19 +136,20 @@ interface SubscribeChannelArgs {
   readonly callback: ChannelCallback;
   readonly poke: () => void;
   readonly subscriberPokeTarget: EventTarget;
-  readonly signal: AbortSignal;
   readonly run: () => Promise<void>;
 }
 
-async function subscribeChannel({
-  channel,
-  topic,
-  callback,
-  poke,
-  subscriberPokeTarget,
-  signal,
-  run,
-}: SubscribeChannelArgs): Promise<void> {
+async function subscribeChannel(
+  {
+    channel,
+    topic,
+    callback,
+    poke,
+    subscriberPokeTarget,
+    run,
+  }: SubscribeChannelArgs,
+  signal: AbortSignal,
+): Promise<void> {
   signal.throwIfAborted();
 
   const unsubscribeChannel = () => {
@@ -210,60 +211,62 @@ const runWithChannel$ = command(
       L.debug("got message from topic", topic, message);
       pokeLoop();
     };
-    await subscribeChannel({
-      channel,
-      topic,
-      callback,
-      poke: pokeLoop,
-      subscriberPokeTarget: get(subscriberPokeTarget$),
-      signal,
-      run: async () => {
-        options?.onSubscribed?.();
-        if (options?.runOnSubscribe) {
-          pokeLoop();
-        }
-        L.debug("subscribed to topic: " + topic);
+    await subscribeChannel(
+      {
+        channel,
+        topic,
+        callback,
+        poke: pokeLoop,
+        subscriberPokeTarget: get(subscriberPokeTarget$),
+        run: async () => {
+          options?.onSubscribed?.();
+          if (options?.runOnSubscribe) {
+            pokeLoop();
+          }
+          L.debug("subscribed to topic: " + topic);
 
-        await setLoop(
-          async (loopSignal) => {
-            await deferred.promise;
-            loopSignal.throwIfAborted();
-            deferred = createDeferredPromise(loopSignal);
-            poked = false;
+          await setLoop(
+            async (loopSignal) => {
+              await deferred.promise;
+              loopSignal.throwIfAborted();
+              deferred = createDeferredPromise(loopSignal);
+              poked = false;
 
-            // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-            try {
-              const done = await set(loopCommand$, loopSignal);
-              loopSignal.throwIfAborted();
-              transientRetryCount = 0;
-              if (done) {
-                return true;
-              }
-            } catch (error) {
-              loopSignal.throwIfAborted();
-              throwIfAbort(error);
-              if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
-                L.warn(
-                  `giving up on ably notification after repeated handler failures`,
-                  error,
-                );
+              // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+              try {
+                const done = await set(loopCommand$, loopSignal);
+                loopSignal.throwIfAborted();
                 transientRetryCount = 0;
-                set(notifyRealtimeDegraded$);
-                return false;
+                if (done) {
+                  return true;
+                }
+              } catch (error) {
+                throwIfAbort(error);
+                loopSignal.throwIfAborted();
+                if (transientRetryCount >= MAX_TRANSIENT_RETRIES) {
+                  L.warn(
+                    `giving up on ably notification after repeated handler failures`,
+                    error,
+                  );
+                  transientRetryCount = 0;
+                  set(notifyRealtimeDegraded$);
+                  return false;
+                }
+                L.warn(`transient error in ably notification`, error);
+                await waitForTransientRetry(loopSignal, transientRetryCount);
+                loopSignal.throwIfAborted();
+                transientRetryCount++;
+                pokeLoop();
               }
-              L.warn(`transient error in ably notification`, error);
-              await waitForTransientRetry(loopSignal, transientRetryCount);
-              loopSignal.throwIfAborted();
-              transientRetryCount++;
-              pokeLoop();
-            }
-            return false;
-          },
-          0,
-          signal,
-        );
+              return false;
+            },
+            0,
+            signal,
+          );
+        },
       },
-    });
+      signal,
+    );
   },
 );
 
@@ -305,8 +308,8 @@ const runPayloadLoopIteration$ = command(
       }
       signal.throwIfAborted();
     } catch (error) {
-      signal.throwIfAborted();
       throwIfAbort(error);
+      signal.throwIfAborted();
       if (state.transientRetryCount >= MAX_TRANSIENT_RETRIES) {
         L.warn(
           hasPayload
@@ -400,38 +403,40 @@ const runWithChannelPayload$ = command(
       state.pendingPayloads.push(passMessage ? message : message.data);
       pokeLoop();
     };
-    await subscribeChannel({
-      channel,
-      topic,
-      callback,
-      poke: requestCatchUp,
-      subscriberPokeTarget: get(subscriberPokeTarget$),
-      signal,
-      run: async () => {
-        options?.onSubscribed?.();
-        if (options?.runOnSubscribe) {
-          requestCatchUp();
-        }
-        L.debug("subscribed to payload topic: " + subscriptionLabel);
+    await subscribeChannel(
+      {
+        channel,
+        topic,
+        callback,
+        poke: requestCatchUp,
+        subscriberPokeTarget: get(subscriberPokeTarget$),
+        run: async () => {
+          options?.onSubscribed?.();
+          if (options?.runOnSubscribe) {
+            requestCatchUp();
+          }
+          L.debug("subscribed to payload topic: " + subscriptionLabel);
 
-        await setLoop(
-          async (loopSignal) => {
-            return await set(
-              runPayloadLoopIteration$,
-              {
-                state,
-                loopCommand$,
-                catchUpCommand$,
-                pokeLoop,
-              },
-              loopSignal,
-            );
-          },
-          0,
-          signal,
-        );
+          await setLoop(
+            async (loopSignal) => {
+              return await set(
+                runPayloadLoopIteration$,
+                {
+                  state,
+                  loopCommand$,
+                  catchUpCommand$,
+                  pokeLoop,
+                },
+                loopSignal,
+              );
+            },
+            0,
+            signal,
+          );
+        },
       },
-    });
+      signal,
+    );
   },
 );
 

@@ -5,14 +5,16 @@ import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
 const WORKDAY_HOST = /^[a-z0-9.-]+\.(?:myworkday|workday)\.com$/i;
 const TENANT = /^[a-z0-9_-]+$/i;
 
-export async function refreshWorkdayAccessToken(args: {
-  readonly host: string;
-  readonly tenant: string;
-  readonly clientId: string;
-  readonly clientSecret: string;
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-}) {
+export async function refreshWorkdayAccessToken(
+  args: {
+    readonly host: string;
+    readonly tenant: string;
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly refreshToken: string;
+  },
+  signal: AbortSignal,
+) {
   if (!WORKDAY_HOST.test(args.host) || !TENANT.test(args.tenant)) {
     throw new Error("Invalid Workday host or tenant alias");
   }
@@ -27,7 +29,7 @@ export async function refreshWorkdayAccessToken(args: {
       grant_type: "refresh_token",
       refresh_token: args.refreshToken,
     }),
-    signal: args.signal,
+    signal,
   });
   if (!response.ok) {
     throw new ProviderHttpError(

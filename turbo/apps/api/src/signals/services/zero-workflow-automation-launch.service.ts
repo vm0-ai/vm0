@@ -254,20 +254,22 @@ export function buildChatOnlyWorkflowAutomationCallbacks(
   ];
 }
 
-async function resolveModelContext(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly chatThreadId: string;
-  readonly signal: AbortSignal;
-}): Promise<ModelContext> {
+async function resolveModelContext(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly chatThreadId: string;
+  },
+  signal: AbortSignal,
+): Promise<ModelContext> {
   const threadModelContext = await resolveRunChatThreadModelContext({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
     threadId: args.chatThreadId,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if ("status" in threadModelContext) {
     return {
       ok: false,
@@ -282,7 +284,7 @@ async function resolveModelContext(args: {
   }
 
   const { pin, providerAdmission, runCodexServiceTier } = threadModelContext;
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (providerAdmission.error) {
     return {
       ok: false,
@@ -324,13 +326,15 @@ function workflowAutomationTiming(
   return timing;
 }
 
-async function checkActivePreviousWorkflowRun(args: {
-  readonly db: Db;
-  readonly automation: AutomationRow;
-  readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly signal: AbortSignal;
-}): Promise<RunFailure | undefined> {
+async function checkActivePreviousWorkflowRun(
+  args: {
+    readonly db: Db;
+    readonly automation: AutomationRow;
+    readonly activePreviousRunPolicy: ActivePreviousRunPolicy;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+  signal: AbortSignal,
+): Promise<RunFailure | undefined> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_workflow_automation_check_active_run",
@@ -345,7 +349,7 @@ async function checkActivePreviousWorkflowRun(args: {
           .from(agentRuns)
           .where(eq(agentRuns.id, args.automation.lastRunId))
           .limit(1);
-        args.signal.throwIfAborted();
+        signal.throwIfAborted();
         if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
           return {
             kind: "conflict",
@@ -358,27 +362,32 @@ async function checkActivePreviousWorkflowRun(args: {
   );
 }
 
-async function checkWorkflowAutomationTargetReadable(args: {
-  readonly db: Db;
-  readonly automation: AutomationRow;
-  readonly agentId: string;
-  readonly allowClaimedOnceScheduleAutomation: boolean;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly signal: AbortSignal;
-}): Promise<RunFailure | undefined> {
+async function checkWorkflowAutomationTargetReadable(
+  args: {
+    readonly db: Db;
+    readonly automation: AutomationRow;
+    readonly agentId: string;
+    readonly allowClaimedOnceScheduleAutomation: boolean;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+  signal: AbortSignal,
+): Promise<RunFailure | undefined> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_workflow_automation_check_target_access",
     "nested",
     async (): Promise<RunFailure | undefined> => {
-      const canFire = await workflowAutomationCanFire(args.db, {
-        automation: args.automation,
-        agentId: args.agentId,
-        allowClaimedOnceScheduleAutomation:
-          args.allowClaimedOnceScheduleAutomation,
-        signal: args.signal,
-      });
-      args.signal.throwIfAborted();
+      const canFire = await workflowAutomationCanFire(
+        args.db,
+        {
+          automation: args.automation,
+          agentId: args.agentId,
+          allowClaimedOnceScheduleAutomation:
+            args.allowClaimedOnceScheduleAutomation,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
       if (!canFire) {
         return {
           kind: "conflict",
@@ -390,25 +399,29 @@ async function checkWorkflowAutomationTargetReadable(args: {
   );
 }
 
-async function resolveTimedWorkflowModelContext(args: {
-  readonly db: Db;
-  readonly automation: AutomationRow;
-  readonly chatThreadId: string;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly signal: AbortSignal;
-}): Promise<ModelContext> {
+async function resolveTimedWorkflowModelContext(
+  args: {
+    readonly db: Db;
+    readonly automation: AutomationRow;
+    readonly chatThreadId: string;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+  signal: AbortSignal,
+): Promise<ModelContext> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_workflow_automation_resolve_model_context",
     "nested",
     async () => {
-      return await resolveModelContext({
-        db: args.db,
-        orgId: args.automation.orgId,
-        userId: args.automation.ownerUserId,
-        chatThreadId: args.chatThreadId,
-        signal: args.signal,
-      });
+      return await resolveModelContext(
+        {
+          db: args.db,
+          orgId: args.automation.orgId,
+          userId: args.automation.ownerUserId,
+          chatThreadId: args.chatThreadId,
+        },
+        signal,
+      );
     },
   );
 }
@@ -441,15 +454,17 @@ async function buildTimedWorkflowAutomationRunInput(args: {
   );
 }
 
-async function recordWorkflowAutomationRunStart(input: {
-  readonly db: Db;
-  readonly args: WorkflowAutomationLaunchArgs;
-  readonly runId: string;
-  readonly runStatus: string;
-  readonly claimedEventCreatedAt: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const { db, args, runId, signal } = input;
+async function recordWorkflowAutomationRunStart(
+  input: {
+    readonly db: Db;
+    readonly args: WorkflowAutomationLaunchArgs;
+    readonly runId: string;
+    readonly runStatus: string;
+    readonly claimedEventCreatedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const { db, args, runId } = input;
   const { automation, chatThreadId } = args.due;
   await finalizeClaimedRunUserMessage({
     db,
@@ -475,6 +490,42 @@ async function recordWorkflowAutomationRunStart(input: {
   signal.throwIfAborted();
 }
 
+async function checkQueuedWorkflowLaunchReadiness(
+  input: {
+    readonly db: Db;
+    readonly args: LaunchQueuedWorkflowAutomationArgs;
+    readonly timing: ReturnType<typeof workflowAutomationTiming>;
+  },
+  signal: AbortSignal,
+): Promise<RunWorkflowAutomationResult | null> {
+  const { automation, agentId } = input.args.due;
+  const activePreviousRunFailure = await checkActivePreviousWorkflowRun(
+    {
+      db: input.db,
+      automation,
+      activePreviousRunPolicy: input.args.activePreviousRunPolicy,
+      timing: input.timing,
+    },
+    signal,
+  );
+  if (activePreviousRunFailure) {
+    return activePreviousRunFailure;
+  }
+  return (
+    (await checkWorkflowAutomationTargetReadable(
+      {
+        db: input.db,
+        automation,
+        agentId,
+        allowClaimedOnceScheduleAutomation:
+          input.args.due.allowClaimedOnceScheduleAutomation === true,
+        timing: input.timing,
+      },
+      signal,
+    )) ?? null
+  );
+}
+
 export const launchQueuedWorkflowAutomation$ = command(
   async (
     { set },
@@ -485,37 +536,23 @@ export const launchQueuedWorkflowAutomation$ = command(
     const { automation, agentId, chatThreadId } = args.due;
     const timing = workflowAutomationTiming(args);
 
-    const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
-      db,
-      automation,
-      activePreviousRunPolicy: args.activePreviousRunPolicy,
-      timing,
+    const readinessFailure = await checkQueuedWorkflowLaunchReadiness(
+      { db, args, timing },
       signal,
-    });
-    if (activePreviousRunFailure) {
-      return activePreviousRunFailure;
+    );
+    if (readinessFailure) {
+      return readinessFailure;
     }
 
-    const targetAccessFailure = await checkWorkflowAutomationTargetReadable({
-      db,
-      automation,
-      agentId,
-      allowClaimedOnceScheduleAutomation:
-        args.due.allowClaimedOnceScheduleAutomation === true,
-      timing,
+    const modelContext = await resolveTimedWorkflowModelContext(
+      {
+        db,
+        automation,
+        chatThreadId,
+        timing,
+      },
       signal,
-    });
-    if (targetAccessFailure) {
-      return targetAccessFailure;
-    }
-
-    const modelContext = await resolveTimedWorkflowModelContext({
-      db,
-      automation,
-      chatThreadId,
-      timing,
-      signal,
-    });
+    );
     if (!modelContext.ok) {
       return modelContext.failure;
     }
@@ -597,14 +634,16 @@ export const launchQueuedWorkflowAutomation$ = command(
       return { kind: "run_error", response: result };
     }
 
-    await recordWorkflowAutomationRunStart({
-      db,
-      args,
-      runId: result.body.runId,
-      runStatus: result.body.status,
-      claimedEventCreatedAt: result.queueFirstClaim.createdAt,
+    await recordWorkflowAutomationRunStart(
+      {
+        db,
+        args,
+        runId: result.body.runId,
+        runStatus: result.body.status,
+        claimedEventCreatedAt: result.queueFirstClaim.createdAt,
+      },
       signal,
-    });
+    );
 
     return { kind: "ok", runId: result.body.runId };
   },

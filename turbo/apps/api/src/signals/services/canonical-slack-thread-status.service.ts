@@ -10,10 +10,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import type { Db } from "../external/db";
-import {
-  createSlackClient,
-  setThreadStatus,
-} from "../external/slack-message-client";
+import { createSlackClient } from "../external/slack-message-client";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
@@ -274,8 +271,7 @@ export async function refreshCanonicalSlackThreadStatus(
     featureContext,
   );
   signal.throwIfAborted();
-  await setThreadStatus(
-    createSlackClient(botToken),
+  await createSlackClient(botToken).setThreadStatus(
     target.channelId,
     target.threadTs,
     "is thinking...",
@@ -320,8 +316,7 @@ export async function clearCanonicalSlackThreadStatusIfIdle(
   const client = createSlackClient(botToken);
   let appliedStatus = "";
   while (true) {
-    await setThreadStatus(
-      client,
+    await client.setThreadStatus(
       target.channelId,
       target.threadTs,
       appliedStatus,

@@ -199,13 +199,15 @@ function visibilityOwnerError(
   return forbidden("Only the agent owner can update agent visibility");
 }
 
-async function publicVisibilitySlotError(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly currentVisibility: ZeroAgentVisibility | null;
-  readonly nextVisibility: ZeroAgentVisibility;
-  readonly signal: AbortSignal;
-}) {
+async function publicVisibilitySlotError(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly currentVisibility: ZeroAgentVisibility | null;
+    readonly nextVisibility: ZeroAgentVisibility;
+  },
+  signal: AbortSignal,
+) {
   if (args.nextVisibility !== "public" || args.currentVisibility === "public") {
     return null;
   }
@@ -219,22 +221,24 @@ async function publicVisibilitySlotError(args: {
         eq(zeroAgents.visibility, "public"),
       ),
     );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   return (publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT
     ? publicAgentLimitError()
     : null;
 }
 
-function validateAgentVisibilityUpdate(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly member: AgentMember;
-  readonly existing: ExistingAgentVisibility;
-  readonly requestedVisibility: ZeroAgentVisibility | undefined;
-  readonly nextVisibility: ZeroAgentVisibility;
-  readonly signal: AbortSignal;
-}) {
+function validateAgentVisibilityUpdate(
+  args: {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly member: AgentMember;
+    readonly existing: ExistingAgentVisibility;
+    readonly requestedVisibility: ZeroAgentVisibility | undefined;
+    readonly nextVisibility: ZeroAgentVisibility;
+  },
+  signal: AbortSignal,
+) {
   const ownerError = visibilityOwnerError(
     args.existing,
     args.member,
@@ -244,13 +248,15 @@ function validateAgentVisibilityUpdate(args: {
     return ownerError;
   }
 
-  return publicVisibilitySlotError({
-    writeDb: args.writeDb,
-    orgId: args.orgId,
-    currentVisibility: args.existing.visibility,
-    nextVisibility: args.nextVisibility,
-    signal: args.signal,
-  });
+  return publicVisibilitySlotError(
+    {
+      writeDb: args.writeDb,
+      orgId: args.orgId,
+      currentVisibility: args.existing.visibility,
+      nextVisibility: args.nextVisibility,
+    },
+    signal,
+  );
 }
 
 function requireExistingAgentVisibility(
@@ -567,15 +573,17 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const nextVisibility =
     body.data.visibility ?? requireExistingAgentVisibility(existing);
-  const visibilityError = await validateAgentVisibilityUpdate({
-    writeDb,
-    orgId: auth.orgId,
-    member,
-    existing,
-    requestedVisibility: body.data.visibility,
-    nextVisibility,
+  const visibilityError = await validateAgentVisibilityUpdate(
+    {
+      writeDb,
+      orgId: auth.orgId,
+      member,
+      existing,
+      requestedVisibility: body.data.visibility,
+      nextVisibility,
+    },
     signal,
-  });
+  );
   if (visibilityError) {
     return visibilityError;
   }
@@ -650,15 +658,17 @@ const updateAgentMetadataInner$ = command(
     }
 
     if (body.data.visibility !== undefined) {
-      const visibilityError = await validateAgentVisibilityUpdate({
-        writeDb,
-        orgId: auth.orgId,
-        member,
-        existing,
-        requestedVisibility: body.data.visibility,
-        nextVisibility: body.data.visibility,
+      const visibilityError = await validateAgentVisibilityUpdate(
+        {
+          writeDb,
+          orgId: auth.orgId,
+          member,
+          existing,
+          requestedVisibility: body.data.visibility,
+          nextVisibility: body.data.visibility,
+        },
         signal,
-      });
+      );
       if (visibilityError) {
         return visibilityError;
       }

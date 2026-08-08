@@ -144,79 +144,95 @@ function parseFeishuCommand(text: string): FeishuCommand | null {
   };
 }
 
-async function reply(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly outbound: FeishuOutboundMessage;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function reply(
+  args: {
+    readonly db: Db;
+    readonly message: FeishuInboundMessage;
+    readonly outbound: FeishuOutboundMessage;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (!shouldReplyInFeishuThread(args.message)) {
-    await sendFeishuMessage({
+    await sendFeishuMessage(
+      {
+        db: args.db,
+        installationId: args.message.installationId,
+        receiveIdType: "chat_id",
+        receiveId: args.message.chatId,
+        message: args.outbound,
+      },
+      signal,
+    );
+    return;
+  }
+  await replyWithFeishuMessage(
+    {
       db: args.db,
       installationId: args.message.installationId,
-      receiveIdType: "chat_id",
-      receiveId: args.message.chatId,
+      messageId: args.message.messageId,
       message: args.outbound,
-      signal: args.signal,
-    });
-    return;
-  }
-  await replyWithFeishuMessage({
-    db: args.db,
-    installationId: args.message.installationId,
-    messageId: args.message.messageId,
-    message: args.outbound,
-    replyInThread: true,
-    signal: args.signal,
-  });
+      replyInThread: true,
+    },
+    signal,
+  );
 }
 
-async function replyNotice(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly title: string;
-  readonly text: string;
-  readonly kind?: "error" | "info" | "success" | "warning";
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await reply({
-    db: args.db,
-    message: args.message,
-    outbound: buildFeishuNoticeMessage({
-      title: args.title,
-      text: args.text,
-      kind: args.kind,
-    }),
-    signal: args.signal,
-  });
-}
-
-export async function replyToUnconnectedFeishuMessage(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const commandInput = parseFeishuCommand(args.message.text);
-  if (commandInput?.name === "help") {
-    await reply({
-      db: args.db,
-      message: args.message,
-      outbound: buildFeishuHelpMessage(),
-      signal: args.signal,
-    });
-    return;
-  }
-  if (commandInput?.name === "disconnect") {
-    await reply({
+async function replyNotice(
+  args: {
+    readonly db: Db;
+    readonly message: FeishuInboundMessage;
+    readonly title: string;
+    readonly text: string;
+    readonly kind?: "error" | "info" | "success" | "warning";
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await reply(
+    {
       db: args.db,
       message: args.message,
       outbound: buildFeishuNoticeMessage({
-        title: "Not connected",
-        text: "You are not connected.",
-        kind: "error",
+        title: args.title,
+        text: args.text,
+        kind: args.kind,
       }),
-      signal: args.signal,
-    });
+    },
+    signal,
+  );
+}
+
+export async function replyToUnconnectedFeishuMessage(
+  args: {
+    readonly db: Db;
+    readonly message: FeishuInboundMessage;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const commandInput = parseFeishuCommand(args.message.text);
+  if (commandInput?.name === "help") {
+    await reply(
+      {
+        db: args.db,
+        message: args.message,
+        outbound: buildFeishuHelpMessage(),
+      },
+      signal,
+    );
+    return;
+  }
+  if (commandInput?.name === "disconnect") {
+    await reply(
+      {
+        db: args.db,
+        message: args.message,
+        outbound: buildFeishuNoticeMessage({
+          title: "Not connected",
+          text: "You are not connected.",
+          kind: "error",
+        }),
+      },
+      signal,
+    );
     return;
   }
   const connectUrl = buildFeishuConnectUrl({
@@ -224,12 +240,14 @@ export async function replyToUnconnectedFeishuMessage(args: {
     openId: args.message.openId,
     chatId: args.message.chatId,
   });
-  await reply({
-    db: args.db,
-    message: args.message,
-    outbound: buildFeishuLoginMessage(connectUrl),
-    signal: args.signal,
-  });
+  await reply(
+    {
+      db: args.db,
+      message: args.message,
+      outbound: buildFeishuLoginMessage(connectUrl),
+    },
+    signal,
+  );
 }
 
 async function getVisibleAgent(args: {
@@ -373,24 +391,28 @@ export async function resolveEffectiveFeishuAgent(args: {
   return { status: existing ? "not_accessible" : "not_found" };
 }
 
-export async function replyFeishuAgentUnavailable(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly status: "not_accessible" | "not_found";
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function replyFeishuAgentUnavailable(
+  args: {
+    readonly db: Db;
+    readonly message: FeishuInboundMessage;
+    readonly status: "not_accessible" | "not_found";
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const text =
     args.status === "not_accessible"
       ? "The configured agent is not available to your Feishu account. Use `/switch` to choose an accessible agent."
       : "The configured Feishu agent could not be found. Ask an admin to select another agent.";
-  await replyNotice({
-    db: args.db,
-    message: args.message,
-    title: "Agent unavailable",
-    text,
-    kind: "error",
-    signal: args.signal,
-  });
+  await replyNotice(
+    {
+      db: args.db,
+      message: args.message,
+      title: "Agent unavailable",
+      text,
+      kind: "error",
+    },
+    signal,
+  );
 }
 
 export function feishuPromptFile(args: {
@@ -599,18 +621,22 @@ function formatConversationHistory(
   };
 }
 
-export async function loadFeishuConversationHistory(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly signal: AbortSignal;
-}): Promise<FeishuPromptContext> {
+export async function loadFeishuConversationHistory(
+  args: {
+    readonly db: Db;
+    readonly message: FeishuInboundMessage;
+  },
+  signal: AbortSignal,
+): Promise<FeishuPromptContext> {
   const history = await tapError(
-    listFeishuChatMessages({
-      db: args.db,
-      installationId: args.message.installationId,
-      chatId: args.message.chatId,
-      signal: args.signal,
-    }),
+    listFeishuChatMessages(
+      {
+        db: args.db,
+        installationId: args.message.installationId,
+        chatId: args.message.chatId,
+      },
+      signal,
+    ),
     (error) => {
       L.warn("Failed to load Feishu conversation history", {
         error,
@@ -619,7 +645,7 @@ export async function loadFeishuConversationHistory(args: {
       });
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return history
     ? formatConversationHistory(history, args.message)
     : { text: "", files: [] };
@@ -657,12 +683,14 @@ export function buildFeishuSystemPrompt(args: {
     .join("\n");
 }
 
-export async function markFeishuMessageReceived(args: {
-  readonly db: Db;
-  readonly installation: FeishuDispatchInstallation;
-  readonly message: FeishuInboundMessage;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function markFeishuMessageReceived(
+  args: {
+    readonly db: Db;
+    readonly installation: FeishuDispatchInstallation;
+    readonly message: FeishuInboundMessage;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   if (args.installation.messageReceivedAt) {
     return;
   }
@@ -680,7 +708,7 @@ export async function markFeishuMessageReceived(args: {
       ),
     )
     .returning({ id: feishuOrgInstallations.id });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (markedAsReceived) {
     await publishFeishuOrgChanged(
       args.db,
@@ -767,56 +795,62 @@ async function handleDisconnectCommand(
     args.installation.ownerUserId,
     [args.connection.vm0UserId],
   );
-  await replyNotice({
-    db: args.db,
-    message: args.message,
-    title: "Disconnected",
-    text: "Your Feishu account has been disconnected and its agent access has been revoked.",
-    kind: "success",
+  await replyNotice(
+    {
+      db: args.db,
+      message: args.message,
+      title: "Disconnected",
+      text: "Your Feishu account has been disconnected and its agent access has been revoked.",
+      kind: "success",
+    },
     signal,
-  });
+  );
 }
 
-async function replyAgentPicker(args: {
-  readonly commandArgs: ConnectedCommandArgs;
-  readonly agents: readonly FeishuAgent[];
-  readonly defaultAgent: FeishuAgent | undefined;
-  readonly currentPreference: string | null;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await replyNotice({
-    db: args.commandArgs.db,
-    message: args.commandArgs.message,
-    title: "Choose an agent",
-    text: commandOptionsText({
-      intro:
-        "Send one of these commands to choose which agent responds to your Feishu messages.",
-      command: "switch",
-      options: [
-        ...(args.defaultAgent
-          ? [
-              {
-                commandValue: "default",
-                label: `${agentLabel(args.defaultAgent)} (installation default)`,
-                current: args.currentPreference === null,
-              },
-            ]
-          : []),
-        ...args.agents
-          .filter((agent) => {
-            return agent.id !== args.commandArgs.installation.defaultAgentId;
-          })
-          .map((agent) => {
-            return {
-              commandValue: agent.id,
-              label: agentLabel(agent),
-              current: args.currentPreference === agent.id,
-            };
-          }),
-      ],
-    }),
-    signal: args.signal,
-  });
+async function replyAgentPicker(
+  args: {
+    readonly commandArgs: ConnectedCommandArgs;
+    readonly agents: readonly FeishuAgent[];
+    readonly defaultAgent: FeishuAgent | undefined;
+    readonly currentPreference: string | null;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await replyNotice(
+    {
+      db: args.commandArgs.db,
+      message: args.commandArgs.message,
+      title: "Choose an agent",
+      text: commandOptionsText({
+        intro:
+          "Send one of these commands to choose which agent responds to your Feishu messages.",
+        command: "switch",
+        options: [
+          ...(args.defaultAgent
+            ? [
+                {
+                  commandValue: "default",
+                  label: `${agentLabel(args.defaultAgent)} (installation default)`,
+                  current: args.currentPreference === null,
+                },
+              ]
+            : []),
+          ...args.agents
+            .filter((agent) => {
+              return agent.id !== args.commandArgs.installation.defaultAgentId;
+            })
+            .map((agent) => {
+              return {
+                commandValue: agent.id,
+                label: agentLabel(agent),
+                current: args.currentPreference === agent.id,
+              };
+            }),
+        ],
+      }),
+    },
+    signal,
+  );
 }
 
 async function handleSwitchCommand(
@@ -843,25 +877,29 @@ async function handleSwitchCommand(
   ]);
   signal.throwIfAborted();
   if (!args.command.argument) {
-    await replyAgentPicker({
-      commandArgs: args,
-      agents,
-      defaultAgent,
-      currentPreference,
+    await replyAgentPicker(
+      {
+        commandArgs: args,
+        agents,
+        defaultAgent,
+        currentPreference,
+      },
       signal,
-    });
+    );
     return;
   }
   if (args.command.argument.toLowerCase() === "default") {
     if (!defaultAgent) {
-      await replyNotice({
-        db: args.db,
-        message: args.message,
-        title: "Agent unavailable",
-        text: "You don't have access to the installation default agent.",
-        kind: "error",
+      await replyNotice(
+        {
+          db: args.db,
+          message: args.message,
+          title: "Agent unavailable",
+          text: "You don't have access to the installation default agent.",
+          kind: "error",
+        },
         signal,
-      });
+      );
       return;
     }
     await setUserAgentPreference({
@@ -871,14 +909,16 @@ async function handleSwitchCommand(
       composeId: null,
     });
     signal.throwIfAborted();
-    await replyNotice({
-      db: args.db,
-      message: args.message,
-      title: "Agent switched",
-      text: `Switched to **${agentLabel(defaultAgent)}**.`,
-      kind: "success",
+    await replyNotice(
+      {
+        db: args.db,
+        message: args.message,
+        title: "Agent switched",
+        text: `Switched to **${agentLabel(defaultAgent)}**.`,
+        kind: "success",
+      },
       signal,
-    });
+    );
     return;
   }
   const normalized = args.command.argument.toLowerCase();
@@ -890,14 +930,16 @@ async function handleSwitchCommand(
     );
   });
   if (!selected) {
-    await replyNotice({
-      db: args.db,
-      message: args.message,
-      title: "Agent unavailable",
-      text: "You don't have access to that agent. Use `/switch` to list available agents.",
-      kind: "error",
+    await replyNotice(
+      {
+        db: args.db,
+        message: args.message,
+        title: "Agent unavailable",
+        text: "You don't have access to that agent. Use `/switch` to list available agents.",
+        kind: "error",
+      },
       signal,
-    });
+    );
     return;
   }
   await setUserAgentPreference({
@@ -908,14 +950,16 @@ async function handleSwitchCommand(
       selected.id === args.installation.defaultAgentId ? null : selected.id,
   });
   signal.throwIfAborted();
-  await replyNotice({
-    db: args.db,
-    message: args.message,
-    title: "Agent switched",
-    text: `Switched to **${agentLabel(selected)}**.`,
-    kind: "success",
+  await replyNotice(
+    {
+      db: args.db,
+      message: args.message,
+      title: "Agent switched",
+      text: `Switched to **${agentLabel(selected)}**.`,
+      kind: "success",
+    },
     signal,
-  });
+  );
 }
 
 const handleModelCommand$ = command(
@@ -932,37 +976,41 @@ const handleModelCommand$ = command(
     );
     signal.throwIfAborted();
     if (picker.options.length === 0) {
-      await replyNotice({
-        db: args.db,
-        message: args.message,
-        title: "No models available",
-        text: "No models are configured for this workspace.",
-        kind: "error",
+      await replyNotice(
+        {
+          db: args.db,
+          message: args.message,
+          title: "No models available",
+          text: "No models are configured for this workspace.",
+          kind: "error",
+        },
         signal,
-      });
+      );
       return;
     }
     if (!args.command.argument) {
-      await replyNotice({
-        db: args.db,
-        message: args.message,
-        title: "Choose a model",
-        text: commandOptionsText({
-          intro:
-            "Send one of these commands to choose the model for your own Feishu runs.",
-          command: "model",
-          options: picker.options.map((option) => {
-            return {
-              commandValue: option.model,
-              label: `${option.label}${option.isDefault ? " (workspace default)" : ""}`,
-              current:
-                picker.currentSelectedModel === option.model ||
-                (!picker.currentSelectedModel && option.isDefault),
-            };
+      await replyNotice(
+        {
+          db: args.db,
+          message: args.message,
+          title: "Choose a model",
+          text: commandOptionsText({
+            intro:
+              "Send one of these commands to choose the model for your own Feishu runs.",
+            command: "model",
+            options: picker.options.map((option) => {
+              return {
+                commandValue: option.model,
+                label: `${option.label}${option.isDefault ? " (workspace default)" : ""}`,
+                current:
+                  picker.currentSelectedModel === option.model ||
+                  (!picker.currentSelectedModel && option.isDefault),
+              };
+            }),
           }),
-        }),
+        },
         signal,
-      });
+      );
       return;
     }
     const normalized = args.command.argument.toLowerCase();
@@ -973,14 +1021,16 @@ const handleModelCommand$ = command(
       );
     });
     if (!selected) {
-      await replyNotice({
-        db: args.db,
-        message: args.message,
-        title: "Model unavailable",
-        text: "You don't have access to that model. Use `/model` to list available models.",
-        kind: "error",
+      await replyNotice(
+        {
+          db: args.db,
+          message: args.message,
+          title: "Model unavailable",
+          text: "You don't have access to that model. Use `/model` to list available models.",
+          kind: "error",
+        },
         signal,
-      });
+      );
       return;
     }
     await set(
@@ -993,14 +1043,16 @@ const handleModelCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
-    await replyNotice({
-      db: args.db,
-      message: args.message,
-      title: "Model switched",
-      text: `Switched to **${selected.label}**.`,
-      kind: "success",
+    await replyNotice(
+      {
+        db: args.db,
+        message: args.message,
+        title: "Model switched",
+        text: `Switched to **${selected.label}**.`,
+        kind: "success",
+      },
       signal,
-    });
+    );
   },
 );
 
@@ -1012,23 +1064,27 @@ const handleConnectedCommand$ = command(
   ): Promise<void> => {
     switch (args.command.name) {
       case "help": {
-        await reply({
-          db: args.db,
-          message: args.message,
-          outbound: buildFeishuHelpMessage(),
+        await reply(
+          {
+            db: args.db,
+            message: args.message,
+            outbound: buildFeishuHelpMessage(),
+          },
           signal,
-        });
+        );
         return;
       }
       case "connect": {
-        await replyNotice({
-          db: args.db,
-          message: args.message,
-          title: "Already connected",
-          text: "Your Feishu account is already connected to VM0. Send a task to start working with your agent.",
-          kind: "success",
+        await replyNotice(
+          {
+            db: args.db,
+            message: args.message,
+            title: "Already connected",
+            text: "Your Feishu account is already connected to VM0. Send a task to start working with your agent.",
+            kind: "success",
+          },
           signal,
-        });
+        );
         return;
       }
       case "disconnect": {
@@ -1044,12 +1100,14 @@ const handleConnectedCommand$ = command(
         return;
       }
       default: {
-        await reply({
-          db: args.db,
-          message: args.message,
-          outbound: buildFeishuHelpMessage(),
+        await reply(
+          {
+            db: args.db,
+            message: args.message,
+            outbound: buildFeishuHelpMessage(),
+          },
           signal,
-        });
+        );
       }
     }
   },
@@ -1077,19 +1135,23 @@ export const dispatchConnectedFeishuCommand$ = command(
   },
 );
 
-export async function addFeishuThinkingReaction(args: {
-  readonly db: Db;
-  readonly message: FeishuInboundMessage;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
+export async function addFeishuThinkingReaction(
+  args: {
+    readonly db: Db;
+    readonly message: FeishuInboundMessage;
+  },
+  signal: AbortSignal,
+): Promise<string | undefined> {
   const reactionId = await tapError(
-    addFeishuMessageReaction({
-      db: args.db,
-      installationId: args.message.installationId,
-      messageId: args.message.messageId,
-      emojiType: FEISHU_THINKING_EMOJI,
-      signal: args.signal,
-    }),
+    addFeishuMessageReaction(
+      {
+        db: args.db,
+        installationId: args.message.installationId,
+        messageId: args.message.messageId,
+        emojiType: FEISHU_THINKING_EMOJI,
+      },
+      signal,
+    ),
     (error) => {
       L.warn("Failed to set Feishu thinking indicator", {
         error,
@@ -1097,6 +1159,6 @@ export async function addFeishuThinkingReaction(args: {
       });
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return reactionId;
 }

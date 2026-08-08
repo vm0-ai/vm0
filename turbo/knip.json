@@ -22,6 +22,7 @@
         "src/signals/context/hono.ts",
         "src/signals/context/wait-until.ts",
         "src/signals/external/clerk.ts",
+        "src/signals/external/stripe-client.ts",
         "src/signals/external/env.ts",
         "src/scripts/**/*.ts",
         "src/**/*.{test,spec}.ts"
@@ -124,8 +125,7 @@
     },
     "packages/typescript-config": {
       "entry": [],
-      "project": ["*.json"],
-      "ignoreUnresolved": ["next"]
+      "project": ["*.json"]
     },
     "packages/proxy": {
       "entry": [],
@@ -144,7 +144,6 @@
   },
   "ignore": [
     "**/*.d.ts",
-    ".next/**",
     "dist/**",
     "build/**",
     "coverage/**",

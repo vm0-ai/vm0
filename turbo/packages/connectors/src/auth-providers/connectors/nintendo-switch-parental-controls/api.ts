@@ -111,40 +111,55 @@ export function parseNintendoSwitchParentalControlsSessionTokenCode(args: {
   });
 }
 
-export function exchangeNintendoSwitchParentalControlsSessionTokenCode(args: {
-  readonly clientId: string;
-  readonly sessionTokenCode: string;
-  readonly codeVerifier: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoSwitchParentalControlsSessionToken> {
-  return exchangeNintendoAccountSessionTokenCode({
-    ...args,
-    userAgent: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.userAgent,
-    providerLabel: PROVIDER_LABEL,
-  });
+export function exchangeNintendoSwitchParentalControlsSessionTokenCode(
+  args: {
+    readonly clientId: string;
+    readonly sessionTokenCode: string;
+    readonly codeVerifier: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoSwitchParentalControlsSessionToken> {
+  return exchangeNintendoAccountSessionTokenCode(
+    {
+      ...args,
+      userAgent: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.userAgent,
+      providerLabel: PROVIDER_LABEL,
+    },
+    signal,
+  );
 }
 
-export function exchangeNintendoSwitchParentalControlsSessionToken(args: {
-  readonly clientId: string;
-  readonly sessionToken: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoSwitchParentalControlsToken> {
-  return exchangeNintendoAccountSessionToken({
-    ...args,
-    userAgent: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.userAgent,
-    providerLabel: PROVIDER_LABEL,
-  });
+export function exchangeNintendoSwitchParentalControlsSessionToken(
+  args: {
+    readonly clientId: string;
+    readonly sessionToken: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoSwitchParentalControlsToken> {
+  return exchangeNintendoAccountSessionToken(
+    {
+      ...args,
+      userAgent: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.userAgent,
+      providerLabel: PROVIDER_LABEL,
+    },
+    signal,
+  );
 }
 
-export function fetchNintendoSwitchParentalControlsProfile(args: {
-  readonly accessToken: string;
-  readonly signal: AbortSignal;
-}): Promise<NintendoSwitchParentalControlsProfile> {
-  return fetchNintendoAccountProfile({
-    ...args,
-    userAgent: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.userAgent,
-    providerLabel: PROVIDER_LABEL,
-  });
+export function fetchNintendoSwitchParentalControlsProfile(
+  args: {
+    readonly accessToken: string;
+  },
+  signal: AbortSignal,
+): Promise<NintendoSwitchParentalControlsProfile> {
+  return fetchNintendoAccountProfile(
+    {
+      ...args,
+      userAgent: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.userAgent,
+      providerLabel: PROVIDER_LABEL,
+    },
+    signal,
+  );
 }
 
 export function nintendoSwitchParentalControlsUserInfo(
@@ -207,12 +222,14 @@ function serializeDeviceCatalog(
   return JSON.stringify(catalog);
 }
 
-export async function federateNintendoSwitchParentalControlsSmartDevice(args: {
-  readonly idToken: string;
-  readonly smartDeviceId: string;
-  readonly language: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+export async function federateNintendoSwitchParentalControlsSmartDevice(
+  args: {
+    readonly idToken: string;
+    readonly smartDeviceId: string;
+    readonly language: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const response = await fetch(
     NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL,
     {
@@ -237,7 +254,7 @@ export async function federateNintendoSwitchParentalControlsSmartDevice(args: {
           notificationToken: null,
         },
       }),
-      signal: args.signal,
+      signal,
     },
   );
 
@@ -249,17 +266,19 @@ export async function federateNintendoSwitchParentalControlsSmartDevice(args: {
   return serializeDeviceCatalog(raw.loginInfo.ownedDevices);
 }
 
-export async function fetchNintendoSwitchParentalControlsDeviceCatalog(args: {
-  readonly idToken: string;
-  readonly smartDeviceId: string;
-  readonly language: string;
-  readonly signal: AbortSignal;
-}): Promise<string> {
+export async function fetchNintendoSwitchParentalControlsDeviceCatalog(
+  args: {
+    readonly idToken: string;
+    readonly smartDeviceId: string;
+    readonly language: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const response = await fetch(
     NINTENDO_SWITCH_PARENTAL_CONTROLS_OWNED_DEVICES_URL,
     {
       headers: actionHeaders(args),
-      signal: args.signal,
+      signal,
     },
   );
 
@@ -271,17 +290,19 @@ export async function fetchNintendoSwitchParentalControlsDeviceCatalog(args: {
   return serializeDeviceCatalog(raw.ownedDevices);
 }
 
-export async function logoutNintendoSwitchParentalControlsSmartDevice(args: {
-  readonly idToken: string;
-  readonly smartDeviceId: string;
-  readonly language: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+export async function logoutNintendoSwitchParentalControlsSmartDevice(
+  args: {
+    readonly idToken: string;
+    readonly smartDeviceId: string;
+    readonly language: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const response = await fetch(NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL, {
     method: "POST",
     headers: actionHeaders({ ...args, contentType: "application/json" }),
     body: JSON.stringify({ smartDeviceId: args.smartDeviceId }),
-    signal: args.signal,
+    signal,
   });
 
   if (!response.ok) {

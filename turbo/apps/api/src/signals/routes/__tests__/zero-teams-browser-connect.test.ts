@@ -86,7 +86,7 @@ function connectUrl(params: {
 
 async function requestConnect(
   url: string,
-  headers?: HeadersInit,
+  headers?: RequestInit["headers"],
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,

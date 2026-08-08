@@ -143,6 +143,10 @@ export const chatEvents = pgTable(
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
+    // Old/new API persisted-state projection (~102-minute observed overlap)
+    // and old web/app response support (~2-day observed window). Canonical
+    // semantics live in user_message and chat_event_asset_refs. The Stage 5/7
+    // chat-event cleanup follow-up PR drops these after both windows close.
     attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
     generationTemplate: jsonb(
       "generation_template",
@@ -222,6 +226,8 @@ export const chatEvents = pgTable(
           -- that API is gone and the rows have been backfilled again.
           'browser.started',
           'browser.stopped',
+          'goal.open',
+          'goal.close',
           'goal.changed',
           'usage.recorded'
         )`,
@@ -235,6 +241,42 @@ export const chatEvents = pgTable(
         "chat_events_input_content_check",
         sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
           OR ${table.content} IS NULL`,
+      ),
+      check(
+        "chat_events_goal_open_content_check",
+        sql`${table.eventType} <> 'goal.open'
+          OR (
+            ${table.content} IS NOT NULL
+            AND ${table.content} = btrim(${table.content})
+            AND char_length(${table.content}) > 0
+          )`,
+      ),
+      check(
+        "chat_events_goal_close_content_check",
+        sql`${table.eventType} <> 'goal.close' OR ${table.content} IS NULL`,
+      ),
+      check(
+        "chat_events_goal_marker_payload_check",
+        sql`${table.eventType} NOT IN ('goal.open', 'goal.close')
+          OR (
+            ${table.runId} IS NULL
+            AND ${table.usagePayload} IS NULL
+            AND ${table.revokesEventId} IS NULL
+            AND ${table.interruptsRunId} IS NULL
+            AND ${table.runGroupId} IS NULL
+            AND ${table.contextType} IS NULL
+            AND ${table.contextId} IS NULL
+            AND ${table.userMessage} IS NULL
+            AND ${table.thinking} IS NULL
+            AND ${table.error} IS NULL
+            AND ${table.activeInputSequence} IS NULL
+            AND ${table.runEventSequenceNumber} IS NULL
+            AND ${table.runEventId} IS NULL
+            AND ${table.goalEvent} IS NULL
+            AND ${table.attachFiles} IS NULL
+            AND ${table.generationTemplate} IS NULL
+            AND ${table.recommendedFollowups} IS NULL
+          )`,
       ),
       check(
         "chat_events_context_pair_check",

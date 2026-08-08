@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.706.4](https://github.com/vm0-ai/vm0/compare/app-v0.706.3...app-v0.706.4) (2026-08-07)
+
+
+### Refactoring
+
+* pass abort signals explicitly ([#25740](https://github.com/vm0-ai/vm0/issues/25740)) ([8618bd0](https://github.com/vm0-ai/vm0/commit/8618bd0c05833cea17fc5191e5c6d2afe522a11f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.3
+    * @vm0/connectors bumped to 1.204.3
+    * @vm0/core bumped to 8.530.3
+
+## [0.706.3](https://github.com/vm0-ai/vm0/compare/app-v0.706.2...app-v0.706.3) (2026-08-07)
+
+
+### Refactoring
+
+* **chat:** prepare content-based events ([#25748](https://github.com/vm0-ai/vm0/issues/25748)) ([aa5fd7b](https://github.com/vm0-ai/vm0/commit/aa5fd7b5da87a3fe21f45e54bae1d1fea9d56ab2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.2
+    * @vm0/core bumped to 8.530.2
+
+## [0.706.2](https://github.com/vm0-ai/vm0/compare/app-v0.706.1...app-v0.706.2) (2026-08-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.1
+    * @vm0/core bumped to 8.530.1
+
+## [0.706.1](https://github.com/vm0-ai/vm0/compare/app-v0.706.0...app-v0.706.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **platform:** wait for chat thread metadata before setup ([#25712](https://github.com/vm0-ai/vm0/issues/25712)) ([968decc](https://github.com/vm0-ai/vm0/commit/968decc5d046485395f52c6ed69724bea5eb0730))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.0
+    * @vm0/core bumped to 8.530.0
+
+## [0.706.0](https://github.com/vm0-ai/vm0/compare/app-v0.705.0...app-v0.706.0) (2026-08-07)
+
+
+### Features
+
+* **composer:** show every video parameter on inline and sent template chips ([#25715](https://github.com/vm0-ai/vm0/issues/25715)) ([313a02b](https://github.com/vm0-ai/vm0/commit/313a02ba3fa3bab6f4aa758ce3f00b07f85900f3))
+* soften the dialog scrim and blur the backdrop ([#25719](https://github.com/vm0-ai/vm0/issues/25719)) ([2cde403](https://github.com/vm0-ai/vm0/commit/2cde403e644688352438534e7ca6289e40f9cf01))
+
+
+### Refactoring
+
+* **chat:** make user message parts canonical ([#25717](https://github.com/vm0-ai/vm0/issues/25717)) ([2020c27](https://github.com/vm0-ai/vm0/commit/2020c2720a08dc98f3159299bc9b6e1897351c60))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.293.1
+    * @vm0/connectors bumped to 1.204.2
+    * @vm0/core bumped to 8.529.1
+
 ## [0.705.0](https://github.com/vm0-ai/vm0/compare/app-v0.704.0...app-v0.705.0) (2026-08-07)
 
 

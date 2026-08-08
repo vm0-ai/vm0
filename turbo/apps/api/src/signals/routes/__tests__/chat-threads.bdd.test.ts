@@ -3,7 +3,10 @@ import { createStore } from "ccstate";
 import {
   cronCleanupSandboxesContract,
   cronCompactChatThreadSnapshotsContract,
+  cronProjectChatEventSearchContract,
 } from "@vm0/api-contracts/contracts/cron";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import {
   chatThreadsContract,
@@ -29,6 +32,7 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
+  insertContentFollowupsEventFixture,
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
@@ -63,6 +67,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { seedVm0ManagedDefaultModelKey } from "./helpers/runtime-state";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -74,13 +79,17 @@ import {
 } from "./helpers/zero-usage-insight";
 import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
 import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
+import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 import { zeroGoalsRoutes } from "../zero-goals";
 
 const TEST_APP_ROUTES = Object.freeze([
   ...cronCleanupSandboxesRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
+  ...cronProjectChatEventSearchRoutes,
   ...zeroChatThreadRoutes,
+  ...zeroFeatureSwitchesRoutes,
   ...zeroGoalsRoutes,
 ]);
 
@@ -2829,6 +2838,196 @@ describe("CHAT-01 chat search", () => {
       expect(match.contextBefore).toStrictEqual([]);
       expect(match.contextAfter).toHaveLength(1);
     }
+  }, 60_000);
+});
+
+describe("CHAT-01 chat search index", () => {
+  const CHAT_EVENT_SEARCH_CRON_SECRET = "chat-event-search-cron-secret";
+
+  async function projectChatEventSearch() {
+    mockEnv("CRON_SECRET", CHAT_EVENT_SEARCH_CRON_SECRET);
+    const client = setupApp({
+      context,
+      routes: cronProjectChatEventSearchRoutes,
+    })(cronProjectChatEventSearchContract);
+    const response = await accept(
+      client.project({
+        headers: { authorization: `Bearer ${CHAT_EVENT_SEARCH_CRON_SECRET}` },
+      }),
+      [200],
+    );
+    return response.body;
+  }
+
+  async function enableChatSearchIndex(actor: ApiTestUser): Promise<void> {
+    createZeroRouteMocks(context).clerk.session(
+      actor.userId,
+      actor.orgId,
+      actor.orgRole,
+    );
+    const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+      zeroFeatureSwitchesContract,
+    );
+    await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { switches: { [FeatureSwitchKey.ChatSearchIndex]: true } },
+      }),
+      [200],
+    );
+  }
+
+  function assistantOutputEvent(
+    sequenceNumber: number,
+    text: string,
+  ): Record<string, unknown> {
+    return {
+      eventType: "assistant",
+      sequenceNumber,
+      eventData: { message: { content: [{ type: "text", text }] } },
+    };
+  }
+
+  it("serves index-backed keyword search from the projection behind the switch", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = bdd.user({ orgId });
+    const peer = bdd.user({ orgId });
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Search index agent",
+    });
+    const peerAgent = await bdd.createAgent(peer, {
+      displayName: "Search index peer agent",
+    });
+    await enableChatSearchIndex(owner);
+
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "今天天气很好 vercel 部署完成",
+    });
+    await sendNoCreditMessage(peer, {
+      agentId: peerAgent.agentId,
+      prompt: "peer 今天天气 message",
+    });
+
+    // The switch is on but the projector has not indexed the thread yet, so
+    // the index path recalls nothing while the peer's legacy path still works.
+    const beforeProjection = await chat.searchChat(owner, "天气");
+    expect(beforeProjection.results).toStrictEqual([]);
+    const peerLegacy = await chat.searchChat(peer, "天气");
+    expect(peerLegacy.results).toHaveLength(1);
+
+    const firstTick = await projectChatEventSearch();
+    expect(firstTick.success).toBeTruthy();
+    expect(firstTick.threads).toBeGreaterThanOrEqual(2);
+    expect(firstTick.indexedEvents).toBeGreaterThanOrEqual(2);
+
+    // CJK bigram recall: one bigram, an adjacent phrase, and a CJK+word AND.
+    for (const keyword of ["天气", "今天天气", "天气 vercel"]) {
+      const found = await chat.searchChat(owner, keyword);
+      expect(found.results).toHaveLength(1);
+      expect(found.results[0]?.chatThreadId).toBe(threadId);
+      expect(found.results[0]?.matchedMessage.content).toBe(
+        "今天天气很好 vercel 部署完成",
+      );
+    }
+
+    // A single CJK character has no bigram form and falls back to ILIKE.
+    const singleChar = await chat.searchChat(owner, "好");
+    expect(singleChar.results).toHaveLength(1);
+
+    // Word tokens match whole words only under the index path.
+    const partialWord = await chat.searchChat(owner, "verce");
+    expect(partialWord.results).toStrictEqual([]);
+    const wholeWord = await chat.searchChat(owner, "vercel");
+    expect(wholeWord.results).toHaveLength(1);
+
+    // Re-running the projector is idempotent for already-indexed threads.
+    const secondTick = await projectChatEventSearch();
+    expect(secondTick.success).toBeTruthy();
+    const stable = await chat.searchChat(owner, "天气");
+    expect(stable.results).toHaveLength(1);
+  }, 60_000);
+
+  it("excludes future follow-up content from indexed matches and context", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = bdd.user({ orgId });
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Follow-up search exclusion agent",
+    });
+    await enableChatSearchIndex(owner);
+
+    const visibleNeedle = `visiblemessage${randomUUID().replaceAll("-", "")}`;
+    const followupOnlyNeedle = `futurefollowup${randomUUID().replaceAll("-", "")}`;
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: visibleNeedle,
+    });
+    await insertContentFollowupsEventFixture({
+      threadId,
+      content: JSON.stringify({
+        version: 1,
+        followups: [{ prompt: followupOnlyNeedle }],
+      }),
+    });
+
+    const tick = await projectChatEventSearch();
+    expect(tick.success).toBeTruthy();
+
+    const visibleHit = await chat.searchChat(owner, visibleNeedle);
+    expect(visibleHit.results).toHaveLength(1);
+    const context = [
+      ...(visibleHit.results[0]?.contextBefore ?? []),
+      ...(visibleHit.results[0]?.contextAfter ?? []),
+    ];
+    expect(
+      context.some((message) => {
+        return message.content.includes(followupOnlyNeedle);
+      }),
+    ).toBeFalsy();
+
+    const followupHit = await chat.searchChat(owner, followupOnlyNeedle);
+    expect(followupHit.results).toStrictEqual([]);
+  }, 60_000);
+
+  it("indexes assistant output through the projection", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor(
+      "Search index assistant agent",
+    );
+    await enableChatSearchIndex(actor);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "帮我查询部署状态基线",
+    });
+    const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantOutputEvent(0, "axolotl 部署一切正常"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders);
+    await waitForThreadMessages(actor, run.threadId, (messages) => {
+      return messages.some((message) => {
+        return (
+          message.eventType === "output.message" &&
+          (message.content?.includes("axolotl") ?? false)
+        );
+      });
+    });
+
+    const tick = await projectChatEventSearch();
+    expect(tick.success).toBeTruthy();
+
+    const assistantHit = await chat.searchChat(actor, "axolotl");
+    expect(assistantHit.results).toHaveLength(1);
+    expect(assistantHit.results[0]?.matchedMessage.role).toBe("assistant");
+    expect(assistantHit.results[0]?.matchedMessage.content).toBe(
+      "axolotl 部署一切正常",
+    );
+    // The prompt and the assistant reply share the 部署 bigram; run
+    // lifecycle rows around them stay out of the index.
+    const both = await chat.searchChat(actor, "部署");
+    expect(both.results).toHaveLength(2);
   }, 60_000);
 });
 

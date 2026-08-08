@@ -198,6 +198,7 @@ impl JobProvider for LocalProvider {
             billable_firewalls: vec![],
             model_usage_provider: None,
             codex_runtime_config: None,
+            pi_execution_mode: None,
             pi_system_prompt: None,
             pi_model_config: None,
             run_skill_snapshot: None,

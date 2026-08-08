@@ -142,7 +142,10 @@ describe("user messages", () => {
     const reference = await screen.findByTitle(
       `Video \u00b7 ${templateItem.title}`,
     );
-    expect(reference).toHaveTextContent("9:16 \u00b7 8s");
+    // Every parameter is echoed, not only the one the user changed.
+    expect(reference).toHaveTextContent(
+      "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
+    );
   });
 
   it("renders ordered snapshots with literal Markdown text", async () => {
@@ -255,8 +258,7 @@ describe("user messages", () => {
       return element as HTMLElement;
     });
     expect(userMessageElement.textContent).toBe(
-      "Archived deckStart Archived source with , then " +
-        "TXTdeleted-notes.txt.\n" +
+      "Archived deckStart Archived source with , then .\n" +
         "Use **literal** <span>.",
     );
     expect(userMessageElement.querySelector("strong")).toBeNull();
@@ -275,26 +277,28 @@ describe("user messages", () => {
       image.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // Resolved files leave the bubble too, so they show the live filename
-    // rather than the snapshot the message was written with.
+    // Canonical file parts leave the bubble and keep their persisted snapshot;
+    // conflicting legacy response projection metadata is ignored.
     const pdf = screen.getByLabelText(
-      "Open pdf preview for renamed-report.pdf",
+      "Open pdf preview for original-report.pdf",
     );
     expect(
       within(screen.getByTestId("message-file-attachments")).getByLabelText(
-        "Open pdf preview for renamed-report.pdf",
+        "Open pdf preview for original-report.pdf",
       ),
     ).toBe(pdf);
     expect(
       pdf.compareDocumentPosition(userMessageElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByLabelText("File deleted-notes.txt")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Open text preview for deleted-notes.txt"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText("Legacy structured body should stay hidden"),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Retired template")).not.toBeInTheDocument();
-    expect(screen.queryByText("original-report.pdf")).not.toBeInTheDocument();
+    expect(screen.queryByText("renamed-report.pdf")).not.toBeInTheDocument();
 
     const literalMarkdown = await screen.findByText(
       "Canonical **bold** remains",

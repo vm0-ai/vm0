@@ -5,6 +5,7 @@ import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback"
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
+import { cronProjectChatEventSearchRoutes } from "./routes/cron-project-chat-event-search";
 import { cronCompactUsageEventsRoutes } from "./routes/cron-compact-usage-events";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
@@ -22,6 +23,7 @@ import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-
 import { cronRefreshStoragePresignedUrlsRoutes } from "./routes/cron-refresh-storage-presigned-urls";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
 import { cronBrowserReconcileRoutes } from "./routes/cron-browser-reconcile";
+import { cronSteerRunTimeBudgetRoutes } from "./routes/cron-steer-run-time-budget";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { desktopAuthRoutes } from "./routes/desktop-auth";
@@ -227,6 +229,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
+  ...cronProjectChatEventSearchRoutes,
   ...cronCompactUsageEventsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
@@ -244,6 +247,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
   ...cronBrowserReconcileRoutes,
+  ...cronSteerRunTimeBudgetRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...emailMorningBriefUnsubscribeRoutes,

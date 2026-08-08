@@ -1207,9 +1207,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         "Root message ID: dm",
       ].join("\n"),
     );
-    const admitted = await findTelegramChatEventByPromptFixture(
-      "hello from telegram",
-    );
+    const admitted = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: "hello from telegram",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted Telegram input event");
@@ -1370,12 +1371,13 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       runId,
       cliAgentSessionId: null,
       reuseKey,
-      runnerPreference: {
+      runnerPreferenceDecision: {
+        kind: "preference",
         runnerIdentity: {
           runnerId,
           heartbeatGeneration: 1,
         },
-        reason: "matchingReuseKey",
+        tier: "reusableSandbox",
         expiresAt: expect.any(String),
       },
     });
@@ -1456,8 +1458,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       ).status,
     ).toBe(200);
     await flushWaitUntilForTest();
-    const queuedParams =
-      await findPendingChatEventByPromptFixture(queuedPrompt);
+    const queuedParams = await findPendingChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: queuedPrompt,
+    });
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
     });
@@ -1716,8 +1720,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const firstState = await telegramPostRunState(fixture, firstPrompt);
     expect(firstState.zeroRun?.chatThreadId).toStrictEqual(expect.any(String));
-    const admittedForum =
-      await findTelegramChatEventByPromptFixture(firstPrompt);
+    const admittedForum = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: firstPrompt,
+    });
     expect(admittedForum).toMatchObject({ eventId: expect.any(String) });
     if (!admittedForum) {
       throw new Error("Expected admitted Telegram forum input event");
@@ -1826,8 +1832,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       "",
       followUpPrompt,
     ].join("\n");
-    const admittedFollowUp =
-      await findTelegramChatEventByPromptFixture(followUpAgentPrompt);
+    const admittedFollowUp = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: followUpAgentPrompt,
+    });
     expect(admittedFollowUp).toMatchObject({ eventId: expect.any(String) });
     if (!admittedFollowUp) {
       throw new Error("Expected admitted Telegram forum follow-up event");
@@ -2082,9 +2090,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         "Message ID: 101",
       ].join("\n"),
     );
-    const admitted = await findTelegramChatEventByPromptFixture(
-      "summarize this thread",
-    );
+    const admitted = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: "summarize this thread",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted Telegram supergroup input event");
@@ -2152,9 +2161,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         "Root message ID: dm",
       ].join("\n"),
     );
-    const admitted = await findTelegramChatEventByPromptFixture(
-      "run through official bot",
-    );
+    const admitted = await findTelegramChatEventByPromptFixture({
+      userId: fixture.userId,
+      prompt: "run through official bot",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted official Telegram input event");

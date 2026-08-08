@@ -17,7 +17,7 @@ import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -262,14 +262,16 @@ async function actorMatchesConfig(args: {
   return link?.githubUserId === String(args.sender.id);
 }
 
-async function loadGithubLabelEventAutomations(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-}): Promise<readonly GithubLabelEventAutomationRow[]> {
+async function loadGithubLabelEventAutomations(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+  },
+  signal: AbortSignal,
+): Promise<readonly GithubLabelEventAutomationRow[]> {
   const automationRows = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
@@ -303,7 +305,7 @@ async function loadGithubLabelEventAutomations(args: {
       ),
     )
     .orderBy(asc(zeroWorkflowAutomations.createdAt));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const currentTime = nowDate();
   const automations: GithubLabelEventAutomationRow[] = [];
@@ -314,12 +316,15 @@ async function loadGithubLabelEventAutomations(args: {
     if (!config.success) {
       continue;
     }
-    const canFire = await workflowAutomationCanFire(args.db, {
-      automation: row.automation,
-      agentId: row.agentId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const canFire = await workflowAutomationCanFire(
+      args.db,
+      {
+        automation: row.automation,
+        agentId: row.agentId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (!canFire) {
       continue;
     }
@@ -335,7 +340,7 @@ async function loadGithubLabelEventAutomations(args: {
           currentTime,
         });
       }));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     automations.push({
       automation: row.automation,
       agentId: row.agentId,
@@ -515,15 +520,17 @@ async function startGithubWorkflowRunOverride(
   });
 }
 
-async function matchedLabelForAutomation(args: {
-  readonly db: Db;
-  readonly installation: GithubInstallationRecord;
-  readonly automation: GithubLabelEventAutomationRow;
-  readonly labelNames: readonly string[];
-  readonly subjectKind: GithubWorkflowSubjectKind;
-  readonly sender: GithubUser;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
+async function matchedLabelForAutomation(
+  args: {
+    readonly db: Db;
+    readonly installation: GithubInstallationRecord;
+    readonly automation: GithubLabelEventAutomationRow;
+    readonly labelNames: readonly string[];
+    readonly subjectKind: GithubWorkflowSubjectKind;
+    readonly sender: GithubUser;
+  },
+  signal: AbortSignal,
+): Promise<string | null> {
   if (
     !subjectMatchesConfig({
       subjectKind: args.subjectKind,
@@ -545,7 +552,7 @@ async function matchedLabelForAutomation(args: {
     automation: args.automation,
     sender: args.sender,
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return actorMatches ? matchedLabelName : null;
 }
 
@@ -572,15 +579,17 @@ const dispatchMatchedGithubAutomations$ = command(
       const matchedLabelName = await runTiming.measure(
         "api_dispatch_pre_create_zero_workflow_event_match_automations",
         async () => {
-          return await matchedLabelForAutomation({
-            db: args.db,
-            installation: args.installation,
-            automation,
-            labelNames: args.labelNames,
-            subjectKind: args.subjectKind,
-            sender: args.payload.sender,
+          return await matchedLabelForAutomation(
+            {
+              db: args.db,
+              installation: args.installation,
+              automation,
+              labelNames: args.labelNames,
+              subjectKind: args.subjectKind,
+              sender: args.payload.sender,
+            },
             signal,
-          });
+          );
         },
       );
       signal.throwIfAborted();
@@ -696,11 +705,13 @@ export const dispatchGithubLabelWorkflowAutomations$ = command(
     const automations = await sourceTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_load_automations",
       async () => {
-        return await loadGithubLabelEventAutomations({
-          db,
-          orgId: installationRecord.orgId,
+        return await loadGithubLabelEventAutomations(
+          {
+            db,
+            orgId: installationRecord.orgId,
+          },
           signal,
-        });
+        );
       },
     );
     signal.throwIfAborted();

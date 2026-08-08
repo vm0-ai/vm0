@@ -290,11 +290,14 @@ async function validateExpandedBrowserSchema(dbUrl: string): Promise<void> {
     assert.match(lifecycleDefinition, /browser\.close/u);
     assert.match(lifecycleDefinition, /browser\.started/u);
     assert.match(lifecycleDefinition, /browser\.stopped/u);
+    assert.match(lifecycleDefinition, /goal\.open/u);
+    assert.match(lifecycleDefinition, /goal\.close/u);
+    assert.match(lifecycleDefinition, /goal\.changed/u);
     console.log(
       "   ✅ retired browser tables and identity columns still exist",
     );
     console.log(
-      "   ✅ both browser lifecycle event generations are accepted\n",
+      "   ✅ browser and goal rollout event generations are accepted\n",
     );
   } finally {
     await client.end();

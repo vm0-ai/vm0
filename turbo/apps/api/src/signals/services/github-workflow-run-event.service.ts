@@ -16,7 +16,7 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { rolloutCompatibleWorkflowAutomationColumns } from "./autonomy-budget-schema.service";
+import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
@@ -179,14 +179,16 @@ async function findActiveInstallation(args: {
   return installation ?? null;
 }
 
-async function loadGithubWorkflowRunAutomations(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-}): Promise<readonly GithubWorkflowRunAutomationRow[]> {
+async function loadGithubWorkflowRunAutomations(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+  },
+  signal: AbortSignal,
+): Promise<readonly GithubWorkflowRunAutomationRow[]> {
   const rows = await args.db
     .select({
-      automation: rolloutCompatibleWorkflowAutomationColumns(false),
+      automation: workflowAutomationColumns(),
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
@@ -220,7 +222,7 @@ async function loadGithubWorkflowRunAutomations(args: {
       ),
     )
     .orderBy(asc(zeroWorkflowAutomations.createdAt));
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
 
   const automations: GithubWorkflowRunAutomationRow[] = [];
   const currentTime = nowDate();
@@ -231,12 +233,15 @@ async function loadGithubWorkflowRunAutomations(args: {
     if (!config.success) {
       continue;
     }
-    const canFire = await workflowAutomationCanFire(args.db, {
-      automation: row.automation,
-      agentId: row.agentId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
+    const canFire = await workflowAutomationCanFire(
+      args.db,
+      {
+        automation: row.automation,
+        agentId: row.agentId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     if (!canFire) {
       continue;
     }
@@ -252,7 +257,7 @@ async function loadGithubWorkflowRunAutomations(args: {
           currentTime,
         });
       }));
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     automations.push({
       automation: row.automation,
       agentId: row.agentId,
@@ -425,11 +430,13 @@ export const dispatchGithubWorkflowRunAutomations$ = command(
     const automations = await sourceTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_load_automations",
       async () => {
-        return await loadGithubWorkflowRunAutomations({
-          db,
-          orgId: installation.orgId,
+        return await loadGithubWorkflowRunAutomations(
+          {
+            db,
+            orgId: installation.orgId,
+          },
           signal,
-        });
+        );
       },
     );
     signal.throwIfAborted();

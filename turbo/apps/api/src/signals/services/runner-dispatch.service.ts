@@ -1,11 +1,12 @@
-import { publishRunnerJobNotification } from "../external/realtime";
+import type { PiExecutionMode } from "@vm0/api-contracts/contracts/runners";
+
 import { recordSandboxOperations } from "../external/sandbox-op-log";
+import { publishRunnerJobNotification } from "../external/realtime";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {
   runnerPreferenceDecisionTelemetryDimensions,
-  runnerPreferenceDeliveryFields,
   runnerReuseKeyTelemetryKind,
   runnerReusePreferenceLookupErrorDecision,
   resolveRunnerReusePreference,
@@ -14,17 +15,20 @@ import { tapError } from "../utils";
 
 const L = logger("RunnerDispatch");
 
+export interface RunnerJobNotification {
+  readonly runnerGroup: string;
+  readonly runId: string;
+  readonly profile: string;
+  readonly reuseKey: string | null;
+  readonly cliAgentSessionId: string | null;
+  readonly historyGenerationRunId: string | undefined;
+  readonly piExecutionMode?: PiExecutionMode;
+  readonly createdAt: Date;
+}
+
 export async function notifyRunnerJob(
   db: Pick<Db, "select">,
-  args: {
-    readonly runnerGroup: string;
-    readonly runId: string;
-    readonly profile: string;
-    readonly reuseKey: string | null;
-    readonly cliAgentSessionId: string | null;
-    readonly historyGenerationRunId: string | undefined;
-    readonly createdAt: Date;
-  },
+  args: RunnerJobNotification,
 ): Promise<boolean> {
   const notificationEnteredAt = now();
   const currentDate = new Date(notificationEnteredAt);
@@ -53,22 +57,20 @@ export async function notifyRunnerJob(
         );
       },
     )) ?? runnerReusePreferenceLookupErrorDecision();
-  const runnerPreferenceFields = runnerPreferenceDeliveryFields(
-    runnerPreferenceDecision,
-  );
   const preferenceFinishedAt = now();
   const publishStartedAt = now();
-  const published = await publishRunnerJobNotification(
-    args.runnerGroup,
-    args.runId,
-    args.profile,
-    {
+  const published = await publishRunnerJobNotification({
+    group: args.runnerGroup,
+    runId: args.runId,
+    profile: args.profile,
+    piExecutionMode: args.piExecutionMode,
+    runnerPreferenceDecision,
+    metadata: {
       reuseKey: args.reuseKey,
       cliAgentSessionId: args.cliAgentSessionId,
       historyGenerationRunId: args.historyGenerationRunId,
-      ...runnerPreferenceFields,
     },
-  );
+  });
   const publishFinishedAt = now();
 
   const dimensions: Record<string, string> = {

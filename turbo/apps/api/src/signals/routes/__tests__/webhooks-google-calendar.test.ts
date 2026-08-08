@@ -238,7 +238,9 @@ async function connectGoogleCalendar(
   );
 }
 
-async function postGoogleCalendarWebhook(headers: HeadersInit): Promise<{
+async function postGoogleCalendarWebhook(
+  headers: NonNullable<RequestInit["headers"]>,
+): Promise<{
   readonly status: number;
   readonly body: unknown;
 }> {

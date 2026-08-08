@@ -40,8 +40,8 @@ async function fetchEvents(
     limit: number;
     since?: number;
     cursor?: string;
-    signal?: AbortSignal;
   },
+  signal?: AbortSignal,
 ): Promise<PagedRunEvents> {
   const query: {
     limit: number;
@@ -62,7 +62,7 @@ async function fetchEvents(
       params: { id: runId },
       query,
       fetchOptions: {
-        signal: options.signal,
+        signal,
       },
     }),
     [200],
@@ -78,10 +78,11 @@ function createEventPageComputed(
   runId: string,
   limit: number,
   request: EventPageRequest = {},
+  signal?: AbortSignal,
 ): Computed<Promise<PagedRunEvents>> {
   return computed(async (get) => {
     const client = get(zeroClient$);
-    return await fetchEvents(client, runId, { limit, ...request });
+    return await fetchEvents(client, runId, { limit, ...request }, signal);
   });
 }
 
@@ -288,6 +289,7 @@ export function createRunLoop(runId: string) {
       runId,
       POLLED_AGENT_EVENTS_PAGE_LIMIT,
       request,
+      signal,
     );
     set(reloadRunStatus$);
 

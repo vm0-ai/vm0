@@ -89,10 +89,10 @@ function isArtifactGoogleDriveSyncFailure(
 async function syncArtifactFilesToGoogleDrive(
   params: ArtifactGoogleDriveSyncFilesParams & {
     readonly createClient: ZeroClientFactory;
-    readonly signal?: AbortSignal;
   },
+  signal?: AbortSignal,
 ): Promise<boolean> {
-  params.signal?.throwIfAborted();
+  signal?.throwIfAborted();
   if (params.files.length === 0) {
     toast.error(
       i18n.t(($) => {
@@ -107,7 +107,7 @@ async function syncArtifactFilesToGoogleDrive(
     const client = params.createClient(chatThreadArtifactsContract);
     const results: ArtifactGoogleDriveSyncResult[] = [];
     for (const file of params.files) {
-      params.signal?.throwIfAborted();
+      signal?.throwIfAborted();
       const settled = await settle(
         accept(
           client.syncGoogleDrive({
@@ -116,11 +116,11 @@ async function syncArtifactFilesToGoogleDrive(
               runId: file.runId,
               fileId: file.fileId,
             },
-            fetchOptions: params.signal ? { signal: params.signal } : undefined,
+            fetchOptions: signal ? { signal } : undefined,
           }),
           [200, 400, 401, 403, 404, 503],
         ),
-        params.signal,
+        signal,
       );
       const result: ArtifactGoogleDriveSyncResult = settled.ok
         ? settled.value.status === 200
@@ -132,7 +132,7 @@ async function syncArtifactFilesToGoogleDrive(
           };
       results.push(result);
     }
-    params.signal?.throwIfAborted();
+    signal?.throwIfAborted();
     const syncedCount = results.filter((result) => {
       return result.ok;
     }).length;
@@ -166,7 +166,7 @@ async function syncArtifactFilesToGoogleDrive(
   };
 
   return await withCleanup(sync(), () => {
-    if (params.signal?.aborted) {
+    if (signal?.aborted) {
       toast.dismiss(toastId);
     }
   });
@@ -175,28 +175,32 @@ async function syncArtifactFilesToGoogleDrive(
 export async function syncArtifactFileToGoogleDrive(
   params: ArtifactGoogleDriveSyncParams & {
     readonly createClient: ZeroClientFactory;
-    readonly signal?: AbortSignal;
   },
+  signal?: AbortSignal,
 ): Promise<boolean> {
-  return await syncArtifactFilesToGoogleDrive({
-    createClient: params.createClient,
-    threadId: params.threadId,
-    files: [
-      {
-        runId: params.runId,
-        fileId: params.fileId,
-        filename: params.filename,
-      },
-    ],
-    signal: params.signal,
-  });
+  return await syncArtifactFilesToGoogleDrive(
+    {
+      createClient: params.createClient,
+      threadId: params.threadId,
+      files: [
+        {
+          runId: params.runId,
+          fileId: params.fileId,
+          filename: params.filename,
+        },
+      ],
+    },
+    signal,
+  );
 }
 
-async function authorizeGoogleDriveForAgent(params: {
-  readonly agentId: string;
-  readonly createClient: ZeroClientFactory;
-  readonly signal: AbortSignal;
-}): Promise<void> {
+async function authorizeGoogleDriveForAgent(
+  params: {
+    readonly agentId: string;
+    readonly createClient: ZeroClientFactory;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const client = params.createClient(zeroUserConnectorsContract);
   await accept(
     client.update({
@@ -205,11 +209,11 @@ async function authorizeGoogleDriveForAgent(params: {
         enabledConnectorSlugs: ["google-drive"],
         operation: "add",
       },
-      fetchOptions: { signal: params.signal },
+      fetchOptions: { signal },
     }),
     [200],
   );
-  params.signal.throwIfAborted();
+  signal.throwIfAborted();
 }
 
 export const waitForGoogleDriveAuthorization$ = command(
@@ -222,11 +226,13 @@ export const waitForGoogleDriveAuthorization$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     if (params.authorizeConnected) {
-      await authorizeGoogleDriveForAgent({
-        agentId: params.agentId,
-        createClient: get(zeroClient$),
+      await authorizeGoogleDriveForAgent(
+        {
+          agentId: params.agentId,
+          createClient: get(zeroClient$),
+        },
         signal,
-      });
+      );
     }
 
     const authorizationReady$ = command(

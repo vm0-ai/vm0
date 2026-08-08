@@ -27,14 +27,14 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
-use super::{RunnerPreferenceContext, parse_runner_preference_context};
+use super::{RunnerPreferenceContext, parse_runner_preference_decision};
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::pi_standby::{PiStandbyNotifications, PiStandbySignal};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::types::ConnectorRuntimeTarget;
+use crate::types::{ConnectorRuntimeTarget, PiExecutionMode};
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -738,7 +738,8 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.reuse_key.map(str::to_owned),
                         notif.runner_preference_context,
                     )
-                    .with_history_generation_run_id(notif.history_generation_run_id),
+                    .with_history_generation_run_id(notif.history_generation_run_id)
+                    .with_pi_execution_mode(notif.pi_execution_mode),
                 ))
             } else {
                 info!(
@@ -779,6 +780,7 @@ struct JobNotification<'a> {
     profile: Option<&'a str>,
     reuse_key: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
+    pi_execution_mode: Option<PiExecutionMode>,
     runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
@@ -1030,38 +1032,40 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("historyGenerationRunId")
         .and_then(|v| v.as_str())
         .and_then(|value| value.parse().ok());
-    let parsed_preference = parse_runner_preference_context(
-        msg.data.get("runnerPreferenceDecision").cloned(),
-        msg.data.get("runnerPreference").cloned(),
-        msg.data.get("runnerPreferenceResolution").cloned(),
-    );
-    if let Some(error) = parsed_preference.decision_error {
-        warn!(
-            run_id = %run_id,
-            error = %error,
-            "ably: invalid runner preference decision, falling back to legacy preference"
-        );
-    }
-    if let Some(error) = parsed_preference.legacy_preference_error {
-        warn!(
-            run_id = %run_id,
-            error = %error,
-            "ably: invalid runner preference, using ordinary admission"
-        );
-    }
-    if let Some(error) = parsed_preference.legacy_resolution_error {
-        warn!(
-            run_id = %run_id,
-            error = %error,
-            "ably: invalid runner preference resolution, omitting telemetry context"
-        );
-    }
+    let pi_execution_mode = match msg.data.get("piExecutionMode") {
+        Some(value) => match serde_json::from_value(value.clone()) {
+            Ok(mode) => Some(mode),
+            Err(error) => {
+                warn!(
+                    run_id = %run_id,
+                    value = %value,
+                    error = %error,
+                    "ably: invalid Pi execution mode"
+                );
+                return None;
+            }
+        },
+        None => None,
+    };
+    let runner_preference_context =
+        match parse_runner_preference_decision(msg.data.get("runnerPreferenceDecision").cloned()) {
+            Ok(context) => context,
+            Err(error) => {
+                warn!(
+                    run_id = %run_id,
+                    error = %error,
+                    "ably: invalid runner preference decision, using ordinary admission"
+                );
+                None
+            }
+        };
     Some(JobNotification {
         run_id,
         profile,
         reuse_key,
         history_generation_run_id,
-        runner_preference_context: parsed_preference.context,
+        pi_execution_mode,
+        runner_preference_context,
     })
 }
 
@@ -1209,9 +1213,7 @@ impl AblyDisconnectState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{
-        RunnerPreferenceAdmission, RunnerPreferenceResolution, RunnerPreferenceTier,
-    };
+    use crate::provider::{RunnerPreferenceResolution, RunnerPreferenceTier};
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -2004,6 +2006,7 @@ mod tests {
                 "profile": "vm0/default",
                 "reuseKey": "thread:chat-thread",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
+                "piExecutionMode": "standby",
                 "runnerPreferenceDecision": {
                     "kind": "preference",
                     "runnerIdentity": {
@@ -2011,15 +2014,6 @@ mod tests {
                         "heartbeatGeneration": 7
                     },
                     "tier": "reusableSandbox",
-                    "expiresAt": "2999-01-01T00:00:00.000Z"
-                },
-                "runnerPreferenceResolution": "matching_workspace_cache",
-                "runnerPreference": {
-                    "runnerIdentity": {
-                        "runnerId": "00000000-0000-0000-0000-000000000099",
-                        "heartbeatGeneration": 9
-                    },
-                    "reason": "exactHistoryGeneration",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
                 }
             }),
@@ -2034,6 +2028,10 @@ mod tests {
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
+        assert_eq!(
+            candidate.pi_execution_mode(),
+            Some(PiExecutionMode::Standby)
+        );
         assert_eq!(candidate.reuse_key(), Some("thread:chat-thread"));
         assert_eq!(
             candidate.history_generation_run_id(),
@@ -2042,10 +2040,7 @@ mod tests {
         let preference = candidate
             .runner_preference()
             .expect("canonical preference should be parsed");
-        assert_eq!(
-            preference.admission(),
-            RunnerPreferenceAdmission::Ranked(RunnerPreferenceTier::ReusableSandbox)
-        );
+        assert_eq!(preference.tier(), RunnerPreferenceTier::ReusableSandbox);
         assert!(preference.targets("00000000-0000-0000-0000-000000000005", 7));
         assert_eq!(
             candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
@@ -2060,7 +2055,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_atomic_and_bridge_preferences_preserve_direct_candidate() {
+    async fn job_notification_with_unknown_pi_execution_mode_is_ignored() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default",
+                "piExecutionMode": "future-mode"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert_no_direct_candidate(&direct_candidates).await;
+        assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn malformed_preference_decision_preserves_direct_candidate() {
         let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
@@ -2086,15 +2109,6 @@ mod tests {
                     },
                     "tier": "workspaceCache",
                     "expiresAt": "2999-01-01T00:00:00.000Z"
-                },
-                "runnerPreferenceResolution": "future_resolution",
-                "runnerPreference": {
-                    "runnerIdentity": {
-                        "runnerId": "00000000-0000-0000-0000-000000000005",
-                        "heartbeatGeneration": 7
-                    },
-                    "reason": "futureReason",
-                    "expiresAt": "2999-01-01T00:00:00.000Z"
                 }
             }),
         );
@@ -2110,64 +2124,6 @@ mod tests {
             candidate
                 .runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,)
                 .is_none()
-        );
-        assert_no_direct_candidate(&direct_candidates).await;
-    }
-
-    #[tokio::test]
-    async fn malformed_atomic_ably_decision_falls_back_to_valid_bridge() {
-        let tokens = RunCancellationRegistry::new();
-        let wakeups = PollWakeups::new(true);
-        let direct_candidates = direct_candidate_inbox();
-        let profiles = default_profiles();
-        let _ = wakeups
-            .wait_for_poll_due(
-                &CancellationToken::new(),
-                Duration::from_secs(30),
-                Duration::from_secs(5),
-            )
-            .await;
-        let msg = make_message(
-            Some("job"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000012",
-                "profile": "vm0/default",
-                "reuseKey": "thread:bridge-fallback",
-                "runnerPreferenceDecision": {
-                    "kind": "futureDecision"
-                },
-                "runnerPreferenceResolution": "matching_reusable_sandbox",
-                "runnerPreference": {
-                    "runnerIdentity": {
-                        "runnerId": "00000000-0000-0000-0000-000000000005",
-                        "heartbeatGeneration": 7
-                    },
-                    "reason": "matchingReuseKey",
-                    "expiresAt": "2999-01-01T00:00:00.000Z"
-                }
-            }),
-        );
-
-        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
-
-        let candidate = pop_direct_candidate(&direct_candidates)
-            .await
-            .into_job_candidate();
-        assert_eq!(
-            candidate
-                .runner_preference()
-                .map(crate::provider::RunnerPreference::admission),
-            Some(RunnerPreferenceAdmission::Legacy(
-                crate::provider::RunnerPreferenceReason::MatchingReuseKey
-            ))
-        );
-        assert_eq!(
-            candidate.runner_preference_claim_telemetry("00000000-0000-0000-0000-000000000005", 7,),
-            Some(super::super::RunnerPreferenceClaimTelemetry {
-                resolution: RunnerPreferenceResolution::MatchingReusableSandbox,
-                state: super::super::RunnerPreferenceClaimState::Active,
-                targeted_self: Some(true),
-            })
         );
         assert_no_direct_candidate(&direct_candidates).await;
     }

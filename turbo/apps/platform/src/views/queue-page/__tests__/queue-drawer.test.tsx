@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
+  chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroBillingConcurrencyCheckoutContract,
@@ -21,7 +22,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-const THREAD_ID = "thread-queue";
+const THREAD_ID = "ea000000-0000-4000-a000-000000000001";
 
 function queuedEntry(): QueueEntry {
   return {
@@ -84,6 +85,30 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
 }
 
 function mockQueuedThread(): void {
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: [
+        {
+          id: THREAD_ID,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          title: "Queued thread",
+          sortAt: "2026-01-01T00:00:02Z",
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:02Z",
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: null,
+          serviceTier: null,
+          computerUseHostId: null,
+        },
+      ],
+      latestEventId: null,
+      latestSeqId: null,
+    });
+  });
+  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+    return respond(200, { events: [], hasMore: false });
+  });
   context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
     if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
       return respond(200, { events: [] });

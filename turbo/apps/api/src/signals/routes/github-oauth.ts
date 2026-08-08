@@ -247,11 +247,13 @@ const isGithubInstallOrgAdmin$ = command(
 const hasActiveGithubInstallationForOrg$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<boolean> => {
     const db = set(writeDb$);
-    const installation = await loadActiveGithubInstallationForOrg({
-      db,
-      orgId,
+    const installation = await loadActiveGithubInstallationForOrg(
+      {
+        db,
+        orgId,
+      },
       signal,
-    });
+    );
     return installation !== null;
   },
 );
@@ -336,13 +338,15 @@ async function linkGithubUserWithoutSetupCode(
   vm0UserId: string,
   signal: AbortSignal,
 ): Promise<GithubSetupUserConnectionResolution> {
-  const githubUserId = await linkGithubVm0User({
-    db: args.db,
-    installRecordId: args.installRecordId,
-    vm0UserId,
-    knownGithubUserId: args.knownGithubUserId,
+  const githubUserId = await linkGithubVm0User(
+    {
+      db: args.db,
+      installRecordId: args.installRecordId,
+      vm0UserId,
+      knownGithubUserId: args.knownGithubUserId,
+    },
     signal,
-  });
+  );
   signal.throwIfAborted();
   if (githubUserId) {
     await publishUserSignal([vm0UserId], "github:changed");
@@ -453,13 +457,15 @@ const connectGithubUserAfterSetup$ = command(
       );
       signal.throwIfAborted();
 
-      const githubUserId = await linkGithubVm0User({
-        db: args.db,
-        installRecordId: args.installRecordId,
-        vm0UserId,
-        knownGithubUserId: userInfo.id,
+      const githubUserId = await linkGithubVm0User(
+        {
+          db: args.db,
+          installRecordId: args.installRecordId,
+          vm0UserId,
+          knownGithubUserId: userInfo.id,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
 
       if (!githubUserId) {
@@ -488,56 +494,66 @@ function githubSetupCompleteRedirect(connected: boolean): Response {
   return redirectResponse(appUrl("/workflows"));
 }
 
-async function createActiveGithubInstallationFromCallback(args: {
-  readonly db: Db;
-  readonly appId: string;
-  readonly privateKey: string;
-  readonly orgId: string;
-  readonly composeId: string;
-  readonly installationId: string;
-  readonly state: ParsedGithubOauthState;
-  readonly signal: AbortSignal;
-}): Promise<{
+async function createActiveGithubInstallationFromCallback(
+  args: {
+    readonly db: Db;
+    readonly appId: string;
+    readonly privateKey: string;
+    readonly orgId: string;
+    readonly composeId: string;
+    readonly installationId: string;
+    readonly state: ParsedGithubOauthState;
+  },
+  signal: AbortSignal,
+): Promise<{
   readonly installRecordId: string;
   readonly adminGithubUserId: string | null;
 }> {
-  const installInfo = await getGithubInstallationInfo({
-    appId: args.appId,
-    privateKey: args.privateKey,
-    installationId: args.installationId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const installInfo = await getGithubInstallationInfo(
+    {
+      appId: args.appId,
+      privateKey: args.privateKey,
+      installationId: args.installationId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
-  const { token } = await getGithubInstallationAccessToken({
-    appId: args.appId,
-    privateKey: args.privateKey,
-    installationId: args.installationId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
+  const { token } = await getGithubInstallationAccessToken(
+    {
+      appId: args.appId,
+      privateKey: args.privateKey,
+      installationId: args.installationId,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
 
   const adminGithubUserId =
     installInfo.targetType === "User" ? installInfo.targetId : null;
-  const featureSwitchContext = await loadComposeFeatureSwitchContext({
-    db: args.db,
-    composeId: args.composeId,
-    userId: args.state.vm0UserId,
-    signal: args.signal,
-  });
-  const installRecordId = await createOrActivateGithubInstallation({
-    db: args.db,
-    orgId: args.orgId,
-    installationId: args.installationId,
-    installInfo,
-    encryptedAccessToken: await encryptPersistentSecretValue(
-      token,
-      featureSwitchContext,
-    ),
-    adminGithubUserId,
-    composeId: args.composeId,
-    signal: args.signal,
-  });
+  const featureSwitchContext = await loadComposeFeatureSwitchContext(
+    {
+      db: args.db,
+      composeId: args.composeId,
+      userId: args.state.vm0UserId,
+    },
+    signal,
+  );
+  const installRecordId = await createOrActivateGithubInstallation(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      installationId: args.installationId,
+      installInfo,
+      encryptedAccessToken: await encryptPersistentSecretValue(
+        token,
+        featureSwitchContext,
+      ),
+      adminGithubUserId,
+      composeId: args.composeId,
+    },
+    signal,
+  );
 
   return { installRecordId, adminGithubUserId };
 }
@@ -574,12 +590,14 @@ const installGithubOauth$ = command(
     if (appId && privateKey && query.vm0UserId) {
       const db = set(writeDb$);
       const linkedFromLocal = query.orgId
-        ? await tryLinkGithubFromLocalRecord({
-            db,
-            orgId: query.orgId,
-            vm0UserId: query.vm0UserId,
+        ? await tryLinkGithubFromLocalRecord(
+            {
+              db,
+              orgId: query.orgId,
+              vm0UserId: query.vm0UserId,
+            },
             signal,
-          })
+          )
         : false;
       signal.throwIfAborted();
 
@@ -587,15 +605,17 @@ const installGithubOauth$ = command(
         return redirectResponse(appUrl("/workflows"));
       }
 
-      const linkedFromRemote = await tryLinkGithubFromRemoteInstallations({
-        db,
-        appId,
-        privateKey,
-        orgId: query.orgId ?? null,
-        vm0UserId: query.vm0UserId,
-        composeId: query.composeId ?? null,
+      const linkedFromRemote = await tryLinkGithubFromRemoteInstallations(
+        {
+          db,
+          appId,
+          privateKey,
+          orgId: query.orgId ?? null,
+          vm0UserId: query.vm0UserId,
+          composeId: query.composeId ?? null,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
 
       if (linkedFromRemote) {
@@ -673,12 +693,14 @@ const connectGithubUserOauth$ = command(
       }
 
       const db = set(writeDb$);
-      const installation = await findGithubInstallationByInstallationId({
-        db,
-        installationId: query.installation,
-        orgId,
+      const installation = await findGithubInstallationByInstallationId(
+        {
+          db,
+          installationId: query.installation,
+          orgId,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
 
       if (!installation) {
@@ -687,13 +709,15 @@ const connectGithubUserOauth$ = command(
         );
       }
 
-      const githubUserId = await linkGithubVm0User({
-        db,
-        installRecordId: installation.id,
-        vm0UserId: auth.userId,
-        knownGithubUserId: query.ghUser,
+      const githubUserId = await linkGithubVm0User(
+        {
+          db,
+          installRecordId: installation.id,
+          vm0UserId: auth.userId,
+          knownGithubUserId: query.ghUser,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
 
       if (!githubUserId) {
@@ -717,16 +741,18 @@ const connectGithubUserOauth$ = command(
     if (!resolvedMethod) {
       return worksErrorRedirect("GitHub OAuth is not available");
     }
-    const authorizationUrl = await buildGithubUserConnectAuthorizationUrl({
-      db,
-      vm0UserId: auth.userId,
-      orgId,
-      origin,
-      authMethodId: resolvedMethod.authMethodId,
-      method: resolvedMethod.method,
-      readEnv: optionalEnv,
+    const authorizationUrl = await buildGithubUserConnectAuthorizationUrl(
+      {
+        db,
+        vm0UserId: auth.userId,
+        orgId,
+        origin,
+        authMethodId: resolvedMethod.authMethodId,
+        method: resolvedMethod.method,
+        readEnv: optionalEnv,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (!authorizationUrl) {
@@ -801,11 +827,13 @@ const callbackGithubUserOauth$ = command(
     signal.throwIfAborted();
 
     const db = set(writeDb$);
-    const installation = await loadActiveGithubInstallationForOrg({
-      db,
-      orgId: state.orgId,
+    const installation = await loadActiveGithubInstallationForOrg(
+      {
+        db,
+        orgId: state.orgId,
+      },
       signal,
-    });
+    );
     if (!installation) {
       return worksErrorRedirect("No GitHub installation found");
     }
@@ -826,13 +854,15 @@ const callbackGithubUserOauth$ = command(
     );
     signal.throwIfAborted();
 
-    const githubUserId = await linkGithubVm0User({
-      db,
-      installRecordId: installation.id,
-      vm0UserId: state.vm0UserId,
-      knownGithubUserId: token.userInfo.id,
+    const githubUserId = await linkGithubVm0User(
+      {
+        db,
+        installRecordId: installation.id,
+        vm0UserId: state.vm0UserId,
+        knownGithubUserId: token.userInfo.id,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     if (!githubUserId) {
@@ -884,12 +914,14 @@ const callbackGithubOauth$ = command(
     const { state, composeId } = stateResolution;
 
     const db = set(writeDb$);
-    const orgId = await resolveGithubOauthOrgId({
-      db,
-      orgId: state.orgId,
-      composeId,
+    const orgId = await resolveGithubOauthOrgId(
+      {
+        db,
+        orgId: state.orgId,
+        composeId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     const access = await set(
@@ -910,12 +942,14 @@ const callbackGithubOauth$ = command(
       return worksErrorRedirect("Missing installation ID from GitHub");
     }
 
-    const existing = await findGithubInstallationByInstallationId({
-      db,
-      installationId,
-      orgId,
+    const existing = await findGithubInstallationByInstallationId(
+      {
+        db,
+        installationId,
+        orgId,
+      },
       signal,
-    });
+    );
     if (existing) {
       const connection = await set(
         connectGithubUserAfterSetup$,
@@ -941,16 +975,18 @@ const callbackGithubOauth$ = command(
       return worksErrorRedirect(GITHUB_SINGLE_INSTALLATION_REQUIRED);
     }
 
-    const installation = await createActiveGithubInstallationFromCallback({
-      db,
-      appId,
-      privateKey,
-      orgId,
-      composeId,
-      installationId,
-      state,
+    const installation = await createActiveGithubInstallationFromCallback(
+      {
+        db,
+        appId,
+        privateKey,
+        orgId,
+        composeId,
+        installationId,
+        state,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
 
     const connection = await set(

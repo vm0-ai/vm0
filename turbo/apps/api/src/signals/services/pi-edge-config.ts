@@ -1,18 +1,20 @@
-import {
-  PI_STANDBY_PROFILE,
-  type PiModelConfig,
-  type RunSkillSnapshot,
+import type {
+  PiModelConfig,
+  RunSkillSnapshot,
 } from "@vm0/api-contracts/contracts/runners";
 import {
   getModelProviderPiChatCompletionsUrl,
+  supportedRunModelSchema,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   isPiAgentModelSupported,
+  PI_OPENAI_COMPATIBLE_PROVIDERS,
   type ExecutionEnv,
   type PiAgentModelConfig,
   type PiOpenAICompatibleProvider,
 } from "@vm0/pi-agent-runtime";
+import { z } from "zod";
 
 /**
  * Cycle-free Pi edge configuration shared between the launch pipeline
@@ -22,6 +24,25 @@ import {
 
 export type PiEdgeModelConfig = PiAgentModelConfig;
 
+export const piEdgeModelConfigSchema = z
+  .object({
+    provider: z.enum(PI_OPENAI_COMPATIBLE_PROVIDERS),
+    baseUrl: z.url(),
+    apiKey: z.string().min(1),
+    model: z.string().min(1),
+  })
+  .readonly();
+
+/** Canonical selected model used for observations and, when billable, pricing. */
+export const piEdgeUsageConfigSchema = z
+  .object({
+    model: supportedRunModelSchema,
+    billable: z.boolean(),
+  })
+  .readonly();
+
+export type PiEdgeUsageConfig = z.infer<typeof piEdgeUsageConfigSchema>;
+
 export interface PiEdgeTurnArgs {
   readonly runId: string;
   readonly userId: string;
@@ -29,18 +50,12 @@ export interface PiEdgeTurnArgs {
   readonly prompt: string;
   readonly systemPrompt: string;
   readonly model: PiEdgeModelConfig;
+  readonly usage?: PiEdgeUsageConfig;
   readonly executionEnv: ExecutionEnv;
   readonly skillSnapshot: RunSkillSnapshot;
   readonly runnerGroup: string;
   readonly apiStartTime: number;
 }
-
-/**
- * Runner job profile for Pi runs. Runners advertise this as a distinct queue
- * lane backed by the default Sandbox resource shape, allowing the standby job
- * to be claimed independently from ordinary agent work.
- */
-export { PI_STANDBY_PROFILE };
 
 /** Build the non-secret model config persisted for the standby Sandbox. */
 export function piSandboxModelConfig(config: PiEdgeModelConfig): PiModelConfig {

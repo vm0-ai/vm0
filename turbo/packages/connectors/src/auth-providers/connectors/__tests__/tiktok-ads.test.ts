@@ -176,13 +176,15 @@ describe("connector/providers/tiktok-ads", () => {
       server.use(handler);
 
       await expect(
-        tiktokAdsProvider.access.refresh({
-          authClient: testAuthClient,
-          inputs: {
-            refreshToken: "current-refresh-token",
+        tiktokAdsProvider.access.refresh(
+          {
+            authClient: testAuthClient,
+            inputs: {
+              refreshToken: "current-refresh-token",
+            },
           },
-          signal: new AbortController().signal,
-        }),
+          new AbortController().signal,
+        ),
       ).resolves.toStrictEqual({
         outputs: {
           accessToken: "provider-refreshed-token",

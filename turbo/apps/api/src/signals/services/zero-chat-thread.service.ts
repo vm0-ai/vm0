@@ -38,6 +38,7 @@ import {
   type ChatEventUserMessage,
   type ChatEventGoalEvent,
 } from "@vm0/db/schema/chat-event";
+import { chatEventSearchDocs } from "@vm0/db/schema/chat-event-search";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import {
@@ -61,13 +62,13 @@ import {
   isNotNull,
   isNull,
   lt,
-  not,
   notExists,
   or,
   type SQL,
   sql,
 } from "drizzle-orm";
 
+import { chatSearchBigramTsquery } from "../../lib/chat-search-bigram";
 import {
   pgBooleanDecoder,
   pgIntegerDecoder,
@@ -87,7 +88,10 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTextCondition,
+  chatEventTextMatchCondition,
+} from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
@@ -178,6 +182,9 @@ const eventColumns = {
   seqId: chatEvents.seqId,
   sequenceNumber: chatEvents.runEventSequenceNumber,
   createdAt: chatEvents.createdAt,
+  // Old web/app response boundary (~2-day observed client window), including
+  // rows from a mixed API fleet (~102-minute observed overlap). The Stage 5/7
+  // chat-event cleanup follow-up PR removes these after both windows close.
   attachFiles: chatEvents.attachFiles,
   generationTemplate: chatEvents.generationTemplate,
   recommendedFollowups: chatEvents.recommendedFollowups,
@@ -450,6 +457,9 @@ function chatEventAttachFiles(
     if (canonicalAttachments.length > 0) {
       return canonicalAttachments;
     }
+    // Legacy response projection for old web/app clients (~2 days) and rows
+    // written during API overlap (~102 minutes). The Stage 5/7 chat-event
+    // cleanup follow-up PR removes it after both rollout windows close.
     if (row.attachFiles && row.attachFiles.length > 0) {
       return await get(resolveAttachFileUrls(userId, row.attachFiles));
     }
@@ -532,6 +542,9 @@ const chatEventBuilders = {
         row.eventType,
         "userMessage",
       ),
+      // Old web/app response projection (~2-day observed client window).
+      // Canonical clients read `userMessage`; the Stage 5/7 chat-event cleanup
+      // follow-up PR removes both fields after the client floor cutover.
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -582,6 +595,9 @@ const chatEventBuilders = {
         "userMessage",
       ),
       error: requiredChatEventField(row.error, row.eventType, "error"),
+      // Old web/app response projection (~2-day observed client window).
+      // Canonical clients read `userMessage`; the Stage 5/7 chat-event cleanup
+      // follow-up PR removes both fields after the client floor cutover.
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -609,16 +625,15 @@ const chatEventBuilders = {
     };
   },
   "output.followups": (row, event) => {
-    const recommendedFollowups = requiredChatEventField(
-      row.recommendedFollowups,
-      row.eventType,
-      "recommendedFollowups",
-    );
+    const recommendedFollowups =
+      row.recommendedFollowups === null
+        ? undefined
+        : normalizeRecommendedFollowups(row.recommendedFollowups);
     return {
       ...event,
       eventType: "output.followups",
-      content: null,
-      recommendedFollowups: normalizeRecommendedFollowups(recommendedFollowups),
+      content: row.content,
+      ...(recommendedFollowups === undefined ? {} : { recommendedFollowups }),
     };
   },
   "run.queued": (row, event) => {
@@ -704,6 +719,26 @@ const chatEventBuilders = {
       ...event,
       eventType: "browser.close",
       content: null,
+    };
+  },
+  "goal.open": (row, event) => {
+    return {
+      id: event.id,
+      threadId: event.threadId,
+      eventType: "goal.open",
+      content: requiredChatEventField(row.content, row.eventType, "content"),
+      seqId: event.seqId,
+      createdAt: event.createdAt,
+    };
+  },
+  "goal.close": (_row, event) => {
+    return {
+      id: event.id,
+      threadId: event.threadId,
+      eventType: "goal.close",
+      content: null,
+      seqId: event.seqId,
+      createdAt: event.createdAt,
     };
   },
   "goal.changed": (row, event) => {
@@ -1163,19 +1198,6 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   };
 }
 
-function chatSearchMessageTextCondition(): SQL {
-  return or(
-    and(
-      chatEventTypeIn(["input.prompt", "input.rejected"]),
-      isNotNull(chatEvents.userMessage),
-    ),
-    and(
-      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      isNotNull(chatEvents.content),
-    ),
-  ) as SQL;
-}
-
 function userMessageSearchText(): SQL {
   return sql`concat_ws(
     ' ',
@@ -1191,16 +1213,43 @@ function userMessageSearchText(): SQL {
 }
 
 function chatSearchKeywordCondition(pattern: string): SQL {
-  return or(
-    and(
-      chatEventTypeIn(["input.prompt", "input.rejected"]),
-      ilike(userMessageSearchText(), pattern),
-    ),
-    and(
-      not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      ilike(chatEvents.content, pattern),
-    ),
-  ) as SQL;
+  return chatEventTextMatchCondition({
+    userMessage: ilike(userMessageSearchText(), pattern),
+    content: ilike(chatEvents.content, pattern),
+  });
+}
+
+/**
+ * Index-backed keyword condition over the chat_event_search_docs projection.
+ * Returns null when the keyword has no bigram-indexable form (for example a
+ * single CJK character), in which case the caller falls back to the legacy
+ * ILIKE condition.
+ */
+function chatSearchIndexCondition(
+  db: ReadonlyDb,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly keyword: string;
+  },
+): SQL | null {
+  const tsquery = chatSearchBigramTsquery(args.keyword);
+  if (tsquery === null) {
+    return null;
+  }
+  return inArray(
+    chatEvents.id,
+    db
+      .select({ eventId: chatEventSearchDocs.eventId })
+      .from(chatEventSearchDocs)
+      .where(
+        and(
+          eq(chatEventSearchDocs.userId, args.userId),
+          eq(chatEventSearchDocs.orgId, args.orgId),
+          sql`to_tsvector('simple', ${chatEventSearchDocs.textBigram}) @@ to_tsquery('simple', ${tsquery})`,
+        ),
+      ),
+  );
 }
 
 function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
@@ -1229,7 +1278,7 @@ function chatSearchContextSideQuery(
         args.isBefore
           ? lt(chatEvents.seqId, matchedChatEvent.seqId)
           : gt(chatEvents.seqId, matchedChatEvent.seqId),
-        chatSearchMessageTextCondition(),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         excludeGoalMarkerCondition(),
       ),
@@ -1331,6 +1380,7 @@ export function zeroChatSearch(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly keyword: string;
+  readonly useSearchIndex: boolean;
   readonly agentId?: string;
   readonly since?: number;
   readonly limit: number;
@@ -1347,13 +1397,16 @@ export function zeroChatSearch(args: {
     const pattern = `%${escapeLikePattern(args.keyword)}%`;
     const sinceDate = args.since ? new Date(args.since) : undefined;
 
+    const indexCondition = args.useSearchIndex
+      ? chatSearchIndexCondition(db, args)
+      : null;
     const matchConditions = [
       eq(chatThreads.userId, args.userId),
       eq(agentComposes.orgId, args.orgId),
-      chatSearchMessageTextCondition(),
+      chatEventTextCondition(),
       visibleChatEventCondition(db),
       excludeGoalMarkerCondition(),
-      chatSearchKeywordCondition(pattern),
+      indexCondition ?? chatSearchKeywordCondition(pattern),
     ];
     if (sinceDate) {
       matchConditions.push(gte(chatEvents.createdAt, sinceDate));

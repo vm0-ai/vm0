@@ -24,7 +24,10 @@ import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTextCondition,
+  chatEventTypeIn,
+} from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
@@ -222,7 +225,7 @@ async function loadSelectedIncompleteRounds(
       and(
         eq(chatEvents.chatThreadId, threadId),
         inArray(chatEvents.runId, runIds),
-        chatEventTypeIn(CHAT_EVENT_TYPES),
+        chatEventTextCondition(),
         visibleChatEventCondition(db),
         ...(selection.successfulRunId === null
           ? []

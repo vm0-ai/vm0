@@ -320,8 +320,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     await waitForTyping(sends, [conversationId]);
 
-    const admitted =
-      await findAgentphoneChatEventByPromptFixture("summarize my inbox");
+    const admitted = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "summarize my inbox",
+    });
     expect(admitted).toMatchObject({ eventId: expect.any(String) });
     if (!admitted) {
       throw new Error("Expected admitted AgentPhone input event");
@@ -524,8 +526,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "start on my phone",
     });
-    const admittedSms =
-      await findAgentphoneChatEventByPromptFixture("start on my phone");
+    const admittedSms = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "start on my phone",
+    });
     if (!admittedSms) {
       throw new Error("Expected admitted AgentPhone SMS input event");
     }
@@ -656,9 +660,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "second queued prompt",
     });
-    const secondEvent = await findAgentphoneChatEventByPromptFixture(
-      "second queued prompt",
-    );
+    const secondEvent = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "second queued prompt",
+    });
     if (!secondEvent) {
       throw new Error("Expected pending AgentPhone queue item");
     }
@@ -917,9 +922,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         },
       ],
     });
-    const admittedGroup = await findAgentphoneChatEventByPromptFixture(
-      "summarize this thread",
-    );
+    const admittedGroup = await findAgentphoneChatEventByPromptFixture({
+      userId: actor.userId,
+      prompt: "summarize this thread",
+    });
     expect(admittedGroup).toMatchObject({ eventId: expect.any(String) });
     if (!admittedGroup) {
       throw new Error("Expected admitted AgentPhone group input event");

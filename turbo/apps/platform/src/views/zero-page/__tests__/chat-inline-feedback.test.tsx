@@ -1433,24 +1433,20 @@ describe("chat inline feedback", () => {
     click(screen.getByLabelText("Send"));
 
     await waitFor(() => {
-      expect(sentBodies[0]).toMatchObject({
-        attachFiles: [
-          {
-            id: "upload-feedback-brief",
-            filename: "feedback-brief.txt",
-            contentType: "text/plain",
-            size: 14,
-          },
-        ],
-      });
+      expect(sentBodies).toHaveLength(1);
     });
     const sentBody = sentBodies[0];
     if (!sentBody) {
       throw new Error("feedback send body not captured");
     }
-    // Inline templates travel inside the structured userMessage, so the
-    // legacy top-level generationTemplate field stays unset.
+    expect(sentBody.attachFiles).toBeUndefined();
     expect(sentBody.generationTemplate).toBeUndefined();
+    expect(sentBody.userMessage?.parts).toContainEqual({
+      type: "file",
+      fileId: "upload-feedback-brief",
+      filenameSnapshot: "feedback-brief.txt",
+      contentType: "text/plain",
+    });
     expect(sentBody.userMessage?.parts).toContainEqual({
       type: "template",
       titleSnapshot: templateChipLabel,

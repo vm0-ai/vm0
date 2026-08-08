@@ -175,13 +175,15 @@ interface ModelCatalogEntry {
   readonly description: string;
 }
 
-async function detectModelConnectorDependencies(args: {
-  readonly workflow: WorkflowConnectorReadinessInput;
-  readonly catalog: readonly ModelCatalogEntry[];
-  readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<ConnectorSlug, string>> {
+async function detectModelConnectorDependencies(
+  args: {
+    readonly workflow: WorkflowConnectorReadinessInput;
+    readonly catalog: readonly ModelCatalogEntry[];
+  },
+  signalArg: AbortSignal,
+): Promise<ReadonlyMap<ConnectorSlug, string>> {
   const signal = AbortSignal.any([
-    args.signal,
+    signalArg,
     AbortSignal.timeout(CONNECTOR_READINESS_TIMEOUT_MS),
   ]);
   const content = await generateText(
@@ -209,10 +211,10 @@ async function detectModelConnectorDependencies(args: {
     ],
     undefined,
     {
-      signal,
       responseFormat: { type: "json_object" },
       temperature: 0,
     },
+    signal,
   );
   if (content === null) {
     throw new Error("OpenRouter is not configured");
@@ -325,11 +327,13 @@ export const detectWorkflowConnectorReadiness$ = command(
         };
       },
     );
-    const modelDependencies = await detectModelConnectorDependencies({
-      workflow: args.workflow,
-      catalog: modelCatalog,
+    const modelDependencies = await detectModelConnectorDependencies(
+      {
+        workflow: args.workflow,
+        catalog: modelCatalog,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     const automationFallbackMetadata = new Map(
       catalogRead.referenceMetadata.map((connector) => {

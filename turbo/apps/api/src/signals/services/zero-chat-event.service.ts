@@ -29,6 +29,10 @@ import type {
   WorkflowAutomationEventType,
 } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
+import {
+  legacyAttachFileIdsFromUserMessage,
+  legacyGenerationTemplateFromUserMessage,
+} from "./zero-chat-user-message.service";
 
 type ChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Tx;
@@ -199,10 +203,7 @@ type ChatEventDisplayContext =
       readonly agentphoneContext?: never;
     };
 
-type ChatEventInputPayload = Pick<
-  ChatEventInsert,
-  "attachFiles" | "generationTemplate"
-> & {
+type ChatEventInputPayload = {
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
@@ -287,11 +288,18 @@ type OutputThinkingEvent = ChatEventIdentity &
 
 type OutputFollowupsEvent = ChatEventIdentity & {
   readonly eventType: "output.followups";
-  readonly content?: null;
-  readonly recommendedFollowups: NonNullable<
-    ChatEventInsert["recommendedFollowups"]
-  >;
-};
+} & (
+    | {
+        readonly content?: null;
+        readonly recommendedFollowups: NonNullable<
+          ChatEventInsert["recommendedFollowups"]
+        >;
+      }
+    | {
+        readonly content: string;
+        readonly recommendedFollowups?: never;
+      }
+  );
 
 type RunQueuedEvent = ChatEventIdentity & {
   readonly eventType: "run.queued";
@@ -331,7 +339,6 @@ type ControlInterruptEvent = ChatEventIdentity & {
   readonly eventType: "control.interrupt";
   readonly content?: null;
   readonly interruptsRunId: string;
-  readonly attachFiles?: null;
 };
 
 type ControlRevokeEvent = ChatEventIdentity & {
@@ -352,6 +359,22 @@ type GoalChangedEvent = ChatEventIdentity & {
   readonly content?: null;
   readonly goalEvent: NonNullable<ChatEventInsert["goalEvent"]>;
   readonly runEventId?: null;
+};
+
+type GoalOpenEvent = Pick<
+  ChatEventIdentity,
+  "id" | "chatThreadId" | "createdAt"
+> & {
+  readonly eventType: "goal.open";
+  readonly content: string;
+};
+
+type GoalCloseEvent = Pick<
+  ChatEventIdentity,
+  "id" | "chatThreadId" | "createdAt"
+> & {
+  readonly eventType: "goal.close";
+  readonly content?: null;
 };
 
 type UsageRecordedEvent = ChatEventIdentity & {
@@ -379,6 +402,8 @@ export type NewChatEvent =
   | ControlInterruptEvent
   | ControlRevokeEvent
   | BrowserLifecycleEvent
+  | GoalOpenEvent
+  | GoalCloseEvent
   | GoalChangedEvent
   | UsageRecordedEvent;
 
@@ -927,14 +952,39 @@ async function insertDisplayContext(
   }
 }
 
+/**
+ * Temporary old/new API persisted-state boundary. DB/API overlap has been
+ * observed for ~102 minutes, while old web/app response consumers can remain
+ * active for ~2 days. Internal callers only provide `userMessage`; the Stage
+ * 5/7 chat-event cleanup follow-up PR removes this projection after both the
+ * client version-floor cutover and the prior API drain windows have closed.
+ */
+function legacyInputProjection(
+  userMessage: NonNullable<ChatEventInsert["userMessage"]>,
+): Pick<ChatEventInsert, "attachFiles" | "generationTemplate"> {
+  return {
+    attachFiles: legacyAttachFileIdsFromUserMessage(userMessage),
+    generationTemplate: legacyGenerationTemplateFromUserMessage(userMessage),
+  };
+}
+
 function persistedChatEventValues(
   values: NewChatEvent,
   overrides?: Partial<
     Pick<ChatEventInsert, "id" | "contextType" | "contextId">
   >,
 ): PersistedChatEvent {
+  const legacyInputColumns =
+    values.eventType === "input.prompt" ||
+    values.eventType === "input.rejected" ||
+    values.eventType === "input.automation" ||
+    values.eventType === "input.goal" ||
+    values.eventType === "input.budget"
+      ? legacyInputProjection(values.userMessage)
+      : {};
   return {
     ...values,
+    ...legacyInputColumns,
     ...overrides,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||

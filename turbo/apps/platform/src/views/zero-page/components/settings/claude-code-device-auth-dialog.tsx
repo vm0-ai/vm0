@@ -172,7 +172,6 @@ function ClaudeCodeDeviceAuthDialogView({
           onStart={handleStart}
           onSubmit={handleSubmit}
           openApprovalPage={openApprovalPage}
-          pageSignal={pageSignal}
           setAuthorizationCode={setAuthorizationCode}
           submitting={submitting}
         />
@@ -187,7 +186,6 @@ function ClaudeCodeDeviceAuthBody({
   onStart,
   onSubmit,
   openApprovalPage,
-  pageSignal,
   setAuthorizationCode,
   submitting,
 }: {
@@ -196,11 +194,11 @@ function ClaudeCodeDeviceAuthBody({
   onStart: () => void;
   onSubmit: () => void;
   openApprovalPage: (signal: AbortSignal) => boolean | Promise<boolean>;
-  pageSignal: AbortSignal;
   setAuthorizationCode: (value: string) => void;
   submitting: boolean;
 }) {
   const brandName = useGet(brandName$);
+  const pageSignal = useGet(pageSignal$);
   const { t } = useTranslation();
   switch (flow.status) {
     case "idle": {
