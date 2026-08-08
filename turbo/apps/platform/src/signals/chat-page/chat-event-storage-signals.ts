@@ -326,15 +326,11 @@ function createSyncRemoteRowsCommand({
     };
 
     /**
-     * Cold start. A thread the archiver has not reached yet has no snapshot,
-     * so the whole thread is still in Postgres and the tail below reads it
-     * from the beginning. Returns the cursor to continue from, and whether a
-     * snapshot actually supplied the archived prefix.
+     * Derive the cold-start cursor from the server. A thread the archiver has
+     * not reached yet has no snapshot, so the whole thread is still in
+     * Postgres and the tail below reads it from the beginning.
      */
-    const loadSnapshot = async (): Promise<{
-      readonly sinceSeqId: number;
-      readonly rebuilt: boolean;
-    }> => {
+    const loadColdStartCursor = async (): Promise<number> => {
       const snapshot = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
@@ -346,22 +342,24 @@ function createSyncRemoteRowsCommand({
         throw snapshot.error;
       }
       if (snapshot.value === null) {
-        return { sinceSeqId: THREAD_START_SEQ_ID, rebuilt: false };
+        return THREAD_START_SEQ_ID;
       }
       await set(writeIndexedDbChatEventRows$, snapshot.value.rows, signal);
       signal.throwIfAborted();
       await mergeRows(snapshot.value.rows);
-      return { sinceSeqId: snapshot.value.lastSeqId, rebuilt: true };
+      return snapshot.value.lastSeqId;
     };
 
-    let rebuiltFromSnapshot = false;
+    // True once the cursor came from the server rather than the local cache.
+    // An expiry after that means the thread cannot be read at all, so the pass
+    // fails loudly instead of rebuilding the same cursor forever.
+    let cursorFromServer = false;
     let sinceSeqId: number;
     const cachedLastSeqId = get(persistentEvents$).at(-1)?.seqId;
     if (cachedLastSeqId === undefined) {
-      const coldStart = await loadSnapshot();
+      sinceSeqId = await loadColdStartCursor();
       signal.throwIfAborted();
-      sinceSeqId = coldStart.sinceSeqId;
-      rebuiltFromSnapshot = coldStart.rebuilt;
+      cursorFromServer = true;
     } else {
       sinceSeqId = cachedLastSeqId;
     }
@@ -371,17 +369,16 @@ function createSyncRemoteRowsCommand({
       signal.throwIfAborted();
       set(initialRemoteEventsResolved$, true);
       if (page.kind === "expired") {
-        if (rebuiltFromSnapshot) {
+        if (cursorFromServer) {
           throw new Error(
-            "chat event rows cursor expired right after a snapshot rebuild",
+            "chat event rows cursor expired right after a cold start",
           );
         }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         signal.throwIfAborted();
-        const rebuild = await loadSnapshot();
+        sinceSeqId = await loadColdStartCursor();
         signal.throwIfAborted();
-        sinceSeqId = rebuild.sinceSeqId;
-        rebuiltFromSnapshot = rebuild.rebuilt;
+        cursorFromServer = true;
         continue;
       }
       await set(writeIndexedDbChatEventRows$, page.rows, signal);

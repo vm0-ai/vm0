@@ -278,6 +278,50 @@ describe("chat event snapshot read", () => {
     }
   });
 
+  it("fails loudly when the rows cursor expires right after a cold start", async () => {
+    mockSignedInUser();
+    enableSnapshotRead();
+    rejectLegacyEventsEndpoint();
+    const { threadId } = threadFixture();
+    const appDb = await context.store.get(chatIdb$);
+
+    // A head the reader refuses to serve: the snapshot endpoint fails closed
+    // while the rows endpoint still expects that head's cursor.
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    const rowRequests: number[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      rowRequests.push(query.sinceSeqId);
+      return respond(410, {
+        error: {
+          code: "CHAT_EVENTS_EXPIRED",
+          message: "Chat events cursor has expired",
+        },
+      });
+    });
+
+    const signals = createSignals(threadId);
+    try {
+      await context.store.set(
+        signals.initializeIndexedDbEvents$,
+        context.signal,
+      );
+
+      await expect(
+        context.store.set(signals.syncRemoteEvents$, context.signal),
+      ).rejects.toThrow("cursor expired right after a cold start");
+      expect(rowRequests).toStrictEqual([0]);
+    } finally {
+      appDb.close();
+    }
+  });
+
   it("initializes from cached rows without touching the network", async () => {
     mockSignedInUser();
     enableSnapshotRead();
