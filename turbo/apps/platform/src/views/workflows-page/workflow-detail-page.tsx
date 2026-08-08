@@ -4937,7 +4937,7 @@ function AutomationCreateOptionCard({
     <button
       type="button"
       onClick={onSelect}
-      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-state-hover"
+      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-card-hover"
     >
       <span
         className={cn(

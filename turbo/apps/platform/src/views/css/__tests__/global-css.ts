@@ -21,6 +21,24 @@ export function readGlobalCss(): string {
   return readFileSync(path, "utf8");
 }
 
+/**
+ * Reads the design system's global stylesheet as text, so a test can compare
+ * what the platform declares against what `@vm0/ui` already ships.
+ */
+export function readUiGlobalCss(): string {
+  const candidates = [
+    join(process.cwd(), "../../packages/ui/src/styles/globals.css"),
+    join(process.cwd(), "packages/ui/src/styles/globals.css"),
+  ];
+  const path = candidates.find((candidate) => {
+    return existsSync(candidate);
+  });
+  if (path === undefined) {
+    throw new Error("Unable to locate UI global CSS");
+  }
+  return readFileSync(path, "utf8");
+}
+
 /** Returns the declarations of the rule introduced by `selector`. */
 export function readCssRule(css: string, selector: string): string {
   const start = css.indexOf(`${selector} {`);

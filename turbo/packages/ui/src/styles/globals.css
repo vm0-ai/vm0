@@ -153,6 +153,11 @@
     hsl(var(--card)),
     hsl(var(--state-layer)) var(--state-hover-alpha)
   );
+  --color-input-hover: color-mix(
+    in srgb,
+    hsl(var(--input)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
   /* Neutral-dark page primary ("Add schedule" style). Already at maximum
      contrast against the page, so its states step toward the surface. */
   --color-foreground-hover: color-mix(
