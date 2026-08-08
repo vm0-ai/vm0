@@ -708,6 +708,12 @@ impl SubmitPlan {
     fn finish_completed(&self, buf: &[u8]) -> RunnerResult<ExitCode> {
         let response: JobResponse = serde_json::from_slice(buf)
             .map_err(|e| RunnerError::Internal(format!("parse result: {e}")))?;
+        if response.run_id != self.queue.job_id {
+            return Err(RunnerError::Internal(format!(
+                "local result run_id mismatch: expected {}, actual {}",
+                self.queue.job_id, response.run_id
+            )));
+        }
 
         self.queue.cleanup_completed();
 
