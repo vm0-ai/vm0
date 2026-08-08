@@ -101,7 +101,7 @@ function userMessageForNewThread(
   }
   const userMessage = request.editorDocument
     ? request.editorDocument.toMessageDocument({
-        generationTemplate,
+        selectedTemplate: generationTemplate,
         attachments: prepared.attachments,
       })
     : textToMessageDocument(

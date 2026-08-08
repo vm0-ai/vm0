@@ -5,7 +5,6 @@ import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
   resolveChatEventRecommendedFollowups,
-  type AttachFile,
   type CodexServiceTier,
   type GenerationTemplateRequest,
   type UserMessageDocument,
@@ -87,7 +86,6 @@ import {
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import {
   hasAgentRunSourceAnnotation,
-  normalizeLegacyUserMessageInput,
   projectUserMessage,
   userMessageFileParts,
   withAgentRunSourceAnnotation,
@@ -139,9 +137,7 @@ interface NormalSendBody {
     readonly codexServiceTier?: CodexServiceTier;
   };
   readonly userMessage: UserMessageInputDocument;
-  readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent: boolean;
-  readonly attachFiles?: AttachFile[];
   readonly computerUseHostId?: string | null;
   readonly cloudBrowserEnabled?: boolean;
   readonly clientEventId?: string;
@@ -199,10 +195,7 @@ interface ResolvedThreadAndRunConfiguration {
 type IncomingModelSelection = NormalSendBody["modelSelection"];
 type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
-type CanonicalNormalSendBody = Omit<
-  NormalSendBody,
-  "attachFiles" | "generationTemplate"
->;
+type CanonicalNormalSendBody = NormalSendBody;
 
 interface NormalSendArgs {
   readonly body: CanonicalNormalSendBody;
@@ -376,9 +369,8 @@ interface RuntimeNormalSendBody extends Omit<
 > {
   readonly userMessage: UserMessageDocument;
   readonly agentPrompt: string;
-  readonly generationTemplate: GenerationTemplateRequest | undefined;
-  readonly generationTemplates: readonly GenerationTemplateRequest[];
-  readonly userMessageGenerationTemplates: readonly GenerationTemplateRequest[];
+  readonly primaryTemplate: GenerationTemplateRequest | undefined;
+  readonly templates: readonly GenerationTemplateRequest[];
   readonly hasTextContent: boolean;
 }
 
@@ -655,27 +647,14 @@ function modelFirstSelection(
   };
 }
 
-function normalizeNormalSendBody(body: NormalSendBody):
-  | { readonly ok: true; readonly data: CanonicalNormalSendBody }
-  | {
-      readonly ok: false;
-      readonly response: ReturnType<typeof badRequestMessage>;
-    } {
-  const { attachFiles, generationTemplate, ...canonicalBody } = body;
-  const userMessage = normalizeLegacyUserMessageInput({
-    userMessage: body.userMessage,
-    attachFiles,
-    generationTemplate,
-  });
+function canonicalNormalSendBody(
+  body: NormalSendBody,
+): CanonicalNormalSendBody {
   return {
-    ok: true,
-    data: {
-      ...canonicalBody,
-      userMessage,
-      ...(body.model === undefined
-        ? {}
-        : { modelSelection: modelFirstSelection(body.model) }),
-    },
+    ...body,
+    ...(body.model === undefined
+      ? {}
+      : { modelSelection: modelFirstSelection(body.model) }),
   };
 }
 
@@ -690,9 +669,8 @@ function resolveRuntimeNormalSendBody(
   return {
     ...body,
     userMessage: body.userMessage,
-    generationTemplate: projection.generationTemplate,
-    generationTemplates: projection.generationTemplates,
-    userMessageGenerationTemplates: projection.generationTemplates,
+    primaryTemplate: projection.primaryTemplate,
+    templates: projection.templates,
     agentPrompt: projection.agentPrompt,
     hasTextContent: projection.hasTextContent,
   };
@@ -1740,7 +1718,6 @@ async function validateNormalRevocationTarget(params: {
     .select({
       id: chatEvents.id,
       content: chatEvents.content,
-      recommendedFollowups: chatEvents.recommendedFollowups,
     })
     .from(chatEvents)
     .where(
@@ -1751,15 +1728,7 @@ async function validateNormalRevocationTarget(params: {
       ),
     )
     .limit(1);
-  if (
-    !target ||
-    resolveChatEventRecommendedFollowups({
-      content: target.content,
-      ...(target.recommendedFollowups === null
-        ? {}
-        : { recommendedFollowups: target.recommendedFollowups }),
-    }).length === 0
-  ) {
+  if (!target || resolveChatEventRecommendedFollowups(target).length === 0) {
     return badRequestMessage("Recommended follow-up is no longer available");
   }
 
@@ -2256,7 +2225,7 @@ const prepareNormalSend$ = command(
       normalSendBodyWithAgentRunSource(args.body, agentRunSource),
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
-      runtimeBody.generationTemplates,
+      runtimeBody.templates,
     );
     if (generationTemplateError) {
       return generationTemplateError;
@@ -2295,8 +2264,8 @@ const prepareNormalSend$ = command(
     const { thread, runConfiguration } = threadAndRunConfiguration;
 
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
-      explicit: runtimeBody.generationTemplate,
-      explicitTemplates: runtimeBody.userMessageGenerationTemplates,
+      explicit: runtimeBody.primaryTemplate,
+      explicitTemplates: runtimeBody.templates,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(args, db);
@@ -3327,17 +3296,12 @@ export const handleSendChatEvent$ = command(
     if (!isNormalSendBody(body)) {
       return badRequestMessage("Prompt is required");
     }
-    const normalizedBody = normalizeNormalSendBody(body);
-    if (!normalizedBody.ok) {
-      return normalizedBody.response;
-    }
-
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
     return await set(
       sendNormalEvent$,
       {
-        body: normalizedBody.data,
+        body: canonicalNormalSendBody(body),
         auth,
         userId: auth.userId,
         orgId: auth.orgId,

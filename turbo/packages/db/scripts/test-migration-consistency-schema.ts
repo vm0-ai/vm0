@@ -292,12 +292,12 @@ async function validateExpandedBrowserSchema(dbUrl: string): Promise<void> {
     assert.match(lifecycleDefinition, /browser\.stopped/u);
     assert.match(lifecycleDefinition, /goal\.open/u);
     assert.match(lifecycleDefinition, /goal\.close/u);
-    assert.match(lifecycleDefinition, /goal\.changed/u);
+    assert.doesNotMatch(lifecycleDefinition, /goal\.changed/u);
     console.log(
       "   ✅ retired browser tables and identity columns still exist",
     );
     console.log(
-      "   ✅ browser and goal rollout event generations are accepted\n",
+      "   ✅ browser compatibility remains while goal events are canonical\n",
     );
   } finally {
     await client.end();
@@ -1420,6 +1420,13 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
+      "CREATE TRIGGER canonicalize_legacy_chat_event_insert_0861 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'goal.changed'::text) OR ((new.event_type = 'output.followups'::text) AND (new.recommended_followups IS NOT NULL)))) EXECUTE FUNCTION canonicalize_legacy_chat_event_insert_0861()",
+    schemaName: "public",
+    tableName: "chat_events",
+    triggerName: "canonicalize_legacy_chat_event_insert_0861",
+  },
+  {
+    definition:
       "CREATE TRIGGER bridge_invalidated_goal_continuation_0829 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'input.rejected'::text) AND (new.error = 'Goal continuation no longer matches the active goal'::text))) EXECUTE FUNCTION bridge_invalidated_goal_continuation_0829()",
     schemaName: "public",
     tableName: "chat_events",
@@ -1568,6 +1575,20 @@ const EXPECTED_PERMANENT_TRIGGERS = [
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
+  {
+    bodyHash: "1e430d67f4901395c8bd13311d6b4cf5",
+    functionName: "canonicalize_legacy_chat_event_insert_0861",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "1f8be130fa2529cfad49239ff450ea58",
+    functionName: "is_supported_legacy_followups_0861",
+    identityArguments: "payload jsonb",
+    kind: "f",
+    schemaName: "public",
+  },
   {
     bodyHash: "6b1b5ad47ec35bcbaad3fa95d86ef027",
     functionName: "allocate_legacy_chat_thread_event_seq_id",
@@ -4024,6 +4045,461 @@ async function validateInvalidatedGoalContinuationCleanup(): Promise<void> {
   }
 }
 
+const CHAT_EVENT_CONTRACT_CUTOVER_PREVIOUS_MIGRATION =
+  "0860_striped_shadow_king";
+const CHAT_EVENT_CONTRACT_CUTOVER_MIGRATION =
+  "0861_chat_event_contract_cutover";
+
+async function validateChatEventContractCutover(): Promise<void> {
+  console.log("=== Validate chat-event contract atomic cutover ===\n");
+  const testDb = "migration_chat_event_contract_cutover_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000086101",
+    activeThreadId: "00000000-0000-4000-8000-000000086102",
+    pausedThreadId: "00000000-0000-4000-8000-000000086103",
+    activeGoalId: "00000000-0000-4000-8000-000000086104",
+    pausedGoalId: "00000000-0000-4000-8000-000000086105",
+    legacyActiveMarkerId: "00000000-0000-4000-8000-000000086106",
+    legacyMarkerRevokerId: "00000000-0000-4000-8000-000000086107",
+    unrelatedEventId: "00000000-0000-4000-8000-000000086108",
+    followupsEventId: "00000000-0000-4000-8000-000000086109",
+    followupsRevokerId: "00000000-0000-4000-8000-000000086110",
+    legacyPausedMarkerId: "00000000-0000-4000-8000-000000086111",
+    historicalRunId: "00000000-0000-4000-8000-000000086112",
+    lateOpenId: "00000000-0000-4000-8000-000000086113",
+    lateCloseId: "00000000-0000-4000-8000-000000086114",
+    lateFollowupsId: "00000000-0000-4000-8000-000000086115",
+    canonicalOpenId: "00000000-0000-4000-8000-000000086116",
+    canonicalFollowupsId: "00000000-0000-4000-8000-000000086117",
+  } as const;
+  const historicalFollowups = [
+    {
+      prompt: "Generate a launch page",
+      kind: "generate",
+      generationType: "website",
+    },
+    { prompt: "Summarize the result", kind: "talk" },
+  ] as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CHAT_EVENT_CONTRACT_CUTOVER_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'contract-cutover-user', 'contract-cutover', 'contract-cutover-org')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" (
+            "id", "org_id", "owner", "name", "visibility"
+          ) VALUES (
+            $1,
+            'contract-cutover-org',
+            'contract-cutover-user',
+            'contract-cutover',
+            'private'
+          )
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id", "user_id", "agent_compose_id", "last_chat_event_seq_id"
+          ) VALUES
+            ($2, 'contract-cutover-user', $1, 5),
+            ($3, 'contract-cutover-user', $1, 1)
+        `,
+        [fixture.composeId, fixture.activeThreadId, fixture.pausedThreadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "thread_goals" (
+            "id",
+            "org_id",
+            "owner_user_id",
+            "agent_id",
+            "chat_thread_id",
+            "status",
+            "objective",
+            "objective_brief"
+          ) VALUES
+            (
+              $4,
+              'contract-cutover-org',
+              'contract-cutover-user',
+              $1,
+              $2,
+              'active',
+              'Current active objective details',
+              '  Current active objective  '
+            ),
+            (
+              $5,
+              'contract-cutover-org',
+              'contract-cutover-user',
+              $1,
+              $3,
+              'paused',
+              'Paused objective details',
+              'Paused objective'
+            )
+        `,
+        [
+          fixture.composeId,
+          fixture.activeThreadId,
+          fixture.pausedThreadId,
+          fixture.activeGoalId,
+          fixture.pausedGoalId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "revokes_event_id",
+            "event_type",
+            "context_type",
+            "content",
+            "user_message",
+            "run_event_sequence_number",
+            "run_event_id",
+            "goal_event",
+            "recommended_followups",
+            "seq_id",
+            "created_at"
+          ) VALUES
+            (
+              $1, $7, NULL, NULL, NULL, 'goal.changed', NULL, NULL, NULL, NULL, NULL,
+              '{"type":"state","status":"active","objectiveBrief":"Historical objective"}'::jsonb,
+              NULL, 1, '2026-08-01 12:00:01'
+            ),
+            (
+              $2, $7, NULL, NULL, $1, 'control.revoke', NULL, NULL, NULL, NULL, NULL,
+              NULL, NULL, 2, '2026-08-01 12:00:02'
+            ),
+            (
+              $3, $7, NULL, NULL, NULL, 'output.message', NULL, 'Unrelated output', NULL,
+              NULL, NULL, NULL, NULL, 3, '2026-08-01 12:00:03'
+            ),
+            (
+              $4, $7, $6, $11, NULL, 'output.followups', NULL, NULL, NULL, 17,
+              'followups:historical', NULL, $9::jsonb, 4,
+              '2026-08-01 12:00:04'
+            ),
+            (
+              $5, $7, NULL, NULL, $4, 'input.prompt', 'web', NULL,
+              '{"version":1,"parts":[{"type":"text","text":"Use the followup"}]}'::jsonb,
+              NULL, NULL, NULL, NULL, 5, '2026-08-01 12:00:05'
+            ),
+            (
+              $8, $10, NULL, NULL, NULL, 'goal.changed', NULL, NULL, NULL, NULL, NULL,
+              '{"type":"state","status":"paused"}'::jsonb,
+              NULL, 1, '2026-08-01 12:00:06'
+            )
+        `,
+        [
+          fixture.legacyActiveMarkerId,
+          fixture.legacyMarkerRevokerId,
+          fixture.unrelatedEventId,
+          fixture.followupsEventId,
+          fixture.followupsRevokerId,
+          fixture.historicalRunId,
+          fixture.activeThreadId,
+          fixture.legacyPausedMarkerId,
+          JSON.stringify(historicalFollowups),
+          fixture.pausedThreadId,
+          fixture.activeGoalId,
+        ],
+      );
+
+      await applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_CONTRACT_CUTOVER_MIGRATION,
+      );
+
+      const activeMarkers = await client.query<{
+        content: string;
+        eventType: string;
+        seqId: number;
+      }>(
+        `
+          SELECT
+            "event_type" AS "eventType",
+            "content",
+            "seq_id"::int AS "seqId"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "event_type" IN ('goal.open', 'goal.close')
+          ORDER BY "seq_id"
+        `,
+        [fixture.activeThreadId],
+      );
+      assert.deepEqual(activeMarkers.rows, [
+        {
+          eventType: "goal.open",
+          content: "Current active objective",
+          seqId: 6,
+        },
+      ]);
+      const pausedMarkers = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::int AS "count"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "event_type" IN ('goal.open', 'goal.close')
+        `,
+        [fixture.pausedThreadId],
+      );
+      assert.deepEqual(pausedMarkers.rows, [{ count: 0 }]);
+
+      const deletedGoalHistory = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::int AS "count"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2, $3)
+        `,
+        [
+          fixture.legacyActiveMarkerId,
+          fixture.legacyMarkerRevokerId,
+          fixture.legacyPausedMarkerId,
+        ],
+      );
+      assert.deepEqual(deletedGoalHistory.rows, [{ count: 0 }]);
+      const unrelated = await client.query<{ content: string }>(
+        `SELECT "content" FROM "chat_events" WHERE "id" = $1`,
+        [fixture.unrelatedEventId],
+      );
+      assert.deepEqual(unrelated.rows, [{ content: "Unrelated output" }]);
+
+      const migratedFollowups = await client.query<{
+        content: string;
+        createdAt: string;
+        id: string;
+        recommendedFollowups: unknown;
+        runEventId: string;
+        runEventSequenceNumber: number;
+        runGroupId: string;
+        runId: string;
+        seqId: number;
+        threadId: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "chat_thread_id" AS "threadId",
+            "run_id" AS "runId",
+            "run_group_id" AS "runGroupId",
+            "content",
+            "recommended_followups" AS "recommendedFollowups",
+            "run_event_sequence_number" AS "runEventSequenceNumber",
+            "run_event_id" AS "runEventId",
+            "seq_id"::int AS "seqId",
+            to_char("created_at", 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+          FROM "chat_events"
+          WHERE "id" = $1
+        `,
+        [fixture.followupsEventId],
+      );
+      assert.equal(migratedFollowups.rows.length, 1);
+      const migratedFollowup = migratedFollowups.rows[0]!;
+      assert.deepEqual(
+        {
+          ...migratedFollowup,
+          content: JSON.parse(migratedFollowup.content),
+        },
+        {
+          id: fixture.followupsEventId,
+          threadId: fixture.activeThreadId,
+          runId: fixture.historicalRunId,
+          runGroupId: fixture.activeGoalId,
+          content: { version: 1, followups: historicalFollowups },
+          recommendedFollowups: null,
+          runEventSequenceNumber: 17,
+          runEventId: "followups:historical",
+          seqId: 4,
+          createdAt: "2026-08-01 12:00:04",
+        },
+      );
+      const preservedRevocation = await client.query<{
+        revokesEventId: string;
+      }>(
+        `SELECT "revokes_event_id" AS "revokesEventId" FROM "chat_events" WHERE "id" = $1`,
+        [fixture.followupsRevokerId],
+      );
+      assert.deepEqual(preservedRevocation.rows, [
+        { revokesEventId: fixture.followupsEventId },
+      ]);
+
+      const lateRows = await client.query<{
+        content: string | null;
+        eventType: string;
+        goalEvent: unknown;
+        id: string;
+        recommendedFollowups: unknown;
+      }>(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "content",
+            "goal_event",
+            "recommended_followups",
+            "seq_id"
+          ) VALUES
+            (
+              $1, $6, 'goal.changed', NULL,
+              '{"type":"state","status":"active","objectiveBrief":"  Late objective  "}'::jsonb,
+              NULL, 7
+            ),
+            (
+              $2, $6, 'goal.changed', NULL,
+              '{"type":"state","status":"blocked"}'::jsonb,
+              NULL, 8
+            ),
+            ($3, $6, 'output.followups', NULL, NULL, $7::jsonb, 9),
+            ($4, $6, 'goal.open', 'Canonical objective', NULL, NULL, 10),
+            ($5, $6, 'output.followups', $8, NULL, NULL, 11)
+          RETURNING
+            "id",
+            "event_type" AS "eventType",
+            "content",
+            "goal_event" AS "goalEvent",
+            "recommended_followups" AS "recommendedFollowups"
+        `,
+        [
+          fixture.lateOpenId,
+          fixture.lateCloseId,
+          fixture.lateFollowupsId,
+          fixture.canonicalOpenId,
+          fixture.canonicalFollowupsId,
+          fixture.activeThreadId,
+          JSON.stringify(historicalFollowups),
+          JSON.stringify({ version: 1, followups: historicalFollowups }),
+        ],
+      );
+      assert.deepEqual(
+        lateRows.rows.map((row) => {
+          return {
+            ...row,
+            content:
+              row.eventType === "output.followups" && row.content !== null
+                ? JSON.parse(row.content)
+                : row.content,
+          };
+        }),
+        [
+          {
+            id: fixture.lateOpenId,
+            eventType: "goal.open",
+            content: "Late objective",
+            goalEvent: null,
+            recommendedFollowups: null,
+          },
+          {
+            id: fixture.lateCloseId,
+            eventType: "goal.close",
+            content: null,
+            goalEvent: null,
+            recommendedFollowups: null,
+          },
+          {
+            id: fixture.lateFollowupsId,
+            eventType: "output.followups",
+            content: { version: 1, followups: historicalFollowups },
+            goalEvent: null,
+            recommendedFollowups: null,
+          },
+          {
+            id: fixture.canonicalOpenId,
+            eventType: "goal.open",
+            content: "Canonical objective",
+            goalEvent: null,
+            recommendedFollowups: null,
+          },
+          {
+            id: fixture.canonicalFollowupsId,
+            eventType: "output.followups",
+            content: { version: 1, followups: historicalFollowups },
+            goalEvent: null,
+            recommendedFollowups: null,
+          },
+        ],
+      );
+
+      await assert.rejects(
+        client.query(
+          `
+            INSERT INTO "chat_events" (
+              "chat_thread_id", "event_type", "recommended_followups", "seq_id"
+            ) VALUES ($1, 'output.followups', '[{"prompt":4,"kind":"talk"}]'::jsonb, 12)
+          `,
+          [fixture.activeThreadId],
+        ),
+        /Malformed legacy output\.followups payload/u,
+      );
+      await assert.rejects(
+        client.query(
+          `
+            INSERT INTO "chat_events" (
+              "chat_thread_id", "event_type", "goal_event", "seq_id"
+            ) VALUES (
+              $1,
+              'goal.changed',
+              '{"type":"state","status":"blocked","reason":"legacy"}'::jsonb,
+              13
+            )
+          `,
+          [fixture.activeThreadId],
+        ),
+        /Malformed legacy goal\.changed state/u,
+      );
+
+      const eventTypeConstraint = await client.query<{ definition: string }>(`
+        SELECT pg_get_constraintdef("oid") AS "definition"
+        FROM "pg_constraint"
+        WHERE "conname" = 'chat_events_event_type_check'
+      `);
+      assert.doesNotMatch(
+        eventTypeConstraint.rows[0]?.definition ?? "",
+        /goal\.changed/u,
+      );
+      await assertChatEventsAppendOnlyProtection(
+        client,
+        fixture.followupsEventId,
+      );
+      console.log("   ✅ active goals received one fresh canonical marker");
+      console.log(
+        "   ✅ historical goal markers and dependent revokes were deleted",
+      );
+      console.log("   ✅ followups migrated in place without identity loss");
+      console.log(
+        "   ✅ old-pod inserts upgrade and malformed payloads fail safely",
+      );
+      console.log("   ✅ canonical inserts remain unchanged\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -4137,6 +4613,7 @@ async function main(): Promise<void> {
     await validateTeamsMessageFileScopeBackfill();
     await validateInvalidatedGoalContinuationCleanup();
     await validateCustomCredentialStorageGenerationBackfill();
+    await validateChatEventContractCutover();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

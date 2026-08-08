@@ -837,58 +837,7 @@ export async function setQueuedUserMessageCreatedAtFixture(args: {
 }
 
 /**
- * Remove only the Stage 5/7 compatibility columns from one input row so BDD
- * tests can prove queue and replacement paths read the canonical document.
- * The public API cannot construct this canonical-only row while the required
- * dual-write boundary remains active, so this is a persisted-history fixture.
- */
-export async function clearLegacyChatEventInputColumnsFixture(
-  eventId: string,
-): Promise<void> {
-  const updated = await db().transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
-    return await tx
-      .update(chatEvents)
-      .set({ attachFiles: null, generationTemplate: null })
-      .where(eq(chatEvents.id, eventId))
-      .returning({ id: chatEvents.id });
-  });
-  if (updated.length !== 1) {
-    throw new Error("Expected one chat input compatibility projection");
-  }
-}
-
-/**
- * Rewrite one persisted legacy follow-up event into the future Stage 5 wire
- * shape so readiness tests can exercise content readers without enabling a
- * production writer.
- */
-export async function rewriteRecommendedFollowupsAsContentFixture(args: {
-  readonly eventId: string;
-  readonly content: string;
-}): Promise<void> {
-  const updated = await db().transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
-    return await tx
-      .update(chatEvents)
-      .set({ content: args.content, recommendedFollowups: null })
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.eventType, "output.followups"),
-        ),
-      )
-      .returning({ id: chatEvents.id });
-  });
-  if (updated.length !== 1) {
-    throw new Error("Expected one recommended follow-up event");
-  }
-}
-
-/**
- * Append one future Stage 5 follow-up wire shape for reader-only BDD coverage.
- * Production writers intentionally keep emitting recommended_followups until
- * the Stage 5 cutover.
+ * Append one canonical follow-up content event for focused BDD coverage.
  */
 export async function insertContentFollowupsEventFixture(args: {
   readonly threadId: string;

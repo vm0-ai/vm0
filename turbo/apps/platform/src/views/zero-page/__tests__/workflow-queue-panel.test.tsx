@@ -64,14 +64,10 @@ function setupWorkflowQueuePage({
       },
       {
         id: "msg-active-goal",
+        eventType: "goal.open",
         role: "assistant",
-        content: null,
+        content: "Keep customer follow-ups under four hours",
         runId: undefined,
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: "Keep customer follow-ups under four hours",
-        },
         createdAt: "2026-07-10T01:00:01Z",
       },
       {

@@ -5,6 +5,10 @@ import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
+  serializeChatFollowupsContent,
+  type ChatRecommendedFollowup,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
@@ -12,7 +16,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   chatEvents,
-  type ChatEventRecommendedFollowups,
   type ChatEventUsagePayload,
 } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -447,10 +450,10 @@ function sequenceNumberFor(
   return Math.max(1, Math.round(2 + ratio * (baseMax - 2)));
 }
 
-function recommendedFollowups(
+function followups(
   profile: ThreadProfile,
   runIndex: number,
-): ChatEventRecommendedFollowups {
+): ChatRecommendedFollowup[] {
   return [
     {
       kind: "talk",
@@ -823,8 +826,9 @@ function appendFollowupsEvent(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: "output.followups",
-    content: null,
-    recommendedFollowups: recommendedFollowups(args.profile, args.runIndex),
+    content: serializeChatFollowupsContent(
+      followups(args.profile, args.runIndex),
+    ),
     createdAt: addMs(args.baseCreatedAt, 45_001 + args.eventCount * 100),
   });
 }

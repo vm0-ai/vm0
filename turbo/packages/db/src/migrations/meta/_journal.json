@@ -372,6 +372,13 @@
       "when": 1786119747451,
       "tag": "0860_striped_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 861,
+      "version": "7",
+      "when": 1786149064124,
+      "tag": "0861_chat_event_contract_cutover",
+      "breakpoints": true
     }
   ]
 }

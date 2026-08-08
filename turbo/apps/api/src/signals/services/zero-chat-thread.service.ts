@@ -13,7 +13,6 @@ import {
   type CodexServiceTier,
   type ChatEvent,
   type PersistedAttachment,
-  type ResolvedAttachFile,
   type UserMessageDocument,
   type UserMessageInputDocument,
   persistedAttachmentSchema,
@@ -33,17 +32,13 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatEvents,
   type ChatEventUsagePayload,
-  type ChatEventGenerationTemplate,
-  type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
-  type ChatEventGoalEvent,
 } from "@vm0/db/schema/chat-event";
 import { chatEventSearchDocs } from "@vm0/db/schema/chat-event-search";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import {
   CANONICAL_ASSET_VERSION,
-  chatEventAssetRefs,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -76,10 +71,8 @@ import {
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   inferMimetype,
-  resolveAttachFileUrls,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
-import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { latestRunFinishEventSubquery } from "./zero-chat-thread-read-state-query";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
@@ -108,14 +101,10 @@ type ChatEventRow = {
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
-  readonly goalEvent: ChatEventGoalEvent | null;
   readonly error: string | null;
   readonly seqId: number;
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatEventGenerationTemplate | null;
-  readonly recommendedFollowups: ChatEventRecommendedFollowups | null;
   readonly revokesEventId: string | null;
   readonly interruptsRunId: string | null;
 };
@@ -177,17 +166,10 @@ const eventColumns = {
   runGroupId: chatEvents.runGroupId,
   usagePayload: chatEvents.usagePayload,
   runEventId: chatEvents.runEventId,
-  goalEvent: chatEvents.goalEvent,
   error: chatEvents.error,
   seqId: chatEvents.seqId,
   sequenceNumber: chatEvents.runEventSequenceNumber,
   createdAt: chatEvents.createdAt,
-  // Old web/app response boundary (~2-day observed client window), including
-  // rows from a mixed API fleet (~102-minute observed overlap). The Stage 5/7
-  // chat-event cleanup follow-up PR removes these after both windows close.
-  attachFiles: chatEvents.attachFiles,
-  generationTemplate: chatEvents.generationTemplate,
-  recommendedFollowups: chatEvents.recommendedFollowups,
   revokesEventId: chatEvents.revokesEventId,
   interruptsRunId: chatEvents.interruptsRunId,
 } as const;
@@ -263,6 +245,32 @@ function parseHostedArtifactAliasUrlFromMetadata(
     return undefined;
   }
   return metadata.aliasUrl;
+}
+
+function canonicalAssetMaterialization(
+  status: "pending" | "ready" | "failed" | null,
+  error: {
+    readonly code: string;
+    readonly message: string;
+    readonly retryable: boolean;
+  } | null,
+): NonNullable<
+  ChatThreadArtifactRun["files"][number]["assetRef"]
+>["materialization"] {
+  if (status === "ready") {
+    return { status: "ready" };
+  }
+  if (status === "pending") {
+    return { status: "pending" };
+  }
+  return {
+    status: "failed",
+    error: error ?? {
+      code: "materialization-failed",
+      message: "The attachment could not be imported",
+      retryable: false,
+    },
+  };
 }
 
 function ownedChatThread(
@@ -350,123 +358,6 @@ export function zeroChatThreadDraft(args: {
   });
 }
 
-function privateCanonicalAssetUrl(assetId: string): string {
-  return `/api/zero/web/download-file?file_id=${encodeURIComponent(assetId)}`;
-}
-
-function canonicalAssetMaterialization(
-  status: "pending" | "ready" | "failed" | null,
-  error: {
-    readonly code: string;
-    readonly message: string;
-    readonly retryable: boolean;
-  } | null,
-): NonNullable<ResolvedAttachFile["assetRef"]>["materialization"] {
-  if (status === "ready") {
-    return { status: "ready" };
-  }
-  if (status === "pending") {
-    return { status: "pending" };
-  }
-  return {
-    status: "failed",
-    error: error ?? {
-      code: "materialization-failed",
-      message: "The attachment could not be imported",
-      retryable: false,
-    },
-  };
-}
-
-async function canonicalInputEventAttachments(
-  db: ReadonlyDb,
-  userId: string,
-  eventIds: readonly string[],
-): Promise<ReadonlyMap<string, readonly ResolvedAttachFile[]>> {
-  if (eventIds.length === 0) {
-    return new Map();
-  }
-  const rows = await db
-    .select({
-      eventId: chatEventAssetRefs.chatEventId,
-      position: chatEventAssetRefs.position,
-      assetId: runUploadedFiles.id,
-      filename: runUploadedFiles.filename,
-      contentType: runUploadedFiles.contentType,
-      sizeBytes: runUploadedFiles.sizeBytes,
-      status: runUploadedFiles.materializationStatus,
-      error: runUploadedFiles.materializationError,
-      provenance: runUploadedFiles.provenance,
-      source: runUploadedFiles.source,
-      externalId: runUploadedFiles.externalId,
-      url: runUploadedFiles.url,
-    })
-    .from(chatEventAssetRefs)
-    .innerJoin(
-      runUploadedFiles,
-      eq(runUploadedFiles.id, chatEventAssetRefs.assetId),
-    )
-    .where(
-      and(
-        inArray(chatEventAssetRefs.chatEventId, [...eventIds]),
-        eq(runUploadedFiles.userId, userId),
-        eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
-        eq(runUploadedFiles.classification, "input"),
-        eq(runUploadedFiles.accessLevel, "private"),
-      ),
-    )
-    .orderBy(
-      asc(chatEventAssetRefs.chatEventId),
-      asc(chatEventAssetRefs.position),
-    );
-
-  const byEvent = new Map<string, ResolvedAttachFile[]>();
-  for (const row of rows) {
-    const filename = row.filename ?? row.assetId;
-    const attachments = byEvent.get(row.eventId) ?? [];
-    attachments.push({
-      id: row.source === "web" ? row.externalId : row.assetId,
-      filename,
-      contentType: row.contentType ?? inferMimetype(filename),
-      size: row.sizeBytes ?? 0,
-      url:
-        row.source === "web" && row.url
-          ? row.url
-          : privateCanonicalAssetUrl(row.assetId),
-      assetRef: {
-        id: row.assetId,
-        classification: "input",
-        access: "private",
-        materialization: canonicalAssetMaterialization(row.status, row.error),
-        ...(row.provenance
-          ? { provenance: { provider: row.provenance.provider } }
-          : {}),
-      },
-    });
-    byEvent.set(row.eventId, attachments);
-  }
-  return byEvent;
-}
-
-function chatEventAttachFiles(
-  userId: string,
-  row: ChatEventRow,
-  canonicalAttachments: readonly ResolvedAttachFile[],
-): Computed<Promise<readonly ResolvedAttachFile[] | undefined>> {
-  return computed(async (get) => {
-    if (canonicalAttachments.length > 0) {
-      return canonicalAttachments;
-    }
-    // Legacy response projection for old web/app clients (~2 days) and rows
-    // written during API overlap (~102 minutes). The Stage 5/7 chat-event
-    // cleanup follow-up PR removes it after both rollout windows close.
-    if (row.attachFiles && row.attachFiles.length > 0) {
-      return await get(resolveAttachFileUrls(userId, row.attachFiles));
-    }
-    return undefined;
-  });
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -525,14 +416,10 @@ function baseChatEventFromRow(row: ChatEventRow, content: string | null) {
 }
 
 type ChatEventBase = ReturnType<typeof baseChatEventFromRow>;
-type ChatEventBuilder = (
-  row: ChatEventRow,
-  event: ChatEventBase,
-  attachFiles: readonly ResolvedAttachFile[] | undefined,
-) => ChatEvent;
+type ChatEventBuilder = (row: ChatEventRow, event: ChatEventBase) => ChatEvent;
 
 const chatEventBuilders = {
-  "input.prompt": (row, event, attachFiles) => {
+  "input.prompt": (row, event) => {
     return {
       ...event,
       eventType: "input.prompt",
@@ -542,11 +429,6 @@ const chatEventBuilders = {
         row.eventType,
         "userMessage",
       ),
-      // Old web/app response projection (~2-day observed client window).
-      // Canonical clients read `userMessage`; the Stage 5/7 chat-event cleanup
-      // follow-up PR removes both fields after the client floor cutover.
-      attachFiles: attachFiles ? [...attachFiles] : undefined,
-      generationTemplate: row.generationTemplate ?? undefined,
     };
   },
   "input.automation": (row, event) => {
@@ -584,7 +466,7 @@ const chatEventBuilders = {
       ),
     };
   },
-  "input.rejected": (row, event, attachFiles) => {
+  "input.rejected": (row, event) => {
     return {
       ...event,
       eventType: "input.rejected",
@@ -595,11 +477,6 @@ const chatEventBuilders = {
         "userMessage",
       ),
       error: requiredChatEventField(row.error, row.eventType, "error"),
-      // Old web/app response projection (~2-day observed client window).
-      // Canonical clients read `userMessage`; the Stage 5/7 chat-event cleanup
-      // follow-up PR removes both fields after the client floor cutover.
-      attachFiles: attachFiles ? [...attachFiles] : undefined,
-      generationTemplate: row.generationTemplate ?? undefined,
     };
   },
   "output.message": (row, event) => {
@@ -625,15 +502,10 @@ const chatEventBuilders = {
     };
   },
   "output.followups": (row, event) => {
-    const recommendedFollowups =
-      row.recommendedFollowups === null
-        ? undefined
-        : normalizeRecommendedFollowups(row.recommendedFollowups);
     return {
       ...event,
       eventType: "output.followups",
-      content: row.content,
-      ...(recommendedFollowups === undefined ? {} : { recommendedFollowups }),
+      content: requiredChatEventField(row.content, row.eventType, "content"),
     };
   },
   "run.queued": (row, event) => {
@@ -741,18 +613,6 @@ const chatEventBuilders = {
       createdAt: event.createdAt,
     };
   },
-  "goal.changed": (row, event) => {
-    return {
-      ...event,
-      eventType: "goal.changed",
-      content: null,
-      goalEvent: requiredChatEventField(
-        row.goalEvent,
-        row.eventType,
-        "goalEvent",
-      ),
-    };
-  },
   "usage.recorded": (row, event) => {
     return {
       ...event,
@@ -768,23 +628,12 @@ const chatEventBuilders = {
   },
 } satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
 
-function toChatEvent(
-  userId: string,
-  row: ChatEventRow,
-  canonicalAttachments: readonly ResolvedAttachFile[],
-): Computed<Promise<ChatEvent>> {
-  return computed(async (get): Promise<ChatEvent> => {
-    const attachFiles =
-      row.eventType === "input.prompt" || row.eventType === "input.rejected"
-        ? await get(chatEventAttachFiles(userId, row, canonicalAttachments))
-        : undefined;
-    const event = chatEventBuilders[row.eventType](
-      row,
-      baseChatEventFromRow(row, row.content),
-      attachFiles,
-    );
-    return chatEventResponse(event);
-  });
+function toChatEvent(row: ChatEventRow): ChatEvent {
+  const event = chatEventBuilders[row.eventType](
+    row,
+    baseChatEventFromRow(row, row.content),
+  );
+  return chatEventResponse(event);
 }
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
@@ -1508,42 +1357,7 @@ export function zeroChatThreadEventsPage(args: {
       ).reverse();
     }
 
-    return await get(
-      chatEventsWithAssets({
-        userId: args.userId,
-        rows,
-      }),
-    );
-  });
-}
-
-function chatEventsWithAssets(args: {
-  readonly userId: string;
-  readonly rows: readonly ChatEventRow[];
-}): Computed<Promise<readonly ChatEvent[]>> {
-  return computed(async (get) => {
-    const attachmentEventIds = args.rows.flatMap((row) => {
-      return row.eventType === "input.prompt" ||
-        row.eventType === "input.rejected"
-        ? [row.id]
-        : [];
-    });
-    const canonicalInputByEvent = await canonicalInputEventAttachments(
-      get(db$),
-      args.userId,
-      attachmentEventIds,
-    );
-    return await Promise.all(
-      args.rows.map((row) => {
-        return get(
-          toChatEvent(
-            args.userId,
-            row,
-            canonicalInputByEvent.get(row.id) ?? [],
-          ),
-        );
-      }),
-    );
+    return rows.map(toChatEvent);
   });
 }
 
@@ -1571,13 +1385,7 @@ export function zeroChatThreadEventById(args: {
       return null;
     }
 
-    const [event] = await get(
-      chatEventsWithAssets({
-        userId: args.userId,
-        rows: [row],
-      }),
-    );
-    return event ?? null;
+    return toChatEvent(row);
   });
 }
 

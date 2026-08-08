@@ -14,10 +14,8 @@ import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import {
-  activeGoalEvent,
-  appendGoalEventMarker,
-  clearedGoalEvent,
-  hiddenGoalStateEvent,
+  appendGoalCloseMarker,
+  appendGoalOpenMarker,
 } from "./zero-chat-goal-marker.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import { generateGoalObjectiveBrief } from "./zero-goal-objective-brief.service";
@@ -383,9 +381,9 @@ export async function createGoalForCurrentThread(
       autonomyBudget: derivedBudget.autonomyBudget,
       createdAt,
     });
-    await appendGoalEventMarker(tx, {
+    await appendGoalOpenMarker(tx, {
       chatThreadId: threadId,
-      event: activeGoalEvent(objectiveBrief),
+      objectiveBrief,
     });
     return { goal, threadId };
   });
@@ -501,9 +499,8 @@ async function setCurrentGoalTerminalState(
       status,
       updatedAt,
     });
-    await appendGoalEventMarker(tx, {
+    await appendGoalCloseMarker(tx, {
       chatThreadId: goal.threadId,
-      event: hiddenGoalStateEvent(status),
     });
     return row;
   });
@@ -590,9 +587,8 @@ async function pauseGoalRow(
       status: "paused",
       updatedAt: pausedAt,
     });
-    await appendGoalEventMarker(tx, {
+    await appendGoalCloseMarker(tx, {
       chatThreadId: args.threadId,
-      event: hiddenGoalStateEvent("paused"),
     });
     return row;
   });
@@ -650,14 +646,12 @@ export async function resumeCurrentGoal(
       autonomyBudgetCeiling: reactivationBudget.autonomyBudget,
       updatedAt: resumedAt,
     });
-    await appendGoalEventMarker(tx, {
+    await appendGoalOpenMarker(tx, {
       chatThreadId: goal.threadId,
-      event: activeGoalEvent(
-        normalizeGoalObjectiveBrief({
-          objective: current.objective,
-          objectiveBrief: current.objectiveBrief,
-        }),
-      ),
+      objectiveBrief: normalizeGoalObjectiveBrief({
+        objective: current.objective,
+        objectiveBrief: current.objectiveBrief,
+      }),
     });
     return row;
   });
@@ -715,9 +709,9 @@ export async function editCurrentGoal(
         autonomyBudget: replacementBudget.autonomyBudget,
         createdAt: editedAt,
       });
-      await appendGoalEventMarker(tx, {
+      await appendGoalOpenMarker(tx, {
         chatThreadId: goal.threadId,
-        event: activeGoalEvent(objectiveBrief),
+        objectiveBrief,
       });
       return replacement;
     }
@@ -729,9 +723,9 @@ export async function editCurrentGoal(
       objectiveBrief,
       updatedAt: editedAt,
     });
-    await appendGoalEventMarker(tx, {
+    await appendGoalOpenMarker(tx, {
       chatThreadId: goal.threadId,
-      event: activeGoalEvent(objectiveBrief),
+      objectiveBrief,
     });
     return row;
   });
@@ -764,9 +758,8 @@ export async function clearCurrentGoal(
       return false;
     }
     await tx.delete(threadGoals).where(eq(threadGoals.id, current.id));
-    await appendGoalEventMarker(tx, {
+    await appendGoalCloseMarker(tx, {
       chatThreadId: goal.threadId,
-      event: clearedGoalEvent(),
     });
     return true;
   });

@@ -722,14 +722,10 @@ describe("chat lifecycle", () => {
         // surface the goal while keeping the marker out of transcript bubbles.
         {
           id: "msg-goal-active",
+          eventType: "goal.open",
           runId: undefined,
           role: "assistant",
-          content: null,
-          goalEvent: {
-            type: "state",
-            status: "active",
-            objectiveBrief: "Drive the release to merge",
-          },
+          content: "Drive the release to merge",
           createdAt: "2026-06-09T10:00:02Z",
         },
         {
@@ -820,14 +816,10 @@ describe("chat lifecycle", () => {
         },
         {
           id: "msg-goal-dialog-active",
+          eventType: "goal.open",
           runId: undefined,
           role: "assistant",
-          content: null,
-          goalEvent: {
-            type: "state",
-            status: "active",
-            objectiveBrief: "Release brief",
-          },
+          content: "Release brief",
           createdAt: "2026-06-09T10:00:02Z",
         },
       ],
@@ -866,22 +858,18 @@ describe("chat lifecycle", () => {
       chatEvents: [
         {
           id: "msg-goalc-active",
+          eventType: "goal.open",
           runId: undefined,
           role: "assistant",
-          content: null,
-          goalEvent: {
-            type: "state",
-            status: "active",
-            objectiveBrief: "Drive the release to merge",
-          },
+          content: "Drive the release to merge",
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
           id: "msg-goalc-complete",
+          eventType: "goal.close",
           runId: undefined,
           role: "assistant",
           content: null,
-          goalEvent: { type: "state", status: "complete" },
           createdAt: "2026-06-09T10:00:02Z",
         },
       ],
@@ -1149,7 +1137,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       ).not.toBeNull();
     });
 
-    const goalEvent = screen.getByText(goalBrief);
+    const goalText = screen.getByText(goalBrief);
     const foldButton = buttonByLabel("Expand grouped run history");
     const thinkingIndicator = document.querySelector(
       "[data-thinking-indicator]",
@@ -1157,7 +1145,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     expect(thinkingIndicator).not.toBeNull();
     expect(
-      goalEvent.compareDocumentPosition(foldButton) &
+      goalText.compareDocumentPosition(foldButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
@@ -1671,7 +1659,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const videoUrl = "/f/test-user/attachment-demo/demo.mp4";
     const audioUrl = "/f/test-user/attachment-briefing/briefing.mp3";
     const markdownUrl = "/f/test-user/attachment-notes/notes.md";
-    const attachFiles = [
+    const fileFixtures = [
       {
         id: "attachment-chart",
         filename: "chart.png",
@@ -1708,11 +1696,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-rich-attachments",
           role: "user",
           content: "stale legacy content",
-          attachFiles,
           userMessage: {
             version: 1,
             parts: [
-              ...attachFiles.map((file) => {
+              ...fileFixtures.map((file) => {
                 return {
                   type: "file" as const,
                   fileId: file.id,
@@ -1784,7 +1771,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const clipboard = context.mocks.browser.clipboardWrite();
     const threadId = "e9000000-0000-4000-a000-000000000019";
     const messageText = "Review this image";
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [
@@ -1792,13 +1778,12 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-e9000000-0000-4000-a000-000000000019",
           role: "user",
           content: messageText,
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-photo",
-              filename: "photo.png",
+              type: "file",
+              fileId: "attachment-photo",
+              filenameSnapshot: "photo.png",
               contentType: "image/png",
-              size: 2048,
-              url: imageUrl,
             },
           ],
           createdAt: "2026-06-09T10:00:00Z",
@@ -1922,7 +1907,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           role: "user",
           content: "stale legacy content",
           userMessage,
-          attachFiles: [firstAttachment, secondAttachment],
           createdAt: "2026-06-09T10:00:00Z",
         },
       ],
@@ -1964,7 +1948,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const clipboard = context.mocks.browser.clipboardWrite();
     const threadId = "e9000000-0000-4000-a000-000000000021";
     const style = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
-    const generationTemplate = {
+    const selectedTemplate = {
       type: "illustration" as const,
       selection: {
         illustrationStyleId: style.illustrationStyleId,
@@ -1979,7 +1963,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         {
           type: "template" as const,
           titleSnapshot: style.title,
-          template: generationTemplate,
+          template: selectedTemplate,
         },
         { type: "text" as const, text: messageText },
         {

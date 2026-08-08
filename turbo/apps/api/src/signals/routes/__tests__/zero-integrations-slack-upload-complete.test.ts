@@ -777,8 +777,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     if (!("kind" in initialized.body)) {
       throw new Error("Expected canonical Slack upload initialization");
     }
-    const canonicalAssetId = initialized.body.assetId;
-
     const claim = await claimRun(runnerGroup, runId);
     await completeRun({
       runId,
@@ -802,17 +800,9 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
     expect(lifecycleMarker).not.toHaveProperty("attachFiles");
-    const separateAttachmentReply = messages.events.find((message) => {
-      return (
-        message.eventType !== "run.completed" &&
-        message.runId === runId &&
-        "attachFiles" in message &&
-        message.attachFiles?.some((file) => {
-          return file.id === canonicalAssetId;
-        })
-      );
-    });
-    expect(separateAttachmentReply).toBeUndefined();
+    for (const message of messages.events) {
+      expect(message).not.toHaveProperty("attachFiles");
+    }
     expect(
       messages.events.find((message) => {
         return (

@@ -1,5 +1,4 @@
-import { command, computed, type Computed } from "ccstate";
-import type { ResolvedAttachFile } from "@vm0/api-contracts/contracts/chat-threads";
+import { command } from "ccstate";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -21,7 +20,6 @@ import {
   publishThreadListChangedSafely,
 } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { resolvedArtifactObject } from "./artifact-storage.service";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
@@ -113,7 +111,7 @@ export async function touchChatThreadLastMessageAt(
 export function visibleChatEventCondition(
   db: Pick<Db, "select">,
 ): SQL | undefined {
-  const isCompatibilityUserEvent = chatEventTypeIn([
+  const isUserInputEvent = chatEventTypeIn([
     "input.prompt",
     "input.automation",
     "input.rejected",
@@ -129,46 +127,17 @@ export function visibleChatEventCondition(
         .where(eq(revoker.revokesEventId, chatEvents.id)),
     ),
     or(
-      not(isCompatibilityUserEvent),
+      not(isUserInputEvent),
       isNotNull(chatEvents.runId),
       isNull(chatEvents.revokesEventId),
-      isNotNull(chatEvents.content),
       isNotNull(chatEvents.error),
     ),
     or(
-      not(isCompatibilityUserEvent),
+      not(isUserInputEvent),
       isNotNull(chatEvents.runId),
       isNull(chatEvents.interruptsRunId),
     ),
   );
-}
-
-export function resolveAttachFileUrls(
-  userId: string,
-  fileIds: readonly string[],
-): Computed<Promise<readonly ResolvedAttachFile[]>> {
-  return computed(async (get): Promise<readonly ResolvedAttachFile[]> => {
-    const resolved = await Promise.all(
-      fileIds.map(async (fileId): Promise<ResolvedAttachFile | null> => {
-        const object = await get(resolvedArtifactObject(userId, fileId));
-        if (!object) {
-          return null;
-        }
-
-        return {
-          id: fileId,
-          filename: object.filename,
-          contentType: object.contentType,
-          size: object.size,
-          url: object.url,
-        };
-      }),
-    );
-
-    return resolved.filter((file): file is ResolvedAttachFile => {
-      return file !== null;
-    });
-  });
 }
 
 export async function runGroupIdForRun(

@@ -169,7 +169,7 @@ async function seedGoalFixture(
   if (!goal) {
     throw new Error("Failed to seed orphan monitor goal");
   }
-  const [goalEvent] = await tx
+  const [goalInputEvent] = await tx
     .insert(chatEvents)
     .values({
       chatThreadId: args.threadId,
@@ -188,7 +188,7 @@ async function seedGoalFixture(
   if (args.fixtureKind === "orphaned-goal") {
     await tx.delete(threadGoals).where(eq(threadGoals.id, goal.id));
   }
-  return goalEvent;
+  return goalInputEvent;
 }
 
 async function seedGoalAgent(

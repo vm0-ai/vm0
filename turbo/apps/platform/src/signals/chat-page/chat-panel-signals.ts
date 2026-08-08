@@ -1,6 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
-  ChatFollowupsEvent,
+  ChatRecommendedFollowup,
   GenerationTemplateRequest,
   ChatThreadArtifactRun,
   ChatThreadDraft,
@@ -27,9 +27,7 @@ import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 
-type RecommendedFollowup = NonNullable<
-  ChatFollowupsEvent["recommendedFollowups"]
->[number];
+type RecommendedFollowup = ChatRecommendedFollowup;
 
 export interface RecommendedFollowupSource {
   readonly eventId: string;

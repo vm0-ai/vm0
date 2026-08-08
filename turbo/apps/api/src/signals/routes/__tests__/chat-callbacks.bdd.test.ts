@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { WebPushError } from "web-push";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import type {
-  AttachFile,
-  GenerationTemplateRequest,
-  ChatEvent,
-  UserMessageInputDocument,
+import {
+  resolveChatEventRecommendedFollowups,
+  type GenerationTemplateRequest,
+  type ChatEvent,
+  type UserMessageInputDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
@@ -22,7 +22,6 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
-  clearLegacyChatEventInputColumnsFixture,
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   holdGoalThreadLockFixture,
@@ -232,8 +231,6 @@ async function startChatRun(
     readonly clientEventId?: string;
     readonly threadId?: string;
     readonly selectedModel?: SupportedRunModel;
-    readonly attachFiles?: readonly AttachFile[];
-    readonly generationTemplate?: GenerationTemplateRequest;
     readonly userMessage?: UserMessageInputDocument;
     readonly revokesEventId?: string;
   },
@@ -254,12 +251,6 @@ async function startChatRun(
     prompt: body.prompt,
     clientEventId: messageId,
     ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
-    ...(body.attachFiles === undefined
-      ? {}
-      : { attachFiles: body.attachFiles }),
-    ...(body.generationTemplate === undefined
-      ? {}
-      : { generationTemplate: body.generationTemplate }),
     ...(body.userMessage === undefined
       ? {}
       : { userMessage: body.userMessage }),
@@ -311,8 +302,6 @@ async function queueChatEvent(
     readonly agentId: string;
     readonly threadId: string;
     readonly prompt: string;
-    readonly attachFiles?: readonly AttachFile[];
-    readonly generationTemplate?: GenerationTemplateRequest;
     readonly userMessage?: UserMessageInputDocument;
   },
 ): Promise<string> {
@@ -324,12 +313,6 @@ async function queueChatEvent(
       threadId: body.threadId,
       prompt: body.prompt,
       clientEventId: messageId,
-      ...(body.attachFiles === undefined
-        ? {}
-        : { attachFiles: body.attachFiles }),
-      ...(body.generationTemplate === undefined
-        ? {}
-        : { generationTemplate: body.generationTemplate }),
       ...(body.userMessage === undefined
         ? {}
         : { userMessage: body.userMessage }),
@@ -706,7 +689,7 @@ function recommendedFollowupEvents(
     return (
       message.eventType === "output.followups" &&
       message.runId === runId &&
-      (message.recommendedFollowups?.length ?? 0) > 0
+      resolveChatEventRecommendedFollowups(message).length > 0
     );
   });
 }
@@ -1090,8 +1073,6 @@ describe("CHAT-02: completed chat callback", () => {
     if (!queued) {
       throw new Error("Expected the queued user message to be listed");
     }
-    await clearLegacyChatEventInputColumnsFixture(queued.id);
-
     // Sentinel thread with a later lastMessageAt than thread X, so the
     // run-end bump on X is observable through thread-list reordering.
     const sentinel = await startChatRun(actor, {
@@ -1120,7 +1101,7 @@ describe("CHAT-02: completed chat callback", () => {
         return (
           eventBackedContents(messages, first.runId).length === 1 &&
           recommendedFollowupEvents(messages, first.runId).some((message) => {
-            return (message.recommendedFollowups?.length ?? 0) === 2;
+            return resolveChatEventRecommendedFollowups(message).length === 2;
           })
         );
       },
@@ -1145,8 +1126,8 @@ describe("CHAT-02: completed chat callback", () => {
     if (!recommender) {
       throw new Error("Expected a recommended follow-up message");
     }
-    expect(recommender.content).toBeNull();
-    expect(recommender.recommendedFollowups).toStrictEqual([
+    expect(recommender).not.toHaveProperty("recommendedFollowups");
+    expect(resolveChatEventRecommendedFollowups(recommender)).toStrictEqual([
       { prompt: longFollowupPrompt, kind: "talk" },
       {
         prompt: "Generate a landing page for this plan",
@@ -1233,7 +1214,13 @@ describe("CHAT-02: completed chat callback", () => {
     expect(claimed.runId).not.toBe(first.runId);
     expect(claimed.id).not.toBe(queued.id);
     expect(claimed.revokesEventId).toBe(queued.id);
-    expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
+    expect(claimed).not.toHaveProperty("generationTemplate");
+    expect(claimed.userMessage?.parts).toContainEqual(
+      expect.objectContaining({
+        type: "template",
+        template: generationTemplate,
+      }),
+    );
     const original = await chat.getThreadEvent(
       actor,
       first.threadId,
@@ -1435,7 +1422,6 @@ describe("CHAT-02: completed chat callback", () => {
     const first = await startChatRun(actor, {
       agentId,
       prompt: "stale first legacy request",
-      generationTemplate,
       userMessage: firstUserMessage,
     });
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
@@ -1672,7 +1658,7 @@ describe("CHAT-02: completed chat callback", () => {
       (messages) => {
         return recommendedFollowupEvents(messages, first.runId).some(
           (message) => {
-            return (message.recommendedFollowups?.length ?? 0) === 1;
+            return resolveChatEventRecommendedFollowups(message).length === 1;
           },
         );
       },
@@ -1694,7 +1680,8 @@ describe("CHAT-02: completed chat callback", () => {
     if (!followupEvent) {
       throw new Error("Expected a recommended follow-up message");
     }
-    expect(followupEvent.recommendedFollowups).toStrictEqual([
+    expect(followupEvent).not.toHaveProperty("recommendedFollowups");
+    expect(resolveChatEventRecommendedFollowups(followupEvent)).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
     await waitForChatThreadMessageCreatedPublish(first.threadId);
@@ -1850,6 +1837,17 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);
     await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
     await flushWaitUntilForTest();
+    const afterCancel = await chat.listThreadEvents(actor, first.threadId);
+    const closeMarker = afterCancel.events
+      .filter((event) => {
+        return event.eventType === "goal.close";
+      })
+      .at(-1);
+    expect(closeMarker).toMatchObject({
+      eventType: "goal.close",
+      content: null,
+    });
+    expect(closeMarker).not.toHaveProperty("goalEvent");
   }, 90_000);
 
   it("rebuilds a preparing goal run from the latest row despite its UI marker", async () => {
@@ -4312,7 +4310,6 @@ describe("CHAT-02: auto-send after failures", () => {
       agentId,
       threadId: anchor.threadId,
       prompt: "stale failed legacy request",
-      generationTemplate,
       userMessage,
     });
     const failedForNormalHeaders = await claimChatRun(
@@ -4342,7 +4339,6 @@ describe("CHAT-02: auto-send after failures", () => {
       agentId,
       threadId: anchor.threadId,
       prompt: "second stale failed legacy request",
-      generationTemplate,
       userMessage,
     });
     const failedForQueueHeaders = await claimChatRun(
@@ -4541,14 +4537,18 @@ describe("CHAT-02: auto-send after failures", () => {
       agentId,
       threadId: first.threadId,
       prompt: longPrompt,
-      attachFiles: [
-        {
-          id: contextFile.id,
-          filename: contextFile.filename,
-          contentType: contextFile.contentType,
-          size: contextFile.size,
-        },
-      ],
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: contextFile.id,
+            filenameSnapshot: contextFile.filename,
+            contentType: contextFile.contentType,
+          },
+          { type: "text", text: longPrompt },
+        ],
+      },
     });
     const secondHeaders = await claimChatRun(runnerGroup, second.runId);
 
@@ -4570,14 +4570,18 @@ describe("CHAT-02: auto-send after failures", () => {
       agentId,
       threadId: first.threadId,
       prompt: "queued with files",
-      attachFiles: [
-        {
-          id: queuedFile.id,
-          filename: queuedFile.filename,
-          contentType: queuedFile.contentType,
-          size: queuedFile.size,
-        },
-      ],
+      userMessage: {
+        version: 1,
+        parts: [
+          {
+            type: "file",
+            fileId: queuedFile.id,
+            filenameSnapshot: queuedFile.filename,
+            contentType: queuedFile.contentType,
+          },
+          { type: "text", text: queuedContent },
+        ],
+      },
     });
 
     await chatCallbacks.registerPushSubscription(actor);
@@ -4640,11 +4644,14 @@ describe("CHAT-02: auto-send after failures", () => {
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
     ]);
-    expect(claimed.attachFiles).toHaveLength(1);
-    expect(claimed.attachFiles?.[0]).toMatchObject({
-      filename: "queued-notes.txt",
-      url: expect.stringContaining(queuedFile.id),
-    });
+    expect(claimed).not.toHaveProperty("attachFiles");
+    expect(claimed.userMessage?.parts).toContainEqual(
+      expect.objectContaining({
+        type: "file",
+        fileId: queuedFile.id,
+        filenameSnapshot: "queued-notes.txt",
+      }),
+    );
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {

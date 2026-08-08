@@ -5,7 +5,6 @@ import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
-import { zeroGoalEventSchema } from "./zero-goals";
 import { supportedRunModelSchema } from "./model-providers";
 import {
   VIDEO_ASPECT_RATIOS,
@@ -516,10 +515,6 @@ const chatEventRecommendedFollowupShape = {
     .optional(),
 };
 
-const chatEventRecommendedFollowupSchema = z.object(
-  chatEventRecommendedFollowupShape,
-);
-
 export const chatFollowupsContentDocumentSchema = z
   .object({
     version: z.literal(1),
@@ -528,8 +523,8 @@ export const chatFollowupsContentDocumentSchema = z
   .strict();
 
 export type ChatRecommendedFollowup = z.infer<
-  typeof chatEventRecommendedFollowupSchema
->;
+  typeof chatFollowupsContentDocumentSchema
+>["followups"][number];
 export type ChatFollowupsContentDocument = z.infer<
   typeof chatFollowupsContentDocumentSchema
 >;
@@ -552,38 +547,26 @@ export function parseChatFollowupsContent(
 
 export function resolveChatEventRecommendedFollowups(event: {
   readonly content: string | null;
-  readonly recommendedFollowups?: readonly ChatRecommendedFollowup[];
 }): readonly ChatRecommendedFollowup[] {
   const document = parseChatFollowupsContent(event.content);
-  if (document !== null) {
-    return document.followups;
-  }
-
-  // Stage 3 rollout compatibility: current writers, persisted rows, and old
-  // web/app clients still use recommendedFollowups. Delete this fallback in
-  // Stage 5 after the Stage 4 client floor and content writer cutover.
-  return event.recommendedFollowups ?? [];
+  return document?.followups ?? [];
 }
 
-const chatEventRecommendedFollowupsSchema = z.preprocess((value) => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.flatMap((item) => {
-    const parsed = chatEventRecommendedFollowupSchema.safeParse(item);
-    return parsed.success ? [parsed.data] : [];
-  });
-}, z.array(chatEventRecommendedFollowupSchema));
+export function serializeChatFollowupsContent(
+  followups: readonly ChatRecommendedFollowup[],
+): string {
+  const document: ChatFollowupsContentDocument = {
+    version: 1,
+    followups: [...followups],
+  };
+  return JSON.stringify(chatFollowupsContentDocumentSchema.parse(document));
+}
 
 const inputPromptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("input.prompt"),
     content: z.null(),
     userMessage: userMessageDocumentSchema,
-    // Old web/app response fields (~2-day observed client window). The Stage
-    // 5/7 chat-event cleanup follow-up PR removes them after the client floor.
-    attachFiles: z.array(resolvedAttachFileSchema).optional(),
-    generationTemplate: generationTemplateRequestSchema.optional(),
   })
   .strict();
 
@@ -625,10 +608,6 @@ const inputRejectedEventSchema = chatEventBaseSchema
     content: z.null(),
     userMessage: userMessageDocumentSchema,
     error: z.string(),
-    // Old web/app response fields (~2-day observed client window). The Stage
-    // 5/7 chat-event cleanup follow-up PR removes them after the client floor.
-    attachFiles: z.array(resolvedAttachFileSchema).optional(),
-    generationTemplate: generationTemplateRequestSchema.optional(),
   })
   .strict();
 
@@ -657,8 +636,7 @@ const outputThinkingEventSchema = chatEventBaseSchema
 const outputFollowupsEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("output.followups"),
-    content: z.string().nullable(),
-    recommendedFollowups: chatEventRecommendedFollowupsSchema.optional(),
+    content: z.string(),
   })
   .strict();
 
@@ -765,14 +743,6 @@ const goalCloseEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const goalChangedEventSchema = chatEventBaseSchema
-  .extend({
-    eventType: z.literal("goal.changed"),
-    content: z.null(),
-    goalEvent: zeroGoalEventSchema,
-  })
-  .strict();
-
 const usageRecordedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("usage.recorded"),
@@ -807,7 +777,6 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   browserCloseEventSchema,
   goalOpenEventSchema,
   goalCloseEventSchema,
-  goalChangedEventSchema,
   usageRecordedEventSchema,
 ]);
 
@@ -887,17 +856,9 @@ const chatNormalSendBodyShape = {
   model: selectedModelRequestSchema.optional(),
   runOptions: chatRunOptionsRequestSchema.optional(),
   userMessage: userMessageInputDocumentSchema,
-  // Accepted at ingress for old web/app clients (~2-day observed window). New
-  // clients use template parts; the Stage 5/7 cleanup follow-up PR removes it
-  // after the client version-floor cutover.
-  generationTemplate: generationTemplateRequestSchema.optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
   cloudBrowserEnabled: z.boolean().optional(),
   hasTextContent: z.boolean(),
-  // Accepted at ingress for old web/app clients (~2-day observed window). New
-  // clients use file parts; the Stage 5/7 cleanup follow-up PR removes it after
-  // the client version-floor cutover.
-  attachFiles: z.array(attachFileSchema).optional(),
   // Preview evaluation escape hatch: when enabled, the request asks the
   // runner to bypass preview mock CLIs and use the real agent runtime.
   realAgentInPreview: z.boolean().optional(),
@@ -911,6 +872,7 @@ const chatEventNormalSendBodySchema = z
     revokesEventId: z.string().min(1).optional(),
     interruptsRunId: z.undefined().optional(),
   })
+  .strict()
   .refine(
     (body) => {
       return !(body.cloudBrowserEnabled && body.computerUseHostId);
@@ -1354,44 +1316,44 @@ export const chatEventsContract = c.router({
     headers: authHeadersSchema,
     body: z.union([
       chatEventNormalSendBodySchema,
-      z.object({
-        agentId: z.string().min(1),
-        threadId: z.string().min(1),
-        revokesEventId: z.string().min(1),
-        clientEventId: z.string().uuid().optional(),
-        prompt: z.undefined().optional(),
-        clientThreadId: z.undefined().optional(),
-        chatThreadEventId: z.undefined().optional(),
-        chatThreadSortEventId: z.undefined().optional(),
-        model: z.undefined().optional(),
-        runOptions: z.undefined().optional(),
-        userMessage: z.undefined().optional(),
-        generationTemplate: z.undefined().optional(),
-        computerUseHostId: z.undefined().optional(),
-        hasTextContent: z.undefined().optional(),
-        attachFiles: z.undefined().optional(),
-        realAgentInPreview: z.undefined().optional(),
-        interruptsRunId: z.undefined().optional(),
-      }),
-      z.object({
-        agentId: z.string().min(1),
-        threadId: z.string().min(1),
-        interruptsRunId: z.string().uuid(),
-        clientEventId: z.string().uuid().optional(),
-        prompt: z.undefined().optional(),
-        clientThreadId: z.undefined().optional(),
-        chatThreadEventId: z.undefined().optional(),
-        chatThreadSortEventId: z.undefined().optional(),
-        model: z.undefined().optional(),
-        runOptions: z.undefined().optional(),
-        userMessage: z.undefined().optional(),
-        generationTemplate: z.undefined().optional(),
-        computerUseHostId: z.undefined().optional(),
-        hasTextContent: z.undefined().optional(),
-        attachFiles: z.undefined().optional(),
-        realAgentInPreview: z.undefined().optional(),
-        revokesEventId: z.undefined().optional(),
-      }),
+      z
+        .object({
+          agentId: z.string().min(1),
+          threadId: z.string().min(1),
+          revokesEventId: z.string().min(1),
+          clientEventId: z.string().uuid().optional(),
+          prompt: z.undefined().optional(),
+          clientThreadId: z.undefined().optional(),
+          chatThreadEventId: z.undefined().optional(),
+          chatThreadSortEventId: z.undefined().optional(),
+          model: z.undefined().optional(),
+          runOptions: z.undefined().optional(),
+          userMessage: z.undefined().optional(),
+          computerUseHostId: z.undefined().optional(),
+          hasTextContent: z.undefined().optional(),
+          realAgentInPreview: z.undefined().optional(),
+          interruptsRunId: z.undefined().optional(),
+        })
+        .strict(),
+      z
+        .object({
+          agentId: z.string().min(1),
+          threadId: z.string().min(1),
+          interruptsRunId: z.string().uuid(),
+          clientEventId: z.string().uuid().optional(),
+          prompt: z.undefined().optional(),
+          clientThreadId: z.undefined().optional(),
+          chatThreadEventId: z.undefined().optional(),
+          chatThreadSortEventId: z.undefined().optional(),
+          model: z.undefined().optional(),
+          runOptions: z.undefined().optional(),
+          userMessage: z.undefined().optional(),
+          computerUseHostId: z.undefined().optional(),
+          hasTextContent: z.undefined().optional(),
+          realAgentInPreview: z.undefined().optional(),
+          revokesEventId: z.undefined().optional(),
+        })
+        .strict(),
     ]),
     responses: {
       201: z.object({

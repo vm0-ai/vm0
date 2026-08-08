@@ -66,11 +66,16 @@ function requireCanonicalSlackInputAssetId(
 ): string {
   const assetId = events
     .flatMap((event) => {
-      return "attachFiles" in event ? (event.attachFiles ?? []) : [];
+      if (!("userMessage" in event) || !event.userMessage) {
+        return [];
+      }
+      return event.userMessage.parts.filter((part) => {
+        return part.type === "file";
+      });
     })
     .find((file) => {
-      return file.filename === "source-notes.txt";
-    })?.assetRef?.id;
+      return file.filenameSnapshot === "source-notes.txt";
+    })?.fileId;
   if (!assetId) {
     throw new Error("Expected a canonical Slack input asset");
   }
@@ -1383,33 +1388,29 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const listedMessages = (
       await chat.listThreadEvents(actor, chatThreadId)
     ).events.filter((message) => {
-      return "attachFiles" in message;
+      return (
+        "userMessage" in message &&
+        message.userMessage?.parts.some((part) => {
+          return part.type === "file";
+        }) === true
+      );
     });
     const assetId = requireCanonicalSlackInputAssetId(listedMessages);
     const listedMessage = listedMessages.find((message) => {
       return (
-        "attachFiles" in message &&
-        message.attachFiles?.some((file) => {
-          return file.assetRef?.id === assetId;
-        })
+        "userMessage" in message &&
+        message.userMessage?.parts.some((part) => {
+          return part.type === "file" && part.fileId === assetId;
+        }) === true
       );
     });
+    expect(listedMessage).not.toHaveProperty("attachFiles");
     expect(listedMessage).toMatchObject({
-      attachFiles: [
-        expect.objectContaining({
-          assetRef: expect.objectContaining({
-            id: assetId,
-            materialization: {
-              status: "failed",
-              error: {
-                code: "import-failed",
-                message: "initial canonical Slack fetch failed",
-                retryable: true,
-              },
-            },
-          }),
-        }),
-      ],
+      userMessage: {
+        parts: expect.arrayContaining([
+          expect.objectContaining({ type: "file", fileId: assetId }),
+        ]),
+      },
     });
     if (!listedMessage) {
       throw new Error("Expected a canonical Slack input message");
@@ -1420,23 +1421,14 @@ describe("INT-01: Slack app deep webhook flows", () => {
       chatThreadId,
       listedMessage.id,
     );
+    expect(fetchedMessage).not.toHaveProperty("attachFiles");
     expect(fetchedMessage).toMatchObject({
       id: listedMessage.id,
-      attachFiles: [
-        expect.objectContaining({
-          assetRef: expect.objectContaining({
-            id: assetId,
-            materialization: {
-              status: "failed",
-              error: {
-                code: "import-failed",
-                message: "initial canonical Slack fetch failed",
-                retryable: true,
-              },
-            },
-          }),
-        }),
-      ],
+      userMessage: {
+        parts: expect.arrayContaining([
+          expect.objectContaining({ type: "file", fileId: assetId }),
+        ]),
+      },
     });
     expect(context.mocks.slack.fetchFile).not.toHaveBeenCalled();
   });
@@ -1449,10 +1441,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     integrations.configureSlackAppMocks();
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
-    if (!actor.orgId) {
-      throw new Error("Expected canonical Slack actor to belong to an org");
-    }
-    const orgId = actor.orgId;
     const slackUserId = uniqueSlackUserId();
     const mentionedSlackUserId = uniqueSlackUserId();
     const { teamId, botUserId } = await integrations.installSlackWorkspace(
@@ -1622,25 +1610,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
               },
             ],
           },
-          attachFiles: [
-            expect.objectContaining({
-              filename: "source-notes.txt",
-              contentType: "text/plain",
-              size: fileBody.length,
-              url: expect.stringContaining(
-                "/api/zero/web/download-file?file_id=",
-              ),
-              assetRef: expect.objectContaining({
-                classification: "input",
-                access: "private",
-                materialization: { status: "ready" },
-                provenance: { provider: "slack" },
-              }),
-            }),
-          ],
         }),
       ]),
     );
+    for (const message of visibleMessages) {
+      expect(message).not.toHaveProperty("attachFiles");
+    }
     expect(
       visibleMessages
         .filter((message) => {

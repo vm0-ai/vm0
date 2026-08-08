@@ -21,6 +21,7 @@ import {
   chatThreadEventsContract,
   parseChatFollowupsContent,
   resolveChatEventRecommendedFollowups,
+  serializeChatFollowupsContent,
   type ChatEvent,
 } from "../chat-threads";
 
@@ -135,8 +136,10 @@ const chatEvents = [
     seqId: 9,
     threadId: THREAD_ID,
     eventType: "output.followups",
-    content: null,
-    recommendedFollowups: [{ prompt: "Continue", kind: "talk" }],
+    content: JSON.stringify({
+      version: 1,
+      followups: [{ prompt: "Continue", kind: "talk" }],
+    }),
     createdAt: CREATED_AT,
   },
   {
@@ -239,21 +242,8 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "goal-changed",
-    seqId: 21,
-    threadId: THREAD_ID,
-    eventType: "goal.changed",
-    content: null,
-    goalEvent: {
-      type: "state",
-      status: "active",
-      objectiveBrief: "Ship the refactor",
-    },
-    createdAt: CREATED_AT,
-  },
-  {
     id: "usage-recorded",
-    seqId: 22,
+    seqId: 21,
     threadId: THREAD_ID,
     eventType: "usage.recorded",
     runId: "run-1",
@@ -418,7 +408,7 @@ describe("ChatEvent catalog", () => {
     expect(isChatEventContentTextType("goal.open")).toBe(false);
   });
 
-  it("accepts attachments only on input events", () => {
+  it("rejects all retired camelCase event projections", () => {
     const attachment = {
       id: "attachment-1",
       filename: "brief.txt",
@@ -439,14 +429,39 @@ describe("ChatEvent catalog", () => {
     expect(
       chatEventSchema.safeParse({ ...prompt, attachFiles: [attachment] })
         .success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       chatEventSchema.safeParse({ ...rejected, attachFiles: [attachment] })
         .success,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       chatEventSchema.safeParse({ ...completed, attachFiles: [attachment] })
         .success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({
+        ...prompt,
+        generationTemplate: {
+          type: "website",
+          selection: { websiteTemplateId: "template-1" },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({
+        ...chatEvents.find((event) => {
+          return event.eventType === "output.followups";
+        }),
+        recommendedFollowups: [{ prompt: "Legacy", kind: "talk" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      chatEventSchema.safeParse({
+        ...chatEvents.find((event) => {
+          return event.eventType === "goal.open";
+        }),
+        goalEvent: { type: "cleared" },
+      }).success,
     ).toBe(false);
   });
 
@@ -504,66 +519,49 @@ describe("ChatEvent revocation rules", () => {
 });
 
 describe("output.followups content", () => {
-  const legacyFollowups = [
+  const followups = [
     {
       prompt: "Generate a launch page",
       kind: "generate" as const,
       generationType: "website" as const,
     },
   ];
-  const content = JSON.stringify({ version: 1, followups: legacyFollowups });
+  const content = JSON.stringify({ version: 1, followups });
 
   it("strictly parses the version-1 document without losing item fields", () => {
-    const legacyEvent = chatEvents.find((event) => {
-      return event.eventType === "output.followups";
+    const event = chatEvents.find((candidate) => {
+      return candidate.eventType === "output.followups";
     });
-    if (!legacyEvent) {
+    if (!event) {
       throw new Error("Missing followups fixture");
     }
-    const { recommendedFollowups: _legacyFollowups, ...futureEvent } =
-      legacyEvent;
-    expect(
-      chatEventSchema.parse({
-        ...futureEvent,
-        content,
-      }),
-    ).toStrictEqual({
-      ...futureEvent,
+    expect(chatEventSchema.parse({ ...event, content })).toStrictEqual({
+      ...event,
       content,
     });
+    expect(serializeChatFollowupsContent(followups)).toBe(content);
     expect(parseChatFollowupsContent(content)).toStrictEqual({
       version: 1,
-      followups: legacyFollowups,
+      followups,
     });
     expect(
-      parseChatFollowupsContent(
-        JSON.stringify({ version: 2, followups: legacyFollowups }),
-      ),
+      parseChatFollowupsContent(JSON.stringify({ version: 2, followups })),
     ).toBeNull();
     expect(
       parseChatFollowupsContent(
         JSON.stringify({
           version: 1,
-          followups: [{ ...legacyFollowups[0], unsupported: true }],
+          followups: [{ ...followups[0], unsupported: true }],
         }),
       ),
     ).toBeNull();
     expect(parseChatFollowupsContent("not json")).toBeNull();
   });
 
-  it("prefers valid content and safely falls back to the legacy field", () => {
-    expect(
-      resolveChatEventRecommendedFollowups({
-        content,
-        recommendedFollowups: [{ prompt: "Legacy", kind: "talk" }],
-      }),
-    ).toStrictEqual(legacyFollowups);
-    expect(
-      resolveChatEventRecommendedFollowups({
-        content: "not json",
-        recommendedFollowups: legacyFollowups,
-      }),
-    ).toStrictEqual(legacyFollowups);
+  it("reads only valid v1 content and fails safely otherwise", () => {
+    expect(resolveChatEventRecommendedFollowups({ content })).toStrictEqual(
+      followups,
+    );
     expect(
       resolveChatEventRecommendedFollowups({ content: "not json" }),
     ).toStrictEqual([]);
@@ -590,12 +588,9 @@ describe("ChatEvent folds", () => {
     );
   });
 
-  it("folds legacy and content goal markers into identical active state", () => {
+  it("folds only canonical goal markers", () => {
     const queued = chatEvents.find((event) => {
       return event.eventType === "input.goal";
-    });
-    const active = chatEvents.find((event) => {
-      return event.eventType === "goal.changed";
     });
     const open = chatEvents.find((event) => {
       return event.eventType === "goal.open";
@@ -603,25 +598,16 @@ describe("ChatEvent folds", () => {
     const close = chatEvents.find((event) => {
       return event.eventType === "goal.close";
     });
-    if (!queued || !active || !open || !close) {
+    if (!queued || !open || !close) {
       throw new Error("Missing goal fold fixture");
     }
-    const paused = {
-      ...active,
-      id: "goal-paused",
-      goalEvent: { type: "state", status: "paused" } as const,
-    };
 
     expect(foldActiveChatGoalObjective([queued])).toBeNull();
-    expect(foldActiveChatGoalObjective([active])).toBe("Ship the refactor");
     expect(foldActiveChatGoalObjective([open])).toBe("Ship the refactor");
-    expect(foldActiveChatGoalObjective([active, paused])).toBe(
-      foldActiveChatGoalObjective([open, close]),
-    );
-    expect(foldActiveChatGoalObjective([active, queued])).toBe(
+    expect(foldActiveChatGoalObjective([open, queued])).toBe(
       "Ship the refactor",
     );
-    expect(foldActiveChatGoalObjective([active, queued, paused])).toBeNull();
+    expect(foldActiveChatGoalObjective([open, queued, close])).toBeNull();
   });
 
   it("uses sequence order when a close is followed by a reopen", () => {
@@ -730,5 +716,26 @@ describe("ChatEvent HTTP contracts", () => {
       revokesEventId: "input-prompt",
       clientEventId: "00000000-0000-4000-8000-000000000002",
     });
+  });
+
+  it.each([
+    ["attachFiles", []],
+    ["generationTemplate", { type: "website" }],
+    ["goalEvent", { type: "cleared" }],
+    ["recommendedFollowups", []],
+  ])("does not expose the retired %s request field", (field, value) => {
+    const request = {
+      agentId: "agent-1",
+      prompt: "Run the task",
+      threadId: THREAD_ID,
+      userMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: "Run the task" }],
+      },
+      hasTextContent: true,
+      [field]: value,
+    };
+
+    expect(chatEventsContract.send.body.safeParse(request).success).toBe(false);
   });
 });

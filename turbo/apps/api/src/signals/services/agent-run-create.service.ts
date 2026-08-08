@@ -6582,7 +6582,7 @@ async function lockQueueFirstRunSourceForLaunch(args: {
   readonly createArgs: CreateAgentRunArgs;
 }): Promise<void> {
   const association = args.createArgs.queueFirstAssociation;
-  if (association?.kind === "goal_event") {
+  if (association?.kind === "goal_input") {
     await lockGoalQueueFirstRunSource(args.tx, association);
   }
 }

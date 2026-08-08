@@ -187,7 +187,7 @@ function buildQueueFirstGoalRunInput(args: {
       autonomyBudget: normalizedGoal.autonomyBudget,
     },
     queueFirstAssociation: {
-      kind: "goal_event",
+      kind: "goal_input",
       threadId: normalizedGoal.threadId,
       eventId: args.event.id,
       prompt,

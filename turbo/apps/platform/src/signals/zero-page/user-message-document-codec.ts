@@ -28,7 +28,7 @@ export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 
 export interface EditorDocumentContext {
-  readonly generationTemplate?: GenerationTemplateRequest;
+  readonly selectedTemplate?: GenerationTemplateRequest;
   readonly attachments?: readonly PersistedAttachment[];
 }
 
@@ -95,15 +95,15 @@ function agentPart(
   };
 }
 
-function legacyTemplatePart(
+function selectedTemplatePart(
   node: ProseMirrorNode,
-  generationTemplate: GenerationTemplateRequest | undefined,
+  selectedTemplate: GenerationTemplateRequest | undefined,
 ): UserMessagePart | null {
   const templateType: unknown = node.attrs.templateType;
   const title: unknown = node.attrs.title;
   if (
-    generationTemplate === undefined ||
-    templateType !== templateAttachmentType(generationTemplate) ||
+    selectedTemplate === undefined ||
+    templateType !== templateAttachmentType(selectedTemplate) ||
     typeof title !== "string"
   ) {
     return null;
@@ -111,7 +111,7 @@ function legacyTemplatePart(
   return {
     type: "template",
     titleSnapshot: title,
-    template: generationTemplate,
+    template: selectedTemplate,
   };
 }
 
@@ -262,7 +262,7 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
   };
 }
 
-function legacyTemplateCount(document: ProseMirrorNode): number | null {
+function selectedTemplateNodeCount(document: ProseMirrorNode): number | null {
   let count = 0;
   for (let index = 0; index < document.childCount; index++) {
     const nodeName = document.child(index).type.name;
@@ -318,7 +318,7 @@ export function editorDocToMessageDocument(
   const parts: UserMessagePart[] = [];
   const attachments = context.attachments ?? [];
   let filesAppended = false;
-  const documentTemplateCount = legacyTemplateCount(document);
+  const documentTemplateCount = selectedTemplateNodeCount(document);
   if (documentTemplateCount === null) {
     return null;
   }
@@ -327,7 +327,7 @@ export function editorDocToMessageDocument(
   for (let index = 0; index < document.childCount; index++) {
     const node = document.child(index);
     if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
-      const part = legacyTemplatePart(node, context.generationTemplate);
+      const part = selectedTemplatePart(node, context.selectedTemplate);
       if (!part) {
         return null;
       }
@@ -360,7 +360,7 @@ export function editorDocToMessageDocument(
   if (!filesAppended) {
     appendFileParts(parts, attachments);
   }
-  if (documentTemplateCount === 0 && context.generationTemplate !== undefined) {
+  if (documentTemplateCount === 0 && context.selectedTemplate !== undefined) {
     return null;
   }
 

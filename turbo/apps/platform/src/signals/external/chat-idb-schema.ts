@@ -23,7 +23,11 @@ const CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION = 26;
 // Morning Brief identity now lives in userMessage. Rebuild event caches whose
 // documents predate the dedicated non-content part.
 const CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION = 27;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION;
+// Canonical ChatEvent reads no longer accept retired goal-marker or follow-up
+// payload shapes. Rebuild all event-bearing stores so v27 cache entries cannot
+// re-enter the v28 fold.
+const CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION = 28;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -120,6 +124,11 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
 
   if (oldVersion < CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }

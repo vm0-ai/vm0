@@ -4,9 +4,9 @@ import {
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatRecommendedFollowup } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatEvents,
-  type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -413,9 +413,7 @@ export function generateChatNotificationSummary(
   );
 }
 
-function parseRecommendedFollowups(
-  text: string,
-): ChatEventRecommendedFollowups {
+function parseRecommendedFollowups(text: string): ChatRecommendedFollowup[] {
   const unfenced = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -456,7 +454,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
-): Promise<ChatEventRecommendedFollowups> {
+): Promise<ChatRecommendedFollowup[]> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
     return [];
@@ -504,7 +502,7 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
-}): Promise<ChatEventRecommendedFollowups> {
+}): Promise<ChatRecommendedFollowup[]> {
   return (
     (await tapError(generateRecommendedFollowups(args.messages), (err) => {
       log.warn("Recommended follow-up generation failed", {

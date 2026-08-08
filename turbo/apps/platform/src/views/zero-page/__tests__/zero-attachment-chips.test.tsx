@@ -884,7 +884,6 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/photo/photo.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -892,13 +891,12 @@ describe("zero attachment chips", () => {
           id: "msg-image-then-text",
           role: "user",
           content: "Review this image",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-photo",
-              filename: "photo.png",
+              type: "file",
+              fileId: "attachment-photo",
+              filenameSnapshot: "photo.png",
               contentType: "image/png",
-              size: 2048,
-              url: imageUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -923,7 +921,6 @@ describe("zero attachment chips", () => {
   });
 
   it("keeps the user image preview frame stable while the image loads", async () => {
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/stable-photo/photo.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -931,13 +928,12 @@ describe("zero attachment chips", () => {
           id: "msg-stable-photo",
           role: "user",
           content: "Review this image",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-stable-photo",
-              filename: "photo.png",
+              type: "file",
+              fileId: "attachment-stable-photo",
+              filenameSnapshot: "photo.png",
               contentType: "image/png",
-              size: 2048,
-              url: imageUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1002,22 +998,6 @@ describe("zero attachment chips", () => {
               },
             ],
           },
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "source-notes.md",
-              contentType: "text/markdown",
-              size: 256,
-              url: `/api/zero/web/download-file?file_id=${assetId}`,
-              assetRef: {
-                id: assetId,
-                classification: "input",
-                access: "private",
-                materialization: { status: "ready" },
-                provenance: { provider: "slack" },
-              },
-            },
-          ],
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -1034,7 +1014,7 @@ describe("zero attachment chips", () => {
     expect(screen.getByText("Review the source notes")).toBeInTheDocument();
   });
 
-  it("resolves a file part without reading legacy materialization projection", async () => {
+  it("resolves a file part from its canonical identity", async () => {
     const assetId = "a0000000-0000-4000-a000-000000000052";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -1060,29 +1040,6 @@ describe("zero attachment chips", () => {
               },
             ],
           },
-          attachFiles: [
-            {
-              id: assetId,
-              filename: "expired.pdf",
-              contentType: "application/pdf",
-              size: 512,
-              url: `/api/zero/web/download-file?file_id=${assetId}`,
-              assetRef: {
-                id: assetId,
-                classification: "input",
-                access: "private",
-                materialization: {
-                  status: "failed",
-                  error: {
-                    code: "download-failed",
-                    message: "Slack no longer has this file",
-                    retryable: false,
-                  },
-                },
-                provenance: { provider: "slack" },
-              },
-            },
-          ],
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -1097,8 +1054,6 @@ describe("zero attachment chips", () => {
   });
 
   it("renders canonical user video attachments at the same size as image attachments", async () => {
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
-    const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -1106,20 +1061,18 @@ describe("zero attachment chips", () => {
           id: "msg-image-video-attachments",
           role: "user",
           content: "this is the screencast",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-photo",
-              filename: "photo.png",
+              type: "file",
+              fileId: "attachment-photo",
+              filenameSnapshot: "photo.png",
               contentType: "image/png",
-              size: 2048,
-              url: imageUrl,
             },
             {
-              id: "attachment-screencast",
-              filename: "screencast.mp4",
+              type: "file",
+              fileId: "attachment-screencast",
+              filenameSnapshot: "screencast.mp4",
               contentType: "video/mp4",
-              size: 4096,
-              url: videoUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1152,8 +1105,6 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user attachments above the text bubble with media and file chips on separate rows", async () => {
-    const videoUrl = "https://cdn.vm7.io/artifacts/test/elevated/clip.mp4";
-    const docUrl = "https://cdn.vm7.io/artifacts/test/elevated/README.md";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       chatEvents: [
@@ -1161,20 +1112,18 @@ describe("zero attachment chips", () => {
           id: "msg-video-then-text",
           role: "user",
           content: "Watch this clip",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-clip",
-              filename: "clip.mp4",
+              type: "file",
+              fileId: "attachment-clip",
+              filenameSnapshot: "clip.mp4",
               contentType: "video/mp4",
-              size: 4096,
-              url: videoUrl,
             },
             {
-              id: "attachment-readme",
-              filename: "README.md",
+              type: "file",
+              fileId: "attachment-readme",
+              filenameSnapshot: "README.md",
               contentType: "text/markdown",
-              size: 512,
-              url: docUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1215,9 +1164,6 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical audio, video, and document attachments", async () => {
-    const audioUrl = canonicalUserMessageFileUrl("attachment-audio");
-    const videoUrl = canonicalUserMessageFileUrl("attachment-video");
-    const jsonUrl = canonicalUserMessageFileUrl("attachment-json");
     context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
         "attachment-json",
@@ -1233,27 +1179,24 @@ describe("zero attachment chips", () => {
           id: "msg-attachments",
           role: "user",
           content: "Review these attachments",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-audio",
-              filename: "briefing.mp3",
+              type: "file",
+              fileId: "attachment-audio",
+              filenameSnapshot: "briefing.mp3",
               contentType: "audio/mpeg",
-              size: 1024,
-              url: audioUrl,
             },
             {
-              id: "attachment-video",
-              filename: "demo.mp4",
+              type: "file",
+              fileId: "attachment-video",
+              filenameSnapshot: "demo.mp4",
               contentType: "video/mp4",
-              size: 2048,
-              url: videoUrl,
             },
             {
-              id: "attachment-json",
-              filename: "status.json",
+              type: "file",
+              fileId: "attachment-json",
+              filenameSnapshot: "status.json",
               contentType: "application/json",
-              size: 32,
-              url: jsonUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1320,9 +1263,6 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical csv, pdf, and html document previews", async () => {
-    const csvUrl = canonicalUserMessageFileUrl("attachment-csv");
-    const pdfUrl = canonicalUserMessageFileUrl("attachment-pdf");
-    const htmlUrl = canonicalUserMessageFileUrl("attachment-html");
     context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
         "attachment-csv",
@@ -1338,27 +1278,24 @@ describe("zero attachment chips", () => {
           id: "msg-document-previews",
           role: "user",
           content: "Review these document previews",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-csv",
-              filename: "launch-metrics.csv",
+              type: "file",
+              fileId: "attachment-csv",
+              filenameSnapshot: "launch-metrics.csv",
               contentType: "text/csv",
-              size: 38,
-              url: csvUrl,
             },
             {
-              id: "attachment-pdf",
-              filename: "launch-plan.pdf",
+              type: "file",
+              fileId: "attachment-pdf",
+              filenameSnapshot: "launch-plan.pdf",
               contentType: "application/pdf",
-              size: 2048,
-              url: pdfUrl,
             },
             {
-              id: "attachment-html",
-              filename: "launch-site.html",
+              type: "file",
+              fileId: "attachment-html",
+              filenameSnapshot: "launch-site.html",
               contentType: "text/html",
-              size: 4096,
-              url: htmlUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -1412,7 +1349,10 @@ describe("zero attachment chips", () => {
       "overflow-hidden",
     );
     expect(documentFrame).toHaveClass("h-full", "min-h-0");
-    expect(iframe).toHaveAttribute("src", `${pdfUrl}#navpanes=0`);
+    expect(iframe).toHaveAttribute(
+      "src",
+      `${canonicalUserMessageFileUrl("attachment-pdf")}#navpanes=0`,
+    );
     expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
 
     click(screen.getByLabelText("Close"));
@@ -1483,27 +1423,24 @@ describe("zero attachment chips", () => {
           id: "msg-image-navigation",
           role: "user",
           content: "Review these images",
-          attachFiles: [
+          fileParts: [
             {
-              id: "artifact-first-image",
-              filename: "first.png",
+              type: "file",
+              fileId: "artifact-first-image",
+              filenameSnapshot: "first.png",
               contentType: "image/png",
-              size: 128,
-              url: firstImageUrl,
             },
             {
-              id: "artifact-notes",
-              filename: "notes.md",
+              type: "file",
+              fileId: "artifact-notes",
+              filenameSnapshot: "notes.md",
               contentType: "text/markdown",
-              size: 64,
-              url: notesUrl,
             },
             {
-              id: "artifact-second-image",
-              filename: "second.png",
+              type: "file",
+              fileId: "artifact-second-image",
+              filenameSnapshot: "second.png",
               contentType: "image/png",
-              size: 256,
-              url: secondImageUrl,
             },
           ],
           runId: "run-image-navigation",
@@ -1946,8 +1883,6 @@ describe("zero attachment chips", () => {
 
   it("waits for artifacts before showing user message image navigation", async () => {
     const user = userEvent.setup({ delay: null });
-    const firstImageUrl = canonicalUserMessageFileUrl("user-first-image");
-    const secondImageUrl = canonicalUserMessageFileUrl("user-second-image");
     // The images the user attached are NOT part of the thread's run artifacts;
     // they resolve from the user artifacts bucket. Navigation must still work.
     const artifactsRequested = context.mocks.deferred<void>();
@@ -1964,20 +1899,18 @@ describe("zero attachment chips", () => {
           id: "msg-user-image-navigation",
           role: "user",
           content: "Here are my photos",
-          attachFiles: [
+          fileParts: [
             {
-              id: "user-first-image",
-              filename: "first.png",
+              type: "file",
+              fileId: "user-first-image",
+              filenameSnapshot: "first.png",
               contentType: "image/png",
-              size: 128,
-              url: firstImageUrl,
             },
             {
-              id: "user-second-image",
-              filename: "second.png",
+              type: "file",
+              fileId: "user-second-image",
+              filenameSnapshot: "second.png",
               contentType: "image/png",
-              size: 256,
-              url: secondImageUrl,
             },
           ],
           runId: "run-user-image-navigation",
@@ -2069,20 +2002,18 @@ describe("zero attachment chips", () => {
           id: "msg-fullscreen-navigation",
           role: "user",
           content: "Review these images",
-          attachFiles: [
+          fileParts: [
             {
-              id: "artifact-fullscreen-first-image",
-              filename: "first.png",
+              type: "file",
+              fileId: "artifact-fullscreen-first-image",
+              filenameSnapshot: "first.png",
               contentType: "image/png",
-              size: 128,
-              url: firstImageUrl,
             },
             {
-              id: "artifact-fullscreen-second-image",
-              filename: "second.png",
+              type: "file",
+              fileId: "artifact-fullscreen-second-image",
+              filenameSnapshot: "second.png",
               contentType: "image/png",
-              size: 256,
-              url: secondImageUrl,
             },
           ],
           runId: "run-fullscreen-navigation",
@@ -2836,8 +2767,6 @@ describe("zero attachment chips", () => {
 
   it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
-    const transcriptUrl = canonicalUserMessageFileUrl("attachment-text");
-    const archiveUrl = canonicalUserMessageFileUrl("attachment-file");
     context.mocks.browser.clipboardWriteText();
     context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
       const fileId = new URL(request.url).searchParams.get("file_id");
@@ -2860,27 +2789,24 @@ describe("zero attachment chips", () => {
           id: "msg-text-previews",
           role: "user",
           content: "Review these text attachments",
-          attachFiles: [
+          fileParts: [
             {
-              id: "attachment-markdown",
-              filename: "release-notes.md",
+              type: "file",
+              fileId: "attachment-markdown",
+              filenameSnapshot: "release-notes.md",
               contentType: "text/markdown",
-              size: 42,
-              url: releaseNotesUrl,
             },
             {
-              id: "attachment-text",
-              filename: "transcript.txt",
+              type: "file",
+              fileId: "attachment-text",
+              filenameSnapshot: "transcript.txt",
               contentType: "text/plain",
-              size: 33,
-              url: transcriptUrl,
             },
             {
-              id: "attachment-file",
-              filename: "archive.bin",
+              type: "file",
+              fileId: "attachment-file",
+              filenameSnapshot: "archive.bin",
               contentType: "application/octet-stream",
-              size: 4096,
-              url: archiveUrl,
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",

@@ -1,4 +1,3 @@
-import type { ChatEventGoalEvent } from "@vm0/db/schema/chat-event";
 import { CHAT_GOAL_MARKER_EVENT_TYPES } from "@vm0/api-contracts/contracts/chat-events";
 import { not, type SQL } from "drizzle-orm";
 
@@ -11,43 +10,31 @@ type DbTransaction = Tx;
 
 /**
  * Goal state is published into the chat thread as an assistant UI projection.
- * thread_goals remains authoritative for runtime state and mutations. This
- * Stage 3 writer intentionally keeps the legacy goal.changed + goal_event wire
- * shape until the Stage 5 content-marker cutover.
+ * thread_goals remains authoritative for runtime state and mutations.
  */
-export async function appendGoalEventMarker(
+export async function appendGoalOpenMarker(
   tx: DbTransaction,
   args: {
     readonly chatThreadId: string;
-    readonly event: ChatEventGoalEvent;
+    readonly objectiveBrief: string;
   },
 ): Promise<void> {
   await insertChatEvent(tx, {
     chatThreadId: args.chatThreadId,
-    eventType: "goal.changed",
-    content: null,
-    runId: null,
-    runEventId: null,
-    goalEvent: args.event,
+    eventType: "goal.open",
+    content: nonEmptyGoalObjectiveBrief(args.objectiveBrief),
   });
 }
 
-export function activeGoalEvent(objectiveBrief: string): ChatEventGoalEvent {
-  return {
-    type: "state",
-    status: "active",
-    objectiveBrief: nonEmptyGoalObjectiveBrief(objectiveBrief),
-  };
-}
-
-export function hiddenGoalStateEvent(
-  status: "paused" | "blocked" | "complete",
-): ChatEventGoalEvent {
-  return { type: "state", status };
-}
-
-export function clearedGoalEvent(): ChatEventGoalEvent {
-  return { type: "cleared" };
+export async function appendGoalCloseMarker(
+  tx: DbTransaction,
+  args: { readonly chatThreadId: string },
+): Promise<void> {
+  await insertChatEvent(tx, {
+    chatThreadId: args.chatThreadId,
+    eventType: "goal.close",
+    content: null,
+  });
 }
 
 /**

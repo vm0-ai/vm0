@@ -15,7 +15,7 @@ import {
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadsContract,
-  type AttachFile,
+  resolveChatEventRecommendedFollowups,
   type ChatRunOptionsRequest,
   type ChatThreadEvent,
   type GenerationTemplateRequest,
@@ -83,7 +83,6 @@ import {
   createUnassociatedThreadBoundZeroRunFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
-  clearLegacyChatEventInputColumnsFixture,
   deleteAgentRunFixture,
   deleteBddVm0ApiKey,
   holdChatEventFixture,
@@ -97,7 +96,6 @@ import {
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
-  rewriteRecommendedFollowupsAsContentFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
@@ -312,10 +310,23 @@ interface ChatRunSendBody {
   readonly clientEventId?: string;
   readonly model?: SupportedRunModel;
   readonly runOptions?: ChatRunOptionsRequest;
-  readonly generationTemplate?: GenerationTemplateRequest;
-  readonly attachFiles?: readonly AttachFile[];
+  readonly template?: GenerationTemplateRequest;
   readonly computerUseHostId?: string | null;
   readonly revokesEventId?: string;
+}
+
+function userMessageWithTemplate(
+  prompt: string,
+  template: GenerationTemplateRequest,
+): UserMessageInputDocument {
+  const titleSnapshot = `${template.type[0]?.toUpperCase()}${template.type.slice(1)} template`;
+  return {
+    version: 1,
+    parts: [
+      { type: "text", text: prompt },
+      { type: "template", titleSnapshot, template },
+    ],
+  };
 }
 
 const openRouterBodySchema = z.object({
@@ -359,8 +370,12 @@ async function sendChatRun(
   actor: ApiTestUser,
   body: ChatRunSendBody,
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
+  const { template, ...canonicalBody } = body;
   const requestBody = {
-    ...body,
+    ...canonicalBody,
+    ...(template === undefined
+      ? {}
+      : { userMessage: userMessageWithTemplate(body.prompt, template) }),
     clientEventId: body.clientEventId ?? randomUUID(),
   };
   const sent = await chat.requestSendEvent(actor, requestBody, [201]);
@@ -809,7 +824,7 @@ function recommendedFollowupEvents(
     return (
       message.eventType === "output.followups" &&
       message.runId === runId &&
-      (message.recommendedFollowups?.length ?? 0) > 0
+      resolveChatEventRecommendedFollowups(message).length > 0
     );
   });
 }
@@ -1532,7 +1547,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
     if (firstPending.status !== 201 || secondPending.status !== 201) {
       throw new Error("Expected both pending sends to be accepted");
     }
-    await clearLegacyChatEventInputColumnsFixture(secondPendingEventId);
     expect(firstPending.body.runId).toBeNull();
     expect(secondPending.body.runId).toBeNull();
     await expect(
@@ -2180,7 +2194,10 @@ describe("CHAT-02: org queue markers", () => {
         agentId,
         threadId: queuedThread,
         prompt: "template queued deck",
-        generationTemplate,
+        userMessage: userMessageWithTemplate(
+          "template queued deck",
+          generationTemplate,
+        ),
         clientEventId: templateMessageId,
       },
       [201],
@@ -2195,8 +2212,12 @@ describe("CHAT-02: org queue markers", () => {
         );
       },
     );
-    expect(templateMessage?.generationTemplate).toStrictEqual(
-      generationTemplate,
+    expect(templateMessage).not.toHaveProperty("generationTemplate");
+    expect(templateMessage?.userMessage?.parts).toContainEqual(
+      expect.objectContaining({
+        type: "template",
+        template: generationTemplate,
+      }),
     );
 
     const queueBefore = await api.readRunQueue(actor);
@@ -5287,7 +5308,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       first.threadId,
       (items) => {
         return recommendedFollowupEvents(items, first.runId).some((message) => {
-          return (message.recommendedFollowups?.length ?? 0) > 0;
+          return resolveChatEventRecommendedFollowups(message).length > 0;
         });
       },
     );
@@ -5295,24 +5316,16 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       afterFirst.events,
       first.runId,
     ).find((message) => {
-      return (message.recommendedFollowups?.length ?? 0) > 0;
+      return resolveChatEventRecommendedFollowups(message).length > 0;
     });
     if (!recommender) {
       throw new Error("Expected a recommended follow-ups message");
     }
     expect(recommender.eventType).toBe("output.followups");
-    const futureFollowups = recommender.recommendedFollowups;
-    if (!futureFollowups) {
-      throw new Error("Expected legacy follow-ups before fixture rewrite");
-    }
-    const futureFollowupContent = JSON.stringify({
-      version: 1,
-      followups: futureFollowups,
-    });
-    await rewriteRecommendedFollowupsAsContentFixture({
-      eventId: recommender.id,
-      content: futureFollowupContent,
-    });
+    const futureFollowups = resolveChatEventRecommendedFollowups(recommender);
+    expect(futureFollowups.length).toBeGreaterThan(0);
+    const futureFollowupContent = recommender.content;
+    expect(futureFollowupContent).not.toBeNull();
 
     const futureEvents = await chat.listThreadEvents(actor, first.threadId);
     expect(futureEvents.events).toContainEqual(
@@ -5460,7 +5473,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       (events) => {
         return recommendedFollowupEvents(events, completed.runId).some(
           (event) => {
-            return (event.recommendedFollowups?.length ?? 0) > 0;
+            return resolveChatEventRecommendedFollowups(event).length > 0;
           },
         );
       },
@@ -5469,7 +5482,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       completedEvents.events,
       completed.runId,
     ).find((event) => {
-      return (event.recommendedFollowups?.length ?? 0) > 0;
+      return resolveChatEventRecommendedFollowups(event).length > 0;
     });
     if (!recommender) {
       throw new Error("Expected a recommended follow-ups event");
@@ -5786,7 +5799,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         return item.eventType === "input.prompt" && item.runId === sent.runId;
       },
     );
-    expect(message?.generationTemplate).toStrictEqual(illustrationTemplate);
+    expect(message).not.toHaveProperty("generationTemplate");
     expect(message).toMatchObject({
       content: null,
       userMessage: {
@@ -5869,7 +5882,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 60_000);
 
-  it("normalizes the legacy generationTemplate field into a canonical part", async () => {
+  it("uses only the canonical template part", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -5884,7 +5897,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const sent = await sendChatRun(actor, {
       agentId,
       prompt: "draw a dog",
-      generationTemplate,
+      template: generationTemplate,
     });
 
     const run = await api.readRun(actor, sent.runId);
@@ -5898,8 +5911,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     const message = userMessages(messages.events).find((event) => {
       return event.eventType === "input.prompt" && event.runId === sent.runId;
     });
+    expect(message).not.toHaveProperty("generationTemplate");
     expect(message).toMatchObject({
-      generationTemplate,
       userMessage: {
         version: 1,
         parts: expect.arrayContaining([
@@ -5925,7 +5938,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const presentation = await sendChatRun(actor, {
       agentId,
       prompt: "make a launch deck",
-      generationTemplate: {
+      template: {
         type: "presentation",
         selection: {
           colorSystemId: template.colorSystemId,
@@ -5971,7 +5984,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const video = await sendChatRun(actor, {
       agentId,
       prompt: "make a product video",
-      generationTemplate: {
+      template: {
         type: "video",
         selection: { stylePresetId: videoTemplate.id },
       },
@@ -5991,7 +6004,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const videoWithOptions = await sendChatRun(actor, {
       agentId,
       prompt: "make a vertical product video",
-      generationTemplate: {
+      template: {
         type: "video",
         selection: {
           stylePresetId: videoTemplate.id,
@@ -6028,7 +6041,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const avatar = await sendChatRun(actor, {
       agentId,
       prompt: "make a presenter video",
-      generationTemplate: {
+      template: {
         type: "video",
         selection: {
           stylePresetId: avatarTemplateStylePresetId(avatarId),
@@ -6060,7 +6073,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const website = await sendChatRun(actor, {
       agentId,
       prompt: "make a campaign landing page",
-      generationTemplate: {
+      template: {
         type: "website",
         selection: { websiteTemplateId: websiteTemplate.id },
       },
@@ -6097,7 +6110,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const defaultR2Run = await sendChatRun(actor, {
       agentId,
       prompt: "draw a flower shop from the default R2 source",
-      generationTemplate: {
+      template: {
         type: "illustration",
         selection: { illustrationStyleId: style.illustrationStyleId },
       },
@@ -6123,7 +6136,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "draw a fox",
-      generationTemplate: {
+      template: {
         type: "illustration",
         selection: { illustrationStyleId: style.illustrationStyleId },
       },
@@ -6185,7 +6198,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       agentId,
       threadId: first.threadId,
       prompt: "now make a video",
-      generationTemplate: {
+      template: {
         type: "video",
         selection: { stylePresetId: videoTemplate.id },
       },
@@ -6233,7 +6246,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const illustration = await sendChatRun(actor, {
       agentId,
       prompt: "draw a labeled inbox",
-      generationTemplate: {
+      template: {
         type: "illustration",
         selection: { illustrationStyleId: style.illustrationStyleId },
       },
@@ -6248,7 +6261,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       agentId,
       threadId: illustration.threadId,
       prompt: "create the workflow version",
-      generationTemplate: {
+      template: {
         type: "workflow",
         selection: { workflowTemplateId: workflowTemplate.id },
       },
@@ -6303,11 +6316,11 @@ describe("CHAT-02: generation templates and attachments", () => {
     }
 
     const arms: readonly {
-      readonly generationTemplate: GenerationTemplateRequest;
+      readonly template: GenerationTemplateRequest;
       readonly message: string;
     }[] = [
       {
-        generationTemplate: {
+        template: {
           type: "presentation",
           selection: {
             templateId: "template:html-ppt-missing",
@@ -6318,7 +6331,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       {
         // A runbook with an unknown color system is still rejected by the
         // runbook flow.
-        generationTemplate: {
+        template: {
           type: "presentation",
           selection: {
             colorSystemId: "color-system:missing",
@@ -6330,7 +6343,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       {
         // A runbook id without a package is unknown; presentations are
         // runbook-only, so there is no separate "wrong target type" path.
-        generationTemplate: {
+        template: {
           type: "presentation",
           selection: {
             templateId: "template:html-ppt-missing",
@@ -6339,21 +6352,21 @@ describe("CHAT-02: generation templates and attachments", () => {
         message: "Unknown generation template",
       },
       {
-        generationTemplate: {
+        template: {
           type: "video",
           selection: { stylePresetId: "video-style:missing" },
         },
         message: "Unknown video template",
       },
       {
-        generationTemplate: {
+        template: {
           type: "workflow",
           selection: { workflowTemplateId: "workflow-template:missing" },
         },
         message: "Unknown workflow template",
       },
       {
-        generationTemplate: {
+        template: {
           type: "website",
           selection: { websiteTemplateId: "website-template:missing" },
         },
@@ -6366,7 +6379,10 @@ describe("CHAT-02: generation templates and attachments", () => {
         {
           agentId: agent.agentId,
           prompt: "make something from a bad template",
-          generationTemplate: arm.generationTemplate,
+          userMessage: userMessageWithTemplate(
+            "make something from a bad template",
+            arm.template,
+          ),
         },
         [400],
       );
@@ -6419,25 +6435,25 @@ describe("CHAT-02: generation templates and attachments", () => {
         return userMessages(items).some((message) => {
           return (
             message.eventType === "input.prompt" &&
-            (message.attachFiles?.length ?? 0) > 0
+            message.userMessage?.parts.some((part) => {
+              return part.type === "file";
+            }) === true
           );
         });
       },
     );
-    const attached = userMessages(messages.events).find((message) => {
+    const attachedMessage = userMessages(messages.events).find((message) => {
       return message.eventType === "input.prompt";
-    })?.attachFiles?.[0];
+    });
+    expect(attachedMessage).not.toHaveProperty("attachFiles");
+    const attached = attachedMessage?.userMessage?.parts.find((part) => {
+      return part.type === "file";
+    });
     expect(attached).toMatchObject({
-      id: fileId,
-      filename,
+      type: "file",
+      fileId,
+      filenameSnapshot: filename,
       contentType: "image/png",
-      size: 42,
-      url: expect.stringContaining(`${fileId}/diagram_final_100_.png`),
-      assetRef: {
-        classification: "input",
-        access: "private",
-        materialization: { status: "ready" },
-      },
     });
     await cancelChatRun(actor, run.runId);
   }, 60_000);
@@ -6490,7 +6506,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-    await clearLegacyChatEventInputColumnsFixture(queuedId);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -6584,7 +6599,6 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-    await clearLegacyChatEventInputColumnsFixture(queuedId);
     // Completing the anchor run promotes the queued message into a fresh
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
@@ -6613,22 +6627,23 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     }
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
-    expect(promoted.attachFiles).toMatchObject([
-      {
-        id: fileId,
-        filename: "notes.txt",
-        contentType: "text/plain",
-        size: 12,
-        url: expect.stringContaining(`${fileId}/notes.txt`),
-      },
-      {
-        id: secondFileId,
-        filename: "details.json",
-        contentType: "application/json",
-        size: 24,
-        url: expect.stringContaining(`${secondFileId}/details.json`),
-      },
-    ]);
+    expect(promoted).not.toHaveProperty("attachFiles");
+    expect(promoted.userMessage?.parts).toStrictEqual(
+      expect.arrayContaining([
+        {
+          type: "file",
+          fileId,
+          filenameSnapshot: "notes.txt",
+          contentType: "text/plain",
+        },
+        {
+          type: "file",
+          fileId: secondFileId,
+          filenameSnapshot: "details.json",
+          contentType: "application/json",
+        },
+      ]),
+    );
     const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });
@@ -7740,14 +7755,18 @@ describe("CHAT-02: shared user message queue", () => {
         prompt: "queued real-agent preview run",
         clientEventId: previewMessageId,
         realAgentInPreview: true,
-        attachFiles: [
-          {
-            id: previewFileId,
-            filename: "preview-notes.txt",
-            contentType: "text/plain",
-            size: 18,
-          },
-        ],
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId: previewFileId,
+              filenameSnapshot: "preview-notes.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: "queued real-agent preview run" },
+          ],
+        },
       },
       [201],
     );
