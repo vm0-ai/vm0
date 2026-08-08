@@ -592,6 +592,16 @@ export async function setComputerUseHostAsPreviousApi(
   });
 }
 
+export async function setChatSlackContextAsPreviousApi(
+  context: TestContext,
+  eventId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-chat-slack-context-as-previous-api",
+    event_id: eventId,
+  });
+}
+
 export async function setBrowserTabSnapshotAsPreviousApi(
   context: TestContext,
   args: {

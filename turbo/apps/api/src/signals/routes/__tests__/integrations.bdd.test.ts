@@ -28,6 +28,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import {
   readChatEventAssetRefIds,
+  setChatSlackContextAsPreviousApi,
   readThreadSessionBinding,
 } from "./helpers/runtime-state";
 
@@ -1668,6 +1669,132 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     await flushWaitUntilForTest();
   });
+
+  it("launches a queued Slack context written by the previous API version", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId, botUserId } = await integrations.installSlackWorkspace(
+      actor,
+      {
+        installerSlackUserId: slackUserId,
+      },
+    );
+    const channelId = "C_BDD_PREVIOUS_API_CONTEXT";
+    const threadTs = "2902.000100";
+    const fileBody = "previous API Slack attachment";
+    context.mocks.slack.fetchFile.mockResolvedValue(
+      new Response(fileBody, {
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
+    const openingBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
+      event: {
+        type: "app_mention",
+        user: slackUserId,
+        text: `<@${botUserId}> hold this session open`,
+        ts: threadTs,
+        channel: channelId,
+        channel_type: "channel",
+      },
+    });
+    await integrations.requestSlackEvent(
+      openingBody,
+      integrations.signedSlackIngressHeaders(openingBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const openingRunId = await pollSlackRun(runnerGroup);
+    const openingClaim = await runs.claimRunnerJob(openingRunId);
+
+    // The follow-up queues behind the active run, so its context row can be
+    // downgraded to the shape the previous API wrote before it launches.
+    const queuedBody = JSON.stringify({
+      type: "event_callback",
+      team_id: teamId,
+      event_id: `EvBDD${randomUUID().replace(/-/g, "")}`,
+      event: {
+        type: "app_mention",
+        user: slackUserId,
+        text: `<@${botUserId}> launch from the previous API context`,
+        ts: "2902.000200",
+        thread_ts: threadTs,
+        channel: channelId,
+        channel_type: "channel",
+        files: [
+          {
+            id: "F_PREVIOUS_API",
+            name: "previous-api-notes.txt",
+            mimetype: "text/plain",
+            size: fileBody.length,
+            url_private_download: "https://files.slack.com/F_PREVIOUS_API",
+          },
+        ],
+      },
+    });
+    await integrations.requestSlackEvent(
+      queuedBody,
+      integrations.signedSlackIngressHeaders(queuedBody),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const state = await integrations.readSlackTestState(teamId);
+    const canonicalChatThreadId = state.chat_thread_routes[0]?.chatThreadId;
+    if (!canonicalChatThreadId) {
+      throw new Error("Expected the Slack route to own a chat thread");
+    }
+    const queuedSlackEvent = slackInputMessageByText(
+      (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
+      "launch from the previous API context",
+    );
+    if (!queuedSlackEvent) {
+      throw new Error("Expected the queued Slack input message");
+    }
+    await setChatSlackContextAsPreviousApi(context, queuedSlackEvent.id);
+    await expect(
+      readChatEventContextFixture(queuedSlackEvent.id),
+    ).resolves.toMatchObject({
+      slackBotUserId: null,
+      slackMessageAssets: null,
+    });
+
+    await completeSlackTriggeredRun({
+      runId: openingRunId,
+      sandboxToken: openingClaim.sandboxToken,
+      cliAgentType: openingClaim.cliAgentType,
+      assistantText: "Session held open",
+    });
+    await flushWaitUntilForTest();
+
+    const queuedRunId = await pollSlackRun(runnerGroup);
+    const queuedRun = await runs.readRun(actor, queuedRunId);
+    // The launch still renders: the bot user ID falls back to the workspace
+    // installation, and the un-snapshotted file degrades to its raw Slack block.
+    expect(queuedRun.appendSystemPrompt).toContain(
+      `Your bot user ID: ${botUserId}`,
+    );
+    expect(queuedRun.prompt).toContain(
+      "[Slack file] previous-api-notes.txt (text/plain)\n   [ID] F_PREVIOUS_API",
+    );
+    expect(queuedRun.prompt).not.toContain("[Web file]");
+    const queuedClaim = await runs.claimRunnerJob(queuedRunId);
+    await completeSlackTriggeredRun({
+      runId: queuedRunId,
+      sandboxToken: queuedClaim.sandboxToken,
+      cliAgentType: queuedClaim.cliAgentType,
+      assistantText: "Previous API context answer",
+    });
+    await flushWaitUntilForTest();
+  }, 20_000);
 
   it("keeps queued Web and Slack sends on one canonical session", async () => {
     const actor = bdd.user();

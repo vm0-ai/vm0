@@ -181,6 +181,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     computer_use_host_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("set-chat-slack-context-as-previous-api"),
+    event_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("set-browser-tab-snapshot-as-previous-api"),
     thread_id: z.uuid(),
     tab_urls: z.array(z.string().max(8192)).max(50),

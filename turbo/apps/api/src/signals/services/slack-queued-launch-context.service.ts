@@ -59,10 +59,21 @@ function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   return {
     ...row,
     channelId: row.channelId,
-    // Contexts written before the launch snapshot carry no bot user ID and no
-    // materialized assets. Fall back to the installation for the former; the
-    // latter degrades to the raw Slack file blocks, which is what those runs
-    // rendered before canonical Slack inputs existed.
+    // Rollout fallback for context rows the previous API wrote without the
+    // launch snapshot: bot_user_id and message_assets are null there. The bot
+    // user ID falls back to the workspace installation; the assets degrade to
+    // the raw Slack file blocks those runs rendered before canonical Slack
+    // inputs existed.
+    //
+    // Surface: persisted Slack launch context read by this API. This loader is
+    // only reached while admitting a queued message
+    // (internal-chat-run-callback.service.ts) or steering a live run
+    // (active-input-prompt.service.ts), so the window is bounded by how long a
+    // pre-cutover Slack input event can still sit in the thread queue or in an
+    // active run, not by the ~102 min DB/API skew — historical rows are never
+    // re-read. Remove both branches, the installationBotUserId projection, and
+    // the "previous API version" launch test once no such event can remain;
+    // follow-up: https://github.com/vm0-ai/vm0/issues/25830
     botUserId: row.botUserId ?? row.installationBotUserId,
     conversationContext: row.conversationContext,
     messageText: row.messageText,
