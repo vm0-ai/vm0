@@ -788,6 +788,9 @@ function isS3PreconditionFailedError(error: unknown): boolean {
 /**
  * Upload an object exactly once. An existing key is an idempotent success, so
  * callers can safely retry without changing bytes behind an immutable URL.
+ * `refreshMetadata` drops the create-only precondition so a caller holding the
+ * identical bytes can re-put them to change stored headers such as
+ * Content-Type and Content-Encoding; the content itself stays immutable.
  */
 export function putImmutableS3Object(
   bucket: string,
@@ -800,6 +803,7 @@ export function putImmutableS3Object(
         readonly signal?: AbortSignal;
         readonly metadata?: Readonly<Record<string, string>>;
         readonly contentEncoding?: string;
+        readonly refreshMetadata?: boolean;
       },
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
@@ -815,7 +819,7 @@ export function putImmutableS3Object(
           ContentEncoding: writeOptions?.contentEncoding,
           Metadata: writeOptions?.metadata,
           CacheControl: IMMUTABLE_CACHE_CONTROL,
-          IfNoneMatch: "*",
+          IfNoneMatch: writeOptions?.refreshMetadata === true ? undefined : "*",
         }),
         writeOptions?.signal ? { abortSignal: writeOptions.signal } : undefined,
       ),

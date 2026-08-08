@@ -1215,8 +1215,8 @@ type ChatEventSnapshotFixtureAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
-      | "set-chat-event-snapshot-head-as-v1"
-      | "read-chat-event-snapshot-head";
+      | "read-chat-event-snapshot-head"
+      | "set-chat-event-snapshot-head-version";
   }
 >;
 
@@ -1224,8 +1224,8 @@ function isChatEventSnapshotFixtureAction(
   body: TestRuntimeStateActionBody,
 ): body is ChatEventSnapshotFixtureAction {
   return (
-    body.action === "set-chat-event-snapshot-head-as-v1" ||
-    body.action === "read-chat-event-snapshot-head"
+    body.action === "read-chat-event-snapshot-head" ||
+    body.action === "set-chat-event-snapshot-head-version"
   );
 }
 
@@ -1234,13 +1234,10 @@ async function chatEventSnapshotFixtureActionResponse(
   body: ChatEventSnapshotFixtureAction,
   signal: AbortSignal,
 ) {
-  if (body.action === "set-chat-event-snapshot-head-as-v1") {
-    const [updated] = await db
+  if (body.action === "set-chat-event-snapshot-head-version") {
+    const updated = await db
       .update(chatEventSnapshots)
-      .set({
-        archiveSchemaVersion: 1,
-        objectKey: body.object_key,
-      })
+      .set({ archiveSchemaVersion: body.archive_schema_version })
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, body.thread_id),
@@ -1249,12 +1246,11 @@ async function chatEventSnapshotFixtureActionResponse(
       )
       .returning({ id: chatEventSnapshots.id });
     signal.throwIfAborted();
-    if (!updated) {
-      throw new Error("Expected a chat event snapshot head fixture");
+    if (updated.length === 0) {
+      throw new Error("set-chat-event-snapshot-head-version missing head");
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
-
   const [head] = await db
     .select({
       archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,

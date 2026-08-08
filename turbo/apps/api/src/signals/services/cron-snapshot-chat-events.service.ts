@@ -5,17 +5,12 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
-import {
-  chatEventTypeSchema,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
 import { command, type Computed } from "ccstate";
 import { and, asc, eq, gt, isNotNull, lte, ne, or, sql } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
@@ -48,6 +43,11 @@ interface SnapshotCandidate {
  * snapshot downloads transparently; readers only serve v3 heads.
  */
 export const ARCHIVE_SCHEMA_VERSION = 3;
+/**
+ * The v2 line shape is identical to v3, so v2 parents rebuild without any
+ * per-line migration; the fresh upload alone applies the v3 object encoding.
+ */
+const REWRITABLE_ARCHIVE_SCHEMA_VERSION = 2;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
@@ -60,13 +60,6 @@ const ARCHIVE_CONTENT_ENCODING = "gzip";
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const EVENT_PAGE_SIZE = 1000;
 const OBJECT_KEY_CONTENT_SHA256 = /-([0-9a-f]{64})\.ndjson\.gz$/;
-
-// v1 lines carry retired legacy columns, so this variant strips unknown keys
-// instead of inheriting the current schema's strict mode.
-const archiveLineV1Schema = z.object({
-  ...chatEventRowSchema.shape,
-  eventType: z.string(),
-});
 
 type ArchiveEventRow = Pick<
   typeof chatEvents.$inferSelect,
@@ -104,25 +97,15 @@ function chatEventSnapshotThreadBatchSize(): number {
   return parsed;
 }
 
+function encodeArchiveLine(line: ChatEventRow): Buffer {
+  return Buffer.from(`${JSON.stringify(line)}\n`);
+}
+
 /**
  * One archived chat event, one NDJSON line. Fields are listed explicitly so
  * that a chat_events schema change forces a conscious decision here instead
  * of silently changing the persisted archive shape.
  */
-function canonicalArchiveEventType(eventType: string): ChatEventType {
-  if (eventType === "browser.started") {
-    return "browser.open";
-  }
-  if (eventType === "browser.stopped") {
-    return "browser.close";
-  }
-  return chatEventTypeSchema.parse(eventType);
-}
-
-function encodeArchiveLine(line: ChatEventRow): Buffer {
-  return Buffer.from(`${JSON.stringify(line)}\n`);
-}
-
 export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
   return {
     id: row.id,
@@ -132,7 +115,7 @@ export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
     revokesEventId: row.revokesEventId,
     interruptsRunId: row.interruptsRunId,
     runGroupId: row.runGroupId,
-    eventType: canonicalArchiveEventType(row.eventType),
+    eventType: row.eventType,
     contextType: row.contextType,
     contextId: row.contextId,
     content: row.content,
@@ -166,38 +149,12 @@ function parseArchiveLines(raw: Buffer): readonly unknown[] {
     });
 }
 
-/**
- * Persisted-data migration for active v1/v2 heads, not deployed-version skew.
- * v2 already carries the current line shape (v3 only adds object encoding
- * metadata, applied by the fresh upload). Remove only after every active head
- * is v3; immutable older objects then belong to the separate R2 retention/GC
- * lifecycle.
- */
-function currentArchiveRaw(raw: Buffer, archiveSchemaVersion: number): Buffer {
+function validatedArchiveRaw(raw: Buffer): Buffer {
   const lines = parseArchiveLines(raw);
-  if (
-    archiveSchemaVersion === ARCHIVE_SCHEMA_VERSION ||
-    archiveSchemaVersion === 2
-  ) {
-    for (const line of lines) {
-      chatEventRowSchema.parse(line);
-    }
-    return raw;
+  for (const line of lines) {
+    chatEventRowSchema.parse(line);
   }
-  if (archiveSchemaVersion !== 1) {
-    throw new Error(
-      `unsupported chat event snapshot schema version: ${archiveSchemaVersion}`,
-    );
-  }
-  return Buffer.concat(
-    lines.map((line) => {
-      const parsed = archiveLineV1Schema.parse(line);
-      return encodeArchiveLine({
-        ...parsed,
-        eventType: canonicalArchiveEventType(parsed.eventType),
-      });
-    }),
-  );
+  return raw;
 }
 
 function sha256Hex(buffer: Buffer): string {
@@ -338,6 +295,15 @@ async function archiveThread(
 ): Promise<number | null> {
   const tail = await readTailEvents(db, candidate);
   signal.throwIfAborted();
+  if (
+    candidate.headId !== null &&
+    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION &&
+    candidate.headArchiveSchemaVersion !== REWRITABLE_ARCHIVE_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      `unsupported chat event snapshot schema version: ${candidate.headArchiveSchemaVersion}`,
+    );
+  }
   const needsSchemaUpgrade =
     candidate.headId !== null &&
     candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION;
@@ -350,19 +316,15 @@ async function archiveThread(
   // query that range. Re-reading the parent also re-verifies its hash.
   let parentRaw: Buffer = Buffer.alloc(0);
   if (candidate.headId !== null) {
-    if (
-      candidate.headObjectKey === null ||
-      candidate.headArchiveSchemaVersion === null
-    ) {
+    if (candidate.headObjectKey === null) {
       throw new Error("chat event snapshot head metadata is incomplete");
     }
     const parentCompressed = await get(
       downloadS3Buffer(bucket, candidate.headObjectKey),
     );
     signal.throwIfAborted();
-    parentRaw = currentArchiveRaw(
+    parentRaw = validatedArchiveRaw(
       verifiedArchiveRaw(candidate.headObjectKey, parentCompressed),
-      candidate.headArchiveSchemaVersion,
     );
   }
 
@@ -372,13 +334,32 @@ async function archiveThread(
     tail.lastSeqId,
     sha256Hex(compressed),
   );
+  // A v2 head with no tail rebuilds to byte-identical content, so the key
+  // matches the current head. Refresh the stored object headers in place and
+  // stamp the existing head row instead of publishing a duplicate key.
+  const isMetadataOnlyRewrite = objectKey === candidate.headObjectKey;
   await get(
     putImmutableS3Object(bucket, objectKey, compressed, ARCHIVE_CONTENT_TYPE, {
       signal,
       contentEncoding: ARCHIVE_CONTENT_ENCODING,
+      refreshMetadata: isMetadataOnlyRewrite,
     }),
   );
   signal.throwIfAborted();
+
+  if (isMetadataOnlyRewrite && candidate.headId !== null) {
+    const stamped = await db
+      .update(chatEventSnapshots)
+      .set({ archiveSchemaVersion: ARCHIVE_SCHEMA_VERSION })
+      .where(
+        and(
+          eq(chatEventSnapshots.id, candidate.headId),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    return stamped.length === 0 ? null : tail.count;
+  }
 
   // A deleted thread (foreign key) or a concurrent writer that already
   // published this thread's next head (unique head/object key) are expected

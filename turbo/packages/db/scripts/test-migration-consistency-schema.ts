@@ -4667,6 +4667,224 @@ async function validateChatEventContractionPreparation(): Promise<void> {
   }
 }
 
+const CHAT_EVENT_CONTRACTION_FINALIZE_PREVIOUS_MIGRATION =
+  "0863_prepare_chat_event_contraction";
+const CHAT_EVENT_CONTRACTION_FINALIZE_MIGRATION =
+  "0864_finalize_chat_event_contraction";
+
+async function validateChatEventContractionFinalization(): Promise<void> {
+  console.log("=== Validate final chat-event contraction ===\n");
+  const testDb = "migration_chat_event_contraction_finalize_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000086401",
+    threadId: "00000000-0000-4000-8000-000000086402",
+    retainedEventId: "00000000-0000-4000-8000-000000086403",
+    canonicalGoalId: "00000000-0000-4000-8000-000000086404",
+    currentInsertId: "00000000-0000-4000-8000-000000086405",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CHAT_EVENT_CONTRACTION_FINALIZE_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'finalize-contract-user', 'finalize-contract', 'finalize-contract-org')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" (
+            "id", "org_id", "owner", "name", "visibility"
+          ) VALUES (
+            $1,
+            'finalize-contract-org',
+            'finalize-contract-user',
+            'finalize-contract',
+            'private'
+          )
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id", "user_id", "agent_compose_id", "last_chat_event_seq_id"
+          ) VALUES ($1, 'finalize-contract-user', $2, 4)
+        `,
+        [fixture.threadId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "content",
+            "active_input_sequence",
+            "goal_event",
+            "attach_files",
+            "generation_template",
+            "recommended_followups",
+            "seq_id"
+          ) VALUES (
+            $1,
+            $2,
+            'output.message',
+            'Canonical output survives',
+            7,
+            '{"retired":true}'::jsonb,
+            '[]'::jsonb,
+            '{"retired":true}'::jsonb,
+            '[]'::jsonb,
+            1
+          )
+        `,
+        [fixture.retainedEventId, fixture.threadId],
+      );
+
+      await applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_CONTRACTION_FINALIZE_MIGRATION,
+      );
+
+      const retainedRows = await client.query<{
+        row: Record<string, unknown>;
+      }>(
+        `
+          SELECT to_jsonb("event") AS "row"
+          FROM "chat_events" AS "event"
+          WHERE "id" = $1
+        `,
+        [fixture.retainedEventId],
+      );
+      const retainedRow = retainedRows.rows[0]?.row;
+      assert.ok(retainedRow);
+      assert.equal(retainedRow.content, "Canonical output survives");
+      assert.deepEqual(Object.keys(retainedRow).sort(), [
+        "chat_thread_id",
+        "content",
+        "context_id",
+        "context_type",
+        "created_at",
+        "error",
+        "event_type",
+        "id",
+        "interrupts_run_id",
+        "revokes_event_id",
+        "run_event_id",
+        "run_event_sequence_number",
+        "run_group_id",
+        "run_id",
+        "seq_id",
+        "thinking",
+        "usage_payload",
+        "user_message",
+      ]);
+
+      const finalCatalog = await client.query<{
+        columnNames: string[];
+        retiredIndex: string | null;
+      }>(`
+        SELECT
+          to_jsonb(ARRAY(
+            SELECT "column_name"
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = 'public'
+              AND "table_name" = 'chat_events'
+            ORDER BY "column_name"
+          )) AS "columnNames",
+          to_regclass(
+            'public.chat_events_run_active_input_seq_unique'
+          )::text AS "retiredIndex"
+      `);
+      assert.deepEqual(finalCatalog.rows, [
+        {
+          columnNames: [
+            "chat_thread_id",
+            "content",
+            "context_id",
+            "context_type",
+            "created_at",
+            "error",
+            "event_type",
+            "id",
+            "interrupts_run_id",
+            "revokes_event_id",
+            "run_event_id",
+            "run_event_sequence_number",
+            "run_group_id",
+            "run_id",
+            "seq_id",
+            "thinking",
+            "usage_payload",
+            "user_message",
+          ],
+          retiredIndex: null,
+        },
+      ]);
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "content", "seq_id"
+          ) VALUES ($1, $2, 'goal.open', 'Canonical objective', 2)
+        `,
+        [fixture.canonicalGoalId, fixture.threadId],
+      );
+      await assert.rejects(
+        client.query(
+          `
+            INSERT INTO "chat_events" (
+              "chat_thread_id", "event_type", "content", "error", "seq_id"
+            ) VALUES ($1, 'goal.open', 'Invalid objective', 'payload', 3)
+          `,
+          [fixture.threadId],
+        ),
+        /chat_events_goal_marker_payload_check/u,
+      );
+
+      const database = drizzle(client);
+      const currentInsert = database
+        .insert(chatEvents)
+        .values({
+          id: fixture.currentInsertId,
+          chatThreadId: fixture.threadId,
+          eventType: "output.message",
+          content: "Current ORM insert",
+          seqId: 4,
+        })
+        .returning({ id: chatEvents.id });
+      const currentInsertSql = currentInsert.toSQL();
+      assert.doesNotMatch(
+        currentInsertSql.sql,
+        /active_input_sequence|goal_event|attach_files|generation_template|recommended_followups/u,
+      );
+      assert.deepEqual(await currentInsert, [{ id: fixture.currentInsertId }]);
+      await assertChatEventsAppendOnlyProtection(
+        client,
+        fixture.retainedEventId,
+      );
+
+      console.log("   ✅ retired chat-event columns and index are absent");
+      console.log("   ✅ canonical rows and goal-marker checks survive");
+      console.log("   ✅ current ORM inserts use only the final column set\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log("=== Phase 1.5: Validate Latest Snapshot Accuracy ===\n");
 
@@ -4782,6 +5000,7 @@ async function main(): Promise<void> {
     await validateCustomCredentialStorageGenerationBackfill();
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();
+    await validateChatEventContractionFinalization();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

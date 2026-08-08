@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.161.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.1...runner-rs-v0.161.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **mitm-addon:** track decorator application exceptions ([#25801](https://github.com/vm0-ai/vm0/issues/25801)) ([7f0aa4b](https://github.com/vm0-ai/vm0/commit/7f0aa4bcf22512646002e9a65a7b357466540460))
+* **python:** skip usage parsers for bodyless responses ([#25799](https://github.com/vm0-ai/vm0/issues/25799)) ([137afd6](https://github.com/vm0-ai/vm0/commit/137afd62d517e5819befb4cc164dcc8e7598716e))
+
 ## [0.161.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.0...runner-rs-v0.161.1) (2026-08-08)
 
 

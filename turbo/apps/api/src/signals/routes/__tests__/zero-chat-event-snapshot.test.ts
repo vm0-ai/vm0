@@ -27,7 +27,7 @@ import {
 } from "./helpers/fake-chat-event-r2";
 import {
   readChatEventSnapshotHead,
-  setChatEventSnapshotHeadAsV1,
+  setChatEventSnapshotHeadVersion,
 } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -141,7 +141,7 @@ describe("chat event snapshot read endpoints", () => {
     });
 
     // Older heads behave as missing until the archiver rewrites them.
-    await setChatEventSnapshotHeadAsV1(context, threadId, head.object_key);
+    await setChatEventSnapshotHeadVersion(context, threadId, 2);
     await accept(
       eventsClient().snapshot({
         headers: authenticate(owner),

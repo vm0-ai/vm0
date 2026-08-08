@@ -571,3 +571,55 @@ def formatted_value_failure_before_return(flow, manager, value):
     with manager:
         return f"{value}"
     return metadata["network_log_target"]
+
+
+def function_decorator_application_preserves_prebinding_alias(flow):
+    try:
+        decorated = flow.metadata
+
+        @decorator
+        def decorated():
+            pass
+
+    except Exception:
+        pass
+    return decorated["vm_run_id"]
+
+
+def class_decorator_application_is_suppressible(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        @decorator
+        class Decorated:
+            pass
+
+        return
+    return metadata["firewall_name"]
+
+
+def stacked_decorator_application_uses_post_evaluation_alias(flow):
+    metadata = {}
+    try:
+
+        @outer_decorator
+        @(metadata := flow.metadata)
+        def decorated():
+            pass
+
+        metadata = {}
+    except Exception:
+        pass
+    return metadata["original_url"]
+
+
+def function_decorator_application_before_return_is_suppressible(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        @decorator
+        def decorated():
+            pass
+
+        return
+    return metadata["firewall_base"]
