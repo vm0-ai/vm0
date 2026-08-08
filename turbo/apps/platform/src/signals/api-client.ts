@@ -17,7 +17,10 @@ import {
   resolveOAuthApiBase,
 } from "./api-base.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
-import { unauthorizedRedirectSuppressionUntil$ } from "./auth-retry.ts";
+import {
+  foregroundAuthRecovery$,
+  unauthorizedRedirectSuppressionUntil$,
+} from "./auth-retry.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
 /**
@@ -78,6 +81,9 @@ export const zeroClient$ = computed((get) => {
       },
       getRootSignal: () => {
         return get(rootSignal$);
+      },
+      getForegroundAuthRecovery: () => {
+        return get(foregroundAuthRecovery$);
       },
       getUnauthorizedRedirectSuppressionUntil: () => {
         return get(unauthorizedRedirectSuppressionUntil$);

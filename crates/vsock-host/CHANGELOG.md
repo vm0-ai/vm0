@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.76](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.75...vsock-host-v0.17.76) (2026-08-08)
+
+
+### Documentation
+
+* **rust:** document vsock shutdown delivery uncertainty ([#25789](https://github.com/vm0-ai/vm0/issues/25789)) ([088816d](https://github.com/vm0-ai/vm0/commit/088816d2cb9b6229b68940b6e97f1055999039e3))
+
 ## [0.17.75](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.74...vsock-host-v0.17.75) (2026-08-07)
 
 

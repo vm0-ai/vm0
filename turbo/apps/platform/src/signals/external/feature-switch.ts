@@ -6,14 +6,15 @@ import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
-import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
+import {
+  foregroundAuthRecovery$,
+  unauthorizedRedirectSuppressionUntil$,
+} from "../auth-retry.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import { localStorageSignals } from "./local-storage.ts";
-
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v3";
-
-const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
-  localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
+import {
+  featureSwitchCacheState$,
+  setFeatureSwitchLocalStorage$,
+} from "./feature-switch-state.ts";
 
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
@@ -25,6 +26,9 @@ const apiFeatureSwitchClient$ = computed((get) => {
     },
     getRootSignal: () => {
       return get(rootSignal$);
+    },
+    getForegroundAuthRecovery: () => {
+      return get(foregroundAuthRecovery$);
     },
     getUnauthorizedRedirectSuppressionUntil: () => {
       return get(unauthorizedRedirectSuppressionUntil$);
@@ -49,13 +53,7 @@ function applySwitches(
 }
 
 export const featureSwitch$ = computed((get) => {
-  const raw = get(featureSwitchCache$);
-  if (!raw) {
-    // First-ever load: identity-gated switches start disabled until
-    // `reloadFeatureSwitch$` populates the cache.
-    return getAllFeatureStates({});
-  }
-  return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
+  return get(featureSwitchCacheState$);
 });
 
 export const imageRecognitionAvailable$ = computed((): boolean => {

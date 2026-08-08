@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.708.1](https://github.com/vm0-ai/vm0/compare/app-v0.708.0...app-v0.708.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **platform:** restore transient retry ownership ([#25797](https://github.com/vm0-ai/vm0/issues/25797)) ([875500a](https://github.com/vm0-ai/vm0/commit/875500abec2c0bf1a2bf7f71c8d0ff778cb83c2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.1
+    * @vm0/core bumped to 8.530.8
+
 ## [0.708.0](https://github.com/vm0-ai/vm0/compare/app-v0.707.2...app-v0.708.0) (2026-08-08)
 
 

@@ -9,6 +9,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
+from tests.jsonl_log_helpers import jsonl_exists_after_flush
 from tests.x_flow_helpers import make_x_response_flow
 
 
@@ -70,6 +71,77 @@ class TestResponseHeadersModelJsonParser:
             in call.args[0]
             for call in log.debug.call_args_list
         )
+
+
+class TestBodylessModelResponseParserAdmission:
+    """Tests HTTP body semantics at the shared model response parser gate."""
+
+    @pytest.mark.parametrize(
+        ("request_method", "response_status", "content_type", "content_encoding"),
+        [
+            pytest.param("GET", 103, "application/json", "", id="informational"),
+            pytest.param("GET", 204, "application/json", "", id="no-content"),
+            pytest.param("GET", 205, "application/json", "", id="reset-content"),
+            pytest.param("GET", 304, "application/json", "", id="not-modified"),
+            pytest.param("HEAD", 200, "application/json", "", id="head"),
+            pytest.param("CONNECT", 200, "application/json", "", id="successful-connect"),
+            pytest.param("GET", 204, "application/json", "gzip", id="gzip"),
+            pytest.param("GET", 204, "application/json", "deflate", id="deflate"),
+            pytest.param("GET", 204, "text/event-stream", "", id="sse"),
+        ],
+    )
+    def test_bodyless_response_skips_usage_parser_and_keeps_byte_accounting(
+        self,
+        real_flow,
+        tmp_path,
+        mitm_ctx,
+        request_method: str,
+        response_status: int,
+        content_type: str,
+        content_encoding: str,
+    ) -> None:
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method=request_method,
+        )
+        response_headers = {"content-type": content_type}
+        if content_encoding:
+            response_headers["content-encoding"] = content_encoding
+        flow.response = tutils.tresp(
+            status_code=response_status,
+            headers=header_map(response_headers),
+        )
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow.metadata.update(
+            {
+                metadata_keys.VM_PROXY_LOG_PATH: str(proxy_log_path),
+                metadata_keys.FIREWALL_NAME: "model-provider:anthropic-api-key",
+                metadata_keys.FIREWALL_BILLABLE: True,
+                metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",
+            }
+        )
+
+        with mitm_ctx():
+            mitm_addon.responseheaders(flow)
+
+            assert "model_json_usage_finish" not in flow.metadata
+            assert "model_sse_usage_finish" not in flow.metadata
+            assert "model_websocket_usage_enabled" not in flow.metadata
+            assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+
+            unexpected_wire_bytes = b"bodyless-response-wire-bytes"
+            assert response_stream(flow)(unexpected_wire_bytes) == unexpected_wire_bytes
+            assert flow.metadata[metadata_keys.RESPONSE_STREAM_STATE]["total_bytes"] == len(
+                unexpected_wire_bytes
+            )
+
+            response_streaming.finalize_model_sse_usage(flow)
+            response_streaming.finalize_model_json_usage(flow, str(proxy_log_path))
+
+        assert metadata_keys.MODEL_JSON_USAGE_FINALIZED not in flow.metadata
+        assert not jsonl_exists_after_flush(proxy_log_path)
 
 
 class TestResponseHeadersSseParser:

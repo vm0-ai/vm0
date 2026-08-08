@@ -9,6 +9,7 @@ type SessionTouchImpl = (options?: { intent?: "focus" }) => Promise<void>;
 
 interface MockedClerkSession {
   readonly id: string;
+  readonly lastActiveOrganizationId: string | null;
   readonly getToken: GetTokenImpl;
   readonly touch: SessionTouchImpl;
 }
@@ -259,6 +260,7 @@ const defaultBuildUserProfileUrlImpl = () => {
 interface MockedClerkLoadOptions {
   isSatellite?: boolean;
   signInUrl?: string;
+  touchSession?: boolean;
 }
 
 interface MockedSignInRedirectOptions {
@@ -349,6 +351,9 @@ export const mockedClerk = {
     }
     return {
       id: "test-session-id",
+      get lastActiveOrganizationId() {
+        return internalMockedOrganization?.id ?? null;
+      },
       getToken: sessionGetToken,
       touch: sessionTouch,
     };

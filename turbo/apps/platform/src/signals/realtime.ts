@@ -5,6 +5,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
+import { subscribeForegroundCatchUp$ } from "./auth-retry.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import {
   createDeferredPromise,
@@ -501,16 +502,13 @@ export const setupRealtime$ = command(
       subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
     });
 
-    document.addEventListener(
-      "visibilitychange",
+    set(
+      subscribeForegroundCatchUp$,
       () => {
-        if (document.visibilityState !== "visible") {
-          return;
-        }
-        L.debug("tab visible, poking subscribers");
+        L.debug("foreground catch-up ready, poking subscribers");
         subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
       },
-      { signal },
+      signal,
     );
 
     await deferred.promise;

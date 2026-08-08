@@ -148,10 +148,6 @@ describe("Pi execution mode contract", () => {
       kind: "noPreference" as const,
       reason: "noReuseKey" as const,
     },
-    runnerPreferenceDecision: {
-      kind: "noPreference" as const,
-      reason: "noReuseKey" as const,
-    },
   };
 
   it.each(["standby", "cold-start"])(
@@ -529,10 +525,6 @@ describe("runner poll response contract", () => {
       kind: "noPreference" as const,
       reason: "noReuseKey" as const,
     },
-    runnerPreferenceDecision: {
-      kind: "noPreference" as const,
-      reason: "noReuseKey" as const,
-    },
   };
 
   it.each(["vm0/default", "vm0/large"])(
@@ -793,10 +785,6 @@ describe("runner resume session contract", () => {
         kind: "noPreference",
         reason: "noReuseKey",
       },
-      runnerPreferenceDecision: {
-        kind: "noPreference",
-        reason: "noReuseKey",
-      },
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
 
@@ -827,7 +815,7 @@ describe("runner resume session contract", () => {
     ]);
   });
 
-  it("requires canonical and compatibility runner preferences", () => {
+  it("requires a canonical runner preference", () => {
     const jobInput = {
       runId: "22222222-2222-4222-8222-222222222222",
       prompt: "continue",
@@ -846,11 +834,9 @@ describe("runner resume session contract", () => {
       jobSchema.parse({
         ...jobInput,
         runnerPreference,
-        runnerPreferenceDecision: runnerPreference,
       }),
     ).toMatchObject({
       runnerPreference,
-      runnerPreferenceDecision: runnerPreference,
     });
   });
 
@@ -870,10 +856,6 @@ describe("runner resume session contract", () => {
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-      runnerPreferenceDecision: {
-        ...runnerPreference,
-        tier: "reusableSandbox" as const,
-      },
     };
 
     for (const tier of [
@@ -942,10 +924,6 @@ describe("runner resume session contract", () => {
       agentComposeVersionId: null,
       vars: null,
       experimentalProfile: "vm0/default",
-      runnerPreferenceDecision: {
-        kind: "noPreference" as const,
-        reason: "noReuseKey" as const,
-      },
     };
 
     for (const reason of [
@@ -1376,30 +1354,7 @@ describe("runner claim request contract", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts optional bounded runner preference claim telemetry", () => {
-    for (const runnerPreferenceClaimState of [
-      "active",
-      "expired",
-      "cleared",
-      "absent",
-    ] as const) {
-      expect(
-        runnersJobClaimContract.claim.body.parse({
-          telemetry: {
-            runnerPreferenceResolution: "matching_workspace_cache",
-            runnerPreferenceClaimState,
-            runnerPreferenceTargetedSelf: false,
-          },
-        }).telemetry,
-      ).toStrictEqual({
-        runnerPreferenceResolution: "matching_workspace_cache",
-        runnerPreferenceClaimState,
-        runnerPreferenceTargetedSelf: false,
-      });
-    }
-  });
-
-  it("accepts canonical runner preference claim telemetry", () => {
+  it("accepts every positive runner preference claim state", () => {
     const runnerPreference = {
       kind: "preference" as const,
       runnerIdentity: {
@@ -1410,32 +1365,55 @@ describe("runner claim request contract", () => {
       expiresAt: "2026-08-03T00:00:01.000Z",
     };
 
+    for (const runnerPreferenceClaimState of [
+      "active",
+      "expired",
+      "cleared",
+    ] as const) {
+      expect(
+        runnersJobClaimContract.claim.body.parse({
+          telemetry: {
+            runnerPreference,
+            runnerPreferenceClaimState,
+          },
+        }).telemetry,
+      ).toStrictEqual({
+        runnerPreference,
+        runnerPreferenceClaimState,
+      });
+    }
+  });
+
+  it("accepts canonical no-preference claim telemetry", () => {
+    const runnerPreference = {
+      kind: "noPreference" as const,
+      reason: "noViableHolder" as const,
+    };
+
     expect(
       runnersJobClaimContract.claim.body.parse({
         telemetry: {
           runnerPreference,
-          runnerPreferenceClaimState: "active",
         },
       }).telemetry,
     ).toStrictEqual({
       runnerPreference,
-      runnerPreferenceClaimState: "active",
     });
   });
 
-  it("keeps valid legacy claim telemetry when canonical preference is malformed", () => {
+  it("keeps other claim telemetry when canonical preference is malformed", () => {
     expect(
       runnersJobClaimContract.claim.body.parse({
         telemetry: {
+          discoverySource: "poll",
           runnerPreference: { kind: "futurePreference" },
-          runnerPreferenceResolution: "no_viable_holder",
-          runnerPreferenceClaimState: "absent",
+          runnerPreferenceClaimState: "active",
         },
       }).telemetry,
     ).toStrictEqual({
+      discoverySource: "poll",
       runnerPreference: undefined,
-      runnerPreferenceResolution: "no_viable_holder",
-      runnerPreferenceClaimState: "absent",
+      runnerPreferenceClaimState: "active",
     });
   });
 

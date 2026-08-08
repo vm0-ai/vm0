@@ -460,7 +460,6 @@ export async function publishRunnerJobNotification(args: {
           ? { historyGenerationRunId: args.metadata.historyGenerationRunId }
           : {}),
         runnerPreference: args.runnerPreference,
-        runnerPreferenceDecision: args.runnerPreference,
       });
       L.debug(
         `Published job ${args.runId} to runner-group:${args.group} (broadcast)`,

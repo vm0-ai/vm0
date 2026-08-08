@@ -2,11 +2,16 @@ import { command } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { waitFor } from "@testing-library/react";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearMockedAuth,
   mockOrganization,
+  mockedClerk,
+  mockedClerkLoad,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
 import {
@@ -15,10 +20,38 @@ import {
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
+import { setupClerk$ } from "../auth.ts";
+import { setRootSignal$ } from "../root-signal.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
+import {
+  foregroundAuthRecoveryEnabled$,
+  setFeatureSwitchLocalStorage$,
+} from "../external/feature-switch-state.ts";
+import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
 
 const context = testContext();
+
+const setForegroundAuthRecovery$ = command(({ set }, enabled: boolean) => {
+  set(
+    setFeatureSwitchLocalStorage$,
+    JSON.stringify(
+      getAllFeatureStates({
+        overrides: { [FeatureSwitchKey.ForegroundAuthRecovery]: enabled },
+      }),
+    ),
+  );
+});
+
+const setMissingForegroundAuthRecovery$ = command(({ set }) => {
+  set(
+    setFeatureSwitchLocalStorage$,
+    JSON.stringify({
+      ...getAllFeatureStates({}),
+      [FeatureSwitchKey.ForegroundAuthRecovery]: undefined,
+    }),
+  );
+});
 
 const finishLoop$ = command((_ctx, _signal: AbortSignal) => {
   return true;
@@ -51,6 +84,15 @@ function mockSignedInUser(): void {
     activeOrg: { id: "test-org-123", name: "Test Organization" },
     memberships: [{ id: "test-org-123" }],
   });
+}
+
+function setForegroundAuthRecovery(enabled: boolean): void {
+  context.store.set(setForegroundAuthRecovery$, enabled);
+}
+
+async function setupAuthAndRealtime(): Promise<void> {
+  await context.store.set(setupClerk$, context.signal);
+  await context.store.set(setupRealtime$, context.signal);
 }
 
 function abortError(message: string): Error {
@@ -246,17 +288,133 @@ describe("realtime signals", () => {
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
-  it("reruns an active loop when the tab becomes visible", async () => {
+  it("uses hydrated rollout state when the initial cache is missing the key", async () => {
     mockSignedInUser();
-    const topic = "test:visibility";
+    mockOrganization({
+      activeOrg: { id: "staff-org-123", name: "Staff Organization" },
+      memberships: [{ id: "staff-org-123" }],
+    });
+    context.store.set(setMissingForegroundAuthRecovery$);
+    const topic = "test:visibility-disabled";
     const subscriber = new AbortController();
+    const touchCanFinish = context.mocks.deferred<void>();
+    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
     let runs = 0;
     const loop$ = command((_ctx, _signal: AbortSignal) => {
       runs += 1;
       return false;
     });
 
-    await context.store.set(setupRealtime$, context.signal);
+    await setupAuthAndRealtime();
+    expect(context.store.get(foregroundAuthRecoveryEnabled$)).toBeFalsy();
+    setForegroundAuthRecovery(true);
+    expect(context.store.get(foregroundAuthRecoveryEnabled$)).toBeTruthy();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(1);
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+    expect(runs).toBe(1);
+    expect(mockedClerkLoad).toHaveBeenCalledWith(
+      expect.objectContaining({ touchSession: false }),
+    );
+
+    touchCanFinish.resolve();
+    await waitFor(() => {
+      expect(runs).toBe(2);
+    });
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("uses refreshed external-org state after a stale staff cache loaded Clerk", async () => {
+    mockSignedInUser();
+    mockOrganization({
+      activeOrg: { id: "external-org-123", name: "External Organization" },
+      memberships: [{ id: "external-org-123" }],
+    });
+    setForegroundAuthRecovery(true);
+    const topic = "test:visibility-stale-enabled-cache";
+    const subscriber = new AbortController();
+    const touchCanFinish = context.mocks.deferred<void>();
+    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    expect(context.store.get(foregroundAuthRecoveryEnabled$)).toBeTruthy();
+    setForegroundAuthRecovery(false);
+    expect(context.store.get(foregroundAuthRecoveryEnabled$)).toBeFalsy();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(1);
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(runs).toBe(2);
+    });
+    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    expect(mockedClerkLoad).toHaveBeenCalledWith(
+      expect.objectContaining({ touchSession: false }),
+    );
+
+    touchCanFinish.resolve();
+    await waitFor(() => {
+      expect(mockedClerk.sessionGetToken).toHaveBeenCalledWith({
+        skipCache: true,
+      });
+    });
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("waits for one foreground auth recovery before rerunning an active loop", async () => {
+    mockSignedInUser();
+    setForegroundAuthRecovery(true);
+    const topic = "test:visibility";
+    const subscriber = new AbortController();
+    const touchCanFinish = context.mocks.deferred<void>();
+    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
     const loopPromise = context.store.set(
       setAblyLoop$,
       {
@@ -276,9 +434,118 @@ describe("realtime signals", () => {
 
     expect(document.visibilityState).toBe("visible");
     document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+    expect(runs).toBe(1);
+
+    touchCanFinish.resolve();
     await waitFor(() => {
       expect(runs).toBe(2);
     });
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("shares an in-flight foreground recovery with a concurrent 401", async () => {
+    mockSignedInUser();
+    setForegroundAuthRecovery(true);
+    context.store.set(setRootSignal$, context.signal);
+    const touchCanFinish = context.mocks.deferred<void>();
+    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
+    let requests = 0;
+    let forcedTokenRefreshes = 0;
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      requests += 1;
+      if (requests === 1) {
+        return respond(401, {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        });
+      }
+      return respond(200, { switches: {}, effectiveSwitches: {} });
+    });
+    mockedClerk.sessionGetToken.mockImplementation((options) => {
+      if (options?.skipCache) {
+        forcedTokenRefreshes += 1;
+        return Promise.resolve("fresh-token");
+      }
+      return Promise.resolve("test-token");
+    });
+
+    await setupAuthAndRealtime();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    });
+
+    const responsePromise = context.store.set(
+      reloadFeatureSwitch$,
+      context.signal,
+    );
+    await waitFor(() => {
+      expect(requests).toBe(1);
+    });
+    expect(forcedTokenRefreshes).toBe(0);
+
+    touchCanFinish.resolve();
+    await responsePromise;
+    expect(requests).toBe(2);
+    expect(forcedTokenRefreshes).toBe(2);
+    expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("retries Clerk-wrapped foreground network failures before catch-up", async () => {
+    mockSignedInUser();
+    setForegroundAuthRecovery(true);
+    const topic = "test:visibility-network-retry";
+    const subscriber = new AbortController();
+    let touchAttempts = 0;
+    mockedClerk.sessionTouch.mockImplementation(() => {
+      touchAttempts += 1;
+      if (touchAttempts === 1) {
+        return Promise.reject(
+          new Error(
+            'ClerkJS: Network error at "https://clerk.example.test/touch" - TypeError: Load failed',
+          ),
+        );
+      }
+      return Promise.resolve();
+    });
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(1);
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(runs).toBe(2);
+    });
+    expect(touchAttempts).toBe(2);
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });

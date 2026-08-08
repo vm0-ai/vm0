@@ -1,7 +1,4 @@
-import type {
-  RunnerPreference,
-  RunnerPreferenceResolution,
-} from "@vm0/api-contracts/contracts/runners";
+import type { RunnerPreference } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
@@ -281,20 +278,18 @@ const preferenceResolutionByTier = {
   finalizingPredecessor: "finalizing_predecessor",
   reusableSandbox: "matching_reusable_sandbox",
   workspaceCache: "matching_workspace_cache",
-} as const satisfies Record<
-  PositiveRunnerPreference["tier"],
-  RunnerPreferenceResolution
->;
+} as const satisfies Record<PositiveRunnerPreference["tier"], string>;
 
 const noPreferenceResolutionByReason = {
   noReuseKey: "no_reuse_key",
   expired: "expired",
   noViableHolder: "no_viable_holder",
   lookupError: "lookup_error",
-} as const satisfies Record<
-  NoRunnerPreference["reason"],
-  RunnerPreferenceResolution
->;
+} as const satisfies Record<NoRunnerPreference["reason"], string>;
+
+export type RunnerPreferenceTelemetryResolution =
+  | (typeof preferenceResolutionByTier)[keyof typeof preferenceResolutionByTier]
+  | (typeof noPreferenceResolutionByReason)[keyof typeof noPreferenceResolutionByReason];
 
 export function runnerReusePreferenceLookupError(): RunnerPreference {
   return {
@@ -303,9 +298,9 @@ export function runnerReusePreferenceLookupError(): RunnerPreference {
   };
 }
 
-export function runnerPreferenceResolution(
+export function runnerPreferenceTelemetryResolution(
   preference: RunnerPreference,
-): RunnerPreferenceResolution {
+): RunnerPreferenceTelemetryResolution {
   if (preference.kind === "noPreference") {
     return noPreferenceResolutionByReason[preference.reason];
   }
@@ -316,7 +311,8 @@ export function runnerPreferenceTelemetryDimensions(
   preference: RunnerPreference,
 ): Record<string, string> {
   return {
-    runner_preference_resolution: runnerPreferenceResolution(preference),
+    runner_preference_resolution:
+      runnerPreferenceTelemetryResolution(preference),
     runner_preference_decision_kind: preference.kind,
     ...(preference.kind === "preference"
       ? { runner_preference_tier: preference.tier }

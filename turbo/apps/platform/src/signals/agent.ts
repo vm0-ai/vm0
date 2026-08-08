@@ -18,6 +18,7 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
 import { retryTransientLoad } from "./utils.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 const LAST_USED_AGENT_STORAGE_KEY = "zero.lastUsedAgentId";
 
@@ -35,9 +36,12 @@ export function agentById(id: string): Computed<Promise<ZeroAgentResponse>> {
   return computed(async (get) => {
     get(internalAgentByIdReload$);
     const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await retryTransientLoad(() => {
-      return accept(client.get({ params: { id } }), [200]);
-    });
+    const result = await retryTransientLoad((signal) => {
+      return accept(
+        client.get({ params: { id }, fetchOptions: { signal } }),
+        [200],
+      );
+    }, get(rootSignal$));
     return result.body;
   });
 }
