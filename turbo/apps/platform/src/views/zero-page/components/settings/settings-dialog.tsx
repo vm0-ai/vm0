@@ -329,10 +329,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             handleSectionChange(item.id);
                           }}
                           className={cn(
-                            "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 focus-visible:bg-sidebar-accent focus-visible:outline-none",
+                            "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 focus-visible:bg-state-hover focus-visible:outline-none",
                             isActive
-                              ? "bg-gray-200 text-gray-900 font-medium"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
+                              ? "bg-state-selected text-foreground font-medium"
+                              : "text-sidebar-foreground hover:bg-state-hover",
                           )}
                         >
                           <Icon

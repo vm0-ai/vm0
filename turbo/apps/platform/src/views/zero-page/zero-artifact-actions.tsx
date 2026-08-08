@@ -270,7 +270,7 @@ function authorizeGoogleDriveAndRun(
 
 function iconButtonClassName(className?: string): string {
   return cn(
-    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+    "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground",
     className,
   );
 }
@@ -359,7 +359,7 @@ function ArtifactDownloadMenuItem({
       aria-disabled={disabled ? "true" : undefined}
       disabled={disabled}
       className={cn(
-        "relative flex w-full select-none items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-accent focus:bg-accent disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        "relative flex w-full select-none items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-state-hover focus:bg-state-hover disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
         disabled ? "cursor-default" : "cursor-pointer",
         className,
       )}
@@ -606,7 +606,7 @@ function ArtifactDownloadTrigger({
       disabled={downloadPending}
       className={iconButtonClassName(
         cn(
-          "data-[state=open]:bg-muted/60 data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-70",
+          "data-[state=open]:bg-state-hover data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-70",
           className,
         ),
       )}

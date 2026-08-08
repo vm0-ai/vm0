@@ -119,7 +119,7 @@ interface DefaultAgentLabel {
 }
 
 const TELEGRAM_COMMAND_CLASS =
-  "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-accent active:bg-accent/80";
+  "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-state-hover active:bg-state-pressed";
 const BOT_FATHER_HANDLE = "@BotFather";
 
 function isOfficialTelegramBot(bot: TelegramBot): boolean {
@@ -1589,7 +1589,7 @@ function TelegramMoreActions({
         <button
           type="button"
           disabled={disabled}
-          className="shrink-0 rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          className="shrink-0 rounded p-2 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
           aria-label={t(
             ($) => {
               return $.connectors.providerSettings.telegram.moreOptions;
@@ -1611,7 +1611,7 @@ function TelegramMoreActions({
               { bot: botLabel },
             )}
             disabled={unlinking}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={onDomEventFn(async () => {
               setUnlinkingBotId(bot.id);
               await bestEffort(disconnectAccount(bot.id, pageSignal));
@@ -1637,7 +1637,7 @@ function TelegramMoreActions({
               { bot: botLabel },
             )}
             disabled={uninstalling}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-state-hover hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={() => {
               setUninstallDialogBotId(bot.id);
             }}

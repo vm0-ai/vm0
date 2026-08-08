@@ -55,7 +55,7 @@ export function UnsavedBar({
           <Button
             data-testid="save-button"
             size="sm"
-            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary-hover"
             onClick={onSave}
             disabled={saving || saveDisabled}
           >

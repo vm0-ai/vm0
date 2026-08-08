@@ -727,7 +727,7 @@ function RouteChoiceButton({
       className={cn(
         "flex flex-col gap-0.5 rounded-xl bg-card px-5 py-4 text-left transition-colors",
         active && "bg-primary/5",
-        !active && !disabled && "hover:bg-muted/40",
+        !active && !disabled && "hover:bg-state-hover",
         disabled && "cursor-not-allowed opacity-50",
       )}
     >

@@ -37,7 +37,7 @@ function permissionPolicyButtonClass({
         : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
       : disabled
         ? "text-muted-foreground/50"
-        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+        : "text-muted-foreground hover:text-foreground hover:bg-state-hover"
   } ${disabled ? "cursor-default" : "cursor-pointer"}`;
 }
 

@@ -97,7 +97,7 @@ function ScopeDiffContent({
           onClick={() => {
             return onReconnect(connectorSlug);
           }}
-          className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
         >
           {t(($) => {
             return $.connectors.actions.reconnect;
@@ -106,7 +106,7 @@ function ScopeDiffContent({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-state-hover transition-colors"
         >
           {t(($) => {
             return $.connectors.actions.close;

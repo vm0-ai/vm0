@@ -262,7 +262,7 @@ function DialogIconButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
       aria-label={ariaLabel}
       title={ariaLabel}
     >
@@ -497,7 +497,7 @@ function ArtifactDialogImageZoomControls({
         type="button"
         onClick={controls.zoomOut}
         disabled={!controls.canZoomOut}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label={t(($) => {
           return $.artifacts.actions.zoomOut;
         })}
@@ -514,7 +514,7 @@ function ArtifactDialogImageZoomControls({
         type="button"
         onClick={controls.zoomIn}
         disabled={!controls.canZoomIn}
-        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-state-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label={t(($) => {
           return $.artifacts.actions.zoomIn;
         })}
@@ -527,7 +527,7 @@ function ArtifactDialogImageZoomControls({
       <button
         type="button"
         onClick={controls.resetZoom}
-        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-muted/70 hover:text-foreground"
+        className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-state-hover hover:text-foreground"
         aria-label={t(($) => {
           return $.artifacts.actions.resetZoom;
         })}
@@ -564,7 +564,7 @@ function ArtifactDialogImageNavigationControls({
             return $.artifacts.actions.previousImage;
           })}
           data-testid="artifact-dialog-previous-image"
-          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
           <IconChevronLeft size={22} stroke={1.8} />
         </button>
@@ -580,7 +580,7 @@ function ArtifactDialogImageNavigationControls({
             return $.artifacts.actions.nextImage;
           })}
           data-testid="artifact-dialog-next-image"
-          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
           <IconChevronRight size={22} stroke={1.8} />
         </button>
@@ -1348,7 +1348,7 @@ export function FileAttachmentChip({
         },
         { filename },
       )}
-      className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
+      className={`${FILE_CHIP_CLASSES} hover:bg-state-hover`}
     >
       <FileChipBody
         filename={filename}
@@ -1424,7 +1424,7 @@ export function PreviewableFileAttachmentChip({
           filename,
         },
       )}
-      className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
+      className={`${FILE_CHIP_CLASSES} hover:bg-state-hover`}
     >
       <FileChipBody
         filename={filename}
@@ -1474,7 +1474,7 @@ export function PreviewableAudioAttachmentChip({
           filename,
         },
       )}
-      className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
+      className={`${FILE_CHIP_CLASSES} hover:bg-state-hover`}
     >
       <FileChipBody
         filename={filename}

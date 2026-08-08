@@ -62,7 +62,7 @@ function LogRow({
     <Link
       pathname="/activities/:activityRunId"
       options={{ pathParams: { activityRunId: entry.id } }}
-      className="block px-5 py-3 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
+      className="block px-5 py-3 transition-colors hover:bg-state-hover cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
     >
       <div className={cn(gridClassName)}>
         <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
@@ -124,7 +124,7 @@ function LogRow({
         </div>
         <div>
           <span
-            className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors inline-flex"
+            className="rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors inline-flex"
             aria-hidden="true"
           >
             <IconChevronRight size={14} stroke={1.5} />

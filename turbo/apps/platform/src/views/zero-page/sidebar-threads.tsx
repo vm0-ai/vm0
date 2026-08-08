@@ -174,7 +174,6 @@ function ChatThreadMenu({
 }) {
   const { t } = useTranslation();
   const isPinned = useGet(signals.pinned$);
-  const isHighlighted = useGet(signals.highlighted$);
   const indicatorState = useLastResolved(signals.indicatorState$) ?? null;
   const togglePinned = useSet(signals.togglePinned$);
   const openRename = useSet(signals.openRename$);
@@ -202,11 +201,7 @@ function ChatThreadMenu({
             onClick={preventChatThreadMenuNavigation}
             className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md ${
               showMobileTrigger ? "visible" : "invisible"
-            } md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
-              isHighlighted
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-accent-strong"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-accent-active"
-            }`}
+            } md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 text-sidebar-foreground/80 hover:text-foreground hover:bg-state-selected-hover`}
             aria-label={t(($) => {
               return $.chat.sidebar.openChatMenu;
             })}
@@ -379,10 +374,10 @@ function ChatThreadItemLink({
       }}
       className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isHighlighted
-          ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
+          ? "bg-state-selected text-sidebar-foreground font-medium"
           : isUnread
-            ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
-            : "text-sidebar-foreground hover:bg-sidebar-accent"
+            ? "text-sidebar-foreground font-medium hover:bg-state-hover"
+            : "text-sidebar-foreground hover:bg-state-hover"
       }`}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -709,7 +704,7 @@ function ChatThreadsTitle() {
 
   return (
     <div
-      className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
+      className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
       onClick={() => {
         return setCollapsed(!collapsed);
       }}
@@ -733,7 +728,7 @@ function ChatThreadsTitle() {
                 onClick={(e) => {
                   e.stopPropagation();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent-active transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
                 aria-label={t(($) => {
                   return $.chat.sidebar.openListMenu;
                 })}

@@ -102,7 +102,7 @@ export function OnboardingFooter({
         onClick={onPrimary}
         disabled={primaryDisabled || busy}
         aria-busy={busy}
-        className="inline-flex h-10 min-w-[100px] items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-white hover:bg-[hsl(var(--primary-800))] disabled:cursor-not-allowed disabled:bg-[hsl(var(--primary-500))]"
+        className="inline-flex h-10 min-w-[100px] items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-[hsl(var(--primary-500))]"
       >
         {busy ? (
           <IconLoader2 size={16} className="animate-spin" aria-hidden="true" />

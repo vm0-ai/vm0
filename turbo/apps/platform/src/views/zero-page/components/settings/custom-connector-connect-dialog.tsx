@@ -47,7 +47,7 @@ function AuthenticationMethodChoice({
           <button
             key={method.type}
             type="button"
-            className="rounded-xl border border-border p-4 text-left transition-colors hover:border-primary hover:bg-muted/40"
+            className="rounded-xl border border-border p-4 text-left transition-colors hover:border-primary hover:bg-state-hover"
             onClick={() => {
               onSelect(method.type);
             }}

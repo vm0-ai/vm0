@@ -87,7 +87,7 @@ function CustomConnectorPermissionRow({
               <button
                 type="button"
                 onClick={onManage}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
                 aria-label={tCommon(
                   ($) => {
                     return $.connectors.card.managePermissionsFor;

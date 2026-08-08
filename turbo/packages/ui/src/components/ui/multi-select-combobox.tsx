@@ -192,7 +192,7 @@ export function MultiSelectCombobox({
                   type="button"
                   role="option"
                   aria-selected={isSelected}
-                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-state-hover hover:text-accent-foreground"
                   onClick={() => {
                     return toggle(opt.value);
                   }}

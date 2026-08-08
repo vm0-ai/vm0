@@ -193,8 +193,8 @@ function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
       type="button"
       className={`rounded-lg transition-colors duration-200 ${
         collapsed
-          ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent"
-          : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent"
+          ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-state-hover"
+          : "flex w-full items-center gap-2 p-2 text-left hover:bg-state-hover"
       }`}
     >
       <AccountAvatar

@@ -388,7 +388,7 @@ export function OrgInvoicesTab() {
                             href={inv.hostedInvoiceUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
                             aria-label={t(
                               ($) => {
                                 return $.billing.invoices.downloadInvoice;

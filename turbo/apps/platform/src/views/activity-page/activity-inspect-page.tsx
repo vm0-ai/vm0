@@ -86,7 +86,7 @@ function InspectBreadcrumb({ title }: { title: string }) {
     <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
       <Link
         pathname="/activities"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconChartLine size={14} stroke={1.5} className="shrink-0" />
         {t(($) => {

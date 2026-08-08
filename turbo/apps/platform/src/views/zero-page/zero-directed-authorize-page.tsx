@@ -74,7 +74,7 @@ function AuthorizeAction({
       type="button"
       disabled={isConnecting || disabled}
       onClick={onAuthorize}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] px-4 text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
+      className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] px-4 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
     >
       {isConnecting && <IconLoader2 size={14} className="animate-spin" />}
       {isConnecting

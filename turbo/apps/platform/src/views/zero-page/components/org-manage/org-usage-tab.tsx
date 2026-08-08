@@ -335,7 +335,7 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
         <div
           tabIndex={0}
           data-testid={`credit-grant-${grant.id}`}
-          className="flex min-w-0 cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium text-foreground">
@@ -473,7 +473,7 @@ function CreditBalanceChart({
           </p>
           <button
             type="button"
-            className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
             onClick={() => {
               onComparePlans();
             }}

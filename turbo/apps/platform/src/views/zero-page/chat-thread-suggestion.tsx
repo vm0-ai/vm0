@@ -64,7 +64,7 @@ export function ComposerMentionSuggestionMenu({
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
-                    selected ? "bg-accent" : "hover:bg-accent/60",
+                    selected ? "bg-accent" : "hover:bg-state-hover",
                   )}
                   onMouseDown={(event) => {
                     event.preventDefault();
@@ -101,7 +101,7 @@ export function ComposerMentionSuggestionMenu({
               type="button"
               className={cn(
                 "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
-                selected ? "bg-accent" : "hover:bg-accent/60",
+                selected ? "bg-accent" : "hover:bg-state-hover",
               )}
               onMouseDown={(event) => {
                 event.preventDefault();

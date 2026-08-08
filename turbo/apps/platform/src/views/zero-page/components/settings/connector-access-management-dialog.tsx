@@ -120,7 +120,7 @@ function ConnectorAccessSearch({
           onClick={() => {
             onChange("");
           }}
-          className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
           aria-label={t(($) => {
             return $.connectors.access.clearSearch;
           })}
@@ -179,7 +179,7 @@ function AgentAccessRow({
                   },
                   { connector: connectorLabel, agent: name },
                 )}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
               >
                 <IconAdjustmentsHorizontal size={16} stroke={1.5} />
               </button>

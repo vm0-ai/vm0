@@ -252,7 +252,7 @@ function CollapsedExpandButton() {
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               onClick={onCollapse}
               aria-label={expandLabel}
             >
@@ -321,8 +321,8 @@ function CollapsedNavList() {
                       }}
                       className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                         isActive
-                          ? "bg-sidebar-accent-active text-sidebar-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
+                          ? "bg-state-selected text-sidebar-foreground"
+                          : "text-sidebar-foreground hover:bg-state-hover"
                       }`}
                       aria-label={label}
                     >
@@ -370,8 +370,8 @@ function CollapsedFooter() {
               }}
               className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                 activeId === "insights"
-                  ? "bg-sidebar-accent-active text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  ? "bg-state-selected text-sidebar-foreground"
+                  : "text-sidebar-foreground hover:bg-state-hover"
               }`}
               aria-label={insightsLabel}
             >
@@ -433,7 +433,7 @@ function ExpandedHeader() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-hover transition-colors"
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
@@ -475,7 +475,7 @@ function ExpandedManageSection() {
   return (
     <div className="shrink-0">
       <div
-        className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
+        className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
         onClick={() => {
           return setManageCollapsed(!manageCollapsed);
         }}
@@ -514,8 +514,8 @@ function ExpandedManageSection() {
                   aria-current={isActive ? "page" : undefined}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     isActive
-                      ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                      ? "bg-state-selected text-sidebar-foreground font-medium"
+                      : "text-sidebar-foreground hover:bg-state-hover"
                   }`}
                 >
                   <Icon size={16} className="shrink-0" />
@@ -580,8 +580,8 @@ function ExpandedFooter() {
                 }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   isActive
-                    ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    ? "bg-state-selected text-sidebar-foreground font-medium"
+                    : "text-sidebar-foreground hover:bg-state-hover"
                 }`}
               >
                 {iconImg ? (
@@ -641,8 +641,8 @@ function ExpandedFooterAccountInsights() {
               }}
               className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                 activeId === "insights"
-                  ? "bg-sidebar-accent-active text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  ? "bg-state-selected text-sidebar-foreground"
+                  : "text-sidebar-foreground hover:bg-state-hover"
               }`}
               aria-label={insightsLabel}
             >
@@ -724,8 +724,8 @@ function LabeledRailLink({
       <span
         className={`relative inline-flex h-9 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
           isActive
-            ? "bg-sidebar-accent-active text-sidebar-foreground"
-            : "text-sidebar-foreground group-hover:bg-sidebar-accent"
+            ? "bg-state-selected text-sidebar-foreground"
+            : "text-sidebar-foreground group-hover:bg-state-hover"
         }`}
       >
         {iconImg ? (
@@ -870,7 +870,7 @@ function ChatListColumn() {
                   openAgentList();
                 }}
                 aria-label={searchLabel}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               >
                 <IconSearch size={17} stroke={1.8} />
               </button>
@@ -892,7 +892,7 @@ function ChatListColumn() {
                 }}
                 aria-label={newChatLabel}
                 aria-current={isNewChatActive ? "page" : undefined}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               >
                 <IconEdit size={17} stroke={1.8} />
               </Link>

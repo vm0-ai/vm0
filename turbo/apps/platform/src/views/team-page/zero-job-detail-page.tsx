@@ -156,7 +156,7 @@ function Breadcrumb({
     <DetailPageBreadcrumbBar className={className}>
       <Link
         pathname="/agents"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
         {t(($) => {
@@ -219,7 +219,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </div>
             <Link
               pathname="/agents"
-              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+              className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
             >
               {t(($) => {
                 return $.detail.notFound.back;
@@ -242,7 +242,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
-                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
+                className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
               >
                 {t(($) => {
                   return $.actions.retry;
@@ -495,7 +495,7 @@ function ConnectedConnectorPermissions({
                   setSearch("");
                   setSearchActive(false);
                 }}
-                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
                 aria-label={t(($) => {
                   return $.authorization.closeSearch;
                 })}
@@ -510,7 +510,7 @@ function ConnectedConnectorPermissions({
               onClick={() => {
                 return setSearchActive(true);
               }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
               aria-label={t(($) => {
                 return $.authorization.findConnectors;
               })}

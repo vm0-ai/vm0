@@ -312,7 +312,7 @@ function DomainSetupState({
           <code className="min-w-0 truncate font-mono text-xs">{domain}</code>
           <CopyButton
             text={domain}
-            className="shrink-0 p-1.5 hover:bg-accent"
+            className="shrink-0 p-1.5 hover:bg-state-hover"
           />
         </div>
         <p className="mt-3 text-muted-foreground">
@@ -327,7 +327,7 @@ function DomainSetupState({
           href="https://t.me/BotFather"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           {t(($) => {
             return $.connectors.providerConnect.telegram.openBotFather;
@@ -461,7 +461,7 @@ function TelegramSignInState({ brandName }: { brandName: string }) {
       />
       <a
         href={signInHref()}
-        className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
       >
         {t(
           ($) => {

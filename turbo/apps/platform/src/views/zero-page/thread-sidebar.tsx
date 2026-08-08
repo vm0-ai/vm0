@@ -88,7 +88,7 @@ function ThreadSidebarHeader({
           aria-label={t(($) => {
             return $.artifacts.actions.backToArtifacts;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
           <IconArrowLeft size={16} />
         </button>
@@ -110,7 +110,7 @@ function ThreadSidebarHeader({
                 })
           }
           data-testid="thread-sidebar-fullscreen-toggle"
-          className="hidden xl:inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="hidden xl:inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
           {fullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
         </button>
@@ -128,7 +128,7 @@ function ThreadSidebarHeader({
             ),
           },
         )}
-        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
       >
         <IconX size={16} />
       </button>
@@ -342,7 +342,7 @@ function ThreadArtifactDetail({
             href={`/share/threads/${encodeURIComponent(detail.sharedThread.id)}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             <IconExternalLink size={16} stroke={1.7} />
             {t(($) => {

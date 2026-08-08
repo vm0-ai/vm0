@@ -353,7 +353,7 @@ function OAuth2RedirectUrlField() {
           aria-label={t(($) => {
             return $.connectors.custom.create.redirectCopy;
           })}
-          className="absolute top-1/2 right-1 -translate-y-1/2 p-1.5 hover:bg-accent"
+          className="absolute top-1/2 right-1 -translate-y-1/2 p-1.5 hover:bg-state-hover"
         />
       </div>
     </div>

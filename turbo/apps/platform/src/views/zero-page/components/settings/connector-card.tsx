@@ -492,7 +492,7 @@ function ActionConnectorCard({
         type="button"
         disabled={complete || busy}
         onClick={onActivate}
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {busy ? <IconLoader2 size={15} className="animate-spin" /> : null}
         {actionLabel}
@@ -552,7 +552,7 @@ function PermissionConnectorCard({
                   <button
                     type="button"
                     onClick={onManage}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
                     aria-label={t(
                       ($) => {
                         return $.connectors.card.managePermissionsFor;

@@ -92,9 +92,6 @@
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-primary: hsl(var(--sidebar-primary));
   --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-active: hsl(var(--sidebar-accent-active));
-  --color-sidebar-accent-strong: hsl(var(--sidebar-accent-strong));
   --color-semantic-foreground: hsl(var(--semantic-foreground));
   --color-on-filled: hsl(var(--on-filled));
   --color-background-50: hsl(var(--background-50));
@@ -132,9 +129,78 @@
   --input-focus-ring-opacity: 0.1;
 
   /* ===================================
-   * Button System
+   * Interaction States
+   *
+   * One ladder for every hover / selected / pressed background in the product.
+   *
+   * `state-*` are translucent layers, so the same token reads with the same
+   * weight on any surface (page, card, popover, nav) and reverses automatically
+   * in dark mode. Use them on elements that have no opaque background of their
+   * own -- rows, menu items, icon buttons, ghost buttons.
+   *
+   * Elements that do carry an opaque fill cannot use a translucent layer
+   * (the layer would replace the fill instead of sitting on it), so each fill
+   * gets its own pre-mixed pair below.
    * =================================== */
-  --color-button-hover: hsl(var(--button-hover));
+  --color-state-hover: hsl(var(--state-layer) / var(--state-hover-alpha));
+  --color-state-selected: hsl(var(--state-layer) / var(--state-selected-alpha));
+  --color-state-selected-hover: hsl(
+    var(--state-layer) / var(--state-selected-hover-alpha)
+  );
+  --color-state-pressed: hsl(var(--state-layer) / var(--state-pressed-alpha));
+
+  --color-card-hover: color-mix(
+    in srgb,
+    hsl(var(--card)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
+  --color-input-hover: color-mix(
+    in srgb,
+    hsl(var(--input)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
+  /* Neutral-dark page primary ("Add schedule" style). Already at maximum
+     contrast against the page, so its states step toward the surface. */
+  --color-foreground-hover: color-mix(
+    in srgb,
+    hsl(var(--foreground)),
+    hsl(var(--white)) var(--state-on-filled-hover-alpha)
+  );
+  --color-foreground-pressed: color-mix(
+    in srgb,
+    hsl(var(--foreground)),
+    hsl(var(--white)) var(--state-on-filled-pressed-alpha)
+  );
+  --color-secondary-hover: color-mix(
+    in srgb,
+    hsl(var(--secondary)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
+  --color-secondary-pressed: color-mix(
+    in srgb,
+    hsl(var(--secondary)),
+    hsl(var(--state-layer)) var(--state-pressed-alpha)
+  );
+  --color-primary-hover: color-mix(
+    in srgb,
+    hsl(var(--primary)),
+    hsl(var(--black)) var(--state-on-filled-hover-alpha)
+  );
+  --color-primary-pressed: color-mix(
+    in srgb,
+    hsl(var(--primary)),
+    hsl(var(--black)) var(--state-on-filled-pressed-alpha)
+  );
+  --color-destructive-hover: color-mix(
+    in srgb,
+    hsl(var(--destructive)),
+    hsl(var(--black)) var(--state-on-filled-hover-alpha)
+  );
+  --color-destructive-pressed: color-mix(
+    in srgb,
+    hsl(var(--destructive)),
+    hsl(var(--black)) var(--state-on-filled-pressed-alpha)
+  );
 }
 
 @layer base {
@@ -225,19 +291,28 @@
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
-    --sidebar-accent: 215 25% 94.6%; /* sidebar row hover - one step above sidebar surface */
-    --sidebar-accent-active: 214 23% 92.2%; /* sidebar row selected - always heavier than hover */
-    --sidebar-accent-strong: 213 22% 89.8%; /* controls layered on an already-hovered/selected row */
-
     --semantic-foreground: var(--gray-0); /* gray-0 */
 
     --background-50: var(
       --gray-50
     ); /* gray-50 - lighter background for code blocks */
 
-    --button-hover: var(
-      --gray-50
-    ); /* gray-50 - subtle hover for outline buttons */
+    /* Interaction state ladder (light).
+
+       The layer colour is chosen so that compositing it onto a surface lands
+       back on the neutral ramp rather than just darkening it. The ramp falls
+       away from white at roughly R:G:B = 1 : 0.84 : 0.62 (gray-50 -> gray-200),
+       and this colour falls at 1 : 0.842 : 0.620 -- so every state keeps the
+       ramp's cool cast at hue 215 / ~23% saturation instead of washing out to
+       a flat 2% grey. `--state-hover` over white is exactly gray-50. */
+    --state-layer: 215 100% 19%;
+
+    --state-hover-alpha: 5%;
+    --state-selected-alpha: 8.5%;
+    --state-selected-hover-alpha: 11.5%;
+    --state-pressed-alpha: 13%;
+    --state-on-filled-hover-alpha: 10%;
+    --state-on-filled-pressed-alpha: 16%;
 
     --radius: 0.5rem;
   }
@@ -331,10 +406,6 @@
     --sidebar-foreground: var(--gray-950); /* gray-950 */
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
-    --sidebar-accent: 240 3% 17.5%; /* sidebar row hover - one step above sidebar surface */
-    --sidebar-accent-active: 240 3% 20%; /* sidebar row selected - always heavier than hover */
-    --sidebar-accent-strong: 240 3% 22.5%; /* controls layered on an already-hovered/selected row */
-
     --tooltip-bg: hsl(
       var(--gray-300)
     ); /* tooltip - visible against dark surfaces */
@@ -345,9 +416,19 @@
       --gray-50
     ); /* gray-50 - lighter background for code blocks */
 
-    --button-hover: var(
-      --gray-50
-    ); /* gray-50 - subtle hover for outline buttons */
+    /* Interaction state ladder (dark).
+       Dark surfaces need a wider ladder than light ones to read as the same
+       step, so the alphas are raised rather than mirrored. The dark ramp is a
+       much quieter cool (hue 240 at 3% saturation), so the layer matches that
+       hue and stays just saturated enough to hold it as the alpha climbs. */
+    --state-layer: 240 100% 97%;
+
+    --state-hover-alpha: 7%;
+    --state-selected-alpha: 12%;
+    --state-selected-hover-alpha: 16%;
+    --state-pressed-alpha: 19%;
+    --state-on-filled-hover-alpha: 12%;
+    --state-on-filled-pressed-alpha: 20%;
   }
 }
 

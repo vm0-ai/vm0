@@ -51,8 +51,8 @@ function triggerClassName(
   if (variant === "sidebar") {
     return `peer pointer-events-auto absolute left-1 top-1 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
       isPrimarySelected
-        ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-        : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+        ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-state-selected-hover"
+        : "text-sidebar-foreground/80 hover:text-foreground hover:bg-state-selected-hover"
     }`;
   }
 

@@ -109,7 +109,7 @@ function InvitationRow({
         type="button"
         disabled={isAccepting}
         onClick={handleAccept}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-state-hover transition-colors disabled:opacity-50 disabled:pointer-events-none"
       >
         <IconMail size={13} />
         {isAccepting
@@ -321,7 +321,7 @@ export function ZeroOrgSwitcherCompact() {
           aria-label={t(($) => {
             return $.appShell.sidebar.workspaceSwitcher.switch;
           })}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover"
         >
           <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
           <PendingInvitationsBadge />
@@ -350,7 +350,7 @@ export function ZeroOrgSwitcher() {
             aria-label={t(($) => {
               return $.appShell.sidebar.workspaceSwitcher.switch;
             })}
-            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-state-hover text-sidebar-foreground transition-colors"
           >
             <span className="relative shrink-0">
               <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />

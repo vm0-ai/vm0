@@ -522,7 +522,7 @@ function SelfDemoteAction({ email }: { email: string }) {
                 email,
               },
             )}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors"
           >
             <IconDots size={15} stroke={1.5} />
           </button>
@@ -631,7 +631,7 @@ function MemberActions({ member }: { member: OrgMember }) {
               },
             )}
             disabled={changingRole}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors disabled:opacity-50 disabled:pointer-events-none"
           >
             <IconDots size={15} stroke={1.5} />
           </button>
@@ -787,7 +787,7 @@ function PendingInvitationRow({
                     },
                     { email: invitation.email },
                   )}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors"
                 >
                   <IconDots size={15} stroke={1.5} />
                 </button>

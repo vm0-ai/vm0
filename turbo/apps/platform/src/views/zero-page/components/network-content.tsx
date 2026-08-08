@@ -282,7 +282,7 @@ function TypeFilter({
           aria-label={t(($) => {
             return $.activity.network.filter.type;
           })}
-          className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-accent focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+          className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-input-hover focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         >
           <span className="flex items-center gap-1.5">
             <IconFilter size={14} stroke={1.5} className="shrink-0" />
@@ -987,7 +987,7 @@ function NetworkLogRow({
   return (
     <>
       <TableRow
-        className="cursor-pointer hover:bg-muted/50"
+        className="cursor-pointer hover:bg-state-hover"
         onClick={() => {
           toggleExpanded(rowKey);
         }}

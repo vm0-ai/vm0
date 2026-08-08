@@ -40,7 +40,7 @@ export function BrowserSessionSidebar({
           aria-label={t(($) => {
             return $.browserSession.openNewPage;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
           <IconArrowsDiagonal size={16} />
         </a>
@@ -57,7 +57,7 @@ export function BrowserSessionSidebar({
           aria-label={t(($) => {
             return $.browserSession.close;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
           <IconX size={16} />
         </button>

@@ -258,8 +258,8 @@ export function PinnedAgentListSection({
                   data-testid="pinned-agent-card"
                   className={`group flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 no-underline transition-colors duration-200 ${
                     isPrimarySelected
-                      ? "bg-sidebar-accent-active text-sidebar-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                      ? "bg-state-selected text-sidebar-foreground"
+                      : "text-sidebar-foreground hover:bg-state-hover"
                   }`}
                 >
                   <span className="relative">
@@ -286,7 +286,7 @@ export function PinnedAgentListSection({
             aria-label={t(($) => {
               return $.sidebar.openConversation;
             })}
-            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <IconPlus size={16} stroke={2} />
@@ -306,7 +306,7 @@ export function PinnedAgentListSection({
   return (
     <div className="shrink-0">
       <div
-        className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
+        className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
         data-testid="pinned-section-header"
         onClick={() => {
           return setCollapsed(!collapsed);
@@ -333,7 +333,7 @@ export function PinnedAgentListSection({
                   e.stopPropagation();
                   openAgentListDialog();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent-active transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
                 aria-label={t(($) => {
                   return $.sidebar.openConversation;
                 })}
@@ -393,10 +393,10 @@ export function PinnedAgentListSection({
                       hasSideActions ? "pl-2 pr-8" : "px-2"
                     } ${
                       isPrimarySelected
-                        ? "bg-sidebar-accent-active text-sidebar-foreground font-medium"
+                        ? "bg-state-selected text-sidebar-foreground font-medium"
                         : isFromChat
-                          ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent text-sidebar-foreground hover:bg-sidebar-accent-active"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
+                          ? "border-l-2 border-[hsl(var(--gray-400))] bg-state-hover text-sidebar-foreground hover:bg-state-selected-hover"
+                          : "text-sidebar-foreground hover:bg-state-hover"
                     }`}
                   >
                     <AgentAvatarImg

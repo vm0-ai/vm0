@@ -170,7 +170,7 @@ function EmptyHosts() {
           href={ZERO_DESKTOP_DOWNLOAD_URL}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-state-hover"
         >
           <IconDownload size={16} />
           {t(($) => {
