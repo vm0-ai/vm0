@@ -684,6 +684,54 @@ fn preserves_successful_post_result_cleanup(
             })
 }
 
+struct PersistenceFailure<'a> {
+    /// Human-facing name of the failed step, used for the guest error file the
+    /// host surfaces as the run error.
+    label: &'a str,
+    error: &'a AgentError,
+    elapsed: Duration,
+    cli_exit_code: i32,
+    wrote_failure_diagnostic: bool,
+}
+
+/// Record a failed run-settling persistence step so the runner's fallback
+/// `/complete` marks the run failed.
+///
+/// Both the checkpoint and the Pi artifact snapshot must fail the run: settling
+/// as successful would silently discard the writeback Storage mutations the
+/// sandbox just made.
+fn record_persistence_failure(failure: PersistenceFailure<'_>, runtime: &GuestRuntime) {
+    let config = &runtime.config;
+    let runtime_paths = &runtime.paths;
+    let msg = format!("{} failed: {}", failure.label, failure.error);
+    log_error!(LOG_TAG, "{msg}");
+    log_info!(
+        LOG_TAG,
+        "✗ {} failed ({}s)",
+        failure.label,
+        failure.elapsed.as_secs()
+    );
+    failure_diagnostics::write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
+    if failure.wrote_failure_diagnostic {
+        return;
+    }
+    let mut diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
+        config,
+        FailureClass::CheckpointFailed,
+    )
+    .with_cli_exit_code(failure.cli_exit_code);
+    if let Some(reason) = checkpoint_failure_reason(failure.error) {
+        diagnostic = diagnostic.with_failure_reason(reason);
+    }
+    let diagnostic = diagnostic.with_session_history_status(
+        failure_diagnostics::diagnostic_session_history_status_for_config(config, runtime_paths),
+    );
+    failure_diagnostics::write_guest_failure_diagnostic(
+        runtime_paths.failure_diagnostic_file(),
+        &diagnostic,
+    );
+}
+
 struct CompletionState<'a> {
     last_event_sequence: Option<u32>,
     failure_message: Option<&'a str>,
@@ -728,19 +776,57 @@ async fn complete_execution(
     // stop, so it can safely catch checkpoint and `/complete` logs.
     let agent_type = config.framework.agent_type();
     if state.skip_success_checkpoint && exit_code == 0 && http.has_api() {
+        // Pi skips the CLI session checkpoint because acknowledged transcript
+        // events already persisted its output, but the sandbox that produced
+        // them still mutated the writeback Storage mounts (memory included).
+        // The checkpoint used to be the only caller of the artifact snapshot,
+        // so skipping it wholesale dropped every one of those writes.
         log_info!(
             LOG_TAG,
             "Pi completed successfully without CLI session checkpoint"
         );
-        log_info!(LOG_TAG, "▷ Cleanup");
-        complete::report_success_for_run(
-            http,
-            &config.run_id,
-            &config.sandbox_id,
-            &config.sandbox_reuse_result,
-            state.last_event_sequence,
-        )
-        .await;
+        log_info!(LOG_TAG, "▷ Artifact snapshot");
+        let snapshot_start = Instant::now();
+        let (snapshot_result, _) = tokio::join!(
+            checkpoint::snapshot_writeback_artifacts_for_runtime(runtime),
+            telemetry.flush(UploadMode::Live),
+        );
+        match snapshot_result {
+            Ok(()) => {
+                log_info!(
+                    LOG_TAG,
+                    "✓ Artifact snapshot complete ({}s)",
+                    snapshot_start.elapsed().as_secs()
+                );
+                log_info!(LOG_TAG, "▷ Cleanup");
+                complete::report_success_for_run(
+                    http,
+                    &config.run_id,
+                    &config.sandbox_id,
+                    &config.sandbox_reuse_result,
+                    state.last_event_sequence,
+                )
+                .await;
+            }
+            Err(e) => {
+                record_persistence_failure(
+                    PersistenceFailure {
+                        label: "Artifact snapshot",
+                        error: &e,
+                        elapsed: snapshot_start.elapsed(),
+                        cli_exit_code,
+                        wrote_failure_diagnostic,
+                    },
+                    runtime,
+                );
+                exit_code = 1;
+
+                // Failure path: don't call /complete from guest, matching the
+                // checkpoint branch. The runner's fallback posts exitCode=1 so
+                // the run fails instead of settling with lost writeback state.
+                log_info!(LOG_TAG, "▷ Cleanup");
+            }
+        }
     } else if should_create_success_checkpoint(exit_code) && http.has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
 
@@ -782,37 +868,16 @@ async fn complete_execution(
                 .await;
             }
             Err(e) => {
-                let msg = format!("Checkpoint failed: {e}");
-                log_error!(LOG_TAG, "{msg}");
-                log_info!(
-                    LOG_TAG,
-                    "✗ Checkpoint failed ({}s)",
-                    cp_start.elapsed().as_secs()
+                record_persistence_failure(
+                    PersistenceFailure {
+                        label: "Checkpoint",
+                        error: &e,
+                        elapsed: cp_start.elapsed(),
+                        cli_exit_code,
+                        wrote_failure_diagnostic,
+                    },
+                    runtime,
                 );
-                failure_diagnostics::write_guest_error_file(
-                    runtime_paths.checkpoint_error_file(),
-                    &msg,
-                );
-                if !wrote_failure_diagnostic {
-                    let mut diagnostic = failure_diagnostics::base_failure_diagnostic_for_config(
-                        config,
-                        FailureClass::CheckpointFailed,
-                    )
-                    .with_cli_exit_code(cli_exit_code);
-                    if let Some(reason) = checkpoint_failure_reason(&e) {
-                        diagnostic = diagnostic.with_failure_reason(reason);
-                    }
-                    let diagnostic = diagnostic.with_session_history_status(
-                        failure_diagnostics::diagnostic_session_history_status_for_config(
-                            config,
-                            runtime_paths,
-                        ),
-                    );
-                    failure_diagnostics::write_guest_failure_diagnostic(
-                        runtime_paths.failure_diagnostic_file(),
-                        &diagnostic,
-                    );
-                }
                 exit_code = 1;
 
                 // Failure path: don't call /complete from guest. The runner's
@@ -1010,12 +1075,20 @@ mod tests {
     }
 
     fn test_guest_config(server: &MockServer, prompt: Option<&str>) -> env::GuestConfig {
+        test_guest_config_with_artifacts(server, prompt, "")
+    }
+
+    fn test_guest_config_with_artifacts(
+        server: &MockServer,
+        prompt: Option<&str>,
+        artifacts: &str,
+    ) -> env::GuestConfig {
         env::GuestConfig::from_raw(env::GuestConfigRaw {
             run_id: "main-recovery-checkpoint".to_string(),
             api_url: server.base_url(),
             api_token: "test-token".to_string(),
             home: Some("/home/vm0".to_string()),
-            run_payload_file: write_test_run_payload(prompt)
+            run_payload_file: write_test_run_payload_with_artifacts(prompt, artifacts)
                 .to_string_lossy()
                 .into_owned(),
             guest_runtime_dir: Some(test_runtime_dir()),
@@ -1037,6 +1110,13 @@ mod tests {
     }
 
     fn write_test_run_payload(prompt: Option<&str>) -> std::path::PathBuf {
+        write_test_run_payload_with_artifacts(prompt, "")
+    }
+
+    fn write_test_run_payload_with_artifacts(
+        prompt: Option<&str>,
+        artifacts: &str,
+    ) -> std::path::PathBuf {
         let dir = test_runtime_dir().join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
         let create_result = std::fs::create_dir_all(&dir);
         assert!(
@@ -1046,6 +1126,7 @@ mod tests {
         let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
         let payload = guest_contracts::env::RunPayload {
             prompt: prompt.unwrap_or_default().to_string(),
+            artifacts: artifacts.to_string(),
             ..guest_contracts::env::RunPayload::default()
         };
         let bytes_result = serde_json::to_vec(&payload);
@@ -1629,6 +1710,193 @@ mod tests {
         assert_eq!(exit_code, 0);
         checkpoint_mock.assert_calls_async(0).await;
         complete_mock.assert_calls_async(1).await;
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn complete_execution_snapshots_pi_writeback_artifacts() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_snapshots_pi_writeback_artifacts_inner());
+    }
+
+    #[test]
+    fn complete_execution_fails_pi_run_when_writeback_artifact_snapshot_fails() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(
+                complete_execution_fails_pi_run_when_writeback_artifact_snapshot_fails_inner(),
+            );
+    }
+
+    fn test_pi_memory_artifacts(mount_path: &std::path::Path) -> String {
+        json!([{
+            "name": "memory",
+            "mountPath": mount_path.to_string_lossy(),
+            "storageId": "memory-storage",
+            "versionId": "memory-v1",
+        }])
+        .to_string()
+    }
+
+    async fn complete_execution_snapshots_pi_writeback_artifacts_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        let _env_guard = unsafe { set_test_env(server, Some("Pi handoff")) };
+        let guest_paths = test_guest_paths();
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let memory_mount = test_runtime_dir().join("pi-memory");
+        std::fs::create_dir_all(&memory_mount).unwrap();
+        std::fs::write(memory_mount.join("MEMORY.md"), b"written by the Pi sandbox").unwrap();
+
+        let prepare_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200)
+                .json_body(json!({"versionId": "memory-v2", "existing": true}));
+        });
+        let commit_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({
+                "success": true,
+                "versionId": "memory-v2",
+                "storageName": "memory",
+                "size": 24,
+                "fileCount": 1,
+            }));
+        });
+        let checkpoint_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/checkpoints");
+            then.status(500);
+        });
+        let complete_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/complete")
+                .json_body(json!({
+                    "runId": "main-recovery-checkpoint",
+                    "exitCode": 0,
+                    "lastEventSequence": 9
+                }));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({ "success": true, "status": "completed" }));
+        });
+        let _telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let config = test_guest_config_with_artifacts(
+            server,
+            Some("Pi handoff"),
+            &test_pi_memory_artifacts(&memory_mount),
+        );
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
+        let runtime = test_guest_runtime(config, http);
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: Some(9),
+                failure_message: None,
+                failure_diagnostic: None,
+                skip_recovery_checkpoint_for_no_history: false,
+                skip_success_checkpoint: true,
+            },
+            &telemetry,
+            &runtime,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 0);
+        prepare_mock.assert_calls_async(1).await;
+        commit_mock.assert_calls_async(1).await;
+        checkpoint_mock.assert_calls_async(0).await;
+        complete_mock.assert_calls_async(1).await;
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    async fn complete_execution_fails_pi_run_when_writeback_artifact_snapshot_fails_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        let _env_guard = unsafe { set_test_env(server, Some("Pi handoff")) };
+        let guest_paths = test_guest_paths();
+        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let complete_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/complete");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({ "success": true, "status": "completed" }));
+        });
+        let _telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let missing_mount = test_runtime_dir().join("pi-memory-missing");
+        let config = test_guest_config_with_artifacts(
+            server,
+            Some("Pi handoff"),
+            &test_pi_memory_artifacts(&missing_mount),
+        );
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
+        let runtime = test_guest_runtime(config, http);
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: Some(9),
+                failure_message: None,
+                failure_diagnostic: None,
+                skip_recovery_checkpoint_for_no_history: false,
+                skip_success_checkpoint: true,
+            },
+            &telemetry,
+            &runtime,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        complete_mock.assert_calls_async(0).await;
+        let error = std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap();
+        assert!(error.contains("Artifact snapshot failed"), "got: {error}");
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic.failure_class, FailureClass::CheckpointFailed);
         for path in cleanup_paths {
             let _ = std::fs::remove_file(path);
         }
