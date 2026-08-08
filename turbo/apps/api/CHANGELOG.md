@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.403.1](https://github.com/vm0-ai/vm0/compare/api-v1.403.0...api-v1.403.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **api:** prevent indexed chat search fallback ([#25763](https://github.com/vm0-ai/vm0/issues/25763)) ([73a6b64](https://github.com/vm0-ai/vm0/commit/73a6b641645bf298baf6d3754a4133757a8b6a84))
+
+
+### Refactoring
+
+* **api:** remove chat run finished import cycle ([#25766](https://github.com/vm0-ai/vm0/issues/25766)) ([4960fa2](https://github.com/vm0-ai/vm0/commit/4960fa2061e86a94ceaa00a8f9d800314a9e129d))
+* **chat:** cut over to the canonical chat-event contract ([#25768](https://github.com/vm0-ai/vm0/issues/25768)) ([057d1eb](https://github.com/vm0-ai/vm0/commit/057d1eb82aa00207347b5bbe1ec27fc817b90cbd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.4
+    * @vm0/core bumped to 8.530.4
+    * @vm0/db bumped to 1.179.4
+    * @vm0/pi-agent-runtime bumped to 1.3.7
+
 ## [1.403.0](https://github.com/vm0-ai/vm0/compare/api-v1.402.2...api-v1.403.0) (2026-08-07)
 
 

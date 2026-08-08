@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.707.0](https://github.com/vm0-ai/vm0/compare/app-v0.706.4...app-v0.707.0) (2026-08-08)
+
+
+### Features
+
+* **ui:** unify hover, selected and pressed states behind one token ladder ([#25730](https://github.com/vm0-ai/vm0/issues/25730)) ([f8cf311](https://github.com/vm0-ai/vm0/commit/f8cf311a13c320a28bce328a4a1470636b2800c2))
+
+
+### Bug Fixes
+
+* **platform:** restore chat position after thread switches ([#25721](https://github.com/vm0-ai/vm0/issues/25721)) ([64502e2](https://github.com/vm0-ai/vm0/commit/64502e23db9e93672ae4f061bb289802c62922d4))
+
+
+### Refactoring
+
+* **chat:** cut over to the canonical chat-event contract ([#25768](https://github.com/vm0-ai/vm0/issues/25768)) ([057d1eb](https://github.com/vm0-ai/vm0/commit/057d1eb82aa00207347b5bbe1ec27fc817b90cbd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.294.4
+    * @vm0/core bumped to 8.530.4
+
 ## [0.706.4](https://github.com/vm0-ai/vm0/compare/app-v0.706.3...app-v0.706.4) (2026-08-07)
 
 
