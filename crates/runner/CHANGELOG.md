@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.161.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.9...runner-rs-v0.161.0) (2026-08-08)
+
+
+### Features
+
+* **runner:** pin custom connector routing inputs ([#25756](https://github.com/vm0-ai/vm0/issues/25756)) ([22fa4c4](https://github.com/vm0-ai/vm0/commit/22fa4c4392e20449f49c44e1362008f3cdab6556))
+
+
+### Documentation
+
+* **python:** document buffered report lease ownership ([#25788](https://github.com/vm0-ai/vm0/issues/25788)) ([1cc74a1](https://github.com/vm0-ai/vm0/commit/1cc74a1570a8fdbdd1e347565e5a37765d08cc01))
+
 ## [0.160.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.160.8...runner-rs-v0.160.9) (2026-08-08)
 
 

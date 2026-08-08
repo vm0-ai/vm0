@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.405.0](https://github.com/vm0-ai/vm0/compare/api-v1.404.1...api-v1.405.0) (2026-08-08)
+
+
+### Features
+
+* **runner:** pin custom connector routing inputs ([#25756](https://github.com/vm0-ai/vm0/issues/25756)) ([22fa4c4](https://github.com/vm0-ai/vm0/commit/22fa4c4392e20449f49c44e1362008f3cdab6556))
+
+
+### Refactoring
+
+* **chat:** prepare chat event schema contraction ([#25781](https://github.com/vm0-ai/vm0/issues/25781)) ([aa6a129](https://github.com/vm0-ai/vm0/commit/aa6a1298eae7ba021adb0bc2c810cc03f287579b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.296.0
+    * @vm0/core bumped to 8.530.7
+    * @vm0/db bumped to 1.180.2
+    * @vm0/pi-agent-runtime bumped to 1.3.10
+
 ## [1.404.1](https://github.com/vm0-ai/vm0/compare/api-v1.404.0...api-v1.404.1) (2026-08-08)
 
 
