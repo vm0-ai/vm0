@@ -9495,10 +9495,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
     expect(customApis[0]?.auth?.headers).toStrictEqual({
       Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+      "X-Secondary": `\${{ secrets.${secondarySecretKey} }}`,
     });
-    expect(customApis[0]?.auth?.query).toStrictEqual({});
-    expect(JSON.stringify(customApis)).not.toContain(secondarySecretKey);
-    expect(JSON.stringify(customApis)).not.toContain(tenantVarKey);
+    expect(customApis[0]?.auth?.query).toStrictEqual({
+      tenant: `\${{ secrets.${tenantVarKey} }}`,
+    });
 
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "custom", customConnectorId: saved.connector.id }],
@@ -9508,10 +9509,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
     expect(runtimeApi.auth.headers).toStrictEqual({
       Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+      "X-Secondary": `\${{ secrets.${secondarySecretKey} }}`,
     });
-    expect(runtimeApi.auth.query).toStrictEqual({});
-    expect(JSON.stringify(runtime.firewall)).not.toContain(secondarySecretKey);
-    expect(JSON.stringify(runtime.firewall)).not.toContain(tenantVarKey);
+    expect(runtimeApi.auth.query).toStrictEqual({
+      tenant: `\${{ secrets.${tenantVarKey} }}`,
+    });
     const runtimeResolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -9784,6 +9786,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
             kind: "secret",
             required: false,
           },
+          {
+            key: "tenant",
+            label: "Tenant",
+            kind: "variable",
+            required: false,
+          },
         ],
         headerInjections: [
           {
@@ -9791,13 +9799,23 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
             valueTemplate: "Bearer {{secrets.secret}}",
           },
         ],
-        queryInjections: [],
+        queryInjections: [
+          {
+            name: "tenant",
+            valueTemplate: "{{variables.tenant}}",
+          },
+        ],
       },
       values: [
         {
           key: "secret",
           kind: "secret",
           value: "optional-only-secret",
+        },
+        {
+          key: "tenant",
+          kind: "variable",
+          value: "retained-tenant",
         },
       ],
       agentId,
@@ -9829,8 +9847,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(runtime.firewall.customConnectorId).toBe(saved.connector.id);
     const { api: runtimeApi, body: runtimeAuthBody } =
       customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
-    expect(runtimeApi.auth.headers).toStrictEqual({});
-    expect(JSON.stringify(runtime.firewall)).not.toContain(secretKey);
+    expect(runtimeApi.auth.headers).toStrictEqual({
+      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+    });
     const resolvedAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -9840,7 +9859,36 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       throw new Error("Expected optional-only custom connector auth");
     }
     expect(resolvedAuth.body.headers).toStrictEqual({});
-    expect(resolvedAuth.body.query).toStrictEqual({});
+    expect(resolvedAuth.body.query).toStrictEqual({
+      tenant: "retained-tenant",
+    });
+
+    context.mocks.ably.publish.mockClear();
+    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+      {
+        key: "secret",
+        kind: "secret",
+        value: "restored-optional-secret",
+      },
+    ]);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "connector-runtime-sync",
+      expect.anything(),
+    );
+    const restoredAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      runtimeAuthBody,
+      [200],
+    );
+    if (restoredAuth.status !== 200) {
+      throw new Error("Expected restored optional custom connector auth");
+    }
+    expect(restoredAuth.body.headers).toStrictEqual({
+      Authorization: "Bearer restored-optional-secret",
+    });
+    expect(restoredAuth.body.query).toStrictEqual({
+      tenant: "retained-tenant",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

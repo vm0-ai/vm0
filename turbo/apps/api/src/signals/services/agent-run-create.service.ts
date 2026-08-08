@@ -3773,7 +3773,6 @@ class CustomConnectorRuntimeBuildStats {
 
 function customConnectorRuntimeAuth(args: {
   readonly connector: CustomConnectorRuntimeDataRows[number]["connector"];
-  readonly valueMarkers: ReadonlySet<string> | undefined;
 }): {
   readonly headers: Record<string, string>;
   readonly query: Record<string, string>;
@@ -3785,7 +3784,6 @@ function customConnectorRuntimeAuth(args: {
           template: header.valueTemplate,
           connectorId: args.connector.id,
           fields: args.connector.fields,
-          configuredValueMarkers: args.valueMarkers,
         });
         return rendered === null ? [] : [[header.name, rendered]];
       }),
@@ -3796,7 +3794,6 @@ function customConnectorRuntimeAuth(args: {
           template: queryInjection.valueTemplate,
           connectorId: args.connector.id,
           fields: args.connector.fields,
-          configuredValueMarkers: args.valueMarkers,
         });
         return rendered === null ? [] : [[queryInjection.name, rendered]];
       }),
@@ -4040,7 +4037,6 @@ async function buildCustomConnectorRuntimeRow(args: {
   const authTemplateStartedAt = now();
   const { headers, query } = customConnectorRuntimeAuth({
     connector: args.row.connector,
-    valueMarkers: missingRequired ? undefined : valueMarkers,
   });
   args.stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
   if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {

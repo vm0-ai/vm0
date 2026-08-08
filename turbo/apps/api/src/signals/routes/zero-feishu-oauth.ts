@@ -43,7 +43,10 @@ import {
   verifyFeishuOAuthState,
 } from "../services/feishu-oauth-state";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
-import { addUserCustomConnector } from "../services/user-connectors.service";
+import {
+  addUserCustomConnector,
+  lockUserCustomConnectorGrantScope,
+} from "../services/user-connectors.service";
 import { publishCustomConnectorRuntimeSyncWakeups } from "../services/custom-connector-runtime-wakeup.service";
 import {
   getCustomConnectorById,
@@ -368,6 +371,17 @@ async function persistFeishuOAuthConnection(
     }
 > {
   return await args.db.transaction(async (tx) => {
+    const agentLocked = await lockUserCustomConnectorGrantScope(tx, {
+      orgId: args.state.orgId,
+      userId: args.state.userId,
+      agentId: args.installation.defaultAgentId,
+    });
+    signal.throwIfAborted();
+    if (!agentLocked) {
+      throw new Error(
+        "Failed to authorize Feishu custom connector: agentNotFound",
+      );
+    }
     const connection = await upsertFeishuConnection(
       {
         db: tx,

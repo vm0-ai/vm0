@@ -346,6 +346,20 @@ async function lockZeroAgentForConnectorReplace(
   return agent !== undefined;
 }
 
+export async function lockUserCustomConnectorGrantScope(
+  db: Pick<Db, "select">,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<boolean> {
+  return (
+    (await lockAgentComposeForConnectorReplace(db, args)) &&
+    (await lockZeroAgentForConnectorReplace(db, args))
+  );
+}
+
 interface LockedCustomConnectorRow {
   readonly id: string;
   readonly slug: string;
@@ -902,15 +916,7 @@ async function persistUserCustomConnectorTransaction(args: {
   readonly operation: UserCustomConnectorUpdateOperation;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot | null;
 }): Promise<UserCustomConnectorTransactionResult> {
-  const composeLocked = await lockAgentComposeForConnectorReplace(
-    args.tx,
-    args.request,
-  );
-  if (!composeLocked) {
-    return { result: { status: "agentNotFound" }, previousIds: [] };
-  }
-
-  const agentLocked = await lockZeroAgentForConnectorReplace(
+  const agentLocked = await lockUserCustomConnectorGrantScope(
     args.tx,
     args.request,
   );

@@ -364,6 +364,7 @@ async function reconcileFeishuCustomConnector(
         eq(orgCustomConnectors.slug, slug),
       ),
     )
+    .for("update", { of: orgCustomConnectors })
     .limit(1);
   signal.throwIfAborted();
   if (!existing) {

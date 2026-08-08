@@ -826,7 +826,10 @@ function buildUpdateBody(
   connector: CustomConnectorResponse,
 ): UpdateCustomConnectorBody {
   const body = canonicalDefinitionFromForm(form, connector);
-  const currentStorageVersion = connector.storageVersion ?? 1;
+  const currentStorageVersion = connector.storageVersion;
+  if (currentStorageVersion === undefined) {
+    return body;
+  }
   return {
     ...body,
     storageVersion: updateChangesCredentialContract(connector, body)

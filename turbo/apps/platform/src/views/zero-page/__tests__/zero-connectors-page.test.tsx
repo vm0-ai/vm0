@@ -3639,6 +3639,7 @@ describe("connectors page", () => {
           headerInjections: body.headerInjections ?? [],
           queryInjections: body.queryInjections ?? [],
           authMode: body.authMode,
+          storageVersion: body.storageVersion,
           ...(body.oauthConfig
             ? {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
@@ -3665,6 +3666,7 @@ describe("connectors page", () => {
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
           authMode: body.authMode ?? connector.authMode,
+          storageVersion: body.storageVersion ?? connector.storageVersion,
           ...(body.oauthConfig
             ? {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
@@ -4038,7 +4040,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("Acme Billing API")).toBeInTheDocument();
     });
-    expect(story.updateBodies[0]?.storageVersion).toBe(1);
+    expect(story.updateBodies[0]?.storageVersion).toBeUndefined();
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Disconnect"));
