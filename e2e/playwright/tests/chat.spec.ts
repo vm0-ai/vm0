@@ -685,9 +685,6 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       json: {
         switches: {},
         effectiveSwitches: { joggAiBuiltIn: true },
-        supportsCustomConnectorOAuth2: true,
-        supportsImageRecognition: true,
-        supportsAvatarTemplates: true,
       },
     });
   });

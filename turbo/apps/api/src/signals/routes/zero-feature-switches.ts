@@ -30,13 +30,6 @@ function featureSwitchResponseBody(params: {
   return {
     switches: params.switches,
     effectiveSwitches: registeredEffectiveSwitches,
-    // Web/app clients can remain open for about two days. The Platform bundle
-    // deployed 2026-08-07 14:02 Asia/Shanghai gates these features on the
-    // handshakes. Remove them after 2026-08-09 14:02, once that client window
-    // drains; follow-up issue: #25762.
-    supportsStructuredInlineTemplates: true,
-    supportsImageRecognition: true,
-    supportsAvatarTemplates: true,
   };
 }
 

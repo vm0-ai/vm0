@@ -16,29 +16,6 @@ function client() {
 }
 
 describe("/api/zero/feature-switches", () => {
-  it("keeps the capability handshakes the previous Platform bundle reads", async () => {
-    createZeroRouteMocks(context).clerk.session(
-      "user_capability_handshake_test",
-      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      "org:member",
-    );
-    const response = await accept(
-      client().get({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    // The pre-cleanup Platform bundle disables inline templates, image
-    // recognition, and avatar templates when these fields are absent, so they
-    // must survive until that frontend release has drained.
-    expect(response.body).toMatchObject({
-      supportsStructuredInlineTemplates: true,
-      supportsImageRecognition: true,
-      supportsAvatarTemplates: true,
-    });
-  });
-
   it("persists and activates a user override for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
