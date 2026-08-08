@@ -10,7 +10,6 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
 import {
   buildCustomConnectorRuntimeContext,
   customConnectorRuntimeExecutionState,
@@ -37,20 +36,6 @@ interface CustomTargetSnapshot {
 
 interface ConnectorRuntimeResolution {
   readonly result: ConnectorRuntimeSyncResult;
-}
-
-function connectorRuntimeTargetIdentity(
-  registration: ConnectorRuntimeTargetRegistration,
-): ConnectorRuntimeTarget {
-  return registration.kind === "builtin"
-    ? {
-        kind: "builtin",
-        connectorSlug: registration.connectorSlug,
-      }
-    : {
-        kind: "custom",
-        customConnectorId: registration.customConnectorId,
-      };
 }
 
 function customAbsentResult(
@@ -161,10 +146,10 @@ async function resolveCustomTarget(args: {
   >;
   readonly snapshot: Awaited<ReturnType<typeof loadCustomSnapshot>>;
 }): Promise<ConnectorRuntimeResolution> {
-  const target = connectorRuntimeTargetIdentity(args.registration);
-  if (target.kind !== "custom") {
-    throw new Error("Expected Custom connector runtime target");
-  }
+  const target = {
+    kind: "custom" as const,
+    customConnectorId: args.registration.customConnectorId,
+  };
   const custom = args.snapshot.customTargets.get(target.customConnectorId);
   if (!custom) {
     return customAbsentResult(target, "connector-unavailable");
@@ -200,28 +185,23 @@ async function resolveCustomTarget(args: {
           [target.customConnectorId, args.registration.baseUrlVars] as const,
         ]);
 
-  const contextResult = await settle(
-    buildCustomConnectorRuntimeContext({
-      rows: [row],
-      featureSwitchContext: args.snapshot.featureSwitchContext,
-      connectorCatalogSnapshot: args.snapshot.connectorCatalogSnapshot,
-      grants: [
-        custom.grant ?? {
-          customConnectorId: target.customConnectorId,
-          permissionNames: [],
-        },
-      ],
-      baseUrlVarsByConnectorId,
-    }),
-  );
-  if (!contextResult.ok) {
-    throw contextResult.error;
-  }
+  const context = await buildCustomConnectorRuntimeContext({
+    rows: [row],
+    featureSwitchContext: args.snapshot.featureSwitchContext,
+    connectorCatalogSnapshot: args.snapshot.connectorCatalogSnapshot,
+    grants: [
+      custom.grant ?? {
+        customConnectorId: target.customConnectorId,
+        permissionNames: [],
+      },
+    ],
+    baseUrlVarsByConnectorId,
+  });
   const state = customConnectorRuntimeExecutionState({
-    context: contextResult.value,
+    context,
     connectorId: target.customConnectorId,
   });
-  const resolvedTarget = contextResult.value.targets.find((candidate) => {
+  const resolvedTarget = context.targets.find((candidate) => {
     return (
       candidate.kind === "custom" &&
       candidate.customConnectorId === target.customConnectorId

@@ -3703,10 +3703,12 @@ class CustomConnectorRuntimeBuildStats {
     this.invalidPrefixCount += 1;
   }
 
-  recordTarget(target: ConnectorRuntimeTargetRegistration): void {
-    if (target.kind !== "custom") {
-      return;
-    }
+  recordTarget(
+    target: Extract<
+      ConnectorRuntimeTargetRegistration,
+      { readonly kind: "custom" }
+    >,
+  ): void {
     if (target.baseUrlVars === undefined) {
       this.unpinnedRoutingCount += 1;
     } else {
@@ -3915,7 +3917,10 @@ interface BuildCustomConnectorRuntimeContextArgs {
 }
 
 interface BuiltCustomConnectorRuntimeRow {
-  readonly target: ConnectorRuntimeTargetRegistration;
+  readonly target: Extract<
+    ConnectorRuntimeTargetRegistration,
+    { readonly kind: "custom" }
+  >;
   readonly skill:
     | {
         readonly connectorId: string;
@@ -3928,7 +3933,7 @@ interface BuiltCustomConnectorRuntimeRow {
 }
 
 function unavailableCustomConnectorRuntimeRow(
-  target: ConnectorRuntimeTargetRegistration,
+  target: BuiltCustomConnectorRuntimeRow["target"],
   skill: BuiltCustomConnectorRuntimeRow["skill"],
 ): BuiltCustomConnectorRuntimeRow {
   return {
@@ -3999,7 +4004,7 @@ async function buildCustomConnectorRuntimeRow(args: {
     kind: "custom" as const,
     customConnectorId: args.row.connector.id,
   };
-  const target: ConnectorRuntimeTargetRegistration = {
+  const target: BuiltCustomConnectorRuntimeRow["target"] = {
     ...targetIdentity,
     ...(baseUrlVars === undefined ? {} : { baseUrlVars: { ...baseUrlVars } }),
   };

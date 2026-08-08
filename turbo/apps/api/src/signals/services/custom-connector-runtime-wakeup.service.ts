@@ -64,14 +64,14 @@ async function publishCustomConnectorRuntimeSyncWakeupsInner(
   const affected = new Set(customConnectorIds);
   const wakeups: CustomConnectorRuntimeWakeup[] = [];
   const wakeupKeys = new Set<string>();
-  let activeRunnerFallbackCount = 0;
+  let runnerFilteredRunCount = 0;
   let skippedStoredContextCount = 0;
   for (const row of rows) {
     if (!row.runnerGroup) {
       continue;
     }
     if (row.executionContext === null) {
-      activeRunnerFallbackCount += 1;
+      runnerFilteredRunCount += 1;
       for (const customConnectorId of affected) {
         const wakeupKey = `${row.runId}:${customConnectorId}`;
         if (wakeupKeys.has(wakeupKey)) {
@@ -130,7 +130,7 @@ async function publishCustomConnectorRuntimeSyncWakeupsInner(
     scopedToAgent: args.scope.agentId !== undefined,
     targetCount: customConnectorIds.length,
     examinedRunCount: rows.length,
-    activeRunnerFallbackCount,
+    runnerFilteredRunCount,
     skippedStoredContextCount,
     matchedWakeupCount: wakeups.length,
     publishedWakeupCount: wakeups.length - failed,
