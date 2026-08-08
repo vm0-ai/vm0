@@ -108,8 +108,6 @@ type BrowserThreadProfileRow = typeof browserThreadProfiles.$inferSelect;
 type DbTransaction = Tx;
 type InactiveBrowserStatus = (typeof INACTIVE_BROWSER_STATUSES)[number];
 
-class BrowserOpenEventIdConflictError extends Error {}
-
 export interface BrowserServiceError {
   readonly kind: "error";
   readonly status: 400 | 403 | 404 | 409 | 502 | 503;
@@ -1427,7 +1425,6 @@ async function claimStartedProviderInstance(
     readonly browser: BrowserSessionRow;
     readonly context: BrowserRunContext;
     readonly provider: BrowserUseSession;
-    readonly lifecycleEventId?: string;
     readonly screenHeight: number;
   },
 ) {
@@ -1488,42 +1485,17 @@ async function claimStartedProviderInstance(
     if (!browser) {
       throw new Error("Failed to activate managed browser");
     }
-    const lifecycleEvent = args.lifecycleEventId
-      ? await insertChatEvent(
-          tx,
-          {
-            id: args.lifecycleEventId,
-            chatThreadId: current.chatThreadId,
-            eventType: "browser.open",
-            content: null,
-          },
-          "id",
-        )
-      : null;
-    if (args.lifecycleEventId && !lifecycleEvent) {
-      throw new BrowserOpenEventIdConflictError(
-        "Managed browser open event ID is already in use",
-      );
-    }
     return {
       kind: "active" as const,
       browser,
       instance,
       screen,
-      lifecycleEvent,
     };
   });
   if (claimed.kind === "cleanup" || claimed.kind === "active") {
     await publishBrowserSessionChangedSafely(args.browser.userId, {
       threadId: args.browser.chatThreadId,
     });
-  }
-  if (claimed.kind === "active" && claimed.lifecycleEvent) {
-    await publishChatThreadMessageCreatedSafely(
-      args.browser.userId,
-      args.browser.chatThreadId,
-      claimed.lifecycleEvent.seqId,
-    );
   }
   return claimed;
 }
@@ -1534,7 +1506,6 @@ async function createAndClaimProviderInstance(
     readonly browser: BrowserSessionRow;
     readonly profile: Pick<BrowserThreadProfileRow, "providerProfileId">;
     readonly context: BrowserRunContext;
-    readonly lifecycleEventId?: string;
     readonly screenHeight: number;
   },
 ) {
@@ -1581,7 +1552,6 @@ async function createAndClaimProviderInstance(
       browser: args.browser,
       context: args.context,
       provider: provider.value,
-      lifecycleEventId: args.lifecycleEventId,
       screenHeight: args.screenHeight,
     }),
   );
@@ -1589,12 +1559,6 @@ async function createAndClaimProviderInstance(
     // Provider creation is irreversible. Any failed claim must reclaim the
     // provider because the transaction rolls back every durable owner row.
     stopProviderSessionLater(provider.value.id);
-    if (claimResult.error instanceof BrowserOpenEventIdConflictError) {
-      return conflict(
-        "The managed browser lifecycle event ID is already in use",
-        "BROWSER_EVENT_ID_CONFLICT",
-      );
-    }
     throw claimResult.error;
   }
   const claimed = claimResult.value;
@@ -1613,7 +1577,6 @@ const startProviderInstance$ = command(
     args: {
       readonly browser: BrowserSessionRow;
       readonly context: BrowserRunContext;
-      readonly lifecycleEventId?: string;
     },
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserConnection>> => {
@@ -1639,7 +1602,6 @@ const startProviderInstance$ = command(
       browser: args.browser,
       profile,
       context: args.context,
-      lifecycleEventId: args.lifecycleEventId,
       screenHeight,
     });
     signal.throwIfAborted();
@@ -1689,7 +1651,7 @@ const startProviderInstance$ = command(
           claimed.screen,
         ),
         cdpUrl: started.cdpUrl,
-        lifecycleEventId: claimed.lifecycleEvent?.id ?? null,
+        lifecycleEventId: null,
       },
     };
   },
@@ -1759,7 +1721,6 @@ const createBrowserForContext$ = command(
     args: {
       readonly context: BrowserRunContext;
       readonly input: BrowserCreateInput;
-      readonly lifecycleEventId?: string;
     },
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserConnection>> => {
@@ -1785,7 +1746,6 @@ const createBrowserForContext$ = command(
       {
         browser: claimed.value,
         context: args.context,
-        lifecycleEventId: args.lifecycleEventId,
       },
       AbortSignal.timeout(PROVIDER_START_LIFECYCLE_TIMEOUT_MS),
     );
@@ -2070,7 +2030,6 @@ const resumeSuspendedBrowser$ = command(
     args: {
       readonly context: BrowserRunContext;
       readonly current: BrowserSessionRow;
-      readonly lifecycleEventId?: string;
     },
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserConnection>> => {
@@ -2107,7 +2066,6 @@ const resumeSuspendedBrowser$ = command(
       {
         browser: claim.browser,
         context,
-        lifecycleEventId: args.lifecycleEventId,
       },
       AbortSignal.timeout(PROVIDER_START_LIFECYCLE_TIMEOUT_MS),
     );
@@ -2138,7 +2096,6 @@ const openBrowserForContext$ = command(
     { set },
     args: {
       readonly context: BrowserRunContext;
-      readonly lifecycleEventId?: string;
       readonly input?: BrowserCreateInput;
     },
     signal: AbortSignal,
@@ -2157,7 +2114,6 @@ const openBrowserForContext$ = command(
             name: "browser",
             proxyCountryCode: null,
           },
-          lifecycleEventId: args.lifecycleEventId,
         },
         signal,
       );
@@ -2176,7 +2132,6 @@ const openBrowserForContext$ = command(
           {
             context,
             current: reused.browser,
-            lifecycleEventId: args.lifecycleEventId,
           },
           signal,
         );
@@ -2221,7 +2176,6 @@ export const openZeroBrowserForThread$ = command(
       openBrowserForContext$,
       {
         context: context.value,
-        lifecycleEventId: args.lifecycleEventId,
       },
       signal,
     );
@@ -2231,15 +2185,6 @@ export const openZeroBrowserForThread$ = command(
     }
     // The viewer runs in the user's browser, so it only ever learns the live
     // view; the CDP endpoint stays inside the agent runtime.
-    if (connection.value.lifecycleEventId) {
-      return {
-        kind: "ok",
-        value: {
-          browser: connection.value.browser,
-          lifecycleEventId: connection.value.lifecycleEventId,
-        },
-      };
-    }
     const event = await db.transaction(async (tx) => {
       return await insertChatEvent(
         tx,

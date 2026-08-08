@@ -1415,14 +1415,16 @@ describe("zero browser route", () => {
 
     // The viewer can restore a reclaimed browser without a live run.
     context.mocks.ably.publish.mockClear();
+    const resumedEventId = randomUUID();
     const resumed = await accept(
       client().open({
         headers: { authorization: "Bearer clerk-session" },
         params: { threadId },
-        body: { eventId: randomUUID() },
+        body: { eventId: resumedEventId },
       }),
       [200],
     );
+    expect(resumed.body.lifecycleEventId).toBe(resumedEventId);
     expect(resumed.body.browser).toMatchObject({
       threadId: threadId,
       status: "active",
