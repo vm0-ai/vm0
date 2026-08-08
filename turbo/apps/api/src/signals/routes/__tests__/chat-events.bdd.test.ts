@@ -315,6 +315,10 @@ interface ChatRunSendBody {
   readonly revokesEventId?: string;
 }
 
+/**
+ * Template markers render inline, so a client that wants the template on its
+ * own line sends the blank line as an explicit text part.
+ */
 function userMessageWithTemplate(
   prompt: string,
   template: GenerationTemplateRequest,
@@ -324,6 +328,7 @@ function userMessageWithTemplate(
     version: 1,
     parts: [
       { type: "text", text: prompt },
+      { type: "text", text: "\n\n" },
       { type: "template", titleSnapshot, template },
     ],
   };
