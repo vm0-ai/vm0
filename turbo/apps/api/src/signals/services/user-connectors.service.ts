@@ -20,6 +20,7 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
+import { publishCustomConnectorRuntimeSyncWakeups } from "./custom-connector-runtime-wakeup.service";
 import {
   loadCurrentCustomConnectorOAuthConnectionIds,
   loadCurrentCustomConnectorValueMarkers,
@@ -65,6 +66,24 @@ type UpdateUserCustomConnectorsResult =
 
 type UserCustomConnectorUpdateOperation = "replace" | "add" | "remove";
 type DbTransaction = Tx;
+
+interface UserCustomConnectorTransactionResult {
+  readonly result: UpdateUserCustomConnectorsResult;
+  readonly previousIds: readonly string[];
+}
+
+interface UpdateUserCustomConnectorsArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly enabledIds: readonly string[];
+  readonly grants?: readonly AgentCustomConnectorGrant[];
+  readonly operation?: UserCustomConnectorUpdateOperation;
+}
+
+interface UpdateUserCustomConnectorsOptions {
+  readonly deferRuntimeWakeupUntilOuterCommit?: boolean;
+}
 
 type AddUserCustomConnectorResult =
   | { readonly status: "added" }
@@ -325,6 +344,20 @@ async function lockZeroAgentForConnectorReplace(
     .for("update")
     .limit(1);
   return agent !== undefined;
+}
+
+export async function lockUserCustomConnectorGrantScope(
+  db: Pick<Db, "select">,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+  },
+): Promise<boolean> {
+  return (
+    (await lockAgentComposeForConnectorReplace(db, args)) &&
+    (await lockZeroAgentForConnectorReplace(db, args))
+  );
 }
 
 interface LockedCustomConnectorRow {
@@ -857,10 +890,6 @@ async function persistUserCustomConnectorUpdate(
       and(
         eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
         eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
-        eq(
-          orgCustomConnectors.revision,
-          userCustomConnectors.connectorRevision,
-        ),
       ),
     )
     .where(and(connectorScope, eq(orgCustomConnectors.enabled, true)))
@@ -879,16 +908,98 @@ async function persistUserCustomConnectorUpdate(
   };
 }
 
+async function persistUserCustomConnectorTransaction(args: {
+  readonly tx: DbTransaction;
+  readonly request: UpdateUserCustomConnectorsArgs;
+  readonly enabledIds: readonly string[];
+  readonly grantByConnectorId: ReadonlyMap<string, readonly string[]>;
+  readonly operation: UserCustomConnectorUpdateOperation;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot | null;
+}): Promise<UserCustomConnectorTransactionResult> {
+  const agentLocked = await lockUserCustomConnectorGrantScope(
+    args.tx,
+    args.request,
+  );
+  if (!agentLocked) {
+    return { result: { status: "agentNotFound" }, previousIds: [] };
+  }
+  const previousRows = await args.tx
+    .select({ customConnectorId: userCustomConnectors.customConnectorId })
+    .from(userCustomConnectors)
+    .where(
+      and(
+        eq(userCustomConnectors.orgId, args.request.orgId),
+        eq(userCustomConnectors.userId, args.request.userId),
+        eq(userCustomConnectors.agentId, args.request.agentId),
+      ),
+    )
+    .for("update");
+  const previousIds = previousRows.map((row) => {
+    return row.customConnectorId;
+  });
+
+  if (args.operation === "remove") {
+    return {
+      result: await persistUserCustomConnectorUpdate(args.tx, {
+        ...args.request,
+        enabledIds: args.enabledIds,
+        operation: args.operation,
+        connectorRevisions: new Map(),
+        permissionNamesByConnectorId: new Map(),
+      }),
+      previousIds,
+    };
+  }
+  const validation = await lockCustomConnectorsForReplace(args.tx, {
+    orgId: args.request.orgId,
+    userId: args.request.userId,
+    enabledIds: args.enabledIds,
+  });
+  if (validation.missingIds.length > 0) {
+    return {
+      result: {
+        status: "customConnectorsNotFound",
+        missingIds: validation.missingIds,
+      },
+      previousIds,
+    };
+  }
+  if (validation.unconfiguredIds.length > 0) {
+    return {
+      result: {
+        status: "customConnectorsNotConfigured",
+        unconfiguredIds: validation.unconfiguredIds,
+      },
+      previousIds,
+    };
+  }
+  const permissionSelection = await validateCustomConnectorPermissionSelection({
+    enabledIds: args.enabledIds,
+    explicitGrants: args.request.grants !== undefined,
+    grantByConnectorId: args.grantByConnectorId,
+    permissionBundleRefs: validation.permissionBundleRefs,
+    snapshot: args.connectorCatalogSnapshot,
+  });
+  if (!permissionSelection.ok) {
+    return { result: permissionSelection.error, previousIds };
+  }
+  return {
+    result: await persistUserCustomConnectorUpdate(args.tx, {
+      ...args.request,
+      enabledIds: args.enabledIds,
+      operation: args.operation,
+      connectorRevisions: validation.revisions,
+      permissionNamesByConnectorId:
+        permissionSelection.permissionNamesByConnectorId,
+    }),
+    previousIds,
+  };
+}
+
 export async function updateUserCustomConnectors(
   db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agentId: string;
-    readonly enabledIds: readonly string[];
-    readonly grants?: readonly AgentCustomConnectorGrant[];
-    readonly operation?: UserCustomConnectorUpdateOperation;
-  },
+  args: UpdateUserCustomConnectorsArgs,
+  options: UpdateUserCustomConnectorsOptions = {},
 ): Promise<UpdateUserCustomConnectorsResult> {
   const normalized = normalizeCustomConnectorGrantRequest(args);
   if ("status" in normalized) {
@@ -901,63 +1012,35 @@ export async function updateUserCustomConnectors(
       ? await loadConnectorRuntimeSnapshot(db)
       : null;
 
-  return await db.transaction(async (tx) => {
-    const composeLocked = await lockAgentComposeForConnectorReplace(tx, args);
-    if (!composeLocked) {
-      return { status: "agentNotFound" };
-    }
-
-    const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
-    if (!agentLocked) {
-      return { status: "agentNotFound" };
-    }
-
-    if (operation === "remove") {
-      return await persistUserCustomConnectorUpdate(tx, {
-        ...args,
-        enabledIds,
-        operation,
-        connectorRevisions: new Map(),
-        permissionNamesByConnectorId: new Map(),
-      });
-    }
-    const validation = await lockCustomConnectorsForReplace(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
+  const committed = await db.transaction(async (tx) => {
+    return await persistUserCustomConnectorTransaction({
+      tx,
+      request: args,
       enabledIds,
-    });
-    if (validation.missingIds.length > 0) {
-      return {
-        status: "customConnectorsNotFound",
-        missingIds: validation.missingIds,
-      };
-    }
-    if (validation.unconfiguredIds.length > 0) {
-      return {
-        status: "customConnectorsNotConfigured",
-        unconfiguredIds: validation.unconfiguredIds,
-      };
-    }
-    const permissionSelection =
-      await validateCustomConnectorPermissionSelection({
-        enabledIds,
-        explicitGrants: args.grants !== undefined,
-        grantByConnectorId,
-        permissionBundleRefs: validation.permissionBundleRefs,
-        snapshot: connectorCatalogSnapshot,
-      });
-    if (!permissionSelection.ok) {
-      return permissionSelection.error;
-    }
-    return await persistUserCustomConnectorUpdate(tx, {
-      ...args,
-      enabledIds,
+      grantByConnectorId,
       operation,
-      connectorRevisions: validation.revisions,
-      permissionNamesByConnectorId:
-        permissionSelection.permissionNamesByConnectorId,
+      connectorCatalogSnapshot,
     });
   });
+  if (
+    committed.result.status === "updated" &&
+    !options.deferRuntimeWakeupUntilOuterCommit
+  ) {
+    await publishCustomConnectorRuntimeSyncWakeups({
+      db,
+      scope: {
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.agentId,
+      },
+      customConnectorIds: [
+        ...committed.previousIds,
+        ...committed.result.enabledIds,
+        ...enabledIds,
+      ],
+    });
+  }
+  return committed.result;
 }
 
 export async function addUserCustomConnector(
@@ -968,14 +1051,19 @@ export async function addUserCustomConnector(
     readonly agentId: string;
     readonly customConnectorId: string;
   },
+  options: UpdateUserCustomConnectorsOptions = {},
 ): Promise<AddUserCustomConnectorResult> {
-  const result = await updateUserCustomConnectors(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    agentId: args.agentId,
-    enabledIds: [args.customConnectorId],
-    operation: "add",
-  });
+  const result = await updateUserCustomConnectors(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agentId,
+      enabledIds: [args.customConnectorId],
+      operation: "add",
+    },
+    options,
+  );
   if (result.status === "updated") {
     return { status: "added" };
   }

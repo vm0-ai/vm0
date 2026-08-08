@@ -1,4 +1,6 @@
 import {
+  CHAT_EVENT_CONTENT_TEXT_TYPES,
+  CHAT_EVENT_USER_MESSAGE_TEXT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -6,14 +8,27 @@ import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-thre
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  max,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { BEFORE_DISPATCH_CANCELLED_ERROR } from "./agent-run-create.service";
 import type { ChatThreadSessionResolutionAction } from "./chat-session-continuity.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
-import { chatEventTextCondition } from "./zero-chat-event-type.service";
+import {
+  chatEventTextCondition,
+  chatEventTypeIn,
+} from "./zero-chat-event-type.service";
 import {
   type ChatAgentRunSourceAnnotation,
   projectUserMessage,
@@ -48,6 +63,24 @@ function buildWebChatPrompt(): string {
     "# Current Integration\nYou are currently running inside: Web",
     "You are communicating with the user through the web chat UI.",
   ].join("\n\n");
+}
+
+/**
+ * Coordinates for the thread this run belongs to. The prior-round transcript is
+ * only replayed when the CLI session cannot carry it, so this block is what
+ * lets a run reach the rest of the conversation on demand instead.
+ */
+function buildCurrentThreadContext(threadId: string): string {
+  return [
+    "# This Chat Thread",
+    "",
+    `- CHAT_THREAD_ID: ${threadId}`,
+    "",
+    "Reading this thread, each through ZERO_TOKEN:",
+    "- `zero chat messages` prints this thread's user and assistant messages, oldest first (chat-event:read)",
+    "- `zero chat messages --limit <n>` prints only the most recent n messages",
+    "- `zero logs <run-id> --all` prints the full event stream of one run in this thread (agent-run:read)",
+  ].join("\n");
 }
 
 /**
@@ -94,12 +127,14 @@ function buildComputerUseSystemPrompt(displayName: string): string {
 }
 
 export function buildWebChatAppendSystemPrompt(args: {
+  readonly threadId: string;
   readonly incompleteContext: string;
   readonly priorContext: string;
   readonly context: WebChatSessionPromptContext;
 }): string {
   return [
     buildWebChatPrompt(),
+    buildCurrentThreadContext(args.threadId),
     args.context.agentRunSource
       ? buildAgentRunSourceContext(args.context.agentRunSource)
       : "",
@@ -193,6 +228,31 @@ function buildWebChatPriorRunsContext(
   ].join("\n");
 }
 
+/**
+ * Sequence id of each run's final assistant message. A single agentic run can
+ * emit dozens of intermediate assistant messages, and replaying its narration
+ * tells the next run nothing the final answer does not already say.
+ */
+function lastRunMessageSeqIds(
+  db: Pick<Db, "select">,
+  threadId: string,
+  runIds: readonly string[],
+) {
+  return db
+    .select({ seqId: max(chatEvents.seqId) })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, threadId),
+        chatEventTypeIn(CHAT_EVENT_CONTENT_TEXT_TYPES),
+        isNotNull(chatEvents.content),
+        inArray(chatEvents.runId, [...runIds]),
+        visibleChatEventCondition(db),
+      ),
+    )
+    .groupBy(chatEvents.runId);
+}
+
 async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
@@ -239,6 +299,10 @@ async function getLatestRunsByThreadId(
         chatEventTextCondition(),
         inArray(chatEvents.runId, runIds),
         visibleChatEventCondition(db),
+        or(
+          chatEventTypeIn(CHAT_EVENT_USER_MESSAGE_TEXT_TYPES),
+          inArray(chatEvents.seqId, lastRunMessageSeqIds(db, threadId, runIds)),
+        ),
       ),
     )
     .orderBy(asc(chatEvents.seqId));
@@ -268,25 +332,30 @@ async function getLatestRunsByThreadId(
   });
 }
 
+/**
+ * A rotated session starts the CLI conversation over, so the prior rounds have
+ * to be replayed in the prompt. Every other action keeps the session the runner
+ * resumes, which already carries them; replaying them there only duplicates the
+ * conversation. Rounds whose run never completed are absent from the session
+ * either way, so they keep their own block.
+ */
 export async function resolveWebChatSessionPrompt(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly sessionAction: ChatThreadSessionResolutionAction;
   readonly context: WebChatSessionPromptContext;
-  readonly historyPolicy?: "default" | "none";
 }): Promise<string> {
-  const omitHistory = args.historyPolicy === "none";
-  const incompleteContext =
-    omitHistory || args.sessionAction === "rotated"
-      ? ""
-      : await loadWebChatIncompleteContext(args.db, args.threadId);
-  const priorContext =
-    omitHistory || incompleteContext.length > 0
-      ? ""
-      : buildWebChatPriorRunsContext(
-          await getLatestRunsByThreadId(args.db, args.threadId),
-        );
+  const rotated = args.sessionAction === "rotated";
+  const incompleteContext = rotated
+    ? ""
+    : await loadWebChatIncompleteContext(args.db, args.threadId);
+  const priorContext = rotated
+    ? buildWebChatPriorRunsContext(
+        await getLatestRunsByThreadId(args.db, args.threadId),
+      )
+    : "";
   return buildWebChatAppendSystemPrompt({
+    threadId: args.threadId,
     incompleteContext,
     priorContext,
     context: args.context,

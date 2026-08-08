@@ -7,6 +7,8 @@ import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
+import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -23,6 +25,7 @@ import { safeSync, settle } from "../utils";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+  type ConnectorCatalogArtifact,
 } from "./connector-catalog-artifacts/artifacts";
 import {
   CONNECTOR_CATALOG_ACTIVE_MAX_BYTES,
@@ -56,6 +59,14 @@ import {
   connectorCatalogSource,
   type ConnectorCatalogSource,
 } from "./connector-catalog-source";
+import {
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
+import { publishCustomConnectorRuntimeSyncWakeups } from "./custom-connector-runtime-wakeup.service";
+import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
+import { createAcceptedConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
 const log = logger("connector-catalog:sync");
 
@@ -117,6 +128,141 @@ class ConnectorCatalogPersistenceError extends Error {
   constructor() {
     super("Connector catalog snapshot persistence failed");
     this.name = "ConnectorCatalogPersistenceError";
+  }
+}
+
+function customConnectorPermissionBundleFingerprint(
+  bundle: Awaited<ReturnType<typeof loadCustomConnectorPermissionBundle>>,
+): string | null {
+  if (!bundle) {
+    return null;
+  }
+  return JSON.stringify({
+    connectorSlug: bundle.connectorSlug,
+    permissions: bundle.permissions,
+    defaultPolicies: Object.entries(bundle.defaultPolicies).sort(
+      ([left], [right]) => {
+        return left.localeCompare(right);
+      },
+    ),
+  });
+}
+
+async function publishCatalogPermissionBundleWakeupsInner(args: {
+  readonly db: Db;
+  readonly previousSnapshot: ConnectorRuntimeSnapshot | undefined;
+  readonly currentArtifact: ConnectorCatalogArtifact;
+}): Promise<void> {
+  const currentSnapshot = {
+    serverFirewalls: createAcceptedConnectorServerFirewallCatalog({
+      artifact: args.currentArtifact,
+      runtimeMethodsBySlug: new Map(
+        args.currentArtifact.connectors.flatMap((connector) => {
+          return connector.firewall.kind === "none"
+            ? []
+            : [[connector.slug, []] as const];
+        }),
+      ),
+    }),
+  };
+  const rows = await args.db
+    .select({
+      id: orgCustomConnectors.id,
+      orgId: orgCustomConnectors.orgId,
+      slug: orgCustomConnectors.slug,
+      authMode: orgCustomConnectors.authMode,
+      prefixTemplates: orgCustomConnectors.prefixTemplates,
+      permissionBundleRef: orgCustomConnectors.permissionBundleRef,
+      oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
+    })
+    .from(orgCustomConnectors)
+    .leftJoin(
+      orgCustomConnectorOauthConfigs,
+      and(
+        eq(orgCustomConnectorOauthConfigs.connectorId, orgCustomConnectors.id),
+        eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+      ),
+    )
+    .where(eq(orgCustomConnectors.enabled, true));
+
+  const connectorIdsByRef = new Map<
+    string,
+    { readonly orgId: string; readonly connectorId: string }[]
+  >();
+  for (const row of rows) {
+    const ref = effectiveCustomConnectorPermissionBundleRef({
+      slug: row.slug,
+      authMode: row.authMode,
+      oauthProviderAdapter: row.oauthProviderAdapter,
+      prefixTemplates: row.prefixTemplates,
+      permissionBundleRef: row.permissionBundleRef,
+    });
+    if (!ref) {
+      continue;
+    }
+    const connectors = connectorIdsByRef.get(ref) ?? [];
+    connectors.push({ orgId: row.orgId, connectorId: row.id });
+    connectorIdsByRef.set(ref, connectors);
+  }
+
+  const affectedByOrg = new Map<string, string[]>();
+  for (const [ref, connectors] of connectorIdsByRef) {
+    const [previousBundle, currentBundle] = await Promise.all([
+      args.previousSnapshot
+        ? loadCustomConnectorPermissionBundle({
+            snapshot: args.previousSnapshot,
+            ref,
+          })
+        : null,
+      loadCustomConnectorPermissionBundle({
+        snapshot: currentSnapshot,
+        ref,
+      }),
+    ]);
+    if (
+      customConnectorPermissionBundleFingerprint(previousBundle) ===
+      customConnectorPermissionBundleFingerprint(currentBundle)
+    ) {
+      continue;
+    }
+    for (const connector of connectors) {
+      const connectorIds = affectedByOrg.get(connector.orgId) ?? [];
+      connectorIds.push(connector.connectorId);
+      affectedByOrg.set(connector.orgId, connectorIds);
+    }
+  }
+
+  await Promise.all(
+    [...affectedByOrg].map(async ([orgId, customConnectorIds]) => {
+      await publishCustomConnectorRuntimeSyncWakeups({
+        db: args.db,
+        scope: { orgId },
+        customConnectorIds,
+      });
+    }),
+  );
+  log.debug("Evaluated Custom connector catalog wakeups", {
+    permissionBundleRefCount: connectorIdsByRef.size,
+    affectedOrgCount: affectedByOrg.size,
+    affectedCustomConnectorCount: [...affectedByOrg.values()].reduce(
+      (count, connectorIds) => {
+        return count + connectorIds.length;
+      },
+      0,
+    ),
+  });
+}
+
+async function publishCatalogPermissionBundleWakeups(args: {
+  readonly db: Db;
+  readonly previousSnapshot: ConnectorRuntimeSnapshot | undefined;
+  readonly currentArtifact: ConnectorCatalogArtifact;
+}): Promise<void> {
+  const result = await settle(publishCatalogPermissionBundleWakeupsInner(args));
+  if (!result.ok) {
+    log.warn("Failed to publish Custom connector catalog wakeups", {
+      error: result.error,
+    });
   }
 }
 
@@ -917,6 +1063,15 @@ async function commitValidatedCandidate(
   },
   signal: AbortSignal,
 ): Promise<SyncAttemptResult> {
+  const previousSnapshotResult = args.baseline?.activeCatalogVersion
+    ? await settle(loadConnectorRuntimeSnapshot(runtime.db), signal)
+    : undefined;
+  signal.throwIfAborted();
+  if (previousSnapshotResult && !previousSnapshotResult.ok) {
+    log.warn("Failed to load previous connector runtime snapshot", {
+      error: previousSnapshotResult.error,
+    });
+  }
   const catalogGzip = encodeConnectorCatalogSnapshot(args.candidate.rawBytes);
   const outcome = await commitCandidate(
     {
@@ -933,11 +1088,12 @@ async function commitValidatedCandidate(
     },
     signal,
   );
-  signal.throwIfAborted();
   if (outcome === "retry") {
+    signal.throwIfAborted();
     return { kind: "retry" };
   }
   if (typeof outcome !== "string") {
+    signal.throwIfAborted();
     return await rejectSyncAttempt(
       runtime,
       args.baseline,
@@ -958,6 +1114,15 @@ async function commitValidatedCandidate(
     compressedBytes: catalogGzip.byteLength,
     outcome,
   });
+  await publishCatalogPermissionBundleWakeups({
+    db: runtime.db,
+    currentArtifact: args.candidate.artifact,
+    previousSnapshot:
+      previousSnapshotResult?.ok === true
+        ? previousSnapshotResult.value
+        : undefined,
+  });
+  signal.throwIfAborted();
   const response = await responseFromState({
     db: runtime.db,
     sourceId: runtime.source.sourceId,

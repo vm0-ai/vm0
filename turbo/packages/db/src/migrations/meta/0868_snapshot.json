@@ -1,6 +1,6 @@
 {
-  "id": "5a612cd0-155b-4d19-a154-ac9b5d126c73",
-  "prevId": "d60a0b04-120d-4426-9045-499c2bdc09e7",
+  "id": "4e817442-e640-4668-9da9-a382052ba858",
+  "prevId": "5a612cd0-155b-4d19-a154-ac9b5d126c73",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4396,6 +4396,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "agent_compose_id": {
+          "name": "agent_compose_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "role": {
           "name": "role",
           "type": "text",
@@ -4419,6 +4425,16 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "tsv": {
+          "name": "tsv",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "to_tsvector('simple', text_bigram)",
+            "type": "stored"
+          }
         }
       },
       "indexes": {
@@ -4468,9 +4484,9 @@
           "name": "chat_event_search_docs_tsv_idx",
           "columns": [
             {
-              "expression": "to_tsvector('simple', \"text_bigram\")",
+              "expression": "tsv",
+              "isExpression": false,
               "asc": true,
-              "isExpression": true,
               "nulls": "last"
             }
           ],

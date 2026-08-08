@@ -34,10 +34,6 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  insertChatEventAssetRefFixture,
-  readChatEventAssetRefIds,
-} from "./helpers/runtime-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteSlackIntegrationFixture$,
@@ -720,32 +716,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     expect(lifecycleMarker).toBeDefined();
     expect(lifecycleMarker?.content).toBeNull();
     expect(lifecycleMarker).not.toHaveProperty("attachFiles");
-    if (!lifecycleMarker) {
-      throw new Error("Expected a completed lifecycle marker");
-    }
-
-    // Completion-to-output refs have no production write API after this
-    // change. The test-only state boundary verifies the writer stopped, then
-    // simulates one pre-cutover row while the assertion stays on the public API.
-    await expect(
-      readChatEventAssetRefIds(context, lifecycleMarker.id),
-    ).resolves.toStrictEqual([]);
-    await insertChatEventAssetRefFixture(context, {
-      eventId: lifecycleMarker.id,
-      assetId: canonicalAssetId,
-      position: 0,
-    });
-    const eventsWithHistoricalRef = await chatApi.listThreadEvents(
-      actorFor({ orgId, userId }),
-      threadId,
-    );
-    const historicalLifecycleMarker = eventsWithHistoricalRef.events.find(
-      (message) => {
-        return message.id === lifecycleMarker.id;
-      },
-    );
-    expect(historicalLifecycleMarker).toBeDefined();
-    expect(historicalLifecycleMarker).not.toHaveProperty("attachFiles");
   }, 20_000);
 
   it("keeps an attachment-only output out of the event stream", async () => {

@@ -1592,6 +1592,24 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         context_storage_version: 1,
       },
     });
+    const runtimeUpdated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        displayName: "BDD OAuth Connector Runtime Updated",
+        prefixTemplates: ["https://multi-auth.example.test/v2/"],
+        fields: created.fields,
+        headerInjections: created.headerInjections,
+        queryInjections: created.queryInjections,
+        authMode: "oauth",
+        oauthConfig: {
+          ...connectorBody.oauthConfig,
+          clientSecret: undefined,
+        },
+        storageVersion: 1,
+      },
+    );
+    expect(runtimeUpdated).toMatchObject({ revision: 2, storageVersion: 1 });
 
     const callback =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
@@ -1711,7 +1729,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(member, agent.agentId);
   });
 
-  it("updates OAuth settings, preserves stored client credentials, and clears member OAuth grants", async () => {
+  it("updates OAuth settings and preserves member OAuth data as incompatible", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
@@ -1797,12 +1815,20 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       displayName: "BDD Edited OAuth Connector",
       prefixes: ["https://editable-oauth.example.test/v2/"],
       authMode: "oauth",
+      storageVersion: 2,
       oauthConfig: {
         clientId,
         scopes: ["read", "write"],
       },
     });
     expectNoVisibleSecret(updated, clientSecret);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(member),
+        userId: member.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ connector: { storage_version: 1 } });
 
     const disconnected = await connectorsApi.listCustomConnectors(member);
     expect(
@@ -2003,7 +2029,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(securityUpdated.revision).toBe(3);
     await expect(
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
-    ).resolves.toStrictEqual([]);
+    ).resolves.toStrictEqual([created.id]);
 
     const otherAdmin = bdd.user({ orgRole: "org:admin" });
     const otherConnector = await connectorsApi.createCustomConnector(
@@ -2232,6 +2258,159 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         customConnectorId: created.id,
       }),
     ).resolves.toMatchObject({ connector: parent.connector });
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("authors storage versions and requires complete stale manual recovery", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const initialDefinition = {
+      displayName: "BDD Versioned Manual API",
+      prefixTemplates: [`https://${rand}.versioned.test/v1/`],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret" as const,
+          required: true,
+        },
+        {
+          key: "legacy_optional",
+          label: "Legacy optional",
+          kind: "variable" as const,
+          required: false,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual" as const,
+    };
+    const created = await connectorsApi.createCustomConnector(admin, {
+      ...initialDefinition,
+      storageVersion: 3,
+    });
+    expect(created.storageVersion).toBe(3);
+    await connectorsApi.setCustomConnectorValues(admin, created.id, [
+      { key: "api_key", kind: "secret", value: "version-three-secret" },
+      {
+        key: "legacy_optional",
+        kind: "variable",
+        value: "legacy-value",
+      },
+    ]);
+
+    const compatible = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        ...initialDefinition,
+        displayName: "BDD Versioned Manual API Renamed",
+        storageVersion: 3,
+      },
+    );
+    expect(compatible.storageVersion).toBe(3);
+
+    const changedDefinition = {
+      ...initialDefinition,
+      displayName: "BDD Versioned Manual API Contract 4",
+      fields: [
+        initialDefinition.fields[0]!,
+        {
+          key: "replacement",
+          label: "Replacement",
+          kind: "secret" as const,
+          required: true,
+        },
+      ],
+    };
+    const unchangedVersion = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
+      { ...changedDefinition, storageVersion: 3 },
+      [400],
+    );
+    expectApiError(unchangedVersion.body);
+    expect(unchangedVersion.body.error.message).toContain(
+      "must increase when the credential contract changes",
+    );
+
+    const inferred = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      changedDefinition,
+    );
+    expect(inferred.storageVersion).toBe(4);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ connector: { storage_version: 3 } });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key", "replacement"],
+    });
+
+    const partialRecovery = await connectorsApi.requestSetCustomConnectorValues(
+      admin,
+      created.id,
+      [{ key: "replacement", kind: "secret", value: "partial-replacement" }],
+      [400],
+    );
+    expectApiError(partialRecovery.body);
+    expect(partialRecovery.body.error.message).toContain(
+      "All required fields must be provided",
+    );
+
+    const recovered = await connectorsApi.setCustomConnectorValues(
+      admin,
+      created.id,
+      [
+        { key: "api_key", kind: "secret", value: "version-four-secret" },
+        {
+          key: "replacement",
+          kind: "secret",
+          value: "replacement-secret",
+        },
+      ],
+    );
+    expect(recovered).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["api_key", "replacement"],
+      missingRequiredFields: [],
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ connector: { storage_version: 4 } });
+
+    const semanticAdvance = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      { ...changedDefinition, storageVersion: 5 },
+    );
+    expect(semanticAdvance.storageVersion).toBe(5);
+    const decrease = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
+      { ...changedDefinition, storageVersion: 4 },
+      [400],
+    );
+    expectApiError(decrease.body);
+    expect(decrease.body.error.message).toContain("cannot decrease");
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });

@@ -418,8 +418,15 @@
     {
       "idx": 867,
       "version": "7",
-      "when": 1786204349898,
-      "tag": "0867_chat_search_docs_materialized_tsv",
+      "when": 1786201747238,
+      "tag": "0867_drop_chat_event_asset_refs",
+      "breakpoints": true
+    },
+    {
+      "idx": 868,
+      "version": "7",
+      "when": 1786206182379,
+      "tag": "0868_amused_brood",
       "breakpoints": true
     }
   ]

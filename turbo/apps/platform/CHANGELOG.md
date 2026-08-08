@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.711.0](https://github.com/vm0-ai/vm0/compare/app-v0.710.0...app-v0.711.0) (2026-08-08)
+
+
+### Features
+
+* serve private chat attachments via presigned r2 urls ([#25825](https://github.com/vm0-ai/vm0/issues/25825)) ([77bd954](https://github.com/vm0-ai/vm0/commit/77bd95468d08df94b68643841055942ccb3c9c45))
+* **web-chat:** gate follow-up card rail to mobile devices only ([#25829](https://github.com/vm0-ai/vm0/issues/25829)) ([a736ff9](https://github.com/vm0-ai/vm0/commit/a736ff9fb3044f303ce138a686840127c59a6235))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.0
+    * @vm0/core bumped to 8.532.1
+
 ## [0.710.0](https://github.com/vm0-ai/vm0/compare/app-v0.709.0...app-v0.710.0) (2026-08-08)
 
 

@@ -10,7 +10,6 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
 import {
   buildCustomConnectorRuntimeContext,
   customConnectorRuntimeExecutionState,
@@ -20,10 +19,7 @@ import {
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveActiveNetworkPolicyRefreshes } from "./zero-user-permission-grants.service";
-import {
-  CustomConnectorRuntimePrefixError,
-  loadCustomConnectorRuntimeData,
-} from "./zero-custom-connector.service";
+import { loadCustomConnectorRuntimeData } from "./zero-custom-connector.service";
 
 const L = logger("connector-runtime-sync");
 
@@ -38,46 +34,35 @@ interface CustomTargetSnapshot {
   readonly grant: AgentCustomConnectorGrant | undefined;
 }
 
-interface ConnectorRuntimeResolution {
-  readonly result: ConnectorRuntimeSyncResult;
-}
-
-function connectorRuntimeTargetIdentity(
-  registration: ConnectorRuntimeTargetRegistration,
-): ConnectorRuntimeTarget {
-  return registration.kind === "builtin"
-    ? {
-        kind: "builtin",
-        connectorSlug: registration.connectorSlug,
-      }
-    : {
-        kind: "custom",
-        customConnectorId: registration.customConnectorId,
-      };
-}
-
 function customAbsentResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
   reason: ConnectorRuntimeCustomUnavailableReason,
-): ConnectorRuntimeResolution {
+): ConnectorRuntimeSyncResult {
   return {
-    result: {
-      target,
-      state: "absent",
-      reason,
-    },
+    target,
+    state: "absent",
+    reason,
+  };
+}
+
+function customUnresolvedResult(
+  target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
+  reason: ConnectorRuntimeCustomUnavailableReason,
+): ConnectorRuntimeSyncResult {
+  return {
+    target,
+    state: "unresolved",
+    reason,
   };
 }
 
 function builtinUnresolvedResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "builtin" }>,
-): ConnectorRuntimeResolution {
+): ConnectorRuntimeSyncResult {
   return {
-    result: {
-      target,
-      state: "unresolved",
-      reason: "connector-unavailable",
-    },
+    target,
+    state: "unresolved",
+    reason: "connector-unavailable",
   };
 }
 
@@ -102,7 +87,6 @@ async function loadCustomSnapshot(args: {
       const grantRows = await tx
         .select({
           customConnectorId: userCustomConnectors.customConnectorId,
-          connectorRevision: userCustomConnectors.connectorRevision,
           permissionNames: userCustomConnectors.permissionNames,
         })
         .from(userCustomConnectors)
@@ -127,13 +111,12 @@ async function loadCustomSnapshot(args: {
         const grant = grants.get(row.connector.id);
         customTargets.set(row.connector.id, {
           row,
-          grant:
-            grant?.connectorRevision === row.connector.revision
-              ? {
-                  customConnectorId: grant.customConnectorId,
-                  permissionNames: [...grant.permissionNames],
-                }
-              : undefined,
+          grant: grant
+            ? {
+                customConnectorId: grant.customConnectorId,
+                permissionNames: [...grant.permissionNames],
+              }
+            : undefined,
         });
       }
       return {
@@ -147,17 +130,24 @@ async function loadCustomSnapshot(args: {
 }
 
 async function resolveCustomTarget(args: {
-  readonly target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>;
+  readonly registration: Extract<
+    ConnectorRuntimeTargetRegistration,
+    { readonly kind: "custom" }
+  >;
   readonly snapshot: Awaited<ReturnType<typeof loadCustomSnapshot>>;
-}): Promise<ConnectorRuntimeResolution> {
-  const custom = args.snapshot.customTargets.get(args.target.customConnectorId);
+}): Promise<ConnectorRuntimeSyncResult> {
+  const target = {
+    kind: "custom" as const,
+    customConnectorId: args.registration.customConnectorId,
+  };
+  const custom = args.snapshot.customTargets.get(target.customConnectorId);
   if (!custom) {
-    return customAbsentResult(args.target, "connector-unavailable");
+    return customAbsentResult(target, "connector-unavailable");
   }
   if (custom.row.credentialAccess.kind === "incompatible") {
     // Credential compatibility gates auth resolution, not definition-owned policy.
     L.debug("Custom connector credential storage is incompatible", {
-      customConnectorId: args.target.customConnectorId,
+      customConnectorId: target.customConnectorId,
       memberConnectorId: custom.row.credentialAccess.memberConnectorId,
       expectedAuthMethod: custom.row.credentialAccess.expectedAuthMethod,
       storedAuthMethod: custom.row.credentialAccess.storedAuthMethod,
@@ -169,57 +159,57 @@ async function resolveCustomTarget(args: {
         custom.row.credentialAccess.definitionStorageVersion,
     });
   }
-  if (!custom.grant) {
-    return customAbsentResult(args.target, "grant-unavailable");
-  }
   const row = custom.row;
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
     row,
     snapshot: args.snapshot.connectorCatalogSnapshot,
   });
   if (permissionBundle === undefined) {
-    return customAbsentResult(args.target, "permission-bundle-unavailable");
+    return customUnresolvedResult(target, "permission-bundle-unavailable");
   }
 
-  const contextResult = await settle(
-    buildCustomConnectorRuntimeContext({
-      rows: [row],
-      featureSwitchContext: args.snapshot.featureSwitchContext,
-      connectorCatalogSnapshot: args.snapshot.connectorCatalogSnapshot,
-      grants: [custom.grant],
-      preserveFirewallWithoutCredentials: true,
-    }),
-  );
-  if (!contextResult.ok) {
-    if (contextResult.error instanceof CustomConnectorRuntimePrefixError) {
-      return customAbsentResult(
-        args.target,
-        "runtime-configuration-unavailable",
-      );
-    }
-    throw contextResult.error;
-  }
-  const state = customConnectorRuntimeExecutionState({
-    context: contextResult.value,
-    connectorId: args.target.customConnectorId,
+  const baseUrlVarsByConnectorId =
+    args.registration.baseUrlVars === undefined
+      ? undefined
+      : new Map([
+          [target.customConnectorId, args.registration.baseUrlVars] as const,
+        ]);
+
+  const context = await buildCustomConnectorRuntimeContext({
+    rows: [row],
+    featureSwitchContext: args.snapshot.featureSwitchContext,
+    connectorCatalogSnapshot: args.snapshot.connectorCatalogSnapshot,
+    grants: [
+      custom.grant ?? {
+        customConnectorId: target.customConnectorId,
+        permissionNames: [],
+      },
+    ],
+    baseUrlVarsByConnectorId,
   });
-  if (!state) {
-    return customAbsentResult(args.target, "runtime-configuration-unavailable");
+  const state = customConnectorRuntimeExecutionState({
+    context,
+    connectorId: target.customConnectorId,
+  });
+  const resolvedTarget = context.targets.find((candidate) => {
+    return (
+      candidate.kind === "custom" &&
+      candidate.customConnectorId === target.customConnectorId
+    );
+  });
+  if (
+    !state ||
+    resolvedTarget?.kind !== "custom" ||
+    resolvedTarget.baseUrlVars === undefined
+  ) {
+    return customUnresolvedResult(target, "runtime-configuration-unavailable");
   }
-  const result = {
-    target: args.target,
+  return {
+    target,
     state: "available" as const,
     firewall: state.firewall,
     networkPolicy: state.networkPolicy,
-  };
-  return {
-    result: {
-      ...result,
-      firewall: {
-        ...state.firewall,
-        customConnectorId: args.target.customConnectorId,
-      },
-    },
+    baseUrlVars: { ...resolvedTarget.baseUrlVars },
   };
 }
 
@@ -227,7 +217,7 @@ export async function resolveConnectorRuntimeTargets(args: {
   readonly db: Db;
   readonly scope: ConnectorRuntimeScope;
   readonly targets: readonly ConnectorRuntimeTargetRegistration[];
-}): Promise<readonly ConnectorRuntimeResolution[]> {
+}): Promise<readonly ConnectorRuntimeSyncResult[]> {
   const builtinConnectorSlugs = args.targets.flatMap((target) => {
     return target.kind === "builtin" ? [target.connectorSlug] : [];
   });
@@ -254,33 +244,49 @@ export async function resolveConnectorRuntimeTargets(args: {
     }),
   );
 
-  const results: ConnectorRuntimeResolution[] = [];
+  const results: ConnectorRuntimeSyncResult[] = [];
   for (const registration of args.targets) {
-    const target = connectorRuntimeTargetIdentity(registration);
-    if (target.kind === "custom") {
+    if (registration.kind === "custom") {
       if (!customSnapshot) {
         throw new Error("Custom connector runtime snapshot is unavailable");
       }
       results.push(
-        await resolveCustomTarget({ target, snapshot: customSnapshot }),
+        await resolveCustomTarget({ registration, snapshot: customSnapshot }),
       );
       continue;
     }
+    const target = {
+      kind: "builtin" as const,
+      connectorSlug: registration.connectorSlug,
+    };
     const refresh = builtinByTarget.get(`builtin:${target.connectorSlug}`);
     results.push(
       refresh
         ? {
-            result: {
-              target,
-              state: "available",
-              networkPolicy: refresh.networkPolicy,
-              ...(refresh.nextRefreshAt
-                ? { nextSyncAt: refresh.nextRefreshAt }
-                : {}),
-            },
+            target,
+            state: "available",
+            networkPolicy: refresh.networkPolicy,
+            ...(refresh.nextRefreshAt
+              ? { nextSyncAt: refresh.nextRefreshAt }
+              : {}),
           }
         : builtinUnresolvedResult(target),
     );
   }
+  const stateCounts = { available: 0, absent: 0, unresolved: 0 };
+  for (const result of results) {
+    stateCounts[result.state] += 1;
+  }
+  L.debug("Resolved connector runtime targets", {
+    targetCount: args.targets.length,
+    builtinTargetCount: builtinConnectorSlugs.length,
+    customTargetCount: customConnectorIds.length,
+    customPinnedTargetCount: args.targets.filter((target) => {
+      return target.kind === "custom" && target.baseUrlVars !== undefined;
+    }).length,
+    availableCount: stateCounts.available,
+    absentCount: stateCounts.absent,
+    unresolvedCount: stateCounts.unresolved,
+  });
   return results;
 }

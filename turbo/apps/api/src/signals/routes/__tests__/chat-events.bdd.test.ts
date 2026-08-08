@@ -3752,7 +3752,8 @@ describe("CHAT-02: run-level model overrides", () => {
     ).toMatch(/[0-9a-f-]{36}/);
 
     // A run-level override of another model in the same family resumes the CLI
-    // session while carrying the prior web round as context.
+    // session, which already carries the prior web round, so the prompt does
+    // not replay it.
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -3777,11 +3778,11 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
-    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
-    expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
-    expect(appended).toContain(`User: ${firstPrompt}`);
-    expect(appended).toContain("Assistant: opus answer");
+    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended).not.toContain("Assistant: opus answer");
+    expect(appended).toContain("# This Chat Thread");
+    expect(appended).toContain(`- CHAT_THREAD_ID: ${first.threadId}`);
+    expect(appended).toContain("`zero chat messages`");
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -4494,6 +4495,83 @@ describe("CHAT-02: run-level model overrides", () => {
     const retriedClaim = await claimChatRun(runnerGroup, retried.runId);
     expect(retriedClaim.claim.resumeSession).toBeNull();
     await cancelChatRun(actor, retried.runId);
+  }, 90_000);
+
+  it("replays only each prior run's final answer when a model family rotates the session", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const { providerId: codexProviderId } = await upsertOrgModelProvider(
+      actor,
+      {
+        type: "openai-api-key",
+        secret: "prior-round-trim-openai-key",
+      },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "gpt-5.6-terra",
+        isDefault: false,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: codexProviderId,
+      },
+    ]);
+
+    const firstPrompt = "plan the migration in several steps";
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      model: "claude-sonnet-4-6",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "narration: reading the first file"),
+      assistantEvent(1, "narration: reading the second file"),
+      assistantEvent(2, "final answer with the migration plan"),
+    ]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      lastEventSequence: 2,
+    });
+    await flushWaitUntilForTest();
+    await waitForThreadMessages(actor, first.threadId, (items) => {
+      return eventBackedContents(items, first.runId).some((message) => {
+        return message.content === "final answer with the migration plan";
+      });
+    });
+
+    // Switching model family rotates the CLI session, so the prior round is
+    // replayed. An agentic run emits one chat message per step; only its final
+    // answer carries information the next run needs.
+    await chat.updateThreadModelSelection(
+      actor,
+      first.threadId,
+      "gpt-5.6-terra",
+    );
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue after the family switch",
+    });
+    const appended = (await api.readRun(actor, second.runId))
+      .appendSystemPrompt;
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(`User: ${firstPrompt}`);
+    expect(appended).toContain(
+      "Assistant: final answer with the migration plan",
+    );
+    expect(appended).not.toContain("narration: reading the first file");
+    expect(appended).not.toContain("narration: reading the second file");
+    expect(appended).toContain(`- CHAT_THREAD_ID: ${first.threadId}`);
+    await cancelChatRun(actor, second.runId);
   }, 90_000);
 
   it("retries preparation when the canonical conversation snapshot changes", async () => {
@@ -5257,7 +5335,7 @@ describe("CHAT-02: initial thinking indicator", () => {
 });
 
 describe("CHAT-02: prior rounds and thread titles", () => {
-  it("carries prior completed rounds, generates the thread title, and accepts immutable follow-up revokes", async () => {
+  it("leaves prior completed rounds to the session, generates the thread title, and accepts immutable follow-up revokes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("OPENROUTER_API_KEY", "title-key");
@@ -5359,13 +5437,11 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(titleRequests).toBe(1);
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
-    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
-    expect(appended).toContain(`- LOG_COMMAND: zero logs ${first.runId} --all`);
-    expect(appended).toContain(`User: ${firstPrompt}`);
-    expect(appended).toContain("Assistant: Assistant migration answer");
-    expect(appended).toContain("- RELATIVE_INDEX: 0");
-    expect(appended).not.toContain("follow-up question");
+    // The reused CLI session already holds the completed round, so the prompt
+    // only points at the thread instead of replaying it.
+    expect(appended).not.toContain("# Web Chat Run Context");
+    expect(appended).not.toContain("Assistant: Assistant migration answer");
+    expect(appended).toContain(`- CHAT_THREAD_ID: ${first.threadId}`);
     expect(appended).not.toContain(futureFollowupContent);
     for (const followup of futureFollowups) {
       expect(appended).not.toContain(followup.prompt);
@@ -6180,7 +6256,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     const secondPrompt = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
     expect(secondPrompt).not.toContain("# Inline Templates");
-    expect(secondPrompt).toContain("# Web Chat Run Context");
+    expect(secondPrompt).toContain("# This Chat Thread");
     expect(secondPrompt).not.toContain("Selected a template");
     expect(secondPrompt).not.toContain(style.illustrationStyleId);
     await waitForRunUserMessage(

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.65.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.4...guest-agent-v0.65.5) (2026-08-08)
+
+
+### Bug Fixes
+
+* snapshot writeback artifacts when a pi sandbox run completes ([#25831](https://github.com/vm0-ai/vm0/issues/25831)) ([ae814e0](https://github.com/vm0-ai/vm0/commit/ae814e004f35538ba8d6421b4ee9631c6ebbf44b)), closes [#25827](https://github.com/vm0-ai/vm0/issues/25827)
+
 ## [0.65.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.3...guest-agent-v0.65.4) (2026-08-08)
 
 ## [0.65.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.2...guest-agent-v0.65.3) (2026-08-08)

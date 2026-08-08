@@ -361,6 +361,12 @@ describe("connector runtime synchronization contract", () => {
     expect(
       connectorRuntimeSyncResultSchema.safeParse({
         ...result,
+        baseUrlVars: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        ...result,
         firewall: {
           ...result.firewall,
           firewall: {

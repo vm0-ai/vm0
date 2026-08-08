@@ -283,7 +283,7 @@ export const connectorRuntimeCustomAvailableResultSchema =
       }),
     }),
     networkPolicy: networkPolicySchema,
-    baseUrlVars: z.record(z.string(), z.string()).optional(),
+    baseUrlVars: z.record(z.string(), z.string()),
   });
 
 export const connectorRuntimeCustomUnresolvedResultSchema =
