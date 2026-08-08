@@ -331,6 +331,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Serve chat keyword search from the chat_event_search_docs projection instead of scanning chat_events with ILIKE.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatEventSnapshotRead]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Cold-start chat threads from R2 snapshot objects plus the raw-row tail endpoint instead of paging the full history from Postgres.",
+    enabled: false,
+  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:

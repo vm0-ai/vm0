@@ -1,0 +1,252 @@
+import type { ChatEventRow } from "./chat-event-rows";
+import { chatEventSchema, type ChatEvent } from "./chat-threads";
+
+/**
+ * Run ids whose runs were created from a goal input. A raw row set carries the
+ * claimed `input.goal` events of every goal-driven run in the thread, so the
+ * client derives what the API's zero_runs lateral join derives server-side.
+ */
+export function goalRunIdsFromChatEventRows(
+  rows: readonly ChatEventRow[],
+): ReadonlySet<string> {
+  const goalRunIds = new Set<string>();
+  for (const row of rows) {
+    if (row.eventType === "input.goal" && row.runId !== null) {
+      goalRunIds.add(row.runId);
+    }
+  }
+  return goalRunIds;
+}
+
+function requiredRowField<T>(
+  value: T | null,
+  eventType: string,
+  field: string,
+): T {
+  if (value === null) {
+    throw new Error(`${eventType} chat event is missing ${field}`);
+  }
+  return value;
+}
+
+/**
+ * Projects one raw row into the canonical ChatEvent response shape. This must
+ * stay field-for-field equivalent to the API's own row projection; the API
+ * test suite pins that parity by comparing this function's output for
+ * /event-rows against the /events response of the same thread.
+ */
+export function chatEventFromRow(
+  row: ChatEventRow,
+  goalRunIds: ReadonlySet<string>,
+): ChatEvent {
+  const base = {
+    id: row.id,
+    threadId: row.chatThreadId,
+    content: row.content,
+    runId: row.runId ?? undefined,
+    runGroupId: row.runGroupId ?? undefined,
+    isGoalRun: (row.runId !== null && goalRunIds.has(row.runId)) || undefined,
+    runEventId: row.runEventId ?? undefined,
+    revokesEventId: row.revokesEventId ?? undefined,
+    seqId: row.seqId,
+    sequenceNumber: row.runEventSequenceNumber,
+    createdAt: row.createdAt,
+  };
+  const reducedBase = {
+    id: row.id,
+    threadId: row.chatThreadId,
+    seqId: row.seqId,
+    createdAt: row.createdAt,
+  };
+
+  const candidates: Record<ChatEventRow["eventType"], () => unknown> = {
+    "input.prompt": () => {
+      return {
+        ...base,
+        eventType: "input.prompt",
+        content: null,
+        userMessage: requiredRowField(
+          row.userMessage ?? null,
+          row.eventType,
+          "userMessage",
+        ),
+      };
+    },
+    "input.automation": () => {
+      return {
+        ...base,
+        eventType: "input.automation",
+        content: null,
+        userMessage: row.userMessage ?? undefined,
+      };
+    },
+    "input.goal": () => {
+      return {
+        ...reducedBase,
+        eventType: "input.goal",
+        content: null,
+        userMessage: requiredRowField(
+          row.userMessage ?? null,
+          row.eventType,
+          "userMessage",
+        ),
+      };
+    },
+    "input.budget": () => {
+      return {
+        ...base,
+        eventType: "input.budget",
+        content: null,
+        userMessage: requiredRowField(
+          row.userMessage ?? null,
+          row.eventType,
+          "userMessage",
+        ),
+      };
+    },
+    "input.rejected": () => {
+      return {
+        ...base,
+        eventType: "input.rejected",
+        content: null,
+        userMessage: requiredRowField(
+          row.userMessage ?? null,
+          row.eventType,
+          "userMessage",
+        ),
+        error: requiredRowField(row.error, row.eventType, "error"),
+      };
+    },
+    "output.message": () => {
+      return {
+        ...base,
+        eventType: "output.message",
+        content: requiredRowField(row.content, row.eventType, "content"),
+      };
+    },
+    "output.error": () => {
+      return {
+        ...base,
+        eventType: "output.error",
+        error: requiredRowField(row.error, row.eventType, "error"),
+      };
+    },
+    "output.thinking": () => {
+      return {
+        ...base,
+        eventType: "output.thinking",
+        content: null,
+        thinking: requiredRowField(row.thinking, row.eventType, "thinking"),
+      };
+    },
+    "output.followups": () => {
+      return {
+        ...base,
+        eventType: "output.followups",
+        content: requiredRowField(row.content, row.eventType, "content"),
+      };
+    },
+    "run.queued": () => {
+      return {
+        ...base,
+        eventType: "run.queued",
+        runId: requiredRowField(row.runId, row.eventType, "runId"),
+        content: requiredRowField(row.content, row.eventType, "content"),
+      };
+    },
+    "run.dequeued": () => {
+      return {
+        ...base,
+        eventType: "run.dequeued",
+        runId: requiredRowField(row.runId, row.eventType, "runId"),
+        content: null,
+        revokesEventId: requiredRowField(
+          row.revokesEventId,
+          row.eventType,
+          "revokesEventId",
+        ),
+      };
+    },
+    "run.completed": () => {
+      return {
+        ...base,
+        eventType: "run.completed",
+        runId: requiredRowField(row.runId, row.eventType, "runId"),
+        runLifecycleEvent: "completed",
+      };
+    },
+    "run.failed": () => {
+      return {
+        ...base,
+        eventType: "run.failed",
+        runId: requiredRowField(row.runId, row.eventType, "runId"),
+        error: row.error ?? undefined,
+        runLifecycleEvent: "failed",
+      };
+    },
+    "run.cancelled": () => {
+      return {
+        ...base,
+        eventType: "run.cancelled",
+        runId: requiredRowField(row.runId, row.eventType, "runId"),
+        error: row.error ?? undefined,
+        runLifecycleEvent: "cancelled",
+      };
+    },
+    "control.interrupt": () => {
+      return {
+        ...base,
+        eventType: "control.interrupt",
+        content: null,
+        interruptsRunId: requiredRowField(
+          row.interruptsRunId,
+          row.eventType,
+          "interruptsRunId",
+        ),
+      };
+    },
+    "control.revoke": () => {
+      return {
+        ...base,
+        eventType: "control.revoke",
+        content: null,
+        revokesEventId: requiredRowField(
+          row.revokesEventId,
+          row.eventType,
+          "revokesEventId",
+        ),
+      };
+    },
+    "browser.open": () => {
+      return { ...base, eventType: "browser.open", content: null };
+    },
+    "browser.close": () => {
+      return { ...base, eventType: "browser.close", content: null };
+    },
+    "goal.open": () => {
+      return {
+        ...reducedBase,
+        eventType: "goal.open",
+        content: requiredRowField(row.content, row.eventType, "content"),
+      };
+    },
+    "goal.close": () => {
+      return { ...reducedBase, eventType: "goal.close", content: null };
+    },
+    "usage.recorded": () => {
+      return {
+        ...base,
+        eventType: "usage.recorded",
+        runId: requiredRowField(row.runId, row.eventType, "runId"),
+        content: null,
+        usage: requiredRowField(
+          row.usagePayload ?? null,
+          row.eventType,
+          "usage",
+        ),
+      };
+    },
+  };
+
+  return chatEventSchema.parse(candidates[row.eventType]());
+}

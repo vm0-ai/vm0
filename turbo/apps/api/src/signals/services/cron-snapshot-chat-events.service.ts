@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 import {
+  chatEventRowSchema,
+  type ChatEventRow,
+} from "@vm0/api-contracts/contracts/chat-event-rows";
+import {
   chatEventTypeSchema,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -36,12 +40,16 @@ interface SnapshotCandidate {
 }
 
 /**
- * Version of the NDJSON line shape written by archiveLine. Bump it whenever
- * that shape changes. Existing heads keep their recorded version and are
- * selected for a verified rewrite even when they have no new Postgres tail.
+ * Version of the archive object contract. Bump it whenever the NDJSON line
+ * shape (chatEventRowSchema) or the object encoding changes. Existing heads
+ * keep their recorded version and are selected for a verified rewrite even
+ * when they have no new Postgres tail. v3 keeps the v2 line shape but stores
+ * objects with `Content-Encoding: gzip` metadata so browsers decompress
+ * snapshot downloads transparently; readers only serve v3 heads.
  */
-const ARCHIVE_SCHEMA_VERSION = 2;
-const ARCHIVE_CONTENT_TYPE = "application/gzip";
+export const ARCHIVE_SCHEMA_VERSION = 3;
+const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
+const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
  * Sized for the initial backfill: ~130k candidate threads at 48 runs/day
  * clear in about 5 days, and the first production run measured ~0.19s per
@@ -53,39 +61,13 @@ const DEFAULT_THREAD_BATCH_SIZE = 500;
 const EVENT_PAGE_SIZE = 1000;
 const OBJECT_KEY_CONTENT_SHA256 = /-([0-9a-f]{64})\.ndjson\.gz$/;
 
-const requiredJsonValueSchema = z.unknown().refine((value) => {
-  return value !== undefined;
-}, "Expected a JSON value");
-function createArchiveLineShape() {
-  return {
-    id: z.string(),
-    chatThreadId: z.string(),
-    runId: z.string().nullable(),
-    usagePayload: requiredJsonValueSchema,
-    revokesEventId: z.string().nullable(),
-    interruptsRunId: z.string().nullable(),
-    runGroupId: z.string().nullable(),
-    eventType: chatEventTypeSchema,
-    contextType: z.string().nullable(),
-    contextId: z.string().nullable(),
-    content: z.string().nullable(),
-    userMessage: requiredJsonValueSchema,
-    thinking: z.string().nullable(),
-    error: z.string().nullable(),
-    runEventSequenceNumber: z.number().int().nullable(),
-    runEventId: z.string().nullable(),
-    seqId: z.number().int(),
-    createdAt: z.iso.datetime(),
-  };
-}
-
-const archiveLineV2Schema = z.object(createArchiveLineShape()).strict();
+// v1 lines carry retired legacy columns, so this variant strips unknown keys
+// instead of inheriting the current schema's strict mode.
 const archiveLineV1Schema = z.object({
-  ...createArchiveLineShape(),
+  ...chatEventRowSchema.shape,
   eventType: z.string(),
 });
 
-type ArchiveLineV2 = z.infer<typeof archiveLineV2Schema>;
 type ArchiveEventRow = Pick<
   typeof chatEvents.$inferSelect,
   | "id"
@@ -137,12 +119,12 @@ function canonicalArchiveEventType(eventType: string): ChatEventType {
   return chatEventTypeSchema.parse(eventType);
 }
 
-function encodeArchiveLine(line: ArchiveLineV2): Buffer {
+function encodeArchiveLine(line: ChatEventRow): Buffer {
   return Buffer.from(`${JSON.stringify(line)}\n`);
 }
 
-function archiveLine(row: ArchiveEventRow): Buffer {
-  return encodeArchiveLine({
+export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
+  return {
     id: row.id,
     chatThreadId: row.chatThreadId,
     runId: row.runId,
@@ -161,7 +143,11 @@ function archiveLine(row: ArchiveEventRow): Buffer {
     runEventId: row.runEventId,
     seqId: row.seqId,
     createdAt: row.createdAt.toISOString(),
-  });
+  };
+}
+
+function archiveLine(row: ArchiveEventRow): Buffer {
+  return encodeArchiveLine(chatEventRowFromDbRow(row));
 }
 
 function parseArchiveLines(raw: Buffer): readonly unknown[] {
@@ -181,15 +167,20 @@ function parseArchiveLines(raw: Buffer): readonly unknown[] {
 }
 
 /**
- * Persisted-data migration for active v1 heads, not deployed-version skew.
- * Remove only after every active head is v2; immutable v1 objects then belong
- * to the separate R2 retention/GC lifecycle.
+ * Persisted-data migration for active v1/v2 heads, not deployed-version skew.
+ * v2 already carries the current line shape (v3 only adds object encoding
+ * metadata, applied by the fresh upload). Remove only after every active head
+ * is v3; immutable older objects then belong to the separate R2 retention/GC
+ * lifecycle.
  */
 function currentArchiveRaw(raw: Buffer, archiveSchemaVersion: number): Buffer {
   const lines = parseArchiveLines(raw);
-  if (archiveSchemaVersion === ARCHIVE_SCHEMA_VERSION) {
+  if (
+    archiveSchemaVersion === ARCHIVE_SCHEMA_VERSION ||
+    archiveSchemaVersion === 2
+  ) {
     for (const line of lines) {
-      archiveLineV2Schema.parse(line);
+      chatEventRowSchema.parse(line);
     }
     return raw;
   }
@@ -384,6 +375,7 @@ async function archiveThread(
   await get(
     putImmutableS3Object(bucket, objectKey, compressed, ARCHIVE_CONTENT_TYPE, {
       signal,
+      contentEncoding: ARCHIVE_CONTENT_ENCODING,
     }),
   );
   signal.throwIfAborted();

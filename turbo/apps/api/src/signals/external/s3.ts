@@ -799,6 +799,7 @@ export function putImmutableS3Object(
     | {
         readonly signal?: AbortSignal;
         readonly metadata?: Readonly<Record<string, string>>;
+        readonly contentEncoding?: string;
       },
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
@@ -811,6 +812,7 @@ export function putImmutableS3Object(
           Key: key,
           Body: body,
           ContentType: contentType,
+          ContentEncoding: writeOptions?.contentEncoding,
           Metadata: writeOptions?.metadata,
           CacheControl: IMMUTABLE_CACHE_CONTROL,
           IfNoneMatch: "*",
