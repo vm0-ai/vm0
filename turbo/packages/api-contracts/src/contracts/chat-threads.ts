@@ -1499,9 +1499,10 @@ export const chatThreadEventsContract = c.router({
     summary: "Get a presigned download for the thread's chat event snapshot",
   },
   /**
-   * Raw-row tail after a snapshot or cached cursor. 410 signals that the
-   * cursor row no longer exists and the client must rebuild from a fresh
-   * snapshot.
+   * Raw-row tail after a snapshot or cached cursor. `sinceSeqId: 0` reads a
+   * thread from the beginning, which is the cold start for a thread the
+   * archiver has not reached yet. 410 signals that the cursor row no longer
+   * exists and the client must rebuild from a fresh snapshot.
    */
   rows: {
     method: "GET",
@@ -1509,7 +1510,7 @@ export const chatThreadEventsContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
-      sinceSeqId: z.coerce.number().int().positive(),
+      sinceSeqId: z.coerce.number().int().nonnegative(),
       limit: z.coerce.number().min(1).max(50).default(50),
     }),
     responses: {

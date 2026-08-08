@@ -46,6 +46,8 @@ import {
 const L = logger("ChatEventStorageSignals");
 const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
 const FIRST_CHAT_EVENT_SEQ_ID = 1;
+/** Cursor that reads a thread from its very first event. */
+const THREAD_START_SEQ_ID = 0;
 
 export interface ChatEventDataSource {
   readonly listEventsAfter$: typeof listEventsAfter$;
@@ -323,31 +325,43 @@ function createSyncRemoteRowsCommand({
       signal.throwIfAborted();
     };
 
-    const loadSnapshot = async (): Promise<number> => {
+    /**
+     * Cold start. A thread the archiver has not reached yet has no snapshot,
+     * so the whole thread is still in Postgres and the tail below reads it
+     * from the beginning. Returns the cursor to continue from, and whether a
+     * snapshot actually supplied the archived prefix.
+     */
+    const loadSnapshot = async (): Promise<{
+      readonly sinceSeqId: number;
+      readonly rebuilt: boolean;
+    }> => {
       const snapshot = await settle(
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
       );
-      // The skeleton must resolve even when the snapshot is missing (404 on
-      // threads the archiver has not reached); the request error surfaces
-      // through the normal toast path.
+      // The skeleton must resolve even when the snapshot request fails; the
+      // error surfaces through the normal toast path.
       set(initialRemoteEventsResolved$, true);
       if (!snapshot.ok) {
         throw snapshot.error;
       }
+      if (snapshot.value === null) {
+        return { sinceSeqId: THREAD_START_SEQ_ID, rebuilt: false };
+      }
       await set(writeIndexedDbChatEventRows$, snapshot.value.rows, signal);
       signal.throwIfAborted();
       await mergeRows(snapshot.value.rows);
-      return snapshot.value.lastSeqId;
+      return { sinceSeqId: snapshot.value.lastSeqId, rebuilt: true };
     };
 
     let rebuiltFromSnapshot = false;
     let sinceSeqId: number;
     const cachedLastSeqId = get(persistentEvents$).at(-1)?.seqId;
     if (cachedLastSeqId === undefined) {
-      sinceSeqId = await loadSnapshot();
+      const coldStart = await loadSnapshot();
       signal.throwIfAborted();
-      rebuiltFromSnapshot = true;
+      sinceSeqId = coldStart.sinceSeqId;
+      rebuiltFromSnapshot = coldStart.rebuilt;
     } else {
       sinceSeqId = cachedLastSeqId;
     }
@@ -364,9 +378,10 @@ function createSyncRemoteRowsCommand({
         }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
         signal.throwIfAborted();
-        sinceSeqId = await loadSnapshot();
+        const rebuild = await loadSnapshot();
         signal.throwIfAborted();
-        rebuiltFromSnapshot = true;
+        sinceSeqId = rebuild.sinceSeqId;
+        rebuiltFromSnapshot = rebuild.rebuilt;
         continue;
       }
       await set(writeIndexedDbChatEventRows$, page.rows, signal);

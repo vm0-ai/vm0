@@ -14,6 +14,8 @@ import {
 } from "./cron-snapshot-chat-events.service";
 
 const SNAPSHOT_URL_TTL_SECONDS = 900;
+/** Cursor that reads a thread from its very first event. */
+const THREAD_START_SEQ_ID = 0;
 
 type ChatEventSnapshotDownload =
   | { readonly kind: "thread-not-found" }
@@ -95,7 +97,9 @@ export function zeroChatThreadEventSnapshot(args: {
  * Raw-row tail after a seq cursor. The cursor must still exist: a missing row
  * means the range below it is unavailable and the client has to rebuild from
  * a fresh snapshot. A cursor equal to the current head's last_seq_id is always
- * valid because the snapshot endpoint just handed it out.
+ * valid because the snapshot endpoint just handed it out. A thread with no
+ * current head has never had a range archived away, so any cursor still reads
+ * from Postgres; `sinceSeqId: 0` is the cold start for such a thread.
  */
 export function zeroChatThreadEventRows(args: {
   readonly threadId: string;
@@ -130,7 +134,12 @@ export function zeroChatThreadEventRows(args: {
         .from(chatEventSnapshots)
         .where(currentHeadFilter(args.threadId))
         .limit(1);
-      if (head?.lastSeqId !== args.sinceSeqId) {
+      // The cold-start cursor precedes every event, so it owns no row. It is
+      // only valid while nothing has been archived; once a head exists the
+      // client must start from that head instead.
+      const coldStart =
+        args.sinceSeqId === THREAD_START_SEQ_ID && head === undefined;
+      if (!coldStart && head?.lastSeqId !== args.sinceSeqId) {
         return { kind: "expired" } as const;
       }
     }

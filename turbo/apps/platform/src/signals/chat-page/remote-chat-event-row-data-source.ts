@@ -52,7 +52,9 @@ export const listRowsAfter$ = command(
 /**
  * Cold start: resolve the thread's snapshot download and pull the archive
  * body. The object is stored with `Content-Encoding: gzip`, so the browser
- * network stack hands back plain NDJSON text.
+ * network stack hands back plain NDJSON text. A thread the archiver has not
+ * reached yet has no snapshot, which is a normal 404 rather than an error:
+ * the caller then reads the whole thread from the raw-row endpoint.
  */
 export const fetchChatEventSnapshotRows$ = command(
   async (
@@ -62,17 +64,21 @@ export const fetchChatEventSnapshotRows$ = command(
   ): Promise<{
     readonly rows: readonly ChatEventRow[];
     readonly lastSeqId: number;
-  }> => {
+  } | null> => {
     const client = get(zeroClient$)(chatThreadEventsContract);
     const download = await accept(
       client.snapshot({
         params: { threadId },
         fetchOptions: { signal },
       }),
-      [200],
+      [200, 404],
       signal,
     );
     signal.throwIfAborted();
+    if (download.status === 404) {
+      L.debug("fetchChatEventSnapshotRows$: no snapshot yet", { threadId });
+      return null;
+    }
 
     const response = await fetch(download.body.url, { signal });
     if (!response.ok) {

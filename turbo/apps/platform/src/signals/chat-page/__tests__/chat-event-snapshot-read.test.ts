@@ -226,6 +226,58 @@ describe("chat event snapshot read", () => {
     }
   });
 
+  it("cold-starts from the rows endpoint when the thread has no snapshot yet", async () => {
+    mockSignedInUser();
+    enableSnapshotRead();
+    rejectLegacyEventsEndpoint();
+    const { threadId, promptEventRow, assistantEventRow } = threadFixture();
+    const appDb = await context.store.get(chatIdb$);
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    const rowRequests: number[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      rowRequests.push(query.sinceSeqId);
+      if (query.sinceSeqId === 0) {
+        return respond(200, { rows: [promptEventRow, assistantEventRow] });
+      }
+      return respond(200, { rows: [] });
+    });
+
+    const signals = createSignals(threadId);
+    try {
+      await context.store.set(
+        signals.initializeIndexedDbEvents$,
+        context.signal,
+      );
+      await context.store.set(signals.syncRemoteEvents$, context.signal);
+
+      expect(
+        context.store.get(signals.chatEvents$).map((event) => {
+          return { id: event.id, seqId: event.seqId };
+        }),
+      ).toStrictEqual([
+        { id: promptEventRow.id, seqId: 1 },
+        { id: assistantEventRow.id, seqId: 2 },
+      ]);
+      expect(rowRequests).toStrictEqual([0]);
+      expect(
+        context.store.get(signals.initialRemoteEventsResolved$),
+      ).toBeTruthy();
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
+      ).resolves.toStrictEqual(assistantEventRow);
+    } finally {
+      appDb.close();
+    }
+  });
+
   it("initializes from cached rows without touching the network", async () => {
     mockSignedInUser();
     enableSnapshotRead();

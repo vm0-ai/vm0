@@ -229,6 +229,19 @@ describe("chat event snapshot read endpoints", () => {
     });
     expect(wireShape).toStrictEqual(expected);
 
+    // Cold start for a thread the archiver has not reached yet: nothing was
+    // archived away, so seq 0 reads the thread from its first event.
+    const fromStart = await accept(
+      eventsClient().rows({
+        headers: authenticate(owner),
+        params: { threadId },
+        query: { sinceSeqId: 0 },
+      }),
+      [200],
+    );
+    expect(fromStart.body.rows[0]?.seqId).toBe(firstSeqId);
+    expect(fromStart.body.rows).toHaveLength(rows.body.rows.length + 1);
+
     const expired = await accept(
       eventsClient().rows({
         headers: authenticate(owner),
