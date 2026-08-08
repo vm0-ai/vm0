@@ -4125,7 +4125,7 @@ function RecommendedFollowupList({
       data-responsive-followup-cards={responsiveFollowupCards ? "" : undefined}
       className={cn(
         responsiveFollowupCards
-          ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain snap-x snap-mandatory px-[max(2rem,calc((100cqw-22rem)/2))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden @[900px]:-mx-2 @[900px]:block @[900px]:overflow-visible @[900px]:px-0 @[900px]:pb-0"
+          ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden @[900px]:-mx-2 @[900px]:block @[900px]:overflow-visible @[900px]:pb-0"
           : "-mx-2",
       )}
     >

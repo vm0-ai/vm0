@@ -169,7 +169,7 @@ describe("chat lifecycle", () => {
     expect(sentMessages).toHaveLength(0);
   });
 
-  it("renders equal-height centered follow-up cards only when enabled", async () => {
+  it("renders an edge-aligned equal-height follow-up card rail when enabled", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000734";
     const prompts = [
       "Draft launch copy",
