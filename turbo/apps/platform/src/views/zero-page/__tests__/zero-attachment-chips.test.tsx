@@ -12,7 +12,8 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
@@ -951,6 +952,46 @@ describe("zero attachment chips", () => {
       preview!.compareDocumentPosition(textBubble!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("falls back to the canonical url when the api predates the file-url route", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    context.mocks.http.get("/api/zero/web/file-url", () => {
+      return HttpResponse.json(
+        { error: { message: "Attachment is unavailable", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-rollout-photo",
+          role: "user",
+          content: "Review this image",
+          fileParts: [
+            {
+              type: "file",
+              fileId: "attachment-photo",
+              filenameSnapshot: "photo.png",
+              contentType: "image/png",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const image = await screen.findByAltText("photo.png");
+    await waitFor(() => {
+      expect(image.getAttribute("src")).toBe(
+        canonicalUserMessageFileUrl("attachment-photo"),
+      );
+    });
+    expect(toastError).not.toHaveBeenCalledWith("Attachment is unavailable");
+    toastError.mockRestore();
   });
 
   it("keeps the user image preview frame stable while the image loads", async () => {

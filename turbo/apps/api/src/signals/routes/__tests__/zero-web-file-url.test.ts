@@ -2,20 +2,27 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { zeroWebFilesContract } from "@vm0/api-contracts/contracts/zero-web-files";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { zeroWebFileUrlRoutes } from "../zero-web-file-url";
+import { expectApiError } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
 const BUCKET = "test-user-artifacts";
-const ROUTE = "/api/zero/web/file-url";
 const PRESIGNED_URL = "https://r2.example.com/artifacts/photo.png?sig=test";
+
+function client() {
+  return setupApp({ context, routes: zeroWebFileUrlRoutes })(
+    zeroWebFilesContract,
+  );
+}
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -55,6 +62,10 @@ async function mintFileReadToken(): Promise<{
       capabilities: ["file:read"],
     }),
   };
+}
+
+function authHeaders(token: string) {
+  return { authorization: `Bearer ${token}` };
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -109,47 +120,19 @@ function mockS3Objects(keys: readonly string[]): void {
   });
 }
 
-function requestFileUrl(args: {
-  readonly fileId?: string;
-  readonly token?: string;
-}): Promise<Response> {
-  const search =
-    args.fileId === undefined
-      ? ""
-      : `?file_id=${encodeURIComponent(args.fileId)}`;
-  const headers: Record<string, string> = args.token
-    ? { authorization: `Bearer ${args.token}` }
-    : {};
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: zeroWebFileUrlRoutes,
-  });
-  return Promise.resolve(
-    app.request(`${ROUTE}${search}`, { method: "GET", headers }),
-  );
-}
-
 function artifactKey(userId: string, fileId: string, filename: string): string {
   return `artifacts/${userId}/${fileId}/${filename}`;
 }
 
-async function expectErrorResponse(
-  response: Response,
-  status: number,
-  code: string,
-): Promise<void> {
-  expect(response.status).toBe(status);
-  const body = (await response.json()) as {
-    readonly error?: { readonly code?: string };
-  };
-  expect(body.error?.code).toBe(code);
-}
-
 describe("GET /api/zero/web/file-url", () => {
   it("returns 401 when no auth token is provided", async () => {
-    const response = await requestFileUrl({ fileId: "abc" });
+    const response = await accept(
+      client().fileUrl({ headers: {}, query: { file_id: "abc" } }),
+      [401],
+    );
 
-    await expectErrorResponse(response, 401, "UNAUTHORIZED");
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
   it("returns 403 for a zero token without file:read capability", async () => {
@@ -159,36 +142,45 @@ describe("GET /api/zero/web/file-url", () => {
       capabilities: ["agent:read"],
     });
 
-    const response = await requestFileUrl({ fileId: "abc", token });
+    const response = await accept(
+      client().fileUrl({
+        headers: authHeaders(token),
+        query: { file_id: "abc" },
+      }),
+      [403],
+    );
 
-    await expectErrorResponse(response, 403, "FORBIDDEN");
-  });
-
-  it("returns 400 when file_id query param is missing", async () => {
-    const { token } = await mintFileReadToken();
-
-    const response = await requestFileUrl({ token });
-
-    await expectErrorResponse(response, 400, "BAD_REQUEST");
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
   it("returns 400 when file_id query param is empty", async () => {
     const { token } = await mintFileReadToken();
 
-    const response = await requestFileUrl({ fileId: "", token });
+    const response = await accept(
+      client().fileUrl({ headers: authHeaders(token), query: { file_id: "" } }),
+      [400],
+    );
 
-    await expectErrorResponse(response, 400, "BAD_REQUEST");
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
-  it("returns 404 when the file is not found in S3", async () => {
+  it("returns 404 without signing anything when the file does not exist", async () => {
     const { token } = await mintFileReadToken();
     mockS3Objects([]);
 
-    const response = await requestFileUrl({ fileId: "missing", token });
+    const response = await accept(
+      client().fileUrl({
+        headers: authHeaders(token),
+        query: { file_id: "missing" },
+      }),
+      [404],
+    );
 
-    await expectErrorResponse(response, 404, "NOT_FOUND");
-
-    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(signedObjectInputs()).toStrictEqual([]);
   });
 
   it("signs the resolved object key for the owning user", async () => {
@@ -198,12 +190,15 @@ describe("GET /api/zero/web/file-url", () => {
     mockS3Objects([key]);
     context.mocks.s3.getSignedUrl.mockResolvedValue(PRESIGNED_URL);
 
-    const response = await requestFileUrl({ fileId, token });
+    const response = await accept(
+      client().fileUrl({
+        headers: authHeaders(token),
+        query: { file_id: fileId },
+      }),
+      [200],
+    );
 
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { readonly url?: string };
-    expect(body.url).toBe(PRESIGNED_URL);
-
+    expect(response.body.url).toBe(PRESIGNED_URL);
     expect(signedObjectInputs()).toStrictEqual([
       expect.objectContaining({ Bucket: BUCKET, Key: key }),
     ]);
@@ -215,9 +210,14 @@ describe("GET /api/zero/web/file-url", () => {
     const { token, userId } = await mintFileReadToken();
     mockS3Objects([artifactKey(userId, fileId, "photo.png")]);
 
-    const response = await requestFileUrl({ fileId, token });
+    await accept(
+      client().fileUrl({
+        headers: authHeaders(token),
+        query: { file_id: fileId },
+      }),
+      [200],
+    );
 
-    expect(response.status).toBe(200);
     expect(
       signedObjectInputs().map((input) => {
         return input.ResponseContentDisposition;
@@ -230,19 +230,26 @@ describe("GET /api/zero/web/file-url", () => {
     const owner = await mintFileReadToken();
     mockS3Objects([artifactKey(owner.userId, fileId, "private_notes.md")]);
 
-    const ownerResponse = await requestFileUrl({
-      fileId,
-      token: owner.token,
-    });
-    expect(ownerResponse.status).toBe(200);
+    await accept(
+      client().fileUrl({
+        headers: authHeaders(owner.token),
+        query: { file_id: fileId },
+      }),
+      [200],
+    );
 
     const otherUser = await mintFileReadToken();
-    const forbiddenResponse = await requestFileUrl({
-      fileId,
-      token: otherUser.token,
-    });
+    const forbidden = await accept(
+      client().fileUrl({
+        headers: authHeaders(otherUser.token),
+        query: { file_id: fileId },
+      }),
+      [404],
+    );
 
-    await expectErrorResponse(forbiddenResponse, 404, "NOT_FOUND");
+    expectApiError(forbidden.body);
+    expect(forbidden.body.error.code).toBe("NOT_FOUND");
+    expect(signedObjectInputs()).toHaveLength(1);
   });
 
   it("scopes file lookup to the authenticated user", async () => {
@@ -250,7 +257,13 @@ describe("GET /api/zero/web/file-url", () => {
     const { token, userId } = await mintFileReadToken();
     mockS3Objects([]);
 
-    await requestFileUrl({ fileId, token });
+    await accept(
+      client().fileUrl({
+        headers: authHeaders(token),
+        query: { file_id: fileId },
+      }),
+      [404],
+    );
 
     const prefixes = context.mocks.s3.send.mock.calls
       .map(([command]) => {
