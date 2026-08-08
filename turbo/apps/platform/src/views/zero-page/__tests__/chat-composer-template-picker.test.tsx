@@ -1164,7 +1164,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("keeps the draft visible while send waits for draft attachments", async () => {
+  it("disables send while a template draft attachment is uploading", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
@@ -1200,8 +1200,10 @@ describe("chat composer templates", () => {
     });
 
     const editor = await findComposerEditor();
-    await appendAndSend(user, "Use this", editor);
+    await user.click(editor);
+    await user.keyboard("Use this");
 
+    expect(screen.getByLabelText("Send")).toBeDisabled();
     expect(editor).toHaveTextContent("Use this");
     expect(
       screen.getByLabelText("Cancel upload launch-notes.txt"),

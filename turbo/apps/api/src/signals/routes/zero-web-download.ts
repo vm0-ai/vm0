@@ -1,9 +1,5 @@
-import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { z } from "zod";
 import { computed } from "ccstate";
-
-import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
-import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
+import { zeroWebFilesContract } from "@vm0/api-contracts/contracts/zero-web-files";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -12,28 +8,9 @@ import { notFound, badRequestMessage } from "../../lib/error";
 import { zeroWebDownloadFile } from "../services/zero-web-download.service";
 import type { RouteEntry } from "../route-entry";
 
-const c = initContract();
-
-const downloadFileContract = c.router({
-  download: {
-    method: "GET",
-    path: "/api/zero/web/download-file",
-    headers: authHeadersSchema,
-    query: z.object({ file_id: z.string().min(1) }),
-    responses: {
-      200: c.noBody(),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Download a web-uploaded file",
-  },
-});
-
 const downloadFileInner$ = computed(async (get) => {
   const auth = get(authContext$);
-  const params = get(queryOf(downloadFileContract.download));
+  const params = get(queryOf(zeroWebFilesContract.download));
 
   const fileId = params.file_id;
   if (!fileId) {
@@ -60,7 +37,7 @@ const downloadFileInner$ = computed(async (get) => {
 
 export const zeroWebDownloadRoutes: readonly RouteEntry[] = [
   {
-    route: downloadFileContract.download,
+    route: zeroWebFilesContract.download,
     handler: authRoute(
       {
         requireOrganization: false,

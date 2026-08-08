@@ -30,10 +30,23 @@ interface FileInfo {
   url: string;
 }
 
+type AttachmentUploadState =
+  | {
+      readonly status: "pending";
+      readonly promise: Promise<FileInfo> | null;
+    }
+  | {
+      readonly status: "uploaded";
+      readonly fileInfo: FileInfo;
+    };
+
 const MULTIPART_UPLOAD_THRESHOLD_BYTES = 5 * 1024 * 1024;
 const MAX_PART_UPLOAD_ATTEMPTS = 5;
 const PART_UPLOAD_RETRY_BASE_DELAY_MS = 250;
 const MULTIPART_ABORT_TIMEOUT_MS = 5000;
+const noUploadPending$ = computed((): boolean => {
+  return false;
+});
 
 interface MultipartUploadReference {
   id: string;
@@ -200,6 +213,8 @@ export interface ZeroChatAttachment {
   size: number;
   /** Reactive file info (id + url) — loading while uploading, hasData when done. */
   fileInfo$: Computed<Promise<FileInfo | null>>;
+  /** Synchronous upload state used to guard composer submission. */
+  uploadPending$: Computed<boolean>;
   /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
   cancel$: Command<void, []>;
   /** Start the upload and publish its fileInfo$ promise for later send-time resolution. */
@@ -209,14 +224,23 @@ export interface ZeroChatAttachment {
 function createChatAttachment(file: File): ZeroChatAttachment {
   const contentType = inferUploadContentType(file);
   const resetSignal$ = resetSignal();
-  const internalPromise$ = state<Promise<FileInfo> | null>(null);
+  const internalUpload$ = state<AttachmentUploadState>({
+    status: "pending",
+    promise: null,
+  });
 
   const fileInfo$ = computed(async (get) => {
-    const promise = get(internalPromise$);
-    if (promise === null) {
+    const upload = get(internalUpload$);
+    if (upload.status === "uploaded") {
+      return upload.fileInfo;
+    }
+    if (upload.promise === null) {
       return null;
     }
-    return await promise;
+    return await upload.promise;
+  });
+  const uploadPending$ = computed((get): boolean => {
+    return get(internalUpload$).status === "pending";
   });
 
   const cancel$ = command(({ set }) => {
@@ -315,9 +339,10 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       return { id: prepared.body.id, url: prepared.body.url };
     })();
 
-    set(internalPromise$, promise);
+    set(internalUpload$, { status: "pending", promise });
 
-    await promise;
+    const fileInfo = await promise;
+    set(internalUpload$, { status: "uploaded", fileInfo });
   });
 
   return {
@@ -325,6 +350,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     contentType,
     size: file.size,
     fileInfo$,
+    uploadPending$,
     cancel$,
     upload$,
   };
@@ -350,7 +376,7 @@ export interface DraftSignals {
     [GenerationTemplateRequest | undefined]
   >;
   attachments$: Computed<ZeroChatAttachment[]>;
-  attachmentUploadsReady$: Computed<boolean | Promise<boolean>>;
+  attachmentUploadsReady$: Computed<boolean>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
@@ -390,7 +416,6 @@ export function createRestoredAttachment(
   const cancel$ = command(() => {
     // no-op: already uploaded, nothing to cancel
   });
-
   // upload$ accepts a signal parameter to match the ZeroChatAttachment interface.
   // The file is already uploaded, so this is a no-op.
   const upload$ = command((_visitor, _signal: AbortSignal): Promise<void> => {
@@ -402,6 +427,7 @@ export function createRestoredAttachment(
     contentType: persisted.contentType,
     size: persisted.size,
     fileInfo$,
+    uploadPending$: noUploadPending$,
     cancel$,
     upload$,
   };
@@ -555,28 +581,11 @@ export function createDraftSignals(): DraftSignals {
     return get(internalAttachments$);
   });
 
-  const attachmentUploadsReady$ = computed(
-    (get): boolean | Promise<boolean> => {
-      const attachments = get(internalAttachments$);
-      if (attachments.length === 0) {
-        return true;
-      }
-      const fileInfos = attachments.map((attachment) => {
-        return get(attachment.fileInfo$);
-      });
-      return (async () => {
-        const infos = await Promise.all(fileInfos);
-        if (
-          infos.some((info) => {
-            return info === null;
-          })
-        ) {
-          throw new Error("Attachment upload did not start");
-        }
-        return true;
-      })();
-    },
-  );
+  const attachmentUploadsReady$ = computed((get): boolean => {
+    return get(internalAttachments$).every((attachment) => {
+      return !get(attachment.uploadPending$);
+    });
+  });
 
   const uploadAttachment$ = command(
     async ({ set }, file: File, signal: AbortSignal) => {
