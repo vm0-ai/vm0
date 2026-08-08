@@ -4097,6 +4097,7 @@ function RecommendedFollowupList({
   thread: ChatPanelSignals;
   source: RecommendedFollowupSource;
 }) {
+  const { t } = useTranslation();
   const responsiveFollowupCards =
     useGet(featureSwitch$)[FeatureSwitchKey.ResponsiveFollowupCards] ?? false;
   const selectOrAppendComposerText = useSet(
@@ -4122,7 +4123,10 @@ function RecommendedFollowupList({
   return (
     <div
       ref={handleRecommendedFollowupsRef}
-      data-responsive-followup-cards={responsiveFollowupCards ? "" : undefined}
+      role="group"
+      aria-label={t(($) => {
+        return $.chat.run.keepGoing;
+      })}
       className={cn(
         responsiveFollowupCards
           ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden @[900px]:-mx-2 @[900px]:block @[900px]:overflow-visible @[900px]:pb-0"
@@ -4138,7 +4142,7 @@ function RecommendedFollowupList({
             className={cn(
               "group flex text-left transition-colors",
               responsiveFollowupCards
-                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--zero-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 @[900px]:min-h-10 @[900px]:w-full @[900px]:items-center @[900px]:gap-2 @[900px]:rounded-lg @[900px]:border-0 @[900px]:bg-transparent @[900px]:px-2 @[900px]:py-2 @[900px]:shadow-none @[900px]:hover:bg-state-hover @[900px]:focus-visible:ring-0"
+                ? "min-h-24 flex-[0_0_min(22rem,calc(100cqw-4rem))] self-stretch snap-center items-start rounded-[var(--zero-card-radius)] border border-border/70 bg-card p-4 shadow-sm hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 @[900px]:min-h-10 @[900px]:w-full @[900px]:items-center @[900px]:gap-2 @[900px]:rounded-lg @[900px]:border-0 @[900px]:bg-transparent @[900px]:px-2 @[900px]:py-2 @[900px]:shadow-none @[900px]:hover:bg-state-hover"
                 : "min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 hover:bg-state-hover",
             )}
             onClick={() => {

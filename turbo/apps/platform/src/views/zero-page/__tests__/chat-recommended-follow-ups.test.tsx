@@ -146,10 +146,6 @@ describe("chat lifecycle", () => {
       expect(buttonByText("Generate launch artifact")).toBeInTheDocument();
       expect(buttonByText("Draft launch copy")).toBeInTheDocument();
     });
-    expect(
-      document.querySelector("[data-responsive-followup-cards]"),
-    ).toBeNull();
-
     click(buttonByText(followupPrompt));
 
     await waitFor(() => {
@@ -169,7 +165,7 @@ describe("chat lifecycle", () => {
     expect(sentMessages).toHaveLength(0);
   });
 
-  it("renders an edge-aligned equal-height follow-up card rail when enabled", async () => {
+  it("preserves follow-up content and selection when the card rail is enabled", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000734";
     const prompts = [
       "Draft launch copy",
@@ -183,6 +179,8 @@ describe("chat lifecycle", () => {
       hour: "numeric",
       minute: "2-digit",
     });
+    const selectedPrompt = prompts[1]!;
+    const sentMessages: unknown[] = [];
 
     mockChatLifecycle(context, {
       threadId,
@@ -209,6 +207,9 @@ describe("chat lifecycle", () => {
           createdAt: completedAt,
         },
       ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
     });
 
     detachedSetupPage({
@@ -219,26 +220,27 @@ describe("chat lifecycle", () => {
       },
     });
 
+    const composer = await findWorkflowComposerEditor();
     await screen.findByText("The launch plan is ready.");
     expect(
       screen.getByText(`Keep going · ${completedAtLabel}`),
     ).toBeInTheDocument();
-    const rail = document.querySelector("[data-responsive-followup-cards]");
-    expect(rail).toHaveClass(
-      "flex",
-      "items-stretch",
-      "snap-x",
-      "@[900px]:block",
-    );
+    expect(
+      screen.getByRole("group", { name: "Keep going" }),
+    ).toBeInTheDocument();
     for (const prompt of prompts) {
       const card = buttonByText(prompt);
-      expect(card.textContent).toBe(prompt);
-      expect(card).toHaveClass(
-        "self-stretch",
-        "snap-center",
-        "@[900px]:w-full",
-      );
+      expect(card).toBeVisible();
+      expect(card).toHaveAccessibleName(prompt);
     }
+
+    click(buttonByText(selectedPrompt));
+
+    await waitFor(() => {
+      expect(composer.textContent).toBe(selectedPrompt);
+      expect(composer).toHaveFocus();
+    });
+    expect(sentMessages).toHaveLength(0);
   });
 
   it("shows recommended follow-ups after an appended follow-up event", async () => {
