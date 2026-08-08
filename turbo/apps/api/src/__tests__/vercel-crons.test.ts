@@ -64,7 +64,7 @@ const expectedVercelCrons = [
   },
   {
     path: cronSnapshotChatEventsContract.snapshot.path,
-    schedule: "*/30 * * * *",
+    schedule: "*/10 * * * *",
   },
   {
     path: cronExecuteWorkflowAutomationsContract.execute.path,
