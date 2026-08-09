@@ -363,14 +363,14 @@ export const drainGoalQueueForThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
-      readonly apiStartTime?: number;
+      readonly apiStartTime: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly queueItemCreatedBefore?: Date;
     },
     signal: AbortSignal,
   ): Promise<void> => {
     const drainStartedAt = now();
-    const apiStartTime = args.apiStartTime ?? drainStartedAt;
+    const apiStartTime = args.apiStartTime;
     const timing = new ApiDispatchTimingCollector();
     timing.recordElapsed(
       "api_dispatch_pre_create_zero_goal_drain_scheduler_start_gap",

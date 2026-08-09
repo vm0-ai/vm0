@@ -497,9 +497,7 @@ function historyMessageContext(
 }
 
 function formatFeishuSenderBlock(message: FeishuHistoryMessage): string {
-  const parts = [
-    `id: ${message.sender?.id ?? message.sender?.sender_type ?? "unknown"}`,
-  ];
+  const parts = message.sender?.id ? [`id: ${message.sender.id}`] : [];
   if (message.sender?.sender_name) {
     parts.push(`name: ${message.sender.sender_name}`);
   }
