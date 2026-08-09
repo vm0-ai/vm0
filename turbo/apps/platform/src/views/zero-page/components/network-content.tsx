@@ -1,9 +1,4 @@
-import {
-  IconCheck,
-  IconChevronDown,
-  IconFilter,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { Check, ChevronDown, Filter, Loader2 } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import {
   DropdownMenu,
@@ -285,13 +280,10 @@ function TypeFilter({
           className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-input-hover focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         >
           <span className="flex items-center gap-1.5">
-            <IconFilter size={14} stroke={1.5} className="shrink-0" />
+            <Filter size={14} strokeWidth={1.5} className="shrink-0" />
             {typeFilterLabel(typeFilter)}
           </span>
-          <IconChevronDown
-            size={14}
-            className="shrink-0 text-muted-foreground"
-          />
+          <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
@@ -304,7 +296,7 @@ function TypeFilter({
           }}
         >
           <span className="flex h-4 w-4 items-center justify-center">
-            {typeFilter.mode === "all" && <IconCheck size={14} />}
+            {typeFilter.mode === "all" && <Check size={14} />}
           </span>
           {t(($) => {
             return $.activity.network.filter.allTypes;
@@ -323,7 +315,7 @@ function TypeFilter({
               }}
             >
               <span className="flex h-4 w-4 items-center justify-center">
-                {selected && <IconCheck size={14} />}
+                {selected && <Check size={14} />}
               </span>
               {type}
             </DropdownMenuItem>
@@ -1136,7 +1128,7 @@ export function NetworkContent({
       {hasMore && onLoadMore && (
         <div className="flex justify-center py-4">
           {loading ? (
-            <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           ) : (
             <button
               type="button"

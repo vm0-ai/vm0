@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@vm0/ui/components/ui/select";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { IconClock, IconLoader2 } from "@tabler/icons-react";
+import { Clock, Loader2 } from "lucide-react";
 import {
   userPreferences$,
   updateUserPreference$,
@@ -125,9 +125,9 @@ export function TimezoneSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconClock
+              <Clock
                 size={22}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="text-muted-foreground"
               />
             </div>
@@ -166,7 +166,7 @@ export function TimezoneSettings() {
           </Select>
           {loading && (
             <div className="absolute inset-0 flex items-center justify-end pr-8">
-              <IconLoader2
+              <Loader2
                 size={16}
                 className="animate-spin text-muted-foreground"
               />

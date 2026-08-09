@@ -1,10 +1,5 @@
 import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
-import {
-  IconBrandGoogleDrive,
-  IconDownload,
-  IconLoader2,
-  IconShare,
-} from "@tabler/icons-react";
+import { Download, Loader2, Share } from "lucide-react";
 import {
   cn,
   Popover,
@@ -15,6 +10,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  BrandGoogleDrive,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { isConnectorAppOauthCallbackEnabled } from "@vm0/connectors/app-oauth-callback";
@@ -332,7 +328,7 @@ export function ArtifactShareButton({
         title={publicAttachmentUrl(url)}
         className={iconButtonClassName(className)}
       >
-        <IconShare size={iconSize} stroke={1.5} />
+        <Share size={iconSize} strokeWidth={1.5} />
       </a>
     </ArtifactActionTooltip>
   );
@@ -438,7 +434,7 @@ function GoogleDriveDisabledMenuItem({
       className={muted ? "text-muted-foreground" : ""}
       disabled
     >
-      <IconBrandGoogleDrive size={14} stroke={1.5} />
+      <BrandGoogleDrive size={14} strokeWidth={1.5} />
       {text}
     </ArtifactDownloadMenuItem>
   );
@@ -535,7 +531,7 @@ function GoogleDriveMenuItem({
   if (googleDriveReady) {
     return (
       <ArtifactDownloadMenuItem onClick={syncOrConnect}>
-        <IconBrandGoogleDrive size={14} stroke={1.5} />
+        <BrandGoogleDrive size={14} strokeWidth={1.5} />
         {t(($) => {
           return $.artifacts.googleDrive.upload;
         })}
@@ -554,7 +550,7 @@ function GoogleDriveMenuItem({
             }
             onClick={syncOrConnect}
           >
-            <IconBrandGoogleDrive size={14} stroke={1.5} />
+            <BrandGoogleDrive size={14} strokeWidth={1.5} />
             {t(($) => {
               return $.artifacts.googleDrive.connect;
             })}
@@ -612,9 +608,9 @@ function ArtifactDownloadTrigger({
       )}
     >
       {downloadPending ? (
-        <IconLoader2 size={iconSize} stroke={1.5} className="animate-spin" />
+        <Loader2 size={iconSize} strokeWidth={1.5} className="animate-spin" />
       ) : (
-        <IconDownload size={iconSize} stroke={1.5} />
+        <Download size={iconSize} strokeWidth={1.5} />
       )}
     </button>
   );
@@ -741,7 +737,7 @@ export function ArtifactDownloadMenu({
             });
           }}
         >
-          <IconDownload size={14} stroke={1.5} />
+          <Download size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.artifacts.actions.download;
           })}

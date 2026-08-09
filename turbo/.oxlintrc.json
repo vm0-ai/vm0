@@ -9,6 +9,17 @@
     "import/no-named-default": "error",
     "import/first": "error",
     "import/no-amd": "error",
-    "import/no-commonjs": "error"
+    "import/no-commonjs": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@tabler/icons-react",
+            "message": "Use lucide-react or a shared @vm0/ui brand icon instead."
+          }
+        ]
+      }
+    ]
   }
 }

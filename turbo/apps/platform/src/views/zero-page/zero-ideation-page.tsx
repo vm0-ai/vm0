@@ -1,11 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useLastResolved, useSet } from "ccstate-react";
-import {
-  IconArrowUpRight,
-  IconMessageCircle,
-  IconSearch,
-} from "@tabler/icons-react";
+import { ArrowUpRight, MessageCircle, Search } from "lucide-react";
 import { Card, CardContent, cn, Input } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -126,7 +122,7 @@ export function ZeroIdeationPage() {
           onClick={handleBack}
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors cursor-pointer"
         >
-          <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
+          <MessageCircle size={14} strokeWidth={1.5} className="shrink-0" />
           {t(($) => {
             return $.ideation.chat;
           })}
@@ -195,9 +191,9 @@ export function ZeroIdeationPage() {
                   })}
                 </div>
                 <div className="relative w-full min-w-0 sm:max-w-[240px] sm:flex-1 sm:min-w-[12rem]">
-                  <IconSearch
+                  <Search
                     className="pointer-events-none absolute left-3 top-1/2 z-10 size-[14px] -translate-y-1/2 text-muted-foreground"
-                    stroke={1.5}
+                    strokeWidth={1.5}
                     aria-hidden
                   />
                   <Input
@@ -256,10 +252,11 @@ export function ZeroIdeationPage() {
                               }}
                             >
                               <CardContent className="p-4 group relative">
-                                <IconArrowUpRight
+                                <ArrowUpRight
                                   size={14}
-                                  stroke={2}
+                                  strokeWidth={2}
                                   className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                                  data-stroke
                                 />
                                 <p className="text-sm font-semibold text-foreground pr-5">
                                   {useCase.title}

@@ -15,7 +15,7 @@ import {
   SheetTitle,
   Button,
 } from "@vm0/ui";
-import { IconCrown, IconMinus, IconPlus } from "@tabler/icons-react";
+import { Crown, Minus, Plus } from "lucide-react";
 import {
   CONCURRENCY_QUANTITY_MAX,
   CONCURRENCY_QUANTITY_MIN,
@@ -240,7 +240,7 @@ function UpgradeCard({
           {upgrade.targetLabel}
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconCrown size={12} stroke={1.8} className="text-amber-500" />
+          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
           {t(($) => {
             return $.queue.upgrade.recommended;
           })}
@@ -337,7 +337,7 @@ function ConcurrencyQuantityControl({
               onQuantityChange(quantity - 1);
             }}
           >
-            <IconMinus size={14} stroke={2} />
+            <Minus size={14} strokeWidth={2} data-stroke />
           </button>
           <span className="flex h-9 w-12 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
             {quantity}
@@ -353,7 +353,7 @@ function ConcurrencyQuantityControl({
               onQuantityChange(quantity + 1);
             }}
           >
-            <IconPlus size={14} stroke={2} />
+            <Plus size={14} strokeWidth={2} data-stroke />
           </button>
         </div>
       </div>
@@ -392,7 +392,7 @@ function ConcurrencyPurchaseCard({
           })}
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconCrown size={12} stroke={1.8} className="text-amber-500" />
+          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
           {t(($) => {
             return $.queue.purchase.addOn;
           })}

@@ -24,36 +24,35 @@ import {
   setRunUsagePopoverOpenRunId$,
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
-  IconAlertCircle,
-  IconHandStop,
-  IconPhoto,
-  IconChartLine,
-  IconWorld,
-  IconPlayerPlay,
-  IconVideo,
-  IconCopy,
-  IconDeviceDesktop,
-  IconCheck,
-  IconColorSwatch,
-  IconArrowDown,
-  IconArrowUpRight,
-  IconChevronRight,
-  IconLink,
-  IconLoader2,
-  IconMessageCircle,
-  IconMoodPlus,
-  IconPackage,
-  IconRoute,
-  IconSearch,
-  IconSunrise,
-  IconTarget,
-  IconX,
-  IconClock,
-  IconCoins,
-  IconHourglass,
-  IconBrandSlack,
-  IconShare3,
-} from "@tabler/icons-react";
+  AlertCircle,
+  Hand,
+  Image,
+  ChartLine,
+  Globe,
+  Play,
+  Video,
+  Copy,
+  Monitor,
+  Check,
+  SwatchBook,
+  ArrowDown,
+  ArrowUpRight,
+  ChevronRight,
+  Link as LinkIcon,
+  Loader2,
+  MessageCircle,
+  SmilePlus,
+  Package,
+  Route,
+  Search,
+  Sunrise,
+  Target,
+  X,
+  Clock,
+  Coins,
+  Hourglass,
+  Share2,
+} from "lucide-react";
 import {
   cn,
   getShortcutLabel,
@@ -80,6 +79,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  BrandSlack,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
@@ -495,7 +495,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
             })}
             aria-pressed={open}
           >
-            <IconPackage size={17} stroke={1.5} />
+            <Package size={17} strokeWidth={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -559,7 +559,7 @@ export function AutomationMenuButton({
               openAutomationSidebar(thread);
             }}
           >
-            <IconClock size={18} />
+            <Clock size={18} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -598,7 +598,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
               openBrowserSidebar(thread.threadId);
             }}
           >
-            <IconWorld size={18} stroke={1.5} />
+            <Globe size={18} strokeWidth={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -704,7 +704,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                     return $.chat.sharing.start;
                   })}
                 >
-                  <IconShare3 size={18} stroke={1.5} />
+                  <Share2 size={18} strokeWidth={1.5} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -839,7 +839,7 @@ function ChatThreadEmojiMenuButton({
                     {emoji}
                   </span>
                 ) : (
-                  <IconMoodPlus size={18} stroke={1.75} aria-hidden="true" />
+                  <SmilePlus size={18} strokeWidth={1.75} aria-hidden="true" />
                 )}
               </button>
             </PopoverTrigger>
@@ -927,7 +927,7 @@ function ChatThreadEmojiPicker({
     <div className="flex flex-col">
       <div className="flex items-center gap-2 p-2">
         <div className="relative flex-1">
-          <IconSearch
+          <Search
             size={15}
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
@@ -1201,9 +1201,9 @@ function ChatImagePreviewLink({
           )}
         >
           {imageStatus === "loading" ? (
-            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+            <Loader2 size={18} strokeWidth={1.8} className="animate-spin" />
           ) : (
-            <IconPhoto size={18} stroke={1.5} />
+            <Image size={18} strokeWidth={1.5} />
           )}
         </span>
       )}
@@ -1302,7 +1302,7 @@ function ChatVideoPreviewButton({
       )}
       <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-          <IconPlayerPlay size={17} stroke={1.8} />
+          <Play size={17} strokeWidth={1.8} />
         </span>
       </span>
     </button>
@@ -1869,7 +1869,7 @@ function HeaderWorkflowAutomationCard({
           {t(($) => {
             return $.chat.actions.view;
           })}
-          <IconArrowUpRight size={12} stroke={1.5} />
+          <ArrowUpRight size={12} strokeWidth={1.5} />
         </Link>
       </div>
       <WorkflowAutomationCard
@@ -1908,9 +1908,9 @@ function HeaderWorkflowAutomationCard({
               }}
             >
               {running ? (
-                <IconLoader2 size={13} className="animate-spin" />
+                <Loader2 size={13} className="animate-spin" />
               ) : (
-                <IconPlayerPlay size={13} stroke={1.5} />
+                <Play size={13} strokeWidth={1.5} />
               )}
               {running
                 ? t(($) => {
@@ -2171,7 +2171,7 @@ function HeaderScheduleAutomationEditForm({
           })}
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
           {t(($) => {
             return $.chat.automations.save;
           })}
@@ -2417,7 +2417,7 @@ function HeaderGmailNewMessageAutomationEditForm({
           })}
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
           {t(($) => {
             return $.chat.automations.save;
           })}
@@ -2499,7 +2499,7 @@ function HeaderGmailLabelAutomationEditForm({
           })}
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          {saving ? <Loader2 size={14} className="animate-spin" /> : null}
           {t(($) => {
             return $.chat.automations.save;
           })}
@@ -2550,7 +2550,7 @@ function HeaderAutomationSidebar({
           })}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
-          <IconX size={16} />
+          <X size={16} />
         </button>
       </div>
 
@@ -2770,7 +2770,7 @@ function ChatThreadSessionError({ thread }: { thread: ChatPanelSignals }) {
   return (
     <div className="flex-1 flex items-center justify-center py-16">
       <div className="flex items-center gap-2 text-destructive">
-        <IconAlertCircle size={16} />
+        <AlertCircle size={16} />
         <p className="text-sm">{sessionError}</p>
       </div>
     </div>
@@ -3568,13 +3568,13 @@ function CompletedWorkFoldRow({
         onClick={onToggle}
         className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover"
       >
-        <IconHourglass
+        <Hourglass
           aria-hidden
           size={14}
           className="shrink-0 text-muted-foreground/70"
         />
         <span className="text-[13px]">{label}</span>
-        <IconChevronRight
+        <ChevronRight
           aria-hidden
           size={14}
           className={cn(
@@ -3757,7 +3757,7 @@ function RunGroupFoldRow({
   const { fold, expanded, onToggle } = control;
   const label = runGroupFoldLabel(fold);
   const isGoal = isGoalGroupFold(fold);
-  const Icon = isGoal ? IconTarget : IconPackage;
+  const Icon = isGoal ? Target : Package;
   return (
     <div
       data-chat-run-group-fold
@@ -3789,7 +3789,7 @@ function RunGroupFoldRow({
         <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
           {label}
         </span>
-        <IconChevronRight
+        <ChevronRight
           aria-hidden
           size={14}
           className={cn(
@@ -3982,7 +3982,7 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
                   );
                 }}
               >
-                <IconCopy size={16} stroke={1.7} />
+                <Copy size={16} strokeWidth={1.7} />
                 {t(($) => {
                   return $.chat.sharing.copyLink;
                 })}
@@ -4033,9 +4033,9 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
               }}
             >
               {creating ? (
-                <IconLoader2 size={16} stroke={1.7} className="animate-spin" />
+                <Loader2 size={16} strokeWidth={1.7} className="animate-spin" />
               ) : (
-                <IconShare3 size={16} stroke={1.7} />
+                <Share2 size={16} strokeWidth={1.7} />
               )}
               {t(($) => {
                 return $.chat.sharing.create;
@@ -4074,7 +4074,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
       }}
       className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-state-hover hover:text-foreground"
     >
-      <IconArrowDown size={18} />
+      <ArrowDown size={18} />
     </button>
   );
 }
@@ -4085,22 +4085,22 @@ function RecommendedFollowupIcon({
   followup: RecommendedFollowup;
 }) {
   if (followup.kind !== "generate") {
-    return <IconMessageCircle size={14} stroke={1.8} />;
+    return <MessageCircle size={14} strokeWidth={1.8} />;
   }
 
   if (followup.generationType === "image") {
-    return <IconPhoto size={14} stroke={1.8} />;
+    return <Image size={14} strokeWidth={1.8} />;
   }
   if (followup.generationType === "video") {
-    return <IconVideo size={14} stroke={1.8} />;
+    return <Video size={14} strokeWidth={1.8} />;
   }
   if (followup.generationType === "presentation") {
-    return <IconChartLine size={14} stroke={1.8} />;
+    return <ChartLine size={14} strokeWidth={1.8} />;
   }
   if (followup.generationType === "website") {
-    return <IconLink size={14} stroke={1.8} />;
+    return <LinkIcon size={14} strokeWidth={1.8} />;
   }
-  return <IconPackage size={14} stroke={1.8} />;
+  return <Package size={14} strokeWidth={1.8} />;
 }
 
 function recommendedFollowupShownKey(
@@ -4218,9 +4218,9 @@ function RecommendedFollowupList({
             >
               {followup.prompt}
             </span>
-            <IconArrowUpRight
+            <ArrowUpRight
               size={14}
-              stroke={1.8}
+              strokeWidth={1.8}
               className={cn(
                 "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100",
                 showFollowupCards && "hidden",
@@ -4319,9 +4319,9 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
         <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
           {goalLoadable.state === "loading" ? (
             <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
-              <IconLoader2
+              <Loader2
                 size={16}
-                stroke={1.7}
+                strokeWidth={1.7}
                 className="animate-spin"
                 aria-hidden="true"
               />
@@ -5085,7 +5085,7 @@ function ComputerUseAuthorizationCard({
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <IconDeviceDesktop size={22} />
+          <Monitor size={22} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -5109,7 +5109,7 @@ function ComputerUseAuthorizationCard({
         {t(($) => {
           return $.chat.actions.authorize;
         })}
-        <IconArrowUpRight size={15} />
+        <ArrowUpRight size={15} />
       </a>
     </div>
   );
@@ -5124,7 +5124,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <IconCoins size={22} />
+          <Coins size={22} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -5148,7 +5148,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
         {t(($) => {
           return $.chat.billing.comparePlans;
         })}
-        <IconArrowUpRight size={15} />
+        <ArrowUpRight size={15} />
       </a>
     </div>
   );
@@ -5261,7 +5261,7 @@ function PermissionActionButton({
       onClick={onClick}
       className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto sm:flex-none"
     >
-      {saving && <IconLoader2 size={15} className="animate-spin" />}
+      {saving && <Loader2 size={15} className="animate-spin" />}
       {saving
         ? t(($) => {
             return $.chat.actions.saving;
@@ -5301,7 +5301,7 @@ function PermissionActionInlineStatus({
     case "loading": {
       return (
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <IconLoader2 size={13} className="animate-spin" />
+          <Loader2 size={13} className="animate-spin" />
           <span>
             {t(($) => {
               return $.chat.permissions.checking;
@@ -5313,7 +5313,7 @@ function PermissionActionInlineStatus({
     case "load-error": {
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
+          <AlertCircle size={13} />
           <span>
             {t(($) => {
               return $.chat.permissions.loadFailed;
@@ -5325,7 +5325,7 @@ function PermissionActionInlineStatus({
     case "save-error": {
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
+          <AlertCircle size={13} />
           <span>
             {t(($) => {
               return $.chat.permissions.updateFailed;
@@ -5337,7 +5337,7 @@ function PermissionActionInlineStatus({
     case "missing-target": {
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
+          <AlertCircle size={13} />
           <span>
             {t(($) => {
               return $.chat.permissions.agentNotFound;
@@ -5349,7 +5349,7 @@ function PermissionActionInlineStatus({
     case "missing-permission": {
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <IconAlertCircle size={13} />
+          <AlertCircle size={13} />
           <span>
             {t(($) => {
               return $.chat.permissions.unknown;
@@ -6237,7 +6237,7 @@ function assistantRecoveryResetText(
 
 function AssistantRecoveryActionSpinner({ loading }: { loading: boolean }) {
   return loading ? (
-    <IconLoader2 size={14} stroke={1.75} className="animate-spin" />
+    <Loader2 size={14} strokeWidth={1.75} className="animate-spin" />
   ) : null;
 }
 
@@ -6339,9 +6339,9 @@ function AssistantErrorRecoveryCard({
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
           {recovery.kind === "usage-limit" ? (
-            <IconClock size={17} stroke={1.75} />
+            <Clock size={17} strokeWidth={1.75} />
           ) : (
-            <IconAlertCircle size={17} stroke={1.75} />
+            <AlertCircle size={17} strokeWidth={1.75} />
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -6371,9 +6371,9 @@ function AssistantErrorRecoveryCard({
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <IconClock
+              <Clock
                 size={14}
-                stroke={1.75}
+                strokeWidth={1.75}
                 className="text-muted-foreground"
               />
               {resetText}
@@ -6404,7 +6404,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
           borderRadius: "12px",
         }}
       >
-        <IconHandStop size={14} stroke={1.75} className="shrink-0" />
+        <Hand size={14} strokeWidth={1.75} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.errors.runCancelled;
@@ -6422,10 +6422,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
   if (isNoModelProvider) {
     return (
       <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
         <span>
           {t(($) => {
             return $.chat.errors.noModelProviderPrefix;
@@ -6459,10 +6456,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
   if (isProviderIncompatible) {
     return (
       <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
         <span>
           {t(($) => {
             return $.chat.errors.providerIncompatiblePrefix;
@@ -6489,10 +6483,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
   if (isProviderDeleted) {
     return (
       <div className="flex items-start gap-2 text-foreground">
-        <IconAlertCircle
-          size={16}
-          className="shrink-0 mt-[3px] text-amber-500"
-        />
+        <AlertCircle size={16} className="shrink-0 mt-[3px] text-amber-500" />
         <span>
           {t(($) => {
             return $.chat.errors.providerDeletedPrefix;
@@ -6515,7 +6506,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
 
   return (
     <div className="flex items-start gap-2 text-destructive">
-      <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
+      <AlertCircle size={16} className="shrink-0 mt-[3px]" />
       <Markdown
         source={error}
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
@@ -7014,9 +7005,9 @@ function UserMessageActions({
         })}
       >
         {copied ? (
-          <IconCheck size={18} stroke={1.5} />
+          <Check size={18} strokeWidth={1.5} />
         ) : (
-          <IconCopy size={18} stroke={1.5} />
+          <Copy size={18} strokeWidth={1.5} />
         )}
       </button>
     </div>
@@ -7092,7 +7083,7 @@ function MessageAnnotation({
         className={className}
         title={part.workflowName}
       >
-        <IconRoute size={15} stroke={1.8} className="shrink-0" />
+        <Route size={15} strokeWidth={1.8} className="shrink-0" />
         <span className="min-w-0 truncate">{part.workflowName}</span>
       </div>
     );
@@ -7105,7 +7096,7 @@ function MessageAnnotation({
         })}
         className={className}
       >
-        <IconTarget size={15} stroke={1.8} className="shrink-0" />
+        <Target size={15} strokeWidth={1.8} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.queue.goal;
@@ -7122,7 +7113,7 @@ function MessageAnnotation({
         })}
         className={className}
       >
-        <IconSunrise size={15} stroke={1.8} className="shrink-0" />
+        <Sunrise size={15} strokeWidth={1.8} className="shrink-0" />
         <span>
           {t(($) => {
             return $.settings.preferences.morningBrief.title;
@@ -7219,7 +7210,7 @@ function SourceMessageAnnotation({
   const content = (
     <>
       {part.kind === "slack" ? (
-        <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
+        <BrandSlack size={15} strokeWidth={1.8} className="shrink-0" />
       ) : (
         <img
           src={annotationIconImgs[part.kind]}
@@ -7232,7 +7223,7 @@ function SourceMessageAnnotation({
         <>
           <span className="shrink-0">·</span>
           <span className="min-w-0 truncate">{openLabel}</span>
-          <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+          <ArrowUpRight size={12} strokeWidth={1.5} className="shrink-0" />
         </>
       ) : null}
     </>
@@ -7350,7 +7341,7 @@ function UserMessageTemplateReference({
       className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
     >
-      <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
+      <SwatchBook size={13} strokeWidth={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
       {spec !== null && <SentVideoTemplateSpec spec={spec} />}
     </span>
@@ -7484,7 +7475,7 @@ function UserMessageChatThreadReference({
       className={STRUCTURED_INLINE_LINK_REFERENCE_CLASS}
       title={title}
     >
-      <IconMessageCircle size={13} stroke={1.7} className="shrink-0" />
+      <MessageCircle size={13} strokeWidth={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{title}</span>
     </Link>
   );
@@ -8398,7 +8389,7 @@ function UsageChip({
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-state-hover hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
         >
-          <IconCoins size={17} stroke={1.5} />
+          <Coins size={17} strokeWidth={1.5} />
           <span>{total}</span>
         </button>
       </PopoverTrigger>
@@ -8487,7 +8478,7 @@ function PagedGroupPrimaryActions({
                   return $.chat.run.viewLogs;
                 })}
               >
-                <IconChartLine size={18} stroke={1.5} />
+                <ChartLine size={18} strokeWidth={1.5} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -8511,9 +8502,9 @@ function PagedGroupPrimaryActions({
                 })}
               >
                 {copied ? (
-                  <IconCheck size={18} stroke={1.5} />
+                  <Check size={18} strokeWidth={1.5} />
                 ) : (
-                  <IconCopy size={18} stroke={1.5} />
+                  <Copy size={18} strokeWidth={1.5} />
                 )}
               </button>
             </TooltipTrigger>

@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { IconX } from "@tabler/icons-react";
+import { X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -59,7 +59,7 @@ const SheetContent = React.forwardRef<
           className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100"
           aria-label="Close"
         >
-          <IconX size={20} className="text-foreground" />
+          <X size={20} className="text-foreground" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </SheetPortal>

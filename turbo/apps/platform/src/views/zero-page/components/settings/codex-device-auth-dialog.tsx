@@ -9,7 +9,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
-import { IconLoader2 } from "@tabler/icons-react";
+import { Loader2 } from "lucide-react";
 
 import {
   closeCodexDeviceAuthDialog$,
@@ -258,7 +258,7 @@ function CodexDeviceAuthLoadingContent() {
       role="status"
       data-testid="codex-device-auth-loading"
     >
-      <IconLoader2 size={16} className="animate-spin" />
+      <Loader2 size={16} className="animate-spin" />
       <span>
         {t(($) => {
           return $.settings.models.deviceAuth.codex.preparing;

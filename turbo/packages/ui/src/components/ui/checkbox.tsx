@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { IconCheck } from "@tabler/icons-react";
+import { Check } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -43,7 +43,7 @@ const Checkbox = React.forwardRef<
       {...props}
     >
       <CheckboxPrimitive.Indicator className="flex h-full w-full items-center justify-center">
-        <IconCheck
+        <Check
           className="h-3.5 w-3.5"
           style={{
             stroke: "hsl(var(--on-filled))",

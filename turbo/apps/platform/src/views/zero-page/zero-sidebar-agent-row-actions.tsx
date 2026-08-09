@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import { IconDots } from "@tabler/icons-react";
+import { Ellipsis } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -220,7 +220,7 @@ export function AgentRowSideActions({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="flex h-full w-full items-center justify-center">
-                      <IconDots size={16} stroke={2} />
+                      <Ellipsis size={16} strokeWidth={2} data-stroke />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent

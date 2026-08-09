@@ -327,6 +327,23 @@ export default [
     ],
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@tabler/icons-react",
+              message:
+                "Use lucide-react or a shared @vm0/ui brand icon instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // react/jsx-uses-vars marked JSX identifiers as "used" for ESLint's no-unused-vars.
   // Both no-unused-vars and @typescript-eslint/no-unused-vars are now handled by
   // oxlint, so this rule is no longer needed.

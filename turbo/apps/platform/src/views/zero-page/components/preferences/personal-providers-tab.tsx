@@ -1,6 +1,6 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { IconDotsVertical } from "@tabler/icons-react";
+import { EllipsisVertical } from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -688,7 +688,7 @@ function OAuthCredentialRow({
                       return $.settings.shared.moreOptions;
                     })}
                   >
-                    <IconDotsVertical size={14} stroke={1.5} />
+                    <EllipsisVertical size={14} strokeWidth={1.5} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">

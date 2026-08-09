@@ -1,9 +1,5 @@
 import { useLoadable } from "ccstate-react";
-import {
-  IconDeviceDesktop,
-  IconGitCommit,
-  IconPackage,
-} from "@tabler/icons-react";
+import { Monitor, GitCommit, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -28,7 +24,7 @@ function BuildInfoTarget({
   readonly title: string;
   readonly version: string;
   readonly commitSha: string;
-  readonly icon: typeof IconGitCommit;
+  readonly icon: typeof GitCommit;
 }) {
   const { t } = useTranslation();
 
@@ -37,7 +33,7 @@ function BuildInfoTarget({
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground">
-            <Icon size={15} stroke={1.5} />
+            <Icon size={15} strokeWidth={1.5} />
           </span>
           <div className="truncate text-sm font-medium text-foreground">
             {title}
@@ -91,9 +87,9 @@ export function BuildInfoBlock() {
     <div className="flex items-start gap-4 rounded-xl bg-card p-4 zero-border">
       <div className="shrink-0">
         <div className="flex h-7 w-7 items-center justify-center">
-          <IconGitCommit
+          <GitCommit
             size={22}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="text-muted-foreground"
           />
         </div>
@@ -112,7 +108,7 @@ export function BuildInfoBlock() {
               })}
               version={frontendVersion}
               commitSha={frontendCommitSha}
-              icon={IconDeviceDesktop}
+              icon={Monitor}
             />
           </div>
           <div className="min-w-0 border-t border-border/60 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
@@ -122,7 +118,7 @@ export function BuildInfoBlock() {
               })}
               version={backendVersion}
               commitSha={backendCommitSha}
-              icon={IconPackage}
+              icon={Package}
             />
           </div>
         </div>

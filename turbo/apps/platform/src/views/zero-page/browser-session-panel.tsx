@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import {
-  IconAspectRatio,
-  IconBrowser,
-  IconBrowserOff,
-  IconLoader2,
-  IconPlayerPlay,
-} from "@tabler/icons-react";
+  RectangleHorizontal,
+  AppWindow,
+  AppWindowMac,
+  Loader2,
+  Play,
+} from "lucide-react";
 import {
   ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
   ZERO_BROWSER_SCREEN_WIDTH,
@@ -82,7 +82,7 @@ export function BrowserSessionNotFound() {
   return (
     <PanelFrame>
       <PanelMessage
-        icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
+        icon={<AppWindowMac size={26} className="text-muted-foreground" />}
         title={t(($) => {
           return $.browserSession.notFound;
         })}
@@ -96,7 +96,7 @@ export function BrowserSessionLoading() {
   return (
     <PanelFrame>
       <div role="status" className="flex flex-1 items-center justify-center">
-        <IconLoader2 className="animate-spin text-muted-foreground" size={20} />
+        <Loader2 className="animate-spin text-muted-foreground" size={20} />
         <span className="sr-only">
           {t(($) => {
             return $.browserSession.status.starting;
@@ -112,7 +112,7 @@ export function BrowserSessionUnavailable() {
   return (
     <PanelFrame>
       <PanelMessage
-        icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
+        icon={<AppWindowMac size={26} className="text-muted-foreground" />}
         title={t(($) => {
           return $.browserSession.unavailable.title;
         })}
@@ -210,9 +210,9 @@ function ContainedLiveBrowserViewport({
           className="pointer-events-auto rounded-full border-border/70 bg-background/90 px-3 text-xs text-foreground backdrop-blur-sm hover:bg-state-hover"
         >
           {fittingWindow ? (
-            <IconLoader2 className="animate-spin" size={14} />
+            <Loader2 className="animate-spin" size={14} />
           ) : (
-            <IconAspectRatio size={14} />
+            <RectangleHorizontal size={14} />
           )}
           {t(($) => {
             return $.browserSession.fitAction;
@@ -238,7 +238,7 @@ function PausedBrowserSession({
   const showScreenshot = containLiveFrame && screenshotUrl;
   const pausedMessage = (
     <PanelMessage
-      icon={<IconBrowser size={26} className="text-muted-foreground" />}
+      icon={<AppWindow size={26} className="text-muted-foreground" />}
       title={t(($) => {
         return $.browserSession.panel.notLive;
       })}
@@ -254,9 +254,9 @@ function PausedBrowserSession({
           className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
         >
           {starting ? (
-            <IconLoader2 className="animate-spin" size={14} />
+            <Loader2 className="animate-spin" size={14} />
           ) : (
-            <IconPlayerPlay size={14} />
+            <Play size={14} />
           )}
           {starting
             ? t(($) => {

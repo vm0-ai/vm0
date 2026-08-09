@@ -7,13 +7,7 @@ import {
   useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconPlus,
-  IconChevronRight,
-  IconPin,
-  IconPinnedOff,
-  IconChecks,
-} from "@tabler/icons-react";
+import { Plus, ChevronRight, Pin, PinOff, CheckCheck } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -109,7 +103,7 @@ function PinnedAgentSideDecorator({
               return $.sidebar.markAllRead;
             }),
             disabled: markingRead,
-            icon: <IconChecks size={16} stroke={2} />,
+            icon: <CheckCheck size={16} strokeWidth={2} data-stroke />,
             onSelect: markAllRead,
           },
         ]
@@ -122,7 +116,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.unpin;
                 }),
                 disabled: savingPinned,
-                icon: <IconPinnedOff size={16} stroke={2} />,
+                icon: <PinOff size={16} strokeWidth={2} data-stroke />,
                 onSelect: unpinAgent,
               }
             : {
@@ -130,7 +124,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.pin;
                 }),
                 disabled: savingPinned,
-                icon: <IconPin size={16} stroke={2} />,
+                icon: <Pin size={16} strokeWidth={2} data-stroke />,
                 onSelect: pinAgent,
               },
         ]
@@ -289,7 +283,7 @@ export function PinnedAgentListSection({
             className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <IconPlus size={16} stroke={2} />
+              <Plus size={16} strokeWidth={2} data-stroke />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
@@ -317,10 +311,11 @@ export function PinnedAgentListSection({
             return $.sidebar.pinned;
           })}
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <IconChevronRight
+            <ChevronRight
               size={12}
-              stroke={2}
+              strokeWidth={2}
               className={collapsed ? "" : "rotate-90"}
+              data-stroke
             />
           </span>
         </span>
@@ -338,7 +333,7 @@ export function PinnedAgentListSection({
                   return $.sidebar.openConversation;
                 })}
               >
-                <IconPlus size={15} stroke={2.5} />
+                <Plus size={15} strokeWidth={2.5} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">

@@ -453,8 +453,10 @@
       sans-serif;
   }
 
-  /* Global icon stroke width for Tabler Icons */
-  svg[class*="tabler-icon"] {
+  /* Lucide emits stroke-width="2" when no override is supplied. Normalize
+   * that default while preserving explicit strokeWidth props; intentional
+   * 2px call sites opt out with data-stroke. */
+  svg[class*="lucide"][stroke-width="2"]:not([data-stroke]) {
     stroke-width: var(--icon-stroke-width);
   }
 }

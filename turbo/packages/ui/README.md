@@ -7,7 +7,7 @@ VM0's shared UI component library with a complete design system including compon
 This package provides:
 
 - **UI Components** - Pre-built React components (Button, Card, Input, Table, Dialog)
-- **Icons** - Tabler Icons for consistent iconography
+- **Icons** - Lucide for consistent iconography
 - **Color System** - Complete color palette with semantic mappings
 - **Design Tokens** - Typography, spacing, and border radius
 - **Utilities** - Helper functions like `cn()`
@@ -18,7 +18,7 @@ This package provides:
 
 - **Figma**: https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud
 - **Typography**: Noto Sans (Primary), Fira Code (Monospace)
-- **Icons**: Tabler Icons (https://tabler.io/icons)
+- **Icons**: Lucide (https://lucide.dev/icons/)
 - **Primary Color**: `#ed4e01` (Orange)
 
 ### Typography
@@ -74,57 +74,58 @@ pre {
 
 ## 🎨 Icons
 
-VM0 uses **Tabler Icons** for all iconography, providing a consistent and comprehensive icon set.
+VM0 uses **Lucide** for all UI iconography, providing a consistent and comprehensive icon set.
 
 ### Installation
 
-Tabler Icons is already included in the `@vm0/ui` package. For apps using it:
+Lucide is already included in the `@vm0/ui` package. For apps using it:
 
 ```bash
-pnpm add @tabler/icons-react
+pnpm add lucide-react
 ```
 
 ### Usage
 
 ```tsx
 import {
-  IconRobot,
-  IconChartBar,
-  IconKey,
-  IconReceipt
-} from "@tabler/icons-react";
+  Bot,
+  ChartBar,
+  Key,
+  ReceiptText,
+  Rocket,
+} from "lucide-react";
 
 // Basic usage
-<IconRobot size={16} />
-<IconRobot size={20} />
-<IconRobot size={24} />
+<Bot size={16} />
+<Bot size={20} />
+<Bot size={24} />
 
 // With custom styling
-<IconRobot size={16} className="text-primary" />
-<IconRobot size={20} stroke={1.5} />
-<IconRobot size={24} color="#ed4e01" />
+<Bot size={16} className="text-primary" />
+<Bot size={20} strokeWidth={1.5} />
+<Bot size={24} color="#ed4e01" />
 
 // In buttons
 <Button>
-  <IconRocket size={16} />
+  <Rocket size={16} />
   Launch
 </Button>
 ```
 
 ### Common Icons
 
-| Icon | Component        | Use Case                 |
-| ---- | ---------------- | ------------------------ |
-| 🤖   | `IconRobot`      | Agents, AI features      |
-| 📊   | `IconChartBar`   | Analytics, reports       |
-| 🔑   | `IconKey`        | API keys, authentication |
-| 🧾   | `IconReceipt`    | Billing, transactions    |
-| ❓   | `IconHelpCircle` | Help, support            |
-| 🚀   | `IconRocket`     | Getting started, launch  |
-| 📋   | `IconList`       | Lists, logs              |
-| ⚙️   | `IconSettings`   | Settings, configuration  |
-| 🔔   | `IconBell`       | Notifications            |
-| 👤   | `IconUser`       | User profile             |
+| Icon | Component     | Use Case                 |
+| ---- | ------------- | ------------------------ |
+| 🤖   | `Bot`         | Agents, AI features      |
+| 📊   | `ChartBar`    | Analytics, reports       |
+| 🔑   | `Key`         | API keys, authentication |
+| 🧾   | `ReceiptText` | Billing, transactions    |
+| ❓   | `CircleHelp`  | Help, support            |
+| 🚀   | `Rocket`      | Getting started, launch  |
+| 📋   | `List`        | Lists, logs              |
+| ⚙️   | `Settings`    | Settings, configuration  |
+| 🔔   | `Bell`        | Notifications            |
+| 👤   | `User`        | User profile             |
 
 ### Icon Sizes
 
@@ -137,9 +138,9 @@ Follow these size guidelines:
 
 ### Resources
 
-- **Browse icons**: https://tabler.io/icons
-- **React docs**: https://tabler.io/docs/icons/react
-- **Total icons**: 5000+ free icons
+- **Browse icons**: https://lucide.dev/icons/
+- **React docs**: https://lucide.dev/guide/packages/lucide-react
+- **Total icons**: 1500+ free icons
 
 ---
 

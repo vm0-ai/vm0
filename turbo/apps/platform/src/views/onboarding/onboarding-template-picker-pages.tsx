@@ -1,11 +1,6 @@
 import type { SyntheticEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
-import {
-  IconChevronLeft,
-  IconChevronRight,
-  IconCircleCheckFilled,
-  IconEye,
-} from "@tabler/icons-react";
+import { ChevronLeft, ChevronRight, CircleCheckBig, Eye } from "lucide-react";
 import {
   r2ImageTransformUrl,
   type IllustrationTemplateItem,
@@ -37,7 +32,7 @@ import {
 
 function SelectionCheck({ selected }: { readonly selected: boolean }) {
   return selected ? (
-    <IconCircleCheckFilled
+    <CircleCheckBig
       size={18}
       className="shrink-0 text-primary"
       aria-hidden="true"
@@ -115,7 +110,7 @@ function PresentationPreview({
             move(-1);
           }}
         >
-          <IconChevronLeft size={20} aria-hidden="true" />
+          <ChevronLeft size={20} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -127,7 +122,7 @@ function PresentationPreview({
             move(1);
           }}
         >
-          <IconChevronRight size={20} aria-hidden="true" />
+          <ChevronRight size={20} aria-hidden="true" />
         </button>
       </div>
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -218,7 +213,7 @@ function PresentationTemplateCard({
         )}
         onClick={onPreview}
       >
-        <IconEye size={13} aria-hidden="true" />
+        <Eye size={13} aria-hidden="true" />
       </button>
       <div className="flex min-w-0 items-center justify-between gap-2 px-2.5 py-[9px]">
         <span className="truncate text-[11px] font-semibold leading-4">

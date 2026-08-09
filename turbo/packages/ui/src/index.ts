@@ -110,6 +110,14 @@ export {
 // Utilities
 export { cn } from "./lib/utils";
 export {
+  BrandGithub,
+  BrandGoogleDrive,
+  BrandNotion,
+  BrandSlack,
+  BrandStripe,
+  BrandTelegram,
+} from "./components/icons/brand-icons";
+export {
   createCompositionGate,
   type CompositionGate,
 } from "./lib/composition-gate";

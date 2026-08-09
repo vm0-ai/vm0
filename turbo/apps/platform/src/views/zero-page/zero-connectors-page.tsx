@@ -9,13 +9,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import {
-  IconSearch,
-  IconPlus,
-  IconFilter,
-  IconChevronDown,
-  IconCheck,
-} from "@tabler/icons-react";
+import { Search, Plus, Filter, ChevronDown, Check } from "lucide-react";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -440,7 +434,12 @@ function ConnectorFilterOption({
     <DropdownMenuItem className="justify-between gap-2" onClick={onSelect}>
       <span className="flex min-w-0 items-center gap-2">{children}</span>
       {active && (
-        <IconCheck size={15} stroke={2} className="shrink-0 text-foreground" />
+        <Check
+          size={15}
+          strokeWidth={2}
+          className="shrink-0 text-foreground"
+          data-stroke
+        />
       )}
     </DropdownMenuItem>
   );
@@ -488,9 +487,9 @@ function ConnectorFilterDropdown({
           })}
           className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
         >
-          <IconFilter
+          <Filter
             size={14}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="text-muted-foreground"
           />
           {activeAgent && (
@@ -502,9 +501,9 @@ function ConnectorFilterDropdown({
             />
           )}
           <span className="max-w-[140px] truncate">{triggerLabel}</span>
-          <IconChevronDown
+          <ChevronDown
             size={14}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="text-muted-foreground"
           />
         </Button>
@@ -609,9 +608,9 @@ function ConnectorsToolbarActions({
     <div className="flex items-center gap-2">
       {activeTab === "builtin" && (
         <div className="relative w-40 sm:w-52">
-          <IconSearch
+          <Search
             size={15}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
           <input
@@ -641,7 +640,7 @@ function ConnectorsToolbarActions({
           className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
           onClick={onCreateCustom}
         >
-          <IconPlus size={14} stroke={2} />
+          <Plus size={14} strokeWidth={2} data-stroke />
           {t(($) => {
             return $.connectors.catalog.newConnector;
           })}

@@ -4,15 +4,15 @@ import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
-  IconSearch,
-  IconShieldCheck,
-  IconDots,
-  IconPlus,
-  IconClock,
-  IconCheck,
-  IconX,
-  IconUserPlus,
-} from "@tabler/icons-react";
+  Search,
+  ShieldCheck,
+  Ellipsis,
+  Plus,
+  Clock,
+  Check,
+  X,
+  UserPlus,
+} from "lucide-react";
 import {
   cn,
   Input,
@@ -141,9 +141,9 @@ export function OrgMembersTab() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <IconSearch
+          <Search
             size={15}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
           <Input
@@ -216,7 +216,7 @@ export function OrgMembersTab() {
           <>
             <div className="px-5 pt-3 pb-1">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                <IconUserPlus size={13} stroke={1.8} />
+                <UserPlus size={13} strokeWidth={1.8} />
                 {t(($) => {
                   return $.settings.workspace.members.joinRequests;
                 })}
@@ -305,7 +305,7 @@ function InviteDialog() {
     >
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
-          <IconPlus size={14} stroke={2} />
+          <Plus size={14} strokeWidth={2} data-stroke />
           {t(($) => {
             return $.settings.workspace.members.addMember;
           })}
@@ -464,9 +464,9 @@ function MemberRow({
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconShieldCheck
+          <ShieldCheck
             size={12}
-            stroke={1.8}
+            strokeWidth={1.8}
             className={
               member.role === "admin"
                 ? "text-blue-500"
@@ -524,7 +524,7 @@ function SelfDemoteAction({ email }: { email: string }) {
             )}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors"
           >
-            <IconDots size={15} stroke={1.5} />
+            <Ellipsis size={15} strokeWidth={1.5} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -633,7 +633,7 @@ function MemberActions({ member }: { member: OrgMember }) {
             disabled={changingRole}
             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors disabled:opacity-50 disabled:pointer-events-none"
           >
-            <IconDots size={15} stroke={1.5} />
+            <Ellipsis size={15} strokeWidth={1.5} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -762,7 +762,7 @@ function PendingInvitationRow({
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconClock size={12} stroke={1.8} className="text-amber-500" />
+          <Clock size={12} strokeWidth={1.8} className="text-amber-500" />
           {t(($) => {
             return $.settings.workspace.members.pending;
           })}
@@ -789,7 +789,7 @@ function PendingInvitationRow({
                   )}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors"
                 >
-                  <IconDots size={15} stroke={1.5} />
+                  <Ellipsis size={15} strokeWidth={1.5} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -908,7 +908,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
       </div>
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconUserPlus size={12} stroke={1.8} className="text-blue-500" />
+          <UserPlus size={12} strokeWidth={1.8} className="text-blue-500" />
           {t(($) => {
             return $.settings.workspace.members.membershipRequest.role;
           })}
@@ -923,7 +923,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.acceptTitle;
           })}
         >
-          <IconCheck size={15} stroke={2} />
+          <Check size={15} strokeWidth={2} data-stroke />
         </button>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
@@ -933,7 +933,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.rejectTitle;
           })}
         >
-          <IconX size={15} stroke={2} />
+          <X size={15} strokeWidth={2} data-stroke />
         </button>
       </div>
     </div>

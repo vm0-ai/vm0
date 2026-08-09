@@ -2,7 +2,7 @@ import type {
   SharedMessage,
   SharedThreadResponse,
 } from "@vm0/api-contracts/contracts/shared-threads";
-import { IconMessageCircle } from "@tabler/icons-react";
+import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Markdown } from "../components/markdown.tsx";
@@ -136,7 +136,7 @@ export function SharedThreadPage({
             className="inline-flex items-center gap-2 text-sm font-semibold text-foreground"
           >
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#ed4e01] text-white">
-              <IconMessageCircle size={17} stroke={1.8} />
+              <MessageCircle size={17} strokeWidth={1.8} />
             </span>
             {t(($) => {
               return $.sharedThread.brand;

@@ -1,12 +1,6 @@
 import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
-import {
-  IconArrowLeft,
-  IconExternalLink,
-  IconMaximize,
-  IconMinimize,
-  IconX,
-} from "@tabler/icons-react";
+import { ArrowLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
@@ -90,7 +84,7 @@ function ThreadSidebarHeader({
           })}
           className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
-          <IconArrowLeft size={16} />
+          <ArrowLeft size={16} />
         </button>
       ) : null}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
@@ -112,7 +106,7 @@ function ThreadSidebarHeader({
           data-testid="thread-sidebar-fullscreen-toggle"
           className="hidden xl:inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
         >
-          {fullscreen ? <IconMinimize size={16} /> : <IconMaximize size={16} />}
+          {fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
         </button>
       ) : null}
       <button
@@ -130,7 +124,7 @@ function ThreadSidebarHeader({
         )}
         className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
       >
-        <IconX size={16} />
+        <X size={16} />
       </button>
     </div>
   );
@@ -344,7 +338,7 @@ function ThreadArtifactDetail({
             rel="noreferrer"
             className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
-            <IconExternalLink size={16} stroke={1.7} />
+            <ExternalLink size={16} strokeWidth={1.7} />
             {t(($) => {
               return $.artifacts.sidebar.openSharedConversation;
             })}

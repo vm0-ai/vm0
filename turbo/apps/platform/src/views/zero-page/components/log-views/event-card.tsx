@@ -1,10 +1,4 @@
-import {
-  IconClock,
-  IconRepeat,
-  IconTool,
-  IconRobot,
-  IconTerminal,
-} from "@tabler/icons-react";
+import { Clock, Repeat, Wrench, Bot, Terminal } from "lucide-react";
 import { Markdown } from "../../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 import {
@@ -44,7 +38,7 @@ function CategoryPopover({
   count,
   items,
 }: {
-  icon: typeof IconTool;
+  icon: typeof Wrench;
   label: string;
   count: number;
   items: string[];
@@ -153,7 +147,7 @@ export function SystemInitContent({ eventData }: { eventData: unknown }) {
     <div className="flex flex-wrap gap-2">
       {tools.length > 0 && (
         <CategoryPopover
-          icon={IconTool}
+          icon={Wrench}
           label={t(
             ($) => {
               return $.activity.events.tools;
@@ -166,7 +160,7 @@ export function SystemInitContent({ eventData }: { eventData: unknown }) {
       )}
       {agents.length > 0 && (
         <CategoryPopover
-          icon={IconRobot}
+          icon={Bot}
           label={t(
             ($) => {
               return $.activity.events.agents;
@@ -179,7 +173,7 @@ export function SystemInitContent({ eventData }: { eventData: unknown }) {
       )}
       {slashCommands.length > 0 && (
         <CategoryPopover
-          icon={IconTerminal}
+          icon={Terminal}
           label={t(
             ($) => {
               return $.activity.events.commands;
@@ -211,7 +205,7 @@ function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
   return (
     <Popover>
       <PopoverTrigger className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-        <IconTool className="h-3 w-3" />
+        <Wrench className="h-3 w-3" />
         <span>
           {t(
             ($) => {
@@ -283,13 +277,13 @@ export function ResultEventContent({ eventData }: { eventData: unknown }) {
       <div className="flex flex-wrap gap-2">
         {durationMs !== null && durationMs !== undefined && (
           <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <IconClock className="h-3 w-3" />
+            <Clock className="h-3 w-3" />
             <span>{formatDuration(durationMs)}</span>
           </div>
         )}
         {numTurns !== null && numTurns !== undefined && (
           <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <IconRepeat className="h-3 w-3" />
+            <Repeat className="h-3 w-3" />
             <span>
               {t(
                 ($) => {

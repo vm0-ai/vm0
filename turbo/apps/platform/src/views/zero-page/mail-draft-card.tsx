@@ -1,4 +1,4 @@
-import { IconChevronRight, IconLoader2 } from "@tabler/icons-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
@@ -53,7 +53,7 @@ function MailDraftCardSkeleton() {
       )}
     >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-        <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
+        <Loader2 className="animate-spin text-muted-foreground" size={16} />
       </span>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="h-4 w-2/3 rounded bg-muted/70" />
@@ -134,7 +134,7 @@ function MailDraftCardContent({
               : statusLabel(draft.status)}
         </span>
         {!deleted ? (
-          <IconChevronRight size={16} className="text-muted-foreground" />
+          <ChevronRight size={16} className="text-muted-foreground" />
         ) : null}
       </span>
     </>

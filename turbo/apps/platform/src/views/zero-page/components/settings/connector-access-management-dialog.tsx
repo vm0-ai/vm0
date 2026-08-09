@@ -3,12 +3,7 @@ import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import {
-  IconAdjustmentsHorizontal,
-  IconLoader2,
-  IconSearch,
-  IconX,
-} from "@tabler/icons-react";
+import { SlidersHorizontal, Loader2, Search, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -96,9 +91,9 @@ function ConnectorAccessSearch({
   const { t } = useTranslation();
   return (
     <div className="relative">
-      <IconSearch
+      <Search
         size={15}
-        stroke={1.5}
+        strokeWidth={1.5}
         className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
       />
       <input
@@ -125,7 +120,7 @@ function ConnectorAccessSearch({
             return $.connectors.access.clearSearch;
           })}
         >
-          <IconX size={13} stroke={1.8} />
+          <X size={13} strokeWidth={1.8} />
         </button>
       )}
     </div>
@@ -181,7 +176,7 @@ function AgentAccessRow({
                 )}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
               >
-                <IconAdjustmentsHorizontal size={16} stroke={1.5} />
+                <SlidersHorizontal size={16} strokeWidth={1.5} />
               </button>
             </TooltipTrigger>
             <TooltipContent>
@@ -280,7 +275,7 @@ function LoadingAgents() {
   const { t } = useTranslation();
   return (
     <div className="flex min-h-[240px] flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-      <IconLoader2 size={16} className="animate-spin" />
+      <Loader2 size={16} className="animate-spin" />
       {t(($) => {
         return $.connectors.access.loading;
       })}

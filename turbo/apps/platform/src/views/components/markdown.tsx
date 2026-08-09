@@ -1,7 +1,7 @@
 import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview/common";
-import { IconLoader2, IconPhoto } from "@tabler/icons-react";
+import { Loader2, Image } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -277,9 +277,9 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
           className="absolute inset-0 flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground"
         >
           {imageStatus === "loading" ? (
-            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+            <Loader2 size={18} strokeWidth={1.8} className="animate-spin" />
           ) : (
-            <IconPhoto size={18} stroke={1.5} />
+            <Image size={18} strokeWidth={1.5} />
           )}
         </span>
       )}

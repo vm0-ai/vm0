@@ -1,4 +1,4 @@
-import { IconChevronRight, IconClock, IconLoader2 } from "@tabler/icons-react";
+import { ChevronRight, Clock, Loader2 } from "lucide-react";
 import { cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import {
@@ -103,9 +103,9 @@ function LogRow({
               className="inline-flex items-center gap-1"
               data-testid="duration-running"
             >
-              <IconLoader2
+              <Loader2
                 size={12}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="animate-spin"
                 aria-label={t(($) => {
                   return $.activity.statuses.running;
@@ -117,7 +117,7 @@ function LogRow({
             </span>
           ) : (
             <span className="inline-flex items-center gap-0.5">
-              <IconClock size={12} stroke={1.5} />
+              <Clock size={12} strokeWidth={1.5} />
               {formatDuration(entry.startedAt, entry.completedAt) ?? "\u2014"}
             </span>
           )}
@@ -127,7 +127,7 @@ function LogRow({
             className="rounded p-1 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors inline-flex"
             aria-hidden="true"
           >
-            <IconChevronRight size={14} stroke={1.5} />
+            <ChevronRight size={14} strokeWidth={1.5} />
           </span>
         </div>
       </div>

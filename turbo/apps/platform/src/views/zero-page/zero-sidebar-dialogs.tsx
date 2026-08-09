@@ -3,7 +3,7 @@
 import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { IconSearch, IconX, IconPin, IconPinnedOff } from "@tabler/icons-react";
+import { Search, X, Pin, PinOff } from "lucide-react";
 import {
   CommandDialog,
   CommandGroup,
@@ -73,10 +73,11 @@ export function AgentDialogSearch({
   return (
     <div className="px-5 pb-3">
       <div className="relative w-full">
-        <IconSearch
+        <Search
           size={16}
-          stroke={2}
+          strokeWidth={2}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          data-stroke
         />
         <Input
           type="text"
@@ -100,7 +101,7 @@ export function AgentDialogSearch({
               return $.sidebar.clearSearch;
             })}
           >
-            <IconX size={14} stroke={2} />
+            <X size={14} strokeWidth={2} data-stroke />
           </button>
         )}
       </div>
@@ -195,7 +196,7 @@ function AgentCommandSearch({
               return $.sidebar.clearSearch;
             })}
           >
-            <IconX size={14} stroke={2} />
+            <X size={14} strokeWidth={2} data-stroke />
           </button>
         )}
       </div>
@@ -381,7 +382,7 @@ function PinnedAgentCommandItem({
                 return $.sidebar.unpin;
               }),
               disabled,
-              icon: <IconPinnedOff size={16} stroke={2} />,
+              icon: <PinOff size={16} strokeWidth={2} data-stroke />,
               onSelect: onUnpin,
             }}
           />
@@ -533,7 +534,7 @@ function UnpinnedAgentsCommandSection({
                     return $.sidebar.pin;
                   }),
                   disabled,
-                  icon: <IconPin size={16} stroke={2} />,
+                  icon: <Pin size={16} strokeWidth={2} data-stroke />,
                   onSelect: () => {
                     return onTogglePin(agent.id);
                   },

@@ -1,17 +1,17 @@
 import {
-  IconCircleCheck,
-  IconClock,
-  IconPlayerPlay,
-  IconCircleX,
-  IconClockExclamation,
-  IconBan,
-} from "@tabler/icons-react";
+  CircleCheck,
+  Clock,
+  Play,
+  CircleX,
+  ClockAlert,
+  Ban,
+} from "lucide-react";
 import type { LogStatus } from "../../../../signals/zero-page/log-types.ts";
 import { i18n } from "../../../../i18n/index.ts";
 
 interface StatusBadgeConfig {
   label: string;
-  icon: typeof IconCircleCheck;
+  icon: typeof CircleCheck;
   iconClassName: string;
 }
 
@@ -105,37 +105,37 @@ function getStatusConfig(): Record<LogStatus, StatusBadgeConfig> {
   return {
     queued: {
       label: getStatusLabel("queued"),
-      icon: IconClock,
+      icon: Clock,
       iconClassName: "text-gray-400",
     },
     pending: {
       label: getStatusLabel("pending"),
-      icon: IconClock,
+      icon: Clock,
       iconClassName: "text-yellow-600",
     },
     running: {
       label: getStatusLabel("running"),
-      icon: IconPlayerPlay,
+      icon: Play,
       iconClassName: "text-sky-600",
     },
     completed: {
       label: getStatusLabel("completed"),
-      icon: IconCircleCheck,
+      icon: CircleCheck,
       iconClassName: "text-green-600",
     },
     failed: {
       label: getStatusLabel("failed"),
-      icon: IconCircleX,
+      icon: CircleX,
       iconClassName: "text-red-600",
     },
     timeout: {
       label: getStatusLabel("timeout"),
-      icon: IconClockExclamation,
+      icon: ClockAlert,
       iconClassName: "text-orange-600",
     },
     cancelled: {
       label: getStatusLabel("cancelled"),
-      icon: IconBan,
+      icon: Ban,
       iconClassName: "text-gray-600",
     },
   };

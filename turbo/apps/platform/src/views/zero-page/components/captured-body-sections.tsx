@@ -1,4 +1,4 @@
-import { IconChevronRight } from "@tabler/icons-react";
+import { ChevronRight } from "lucide-react";
 import { CopyButton } from "@vm0/ui";
 import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import { useTranslation } from "react-i18next";
@@ -51,10 +51,11 @@ function CollapsibleSection({
     <details className="group">
       <summary className="cursor-pointer list-none w-full text-left">
         <div className="flex items-center gap-2">
-          <IconChevronRight
+          <ChevronRight
             size={14}
-            stroke={2}
+            strokeWidth={2}
             className="transition-transform group-open:rotate-90 text-muted-foreground shrink-0"
+            data-stroke
           />
           <span className="text-xs font-medium text-foreground">{title}</span>
           {badge && <InlineBadge color="muted">{badge}</InlineBadge>}

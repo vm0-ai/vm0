@@ -1,12 +1,7 @@
 import { useGet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { JSX, ReactNode } from "react";
-import {
-  IconAlertCircle,
-  IconArrowLeft,
-  IconCircleCheck,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
 import { Button } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -33,7 +28,7 @@ function BackLink() {
       pathname="/works"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
-      <IconArrowLeft size={14} />
+      <ArrowLeft size={14} />
       {t(
         ($) => {
           return $.connectors.providerConnect.agentphone.back;
@@ -62,17 +57,15 @@ function MessageMark({
   state?: "idle" | "success" | "error" | "loading";
 }) {
   if (state === "success") {
-    return <IconCircleCheck size={40} className="text-emerald-500" />;
+    return <CircleCheck size={40} className="text-emerald-500" />;
   }
 
   if (state === "error") {
-    return <IconAlertCircle size={40} className="text-destructive" />;
+    return <AlertCircle size={40} className="text-destructive" />;
   }
 
   if (state === "loading") {
-    return (
-      <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
-    );
+    return <Loader2 size={40} className="animate-spin text-muted-foreground" />;
   }
 
   return (
@@ -223,9 +216,7 @@ export function ZeroAgentPhoneConnectPage(): JSX.Element {
             detach(connectAgentPhone(pageSignal), Reason.DomCallback);
           }}
         >
-          {connecting ? (
-            <IconLoader2 size={16} className="animate-spin" />
-          ) : null}
+          {connecting ? <Loader2 size={16} className="animate-spin" /> : null}
           {connecting
             ? t(($) => {
                 return $.connectors.actions.connecting;
