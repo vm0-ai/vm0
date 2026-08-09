@@ -2833,7 +2833,7 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
-  it("reuses a Codex session when switching from DeepSeek to Luna with PiLoop disabled", async () => {
+  it("rotates Codex sessions between DeepSeek and OpenAI with PiLoop disabled", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const { providerId } = await upsertOrgModelProvider(actor, {
@@ -2851,6 +2851,13 @@ describe("CHAT-02: model-first provider policies", () => {
       },
       {
         model: "gpt-5.6-luna",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.6-sol",
         isDefault: false,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -2902,19 +2909,62 @@ describe("CHAT-02: model-first provider policies", () => {
     const followUp = await sendChatRun(actor, {
       agentId,
       threadId: run.threadId,
-      prompt: "continue with Luna on the same Codex session",
+      prompt: "switch from DeepSeek to Luna",
       model: "gpt-5.6-luna",
     });
-    const { claim: followUpClaim } = await claimChatRun(
-      runnerGroup,
-      followUp.runId,
-    );
+    const { claim: followUpClaim, sandboxHeaders: followUpSandboxHeaders } =
+      await claimChatRun(runnerGroup, followUp.runId);
     const followUpEnvironment = claimEnvironment(followUpClaim);
     expect(followUpClaim.cliAgentType).toBe("codex");
-    expect(followUpClaim.resumeSession?.sessionId).toBe(`bdd-cli-${run.runId}`);
+    expect(followUpClaim.resumeSession).toBeNull();
     expect(followUpEnvironment.OPENAI_MODEL).toBe("gpt-5.6-luna");
 
-    await cancelChatRun(actor, followUp.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(followUp.runId, followUpSandboxHeaders, {
+      cliAgentType: "codex",
+    });
+
+    const openaiFollowUp = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "switch within the OpenAI model family",
+      model: "gpt-5.6-sol",
+    });
+    const {
+      claim: openaiFollowUpClaim,
+      sandboxHeaders: openaiFollowUpSandboxHeaders,
+    } = await claimChatRun(runnerGroup, openaiFollowUp.runId);
+    expect(openaiFollowUpClaim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${followUp.runId}`,
+    );
+    expect(claimEnvironment(openaiFollowUpClaim).OPENAI_MODEL).toBe(
+      "gpt-5.6-sol",
+    );
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(
+      openaiFollowUp.runId,
+      openaiFollowUpSandboxHeaders,
+      { cliAgentType: "codex" },
+    );
+
+    const deepseekReturn = await sendChatRun(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "switch from OpenAI back to DeepSeek",
+      model: "deepseek-v4-flash",
+    });
+    const { claim: deepseekReturnClaim } = await claimChatRun(
+      runnerGroup,
+      deepseekReturn.runId,
+    );
+    expect(deepseekReturnClaim.cliAgentType).toBe("codex");
+    expect(deepseekReturnClaim.resumeSession).toBeNull();
+    expect(claimEnvironment(deepseekReturnClaim).OPENAI_MODEL).toBe(
+      "deepseek-v4-flash",
+    );
+
+    await cancelChatRun(actor, deepseekReturn.runId);
   });
 
   it("resolves an unchanged existing thread without waiting for its row lock", async () => {

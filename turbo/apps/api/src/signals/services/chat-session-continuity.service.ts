@@ -3,6 +3,7 @@ import {
   getVm0ConcreteProviderType,
   isSupportedRunModel,
   modelProviderTypeSchema,
+  type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import {
@@ -68,6 +69,7 @@ interface HistoricalThreadSession {
   readonly sessionId: string;
   readonly conversationId: string | null;
   readonly framework: string | null;
+  readonly selectedModel: string | null;
 }
 
 interface SessionRunRoute {
@@ -80,8 +82,32 @@ interface SessionRunRoute {
 function shouldStartNewChatSession(args: {
   readonly latestFramework: string | null;
   readonly nextFramework: string | null;
+  readonly latestModel: string | null;
+  readonly nextModel: string | null;
 }): boolean {
-  return args.latestFramework !== args.nextFramework;
+  if (args.latestFramework !== args.nextFramework) {
+    return true;
+  }
+  if (args.latestFramework !== "codex") {
+    return false;
+  }
+  const latestProvider = codexSessionHistoryProvider(args.latestModel);
+  const nextProvider = codexSessionHistoryProvider(args.nextModel);
+  return (
+    latestProvider !== null &&
+    nextProvider !== null &&
+    latestProvider !== nextProvider
+  );
+}
+
+function codexSessionHistoryProvider(
+  model: string | null,
+): ModelProviderType | null {
+  if (model === null || !isSupportedRunModel(model)) {
+    return null;
+  }
+  const provider = getVm0ConcreteProviderType(model);
+  return getFrameworkForType(provider) === "codex" ? provider : null;
 }
 
 async function runUsesPiFramework(args: {
@@ -152,6 +178,7 @@ async function latestHistoricalThreadSession(args: {
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
       cliAgentType: conversations.cliAgentType,
+      selectedModel: zeroRuns.selectedModel,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -179,6 +206,7 @@ async function latestHistoricalThreadSession(args: {
     sessionId: row.sessionId,
     conversationId: row.conversationId,
     framework: row.cliAgentType,
+    selectedModel: row.selectedModel,
   };
 }
 
@@ -270,6 +298,8 @@ export async function resolveChatThreadSession(args: {
     const rotate = shouldStartNewChatSession({
       latestFramework: previousFramework,
       nextFramework: args.route.framework,
+      latestModel: latestRoute?.selectedModel ?? thread.selectedModel,
+      nextModel: args.route.selectedModel,
     });
     return {
       sessionId: rotate ? undefined : thread.sessionId,
@@ -297,6 +327,8 @@ export async function resolveChatThreadSession(args: {
   const rotate = shouldStartNewChatSession({
     latestFramework: historical.framework,
     nextFramework: args.route.framework,
+    latestModel: historical.selectedModel,
+    nextModel: args.route.selectedModel,
   });
   return {
     sessionId: rotate ? undefined : historical.sessionId,
