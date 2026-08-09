@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.196](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.195...vsock-test-v0.9.196) (2026-08-09)
+
+
+### Refactoring
+
+* **vsock-guest:** centralize file-write admission ([#25925](https://github.com/vm0-ai/vm0/issues/25925)) ([5018c9e](https://github.com/vm0-ai/vm0/commit/5018c9e94d4fd585e59788a840a31a71c891fedc))
+
 ## [0.9.195](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.194...vsock-test-v0.9.195) (2026-08-09)
 
 ## [0.9.194](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.193...vsock-test-v0.9.194) (2026-08-08)

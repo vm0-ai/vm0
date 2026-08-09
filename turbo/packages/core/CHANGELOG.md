@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.533.3](https://github.com/vm0-ai/vm0/compare/core-v8.533.2...core-v8.533.3) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** unify foreground auth recovery ([#25899](https://github.com/vm0-ai/vm0/issues/25899)) ([11cc612](https://github.com/vm0-ai/vm0/commit/11cc6121df522e77bbf196ebf3304686974b173c))
+
 ## [8.533.2](https://github.com/vm0-ai/vm0/compare/core-v8.533.1...core-v8.533.2) (2026-08-09)
 
 
