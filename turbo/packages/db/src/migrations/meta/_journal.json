@@ -449,6 +449,13 @@
       "when": 1786278942764,
       "tag": "0871_breezy_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 872,
+      "version": "7",
+      "when": 1786286367180,
+      "tag": "0872_curious_yellow_claw",
+      "breakpoints": true
     }
   ]
 }
