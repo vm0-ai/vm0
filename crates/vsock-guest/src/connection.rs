@@ -19,9 +19,7 @@ use crate::exec_operation::{
     start_exec_operation,
 };
 use crate::file_write_worker::{FileWriteKind, FileWriteSubmitError, FileWriteWorker};
-use crate::handlers::{
-    MessageOutcome, decode_write_file_message, decode_write_files_message, handle_basic_message,
-};
+use crate::handlers::{MessageOutcome, handle_basic_message};
 use crate::log::log;
 use crate::process_containment::{ProcessContainmentMode, verify_exec_process_containment_empty};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
@@ -288,8 +286,8 @@ impl ConnectionDispatcher {
             MSG_EXEC_START => self.handle_exec_start(msg)?,
             MSG_EXEC_CANCEL => self.handle_exec_cancel(msg)?,
             MSG_EXEC_CONTROL => self.handle_exec_control(msg)?,
-            MSG_WRITE_FILE => self.handle_write_file(msg)?,
-            MSG_WRITE_FILES => self.handle_write_files(msg)?,
+            MSG_WRITE_FILE => self.handle_file_write(msg, FileWriteKind::File)?,
+            MSG_WRITE_FILES => self.handle_file_write(msg, FileWriteKind::Files)?,
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
             _ => return self.handle_basic_message(msg),
@@ -397,14 +395,18 @@ impl ConnectionDispatcher {
         route_exec_control(msg.seq, decoded, &self.exec_control_registry, &self.writer)
     }
 
-    fn handle_write_file(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
-        if !require_non_zero_sequence(msg.seq, "write_file", &self.writer)? {
+    fn handle_file_write(
+        &self,
+        msg: BorrowedRawMessage<'_>,
+        kind: FileWriteKind,
+    ) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, kind.operation_label(), &self.writer)? {
             return Ok(());
         }
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        if let Err(error) = decode_write_file_message(msg.payload) {
+        if let Err(error) = kind.validate_payload(msg.payload) {
             send_error_response(msg.seq, &error.to_string(), &self.writer)?;
             return Ok(());
         }
@@ -417,51 +419,10 @@ impl ConnectionDispatcher {
         else {
             return Ok(());
         };
-        match self.file_write_worker.submit(
-            FileWriteKind::File,
-            msg.seq,
-            msg.payload,
-            operation_guard,
-            admission,
-        ) {
-            Ok(()) => Ok(()),
-            Err(FileWriteSubmitError::Busy) => {
-                send_error_response(msg.seq, "guest file write already active", &self.writer)
-            }
-            Err(FileWriteSubmitError::Disconnected) => Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "guest file-write worker stopped",
-            )),
-        }
-    }
-
-    fn handle_write_files(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
-        if !require_non_zero_sequence(msg.seq, "write_files", &self.writer)? {
-            return Ok(());
-        }
-        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
-            return Ok(());
-        }
-        if let Err(error) = decode_write_files_message(msg.payload) {
-            send_error_response(msg.seq, &error.to_string(), &self.writer)?;
-            return Ok(());
-        }
-        let Some(admission) = self.file_write_worker.try_admit() else {
-            send_error_response(msg.seq, "guest file write already active", &self.writer)?;
-            return Ok(());
-        };
-        let Some(operation_guard) =
-            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
-        else {
-            return Ok(());
-        };
-        match self.file_write_worker.submit(
-            FileWriteKind::Files,
-            msg.seq,
-            msg.payload,
-            operation_guard,
-            admission,
-        ) {
+        match self
+            .file_write_worker
+            .submit(kind, msg.seq, msg.payload, operation_guard, admission)
+        {
             Ok(()) => Ok(()),
             Err(FileWriteSubmitError::Busy) => {
                 send_error_response(msg.seq, "guest file write already active", &self.writer)

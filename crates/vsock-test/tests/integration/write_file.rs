@@ -10,7 +10,8 @@ use std::time::Duration;
 use vsock_host::{SupervisedExecControl, SupervisedExecRequest, WriteFileEntry};
 use vsock_proto::{
     ExecOutputPolicy, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_PING, MSG_PONG,
-    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
+    WriteFileBatchEntry,
 };
 
 #[test]
@@ -47,15 +48,17 @@ async fn blocked_write_keeps_ping_responsive_and_rejects_overlap() {
     assert_eq!(pong.msg_type, MSG_PONG);
     assert_eq!(pong.seq, 11);
 
-    let overlap_payload =
-        vsock_proto::encode_write_file(&overlap_path_string, b"rejected", false, false)
-            .expect("encode overlapping write");
+    let overlap_payload = vsock_proto::encode_write_files(&[WriteFileBatchEntry {
+        path: overlap_path_string.as_ref(),
+        content: b"rejected",
+    }])
+    .expect("encode overlapping batch write");
     stream
         .write_all(
-            &vsock_proto::encode(MSG_WRITE_FILE, 12, &overlap_payload)
-                .expect("frame overlapping write"),
+            &vsock_proto::encode(MSG_WRITE_FILES, 12, &overlap_payload)
+                .expect("frame overlapping batch write"),
         )
-        .expect("send overlapping write");
+        .expect("send overlapping batch write");
     let busy = read_raw_message(&mut stream);
     assert_eq!(busy.msg_type, MSG_ERROR);
     assert_eq!(busy.seq, 12);

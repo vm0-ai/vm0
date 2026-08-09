@@ -3,6 +3,7 @@ use std::io::Write;
 use vsock_proto::{
     self, ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_WRITE_FILE,
+    MSG_WRITE_FILES, WriteFileBatchEntry,
 };
 
 use super::support::*;
@@ -73,41 +74,62 @@ fn quiesce_busy_fences_new_exec_operations_until_pending_exec_finishes() {
 }
 
 #[test]
-fn quiesced_connection_rejects_write_file_without_creating_file() {
-    let (handle, mut host_stream) = start_guest_connection();
-    let path = unique_tmp_path("quiesce-write-file", ".txt");
+fn quiesced_connection_rejects_file_write_variants_without_creating_files() {
+    for (variant, msg_type) in [
+        ("write-file", MSG_WRITE_FILE),
+        ("write-files", MSG_WRITE_FILES),
+    ] {
+        let (handle, mut host_stream) = start_guest_connection();
+        let path = unique_tmp_path(&format!("quiesce-{variant}"), ".txt");
 
-    send_quiesce_operations(&mut host_stream, 211);
-    let quiesced = read_message(&mut host_stream);
-    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+        send_quiesce_operations(&mut host_stream, 211);
+        let quiesced = read_message(&mut host_stream);
+        assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
 
-    let payload = vsock_proto::encode_write_file(path.as_str(), b"blocked", false, false).unwrap();
-    let msg = vsock_proto::encode(MSG_WRITE_FILE, 212, &payload).unwrap();
-    host_stream.write_all(&msg).unwrap();
+        let payload = if msg_type == MSG_WRITE_FILE {
+            vsock_proto::encode_write_file(path.as_str(), b"blocked", false, false).unwrap()
+        } else {
+            vsock_proto::encode_write_files(&[WriteFileBatchEntry {
+                path: path.as_str(),
+                content: b"blocked",
+            }])
+            .unwrap()
+        };
+        let msg = vsock_proto::encode(msg_type, 212, &payload).unwrap();
+        host_stream.write_all(&msg).unwrap();
 
-    assert_error_contains(&mut host_stream, 212, "guest operations are quiescing");
-    assert!(!std::path::Path::new(path.as_str()).exists());
+        assert_error_contains(&mut host_stream, 212, "guest operations are quiescing");
+        assert!(!std::path::Path::new(path.as_str()).exists());
 
-    send_resume_operations(&mut host_stream, 213);
-    let resumed = read_message(&mut host_stream);
-    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+        send_resume_operations(&mut host_stream, 213);
+        let resumed = read_message(&mut host_stream);
+        assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
 
-    finish_guest_connection(handle, host_stream);
+        finish_guest_connection(handle, host_stream);
+    }
 }
 
 #[test]
-fn quiesced_connection_rejects_write_file_seq_zero_before_quiesce_state() {
-    let (handle, mut host_stream) = start_guest_connection();
+fn quiesced_connection_rejects_file_write_zero_sequences_before_quiesce_state() {
+    for (msg_type, operation_label) in [
+        (MSG_WRITE_FILE, "write_file"),
+        (MSG_WRITE_FILES, "write_files"),
+    ] {
+        let (handle, mut host_stream) = start_guest_connection();
 
-    send_quiesce_operations(&mut host_stream, 214);
-    let quiesced = read_message(&mut host_stream);
-    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+        send_quiesce_operations(&mut host_stream, 214);
+        let quiesced = read_message(&mut host_stream);
+        assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
 
-    send_control_payload(&mut host_stream, MSG_WRITE_FILE, 0, b"bad");
-    let error = read_error_response(&mut host_stream, 0);
-    assert_eq!(error, "write_file requires non-zero sequence");
+        send_control_payload(&mut host_stream, msg_type, 0, b"bad");
+        let error = read_error_response(&mut host_stream, 0);
+        assert_eq!(
+            error,
+            format!("{operation_label} requires non-zero sequence")
+        );
 
-    finish_guest_connection(handle, host_stream);
+        finish_guest_connection(handle, host_stream);
+    }
 }
 
 #[test]
