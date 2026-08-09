@@ -45,9 +45,30 @@ const setMermaidDiagramResult$ = command(
 );
 
 // Rendered entries are refcounted by mounted canvases and dropped once the last
-// one detaches. Their object URLs belong to the containing chat panel instead:
-// a sidebar or lightbox can keep using the same URL after the message unmounts.
+// one detaches. Their object URLs belong to the containing chat panel, but a
+// same-thread query navigation can replace that panel while retaining the
+// mounted canvas. Defer revocation until both the owner has ended and the last
+// canvas has detached so the semantic thread key cannot retain a revoked URL.
 const internalMermaidDiagramRefCountByKey$ = state<Record<string, number>>({});
+const internalPendingMermaidObjectUrlRevocationsByKey$ = state<
+  Record<string, readonly string[]>
+>({});
+
+const revokeMermaidObjectUrlWhenUnused$ = command(
+  ({ get, set }, key: string, url: string) => {
+    const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
+    if (refCount === 0) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    set(internalPendingMermaidObjectUrlRevocationsByKey$, (current) => {
+      return {
+        ...current,
+        [key]: [...(current[key] ?? []), url],
+      };
+    });
+  },
+);
 
 const retainMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
@@ -82,6 +103,14 @@ const releaseMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   }
 
   set(internalMermaidDiagramRefCountByKey$, (current) => {
+    return withoutKey(current, key);
+  });
+  for (const url of get(internalPendingMermaidObjectUrlRevocationsByKey$)[
+    key
+  ] ?? []) {
+    URL.revokeObjectURL(url);
+  }
+  set(internalPendingMermaidObjectUrlRevocationsByKey$, (current) => {
     return withoutKey(current, key);
   });
   set(internalMermaidDiagramResultByKey$, (current) => {
@@ -263,7 +292,7 @@ const renderMermaidDiagram$ = command(
     objectUrlSignal.addEventListener(
       "abort",
       () => {
-        URL.revokeObjectURL(url);
+        set(revokeMermaidObjectUrlWhenUnused$, key, url);
       },
       { once: true },
     );

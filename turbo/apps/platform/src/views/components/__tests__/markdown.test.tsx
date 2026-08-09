@@ -13,6 +13,9 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-pane-state.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
@@ -470,6 +473,67 @@ describe("assistant markdown", () => {
     const replacementUrl = replacementDiagram.getAttribute("src") ?? "";
     expect(replacementUrl).not.toBe(url);
     expect(objectUrls.revokedUrls).not.toContain(replacementUrl);
+  });
+
+  it("keeps a mermaid object URL while query navigation replaces the same thread panel", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
+    const sidebarThreadId = "c0000000-0000-4000-a000-000000000003";
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```", [
+      threadSnapshot(sidebarThreadId, "Sidebar thread"),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const originalDiagram = await screen.findByAltText("Diagram");
+    const originalUrl = originalDiagram.getAttribute("src") ?? "";
+    expect(objectUrls.revokedUrls).not.toContain(originalUrl);
+    const originalPanel = context.store.get(currentLeftThread$);
+    if (!originalPanel) {
+      throw new Error("Expected the main chat panel");
+    }
+    const originalPanelAborted = context.mocks.deferred<void>();
+    originalPanel.signal.addEventListener(
+      "abort",
+      () => {
+        originalPanelAborted.resolve();
+      },
+      { once: true },
+    );
+
+    context.store.set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId: THREAD_ID },
+      searchParams: new URLSearchParams([["sidebar", sidebarThreadId]]),
+    });
+
+    // Observe the old panel after its owner ended but before React replaces the
+    // retained semantic diagram. The still-mounted image must keep a usable URL.
+    await originalPanelAborted.promise;
+    expect(originalDiagram).toBeInTheDocument();
+    expect(objectUrls.revokedUrls).not.toContain(originalUrl);
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    const mainThread = document.querySelector(
+      `[data-chat-thread-container-id="${THREAD_ID}"]`,
+    );
+    expect(mainThread).toBeInstanceOf(HTMLElement);
+    const retainedDiagram = within(mainThread as HTMLElement).getByAltText(
+      "Diagram",
+    );
+    const retainedUrl = retainedDiagram.getAttribute("src") ?? "";
+    expect(objectUrls.revokedUrls).not.toContain(retainedUrl);
+
+    click(within(mainThread as HTMLElement).getByLabelText("Expand diagram"));
+
+    const lightboxImage = await screen.findByTestId(
+      "attachment-lightbox-image",
+    );
+    expect(lightboxImage).toHaveAttribute("src", retainedUrl);
+    expect(objectUrls.blobForUrl(retainedUrl)).not.toBeNull();
   });
 
   it("leaves a streaming mermaid fence as code until it closes", async () => {
