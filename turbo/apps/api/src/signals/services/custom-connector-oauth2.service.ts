@@ -11,6 +11,7 @@ import {
   isOAuthProviderHttpError,
   OAuthProviderHttpError,
 } from "@vm0/connectors/auth-providers/oauth/error";
+import { connectorOauthStatesInsertTarget } from "@vm0/db/custom-connector-insert-targets";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
@@ -531,7 +532,7 @@ export const startCustomConnectorOAuth2$ = command(
         : {}),
     };
     await set(writeDb$)
-      .insert(connectorOauthStates)
+      .insert(connectorOauthStatesInsertTarget)
       .values({
         state,
         customConnectorId: connector.id,

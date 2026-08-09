@@ -1,6 +1,7 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import { userCustomConnectorsInsertTarget } from "@vm0/db/custom-connector-insert-targets";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
@@ -823,7 +824,7 @@ async function persistUserCustomConnectorUpdate(
 
   if (args.operation !== "remove" && args.enabledIds.length > 0) {
     await tx
-      .insert(userCustomConnectors)
+      .insert(userCustomConnectorsInsertTarget)
       .values(
         args.enabledIds.map((customConnectorId) => {
           return {
