@@ -11,7 +11,16 @@ const TOKEN_PATTERN =
 
 interface ChatSearchTokenGroup {
   readonly kind: "cjk" | "word";
+  readonly source: string;
+  readonly start: number;
   readonly tokens: readonly string[];
+}
+
+interface ChatSearchMatchRange {
+  /** UTF-16 code-unit offset, compatible with JavaScript String.slice. */
+  readonly start: number;
+  /** Exclusive UTF-16 code-unit offset. */
+  readonly end: number;
 }
 
 function cjkTokens(run: string): readonly string[] {
@@ -31,15 +40,92 @@ function tokenGroups(text: string): readonly ChatSearchTokenGroup[] {
   for (const match of text.matchAll(TOKEN_PATTERN)) {
     const cjkRun = match[1];
     if (cjkRun !== undefined) {
-      groups.push({ kind: "cjk", tokens: cjkTokens(cjkRun) });
+      groups.push({
+        kind: "cjk",
+        source: cjkRun,
+        start: match.index,
+        tokens: cjkTokens(cjkRun),
+      });
       continue;
     }
     const wordRun = match[2];
     if (wordRun !== undefined) {
-      groups.push({ kind: "word", tokens: [wordRun.toLowerCase()] });
+      groups.push({
+        kind: "word",
+        source: wordRun,
+        start: match.index,
+        tokens: [wordRun.toLowerCase()],
+      });
     }
   }
   return groups;
+}
+
+function literalMatchRanges(
+  text: string,
+  value: string,
+): ChatSearchMatchRange[] {
+  if (value.length === 0) {
+    return [];
+  }
+  const ranges: ChatSearchMatchRange[] = [];
+  let start = text.indexOf(value);
+  while (start !== -1) {
+    const end = start + value.length;
+    ranges.push({ start, end });
+    start = text.indexOf(value, end);
+  }
+  return ranges;
+}
+
+/**
+ * Finds the query terms in the canonical display text returned by chat search.
+ * Ranges use JavaScript string offsets so browser clients can slice the text
+ * without translating PostgreSQL character positions.
+ */
+export function chatSearchMatchRanges(
+  text: string,
+  keyword: string,
+): ChatSearchMatchRange[] {
+  const queryGroups = tokenGroups(keyword);
+  const textGroups = tokenGroups(text);
+  const ranges =
+    queryGroups.length === 0
+      ? literalMatchRanges(text, keyword)
+      : queryGroups.flatMap((queryGroup) => {
+          if (queryGroup.kind === "cjk") {
+            return literalMatchRanges(text, queryGroup.source);
+          }
+          const [queryToken] = queryGroup.tokens;
+          return textGroups.flatMap((textGroup) => {
+            const [textToken] = textGroup.tokens;
+            return textGroup.kind === "word" && textToken === queryToken
+              ? [
+                  {
+                    start: textGroup.start,
+                    end: textGroup.start + textGroup.source.length,
+                  },
+                ]
+              : [];
+          });
+        });
+  ranges.sort((left, right) => {
+    return left.start - right.start || left.end - right.end;
+  });
+
+  const merged: ChatSearchMatchRange[] = [];
+  for (const range of ranges) {
+    const previous = merged.at(-1);
+    if (previous && range.start <= previous.end) {
+      merged[merged.length - 1] = {
+        start: previous.start,
+        end: Math.max(previous.end, range.end),
+      };
+      continue;
+    }
+    merged.push(range);
+  }
+  return merged;
 }
 
 /** Normalized form stored in chat_event_search_docs.text_bigram. */

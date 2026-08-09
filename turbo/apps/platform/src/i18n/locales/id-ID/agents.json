@@ -612,7 +612,6 @@
     "more": "Lainnya",
     "new": "Baru",
     "noResults": "Tidak ada hasil ditemukan",
-    "noSubagents": "Belum ada subagen tersedia.",
     "openConversation": "Buka percakapan",
     "openMenu": "Buka menu agen",
     "pin": "Sematkan ke sidebar",
@@ -620,6 +619,7 @@
     "pinnedAgents": "Agen yang disematkan",
     "searchAgents": "Cari agen...",
     "searchAgentsAndChats": "Cari agen dan chat...",
+    "searching": "Mencari...",
     "sections": {
       "chats": "Chat",
       "lead": "Utama",

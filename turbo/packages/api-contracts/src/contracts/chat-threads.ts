@@ -1389,10 +1389,24 @@ const chatSearchMessageSchema = z.object({
   runId: z.string().nullable(),
 });
 
+const chatSearchMatchRangeSchema = z.object({
+  /** UTF-16 code-unit offset, compatible with JavaScript String.slice. */
+  start: z.number().int().nonnegative(),
+  /** Exclusive UTF-16 code-unit offset. */
+  end: z.number().int().positive(),
+});
+
 const chatSearchResultSchema = z.object({
   chatThreadId: z.string(),
   agentName: z.string(),
   matchedMessage: chatSearchMessageSchema,
+  /**
+   * Rollout compatibility for a new web/app client reading an older API
+   * response that predates match ranges. The web/app-to-API skew window is at
+   * most 2 days. After PR #25901 has been deployed for that window and the API
+   * rollback window has closed, make this required; tracked by #25913.
+   */
+  matchedRanges: z.array(chatSearchMatchRangeSchema).optional(),
   contextBefore: z.array(chatSearchMessageSchema),
   contextAfter: z.array(chatSearchMessageSchema),
 });

@@ -612,7 +612,6 @@
     "more": "もっと見る",
     "new": "新しい",
     "noResults": "結果が見つかりませんでした",
-    "noSubagents": "まだ利用可能なサブエージェントはありません。",
     "openConversation": "会話を開く",
     "openMenu": "エージェントメニューを開く",
     "pin": "サイドバーにピン留めする",
@@ -620,6 +619,7 @@
     "pinnedAgents": "ピン留めしたエージェント",
     "searchAgents": "エージェントを検索...",
     "searchAgentsAndChats": "エージェントとチャットを検索...",
+    "searching": "検索中...",
     "sections": {
       "chats": "チャット",
       "lead": "リード",

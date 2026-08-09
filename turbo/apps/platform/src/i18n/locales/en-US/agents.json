@@ -612,7 +612,6 @@
     "more": "More",
     "new": "New",
     "noResults": "No results found",
-    "noSubagents": "No sub-agents available yet.",
     "openConversation": "Open a conversation",
     "openMenu": "Open agent menu",
     "pin": "Pin to sidebar",
@@ -620,6 +619,7 @@
     "pinnedAgents": "Pinned agents",
     "searchAgents": "Search agents...",
     "searchAgentsAndChats": "Search agents and chats...",
+    "searching": "Searching...",
     "sections": {
       "chats": "Chats",
       "lead": "Lead",

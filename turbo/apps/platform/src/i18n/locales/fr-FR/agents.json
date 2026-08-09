@@ -612,7 +612,6 @@
     "more": "Plus",
     "new": "Nouveau",
     "noResults": "Aucun résultat trouvé",
-    "noSubagents": "Aucun sous-agent disponible pour le moment.",
     "openConversation": "Ouvrir une conversation",
     "openMenu": "Ouvrir le menu de l'agent",
     "pin": "Épingler à la barre latérale",
@@ -620,6 +619,7 @@
     "pinnedAgents": "Agents épinglés",
     "searchAgents": "Rechercher des agents...",
     "searchAgentsAndChats": "Rechercher des agents et des chats...",
+    "searching": "Recherche...",
     "sections": {
       "chats": "Chats",
       "lead": "Piste",

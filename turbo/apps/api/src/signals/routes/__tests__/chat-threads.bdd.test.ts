@@ -2499,6 +2499,9 @@ describe("CHAT-01 chat search", () => {
     expect(isolation.results[0]?.matchedMessage.content).toBe(
       "owner says supercalifragilistic",
     );
+    expect(isolation.results[0]?.matchedRanges).toStrictEqual([
+      { start: 11, end: 31 },
+    ]);
     expect(isolation.results[0]?.agentName).toStrictEqual(expect.any(String));
 
     // Canonical userMessage fields, not the legacy content projection, own
@@ -2877,7 +2880,7 @@ describe("CHAT-01 chat search index", () => {
     });
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
-      prompt: "今天天气很好，vercel 部署完成",
+      prompt: "今天天气很好，今天天气，vercel 部署完成",
     });
     await sendNoCreditMessage(peer, {
       agentId: peerAgent.agentId,
@@ -2900,9 +2903,14 @@ describe("CHAT-01 chat search index", () => {
       expect(found.results).toHaveLength(1);
       expect(found.results[0]?.chatThreadId).toBe(threadId);
       expect(found.results[0]?.matchedMessage.content).toBe(
-        "今天天气很好，vercel 部署完成",
+        "今天天气很好，今天天气，vercel 部署完成",
       );
     }
+    const repeatedCjk = await chat.searchChat(owner, "今天天气");
+    expect(repeatedCjk.results[0]?.matchedRanges).toStrictEqual([
+      { start: 0, end: 4 },
+      { start: 7, end: 11 },
+    ]);
 
     // Neither a single CJK character nor punctuation has an indexable form,
     // so those keywords cannot match.
@@ -2916,6 +2924,9 @@ describe("CHAT-01 chat search index", () => {
     expect(partialWord.results).toStrictEqual([]);
     const wholeWord = await chat.searchChat(owner, "vercel");
     expect(wholeWord.results).toHaveLength(1);
+    expect(wholeWord.results[0]?.matchedRanges).toStrictEqual([
+      { start: 12, end: 18 },
+    ]);
 
     // Re-running the projector is idempotent for already-indexed threads.
     const secondTick = await projectChatEventSearch();

@@ -612,7 +612,6 @@
     "more": "Mais",
     "new": "Novo",
     "noResults": "Nenhum resultado encontrado",
-    "noSubagents": "Nenhum subagente disponível ainda.",
     "openConversation": "Abrir uma conversa",
     "openMenu": "Abrir menu do agente",
     "pin": "Fixar na barra lateral",
@@ -620,6 +619,7 @@
     "pinnedAgents": "Agentes fixados",
     "searchAgents": "Buscar agentes...",
     "searchAgentsAndChats": "Buscar agentes e conversas...",
+    "searching": "Pesquisando...",
     "sections": {
       "chats": "Conversas",
       "lead": "Principal",
