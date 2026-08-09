@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 
+import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   chatThreadEventSequences,
   chatThreadEvents,
 } from "@vm0/db/schema/chat-thread-event";
-import { count, eq, sql } from "drizzle-orm";
+import { count, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -29,21 +30,19 @@ interface PersistedChatThreadEventFixture {
   readonly seqId: number;
 }
 
-/**
- * Quiesces writes that can add or advance snapshot-compaction scopes while a
- * route test observes the global post-pass backlog. The compactor only reads
- * these tables, so its snapshot rebuild and pruning remain unblocked.
- */
-export async function withChatThreadSnapshotScopeWritesPausedFixture<T>(args: {
+interface ScopeWritesPausedFixtureArgs<T> {
   readonly signal: AbortSignal;
   readonly run: () => Promise<T>;
-}): Promise<T> {
+}
+
+async function withScopeWritesPausedFixture<T>(
+  lockTables: SQL,
+  args: ScopeWritesPausedFixtureArgs<T>,
+): Promise<T> {
   const started = createDeferredPromise<void>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
-    await tx.execute(
-      sql`LOCK TABLE ${chatThreads}, ${chatThreadEventSequences} IN SHARE MODE`,
-    );
+    await tx.execute(lockTables);
     started.resolve(undefined);
     await released.promise;
   });
@@ -58,6 +57,36 @@ export async function withChatThreadSnapshotScopeWritesPausedFixture<T>(args: {
     throw result.error;
   }
   return result.value;
+}
+
+/**
+ * Quiesces writes that can add or advance snapshot-compaction scopes while a
+ * route test observes the global post-pass backlog. The compactor only reads
+ * these tables, so its snapshot rebuild and pruning remain unblocked.
+ */
+export async function withChatThreadSnapshotScopeWritesPausedFixture<T>(args: {
+  readonly signal: AbortSignal;
+  readonly run: () => Promise<T>;
+}): Promise<T> {
+  return await withScopeWritesPausedFixture(
+    sql`LOCK TABLE ${chatThreads}, ${chatThreadEventSequences} IN SHARE MODE`,
+    args,
+  );
+}
+
+/**
+ * Quiesces writes that can add or advance snapshot-archiver targets while a
+ * route test observes the global post-pass backlog. The archiver only reads
+ * these tables, so publishing snapshot heads remains unblocked.
+ */
+export async function withChatEventSnapshotScopeWritesPausedFixture<T>(args: {
+  readonly signal: AbortSignal;
+  readonly run: () => Promise<T>;
+}): Promise<T> {
+  return await withScopeWritesPausedFixture(
+    sql`LOCK TABLE ${chatThreads}, ${chatEventSearchWatermarks} IN SHARE MODE`,
+    args,
+  );
 }
 
 async function transitiveBlockedWaiterCount(
