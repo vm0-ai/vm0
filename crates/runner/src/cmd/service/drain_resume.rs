@@ -1403,6 +1403,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn drain_reload_failure_reports_unavailable_prior_enablement() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            enablement_results: VecDeque::from([Err(fake_error("enablement read failed"))]),
+            reload_errors: VecDeque::from([true, false]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains(
+            "drain failed for vm0-runner-test: internal error: reload failed; additionally rollback failed"
+        ));
+        assert!(
+            message.contains(
+                "failed to roll back drain transition for vm0-runner-test (daemon_reload)"
+            )
+        );
+        assert!(message.contains("prior boot enablement is unavailable"));
+        assert_eq!(
+            ops.events,
+            [
+                "lifecycle_state",
+                "is_enabled",
+                "write_restart_override",
+                "disable",
+                "daemon_reload",
+                "remove_restart_override",
+                "daemon_reload",
+            ]
+        );
+        assert!(
+            ops.events
+                .iter()
+                .all(|event| !event.starts_with("restore_"))
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(false),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn repeated_drain_reload_failure_preserves_restart_override() {
         let unit = service_unit();
         let mut ops = FakeDrainOps {
@@ -2288,6 +2335,51 @@ mod tests {
                 "write_restart_override",
                 "restore_not_enabled",
                 "daemon_reload",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_reload_failure_reports_unavailable_prior_enablement() {
+        let mut ops = FakeResumeOps {
+            enablement_results: VecDeque::from([Err(fake_error("enablement read failed"))]),
+            reload_errors: VecDeque::from([true, false]),
+            ..FakeResumeOps::default()
+        };
+
+        let error = resume_after_preflight_for_test(&mut ops).await.unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains(
+            "resume failed for vm0-runner-test: internal error: reload failed; additionally rollback failed"
+        ));
+        assert!(
+            message.contains(
+                "failed to roll back resume transition for vm0-runner-test (daemon_reload)"
+            )
+        );
+        assert!(message.contains("prior boot enablement is unavailable"));
+        assert_eq!(
+            ops.events,
+            [
+                "is_enabled",
+                "remove_restart_override",
+                "enable",
+                "daemon_reload",
+                "write_restart_override",
+                "daemon_reload",
+            ]
+        );
+        assert!(
+            ops.events
+                .iter()
+                .all(|event| !event.starts_with("restore_"))
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(false),
+                SystemdReloadRequirement::dirty().with_drain_override(true),
             ]
         );
     }
