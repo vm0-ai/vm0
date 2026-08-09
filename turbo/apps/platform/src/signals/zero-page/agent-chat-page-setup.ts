@@ -28,7 +28,6 @@ import {
   type EnsuredAgentDraft,
 } from "./agent-draft.ts";
 import { setAgentComposerContext$ } from "./agent-composer-signals.ts";
-import { reloadUserModelPreference$ } from "../external/user-model-preference.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
 import { setupAgentChatKeyboardShortcuts$ } from "./agent-chat-keyboard.ts";
@@ -46,7 +45,6 @@ export const setupAgentChatPage$ = command(
     set(reloadTagline$);
 
     set(resetChatPageModelSelection$);
-    set(reloadUserModelPreference$);
 
     // Read agent ID from URL immediately (synchronous) and update sidebar
     // highlight early so the UI responds without waiting for async data.
