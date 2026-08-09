@@ -162,6 +162,26 @@ const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/|\/mail\/drafts\/|\/\?settings=billing&billingView=)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
+// URL.canParse is unavailable on iOS Safari < 17. Instead of relying on it (or
+// on try/catch, which this repo's ESLint forbids), feature-detect it and fall
+// back to a structural validation before constructing a URL. Mirrors the
+// pattern used in signals/auth.ts parseUrl().
+const ABSOLUTE_HTTP_URL_REGEX = /^https?:\/\//i;
+
+function tryParseUrl(input: string, base?: string): URL | null {
+  if (typeof URL.canParse === "function") {
+    return URL.canParse(input, base) ? new URL(input, base) : null;
+  }
+
+  if (ABSOLUTE_HTTP_URL_REGEX.test(input)) {
+    return new URL(input);
+  }
+  if (base && (input.startsWith("/") || input.startsWith("//"))) {
+    return new URL(input, base);
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
 // ---------------------------------------------------------------------------
@@ -335,14 +355,6 @@ function rewritePlatformHostname(
   target: PlatformHostTarget,
 ): string {
   return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
-}
-
-function tryParseUrl(input: string, base?: string): URL | null {
-  try {
-    return typeof base === "string" ? new URL(input, base) : new URL(input);
-  } catch {
-    return null;
-  }
 }
 
 function addPlatformFileHostVariants(hosts: Set<string>, host: string | null) {
