@@ -36,6 +36,8 @@ import {
   userModelPreference$,
 } from "../../../signals/external/user-model-preference.ts";
 import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 import {
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
@@ -148,6 +150,38 @@ describe("chat composer models", () => {
     });
 
     expect(policiesRequestCount).toBe(1);
+    expect(preferenceRequestCount).toBe(1);
+  });
+
+  it("keeps the default model cached when returning to agent chat", async () => {
+    let preferenceRequestCount = 0;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      preferenceRequestCount += 1;
+      return respond(200, { selectedModel: null, updatedAt: null });
+    });
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    expect(preferenceRequestCount).toBe(1);
+
+    act(() => {
+      context.store.set(detachedNavigateTo$, ROUTES.agentIdeas, {
+        pathParams: { agentId: AGENT_ID },
+      });
+    });
+    await screen.findByRole("heading", { name: "Ideas & Use Cases" });
+
+    act(() => {
+      context.store.set(detachedNavigateTo$, ROUTES.agentChat, {
+        pathParams: { agentId: AGENT_ID },
+      });
+    });
+
+    await expectComposerModel("Kimi K2.7 Code");
     expect(preferenceRequestCount).toBe(1);
   });
 
