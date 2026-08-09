@@ -2365,13 +2365,23 @@ describe("zero browser route", () => {
       }),
     );
 
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const beforeStartCloseEventId = randomUUID();
+    await accept(
+      client().close({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        body: { eventId: beforeStartCloseEventId },
+      }),
+      [200],
+    );
+
     const firstStart = await accept(
       client().use({ headers: first.claim.browserHeaders, body: {} }),
       [200],
     );
     expect(firstStart.body.lifecycleEventId).toBeNull();
 
-    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const beforeReclaimCloseEventId = randomUUID();
     await accept(
       client().close({
@@ -2462,6 +2472,11 @@ describe("zero browser route", () => {
           : [];
       }),
     ).toStrictEqual([
+      {
+        id: beforeStartCloseEventId,
+        eventType: "browser.close",
+        content: null,
+      },
       {
         id: beforeReclaimCloseEventId,
         eventType: "browser.close",

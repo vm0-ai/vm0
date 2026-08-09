@@ -176,6 +176,11 @@ interface BrowserSessionAccess extends BrowserOwnerAccess {
   readonly chatThreadId: string;
 }
 
+interface BrowserSidebarThread {
+  readonly chatThreadId: string;
+  readonly userId: string;
+}
+
 interface ProviderResult<T> {
   readonly kind: "ok";
   readonly value: T;
@@ -1042,7 +1047,7 @@ async function resolveViewerStartContext(
 
 async function browserSessionAccessError(
   db: Db,
-  browser: BrowserSessionRow,
+  browser: Pick<BrowserSessionRow, "chatThreadId">,
   access: BrowserOwnerAccess,
 ): Promise<BrowserServiceError | null> {
   // Session callers are authorized by ownership. Run-scoped callers must also
@@ -1077,6 +1082,28 @@ async function browserSessionAccessError(
     );
   }
   return null;
+}
+
+async function loadOwnedBrowserSidebarThread(
+  db: Db,
+  access: BrowserSessionAccess,
+): Promise<BrowserSidebarThread | null> {
+  const [thread] = await db
+    .select({
+      chatThreadId: chatThreads.id,
+      userId: chatThreads.userId,
+    })
+    .from(chatThreads)
+    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
+    .where(
+      and(
+        eq(chatThreads.id, access.chatThreadId),
+        eq(chatThreads.userId, access.userId),
+        eq(agentComposes.orgId, access.orgId),
+      ),
+    )
+    .limit(1);
+  return thread ?? null;
 }
 
 async function loadOwnedBrowser(
@@ -2227,12 +2254,12 @@ export const closeZeroBrowserForThread$ = command(
     signal: AbortSignal,
   ): Promise<BrowserServiceResult<BrowserCloseMutation>> => {
     const db = set(writeDb$);
-    const browser = await loadOwnedBrowser(db, args);
+    const thread = await loadOwnedBrowserSidebarThread(db, args);
     signal.throwIfAborted();
-    if (!browser) {
+    if (!thread) {
       return notFound();
     }
-    const accessError = await browserSessionAccessError(db, browser, args);
+    const accessError = await browserSessionAccessError(db, thread, args);
     signal.throwIfAborted();
     if (accessError) {
       return accessError;
@@ -2242,7 +2269,7 @@ export const closeZeroBrowserForThread$ = command(
         tx,
         {
           id: args.lifecycleEventId,
-          chatThreadId: browser.chatThreadId,
+          chatThreadId: thread.chatThreadId,
           eventType: "browser.close",
           content: null,
         },
@@ -2257,8 +2284,8 @@ export const closeZeroBrowserForThread$ = command(
       );
     }
     await publishChatThreadMessageCreatedSafely(
-      browser.userId,
-      browser.chatThreadId,
+      thread.userId,
+      thread.chatThreadId,
       event.seqId,
     );
     signal.throwIfAborted();

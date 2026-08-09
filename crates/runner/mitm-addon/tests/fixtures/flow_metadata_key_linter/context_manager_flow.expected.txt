@@ -11,3 +11,6 @@ context_manager_flow.py:159: use metadata_keys.FIREWALL_PERMISSION for flow.meta
 context_manager_flow.py:170: use metadata_keys.FIREWALL_RULE_MATCH for flow.metadata access
 context_manager_flow.py:184: use metadata_keys.FIREWALL_ACTION for flow.metadata access
 context_manager_flow.py:196: use metadata_keys.FIREWALL_BILLABLE for flow.metadata access
+context_manager_flow.py:215: use metadata_keys.FIREWALL_ERROR for flow.metadata access
+context_manager_flow.py:222: use metadata_keys.TRUSTED_AUTHORITY_HOST for flow.metadata access
+context_manager_flow.py:229: use metadata_keys.AUTH_BASE_FORWARD_ADMISSION for flow.metadata access
