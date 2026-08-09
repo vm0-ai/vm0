@@ -69,6 +69,87 @@ class TestRegistryAuthCacheEviction:
         assert force_refresh_pending(retained_key)
         assert last_force_refresh_monotonic_at(retained_key) == 200.0
 
+    def test_repeated_missing_registry_does_not_re_evict_auth_state(
+        self,
+        registry_file,
+    ):
+        registry.load_registry(str(registry_file))
+
+        old_cache_key = auth_cache_key(run_id="run-abc-123", api_id="api-0")
+        set_cached_headers(
+            old_cache_key,
+            headers={"Authorization": "Bearer tok"},
+        )
+        mark_force_refresh(old_cache_key)
+        set_last_force_refresh_monotonic_at(old_cache_key, 100.0)
+
+        registry_file.unlink()
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            first_state = registry.load_registry_state(str(registry_file))
+
+        assert isinstance(first_state, registry.RegistryUnavailable)
+        assert first_state.reason == "stat_failed"
+        assert not has_auth_state(old_cache_key)
+
+        new_cache_key = auth_cache_key(run_id="run-after-failure", api_id="api-0")
+        set_cached_headers(
+            new_cache_key,
+            headers={"Authorization": "Bearer after-failure"},
+        )
+        mark_force_refresh(new_cache_key)
+        set_last_force_refresh_monotonic_at(new_cache_key, 200.0)
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            second_state = registry.load_registry_state(str(registry_file))
+
+        assert isinstance(second_state, registry.RegistryUnavailable)
+        assert second_state.reason == "stat_failed"
+        assert cached_headers(new_cache_key)
+        assert force_refresh_pending(new_cache_key)
+        assert last_force_refresh_monotonic_at(new_cache_key) == 200.0
+
+    def test_repeated_oversized_registry_does_not_re_evict_auth_state(
+        self,
+        registry_file,
+    ):
+        registry.load_registry(str(registry_file))
+
+        old_cache_key = auth_cache_key(run_id="run-abc-123", api_id="api-0")
+        set_cached_headers(
+            old_cache_key,
+            headers={"Authorization": "Bearer tok"},
+        )
+        mark_force_refresh(old_cache_key)
+        set_last_force_refresh_monotonic_at(old_cache_key, 100.0)
+
+        with registry_file.open("wb") as oversized_registry:
+            oversized_registry.truncate(registry.MAX_REGISTRY_BYTES + 1)
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            first_state = registry.load_registry_state(str(registry_file))
+
+        assert isinstance(first_state, registry.RegistryUnavailable)
+        assert first_state.reason == "read_failed"
+        assert not has_auth_state(old_cache_key)
+
+        new_cache_key = auth_cache_key(run_id="run-after-failure", api_id="api-0")
+        set_cached_headers(
+            new_cache_key,
+            headers={"Authorization": "Bearer after-failure"},
+        )
+        mark_force_refresh(new_cache_key)
+        set_last_force_refresh_monotonic_at(new_cache_key, 200.0)
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            second_state = registry.load_registry_state(str(registry_file))
+
+        assert isinstance(second_state, registry.RegistryUnavailable)
+        assert second_state.reason == "read_failed"
+        assert cached_headers(new_cache_key)
+        assert force_refresh_pending(new_cache_key)
+        assert last_force_refresh_monotonic_at(new_cache_key) == 200.0
+
     def test_repeated_parse_failure_does_not_re_evict_auth_state(
         self,
         registry_file,
