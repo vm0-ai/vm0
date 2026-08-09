@@ -1057,28 +1057,6 @@ function AgentListDialogUnifiedSearch({
   );
 }
 
-function AgentDialogEmptyStates({
-  subagents,
-}: {
-  readonly subagents: readonly SubagentInfo[];
-}) {
-  const { t } = useTranslation("agents");
-
-  return (
-    <>
-      {subagents.length === 0 && (
-        <div className="px-5 pb-5">
-          <p className="text-xs text-muted-foreground px-1 py-2">
-            {t(($) => {
-              return $.sidebar.noSubagents;
-            })}
-          </p>
-        </div>
-      )}
-    </>
-  );
-}
-
 export function AgentListDialog({
   open,
   onOpenChange,
@@ -1218,7 +1196,6 @@ export function AgentListDialog({
               query={trimmedQuery}
               onSelect={handleChatThread}
             />
-            <AgentDialogEmptyStates subagents={subagents} />
           </>
         )}
       </CommandList>
