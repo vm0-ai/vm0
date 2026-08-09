@@ -2,16 +2,16 @@ import type { FormEvent } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
-  IconArrowLeft,
-  IconArrowRight,
-  IconChevronRight,
-  IconCircleCheck,
-  IconCopy,
-  IconDotsVertical,
-  IconLoader2,
-  IconPlus,
-  IconSettings,
-} from "@tabler/icons-react";
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  CircleCheck,
+  Copy,
+  EllipsisVertical,
+  Loader2,
+  Plus,
+  Settings,
+} from "lucide-react";
 import { FEISHU_OAUTH_SCOPES } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Button } from "@vm0/ui";
@@ -145,7 +145,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   };
   return (
     <Button type="button" variant="outline" size="sm" onClick={copy}>
-      <IconCopy size={14} />
+      <Copy size={14} />
       {t(($) => {
         return $.connectors.providerSettings.feishu.copy;
       })}
@@ -163,7 +163,7 @@ function SetupStatus({
   return (
     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-secondary-foreground">
       {complete ? (
-        <IconCircleCheck className="h-4 w-4 text-green-600" />
+        <CircleCheck className="h-4 w-4 text-green-600" />
       ) : (
         <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
       )}
@@ -1222,7 +1222,7 @@ function FeishuSetupWizardFooter({
           firstStepLabel
         ) : (
           <span className="inline-flex items-center gap-2">
-            <IconArrowLeft size={16} />
+            <ArrowLeft size={16} />
             {t(($) => {
               return $.connectors.providerSettings.feishu.steps.back;
             })}
@@ -1234,10 +1234,10 @@ function FeishuSetupWizardFooter({
         disabled={!canContinue}
         onClick={step === "tokens" && !readOnly ? undefined : onContinue}
       >
-        {saving ? <IconLoader2 size={16} className="animate-spin" /> : null}
+        {saving ? <Loader2 size={16} className="animate-spin" /> : null}
         {continueLabel}
         {(step !== "tokens" || readOnly) && step !== "publish" ? (
-          <IconArrowRight size={16} />
+          <ArrowRight size={16} />
         ) : null}
       </Button>
     </DialogFooter>
@@ -1385,7 +1385,7 @@ export function FeishuCard() {
           </div>
         </div>
         <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <IconSettings size={14} stroke={1.5} />
+          <Settings size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.connectors.providerSettings.feishu.manage;
           })}
@@ -1400,7 +1400,7 @@ function FeishuStatusBadge({ bot }: { bot: FeishuBotInstallation }) {
   if (bot.isConnected) {
     return (
       <span className="inline-flex min-w-0 max-w-52 items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-secondary-foreground">
-        <IconCircleCheck className="h-3.5 w-3.5 text-green-600" />
+        <CircleCheck className="h-3.5 w-3.5 text-green-600" />
         <span className="min-w-0 truncate" title={bot.connectedUserName ?? ""}>
           {bot.connectedUserName
             ? t(
@@ -1512,7 +1512,7 @@ function FeishuBotMenu({
             { bot: title },
           )}
         >
-          <IconDotsVertical size={16} stroke={1.5} />
+          <EllipsisVertical size={16} strokeWidth={1.5} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
@@ -1747,7 +1747,7 @@ function FeishuBotsCard({
             disabled={agentsLoading}
             onClick={onAdd}
           >
-            <IconPlus size={16} />
+            <Plus size={16} />
             {t(($) => {
               return $.connectors.providerSettings.feishu.addBot;
             })}
@@ -1784,7 +1784,7 @@ function FeishuSetupFaq() {
       <div className="divide-y divide-border/50">
         <details className="group px-4 py-4 sm:px-5">
           <summary className="flex cursor-pointer list-none items-start gap-2 text-sm font-medium text-foreground">
-            <IconChevronRight
+            <ChevronRight
               size={17}
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
@@ -1804,7 +1804,7 @@ function FeishuSetupFaq() {
         </details>
         <details className="group px-4 py-4 sm:px-5">
           <summary className="flex cursor-pointer list-none items-start gap-2 text-sm font-medium text-foreground">
-            <IconChevronRight
+            <ChevronRight
               size={17}
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
@@ -2177,7 +2177,7 @@ export function ZeroFeishuSettingsPage() {
                   return $.connectors.catalog.title;
                 })}
               >
-                <IconArrowLeft size={17} stroke={1.8} />
+                <ArrowLeft size={17} strokeWidth={1.8} />
                 {t(($) => {
                   return $.connectors.providerSettings.feishu
                     .backToIntegrations;

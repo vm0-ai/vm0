@@ -1,11 +1,6 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconAlertCircle,
-  IconArrowLeft,
-  IconCircleCheck,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { AlertCircle, ArrowLeft, CircleCheck, Loader2 } from "lucide-react";
 import { Button } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -32,7 +27,7 @@ function BackLink() {
       pathname="/works"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
-      <IconArrowLeft size={14} />
+      <ArrowLeft size={14} />
       {t(($) => {
         return $.connectors.providerConnect.common.backToSettings;
       })}
@@ -93,7 +88,7 @@ function ErrorState({ message }: { message: string }) {
   const { t } = useTranslation();
   return (
     <>
-      <IconAlertCircle size={40} className="text-destructive" />
+      <AlertCircle size={40} className="text-destructive" />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
           {t(($) => {
@@ -113,7 +108,7 @@ function CheckingState() {
   const { t } = useTranslation();
   return (
     <>
-      <IconLoader2 size={40} className="text-muted-foreground animate-spin" />
+      <Loader2 size={40} className="text-muted-foreground animate-spin" />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
           {t(($) => {
@@ -134,7 +129,7 @@ function InvalidState() {
   const { t } = useTranslation();
   return (
     <>
-      <IconAlertCircle size={40} className="text-muted-foreground/40" />
+      <AlertCircle size={40} className="text-muted-foreground/40" />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
           {t(($) => {
@@ -186,7 +181,7 @@ function PageContent() {
     const label = connectedLabel(params);
     return (
       <>
-        <IconCircleCheck size={40} className="text-emerald-500" />
+        <CircleCheck size={40} className="text-emerald-500" />
         <div className="text-center space-y-1.5">
           <h2 className="text-base font-semibold text-foreground">
             {t(($) => {
@@ -258,7 +253,7 @@ function PageContent() {
           disabled={connectLoading}
         >
           {connectLoading ? (
-            <IconLoader2 size={16} className="animate-spin mr-2" />
+            <Loader2 size={16} className="animate-spin mr-2" />
           ) : null}
           {connectLoading
             ? t(($) => {

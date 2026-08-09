@@ -1,4 +1,4 @@
-import { IconBrowser } from "@tabler/icons-react";
+import { AppWindow } from "lucide-react";
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -52,7 +52,7 @@ function BrowserSessionStatus({ live }: { readonly live: boolean }) {
 function BrowserSessionPreviewPlaceholder() {
   return (
     <span className="absolute inset-0 flex items-center justify-center bg-muted/30 text-muted-foreground/60">
-      <IconBrowser size={30} stroke={1.5} />
+      <AppWindow size={30} strokeWidth={1.5} />
     </span>
   );
 }

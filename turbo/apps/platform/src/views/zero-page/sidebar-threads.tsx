@@ -8,15 +8,15 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  IconPlus,
-  IconCheck,
-  IconChevronRight,
-  IconTrash,
-  IconPencil,
-  IconDots,
-  IconPin,
-  IconPinnedOff,
-} from "@tabler/icons-react";
+  Plus,
+  Check,
+  ChevronRight,
+  Trash,
+  Pencil,
+  Ellipsis,
+  Pin,
+  PinOff,
+} from "lucide-react";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -136,7 +136,7 @@ function SessionStateIndicator({
       })}
       className="flex items-center justify-center text-sidebar-foreground/50"
     >
-      <IconPencil size={16} stroke={2} />
+      <Pencil size={16} strokeWidth={2} data-explicit-stroke-width />
     </span>
   );
 }
@@ -226,15 +226,25 @@ function ChatThreadMenu({
                 >
                   {usePinnedIndicatorTrigger ? (
                     <>
-                      <IconPin size={16} stroke={2} className="md:hidden" />
-                      <IconDots
+                      <Pin
                         size={16}
-                        stroke={2}
+                        strokeWidth={2}
+                        className="md:hidden"
+                        data-explicit-stroke-width
+                      />
+                      <Ellipsis
+                        size={16}
+                        strokeWidth={2}
                         className="hidden md:block"
+                        data-explicit-stroke-width
                       />
                     </>
                   ) : (
-                    <IconDots size={16} stroke={2} />
+                    <Ellipsis
+                      size={16}
+                      strokeWidth={2}
+                      data-explicit-stroke-width
+                    />
                   )}
                 </span>
               </TooltipTrigger>
@@ -252,14 +262,24 @@ function ChatThreadMenu({
           <DropdownMenuItem onSelect={handleTogglePin}>
             {isPinned ? (
               <>
-                <IconPinnedOff size={16} stroke={2} className="mr-2" />
+                <PinOff
+                  size={16}
+                  strokeWidth={2}
+                  className="mr-2"
+                  data-explicit-stroke-width
+                />
                 {t(($) => {
                   return $.chat.sidebar.unpin;
                 })}
               </>
             ) : (
               <>
-                <IconPin size={16} stroke={2} className="mr-2" />
+                <Pin
+                  size={16}
+                  strokeWidth={2}
+                  className="mr-2"
+                  data-explicit-stroke-width
+                />
                 {t(($) => {
                   return $.chat.sidebar.pin;
                 })}
@@ -267,7 +287,12 @@ function ChatThreadMenu({
             )}
           </DropdownMenuItem>
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
-            <IconPencil size={16} stroke={2} className="mr-2" />
+            <Pencil
+              size={16}
+              strokeWidth={2}
+              className="mr-2"
+              data-explicit-stroke-width
+            />
             {t(($) => {
               return $.chat.sidebar.rename;
             })}
@@ -278,7 +303,12 @@ function ChatThreadMenu({
             }}
             className="text-destructive focus:text-destructive"
           >
-            <IconTrash size={16} stroke={2} className="mr-2" />
+            <Trash
+              size={16}
+              strokeWidth={2}
+              className="mr-2"
+              data-explicit-stroke-width
+            />
             {t(($) => {
               return $.chat.sidebar.delete;
             })}
@@ -323,7 +353,7 @@ function ChatThreadSideDecorator({
                 })}
                 className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
-                <IconPin size={16} stroke={2} />
+                <Pin size={16} strokeWidth={2} data-explicit-stroke-width />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -658,7 +688,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <IconDots size={16} stroke={2} />
+          <Ellipsis size={16} strokeWidth={2} data-explicit-stroke-width />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -712,10 +742,11 @@ function ChatThreadsTitle() {
       <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <IconChevronRight
+          <ChevronRight
             size={12}
-            stroke={2}
+            strokeWidth={2}
             className={collapsed ? "" : "rotate-90"}
+            data-explicit-stroke-width
           />
         </span>
       </span>
@@ -749,7 +780,12 @@ function ChatThreadsTitle() {
                 }}
                 disabled={!currentChatAgentId || newChatDisabled}
               >
-                <IconPlus size={16} stroke={2} className="mr-2" />
+                <Plus
+                  size={16}
+                  strokeWidth={2}
+                  className="mr-2"
+                  data-explicit-stroke-width
+                />
                 {t(($) => {
                   return $.chat.newChat;
                 })}
@@ -760,10 +796,11 @@ function ChatThreadsTitle() {
                   toggleUnreadOnly(false);
                 }}
               >
-                <IconCheck
+                <Check
                   size={16}
-                  stroke={2}
+                  strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
+                  data-explicit-stroke-width
                 />
                 {t(($) => {
                   return $.chat.sidebar.allChats;
@@ -774,10 +811,11 @@ function ChatThreadsTitle() {
                   toggleUnreadOnly(true);
                 }}
               >
-                <IconCheck
+                <Check
                   size={16}
-                  stroke={2}
+                  strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
+                  data-explicit-stroke-width
                 />
                 {t(($) => {
                   return $.chat.sidebar.unreadOnly;

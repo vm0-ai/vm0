@@ -1,8 +1,4 @@
-import {
-  IconAlertCircle,
-  IconArrowLeft,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { useGet } from "ccstate-react";
@@ -67,7 +63,7 @@ export function ZeroConnectorRedirectingPage({
       <div className="flex flex-col items-center gap-4">
         {hasError ? (
           <div className="flex items-center gap-2 text-sm text-destructive">
-            <IconAlertCircle size={16} aria-hidden="true" />
+            <AlertCircle size={16} aria-hidden="true" />
             <span>
               {t(($) => {
                 return $.connectors.redirect.errorStatus;
@@ -76,11 +72,7 @@ export function ZeroConnectorRedirectingPage({
           </div>
         ) : (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <IconLoader2
-              size={16}
-              className="animate-spin"
-              aria-hidden="true"
-            />
+            <Loader2 size={16} className="animate-spin" aria-hidden="true" />
             <span>
               {t(($) => {
                 return $.connectors.redirect.preparing;
@@ -100,7 +92,7 @@ export function ZeroConnectorRedirectingPage({
         )}
         <Button variant="outline" asChild>
           <Link pathname={ROUTES.home}>
-            <IconArrowLeft size={16} aria-hidden="true" />
+            <ArrowLeft size={16} aria-hidden="true" />
             {t(
               ($) => {
                 return $.connectors.redirect.back;

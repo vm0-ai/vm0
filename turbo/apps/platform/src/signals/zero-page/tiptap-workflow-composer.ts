@@ -957,13 +957,13 @@ function createInlineTemplateNodeView(
   const openButton = document.createElement("button");
   openButton.type = "button";
   openButton.className = INLINE_TEMPLATE_NAME_ZONE_CLASS;
-  // Mirrors IconColorSwatch from @tabler/icons-react, which the composer
-  // template picker button and sent-message template chips also use.
+  // Mirrors Lucide's SwatchBook, which the composer template picker button and
+  // sent-message template chips also use.
   const icon = createComposerIcon(13, 1.7, [
-    "M19 3h-4a2 2 0 0 0 -2 2v12a4 4 0 0 0 8 0v-12a2 2 0 0 0 -2 -2",
-    "M13 7.35l-2 -2a2 2 0 0 0 -2.828 0l-2.828 2.828a2 2 0 0 0 0 2.828l9 9",
-    "M7.3 13h-2.3a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h12",
-    "M17 17l0 .01",
+    "M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z",
+    "M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7",
+    "M 7 17h.01",
+    "m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8",
   ]);
   icon.setAttribute("class", "shrink-0");
   const title = document.createElement("span");

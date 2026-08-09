@@ -2,18 +2,18 @@ import type { ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  IconChartLine,
-  IconLayoutGrid,
-  IconPackage,
-  IconRoute,
-  IconUsers,
-  IconEdit,
-  IconChevronRight,
-  IconLayoutSidebarLeftCollapse,
-  IconPlug,
-  IconSparkles,
-  IconSearch,
-} from "@tabler/icons-react";
+  ChartLine,
+  LayoutGrid,
+  Package,
+  Route,
+  Users,
+  Edit,
+  ChevronRight,
+  PanelLeftClose,
+  Plug,
+  Sparkles,
+  Search,
+} from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Tooltip,
@@ -77,7 +77,7 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     id: "agents",
     activeKeys: ["agents", "agentDetail", "agentPermissions"],
     pathname: "/agents",
-    icon: IconUsers as NavIcon,
+    icon: Users as NavIcon,
   },
   {
     id: "workflows",
@@ -89,25 +89,25 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
       "workflowDetailInfo",
     ],
     pathname: "/workflows",
-    icon: IconRoute as NavIcon,
+    icon: Route as NavIcon,
   },
   {
     id: "connectors",
     activeKeys: ["connectors"],
     pathname: "/connectors",
-    icon: IconPlug as NavIcon,
+    icon: Plug as NavIcon,
   },
   {
     id: "artifacts",
     activeKeys: ["artifacts"],
     pathname: "/artifacts",
-    icon: IconPackage as NavIcon,
+    icon: Package as NavIcon,
   },
   {
     id: "activities",
     activeKeys: ["activities", "activityDetail", "activityInspect"],
     pathname: "/activities",
-    icon: IconChartLine as NavIcon,
+    icon: ChartLine as NavIcon,
     featureGate: FeatureSwitchKey.ZeroDebug,
   },
 ];
@@ -125,7 +125,7 @@ const FOOTER_NAV = [
     id: "works",
     activeKeys: ["works"],
     pathname: "/works",
-    icon: IconLayoutGrid as NavIcon,
+    icon: LayoutGrid as NavIcon,
     iconImg: slackIcon,
   },
 ] as const satisfies readonly FooterNavItem[];
@@ -256,7 +256,7 @@ function CollapsedExpandButton() {
               onClick={onCollapse}
               aria-label={expandLabel}
             >
-              <IconLayoutSidebarLeftCollapse size={18} className="rotate-180" />
+              <PanelLeftClose size={18} className="rotate-180" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
@@ -285,7 +285,7 @@ function CollapsedNavList() {
       label: t(($) => {
         return $.appShell.sidebar.navigation.newChat;
       }),
-      icon: IconEdit as NavIcon,
+      icon: Edit as NavIcon,
     },
     ...footerNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
       return { id, activeKeys, pathname: p, label, icon };
@@ -375,7 +375,7 @@ function CollapsedFooter() {
               }`}
               aria-label={insightsLabel}
             >
-              <IconSparkles size={16} className="shrink-0" />
+              <Sparkles size={16} className="shrink-0" />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="right">
@@ -437,7 +437,7 @@ function ExpandedHeader() {
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
-                <IconLayoutSidebarLeftCollapse size={18} />
+                <PanelLeftClose size={18} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -485,10 +485,11 @@ function ExpandedManageSection() {
             return $.appShell.sidebar.manage;
           })}
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <IconChevronRight
+            <ChevronRight
               size={12}
-              stroke={2}
+              strokeWidth={2}
               className={manageCollapsed ? "" : "rotate-90"}
+              data-explicit-stroke-width
             />
           </span>
         </span>
@@ -646,7 +647,7 @@ function ExpandedFooterAccountInsights() {
               }`}
               aria-label={insightsLabel}
             >
-              <IconSparkles size={16} className="shrink-0" />
+              <Sparkles size={16} className="shrink-0" />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -779,7 +780,7 @@ function LabeledNavRail() {
       label: t(($) => {
         return $.appShell.sidebar.navigation.newChat;
       }),
-      icon: IconEdit as NavIcon,
+      icon: Edit as NavIcon,
     },
     ...manageNav,
     ...footerNav,
@@ -824,7 +825,7 @@ function LabeledNavRail() {
           label={t(($) => {
             return $.appShell.sidebar.navigation.insights;
           })}
-          icon={IconSparkles as NavIcon}
+          icon={Sparkles as NavIcon}
           isActive={activeId === "insights"}
           onSelect={onSelect}
         />
@@ -872,7 +873,7 @@ function ChatListColumn() {
                 aria-label={searchLabel}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               >
-                <IconSearch size={17} stroke={1.8} />
+                <Search size={17} strokeWidth={1.8} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -894,7 +895,7 @@ function ChatListColumn() {
                 aria-current={isNewChatActive ? "page" : undefined}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               >
-                <IconEdit size={17} stroke={1.8} />
+                <Edit size={17} strokeWidth={1.8} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">

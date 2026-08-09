@@ -6,12 +6,7 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconCircleCheck,
-  IconCopy,
-  IconDotsVertical,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { CircleCheck, Copy, EllipsisVertical, Loader2 } from "lucide-react";
 import { Button } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
@@ -110,7 +105,7 @@ function PhoneNumberCopyButton({
       }}
     >
       {formatted}
-      <IconCopy size={13} className="shrink-0 text-muted-foreground" />
+      <Copy size={13} className="shrink-0 text-muted-foreground" />
     </button>
   );
 }
@@ -134,9 +129,9 @@ function AgentPhoneVerificationStatus({
     >
       <span className="flex items-center gap-2">
         {connecting ? (
-          <IconLoader2 size={14} className="shrink-0 animate-spin" />
+          <Loader2 size={14} className="shrink-0 animate-spin" />
         ) : (
-          <IconCircleCheck size={14} className="shrink-0 text-green-600" />
+          <CircleCheck size={14} className="shrink-0 text-green-600" />
         )}
         <span>
           {t(
@@ -183,7 +178,7 @@ function AgentPhoneConnectActions({
         type="submit"
         disabled={!normalizedPhone || Boolean(phoneError) || busy}
       >
-        {busy ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        {busy ? <Loader2 size={14} className="animate-spin" /> : null}
         {starting
           ? t(($) => {
               return $.connectors.providerSettings.agentphone.sending;
@@ -368,7 +363,7 @@ function AgentPhoneCardActions() {
                 data-testid="agentphone-connected-indicator"
                 className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
               >
-                <IconCircleCheck className="h-3 w-3 text-green-600" />
+                <CircleCheck className="h-3 w-3 text-green-600" />
                 <span className="min-w-0 truncate">
                   {connectedPhone ??
                     t(($) => {
@@ -414,7 +409,7 @@ function AgentPhoneCardActions() {
                 return $.connectors.providerSettings.agentphone.options;
               })}
             >
-              <IconDotsVertical size={16} stroke={1.5} />
+              <EllipsisVertical size={16} strokeWidth={1.5} />
             </button>
           </PopoverTrigger>
           <PopoverContent

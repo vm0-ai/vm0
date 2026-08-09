@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
+import { ArrowUpRight, Pin, UserPlus } from "lucide-react";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
@@ -264,7 +264,7 @@ function InviteButton() {
       tabIndex={isAdmin ? undefined : -1}
       data-testid="invite-button"
     >
-      <IconUserPlus size={14} stroke={1.5} />
+      <UserPlus size={14} strokeWidth={1.5} />
       {t(($) => {
         return $.chat.agentPage.invitePeople;
       })}
@@ -304,7 +304,7 @@ function PinPill() {
               return $.sidebar.pin;
             })}
           >
-            <IconPin size={12} stroke={2} />
+            <Pin size={12} strokeWidth={2} data-explicit-stroke-width />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -399,10 +399,11 @@ function SuggestedPromptButton({
         onSelectPrompt(item.prompt);
       }}
     >
-      <IconArrowUpRight
+      <ArrowUpRight
         size={14}
-        stroke={2}
+        strokeWidth={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+        data-explicit-stroke-width
       />
       <p className="text-sm font-semibold text-foreground pr-5">{item.title}</p>
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
@@ -446,10 +447,11 @@ function IdeasUseCasesButton() {
       className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-state-hover transition-colors"
       onClick={handleClick}
     >
-      <IconArrowUpRight
+      <ArrowUpRight
         size={14}
-        stroke={2}
+        strokeWidth={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+        data-explicit-stroke-width
       />
       <p className="text-sm font-semibold text-foreground pr-5">
         {t(($) => {
@@ -467,7 +469,7 @@ function IdeasUseCasesButton() {
             return $.ideation.entry.viewAll;
           })}
         </span>
-        <IconArrowUpRight size={14} stroke={2} />
+        <ArrowUpRight size={14} strokeWidth={2} data-explicit-stroke-width />
       </div>
     </button>
   );

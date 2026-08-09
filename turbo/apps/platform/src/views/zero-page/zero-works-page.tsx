@@ -3,13 +3,13 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type { TeamsConnectStatus } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconAlertTriangle,
-  IconCircleCheck,
-  IconDotsVertical,
-  IconDownload,
-  IconSettings,
-  IconWebhook,
-} from "@tabler/icons-react";
+  AlertTriangle,
+  CircleCheck,
+  EllipsisVertical,
+  Download,
+  Settings,
+  Webhook,
+} from "lucide-react";
 import { Button } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
@@ -87,7 +87,7 @@ function ConnectedIndicator({
       data-testid={testId}
       className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
     >
-      <IconCircleCheck className="h-3 w-3 text-green-600" />
+      <CircleCheck className="h-3 w-3 text-green-600" />
       <span className="min-w-0 truncate" title={connectedDetail ?? ""}>
         {connectedDetail
           ? t(
@@ -144,7 +144,7 @@ function SlackCardActions({
             return openFreshOAuth(installUrl);
           }}
         >
-          <IconDownload size={14} stroke={1.5} />
+          <Download size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.works.slack.install;
           })}
@@ -174,7 +174,7 @@ function SlackCardActions({
                 return $.works.actions.moreOptions;
               })}
             >
-              <IconDotsVertical size={16} stroke={1.5} />
+              <EllipsisVertical size={16} strokeWidth={1.5} />
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -233,7 +233,7 @@ function SlackPermissionWarning({
 
   return (
     <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
-      <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
+      <AlertTriangle size={16} className="shrink-0 text-amber-500" />
       <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
         {t(($) => {
           return $.works.slack.permissionsUpdated;
@@ -437,7 +437,7 @@ function TeamsCardActions({
             return openFreshOAuth(installActionUrl);
           }}
         >
-          <IconDownload size={14} stroke={1.5} />
+          <Download size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.works.teams.install;
           })}
@@ -468,7 +468,7 @@ function TeamsCardActions({
                 return $.works.teams.moreOptions;
               })}
             >
-              <IconDotsVertical size={16} stroke={1.5} />
+              <EllipsisVertical size={16} strokeWidth={1.5} />
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -538,7 +538,7 @@ function TeamsPermissionWarning({
 
   return (
     <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
-      <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
+      <AlertTriangle size={16} className="shrink-0 text-amber-500" />
       <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
         {t(($) => {
           return $.works.teams.permissionsUpdated;
@@ -783,7 +783,7 @@ function GithubCard() {
               target="_blank"
               rel="noreferrer"
             >
-              <IconDownload size={14} stroke={1.5} />
+              <Download size={14} strokeWidth={1.5} />
               {t(($) => {
                 return $.works.github.install;
               })}
@@ -844,7 +844,7 @@ function TelegramCard() {
           </div>
         </div>
         <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <IconSettings size={14} stroke={1.5} />
+          <Settings size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.works.actions.manage;
           })}
@@ -863,7 +863,7 @@ function StrapiCard() {
     >
       <div className="flex items-center gap-4 p-4">
         <div className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#4945ff]/10 text-[#4945ff]">
-          <IconWebhook size={18} />
+          <Webhook size={18} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="truncate text-sm font-medium text-foreground">
@@ -878,7 +878,7 @@ function StrapiCard() {
           </div>
         </div>
         <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <IconSettings size={14} stroke={1.5} />
+          <Settings size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.works.actions.manage;
           })}

@@ -1,4 +1,4 @@
-import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
+import { Check, CircleDashed, Loader } from "lucide-react";
 import { Markdown } from "../../../components/markdown.tsx";
 import {
   eventGroupKey,
@@ -266,7 +266,7 @@ function TaskEventGroupCard({
         )}
         <div className="flex gap-2 items-center relative">
           {isRunning ? (
-            <IconLoader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
+            <Loader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
           ) : (
             <StatusDot variant={isFailed ? "error" : "success"} />
           )}
@@ -304,7 +304,7 @@ function TaskEventGroupCard({
         <summary className="cursor-pointer list-none relative py-2">
           <div className="flex gap-2 items-center">
             {isRunning ? (
-              <IconLoader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
+              <Loader className="h-3 w-3 text-yellow-600 animate-spin shrink-0" />
             ) : (
               <StatusDot variant={isFailed ? "error" : "success"} />
             )}
@@ -470,13 +470,13 @@ function ResultEventGroupCard({
 function getTodoStatusIcon(status: string) {
   switch (status) {
     case "completed": {
-      return <IconCheck className="h-4 w-4 text-green-600" />;
+      return <Check className="h-4 w-4 text-green-600" />;
     }
     case "in_progress": {
-      return <IconLoader className="h-4 w-4 text-yellow-500" />;
+      return <Loader className="h-4 w-4 text-yellow-500" />;
     }
     default: {
-      return <IconCircleDashed className="h-4 w-4 text-muted-foreground" />;
+      return <CircleDashed className="h-4 w-4 text-muted-foreground" />;
     }
   }
 }

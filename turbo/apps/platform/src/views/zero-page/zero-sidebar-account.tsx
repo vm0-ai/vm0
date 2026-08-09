@@ -9,15 +9,15 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  IconLogout,
-  IconPlus,
-  IconChevronRight,
-  IconSettings,
-  IconSwitchHorizontal,
-  IconDatabaseExport,
-  IconFlask,
-  IconCoins,
-} from "@tabler/icons-react";
+  LogOut,
+  Plus,
+  ChevronRight,
+  Settings,
+  ArrowRightLeft,
+  DatabaseBackup,
+  FlaskConical,
+  Coins,
+} from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   DropdownMenu,
@@ -412,7 +412,7 @@ function CreditBalanceItem({
       onModalSelect={onOpenCreditBalance}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
+      <Coins size={18} strokeWidth={1.5} className="text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
         {loading ? (
           <span className="block h-4 w-24 rounded bg-muted/60" />
@@ -440,9 +440,9 @@ function UnifiedSettingsGroup({
         onModalSelect={onOpenSettings}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
-        <IconSettings
+        <Settings
           size={18}
-          stroke={1.5}
+          strokeWidth={1.5}
           className="text-muted-foreground"
         />
         <span>
@@ -458,7 +458,11 @@ function UnifiedSettingsGroup({
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconFlask size={18} stroke={1.5} className="text-muted-foreground" />
+          <FlaskConical
+            size={18}
+            strokeWidth={1.5}
+            className="text-muted-foreground"
+          />
           <span>
             {t(($) => {
               return $.settings.accountMenu.lab;
@@ -487,7 +491,7 @@ function AccountManagementGroup({
         onClick={onAddAccount}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
-        <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+        <Plus size={18} strokeWidth={1.5} className="text-muted-foreground" />
         <span>
           {t(($) => {
             return $.settings.accountMenu.addAccount;
@@ -499,9 +503,9 @@ function AccountManagementGroup({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
-        <IconSwitchHorizontal
+        <ArrowRightLeft
           size={18}
-          stroke={1.5}
+          strokeWidth={1.5}
           className="text-muted-foreground"
         />
         <span className="flex-1">
@@ -509,9 +513,9 @@ function AccountManagementGroup({
             return $.settings.accountMenu.switchAccount;
           })}
         </span>
-        <IconChevronRight
+        <ChevronRight
           size={14}
-          stroke={1.5}
+          strokeWidth={1.5}
           className="text-muted-foreground"
         />
       </DropdownMenuSubTrigger>
@@ -546,7 +550,7 @@ function AccountManagementGroup({
           onClick={onAddAccount}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+          <Plus size={18} strokeWidth={1.5} className="text-muted-foreground" />
           <span>
             {t(($) => {
               return $.settings.accountMenu.addAccount;
@@ -567,9 +571,9 @@ function ExtraAccountActions() {
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <IconDatabaseExport
+      <DatabaseBackup
         size={18}
-        stroke={1.5}
+        strokeWidth={1.5}
         className="text-muted-foreground"
       />
       <span>
@@ -594,7 +598,7 @@ function SignOutItem({
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
-      <IconLogout size={18} stroke={1.5} className="text-muted-foreground" />
+      <LogOut size={18} strokeWidth={1.5} className="text-muted-foreground" />
       <span>
         {t(($) => {
           return $.settings.accountMenu.signOut;
