@@ -847,6 +847,14 @@ describe("thread-owned utility sidebar", () => {
       zeroBrowserContract.resizeByThread,
       ({ body, respond }) => {
         resizeAspectRatios.push(body.aspectRatio);
+        if (resizeAspectRatios.length === 2) {
+          return respond(404, {
+            error: {
+              code: "BROWSER_NOT_FOUND",
+              message: "Managed browser not found",
+            },
+          });
+        }
         browser = {
           ...browser,
           screen: { width: 1440, height: 1800, resizable: true },
@@ -937,6 +945,15 @@ describe("thread-owned utility sidebar", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
     });
+    click(screen.getByLabelText("Fit browser to window"));
+    await waitFor(() => {
+      expect(resizeAspectRatios).toStrictEqual([0.8, 1]);
+      expect(screen.getByLabelText("Fit browser to window")).toBeEnabled();
+    });
+    expect(
+      screen.queryByText("Managed browser not found"),
+    ).not.toBeInTheDocument();
+
     viewportWidth = 720;
     window.dispatchEvent(new Event("resize"));
     await waitFor(() => {
