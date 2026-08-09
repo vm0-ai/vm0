@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.42](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.41...desktop-v0.29.42) (2026-08-09)
+
+
+### Refactoring
+
+* **ui:** replace tabler icons with lucide ([#25852](https://github.com/vm0-ai/vm0/issues/25852)) ([ce0f2f7](https://github.com/vm0-ai/vm0/commit/ce0f2f7a14ec86850862cc7c98f1e4dd1dac191f))
+
 ## [0.29.41](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.40...desktop-v0.29.41) (2026-08-09)
 
 
