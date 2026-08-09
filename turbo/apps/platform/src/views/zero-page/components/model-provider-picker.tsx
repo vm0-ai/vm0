@@ -6,7 +6,7 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
-import { IconBolt, IconCheck, IconCpu } from "@tabler/icons-react";
+import { Bolt, Check, Cpu } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -177,7 +177,7 @@ function ResponsiveTriggerContent({
         {iconType ? (
           <ProviderIcon type={iconType} size={18} />
         ) : (
-          <IconCpu size={18} stroke={1.5} />
+          <Cpu size={18} strokeWidth={1.5} />
         )}
       </span>
       <span className="hidden min-w-0 sm:inline-flex sm:items-center sm:gap-1.5">
@@ -362,7 +362,7 @@ function ModelFirstTriggerLabel({
           </span>
           {codexServiceTier === "fast" && (
             <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 text-[11px] font-medium leading-none text-amber-700 dark:text-amber-300">
-              <IconBolt size={12} stroke={1.8} />
+              <Bolt size={12} strokeWidth={1.8} />
               {t(($) => {
                 return $.settings.models.picker.fast;
               })}
@@ -464,7 +464,7 @@ function ModelFirstPolicyRowContent({
       {restricted && <ProBadge />}
       {showSelectedIndicator && (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-foreground">
-          {selected && <IconCheck size={15} stroke={1.8} />}
+          {selected && <Check size={15} strokeWidth={1.8} />}
         </span>
       )}
     </span>
@@ -624,7 +624,7 @@ function CodexFastModeSplitPanel({
           }}
         >
           <span className="inline-flex items-center gap-1 text-xs font-medium">
-            <IconBolt size={12} stroke={1.8} />
+            <Bolt size={12} strokeWidth={1.8} />
             {t(($) => {
               return $.settings.models.picker.fast;
             })}
