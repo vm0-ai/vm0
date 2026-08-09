@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.410.0](https://github.com/vm0-ai/vm0/compare/api-v1.409.1...api-v1.410.0) (2026-08-09)
+
+
+### Features
+
+* unify conversation search results ([#25901](https://github.com/vm0-ai/vm0/issues/25901)) ([ce3cd5d](https://github.com/vm0-ai/vm0/commit/ce3cd5d2992214c49c0e98875949c9d4cf928b68))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.300.0
+    * @vm0/core bumped to 8.533.2
+    * @vm0/db bumped to 1.181.8
+    * @vm0/pi-agent-runtime bumped to 1.3.20
+
 ## [1.409.1](https://github.com/vm0-ai/vm0/compare/api-v1.409.0...api-v1.409.1) (2026-08-09)
 
 
