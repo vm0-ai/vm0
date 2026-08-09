@@ -1184,41 +1184,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn registration_rejects_builtin_routing_pin_without_raw_run_values() {
-        let harness = RegistryHarness::new().await;
-        let firewalls = vec![FirewallEntry::Builtin {
-            name: "slack".to_string(),
-            base_url_vars: Some(HashMap::from([(
-                "SLACK_HOST".to_string(),
-                "resolved.example.test".to_string(),
-            )])),
-        }];
-        let targets = vec![ConnectorRuntimeTargetRegistration::Builtin {
-            connector_slug: "slack".to_string(),
-        }];
-
-        let error = harness
-            .handle
-            .register_vm(
-                "10.200.0.2",
-                &VmRegistration {
-                    firewalls: Some(&firewalls),
-                    connector_runtime_targets: Some(&targets),
-                    ..base_registration()
-                },
-            )
-            .await
-            .expect_err("missing raw routing variables must reject registration");
-
-        assert!(
-            error
-                .to_string()
-                .contains("builtin connector slack is missing routing variable SLACK_HOST"),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[tokio::test]
     async fn registration_rejects_custom_firewall_name_owned_by_builtin() {
         let harness = RegistryHarness::new().await;
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";

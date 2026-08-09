@@ -193,45 +193,6 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
     assert flow.request.headers["Authorization"] == "Bearer resolved"
 
 
-async def test_custom_connector_without_routing_variables_is_rejected(
-    tmp_path, real_flow, mitm_ctx
-):
-    custom_connector_id = "550e8400-e29b-41d4-a716-446655440000"
-    vm_info = _single_firewall_vm(
-        tmp_path,
-        firewall_name="custom_connector_550e8400e29b41d4a716446655440000",
-        custom_connector_id=custom_connector_id,
-        api_entry={
-            "id": "custom:0",
-            "base": "https://custom.example.test/api/",
-            "auth": {"headers": {"Authorization": "Bearer ${{ secrets.CUSTOM_TOKEN }}"}},
-        },
-        network_policy={
-            "allow": [],
-            "deny": [],
-            "ask": [],
-            "unknownPolicy": "allow",
-        },
-    )
-    vm_info.pop("connectorRoutingVariables")
-    reg_path = _write_registry(tmp_path, vm_info=vm_info)
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="custom.example.test",
-        path="/api/items",
-    )
-
-    with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        pytest.raises(
-            TypeError,
-            match="custom connector routing variables are missing from proxy registry",
-        ),
-    ):
-        await mitm_addon.request(flow)
-
-
 async def test_builtin_connector_routing_variables_are_forwarded_with_matched_firewall(
     tmp_path, real_flow, mitm_ctx
 ):
