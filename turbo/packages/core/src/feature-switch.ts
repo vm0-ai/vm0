@@ -329,7 +329,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Serve chat keyword search from the chat_event_search_docs projection instead of scanning chat_events with ILIKE.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatEventSnapshotRead]: {
     maintainer: "ethan@vm0.ai",
