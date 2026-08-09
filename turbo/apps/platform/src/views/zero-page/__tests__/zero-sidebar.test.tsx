@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  chatSearchContract,
   chatThreadByIdContract,
   chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
@@ -1710,6 +1711,177 @@ describe("zero sidebar", () => {
         screen.queryByRole("dialog", { name: "Talk to" }),
       ).not.toBeInTheDocument();
       expect(document.title).toBe("Support escalation | VM0");
+    });
+  });
+
+  it("unifies local thread titles with indexed message matches", async () => {
+    prepareAgentTeam();
+    context.mocks.data.team([
+      {
+        id: AGENT_ID,
+        ownerId: "test-user-123",
+        displayName: "Zero",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        visibility: "public",
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: RESEARCH_AGENT_ID,
+        ownerId: "test-user-123",
+        displayName: "Deploy alpha",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        visibility: "public",
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: SUPPORT_AGENT_ID,
+        ownerId: "test-user-123",
+        displayName: "Planning deploy",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        visibility: "public",
+        headVersionId: "version_3",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "c0000000-0000-4000-a000-000000000004",
+        ownerId: "test-user-123",
+        displayName: "Deploy beta",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        visibility: "public",
+        headVersionId: "version_4",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "c0000000-0000-4000-a000-000000000005",
+        ownerId: "test-user-123",
+        displayName: "Deploy gamma",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        visibility: "public",
+        headVersionId: "version_5",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    const deployThread = createThread(RESEARCH_THREAD_ID, "Deployment notes", {
+      agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+    });
+    const deployFollowup = createThread(
+      INCIDENT_THREAD_ID,
+      "Deployment follow-up",
+      { agent: { id: RESEARCH_AGENT_ID, avatarUrl: null } },
+    );
+    const deployArchive = createThread(
+      AUTOMATION_THREAD_ID,
+      "Deployment archive",
+      { agent: { id: RESEARCH_AGENT_ID, avatarUrl: null } },
+    );
+    mockSidebarThreadStory([deployThread, deployFollowup, deployArchive]);
+    const searchResponse = context.mocks.deferred<void>();
+    let requestedKeyword: string | undefined;
+    context.mocks.api(chatSearchContract.search, async ({ query, respond }) => {
+      requestedKeyword = query.keyword;
+      await searchResponse.promise;
+      return respond(200, {
+        results: Array.from({ length: 25 }, (_, index) => {
+          return {
+            chatThreadId: RESEARCH_THREAD_ID,
+            agentName: "Research Agent",
+            matchedMessage: {
+              messageId: `a0000000-0000-4000-a000-${String(index + 1).padStart(
+                12,
+                "0",
+              )}`,
+              chatThreadId: RESEARCH_THREAD_ID,
+              role: "user" as const,
+              content: `Production deploy ${index + 1} finished successfully`,
+              createdAt: "2026-03-10T00:10:00Z",
+              seqId: index + 1,
+              sequenceNumber: null,
+              runId: null,
+            },
+            matchedRanges: [{ start: 11, end: 17 }],
+            contextBefore: [],
+            contextAfter: [],
+          };
+        }),
+        hasMore: false,
+      });
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(sidebar()).toBeInTheDocument();
+    });
+    click(within(sidebar()).getByLabelText("Open a conversation"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    await fill(
+      within(dialog).getByPlaceholderText("Search agents and chats..."),
+      "deploy",
+    );
+
+    await waitFor(() => {
+      expect(requestedKeyword).toBe("deploy");
+      expect(within(dialog).getByText("Deployment notes")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("Deployment archive"),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText("Searching...")).toBeInTheDocument();
+    });
+
+    searchResponse.resolve();
+
+    await waitFor(() => {
+      expect(
+        within(dialog).queryByText("Searching..."),
+      ).not.toBeInTheDocument();
+      expect(within(dialog).getAllByText("Deployment notes")).toHaveLength(22);
+      expect(
+        within(dialog).queryByText("Deployment archive"),
+      ).not.toBeInTheDocument();
+    });
+    const [highlighted] = within(dialog).getAllByText("deploy");
+    if (!highlighted) {
+      throw new Error("Highlighted message search term not found");
+    }
+    expect(highlighted).toHaveClass("text-foreground");
+
+    const results = within(dialog).getAllByRole("option");
+    expect(results).toHaveLength(25);
+    expect(results[0]).toHaveTextContent("Deploy alpha");
+    expect(results[1]).toHaveTextContent("Deploy beta");
+    expect(results[2]).toHaveTextContent("Deployment notes");
+    expect(results[3]).toHaveTextContent("Deployment follow-up");
+    expect(results[4]).toHaveTextContent(
+      "Production deploy 1 finished successfully",
+    );
+    expect(within(dialog).queryByText("Deploy gamma")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Planning deploy"),
+    ).not.toBeInTheDocument();
+    const messageResult = highlighted.closest("[cmdk-item]");
+    if (!(messageResult instanceof HTMLElement)) {
+      throw new Error("Message search result not found");
+    }
+    click(messageResult);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Talk to" }),
+      ).not.toBeInTheDocument();
+      expect(document.title).toBe("Deployment notes | VM0");
     });
   });
 

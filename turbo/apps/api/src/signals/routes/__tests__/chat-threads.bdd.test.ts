@@ -2486,6 +2486,9 @@ describe("CHAT-01 chat search", () => {
     expect(isolation.results[0]?.matchedMessage.content).toBe(
       "owner says supercalifragilistic",
     );
+    expect(isolation.results[0]?.matchedRanges).toStrictEqual([
+      { start: 11, end: 31 },
+    ]);
     expect(isolation.results[0]?.agentName).toStrictEqual(expect.any(String));
 
     // Canonical userMessage fields, not the legacy content projection, own
@@ -2949,6 +2952,9 @@ describe("CHAT-01 chat search index", () => {
     expect(partialWord.results).toStrictEqual([]);
     const wholeWord = await chat.searchChat(owner, "vercel");
     expect(wholeWord.results).toHaveLength(1);
+    expect(wholeWord.results[0]?.matchedRanges).toStrictEqual([
+      { start: 7, end: 13 },
+    ]);
 
     // Re-running the projector is idempotent for already-indexed threads.
     const secondTick = await projectChatEventSearch();

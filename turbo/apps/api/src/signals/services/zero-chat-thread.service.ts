@@ -63,7 +63,10 @@ import {
   sql,
 } from "drizzle-orm";
 
-import { chatSearchBigramTsquery } from "../../lib/chat-search-bigram";
+import {
+  chatSearchBigramTsquery,
+  chatSearchMatchRanges,
+} from "../../lib/chat-search-bigram";
 import {
   pgBooleanDecoder,
   pgIntegerDecoder,
@@ -1351,10 +1354,15 @@ export function zeroChatSearch(args: {
       if (!context) {
         throw new Error("chat search context is missing a matched message");
       }
+      const matchedMessage = toChatSearchMessage(match);
       return {
         chatThreadId: match.chatThreadId,
         agentName: match.agentName,
-        matchedMessage: toChatSearchMessage(match),
+        matchedMessage,
+        matchedRanges: chatSearchMatchRanges(
+          matchedMessage.content,
+          args.keyword,
+        ),
         contextBefore: context.before,
         contextAfter: context.after,
       };

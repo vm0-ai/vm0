@@ -620,6 +620,7 @@
     "pinnedAgents": "ピン留めしたエージェント",
     "searchAgents": "エージェントを検索...",
     "searchAgentsAndChats": "エージェントとチャットを検索...",
+    "searching": "検索中...",
     "sections": {
       "chats": "チャット",
       "lead": "リード",

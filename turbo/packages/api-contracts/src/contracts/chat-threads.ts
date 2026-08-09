@@ -1389,10 +1389,19 @@ const chatSearchMessageSchema = z.object({
   runId: z.string().nullable(),
 });
 
+const chatSearchMatchRangeSchema = z.object({
+  /** UTF-16 code-unit offset, compatible with JavaScript String.slice. */
+  start: z.number().int().nonnegative(),
+  /** Exclusive UTF-16 code-unit offset. */
+  end: z.number().int().positive(),
+});
+
 const chatSearchResultSchema = z.object({
   chatThreadId: z.string(),
   agentName: z.string(),
   matchedMessage: chatSearchMessageSchema,
+  /** Optional while independently deployed API instances roll forward. */
+  matchedRanges: z.array(chatSearchMatchRangeSchema).optional(),
   contextBefore: z.array(chatSearchMessageSchema),
   contextAfter: z.array(chatSearchMessageSchema),
 });

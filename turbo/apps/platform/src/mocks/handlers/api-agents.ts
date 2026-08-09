@@ -11,6 +11,7 @@ import {
   zeroAgentDraftContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import {
+  chatSearchContract,
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -202,6 +203,11 @@ export const apiAgentsHandlers = [
       events: [],
       hasMore: false,
     });
+  }),
+
+  // GET /api/zero/chat/search
+  mockApi(chatSearchContract.search, ({ respond }) => {
+    return respond(200, { results: [], hasMore: false });
   }),
 
   // GET /api/zero/chat-threads/active-ids

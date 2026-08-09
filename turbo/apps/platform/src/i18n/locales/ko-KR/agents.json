@@ -620,6 +620,7 @@
     "pinnedAgents": "고정된 에이전트",
     "searchAgents": "에이전트 검색...",
     "searchAgentsAndChats": "에이전트 및 채팅 검색...",
+    "searching": "검색 중...",
     "sections": {
       "chats": "채팅",
       "lead": "리드",
