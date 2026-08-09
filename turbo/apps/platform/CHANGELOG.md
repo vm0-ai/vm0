@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.712.2](https://github.com/vm0-ai/vm0/compare/app-v0.712.1...app-v0.712.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** keep agent chat default model cached ([#25896](https://github.com/vm0-ai/vm0/issues/25896)) ([e33b9fe](https://github.com/vm0-ai/vm0/commit/e33b9fe99ae576cd37d9f454b37e0041342a149e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.533.0
+
 ## [0.712.1](https://github.com/vm0-ai/vm0/compare/app-v0.712.0...app-v0.712.1) (2026-08-09)
 
 

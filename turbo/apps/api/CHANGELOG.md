@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.409.0](https://github.com/vm0-ai/vm0/compare/api-v1.408.0...api-v1.409.0) (2026-08-09)
+
+
+### Features
+
+* **chat-search:** enable indexed search for all users ([#25887](https://github.com/vm0-ai/vm0/issues/25887)) ([8cdca52](https://github.com/vm0-ai/vm0/commit/8cdca52c3b75e021dbab3a6573f991a6ceea84f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.533.0
+    * @vm0/db bumped to 1.181.6
+
 ## [1.408.0](https://github.com/vm0-ai/vm0/compare/api-v1.407.2...api-v1.408.0) (2026-08-09)
 
 

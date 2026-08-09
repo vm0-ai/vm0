@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.533.0](https://github.com/vm0-ai/vm0/compare/core-v8.532.4...core-v8.533.0) (2026-08-09)
+
+
+### Features
+
+* **chat-search:** enable indexed search for all users ([#25887](https://github.com/vm0-ai/vm0/issues/25887)) ([8cdca52](https://github.com/vm0-ai/vm0/commit/8cdca52c3b75e021dbab3a6573f991a6ceea84f9))
+
 ## [8.532.4](https://github.com/vm0-ai/vm0/compare/core-v8.532.3...core-v8.532.4) (2026-08-09)
 
 
