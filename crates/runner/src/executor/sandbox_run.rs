@@ -684,7 +684,6 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     )
     .await;
     outcome.workspace_image = workspace_image;
-    outcome.workspace_reuse_result = Some(workspace_reuse_result);
     Ok(outcome)
 }
 
@@ -1704,47 +1703,6 @@ mod tests {
             ask: Vec::new(),
             unknown_policy: "ask".to_string(),
         }
-    }
-
-    #[test]
-    fn workspace_checkout_maps_to_final_reuse_result() {
-        for (checkout, expected) in [
-            (
-                Some(WorkspaceCacheCheckoutResult::Hit),
-                WorkspaceReuseResult::Reused,
-            ),
-            (
-                Some(WorkspaceCacheCheckoutResult::Miss),
-                WorkspaceReuseResult::CacheMiss,
-            ),
-            (
-                Some(WorkspaceCacheCheckoutResult::NoReuseKey),
-                WorkspaceReuseResult::NoReuseKey,
-            ),
-            (
-                Some(WorkspaceCacheCheckoutResult::InvalidWorkingDir),
-                WorkspaceReuseResult::InvalidWorkingDir,
-            ),
-            (
-                Some(WorkspaceCacheCheckoutResult::LockBusy),
-                WorkspaceReuseResult::LockBusy,
-            ),
-            (
-                Some(WorkspaceCacheCheckoutResult::InvalidMetadata),
-                WorkspaceReuseResult::InvalidMetadata,
-            ),
-            (
-                Some(WorkspaceCacheCheckoutResult::DiskPressure),
-                WorkspaceReuseResult::DiskPressure,
-            ),
-            (None, WorkspaceReuseResult::NotConfigured),
-        ] {
-            assert_eq!(final_workspace_reuse_result(checkout, false), expected);
-        }
-        assert_eq!(
-            final_workspace_reuse_result(Some(WorkspaceCacheCheckoutResult::Hit), true),
-            WorkspaceReuseResult::SandboxPrepareFallback,
-        );
     }
 
     #[test]

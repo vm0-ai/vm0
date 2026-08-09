@@ -2671,6 +2671,7 @@ describe("activity detail polling", () => {
       workspaceResult: "cacheMiss",
       startup: "Cold start",
       description: "No reuse key was available to match an idle sandbox.",
+      workspaceDescription: "No cached workspace matched the reuse key.",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000408",
@@ -2679,6 +2680,7 @@ describe("activity detail polling", () => {
       startup: "Unknown",
       description:
         "Legacy result: the exact reason the sandbox was not reused is unavailable.",
+      workspaceDescription: "Unavailable",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000410",
@@ -2686,6 +2688,7 @@ describe("activity detail polling", () => {
       workspaceResult: undefined,
       startup: "Unknown",
       description: "Sandbox reuse is disabled for this run.",
+      workspaceDescription: "Unavailable",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000411",
@@ -2693,6 +2696,7 @@ describe("activity detail polling", () => {
       workspaceResult: "cacheMiss",
       startup: "Cold start",
       description: "No matching sandbox found in the idle pool.",
+      workspaceDescription: "No cached workspace matched the reuse key.",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000412",
@@ -2700,6 +2704,7 @@ describe("activity detail polling", () => {
       workspaceResult: "cacheMiss",
       startup: "Cold start",
       description: "Idle pool entry exists but its profile does not match.",
+      workspaceDescription: "No cached workspace matched the reuse key.",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000413",
@@ -2708,6 +2713,7 @@ describe("activity detail polling", () => {
       startup: "Cold start",
       description:
         "Idle pool entry exists but its device rate limiter state does not match.",
+      workspaceDescription: "No cached workspace matched the reuse key.",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000414",
@@ -2715,10 +2721,18 @@ describe("activity detail polling", () => {
       workspaceResult: "cacheMiss",
       startup: "Cold start",
       description: "Unpark attempt failed; a fresh sandbox was provisioned.",
+      workspaceDescription: "No cached workspace matched the reuse key.",
     },
   ] as const)(
     "shows the $result sandbox reuse reason",
-    async ({ runId, result, workspaceResult, startup, description }) => {
+    async ({
+      runId,
+      result,
+      workspaceResult,
+      startup,
+      description,
+      workspaceDescription,
+    }) => {
       context.mocks.data.composesList([]);
       context.mocks.api(logsByIdContract.getById, ({ respond }) => {
         return respond(
@@ -2769,13 +2783,7 @@ describe("activity detail polling", () => {
       });
       expect(screen.getAllByText("Not reused")).not.toHaveLength(0);
       expect(screen.getByText(description)).toBeInTheDocument();
-      if (workspaceResult === "cacheMiss") {
-        expect(
-          screen.getByText("No cached workspace matched the reuse key."),
-        ).toBeInTheDocument();
-      } else {
-        expect(screen.getByText("Unavailable")).toBeInTheDocument();
-      }
+      expect(screen.getByText(workspaceDescription)).toBeInTheDocument();
     },
   );
 
