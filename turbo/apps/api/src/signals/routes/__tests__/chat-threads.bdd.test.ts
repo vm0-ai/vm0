@@ -39,6 +39,7 @@ import {
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
 import {
+  holdChatThreadDeletionAfterEventFixture,
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
   withChatThreadSnapshotScopeWritesPausedFixture,
@@ -3535,6 +3536,54 @@ describe("CHAT-01 catch-up cron metrics", () => {
     expect(watermarkThreads).toBeLessThanOrEqual(targetThreads);
     expect(laggingThreads).toBeLessThanOrEqual(targetThreads);
   }, 60_000);
+
+  it("isolates compaction metrics from an in-flight thread deletion", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    if (!owner.orgId) {
+      throw new Error("Expected an organization-scoped chat actor");
+    }
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Compaction deletion lock agent",
+    });
+    const thread = await chat.createThread(owner, {
+      agentId: agent.agentId,
+      title: "Compaction deletion lock thread",
+      eventId: randomUUID(),
+    });
+    const held = await holdChatThreadDeletionAfterEventFixture({
+      userId: owner.userId,
+      orgId: owner.orgId,
+      chatThreadId: thread.id,
+      signal: context.signal,
+    });
+    let isolationEntered = false;
+    const isolation = withChatThreadSnapshotScopeWritesPausedFixture({
+      signal: context.signal,
+      run: () => {
+        isolationEntered = true;
+        return Promise.resolve();
+      },
+    });
+    onTestFinished(async () => {
+      held.release();
+      await Promise.allSettled([held.done, isolation]);
+    });
+
+    // The deletion already owns the sequence row. Isolation must still enter
+    // without waiting on it; otherwise releasing deletion would complete the
+    // reverse sequence-then-thread lock order as a deadlock.
+    await expect
+      .poll(async () => {
+        return {
+          isolationEntered,
+          blockedWaiters: await held.blockedWaiterCount(),
+        };
+      })
+      .toStrictEqual({ isolationEntered: true, blockedWaiters: 0 });
+    await isolation;
+    held.release();
+    await held.done;
+  }, 30_000);
 
   it("reports bounded compaction backlog and table scale", async () => {
     const firstOwner = bdd.user({ orgId: `org_${randomUUID()}` });

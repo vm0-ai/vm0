@@ -2,11 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import {
-  chatThreadEventSequences,
-  chatThreadEvents,
-} from "@vm0/db/schema/chat-thread-event";
-import { count, eq, sql, type SQL } from "drizzle-orm";
+import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
+import { and, count, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -69,7 +66,12 @@ export async function withChatThreadSnapshotScopeWritesPausedFixture<T>(args: {
   readonly run: () => Promise<T>;
 }): Promise<T> {
   return await withScopeWritesPausedFixture(
-    sql`LOCK TABLE ${chatThreads}, ${chatThreadEventSequences} IN SHARE MODE`,
+    // Every committed lifecycle event either follows a chat_threads write or,
+    // for deletion, precedes the chat_threads delete in the same transaction.
+    // Blocking that table is therefore sufficient to freeze committed scope
+    // state without reversing the deletion writer's sequence-then-thread lock
+    // order and creating a deadlock.
+    sql`LOCK TABLE ${chatThreads} IN SHARE MODE`,
     args,
   );
 }
@@ -178,6 +180,83 @@ export async function holdChatThreadEventInsertTransactionFixture(
     done,
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(pid);
+    },
+  };
+}
+
+/**
+ * Pauses the production deletion lock order after its lifecycle event append
+ * and before the thread delete. Product endpoints cannot expose this boundary,
+ * so the fixture makes that interleaving deterministic for lock regressions.
+ */
+export async function holdChatThreadDeletionAfterEventFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly chatThreadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat-thread deletion holder pid");
+    }
+    const [ownedThread] = await tx
+      .select({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.chatThreadId),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .for("update");
+    if (!ownedThread) {
+      throw new Error("Expected the chat thread held for deletion");
+    }
+    await appendChatThreadEvent(tx, {
+      kind: "deleted",
+      userId: args.userId,
+      orgId: args.orgId,
+      chatThreadId: ownedThread.id,
+      agentComposeId: ownedThread.agentComposeId,
+    });
+    started.resolve(holderPid);
+    await released.promise;
+    const [deletedThread] = await tx
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, ownedThread.id))
+      .returning({ id: chatThreads.id });
+    if (!deletedThread) {
+      throw new Error("Expected the held chat thread deletion");
+    }
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }
