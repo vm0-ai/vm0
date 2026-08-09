@@ -203,29 +203,69 @@ export function detachedSetupPage(options: Parameters<typeof setupPage>[0]) {
   detach(setupPage(options), Reason.Entrance, "test");
 }
 
-// Helper to create a pushState mock that updates mockLocation
+// Helper to create a browser history mock that updates mockLocation.
 function createPushStateMock(signal: AbortSignal) {
-  const updateLocation = (url?: string | URL | null) => {
-    if (typeof url === "string") {
-      const urlObj = new URL(url, "http://localhost");
-      setPathname(urlObj.pathname);
-      setSearch(urlObj.search);
-    }
+  interface HistoryEntry {
+    readonly data: unknown;
+    readonly url: URL;
+  }
+
+  const entries: HistoryEntry[] = [];
+  let currentEntryIndex = -1;
+
+  const resolveUrl = (url?: string | URL | null) => {
+    return new URL(url?.toString() ?? "/", "http://localhost");
   };
 
-  const fn = vi.fn(
-    (_data: unknown, _unused: string, url?: string | URL | null) => {
-      updateLocation(url);
+  const updateLocation = (entry: HistoryEntry) => {
+    setPathname(entry.url.pathname);
+    setSearch(entry.url.search);
+  };
+
+  const fn = vi.fn<typeof window.history.pushState>(
+    (data: unknown, _unused: string, url?: string | URL | null) => {
+      const entry = { data, url: resolveUrl(url) };
+      entries.splice(currentEntryIndex + 1);
+      entries.push(entry);
+      currentEntryIndex = entries.length - 1;
+      updateLocation(entry);
     },
   );
-  mockPushState(fn as unknown as typeof window.history.pushState, signal);
+  mockPushState(fn, signal);
 
-  const replaceFn = vi.fn(
-    (_data: unknown, _unused: string, url?: string | URL | null) => {
-      updateLocation(url);
+  const replaceFn = vi.fn<typeof window.history.replaceState>(
+    (data: unknown, _unused: string, url?: string | URL | null) => {
+      const entry = { data, url: resolveUrl(url) };
+      if (currentEntryIndex === -1) {
+        entries.push(entry);
+        currentEntryIndex = 0;
+      } else {
+        entries[currentEntryIndex] = entry;
+      }
+      updateLocation(entry);
     },
-  ) as unknown as typeof window.history.replaceState;
+  );
   mockReplaceState(replaceFn, signal);
+
+  const backMock = vi.spyOn(window.history, "back").mockImplementation(() => {
+    if (currentEntryIndex <= 0) {
+      return;
+    }
+    currentEntryIndex -= 1;
+    const entry = entries[currentEntryIndex];
+    if (!entry) {
+      return;
+    }
+    updateLocation(entry);
+    window.dispatchEvent(new PopStateEvent("popstate", { state: entry.data }));
+  });
+  signal.addEventListener(
+    "abort",
+    () => {
+      backMock.mockRestore();
+    },
+    { once: true },
+  );
 
   return fn;
 }

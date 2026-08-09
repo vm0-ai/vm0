@@ -402,7 +402,10 @@ describe("assistant markdown", () => {
 
   it("opens a mermaid diagram directly in an existing artifact sidebar", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
-    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+    mockThread(
+      "```mermaid\nflowchart TD\n  A --> B\n```\n\n" +
+        "```mermaid\nflowchart TD\n  C --> D\n```",
+    );
 
     detachedSetupPage({
       context,
@@ -425,31 +428,53 @@ describe("assistant markdown", () => {
       ).toBeInTheDocument();
     });
 
-    const expand = await screen.findByLabelText("Expand diagram");
-    const inlineUrl = screen.getByAltText("Diagram").getAttribute("src") ?? "";
-    await waitFor(() => {
-      expect(expand).toBeEnabled();
+    const expandButtons = await screen.findAllByLabelText("Expand diagram");
+    const inlineUrls = screen.getAllByAltText("Diagram").map((diagram) => {
+      return diagram.getAttribute("src") ?? "";
     });
-    click(expand);
+    await waitFor(() => {
+      for (const expand of expandButtons) {
+        expect(expand).toBeEnabled();
+      }
+    });
+    const [firstExpand, secondExpand] = expandButtons;
+    if (!firstExpand || !secondExpand) {
+      throw new Error("Expected both diagram expand buttons");
+    }
+    click(firstExpand);
 
     // The open sidebar swaps content in place instead of stacking a lightbox.
     const sidebar = await screen.findByTestId("artifact-sidebar");
     const sidebarImage = within(sidebar).getByTestId(
       "artifact-sidebar-body-image",
     );
-    const sidebarUrl = sidebarImage.getAttribute("src") ?? "";
+    const firstSidebarUrl = sidebarImage.getAttribute("src") ?? "";
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
-    expect(sidebarUrl).toContain("blob:mock-download-");
-    expect(sidebarUrl).not.toBe(inlineUrl);
+    expect(firstSidebarUrl).toContain("blob:mock-download-");
+    expect(inlineUrls).not.toContain(firstSidebarUrl);
     expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
     expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
+    expect(objectUrls.revokedUrls).not.toContain(firstSidebarUrl);
+
+    click(secondExpand);
+    const secondSidebarUrl = await waitFor(() => {
+      const url = within(sidebar)
+        .getByTestId("artifact-sidebar-body-image")
+        .getAttribute("src");
+      expect(url).not.toBe(firstSidebarUrl);
+      return url ?? "";
+    });
+    expect(objectUrls.revokedUrls).toContain(firstSidebarUrl);
+    expect(objectUrls.revokedUrls).not.toContain(secondSidebarUrl);
 
     click(within(sidebar).getByTestId("artifact-sidebar-close"));
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
-    expect(objectUrls.revokedUrls).toContain(sidebarUrl);
-    expect(objectUrls.revokedUrls).not.toContain(inlineUrl);
+    expect(objectUrls.revokedUrls).toContain(secondSidebarUrl);
+    for (const inlineUrl of inlineUrls) {
+      expect(objectUrls.revokedUrls).not.toContain(inlineUrl);
+    }
   });
 
   it("revokes a mermaid object URL when its chat panel signal aborts", async () => {

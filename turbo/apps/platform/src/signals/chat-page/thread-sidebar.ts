@@ -108,6 +108,14 @@ export interface ThreadSidebarSignals {
   readonly setupArtifactsSession$: Command<Promise<void>, [AbortSignal]>;
 }
 
+function attachmentObjectUrlRelease(
+  target: ThreadSidebarTarget | null,
+): (() => void) | undefined {
+  return target?.type === "artifact" && target.source.kind === "attachment"
+    ? target.source.ref.releaseObjectUrl
+    : undefined;
+}
+
 export function createThreadSidebarSignals(
   threadId: string,
 ): ThreadSidebarSignals {
@@ -117,17 +125,7 @@ export function createThreadSidebarSignals(
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
-  const internalAttachmentObjectUrlReleases$ = state<readonly (() => void)[]>(
-    [],
-  );
   const resetSession$ = resetSignal();
-
-  const releaseAttachmentObjectUrls$ = command(({ get, set }) => {
-    for (const release of get(internalAttachmentObjectUrlReleases$)) {
-      release();
-    }
-    set(internalAttachmentObjectUrlReleases$, []);
-  });
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
@@ -146,6 +144,8 @@ export function createThreadSidebarSignals(
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
+    const currentObjectUrlRelease = attachmentObjectUrlRelease(current);
+    const nextObjectUrlRelease = attachmentObjectUrlRelease(target);
     if (current === null) {
       set(internalAnimateEntry$, get(internalEntryAnimationsEnabled$));
     }
@@ -155,27 +155,25 @@ export function createThreadSidebarSignals(
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
-    const releaseObjectUrl =
-      target.type === "artifact" &&
-      target.source.kind === "attachment" &&
-      target.source.ref.releaseObjectUrl;
-    if (releaseObjectUrl) {
-      set(internalAttachmentObjectUrlReleases$, (current) => {
-        return [...current, releaseObjectUrl];
-      });
-    }
     set(internalTarget$, target);
+    if (
+      currentObjectUrlRelease &&
+      currentObjectUrlRelease !== nextObjectUrlRelease
+    ) {
+      currentObjectUrlRelease();
+    }
   });
 
-  const close$ = command(({ set }) => {
+  const close$ = command(({ get, set }) => {
     // Abort session resources (realtime subscription, background refresh)
     // while keeping the cached catalog pages for the next open.
     set(resetSession$);
+    const objectUrlRelease = attachmentObjectUrlRelease(get(internalTarget$));
     set(internalTarget$, null);
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
-    set(releaseAttachmentObjectUrls$);
+    objectUrlRelease?.();
   });
 
   const claimAutoOpenCandidate$ = command(

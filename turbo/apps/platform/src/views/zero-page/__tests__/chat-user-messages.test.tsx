@@ -1,4 +1,10 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -12,9 +18,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { ROUTES } from "../../../signals/route-paths.ts";
-import { setPathname, setSearch } from "../../../signals/location.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
 
@@ -584,6 +587,7 @@ describe("user messages", () => {
   });
 
   it("restores cached agent source annotations after browser back from agents", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000752";
     const sourceThreadId = "b0000000-0000-4000-a000-000000000753";
     const sourceRunId = "d0000000-0000-4000-a000-000000000753";
@@ -651,13 +655,18 @@ describe("user messages", () => {
       return linkByAriaLabel("Open chat Source thread");
     });
 
-    context.store.set(detachedNavigateTo$, ROUTES.agents);
+    const agentsLink = await waitFor(() => {
+      const link = screen.getByText("Agents").closest("a");
+      if (!link) {
+        throw new Error("Expected the Agents navigation link");
+      }
+      return link;
+    });
+    await user.click(agentsLink);
     await screen.findByRole("heading", { name: "Agents" });
 
     act(() => {
-      setPathname(`/chats/${threadId}`);
-      setSearch("");
-      window.dispatchEvent(new Event("popstate"));
+      window.history.back();
     });
 
     await waitFor(() => {
@@ -780,10 +789,14 @@ describe("user messages", () => {
     });
     expect(screen.getAllByText("source-context.bin").length).toBeGreaterThan(0);
 
-    context.store.set(detachedNavigateTo$, ROUTES.chat, {
-      pathParams: { threadId },
-      searchParams: new URLSearchParams([["sidebar", sidebarThreadId]]),
+    const sidebarThreadLink = await waitFor(() => {
+      const link = screen.getByText("Sidebar chat").closest("a");
+      if (!link) {
+        throw new Error("Expected the sidebar thread link");
+      }
+      return link;
     });
+    fireEvent.click(sidebarThreadLink, { altKey: true });
 
     await waitFor(() => {
       expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
