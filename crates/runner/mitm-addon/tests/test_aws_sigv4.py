@@ -51,6 +51,22 @@ def _aws_s3_example_credentials() -> AwsSigV4Credentials:
     )
 
 
+def _aws_s3_example_presigned_url() -> str:
+    placeholder_scope = urllib.parse.quote(
+        "PLACEHOLDER/20130524/us-east-1/s3/aws4_request",
+        safe="",
+    )
+    return (
+        f"https://{_AWS_S3_EXAMPLE_HOST}/test.txt"
+        "?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+        f"&X-Amz-Credential={placeholder_scope}"
+        f"&X-Amz-Date={_AWS_S3_EXAMPLE_TIMESTAMP}"
+        "&X-Amz-Expires=86400"
+        "&X-Amz-SignedHeaders=host"
+        "&X-Amz-Signature=placeholder"
+    )
+
+
 def _header_auth_headers(
     amz_date: str = DEFAULT_SIGV4_TIMESTAMP,
     *,
@@ -827,23 +843,9 @@ def test_header_auth_unsigned_payload_controls_reference_signature(
 
 
 def test_presigned_s3_unsigned_payload_matches_aws_reference_signature() -> None:
-    placeholder_scope = urllib.parse.quote(
-        "PLACEHOLDER/20130524/us-east-1/s3/aws4_request",
-        safe="",
-    )
-    presigned_url = (
-        f"https://{_AWS_S3_EXAMPLE_HOST}/test.txt"
-        "?X-Amz-Algorithm=AWS4-HMAC-SHA256"
-        f"&X-Amz-Credential={placeholder_scope}"
-        f"&X-Amz-Date={_AWS_S3_EXAMPLE_TIMESTAMP}"
-        "&X-Amz-Expires=86400"
-        "&X-Amz-SignedHeaders=host"
-        "&X-Amz-Signature=placeholder"
-    )
-
     signed_url, _headers = sign_request(
         method="GET",
-        url=presigned_url,
+        url=_aws_s3_example_presigned_url(),
         headers=[("Host", _AWS_S3_EXAMPLE_HOST)],
         body=None,
         credentials=_aws_s3_example_credentials(),
@@ -855,6 +857,28 @@ def test_presigned_s3_unsigned_payload_matches_aws_reference_signature() -> None
         query["X-Amz-Signature"]
         == "aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"
     )
+
+
+def test_presigned_s3_content_hash_controls_signature() -> None:
+    signatures: list[str] = []
+    for content_hash in ("a" * 64, "b" * 64):
+        signed_url, _headers = sign_request(
+            method="GET",
+            url=_aws_s3_example_presigned_url(),
+            headers=[
+                ("Host", _AWS_S3_EXAMPLE_HOST),
+                ("X-Amz-Content-Sha256", content_hash),
+            ],
+            body=b"same body",
+            credentials=_aws_s3_example_credentials(),
+            precomputed_body_hash=hash_request_body(b"ignored precomputed body"),
+        )
+
+        query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(signed_url).query))
+        assert query["X-Amz-SignedHeaders"] == "host"
+        signatures.append(query["X-Amz-Signature"])
+
+    assert signatures[0] != signatures[1]
 
 
 def test_presigned_query_invalid_content_hash_header_raises_signing_error() -> None:
