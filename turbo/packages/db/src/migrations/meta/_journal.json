@@ -435,6 +435,13 @@
       "when": 1786243854133,
       "tag": "0869_sad_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 870,
+      "version": "7",
+      "when": 1786271891744,
+      "tag": "0870_sticky_maximus",
+      "breakpoints": true
     }
   ]
 }
