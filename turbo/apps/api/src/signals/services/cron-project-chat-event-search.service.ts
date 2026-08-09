@@ -1,15 +1,5 @@
 import { command } from "ccstate";
-import {
-  and,
-  asc,
-  count,
-  eq,
-  gt,
-  inArray,
-  isNull,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, sql, type SQL } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   chatEventSearchDocs,
@@ -165,19 +155,12 @@ async function projectThread(
       ];
     });
 
-    // Ticks stay idempotent: an already-indexed doc is only rewritten to fill
-    // an agent_compose_id an older API version left null, which heals the rows
-    // it wrote while the migration was ahead of its deployment.
     const indexed =
       docs.length > 0
         ? await tx
             .insert(chatEventSearchDocs)
             .values(docs)
-            .onConflictDoUpdate({
-              target: chatEventSearchDocs.eventId,
-              set: { agentComposeId: sql`EXCLUDED.agent_compose_id` },
-              setWhere: isNull(chatEventSearchDocs.agentComposeId),
-            })
+            .onConflictDoNothing({ target: chatEventSearchDocs.eventId })
             .returning({ eventId: chatEventSearchDocs.eventId })
         : [];
 

@@ -1291,6 +1291,8 @@
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",
       "selectModel": "모델 선택",
+      "setAsDefault": "기본값으로 설정",
+      "temporaryModelNotice": "일시적으로 {{model}}(으)로 전환됨",
       "threadSuggestions": "채팅 스레드",
       "visualAttachmentsUnsupported": "{{modelName}}은 이미지나 비디오를 인식할 수 없습니다. 첨부하려면 비전 기능이 있는 모델로 전환하세요.",
       "workflows": {
@@ -4258,9 +4260,6 @@
         "balancedUse": "균형 잡힌 사용",
         "builtInModel": "내장 모델",
         "byokHelp": "구성된 공급자 사용",
-        "defaultModel": "기본값",
-        "defaultModelDescription": "새 채팅 및 새 자동화의 기본값",
-        "defaultModelUpdated": "{{model}}을(를) 기본 모델로 설정했습니다",
         "fast": "빠름",
         "inheritDefault": "조직 기본값 상속",
         "loadError": "모델을 불러올 수 없습니다.",
@@ -4282,7 +4281,6 @@
           "deepseek": "Deepseek"
         },
         "runSpeed": "실행 속도",
-        "setModelAsDefault": "{{model}}을(를) 기본값으로 설정",
         "standard": "표준"
       },
       "policies": {

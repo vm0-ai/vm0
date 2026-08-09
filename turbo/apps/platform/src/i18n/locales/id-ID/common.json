@@ -1291,6 +1291,8 @@
       "selectedModelUnavailable": "Model yang dipilih tidak tersedia. Konfigurasikan sebelum mengirim.",
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",
       "selectModel": "Pilih model",
+      "setAsDefault": "Jadikan default",
+      "temporaryModelNotice": "Sementara beralih ke {{model}}",
       "threadSuggestions": "Thread chat",
       "visualAttachmentsUnsupported": "{{modelName}} tidak dapat mengenali gambar atau video. Ganti ke model yang mendukung visi untuk melampirkannya.",
       "workflows": {
@@ -4258,9 +4260,6 @@
         "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
-        "defaultModel": "Default",
-        "defaultModelDescription": "Default untuk chat baru dan otomatisasi baru",
-        "defaultModelUpdated": "{{model}} sekarang menjadi model default Anda",
         "fast": "Cepat",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
@@ -4282,7 +4281,6 @@
           "deepseek": "Deepseek"
         },
         "runSpeed": "Kecepatan jalankan",
-        "setModelAsDefault": "Jadikan {{model}} sebagai default",
         "standard": "Standar"
       },
       "policies": {
