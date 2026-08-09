@@ -70,16 +70,6 @@ export async function readCustomConnectorOAuthStorageState(
   });
 }
 
-export async function downgradeCustomConnectorOAuthStorageState(
-  context: TestContext,
-  state: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "downgrade-custom-oauth-state",
-    state,
-  });
-}
-
 export async function seedOwnedConnectorSecret(
   context: TestContext,
   args: {

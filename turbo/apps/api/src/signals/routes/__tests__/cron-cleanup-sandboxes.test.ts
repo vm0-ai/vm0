@@ -7,8 +7,8 @@ import {
 } from "@vm0/api-contracts/contracts/logs";
 import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
-  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-  runnersNetworkPolicyRefreshContract,
+  CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+  runnersConnectorRuntimeSyncContract,
 } from "@vm0/api-contracts/contracts/runners";
 import type {
   TestCronCleanupSandboxesStateActionBody,
@@ -377,19 +377,6 @@ async function insertRunnerJobEntry(
   });
 }
 
-async function insertCustomConnectorAuthRef(
-  fixture: RunFixture,
-  secretName: string,
-  expiresAt: Date,
-): Promise<void> {
-  await postCronCleanupState({
-    action: "seed-custom-connector-auth-ref",
-    run_id: fixture.runId,
-    secret_name: secretName,
-    expires_at: expiresAt.toISOString(),
-  });
-}
-
 async function insertExportJob(args: {
   readonly status: string;
   readonly createdAt?: Date;
@@ -474,21 +461,6 @@ async function findRunnerJob(runId: string): Promise<{
     run_id: runId,
   });
   const row = recordField(response, "runner_job");
-  return row ? { runId: stringField(row, "runId") } : null;
-}
-
-async function findCustomConnectorAuthRef(
-  runId: string,
-  secretName: string,
-): Promise<{
-  readonly runId: string;
-} | null> {
-  const response = await postCronCleanupState({
-    action: "get-custom-connector-auth-ref",
-    run_id: runId,
-    secret_name: secretName,
-  });
-  const row = recordField(response, "custom_connector_auth_ref");
   return row ? { runId: stringField(row, "runId") } : null;
 }
 
@@ -1136,7 +1108,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
   });
 
-  it("exposes a pending-run timeout as terminal to policy refresh", async () => {
+  it("exposes a pending-run timeout as terminal to connector runtime sync", async () => {
     const fixture = await trackRun(
       insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
     );
@@ -1161,18 +1133,20 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
 
-    const refresh = await accept(
+    const sync = await accept(
       setupApp({ context, routes: runnersRoutes })(
-        runnersNetworkPolicyRefreshContract,
-      ).refresh({
+        runnersConnectorRuntimeSyncContract,
+      ).sync({
         headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
         params: { runId: fixture.runId },
-        body: { connectorSlugs: ["slack"] },
+        body: {
+          targets: [{ kind: "builtin", connectorSlug: "slack" }],
+        },
       }),
       [409],
     );
-    expect(refresh.body.error).toStrictEqual({
-      code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    expect(sync.body.error).toStrictEqual({
+      code: CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
       message: "Run is terminal",
     });
   });
@@ -1226,38 +1200,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRunnerJob(unexpired.runId)).resolves.toStrictEqual({
       runId: unexpired.runId,
     });
-  });
-
-  it("deletes expired custom connector auth refs", async () => {
-    const expired = await trackRun(
-      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
-    );
-    const unexpired = await trackRun(
-      insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
-    );
-    await insertCustomConnectorAuthRef(
-      expired,
-      "CUSTOM_EXPIRED_S_SECRET",
-      minutesAgo(1),
-    );
-    await insertCustomConnectorAuthRef(
-      unexpired,
-      "CUSTOM_ACTIVE_S_SECRET",
-      farFuture(),
-    );
-
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
-
-    expect(response.body.cleaned).toBe(0);
-    await expect(
-      findCustomConnectorAuthRef(expired.runId, "CUSTOM_EXPIRED_S_SECRET"),
-    ).resolves.toBeNull();
-    await expect(
-      findCustomConnectorAuthRef(unexpired.runId, "CUSTOM_ACTIVE_S_SECRET"),
-    ).resolves.toStrictEqual({ runId: unexpired.runId });
   });
 
   it("cleans up running runs after the heartbeat timeout", async () => {

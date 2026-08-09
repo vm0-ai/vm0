@@ -1,6 +1,6 @@
 {
-  "id": "04e1f377-5011-4148-a993-480678241d29",
-  "prevId": "a973f052-a1e7-4331-a0d7-95024c1e0d7f",
+  "id": "93e42c13-6456-44ef-887f-077f68d77175",
+  "prevId": "04e1f377-5011-4148-a993-480678241d29",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8416,10 +8416,6 @@
         "chk_connector_oauth_states_identity": {
           "name": "chk_connector_oauth_states_identity",
           "value": "num_nonnulls(\"connector_oauth_states\".\"connector_slug\", \"connector_oauth_states\".\"custom_connector_id\") = 1"
-        },
-        "chk_connector_oauth_states_custom_revision": {
-          "name": "chk_connector_oauth_states_custom_revision",
-          "value": "(\n          \"connector_oauth_states\".\"custom_connector_id\" IS NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NULL\n        ) OR (\n          \"connector_oauth_states\".\"custom_connector_id\" IS NOT NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NOT NULL\n        )"
         },
         "chk_connector_oauth_states_custom_storage_version": {
           "name": "chk_connector_oauth_states_custom_storage_version",

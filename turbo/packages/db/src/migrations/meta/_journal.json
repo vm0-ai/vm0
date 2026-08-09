@@ -442,6 +442,20 @@
       "when": 1786271891744,
       "tag": "0870_sticky_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 871,
+      "version": "7",
+      "when": 1786278942764,
+      "tag": "0871_breezy_roughhouse",
+      "breakpoints": true
+    },
+    {
+      "idx": 872,
+      "version": "7",
+      "when": 1786278953393,
+      "tag": "0872_retire-custom-connector-v1-parent-bridge",
+      "breakpoints": true
     }
   ]
 }

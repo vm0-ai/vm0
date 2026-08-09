@@ -195,7 +195,7 @@ pub struct ExecutorConfig {
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
-    pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
+    pub(crate) connector_runtime_sync: Option<crate::provider::ConnectorRuntimeSyncHandle>,
     pub(crate) session_history_cpu: SessionHistoryCpuPool,
     pub(crate) session_history_probe: SessionHistoryProbe,
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,

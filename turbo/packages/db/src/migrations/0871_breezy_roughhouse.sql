@@ -1,0 +1,1 @@
+ALTER TABLE "connector_oauth_states" DROP CONSTRAINT "chk_connector_oauth_states_custom_revision";

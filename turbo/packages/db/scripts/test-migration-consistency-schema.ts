@@ -1503,13 +1503,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
-      "CREATE TRIGGER org_custom_connector_values_ensure_parent_v1 AFTER INSERT OR UPDATE ON public.org_custom_connector_values FOR EACH ROW EXECUTE FUNCTION ensure_custom_manual_connector_parent_v1()",
-    schemaName: "public",
-    tableName: "org_custom_connector_values",
-    triggerName: "org_custom_connector_values_ensure_parent_v1",
-  },
-  {
-    definition:
       "CREATE CONSTRAINT TRIGGER trg_org_custom_connectors_oauth_mode AFTER INSERT OR UPDATE ON public.org_custom_connectors DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_org_custom_connector_oauth_mode()",
     schemaName: "public",
     tableName: "org_custom_connectors",
@@ -1633,13 +1626,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "15e3309d90f7237e3b5c28fbf23a439d",
     functionName: "enforce_org_custom_connector_oauth_mode",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "5867c91a0201a2b10282662c752b8396",
-    functionName: "ensure_custom_manual_connector_parent_v1",
     identityArguments: "",
     kind: "f",
     schemaName: "public",

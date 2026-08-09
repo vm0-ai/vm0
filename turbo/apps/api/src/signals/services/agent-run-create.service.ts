@@ -104,7 +104,6 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -189,7 +188,6 @@ import {
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorPrefixTemplateVariableKeys,
-  customConnectorSecretKey,
   customConnectorValueMarkerKey,
   decryptCustomConnectorValues,
   loadCustomConnectorRuntimeData,
@@ -543,19 +541,6 @@ type PersistedAtomicLaunchRows =
     };
 
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
-const CUSTOM_CONNECTOR_AUTH_REF_TTL_MS = 5 * 60 * 60 * 1000;
-
-type CustomConnectorAuthRefKind = "secret" | "variable";
-
-interface CustomConnectorAuthRef {
-  readonly secretName: string;
-  readonly connectorId: string;
-  readonly connectorRevision: number;
-  readonly kind: CustomConnectorAuthRefKind;
-  readonly key: string;
-  readonly encryptedValue: string | null;
-}
-
 interface PreparedPiEdgeLaunch {
   readonly model: PiEdgeModelConfig;
   readonly usage?: PiEdgeUsageConfig;
@@ -571,7 +556,6 @@ interface PreparedRunnerLaunch {
   readonly runContextSnapshot: RunContextAxiomSnapshot;
   readonly runStorageMounts: readonly PersistedStorageMount[];
   readonly sessionStorageMounts: readonly PersistedStorageMount[];
-  readonly customConnectorAuthRefs: readonly CustomConnectorAuthRef[];
 }
 
 type AgentRunCallbackInsert = typeof agentRunCallbacks.$inferInsert;
@@ -887,7 +871,6 @@ const persistedRunEnvironmentRowKindDecoder = zodEnumDriverValueDecoder(
 interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
   readonly reservedSecretAliases: Record<string, true> | undefined;
-  readonly authRefs: readonly CustomConnectorAuthRef[];
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly targets: readonly ConnectorRuntimeTargetRegistration[];
   readonly customConnectorIdByFirewallName: Readonly<Record<string, string>>;
@@ -895,46 +878,6 @@ interface CustomConnectorRuntimeContext {
     readonly connectorId: string;
     readonly connectorSlug: string;
   }[];
-}
-
-function customConnectorAuthRefsForApis(args: {
-  readonly connectorId: string;
-  readonly connectorRevision: number;
-  readonly values: readonly {
-    readonly connectorId: string;
-    readonly kind: CustomConnectorAuthRefKind;
-    readonly key: string;
-    readonly encryptedValue: string;
-  }[];
-  readonly apis: ExpandedFirewallConfig["apis"];
-}): readonly CustomConnectorAuthRef[] {
-  const authSecretNames = new Set(extractSecretNamesFromApis(args.apis));
-  if (authSecretNames.size === 0) {
-    return [];
-  }
-
-  return args.values.flatMap((value): readonly CustomConnectorAuthRef[] => {
-    const secretName = customConnectorSecretKey({
-      connectorId: args.connectorId,
-      kind: value.kind,
-      key: value.key,
-    });
-    return authSecretNames.has(secretName)
-      ? [
-          {
-            secretName,
-            connectorId: value.connectorId,
-            connectorRevision: args.connectorRevision,
-            kind: value.kind,
-            key: value.key,
-            encryptedValue:
-              value.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
-                ? null
-                : value.encryptedValue,
-          },
-        ]
-      : [];
-  });
 }
 
 function forbidden(message: string): ApiErrorResponse<403, "FORBIDDEN"> {
@@ -3930,7 +3873,6 @@ interface BuiltCustomConnectorRuntimeRow {
     | undefined;
   readonly firewall: ExpandedFirewallConfig | undefined;
   readonly permissionPolicy: FirewallPolicy | undefined;
-  readonly authRefs: readonly CustomConnectorAuthRef[];
 }
 
 function unavailableCustomConnectorRuntimeRow(
@@ -3942,7 +3884,6 @@ function unavailableCustomConnectorRuntimeRow(
     skill,
     firewall: undefined,
     permissionPolicy: undefined,
-    authRefs: [],
   };
 }
 
@@ -4090,12 +4031,6 @@ async function buildCustomConnectorRuntimeRow(args: {
           selectedPermissionNames: args.selectedPermissionNames,
         })
       : undefined,
-    authRefs: customConnectorAuthRefsForApis({
-      connectorId: args.row.connector.id,
-      connectorRevision: args.row.connector.revision,
-      values: args.row.values,
-      apis,
-    }),
   };
 }
 
@@ -4104,7 +4039,6 @@ export async function buildCustomConnectorRuntimeContext(
 ): Promise<CustomConnectorRuntimeContext> {
   const firewalls: ExpandedFirewallConfig[] = [];
   const reservedSecretAliases: Record<string, true> = {};
-  const authRefs: CustomConnectorAuthRef[] = [];
   const permissionPolicies: FirewallPolicies = {};
   const targets: ConnectorRuntimeTargetRegistration[] = [];
   const customConnectorIdByFirewallName: Record<string, string> = {};
@@ -4140,10 +4074,9 @@ export async function buildCustomConnectorRuntimeContext(
     if (built.permissionPolicy) {
       permissionPolicies[built.firewall.name] = built.permissionPolicy;
     }
-    for (const ref of built.authRefs) {
-      reservedSecretAliases[ref.secretName] = true;
+    for (const secretName of extractSecretNamesFromApis(built.firewall.apis)) {
+      reservedSecretAliases[secretName] = true;
     }
-    authRefs.push(...built.authRefs);
     stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
   }
 
@@ -4151,7 +4084,6 @@ export async function buildCustomConnectorRuntimeContext(
   const result = {
     firewalls,
     reservedSecretAliases: compactRecord(reservedSecretAliases),
-    authRefs,
     permissionPolicies: compactRecord(permissionPolicies),
     targets,
     customConnectorIdByFirewallName,
@@ -4237,7 +4169,6 @@ async function loadCustomConnectorContext(
     return {
       firewalls: [],
       reservedSecretAliases: undefined,
-      authRefs: [],
       permissionPolicies: undefined,
       targets: [],
       customConnectorIdByFirewallName: {},
@@ -4266,7 +4197,6 @@ async function loadCustomConnectorContext(
     return {
       firewalls: [],
       reservedSecretAliases: undefined,
-      authRefs: [],
       permissionPolicies: undefined,
       targets: [],
       customConnectorIdByFirewallName: {},
@@ -6352,7 +6282,6 @@ function buildRunnerJobPayload(
         resolvedMounts: builtContext.persistedStorageMounts,
         artifacts: args.artifacts,
       }),
-      customConnectorAuthRefs: args.customConnectorContext.authRefs,
     };
   });
 }
@@ -6419,37 +6348,6 @@ function appendLaunchCallbackCte(args: {
     ),
   );
   args.ctes.push(insertedCallbacks);
-}
-
-function appendLaunchCustomConnectorAuthRefCte(args: {
-  readonly tx: DbTransaction;
-  readonly ctes: WithSubquery[];
-  readonly refs: readonly CustomConnectorAuthRef[];
-  readonly insertedRun: ReturnedIdCte;
-}): void {
-  if (args.refs.length === 0) {
-    return;
-  }
-  const expiresAt = new Date(now() + CUSTOM_CONNECTOR_AUTH_REF_TTL_MS);
-  const insertedRefs = args.tx
-    .$with("inserted_launch_custom_connector_auth_refs")
-    .as(
-      args.tx.insert(agentRunCustomConnectorAuthRefs).values(
-        args.refs.map((ref) => {
-          return {
-            runId: returnedCteId(args.insertedRun),
-            secretName: ref.secretName,
-            connectorId: ref.connectorId,
-            connectorRevision: ref.connectorRevision,
-            kind: ref.kind,
-            key: ref.key,
-            encryptedValue: ref.encryptedValue,
-            expiresAt,
-          };
-        }),
-      ),
-    );
-  args.ctes.push(insertedRefs);
 }
 
 function launchThreadBindingCte(args: {
@@ -6525,12 +6423,6 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     tx: args.tx,
     ctes,
     callbacks: rowsArgs.callbackRows,
-    insertedRun,
-  });
-  appendLaunchCustomConnectorAuthRefCte({
-    tx: args.tx,
-    ctes,
-    refs: args.commit.launch.customConnectorAuthRefs,
     insertedRun,
   });
   const chatThreadId = args.commit.createArgs.chatThreadId;

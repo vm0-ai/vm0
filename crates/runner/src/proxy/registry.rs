@@ -159,7 +159,7 @@ pub(crate) enum CustomConnectorRuntimeRegistryState {
     Available {
         firewall: FirewallEntry,
         network_policy: Box<NetworkPolicy>,
-        routing_variables: Option<HashMap<String, String>>,
+        routing_variables: HashMap<String, String>,
     },
     Absent,
 }
@@ -282,7 +282,7 @@ fn initial_omitted_connector_runtime_targets(
 
 fn initial_connector_routing_variables(
     registration: &VmRegistration<'_>,
-) -> HashMap<String, HashMap<String, String>> {
+) -> RunnerResult<HashMap<String, HashMap<String, String>>> {
     let mut routing_variables = HashMap::new();
     let run_vars = registration.vars;
     let builtin_connector_slugs = registration
@@ -306,7 +306,7 @@ fn initial_connector_routing_variables(
                 continue;
             }
             let raw_values = base_url_vars.as_ref().map_or_else(
-                || Some(HashMap::new()),
+                || Ok(HashMap::new()),
                 |resolved_values| {
                     resolved_values
                         .keys()
@@ -314,16 +314,16 @@ fn initial_connector_routing_variables(
                             run_vars
                                 .and_then(|values| values.get(key))
                                 .map(|value| (key.clone(), value.clone()))
+                                .ok_or_else(|| {
+                                    RunnerError::Internal(format!(
+                                        "builtin connector {name} is missing routing variable {key}"
+                                    ))
+                                })
                         })
-                        .collect::<Option<HashMap<_, _>>>()
+                        .collect::<RunnerResult<HashMap<_, _>>>()
                 },
-            );
-            // Missing raw values are the old-API compatibility shape. Omitting
-            // this identity keeps the pre-pin auth path until #25351 removes
-            // the fallback after old API instances drain.
-            if let Some(raw_values) = raw_values {
-                routing_variables.insert(builtin_connector_routing_key(name), raw_values);
-            }
+            )?;
+            routing_variables.insert(builtin_connector_routing_key(name), raw_values);
         }
     }
     for target in registration.connector_runtime_targets.unwrap_or_default() {
@@ -338,7 +338,7 @@ fn initial_connector_routing_variables(
             );
         }
     }
-    routing_variables
+    Ok(routing_variables)
 }
 
 impl ProxyRegistryHandle {
@@ -358,7 +358,7 @@ impl ProxyRegistryHandle {
         registration: &VmRegistration<'_>,
     ) -> RunnerResult<()> {
         validate_custom_connector_resource_ownership(registration.firewalls.unwrap_or_default())?;
-        let connector_routing_variables = initial_connector_routing_variables(registration);
+        let connector_routing_variables = initial_connector_routing_variables(registration)?;
         let _guard = lock::acquire(self.lock_path.clone()).await?;
 
         let mut registry = read_registry(&self.registry_path).await?;
@@ -501,12 +501,10 @@ impl ProxyRegistryHandle {
                     }
                 }
                 network_policies.insert(inline_firewall_name, *network_policy);
-                if let Some(routing_variables) = routing_variables {
-                    vm.connector_routing_variables.insert(
-                        custom_connector_routing_key(custom_connector_id),
-                        routing_variables,
-                    );
-                }
+                vm.connector_routing_variables.insert(
+                    custom_connector_routing_key(custom_connector_id),
+                    routing_variables,
+                );
                 vm.omitted_custom_connector_ids.remove(custom_connector_id);
             }
             CustomConnectorRuntimeRegistryState::Absent => {
@@ -1186,7 +1184,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn registration_omits_builtin_routing_pin_without_raw_run_values() {
+    async fn registration_rejects_builtin_routing_pin_without_raw_run_values() {
         let harness = RegistryHarness::new().await;
         let firewalls = vec![FirewallEntry::Builtin {
             name: "slack".to_string(),
@@ -1199,7 +1197,7 @@ mod tests {
             connector_slug: "slack".to_string(),
         }];
 
-        harness
+        let error = harness
             .handle
             .register_vm(
                 "10.200.0.2",
@@ -1210,13 +1208,13 @@ mod tests {
                 },
             )
             .await
-            .unwrap();
+            .expect_err("missing raw routing variables must reject registration");
 
-        let registry = read_registry(harness.registry_path()).await.unwrap();
         assert!(
-            !registry.vms["10.200.0.2"]
-                .connector_routing_variables
-                .contains_key("builtin:slack")
+            error
+                .to_string()
+                .contains("builtin connector slack is missing routing variable SLACK_HOST"),
+            "unexpected error: {error}"
         );
     }
 
@@ -1304,7 +1302,7 @@ mod tests {
                 CustomConnectorRuntimeRegistryState::Available {
                     firewall: custom_runtime_firewall(custom_connector_id, "slack"),
                     network_policy: Box::new(policy(&["custom.write"], &[], &[], "deny")),
-                    routing_variables: None,
+                    routing_variables: HashMap::new(),
                 },
             )
             .await
@@ -1421,7 +1419,7 @@ mod tests {
                     CustomConnectorRuntimeRegistryState::Available {
                         firewall: restored_firewall,
                         network_policy: Box::new(policy(&["custom.write"], &[], &[], "ask",)),
-                        routing_variables: Some(pinned_routing_variables.clone()),
+                        routing_variables: pinned_routing_variables.clone(),
                     },
                 )
                 .await

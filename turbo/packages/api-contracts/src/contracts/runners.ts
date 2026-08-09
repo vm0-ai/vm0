@@ -38,8 +38,6 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT =
 export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
   "default_r2_endpoint";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
-export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
-export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const CONNECTOR_RUNTIME_SYNC_TARGETS_MAX = 256;
 export const CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_CANCELLATION_RECOVERY_GRACE_MS = 90_000;
@@ -832,7 +830,7 @@ const storedExecutionContextObjectSchema = z.object({
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Stable connector targets pinned for this run. The runner owns this list
   // after claim independently of whether each target is currently available.
-  connectorRuntimeTargets: connectorRuntimeTargetsSchema.optional(),
+  connectorRuntimeTargets: connectorRuntimeTargetsSchema,
   // API-only catalog-derived permission defaults for claim-time grant refresh.
   connectorPermissionBaseline:
     storedConnectorPermissionBaselineSchema.optional(),
@@ -934,7 +932,7 @@ const executionContextObjectSchema = z.object({
   networkPolicyRefreshes: networkPolicyRefreshesSchema.optional(),
   // Stable connector targets pinned for this run. The runner owns this list
   // after claim independently of whether each target is currently available.
-  connectorRuntimeTargets: connectorRuntimeTargetsSchema.optional(),
+  connectorRuntimeTargets: connectorRuntimeTargetsSchema,
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -1032,48 +1030,6 @@ export const runnersActiveInputsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Claim pending input prompts for a running agent run",
-  },
-});
-
-export const runnersNetworkPolicyRefreshContract = c.router({
-  refresh: {
-    method: "POST",
-    path: "/api/runners/runs/:runId/network-policy-refresh",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      runId: z.uuid(),
-    }),
-    body: z.object({
-      connectorSlugs: z
-        .array(connectorSlugSchema)
-        .min(1)
-        .max(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX)
-        .transform((connectorSlugs) => {
-          return [...new Set(connectorSlugs)];
-        }),
-    }),
-    responses: {
-      200: z.object({
-        refreshes: z.array(
-          z.object({
-            connectorSlug: connectorSlugSchema,
-            networkPolicy: networkPolicySchema,
-            nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
-          }),
-        ),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema.extend({
-        error: apiErrorSchema.shape.error.extend({
-          code: z.literal(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
-        }),
-      }),
-      500: apiErrorSchema,
-    },
-    summary: "Refresh active run network policies",
   },
 });
 
@@ -1185,8 +1141,6 @@ export const runnersHeartbeatContract = c.router({
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
 export type RunnersActiveInputsContract = typeof runnersActiveInputsContract;
-export type RunnersNetworkPolicyRefreshContract =
-  typeof runnersNetworkPolicyRefreshContract;
 export type RunnersConnectorRuntimeSyncContract =
   typeof runnersConnectorRuntimeSyncContract;
 export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;

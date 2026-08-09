@@ -44,7 +44,6 @@ import {
 import { readUserSecrets } from "./helpers/user-config-state";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import {
-  downgradeCustomConnectorOAuthStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
   setCustomConnectorCredentialStorageState,
@@ -1609,7 +1608,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         storageVersion: 1,
       },
     );
-    expect(runtimeUpdated).toMatchObject({ revision: 2, storageVersion: 1 });
+    expect(runtimeUpdated).toMatchObject({ storageVersion: 1 });
 
     const callback =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
@@ -1634,23 +1633,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(context.mocks.nodeRequest.pinnedAddresses).toContain(
       "93.184.216.34",
     );
-
-    const legacyAuthorizationUrl =
-      await connectorsApi.startCustomConnectorOAuth2(member, created.id);
-    const legacyState = stateFromAuthorizationUrl(legacyAuthorizationUrl);
-    await downgradeCustomConnectorOAuthStorageState(context, legacyState);
-    await expect(
-      readCustomConnectorOAuthStorageState(context, legacyState),
-    ).resolves.toMatchObject({
-      custom_oauth_state: {
-        storage_version: null,
-        context_storage_version: null,
-      },
-    });
-    await connectorsApi.completeCustomConnectorOAuth2Callback({
-      code: "bdd-custom-oauth-legacy-state-code",
-      state: legacyState,
-    });
 
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
@@ -1998,7 +1980,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(updated).toMatchObject({
       displayName: "BDD Custom Connector Updated",
       prefixes: [`https://${slug.slice(1)}.example.test/v2/`],
-      revision: 2,
       connected: true,
       hasSecret: true,
     });
@@ -2017,16 +1998,11 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([created.id]);
 
-    const securityUpdated = await connectorsApi.updateCustomConnector(
-      admin,
-      created.id,
-      {
-        ...definitionUpdateBody,
-        displayName: "BDD Custom Connector Renamed",
-        prefixTemplates: [`https://${slug.slice(1)}.example.test/v3/`],
-      },
-    );
-    expect(securityUpdated.revision).toBe(3);
+    await connectorsApi.updateCustomConnector(admin, created.id, {
+      ...definitionUpdateBody,
+      displayName: "BDD Custom Connector Renamed",
+      prefixTemplates: [`https://${slug.slice(1)}.example.test/v3/`],
+    });
     await expect(
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([created.id]);
@@ -2963,7 +2939,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
-  it("persists permission bundles and skill markdown with security-sensitive revisions", async () => {
+  it("persists permission bundles and skill markdown", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -2977,7 +2953,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(created).toMatchObject({
       permissionBundleRef: "builtin:slack@1",
       skillMarkdown: "Use this connector to coordinate Slack conversations.",
-      revision: 1,
     });
 
     const skillUpdated = await connectorsApi.updateCustomConnector(
@@ -2996,7 +2971,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(skillUpdated).toMatchObject({
       permissionBundleRef: "builtin:slack@1",
       skillMarkdown: "Updated Slack operating instructions.",
-      revision: 1,
     });
 
     const permissionBundleCleared = await connectorsApi.updateCustomConnector(
@@ -3015,7 +2989,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(permissionBundleCleared).toMatchObject({
       permissionBundleRef: null,
       skillMarkdown: "Updated Slack operating instructions.",
-      revision: 2,
     });
 
     const unknownBundle = await connectorsApi.requestCreateCustomConnector(

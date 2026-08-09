@@ -174,14 +174,15 @@ def _build_firewall_auth_context(
     connector_routing_variables = vm_info.get("connectorRoutingVariables", {})
     matched_firewall: dict | None = None
     if isinstance(custom_connector_id, str):
+        routing_variables = connector_routing_variables.get(f"custom:{custom_connector_id}")
+        if not isinstance(routing_variables, dict):
+            raise TypeError("custom connector routing variables are missing from proxy registry")
         matched_firewall = {
             "name": allow.name,
             "apiId": api_id,
             "customConnectorId": custom_connector_id,
+            "routingVariables": routing_variables,
         }
-        routing_variables = connector_routing_variables.get(f"custom:{custom_connector_id}")
-        if isinstance(routing_variables, dict):
-            matched_firewall["routingVariables"] = routing_variables
     else:
         routing_variables = connector_routing_variables.get(f"builtin:{allow.name}")
         if isinstance(routing_variables, dict):
