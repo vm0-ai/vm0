@@ -3,117 +3,97 @@ import {
   createEditTool,
   createReadTool,
   createWriteTool,
+  type AgentContext,
   type AgentMessage,
-  type AgentToolUpdateCallback,
-  type BashToolDetails,
   type BashToolInput,
-  type EditToolDetails,
   type EditToolInput,
   type ExecutionEnv,
-  type ReadToolDetails,
   type ReadToolInput,
   type WriteToolInput,
 } from "@earendil-works/pi-agent-core";
+import { validateToolArguments } from "@earendil-works/pi-ai";
 
-type PiReadTool = Omit<ReturnType<typeof createReadTool>, "execute"> & {
-  execute(
-    toolCallId: string,
-    params: ReadToolInput,
-    signal?: AbortSignal,
-    onUpdate?: AgentToolUpdateCallback<ReadToolDetails | undefined>,
-  ): ReturnType<ReturnType<typeof createReadTool>["execute"]>;
-};
-
-type PiBashTool = Omit<ReturnType<typeof createBashTool>, "execute"> & {
-  execute(
-    toolCallId: string,
-    params: BashToolInput,
-    signal?: AbortSignal,
-    onUpdate?: AgentToolUpdateCallback<BashToolDetails | undefined>,
-  ): ReturnType<ReturnType<typeof createBashTool>["execute"]>;
-};
-
-type PiWriteTool = Omit<ReturnType<typeof createWriteTool>, "execute"> & {
-  execute(
-    toolCallId: string,
-    params: WriteToolInput,
-    signal?: AbortSignal,
-    onUpdate?: AgentToolUpdateCallback<undefined>,
-  ): ReturnType<ReturnType<typeof createWriteTool>["execute"]>;
-};
-
-type PiEditTool = Omit<ReturnType<typeof createEditTool>, "execute"> & {
-  execute(
-    toolCallId: string,
-    params: EditToolInput,
-    signal?: AbortSignal,
-    onUpdate?: AgentToolUpdateCallback<EditToolDetails | undefined>,
-  ): ReturnType<ReturnType<typeof createEditTool>["execute"]>;
-};
+export type PiAgentTool = NonNullable<AgentContext["tools"]>[number];
 
 type PiExecutionTools = readonly [
-  PiReadTool,
-  PiBashTool,
-  PiWriteTool,
-  PiEditTool,
+  PiAgentTool,
+  PiAgentTool,
+  PiAgentTool,
+  PiAgentTool,
 ];
 
-export function createPiReadTool(env: ExecutionEnv): PiReadTool {
+function validatedToolArguments(
+  tool: Parameters<typeof validateToolArguments>[0],
+  toolCallId: string,
+  params: unknown,
+): unknown {
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    throw new TypeError(`Tool ${tool.name} arguments must be an object`);
+  }
+  return validateToolArguments(tool, {
+    type: "toolCall",
+    id: toolCallId,
+    name: tool.name,
+    arguments: params,
+  });
+}
+
+export function createPiReadTool(env: ExecutionEnv): PiAgentTool {
   const tool = createReadTool();
   return {
     ...tool,
-    execute(
-      toolCallId: string,
-      params: ReadToolInput,
-      signal?: AbortSignal,
-      onUpdate?: AgentToolUpdateCallback<ReadToolDetails | undefined>,
-    ) {
-      return tool.execute(toolCallId, params, signal, onUpdate, { env });
+    execute(toolCallId, params, signal, onUpdate) {
+      const input = validatedToolArguments(
+        tool,
+        toolCallId,
+        params,
+      ) as ReadToolInput;
+      return tool.execute(toolCallId, input, signal, onUpdate, { env });
     },
   };
 }
 
-function createPiBashTool(env: ExecutionEnv): PiBashTool {
+function createPiBashTool(env: ExecutionEnv): PiAgentTool {
   const tool = createBashTool();
   return {
     ...tool,
-    execute(
-      toolCallId: string,
-      params: BashToolInput,
-      signal?: AbortSignal,
-      onUpdate?: AgentToolUpdateCallback<BashToolDetails | undefined>,
-    ) {
-      return tool.execute(toolCallId, params, signal, onUpdate, { env });
+    execute(toolCallId, params, signal, onUpdate) {
+      const input = validatedToolArguments(
+        tool,
+        toolCallId,
+        params,
+      ) as BashToolInput;
+      return tool.execute(toolCallId, input, signal, onUpdate, { env });
     },
   };
 }
 
-function createPiWriteTool(env: ExecutionEnv): PiWriteTool {
+function createPiWriteTool(env: ExecutionEnv): PiAgentTool {
   const tool = createWriteTool();
   return {
     ...tool,
-    execute(
-      toolCallId: string,
-      params: WriteToolInput,
-      signal?: AbortSignal,
-      onUpdate?: AgentToolUpdateCallback<undefined>,
-    ) {
-      return tool.execute(toolCallId, params, signal, onUpdate, { env });
+    execute(toolCallId, params, signal, onUpdate) {
+      const input = validatedToolArguments(
+        tool,
+        toolCallId,
+        params,
+      ) as WriteToolInput;
+      return tool.execute(toolCallId, input, signal, onUpdate, { env });
     },
   };
 }
 
-function createPiEditTool(env: ExecutionEnv): PiEditTool {
+function createPiEditTool(env: ExecutionEnv): PiAgentTool {
   const tool = createEditTool();
   return {
     ...tool,
-    execute(
-      toolCallId: string,
-      params: EditToolInput,
-      signal?: AbortSignal,
-      onUpdate?: AgentToolUpdateCallback<EditToolDetails | undefined>,
-    ) {
-      return tool.execute(toolCallId, params, signal, onUpdate, { env });
+    execute(toolCallId, params, signal, onUpdate) {
+      const input = validatedToolArguments(
+        tool,
+        toolCallId,
+        params,
+      ) as EditToolInput;
+      return tool.execute(toolCallId, input, signal, onUpdate, { env });
     },
   };
 }
