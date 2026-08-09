@@ -2611,7 +2611,8 @@ function ChatThread({
       ref={setContainerRef}
       tabIndex={-1}
     >
-      <ChatThreadContent thread={thread} />
+      {/* Preserve the pane container while resetting hooks for a new signal owner. */}
+      <ChatThreadContent key={thread.lifecycleId} thread={thread} />
     </section>
   );
 }
@@ -2630,14 +2631,11 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {/* The same thread ID gets a new signal owner after route re-entry. */}
-      {leftThread && (
-        <ChatThread key={leftThread.lifecycleId} isMain thread={leftThread} />
-      )}
+      {leftThread && <ChatThread isMain thread={leftThread} />}
       {rightThread && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread key={rightThread.lifecycleId} thread={rightThread} />
+          <ChatThread thread={rightThread} />
         </>
       )}
     </div>
