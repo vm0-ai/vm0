@@ -13,6 +13,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { setPathname, setSearch } from "../../../signals/location.ts";
+import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -580,7 +581,7 @@ describe("user messages", () => {
     );
   });
 
-  it("restores cached agent source annotations after browser back from activities", async () => {
+  it("preserves agent source annotations across panel replacement and browser back", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000752";
     const sourceThreadId = "b0000000-0000-4000-a000-000000000753";
     const sourceRunId = "d0000000-0000-4000-a000-000000000753";
@@ -645,6 +646,16 @@ describe("user messages", () => {
     detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+
+    const firstPanel = context.store.get(currentLeftThread$);
+    context.store.set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId },
+      searchParams: new URLSearchParams({ sidebar: sourceThreadId }),
+    });
+    await waitFor(() => {
+      expect(context.store.get(currentLeftThread$)).not.toBe(firstPanel);
       return linkByAriaLabel("Open chat Source thread");
     });
 

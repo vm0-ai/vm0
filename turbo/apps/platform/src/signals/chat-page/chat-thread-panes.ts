@@ -5,6 +5,7 @@ import type {
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { currentChatThreadId$ } from "../agent-chat.ts";
+import { activeRoute$ } from "../active-route.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { logger } from "../log.ts";
 import {
@@ -28,24 +29,15 @@ import {
   threadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
-  currentLeftThreadActive$,
   currentLeftThread$,
-  currentRightThreadActive$,
   currentRightThread$,
-  setCurrentLeftThreadActive$,
   setCurrentLeftThread$,
-  setCurrentRightThreadActive$,
   setCurrentRightThread$,
 } from "./chat-thread-pane-state.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
-export {
-  currentLeftThread$,
-  currentLeftThreadActive$,
-  currentRightThread$,
-  currentRightThreadActive$,
-};
+export { currentLeftThread$, currentRightThread$ };
 
 const L = logger("ChatPanes");
 
@@ -69,7 +61,6 @@ export const unloadRightThread$ = command(({ get, set }) => {
   }
   set(resetRightSetupSignal$);
   set(setCurrentRightThread$, null);
-  set(setCurrentRightThreadActive$, false);
   const next = new URLSearchParams(get(searchParams$));
   if (next.has(SIDEBAR_PARAM)) {
     next.delete(SIDEBAR_PARAM);
@@ -79,7 +70,6 @@ export const unloadRightThread$ = command(({ get, set }) => {
 
 interface PaneSpec {
   setPaneThread$: Command<void, [ChatPanelSignals | null]>;
-  setPaneThreadActive$: Command<void, [boolean]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
   onReady$?: Command<void, [AbortSignal]>;
 }
@@ -218,7 +208,12 @@ const setupPaneThread$ = command(
     signal.addEventListener(
       "abort",
       () => {
-        set(spec.setPaneThreadActive$, false);
+        // A non-chat page must never inherit this aborted panel on re-entry.
+        // Chat-to-chat setup keeps the reference so the outer thread section
+        // can preserve its established DOM identity until replacement.
+        if (get(activeRoute$) !== "chat") {
+          set(spec.setPaneThread$, null);
+        }
       },
       { once: true },
     );
@@ -234,7 +229,6 @@ const setupPaneThread$ = command(
       signal,
     );
     set(spec.setPaneThread$, thread);
-    set(spec.setPaneThreadActive$, true);
     if (spec.onReady$) {
       set(spec.onReady$, signal);
     }
@@ -269,7 +263,6 @@ export const setupLeftThread$ = command(
         setupPaneThread$,
         {
           setPaneThread$: setCurrentLeftThread$,
-          setPaneThreadActive$: setCurrentLeftThreadActive$,
           resetSetupSignal$: resetLeftSetupSignal$,
           onReady$: hideAppSkeleton$,
         },
@@ -290,7 +283,6 @@ export const setupRightThread$ = command(
       setupPaneThread$,
       {
         setPaneThread$: setCurrentRightThread$,
-        setPaneThreadActive$: setCurrentRightThreadActive$,
         resetSetupSignal$: resetRightSetupSignal$,
       },
       threadId,

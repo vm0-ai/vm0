@@ -11,8 +11,8 @@ import {
   useLastLoadable,
   useLastResolved,
   useLoadable,
-  useResolved,
 } from "ccstate-react";
+import { equalArrays } from "../../lib/equality.ts";
 import { now } from "../../lib/time.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
@@ -309,9 +309,7 @@ import {
 } from "../../signals/view-component-state.ts";
 import {
   currentLeftThread$,
-  currentLeftThreadActive$,
   currentRightThread$,
-  currentRightThreadActive$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import {
   focusChatThreadContainer$,
@@ -2593,11 +2591,9 @@ function HeaderAutomationSidebar({
 // ---------------------------------------------------------------------------
 
 function ChatThread({
-  active,
   isMain,
   thread,
 }: {
-  active: boolean;
   isMain?: boolean;
   thread: ChatPanelSignals;
 }) {
@@ -2616,20 +2612,16 @@ function ChatThread({
       ref={setContainerRef}
       tabIndex={-1}
     >
-      {active && <ChatThreadContent thread={thread} />}
+      <ChatThreadContent thread={thread} />
     </section>
   );
 }
 
 function ChatThreadArea({
-  leftThreadActive,
   leftThread,
-  rightThreadActive,
   rightThread,
 }: {
-  leftThreadActive: boolean;
   leftThread: ChatPanelSignals | null;
-  rightThreadActive: boolean;
   rightThread: ChatPanelSignals | null;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
@@ -2639,13 +2631,11 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && (
-        <ChatThread active={leftThreadActive} isMain thread={leftThread} />
-      )}
+      {leftThread && <ChatThread isMain thread={leftThread} />}
       {rightThread && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread active={rightThreadActive} thread={rightThread} />
+          <ChatThread thread={rightThread} />
         </>
       )}
     </div>
@@ -2664,9 +2654,7 @@ function ThreadAutomationsSidebarSlot({
 export function ZeroChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftThread = useGet(currentLeftThread$);
-  const leftThreadActive = useGet(currentLeftThreadActive$);
   const rightThread = useGet(currentRightThread$);
-  const rightThreadActive = useGet(currentRightThreadActive$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   return (
     <>
@@ -2689,12 +2677,7 @@ export function ZeroChatThreadPage() {
           ) : null
         }
       >
-        <ChatThreadArea
-          leftThread={leftThread}
-          leftThreadActive={leftThreadActive}
-          rightThread={rightThread}
-          rightThreadActive={rightThreadActive}
-        />
+        <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
       <ChatConnectorActionConnectModal />
@@ -2729,7 +2712,10 @@ function ChatThreadRenderedEventGroups({
 }: {
   thread: ChatPanelSignals;
 }) {
-  const renderedGroups = useResolved(thread.visibleRenderedChatGroups$) ?? [];
+  const renderedGroups =
+    useLastResolved(thread.visibleRenderedChatGroups$, {
+      equalityFn: equalArrays,
+    }) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedEventsForThinkingIndicator(renderedGroups);
   const modelChanges = modelChangesByEventId(renderedActiveGroups);
@@ -3857,8 +3843,10 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
           standalonePwa && "overscroll-contain",
         )}
       >
+        {/* A query-only chat route can replace the panel for the same thread.
+            Reset hook-owned resolved values with their actual computed owner. */}
         <ChatThreadEventsMain
-          key={`messages:${thread.threadId}`}
+          key={thread.visibleRenderedChatGroups$.id}
           thread={thread}
         />
       </div>
