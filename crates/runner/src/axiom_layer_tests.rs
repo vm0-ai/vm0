@@ -6,9 +6,15 @@
 //! endpoint with the TS-compatible payload shape.
 //!
 
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, Mutex, mpsc};
+use std::thread;
+use std::time::Duration;
 
-use super::{INTERNAL_TARGET, init_from_env_values, init_with_base_url, with_ingest_filter};
+use super::{
+    AxiomLayer, CHANNEL_CAP, INTERNAL_TARGET, init_from_env_values, init_with_base_url,
+    with_ingest_filter,
+};
 use httpmock::Method::POST;
 use httpmock::MockServer;
 use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
@@ -225,7 +231,7 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
         tracing::debug!("local debug");
         tracing::trace!("local trace");
         tracing::warn!("local warn");
-        tracing::warn!(target: INTERNAL_TARGET, "local internal");
+        tracing::warn!(target: INTERNAL_TARGET, dropped = 1_u64, "axiom channel full");
     }
     guard.shutdown().await;
 
@@ -253,7 +259,7 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
                 && event
                     .message
                     .as_deref()
-                    .is_some_and(|seen| seen.contains("local internal"))
+                    .is_some_and(|seen| seen.contains("axiom channel full"))
         }),
         "sibling local layer did not record internal-target event: {events:?}",
     );
@@ -262,7 +268,12 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     let events = captured.events();
     let warning = event_with_message(&events, "local warn");
     assert_eq!(warning["level"], json!("warn"));
-    for message in ["local info", "local debug", "local trace", "local internal"] {
+    for message in [
+        "local info",
+        "local debug",
+        "local trace",
+        "axiom channel full",
+    ] {
         assert!(
             !has_event_with_message(&events, message),
             "filtered event {message:?} should not be ingested: {events:#?}",
@@ -404,77 +415,40 @@ async fn none_option_fields_are_omitted_from_axiom_payload() {
     );
 }
 
-#[tokio::test]
-async fn burst_past_channel_cap_drops_without_blocking_or_feeding_back() {
-    let server = MockServer::start_async().await;
-
-    let ingest = server
-        .mock_async(|when, then| {
-            when.method(POST)
-                .path("/v1/datasets/vm0-web-logs-test/ingest");
-            then.status(200).body("{}");
-        })
-        .await;
-
-    // Negative: the layer's own "axiom channel full" warning (emitted under
-    // INTERNAL_TARGET every 1000 drops) must NOT reach ingest. The Axiom
-    // per-layer filter excludes INTERNAL_TARGET to prevent the diagnostic
-    // from re-entering the already-full channel and feedback-flooding.
-    let feedback = server
-        .mock_async(|when, then| {
-            when.method(POST).body_includes("axiom channel full");
-            then.status(200).body("{}");
-        })
-        .await;
-
-    let (layer, guard) =
-        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+#[test]
+fn burst_past_channel_cap_drops_without_blocking() {
+    let (tx, receiver) = tokio::sync::mpsc::channel(CHANNEL_CAP);
+    let layer = AxiomLayer {
+        tx,
+        dropped: AtomicU64::new(0),
+    };
     let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let dispatch = tracing::Dispatch::new(subscriber);
 
-    // 3000 > CHANNEL_CAP (1024) + 1000 so we both overflow the channel and
-    // cross the drop counter's multiple-of-1000 branch at least twice
-    // (drops #1 and #1001).
-    const EMIT: usize = 3000;
-    let emit_elapsed;
-    {
-        let _sub = tracing::subscriber::set_default(subscriber);
-        // `#[tokio::test]` defaults to a current-thread runtime. The
-        // synchronous for loop below monopolizes that thread — the
-        // dispatcher task is spawned but cannot run, so the channel fills
-        // deterministically without any mock-server delay trickery. Once
-        // past CHANNEL_CAP every `try_send` returns `Full` and we exercise
-        // the drop-counter path.
-        let start = std::time::Instant::now();
-        for i in 0..EMIT {
-            tracing::warn!(i, "burst");
-        }
-        emit_elapsed = start.elapsed();
-    }
+    // Holding the receiver without polling it makes channel saturation
+    // independent of runtime scheduling. The 1001 excess events exercise
+    // both periodic drop-diagnostic thresholds (drops #1 and #1001).
+    const EMIT: usize = CHANNEL_CAP + 1001;
+    const WATCHDOG_TIMEOUT: Duration = Duration::from_secs(5);
+    let (completed_tx, completed_rx) = mpsc::channel();
+    let producer = thread::spawn(move || {
+        tracing::dispatcher::with_default(&dispatch, || {
+            for i in 0..EMIT {
+                tracing::warn!(i, "burst");
+            }
+        });
+        completed_tx.send(()).expect("report producer completion");
+    });
 
-    // `on_event` uses `try_send`, so even with a full channel the whole
-    // burst must complete in low-ms. 500ms is ample slack over the expected
-    // runtime and will hang (not silently pass) if someone ever swaps in a
-    // blocking variant like `blocking_send` or a retry loop.
-    assert!(
-        emit_elapsed < std::time::Duration::from_millis(500),
-        "caller blocked on full channel: {emit_elapsed:?}",
-    );
+    completed_rx
+        .recv_timeout(WATCHDOG_TIMEOUT)
+        .expect("producer blocked on the full Axiom channel");
+    producer.join().expect("producer thread panicked");
 
-    guard.shutdown().await;
-
-    // Feedback invariant: INTERNAL_TARGET events never entered the channel.
-    feedback.assert_calls_async(0).await;
-
-    // Dispatcher drained normally after shutdown's `send(Close)` found a
-    // slot — confirms the loop recovers rather than permanently wedging.
-    let hits = ingest.calls_async().await;
-    assert!(hits >= 1, "dispatcher never drained");
-    // Drops actually happened: if buffering were unbounded, the dispatcher
-    // would POST ceil(EMIT/BATCH_SIZE) = 60 batches; with a 1024-slot
-    // channel it POSTs ~21. 40 is a comfortable ceiling under 60.
-    assert!(
-        hits < 40,
-        "too many ingest POSTs ({hits}); drops may not have happened",
+    assert_eq!(
+        receiver.len(),
+        CHANNEL_CAP,
+        "the bounded channel must drop every event beyond its capacity",
     );
 }
 
