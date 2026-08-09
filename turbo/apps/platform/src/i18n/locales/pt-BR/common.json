@@ -1124,7 +1124,6 @@
     },
     "attachments": {
       "attach": "Anexar",
-      "file": "Arquivo {{filename}}",
       "fileTooLarge": "{{filename}} excede o limite de 1 GB",
       "imageUnavailable": "[Imagem indisponível: {{filename}}]",
       "loadingFile": "Carregando {{filename}}",

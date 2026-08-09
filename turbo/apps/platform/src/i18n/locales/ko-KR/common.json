@@ -1101,7 +1101,6 @@
     },
     "attachments": {
       "attach": "첨부",
-      "file": "파일 {{filename}}",
       "fileTooLarge": "{{filename}} 파일이 1GB 제한을 초과했습니다",
       "imageUnavailable": "[이미지 없음: {{filename}}]",
       "loadingFile": "{{filename}} 불러오는 중",

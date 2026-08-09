@@ -1101,7 +1101,6 @@
     },
     "attachments": {
       "attach": "अटैच करें",
-      "file": "फ़ाइल {{filename}}",
       "fileTooLarge": "{{filename}} 1 GB सीमा से अधिक है",
       "imageUnavailable": "[छवि अनुपलब्ध: {{filename}}]",
       "loadingFile": "{{filename}} लोड हो रहा है",

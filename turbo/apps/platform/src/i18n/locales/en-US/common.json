@@ -1101,7 +1101,6 @@
     },
     "attachments": {
       "attach": "Attach",
-      "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} exceeds the 1 GB limit",
       "imageUnavailable": "[Image unavailable: {{filename}}]",
       "loadingFile": "Loading {{filename}}",

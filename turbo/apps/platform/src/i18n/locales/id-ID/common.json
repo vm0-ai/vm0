@@ -1101,7 +1101,6 @@
     },
     "attachments": {
       "attach": "Lampirkan",
-      "file": "File {{filename}}",
       "fileTooLarge": "{{filename}} melebihi batas 1 GB",
       "imageUnavailable": "[Gambar tidak tersedia: {{filename}}]",
       "loadingFile": "Memuat {{filename}}",

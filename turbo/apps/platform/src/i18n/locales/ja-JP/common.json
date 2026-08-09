@@ -1101,7 +1101,6 @@
     },
     "attachments": {
       "attach": "添付する",
-      "file": "ファイル {{filename}}",
       "fileTooLarge": "{{filename}} が 1 GB の制限を超えています",
       "imageUnavailable": "[画像は利用できません: {{filename}}]",
       "loadingFile": "{{filename}} をロードしています",
