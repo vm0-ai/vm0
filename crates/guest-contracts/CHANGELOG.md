@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.6.1...guest-contracts-v0.7.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+
 ## [0.6.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.6.0...guest-contracts-v0.6.1) (2026-08-09)
 
 

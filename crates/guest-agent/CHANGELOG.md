@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.66.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.7...guest-agent-v0.66.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+
 ## [0.65.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.6...guest-agent-v0.65.7) (2026-08-09)
 
 ## [0.65.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.5...guest-agent-v0.65.6) (2026-08-09)
