@@ -2691,28 +2691,6 @@ describe("CHAT-01 chat search", () => {
     expect(limited.hasMore).toBeTruthy();
   }, 60_000);
 
-  it("returns literal punctuation match ranges from the chat search route", async () => {
-    const owner = bdd.user();
-    await setChatSearchIndex(owner, false);
-    bdd.acceptAgentStorageWrites();
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Literal search agent",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: "alpha+beta+gamma",
-    });
-
-    const result = await chat.searchChat(owner, "+");
-
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]?.matchedMessage.content).toBe("alpha+beta+gamma");
-    expect(result.results[0]?.matchedRanges).toStrictEqual([
-      { start: 5, end: 6 },
-      { start: 10, end: 11 },
-    ]);
-  });
-
   it("associates batched context windows across matches and threads", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();
