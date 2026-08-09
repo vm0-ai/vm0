@@ -165,18 +165,52 @@ const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts|browsers)\/
 // URL.canParse is unavailable on iOS Safari < 17. Instead of relying on it (or
 // on try/catch, which this repo's ESLint forbids), feature-detect it and fall
 // back to a structural validation before constructing a URL. Mirrors the
-// pattern used in signals/auth.ts parseUrl().
-const ABSOLUTE_HTTP_URL_REGEX = /^https?:\/\//i;
+// pattern used in signals/auth.ts parseUrl(): the host must match a hostname
+// shape with an in-range optional port, so malformed absolute URLs (for
+// example "https://exa%mple.com") return null instead of throwing on old
+// browsers. Remove together with support for URL.canParse-less browsers.
+const LEGACY_HTTP_URL_REGEX = /^https?:\/\/([^/?#\s]+)([/?#][^\s]*)?$/i;
+const LEGACY_HOST_WITH_OPTIONAL_PORT_REGEX =
+  /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::(\d{1,5}))?$/i;
+const MAX_URL_PORT = 65_535;
+const PROTOCOL_RELATIVE_URL_REGEX = /^\/\/([^/?#\s]+)([/?#][^\s]*)?$/;
+
+function isLegacyUrlHostValid(host: string | undefined): host is string {
+  if (!host) {
+    return false;
+  }
+  const hostMatch = LEGACY_HOST_WITH_OPTIONAL_PORT_REGEX.exec(host);
+  const port = hostMatch?.[2];
+  return Boolean(hostMatch && (!port || Number(port) <= MAX_URL_PORT));
+}
 
 function tryParseUrl(input: string, base?: string): URL | null {
   if (typeof URL.canParse === "function") {
     return URL.canParse(input, base) ? new URL(input, base) : null;
   }
 
-  if (ABSOLUTE_HTTP_URL_REGEX.test(input)) {
+  if (/\s/u.test(input)) {
+    return null;
+  }
+
+  const absoluteMatch = LEGACY_HTTP_URL_REGEX.exec(input);
+  if (absoluteMatch) {
+    if (!isLegacyUrlHostValid(absoluteMatch[1])) {
+      return null;
+    }
     return new URL(input);
   }
-  if (base && (input.startsWith("/") || input.startsWith("//"))) {
+
+  if (base && input.startsWith("/")) {
+    if (input.startsWith("//")) {
+      const protocolRelativeMatch = PROTOCOL_RELATIVE_URL_REGEX.exec(input);
+      if (
+        !protocolRelativeMatch ||
+        !isLegacyUrlHostValid(protocolRelativeMatch[1])
+      ) {
+        return null;
+      }
+    }
     return new URL(input, base);
   }
   return null;

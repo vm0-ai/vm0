@@ -34,6 +34,12 @@ const SAMPLES: readonly string[] = [
   "/artifacts/run-1/file.png",
   // A platform file URL with an explicit https origin.
   "https://vm0.ai/artifacts/run-1/report.pdf",
+  // Malformed absolute URLs: URL.canParse rejects them on modern browsers,
+  // and the structural fallback must return null instead of throwing
+  // TypeError from new URL() on browsers without URL.canParse.
+  "https://exa%mple.com",
+  "https://example.com:99999",
+  "http://[",
 ];
 
 describe("parseBodyBlocks with URL.canParse availability", () => {
