@@ -1,18 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpResponse } from "msw";
-import { command } from "ccstate";
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 import {
   clearMockedAuth,
+  mockClerkSessionSignedOut,
   mockClerkSessionTransitioning,
   mockedClerk,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
 import { accept } from "../../lib/accept.ts";
+import { initializeI18n } from "../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { fetch$ } from "../fetch.ts";
 import {
@@ -22,24 +23,12 @@ import {
 import { setRootSignal$ } from "../root-signal.ts";
 import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
-import { FEATURE_SWITCH_CACHE_KEY } from "../external/feature-switch-state.ts";
-import { localStorageSignals } from "../external/local-storage.ts";
 
 const context = testContext();
 const resetAuthRecoverySignal$ = resetSignal();
-const { set$: setFeatureSwitchCacheLocalStorage$ } = localStorageSignals(
-  FEATURE_SWITCH_CACHE_KEY,
-);
 
-const enableForegroundAuthRecovery$ = command(({ set }) => {
-  set(
-    setFeatureSwitchCacheLocalStorage$,
-    JSON.stringify(
-      getAllFeatureStates({
-        overrides: { [FeatureSwitchKey.ForegroundAuthRecovery]: true },
-      }),
-    ),
-  );
+beforeEach(() => {
+  context.store.set(setRootSignal$, context.signal);
 });
 
 const UUID_REGEX =
@@ -74,10 +63,6 @@ function mockSignedInUser(): void {
   context.signal.addEventListener("abort", () => {
     clearMockedAuth();
   });
-}
-
-function enableForegroundAuthRecovery(): void {
-  context.store.set(enableForegroundAuthRecovery$);
 }
 
 function setBrowserUrl(url: string): void {
@@ -167,10 +152,8 @@ describe("api client headers", () => {
     expect(second.requestId).not.toBe(first.requestId);
   });
 
-  it("recovers an enabled non-realtime 401 without a foreground task", async () => {
+  it("recovers a non-realtime 401 without a foreground task", async () => {
     mockSignedInUser();
-    enableForegroundAuthRecovery();
-    context.store.set(setRootSignal$, context.signal);
     let requests = 0;
     let forcedTokenRefreshes = 0;
     context.mocks.http.get("*/api/zero/auth-recovery-test", () => {
@@ -185,9 +168,6 @@ describe("api client headers", () => {
           },
           { status: 401 },
         );
-      }
-      if (requests === 2) {
-        return HttpResponse.error();
       }
       return HttpResponse.json({ recovered: true });
     });
@@ -213,7 +193,7 @@ describe("api client headers", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ recovered: true });
-    expect(requests).toBe(3);
+    expect(requests).toBe(2);
     expect(forcedTokenRefreshes).toBe(3);
     expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(3);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
@@ -221,7 +201,6 @@ describe("api client headers", () => {
 
   it("waits for Clerk to settle its session before refreshing the token", async () => {
     mockSignedInUser();
-    context.store.set(setRootSignal$, context.signal);
     mockClerkSessionTransitioning(true);
 
     const listenerRegistered = context.mocks.deferred<void>();
@@ -276,7 +255,6 @@ describe("api client headers", () => {
 
   it("stops waiting for Clerk when the request is aborted", async () => {
     mockSignedInUser();
-    context.store.set(setRootSignal$, context.signal);
     mockClerkSessionTransitioning(true);
 
     const listenerRegistered = context.mocks.deferred<void>();
@@ -323,9 +301,8 @@ describe("api client headers", () => {
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
-  it("redirects fetch$ when the fresh-token replay remains unauthorized", async () => {
+  it("does not redirect an active session when the replay remains unauthorized", async () => {
     mockSignedInUser();
-    context.store.set(setRootSignal$, context.signal);
     let requests = 0;
     context.mocks.http.get("*/api/zero/auth-recovery-test", () => {
       requests += 1;
@@ -347,6 +324,32 @@ describe("api client headers", () => {
 
     expect(response.status).toBe(401);
     expect(requests).toBe(2);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("redirects when auth recovery confirms the session is signed out", async () => {
+    mockSignedInUser();
+    mockClerkSessionSignedOut(true);
+    let requests = 0;
+    context.mocks.http.get("*/api/zero/signed-out-auth-recovery-test", () => {
+      requests += 1;
+      return HttpResponse.json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Unauthorized",
+          },
+        },
+        { status: 401 },
+      );
+    });
+
+    const response = await getFetchForTest()(
+      "/api/zero/signed-out-auth-recovery-test",
+    );
+
+    expect(response.status).toBe(401);
+    expect(requests).toBe(1);
     expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
   });
 
@@ -397,6 +400,24 @@ describe("api client headers", () => {
     await getFetchForTest()("/api/zero/preview-bypass-test");
 
     expect(observedBypassHeader).toBeNull();
+  });
+
+  it("shows the HTTP status when an API error message is empty", async () => {
+    await initializeI18n(DEFAULT_LOCALE);
+    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(403, {
+        error: { code: "FORBIDDEN", message: "" },
+      });
+    });
+
+    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+
+    await expect(
+      accept(client.get({ params: { id: agentId } }), [200]),
+    ).rejects.toThrow("HTTP 403");
+    expect(toastError).toHaveBeenCalledWith("HTTP 403");
   });
 
   it("opens the force upgrade dialog for contract client responses", async () => {

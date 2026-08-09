@@ -19,10 +19,3 @@ export const featureSwitchCacheState$ = computed((get) => {
   }
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
-
-export const foregroundAuthRecoveryEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitchCacheState$)[FeatureSwitchKey.ForegroundAuthRecovery] ??
-    false
-  );
-});

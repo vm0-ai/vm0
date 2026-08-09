@@ -10,22 +10,14 @@ import {
 
 import { IN_VITEST } from "../env.ts";
 import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";
-import {
-  authRecoverySignal,
-  fetchFreshToken,
-  handleUnauthorizedRedirect,
-  retryAuthRecoveryOperation,
-  type ClerkLike,
-} from "./auth-retry.ts";
+import type { AuthRecovery } from "./auth-retry.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 
 interface AuthedClientOptions {
   readonly baseUrl: string;
-  readonly getClerk: () => Promise<ClerkLike>;
+  readonly getAuthRecovery: () => Promise<AuthRecovery>;
   readonly getRootSignal: () => AbortSignal;
-  readonly getForegroundAuthRecovery?: () => Promise<boolean> | null;
-  readonly getUnauthorizedRedirectSuppressionUntil?: () => number;
   readonly resolvePath?: (
     path: string,
     ctx: { method: string },
@@ -42,15 +34,16 @@ export function createAuthedContractClient<T extends AppRouter>(
     // Validation is handled below so errors include the actual response body.
     validateResponse: false,
     api: async (args: ApiFetcherArgs) => {
-      const clerk = await options.getClerk();
-      const initialToken = (await clerk.session?.getToken()) ?? null;
+      const authRecovery = await options.getAuthRecovery();
+      const requestSignal = args.fetchOptions?.signal ?? undefined;
+      const initialToken = await authRecovery.getToken(requestSignal);
       const path = options.resolvePath
         ? await options.resolvePath(args.path, { method: args.route.method })
         : args.path;
 
       const requestWithToken = (
         token: string | null,
-        signal: AbortSignal | null | undefined = args.fetchOptions?.signal,
+        signal: AbortSignal | undefined = requestSignal,
       ) => {
         const headers = new Headers(args.headers);
         if (token) {
@@ -73,25 +66,13 @@ export function createAuthedContractClient<T extends AppRouter>(
       let response = await requestWithToken(initialToken);
 
       if (response.status === 401) {
-        const recoverySignal = authRecoverySignal(
-          options.getRootSignal(),
-          args.fetchOptions?.signal,
-        );
-        const refreshResult = await fetchFreshToken(
-          clerk,
-          recoverySignal,
-          options.getForegroundAuthRecovery?.() ?? null,
-        );
-        if (refreshResult.status === "refreshed") {
-          response = await retryAuthRecoveryOperation(() => {
-            return requestWithToken(refreshResult.token, recoverySignal);
-          }, recoverySignal);
-        }
-        if (response.status === 401) {
-          handleUnauthorizedRedirect(
-            clerk,
-            options.getUnauthorizedRedirectSuppressionUntil?.() ?? 0,
-          );
+        const rootSignal = options.getRootSignal();
+        const recoverySignal = requestSignal
+          ? AbortSignal.any([rootSignal, requestSignal])
+          : rootSignal;
+        const freshToken = await authRecovery.refreshAuth(requestSignal);
+        if (freshToken) {
+          response = await requestWithToken(freshToken, recoverySignal);
         }
       }
 

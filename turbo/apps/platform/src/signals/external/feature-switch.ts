@@ -2,14 +2,10 @@ import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { clerk$ } from "../auth";
+import { authRecovery$, clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
 import { createAuthedContractClient } from "../api-client-base.ts";
-import {
-  foregroundAuthRecovery$,
-  unauthorizedRedirectSuppressionUntil$,
-} from "../auth-retry.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import {
   featureSwitchCacheState$,
@@ -21,17 +17,11 @@ import {
 const apiFeatureSwitchClient$ = computed((get) => {
   return createAuthedContractClient(zeroFeatureSwitchesContract, {
     baseUrl: resolveApiBaseForTarget("api"),
-    getClerk: () => {
-      return get(clerk$);
+    getAuthRecovery: () => {
+      return get(authRecovery$);
     },
     getRootSignal: () => {
       return get(rootSignal$);
-    },
-    getForegroundAuthRecovery: () => {
-      return get(foregroundAuthRecovery$);
-    },
-    getUnauthorizedRedirectSuppressionUntil: () => {
-      return get(unauthorizedRedirectSuppressionUntil$);
     },
   });
 });

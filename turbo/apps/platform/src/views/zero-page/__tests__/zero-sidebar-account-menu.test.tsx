@@ -929,9 +929,6 @@ describe("zero sidebar account menu", () => {
         );
       }
       if (modelProviderRequests === 2) {
-        return HttpResponse.error();
-      }
-      if (modelProviderRequests === 3) {
         authRecoveryCompleted.resolve();
       }
       return HttpResponse.json({ modelProviders: [provider] });
@@ -966,7 +963,7 @@ describe("zero sidebar account menu", () => {
     });
 
     await authRecoveryCompleted.promise;
-    expect(modelProviderRequests).toBe(3);
+    expect(modelProviderRequests).toBe(2);
     expect(forcedTokenRefreshes).toBe(3);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
 
@@ -977,7 +974,7 @@ describe("zero sidebar account menu", () => {
     ).toBeInTheDocument();
   });
 
-  it("redirects without a toast when the fresh-token request remains unauthorized", async () => {
+  it("keeps an active session open when the replay remains unauthorized", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -1013,8 +1010,8 @@ describe("zero sidebar account menu", () => {
 
     await waitFor(() => {
       expect(modelProviderRequests).toBe(2);
-      expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
     });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
   });
 
@@ -1058,100 +1055,6 @@ describe("zero sidebar account menu", () => {
     });
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
     expect(screen.queryByText("Unauthorized")).not.toBeInTheDocument();
-  });
-
-  it("suppresses global sign-in redirects during add-account auth transitions", async () => {
-    mockNow(new Date("2026-01-01T00:00:00.000Z"));
-    mockAdminAccountSidebar();
-    context.mocks.data.personalModelProviders([
-      connectedPersonalCodexProvider(),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${AGENT_ID}/chat`,
-      user: {
-        id: "test-user-123",
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.test",
-        imageUrl: "https://cdn.vm0.test/users/alex.png",
-        clientSessions: [
-          {
-            id: "test-session-id",
-            status: "active",
-            user: {
-              fullName: "Alex Rivera",
-              imageUrl: "https://cdn.vm0.test/users/alex.png",
-              primaryEmailAddress: {
-                emailAddress: "alex.rivera@example.test",
-              },
-            },
-          },
-          {
-            id: "session-jamie",
-            status: "active",
-            user: {
-              fullName: "Jamie Chen",
-              imageUrl: "https://cdn.vm0.test/users/jamie.png",
-              primaryEmailAddress: {
-                emailAddress: "jamie.chen@example.test",
-              },
-            },
-          },
-        ],
-      },
-      featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
-    });
-
-    let menu = await openAccountMenu();
-    click(within(menu).getByText("Switch account"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Add account")).toBeInTheDocument();
-    });
-
-    click(screen.getByText("Add account"));
-    await waitFor(() => {
-      expect(mockedClerk.openSignIn).toHaveBeenCalledWith({
-        fallbackRedirectUrl: "/",
-        forceRedirectUrl: "/",
-      });
-    });
-
-    let modelProviderRefreshes = 0;
-    context.mocks.api(
-      zeroPersonalModelProvidersMainContract.list,
-      ({ respond }) => {
-        modelProviderRefreshes += 1;
-        return respond(401, {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Unauthorized",
-          },
-        });
-      },
-    );
-
-    menu = await openAccountMenu();
-    await waitFor(() => {
-      expect(modelProviderRefreshes).toBeGreaterThan(0);
-    });
-    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
-
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-
-    mockedClerk.redirectToSignIn.mockClear();
-    modelProviderRefreshes = 0;
-    mockNow(new Date("2026-01-01T00:00:30.001Z"));
-
-    await openAccountMenu();
-    await waitFor(() => {
-      expect(modelProviderRefreshes).toBeGreaterThan(0);
-      expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
-    });
   });
 
   it("localizes account actions without changing account data or routes", async () => {

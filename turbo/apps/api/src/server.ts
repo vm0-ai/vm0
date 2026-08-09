@@ -1,4 +1,4 @@
-// Long-lived Node API server entry point. Used by `pnpm dev` (tsx watch) and
+// Long-lived Node server entry point. Used by `pnpm dev` (tsx watch) and
 // `pnpm start`. Distinct from `./index.ts`, which is the Vercel-function
 // entry built by `@hono/vite-build/vercel`.
 

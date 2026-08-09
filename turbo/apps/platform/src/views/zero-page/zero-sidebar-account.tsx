@@ -30,7 +30,6 @@ import {
   DropdownMenuSubContent,
 } from "@vm0/ui";
 import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
-import { suppressUnauthorizedRedirectForAuthTransition$ } from "../../signals/auth-retry.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
   type AccountMenuSubscriptionUsageRowsCacheKey,
@@ -644,9 +643,6 @@ export function AccountDropdown({
   const setResetDialog = useSet(setAccountMenuCodexResetDialog$);
   const actionLoadable = useLoadable(personalActionPromise$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
-  const suppressUnauthorizedRedirectForAuthTransition = useSet(
-    suppressUnauthorizedRedirectForAuthTransition$,
-  );
   const pageSignal = useGet(pageSignal$);
 
   const current = accounts.find((a) => {
@@ -683,7 +679,6 @@ export function AccountDropdown({
   };
 
   const handleSwitchSession = (sessionId: string) => {
-    suppressUnauthorizedRedirectForAuthTransition();
     detach(
       clerk?.setActive({
         session: sessionId,
@@ -702,7 +697,6 @@ export function AccountDropdown({
   };
 
   const handleAddAccount = () => {
-    suppressUnauthorizedRedirectForAuthTransition();
     detach(
       clerk?.openSignIn({
         fallbackRedirectUrl: "/",
