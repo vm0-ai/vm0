@@ -414,13 +414,35 @@ test.describe("mobile follow-up card rail", () => {
     );
 
     const rail = page.getByRole("group", { name: "Keep going" });
+    const composer = page.locator(".zero-composer");
     const cards = responsiveFollowupPrompts.map((prompt) => {
       return page.getByRole("button", { name: prompt, exact: true });
     });
     await expect(rail).toBeVisible();
+    await expect(composer).toBeVisible();
     for (const card of cards) {
       await expect(card).toBeVisible();
     }
+
+    await expect
+      .poll(async () => {
+        const [railBox, composerBox] = await Promise.all([
+          rail.boundingBox(),
+          composer.boundingBox(),
+        ]);
+        if (!railBox || !composerBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+        return Math.max(
+          Math.abs(railBox.x - composerBox.x),
+          Math.abs(
+            railBox.x +
+              railBox.width -
+              (composerBox.x + composerBox.width),
+          ),
+        );
+      })
+      .toBeLessThan(1);
 
     await expect
       .poll(async () => {
