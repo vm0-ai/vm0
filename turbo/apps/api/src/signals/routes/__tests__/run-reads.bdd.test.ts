@@ -235,6 +235,48 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
 });
 
 describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
+  it("groups active concurrency by workspace member", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const actorCompose = await createClaudeCompose(actor, "bdd-actor-usage");
+    const memberCompose = await createClaudeCompose(member, "bdd-member-usage");
+
+    await api.createDirectRun(actor, {
+      agentComposeId: actorCompose.composeId,
+      prompt: "actor active run",
+    });
+    await api.createDirectRun(member, {
+      agentComposeId: memberCompose.composeId,
+      prompt: "member active run",
+    });
+    await bdd.readMe(actor);
+    await bdd.readMe(member);
+
+    const queue = await api.readRunQueue(actor);
+
+    expect(queue.body.concurrency).toMatchObject({
+      tier: "pro",
+      limit: 2,
+      active: 2,
+      available: 0,
+    });
+    expect(queue.body.concurrency.memberUsage).toHaveLength(2);
+    expect(queue.body.concurrency.memberUsage).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: actor.userId,
+          displayName: "BDD User",
+          active: 1,
+        }),
+        expect.objectContaining({
+          userId: member.userId,
+          displayName: "BDD User",
+          active: 1,
+        }),
+      ]),
+    );
+  });
+
   it("lists, reads, and queues direct runs with status, agent, and window filters", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });

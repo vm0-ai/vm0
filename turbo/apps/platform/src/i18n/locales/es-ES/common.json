@@ -3961,6 +3961,7 @@
       "available_one": "{{count}} cupo disponible",
       "available_many": "{{count}} cupos disponibles",
       "available_other": "{{count}} cupos disponibles",
+      "availableNow": "Disponible ahora",
       "inUse_one": "{{active}} de {{limit}} cupo en uso",
       "inUse_many": "{{active}} de {{limit}} cupos en uso",
       "inUse_other": "{{active}} de {{limit}} cupos en uso"

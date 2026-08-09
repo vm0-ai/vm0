@@ -3961,6 +3961,7 @@
       "available_one": "{{count}} slot disponibile",
       "available_many": "{{count}} slot disponibili",
       "available_other": "{{count}} slot disponibili",
+      "availableNow": "Disponibili ora",
       "inUse_one": "{{active}} di {{limit}} slot in uso",
       "inUse_many": "{{active}} di {{limit}} slot in uso",
       "inUse_other": "{{active}} di {{limit}} slot in uso"

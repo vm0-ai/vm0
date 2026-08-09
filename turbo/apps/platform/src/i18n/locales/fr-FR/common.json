@@ -3961,6 +3961,7 @@
       "available_one": "{{count}} créneau disponible",
       "available_many": "{{count}} créneaux disponibles",
       "available_other": "{{count}} créneaux disponibles",
+      "availableNow": "Disponible maintenant",
       "inUse_one": "{{active}} sur {{limit}} emplacement utilisé",
       "inUse_many": "{{active}} sur {{limit}} emplacements utilisés",
       "inUse_other": "{{active}} sur {{limit}} emplacements utilisés"

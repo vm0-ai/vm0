@@ -3,6 +3,7 @@ import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 import { isOrgTier, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import {
   ALL_RUN_STATUSES,
+  type ConcurrencyMemberUsage,
   type GetRunResponse,
   type QueueResponse,
   type RunStatus,
@@ -105,11 +106,21 @@ function effectiveConcurrencyLimit(
   return Number.isFinite(limit) ? limit : 0;
 }
 
-async function activeRunCount(db: ReadDb, orgId: string): Promise<number> {
+async function activeMemberUsage(
+  db: ReadDb,
+  orgId: string,
+): Promise<ConcurrencyMemberUsage[]> {
   const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-  const [activeResult] = await db
-    .select({ count: count() })
+  const active = count();
+  const rows = await db
+    .select({
+      userId: agentRuns.userId,
+      name: userCache.name,
+      email: userCache.email,
+      active,
+    })
     .from(agentRuns)
+    .leftJoin(userCache, eq(agentRuns.userId, userCache.userId))
     .where(
       and(
         eq(agentRuns.orgId, orgId),
@@ -121,8 +132,17 @@ async function activeRunCount(db: ReadDb, orgId: string): Promise<number> {
           ),
         ),
       ),
-    );
-  return Number(activeResult?.count ?? 0);
+    )
+    .groupBy(agentRuns.userId, userCache.name, userCache.email)
+    .orderBy(desc(active), asc(agentRuns.userId));
+
+  return rows.map((row) => {
+    return {
+      userId: row.userId,
+      displayName: row.name?.trim() || row.email || "unknown",
+      active: Number(row.active),
+    };
+  });
 }
 
 function queuedRunRows(db: ReadDb, orgId: string): Promise<QueuedRunRow[]> {
@@ -479,14 +499,14 @@ export function zeroRunQueueStatus(args: {
   return computed(async (get): Promise<QueueResponse> => {
     const db = get(db$);
     const [
-      active,
+      memberUsage,
       queuedRuns,
       runningRuns,
       estimatedTime,
       paidSlots,
       capabilities,
     ] = await Promise.all([
-      activeRunCount(db, args.orgId),
+      activeMemberUsage(db, args.orgId),
       queuedRunRows(db, args.orgId),
       runningRunRows(db, args.orgId),
       estimatedTimePerRun(db, args.orgId),
@@ -497,6 +517,9 @@ export function zeroRunQueueStatus(args: {
       capabilities?.baseConcurrencyLimit ?? 0,
       paidSlots,
     );
+    const active = memberUsage.reduce((total, member) => {
+      return total + member.active;
+    }, 0);
     const emails = await userEmailMap(db, queuedRuns, runningRuns);
 
     return {
@@ -505,6 +528,7 @@ export function zeroRunQueueStatus(args: {
         limit,
         active,
         available: limit === 0 ? -1 : Math.max(0, limit - active),
+        memberUsage,
       },
       queue: queuedRuns.map((run, index) => {
         return queueItem(run, index, args.userId, emails);

@@ -765,11 +765,18 @@ const runningTaskSchema = z.object({
 /**
  * Concurrency info schema
  */
+const concurrencyMemberUsageSchema = z.object({
+  userId: z.string(),
+  displayName: z.string(),
+  active: z.number(),
+});
+
 const concurrencyInfoSchema = z.object({
   tier: orgTierSchema,
   limit: z.number(),
   active: z.number(),
   available: z.number(),
+  memberUsage: z.array(concurrencyMemberUsageSchema).optional(),
 });
 
 /**
@@ -813,6 +820,7 @@ export {
   logsSearchResponseSchema,
   queueEntrySchema,
   runningTaskSchema,
+  concurrencyMemberUsageSchema,
   concurrencyInfoSchema,
   queueResponseSchema,
 };
@@ -848,5 +856,8 @@ export type SearchResult = z.infer<typeof searchResultSchema>;
 export type LogsSearchResponse = z.infer<typeof logsSearchResponseSchema>;
 export type QueueEntry = z.infer<typeof queueEntrySchema>;
 export type RunningTask = z.infer<typeof runningTaskSchema>;
+export type ConcurrencyMemberUsage = z.infer<
+  typeof concurrencyMemberUsageSchema
+>;
 export type ConcurrencyInfo = z.infer<typeof concurrencyInfoSchema>;
 export type QueueResponse = z.infer<typeof queueResponseSchema>;

@@ -61,6 +61,7 @@ export enum FeatureSwitchKey {
   ChatErrorRecovery = "chatErrorRecovery",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
+  ConcurrencyMemberUsage = "concurrencyMemberUsage",
   TeamsIntegration = "teamsIntegration",
   FeishuIntegration = "feishuIntegration",
   StrapiIntegration = "strapiIntegration",

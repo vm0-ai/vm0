@@ -7,6 +7,7 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import type { ConcurrencyInfo } from "@vm0/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Sheet,
   SheetContent,
@@ -34,6 +35,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Upgrade path config: free → pro, pro → team
@@ -154,19 +156,30 @@ function CheckCircleIcon() {
 
 function CurrentPlanStatus({
   concurrency,
+  showMemberUsage,
   tierColor,
   tierLabel,
 }: {
   readonly concurrency: ConcurrencyInfo;
+  readonly showMemberUsage: boolean;
   readonly tierColor: string;
   readonly tierLabel: string;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const memberUsage = showMemberUsage ? concurrency.memberUsage : undefined;
+  const numberFormat = new Intl.NumberFormat(i18n.resolvedLanguage);
+  const slotCountLabel = (count: number): string => {
+    return t(
+      ($) => {
+        return $.billing.concurrency.slot;
+      },
+      { count, value: numberFormat.format(count) },
+    );
+  };
+
   return (
-    <div className="shrink-0 rounded-xl zero-border p-5">
-      <p
-        className={`text-sm font-semibold uppercase tracking-wider font-mono mb-3 ${tierColor}`}
-      >
+    <div className="shrink-0 rounded-[var(--zero-card-radius)] zero-border p-5">
+      <p className={`mb-3 text-sm font-mono font-semibold ${tierColor}`}>
         {tierLabel}
       </p>
       <div className="flex items-center gap-2 mb-2">
@@ -192,24 +205,70 @@ function CurrentPlanStatus({
           },
         )}
       </p>
-      <p className="text-[13px] font-light text-muted-foreground leading-relaxed mt-1.5">
-        {concurrency.available === 0
-          ? t(
-              ($) => {
-                return $.queue.status.atLimit;
-              },
-              {
-                count: concurrency.limit,
-                limit: concurrency.limit,
-              },
-            )
-          : t(
-              ($) => {
-                return $.queue.status.available;
-              },
-              { count: concurrency.available },
-            )}
-      </p>
+      {memberUsage === undefined ? (
+        <p className="mt-1.5 text-[13px] font-light leading-relaxed text-muted-foreground">
+          {concurrency.available === 0
+            ? t(
+                ($) => {
+                  return $.queue.status.atLimit;
+                },
+                {
+                  count: concurrency.limit,
+                  limit: concurrency.limit,
+                },
+              )
+            : t(
+                ($) => {
+                  return $.queue.status.available;
+                },
+                { count: concurrency.available },
+              )}
+        </p>
+      ) : (
+        <div className="mt-3">
+          {memberUsage.length > 0 && (
+            <ul className="flex flex-col gap-2.5">
+              {memberUsage.map((member) => {
+                return (
+                  <li
+                    key={member.userId}
+                    className="flex min-w-0 items-center justify-between gap-4 text-sm"
+                  >
+                    <span className="flex min-w-0 items-center gap-3 text-foreground">
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 shrink-0 rounded-full bg-muted-foreground/65"
+                      />
+                      <span className="truncate font-light">
+                        {member.displayName}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-medium tabular-nums text-foreground">
+                      {slotCountLabel(member.active)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div
+            className={`flex items-center justify-between gap-4 text-sm ${
+              memberUsage.length > 0
+                ? "mt-4 border-t border-border/60 pt-3"
+                : "mt-3"
+            }`}
+          >
+            <span className="font-light text-muted-foreground">
+              {t(($) => {
+                return $.queue.status.availableNow;
+              })}
+            </span>
+            <span className="shrink-0 font-medium tabular-nums text-foreground">
+              {slotCountLabel(Math.max(0, concurrency.available))}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -232,11 +291,9 @@ function UpgradeCard({
     maximumFractionDigits: 0,
   });
   return (
-    <div className="flex-1 flex flex-col rounded-xl zero-border p-5">
+    <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
       <div className="flex items-start justify-between mb-2">
-        <h3
-          className={`text-sm font-semibold uppercase tracking-wider font-mono ${tierColor}`}
-        >
+        <h3 className={`text-sm font-mono font-semibold ${tierColor}`}>
           {upgrade.targetLabel}
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
@@ -382,11 +439,9 @@ function ConcurrencyPurchaseCard({
   });
   const monthlyTotal = currencyFormat.format(concurrencyMonthlyTotal(quantity));
   return (
-    <div className="flex-1 flex flex-col rounded-xl zero-border p-5">
+    <div className="flex-1 flex flex-col rounded-[var(--zero-card-radius)] zero-border p-5">
       <div className="flex items-start justify-between mb-2">
-        <h3
-          className={`text-sm font-semibold uppercase tracking-wider font-mono ${tierColor}`}
-        >
+        <h3 className={`text-sm font-mono font-semibold ${tierColor}`}>
           {t(($) => {
             return $.queue.purchase.title;
           })}
@@ -484,6 +539,7 @@ function QueueDrawerContent() {
   const concurrencyQuantity = useGet(concurrencyQuantity$);
   const setConcurrencyQuantity = useSet(setConcurrencyQuantity$);
   const capabilities = useLastResolved(orgPlanCapabilities$);
+  const features = useGet(featureSwitch$);
   const planCheckoutLoading = planCheckoutLoadable.state === "loading";
   const concurrencyCheckoutLoading =
     concurrencyCheckoutLoadable.state === "loading";
@@ -492,8 +548,8 @@ function QueueDrawerContent() {
   if (!data) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="h-24 animate-pulse rounded-xl bg-muted/20" />
-        <div className="h-48 animate-pulse rounded-xl bg-muted/20" />
+        <div className="h-24 animate-pulse rounded-[var(--zero-card-radius)] bg-muted/20" />
+        <div className="h-48 animate-pulse rounded-[var(--zero-card-radius)] bg-muted/20" />
       </div>
     );
   }
@@ -535,6 +591,9 @@ function QueueDrawerContent() {
     <div className="flex flex-col gap-4 h-full">
       <CurrentPlanStatus
         concurrency={concurrency}
+        showMemberUsage={
+          features[FeatureSwitchKey.ConcurrencyMemberUsage] ?? false
+        }
         tierColor={tierColor}
         tierLabel={tierLabel}
       />
