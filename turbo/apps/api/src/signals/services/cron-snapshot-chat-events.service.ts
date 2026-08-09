@@ -6,26 +6,13 @@ import {
   type ChatEventRow,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { command, type Computed } from "ccstate";
-import {
-  and,
-  asc,
-  count,
-  eq,
-  gt,
-  inArray,
-  lt,
-  lte,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { env, optionalEnv } from "../../lib/env";
-import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -37,11 +24,6 @@ import {
   type S3Object,
 } from "../external/s3";
 import { settle } from "../utils";
-import {
-  withCronPassLog,
-  type CronPassFields,
-  type CronPassResult,
-} from "./cron-pass-log.service";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
@@ -93,7 +75,6 @@ const R2_GC_PAGE_SIZE = 1000;
  */
 const R2_GC_SLOT_MS = 10 * 60 * 1000;
 const HEX_DIGITS = "0123456789abcdef";
-const SNAPSHOT_CRON = "snapshot-chat-events";
 
 type ArchiveEventRow = Pick<
   typeof chatEvents.$inferSelect,
@@ -598,91 +579,6 @@ async function collectR2SnapshotGarbage(
 }
 
 /**
- * A thread waits for the archiver while the search watermark is ahead of its
- * head snapshot. An idle head on a retired archive version is deliberately not
- * a candidate: the reader already treats it as missing, and selecting it would
- * abort the whole pass, so `versionHeads` reports those heads instead.
- */
-function pendingThreadCondition(): SQL {
-  return gt(
-    chatEventSearchWatermarks.indexedSeqId,
-    sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
-  );
-}
-
-/**
- * Absolute archiver progress plus the head count per archive schema version.
- * The archiver skips heads on a retired version, so the per-version breakdown
- * is the only place those threads are visible, and it is what tells us when
- * every head has reached ARCHIVE_SCHEMA_VERSION.
- */
-async function chatEventSnapshotProgress(db: Db): Promise<CronPassFields> {
-  const progressRows = await db
-    .select({
-      targetThreads: count(),
-      headThreads: count(chatEventSnapshots.id),
-      pendingThreads: sql`count(*) FILTER (
-        WHERE ${pendingThreadCondition()}
-      )`
-        .mapWith(pgInt8ToSafeIntegerDecoder)
-        .as("pendingThreads"),
-    })
-    .from(chatThreads)
-    .innerJoin(
-      chatEventSearchWatermarks,
-      eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-    )
-    .leftJoin(
-      chatEventSnapshots,
-      and(
-        eq(chatEventSnapshots.chatThreadId, chatThreads.id),
-        eq(chatEventSnapshots.isHead, true),
-      ),
-    );
-  const progress = progressRows[0];
-  if (progress === undefined) {
-    throw new Error("chat event snapshot progress query returned no row");
-  }
-
-  const versionRows = await db
-    .select({
-      archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      threads: count(),
-    })
-    .from(chatEventSnapshots)
-    .where(eq(chatEventSnapshots.isHead, true))
-    .groupBy(chatEventSnapshots.archiveSchemaVersion)
-    .orderBy(asc(chatEventSnapshots.archiveSchemaVersion));
-  const versionHeads: Record<string, number> = {};
-  for (const row of versionRows) {
-    versionHeads[String(row.archiveSchemaVersion)] = row.threads;
-  }
-
-  return { ...progress, versionHeads };
-}
-
-/**
- * Size of the archived source table. Postgres payload reclaim and chat event
- * cleanup both land later, so the dashboard tracks the table this archiver
- * feeds on.
- */
-async function chatEventScale(db: Db): Promise<CronPassFields> {
-  const rows = await db
-    .select({
-      chatEventRows: count(),
-      chatEventBytes: sql`pg_total_relation_size('chat_events')`
-        .mapWith(pgInt8ToSafeIntegerDecoder)
-        .as("chatEventBytes"),
-    })
-    .from(chatEvents);
-  const scale = rows[0];
-  if (scale === undefined) {
-    throw new Error("chat event scale query returned no row");
-  }
-  return scale;
-}
-
-/**
  * Archives chat_events into immutable full-thread R2 snapshot objects, oldest
  * threads first. Each pass picks threads whose search watermark is ahead of
  * their head snapshot, rebuilds one full archive per thread (parent object +
@@ -693,11 +589,11 @@ async function chatEventScale(db: Db): Promise<CronPassFields> {
  * guarded by the expected parent, and a lost race only leaves an orphaned
  * object behind.
  */
-const snapshotChatEventsPass$ = command(
+export const snapshotChatEvents$ = command(
   async (
     { get, set },
     signal: AbortSignal,
-  ): Promise<CronPassResult<ChatEventSnapshotStats>> => {
+  ): Promise<ChatEventSnapshotStats> => {
     const db = set(writeDb$);
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const candidates = await db
@@ -721,7 +617,15 @@ const snapshotChatEventsPass$ = command(
           eq(chatEventSnapshots.isHead, true),
         ),
       )
-      .where(pendingThreadCondition())
+      // Only threads with a new tail. An idle head on a retired archive
+      // version is left alone: the reader already treats it as missing, and
+      // selecting it here would abort the whole pass on the throw below.
+      .where(
+        gt(
+          chatEventSearchWatermarks.indexedSeqId,
+          sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
+        ),
+      )
       .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
       .limit(chatEventSnapshotThreadBatchSize());
     signal.throwIfAborted();
@@ -738,38 +642,16 @@ const snapshotChatEventsPass$ = command(
     }
     const r2Gc = await collectR2SnapshotGarbage(get, db, bucket, signal);
     signal.throwIfAborted();
-    const progress = await chatEventSnapshotProgress(db);
-    signal.throwIfAborted();
-    const scale = await chatEventScale(db);
-    signal.throwIfAborted();
     return {
-      result: {
-        snapshots,
-        archivedEvents,
-        r2ObjectsScanned: r2Gc.scanned,
-        r2ObjectsMeasured: r2Gc.measured,
-        r2ObjectsDeleted: r2Gc.deleted,
-        r2BytesMeasured: r2Gc.bytesMeasured,
-        r2BytesDeleted: r2Gc.bytesDeleted,
-        r2GcShardsScanned: r2Gc.shardsScanned,
-        r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
-      },
-      fields: {
-        ...progress,
-        ...scale,
-        passSnapshots: snapshots,
-        passArchivedEvents: archivedEvents,
-      },
+      snapshots,
+      archivedEvents,
+      r2ObjectsScanned: r2Gc.scanned,
+      r2ObjectsMeasured: r2Gc.measured,
+      r2ObjectsDeleted: r2Gc.deleted,
+      r2BytesMeasured: r2Gc.bytesMeasured,
+      r2BytesDeleted: r2Gc.bytesDeleted,
+      r2GcShardsScanned: r2Gc.shardsScanned,
+      r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
     };
-  },
-);
-
-export const snapshotChatEvents$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ChatEventSnapshotStats> => {
-    return await withCronPassLog(
-      SNAPSHOT_CRON,
-      set(snapshotChatEventsPass$, signal),
-      signal,
-    );
   },
 );

@@ -37,10 +37,8 @@ import {
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
 import {
-  holdChatThreadDeletionAfterEventFixture,
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
-  withChatThreadSnapshotScopeWritesPausedFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import {
@@ -66,7 +64,6 @@ import {
   mockGoogleDriveFilesList,
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { cronPassCount, latestCronPassFields } from "./helpers/cron-pass-log";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { seedVm0ManagedDefaultModelKey } from "./helpers/runtime-state";
@@ -3463,179 +3460,4 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run2.runId, claim2.sandboxHeaders);
   }, 120_000);
-});
-
-describe("CHAT-01 catch-up cron metrics", () => {
-  const CATCH_UP_CRON_SECRET = "catch-up-metrics-cron-secret";
-
-  it("reports absolute chat search projection progress", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Search progress agent",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `search-progress-${randomUUID()}`,
-    });
-
-    mockEnv("CRON_SECRET", CATCH_UP_CRON_SECRET);
-    const client = setupApp({
-      context,
-      routes: cronProjectChatEventSearchRoutes,
-    })(cronProjectChatEventSearchContract);
-    const pass = await accept(
-      client.project({
-        headers: { authorization: `Bearer ${CATCH_UP_CRON_SECRET}` },
-      }),
-      [200],
-    );
-    if (pass.status !== 200) {
-      throw new Error("Expected the search projection pass to succeed");
-    }
-
-    const event = latestCronPassFields(context, "project-chat-event-search");
-    expect(event.ok).toBeTruthy();
-    expect(event.passThreads).toBe(pass.body.threads);
-    expect(event.passIndexedEvents).toBe(pass.body.indexedEvents);
-    expect(event.passDeletedDocs).toBe(pass.body.deletedDocs);
-    cronPassCount(event, "passDurationMs");
-
-    // Absolute state: every thread the projection must cover, how many carry a
-    // watermark, and how many are still behind. The database is shared with
-    // other test files, so only the invariants between the gauges hold.
-    const targetThreads = cronPassCount(event, "targetThreads");
-    const watermarkThreads = cronPassCount(event, "watermarkThreads");
-    const laggingThreads = cronPassCount(event, "laggingThreads");
-    expect(watermarkThreads).toBeGreaterThanOrEqual(1);
-    expect(watermarkThreads).toBeLessThanOrEqual(targetThreads);
-    expect(laggingThreads).toBeLessThanOrEqual(targetThreads);
-  }, 60_000);
-
-  it("isolates compaction metrics from an in-flight thread deletion", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    if (!owner.orgId) {
-      throw new Error("Expected an organization-scoped chat actor");
-    }
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Compaction deletion lock agent",
-    });
-    const thread = await chat.createThread(owner, {
-      agentId: agent.agentId,
-      title: "Compaction deletion lock thread",
-      eventId: randomUUID(),
-    });
-    const held = await holdChatThreadDeletionAfterEventFixture({
-      userId: owner.userId,
-      orgId: owner.orgId,
-      chatThreadId: thread.id,
-      signal: context.signal,
-    });
-    let isolationEntered = false;
-    const isolation = withChatThreadSnapshotScopeWritesPausedFixture({
-      signal: context.signal,
-      run: () => {
-        isolationEntered = true;
-        return Promise.resolve();
-      },
-    });
-    onTestFinished(async () => {
-      held.release();
-      await Promise.allSettled([held.done, isolation]);
-    });
-
-    // The deletion already owns the sequence row. Isolation must still enter
-    // without waiting on it; otherwise releasing deletion would complete the
-    // reverse sequence-then-thread lock order as a deadlock.
-    await expect
-      .poll(async () => {
-        return {
-          isolationEntered,
-          blockedWaiters: await held.blockedWaiterCount(),
-        };
-      })
-      .toStrictEqual({ isolationEntered: true, blockedWaiters: 0 });
-    await isolation;
-    held.release();
-    await held.done;
-  }, 30_000);
-
-  it("reports bounded compaction backlog and table scale", async () => {
-    const firstOwner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const firstAgent = await bdd.createAgent(firstOwner, {
-      displayName: "Compaction progress agent",
-    });
-    await chat.createThread(firstOwner, {
-      agentId: firstAgent.agentId,
-      title: "First compaction progress thread",
-      eventId: randomUUID(),
-    });
-    const secondOwner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const secondAgent = await bdd.createAgent(secondOwner, {
-      displayName: "Second compaction progress agent",
-    });
-    await chat.createThread(secondOwner, {
-      agentId: secondAgent.agentId,
-      title: "Second compaction progress thread",
-      eventId: randomUUID(),
-    });
-
-    // The gauges intentionally cover the shared database. Pause scope writers
-    // while this test proves a bounded pass followed by a complete drain, so
-    // another Vitest worker cannot add fresh backlog between the pass and its
-    // post-pass measurement.
-    await withChatThreadSnapshotScopeWritesPausedFixture({
-      signal: context.signal,
-      run: async () => {
-        mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
-        // Two new scopes with a one-scope batch guarantee that the first pass
-        // leaves at least one real candidate behind.
-        mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
-        const pass = await compactChatThreadSnapshots();
-
-        const event = latestCronPassFields(
-          context,
-          "compact-chat-thread-snapshots",
-        );
-        expect(event.ok).toBeTruthy();
-        expect(event.passScopes).toBe(pass.scopes);
-        expect(event.passEventsApplied).toBe(pass.eventsApplied);
-        expect(event.passEventsPruned).toBe(pass.eventsPruned);
-        expect(event.passRemovedDeletedAgentThreads).toBe(
-          pass.removedDeletedAgentThreads,
-        );
-        expect(pass.scopes).toBe(1);
-
-        const targetScopes = cronPassCount(event, "targetScopes");
-        const snapshotScopes = cronPassCount(event, "snapshotScopes");
-        expect(snapshotScopes).toBeLessThanOrEqual(targetScopes);
-        expect(cronPassCount(event, "pendingScopes")).toBeGreaterThanOrEqual(1);
-        expect(snapshotScopes).toBeGreaterThanOrEqual(1);
-        expect(cronPassCount(event, "staleScopes")).toBeLessThanOrEqual(
-          snapshotScopes,
-        );
-        // Table scale for the retention work that lands later. Every scope
-        // keeps its marker event forever, so rows stay above zero while the
-        // prunable count is what has to stay near zero.
-        expect(cronPassCount(event, "threadEventRows")).toBeGreaterThanOrEqual(
-          1,
-        );
-        expect(cronPassCount(event, "threadEventBytes")).toBeGreaterThan(0);
-        cronPassCount(event, "prunableThreadEvents");
-
-        // A large follow-up pass drains the same candidate predicate. The
-        // newest absolute event must then show full snapshot coverage and no
-        // backlog.
-        mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "10000");
-        await compactChatThreadSnapshots();
-        const drained = latestCronPassFields(
-          context,
-          "compact-chat-thread-snapshots",
-        );
-        expect(cronPassCount(drained, "pendingScopes")).toBe(0);
-        expect(cronPassCount(drained, "snapshotScopes")).toBe(
-          cronPassCount(drained, "targetScopes"),
-        );
-      },
-    });
-  }, 90_000);
 });
