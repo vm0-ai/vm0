@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.712.1](https://github.com/vm0-ai/vm0/compare/app-v0.712.0...app-v0.712.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** show model change before run reconciliation ([#25864](https://github.com/vm0-ai/vm0/issues/25864)) ([9535d4e](https://github.com/vm0-ai/vm0/commit/9535d4eafce5284585f87ad407c3908823c724d9))
+
+
+### Refactoring
+
+* **ui:** replace tabler icons with lucide ([#25852](https://github.com/vm0-ai/vm0/issues/25852)) ([ce0f2f7](https://github.com/vm0-ai/vm0/commit/ce0f2f7a14ec86850862cc7c98f1e4dd1dac191f))
+
 ## [0.712.0](https://github.com/vm0-ai/vm0/compare/app-v0.711.2...app-v0.712.0) (2026-08-09)
 
 
