@@ -28,7 +28,6 @@ import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.t
 import { setupFeishuSettingsPage$ } from "./zero-page/feishu-settings-page.ts";
 import { setupStrapiSettingsPage$ } from "./zero-page/strapi-settings-page.ts";
 import { setupFeishuOAuthCallbackPage$ } from "./zero-page/feishu-oauth-callback-page.ts";
-import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
@@ -309,10 +308,6 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupActivityDetailPage$),
   },
   {
-    path: ROUTES.activities,
-    setup: setupAuthSidebarPageWrapper(setupActivityPage$),
-  },
-  {
     path: ROUTES.works,
     setup: setupAuthSidebarPageWrapper(setupWorksPage$),
   },
@@ -406,7 +401,6 @@ const ROUTE_CONFIG = [
     path: "/firewall-allow/:id",
     setup: redirectWithId(ROUTES.agentPermissions, "agentId"),
   },
-  { path: "/activity", setup: redirectTo(ROUTES.activities) },
   {
     path: "/activity/:id",
     setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),

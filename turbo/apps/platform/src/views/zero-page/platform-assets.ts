@@ -8,7 +8,6 @@ export function avatarSvgAssetUrl(filename: string): string {
   return zeroPageAssetUrl(`assets/avatar-svg/${filename}`);
 }
 
-export const emptyActivityImg = zeroPageAssetUrl("assets/empty-activity.webp");
 export const emptyArtifactImg = zeroPageAssetUrl("assets/empty-artifact.webp");
 export const emptyChatImg = zeroPageAssetUrl("assets/empty-chat.webp");
 export const emptyInsightsImg = zeroPageAssetUrl("assets/empty-insights.webp");

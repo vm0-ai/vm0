@@ -5,7 +5,6 @@
  */
 
 import {
-  logsListContract,
   logsByIdContract,
   type LogDetail,
 } from "@vm0/api-contracts/contracts/logs";
@@ -58,37 +57,6 @@ const mockLogDetails: LogDetail[] = [
 ];
 
 export const appLogsHandlers = [
-  // GET /api/zero/logs - List logs with basic fields
-  mockApi(logsListContract.list, ({ query, respond }) => {
-    const { cursor, limit } = query;
-
-    const cursorIndex = cursor
-      ? mockLogDetails.findIndex((r) => r.id === cursor) + 1
-      : 0;
-    const data = mockLogDetails.slice(cursorIndex, cursorIndex + limit);
-    const hasMore = cursorIndex + limit < mockLogDetails.length;
-    const nextCursor = hasMore ? (data[data.length - 1]?.id ?? null) : null;
-    const totalPages = Math.max(1, Math.ceil(mockLogDetails.length / limit));
-
-    return respond(200, {
-      data: data.map((log) => ({
-        id: log.id,
-        sessionId: log.sessionId,
-        agentId: log.agentId,
-        displayName: null,
-        framework: log.framework,
-        triggerSource: null,
-        status: log.status,
-        prompt: log.prompt,
-        createdAt: log.createdAt,
-        startedAt: log.startedAt,
-        completedAt: log.completedAt,
-      })),
-      pagination: { hasMore, nextCursor, totalPages },
-      filters: { statuses: [], sources: [], agents: [] },
-    });
-  }),
-
   // GET /api/zero/logs/:id - Get log detail
   mockApi(logsByIdContract.getById, ({ params, respond }) => {
     const { id } = params;

@@ -15,7 +15,7 @@ interface MockedClerkSession {
 }
 
 interface MockedClerkResources {
-  readonly session: MockedClerkSession | undefined;
+  readonly session: MockedClerkSession | null | undefined;
 }
 
 type MockedClerkListener = (resources: MockedClerkResources) => void;
@@ -88,6 +88,7 @@ let internalMockedClientSessions: MockedClientSession[] = [];
 let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
 let internalMockedClerkLoaded = true;
 let internalMockedClerkSessionTransitioning = false;
+let internalMockedClerkSessionSignedOut = false;
 
 export function mockClerkLoaded(loaded: boolean): void {
   internalMockedClerkLoaded = loaded;
@@ -95,6 +96,11 @@ export function mockClerkLoaded(loaded: boolean): void {
 
 export function mockClerkSessionTransitioning(transitioning: boolean): void {
   internalMockedClerkSessionTransitioning = transitioning;
+  emitMockedClerkEvent();
+}
+
+export function mockClerkSessionSignedOut(signedOut: boolean): void {
+  internalMockedClerkSessionSignedOut = signedOut;
   emitMockedClerkEvent();
 }
 
@@ -190,6 +196,7 @@ export function clearMockedAuth() {
   internalMockedClerkLoadOptions = {};
   internalMockedClerkLoaded = true;
   internalMockedClerkSessionTransitioning = false;
+  internalMockedClerkSessionSignedOut = false;
   clerkListeners.length = 0;
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
@@ -348,6 +355,9 @@ export const mockedClerk = {
   get session() {
     if (internalMockedClerkSessionTransitioning) {
       return undefined;
+    }
+    if (internalMockedClerkSessionSignedOut) {
+      return null;
     }
     return {
       id: "test-session-id",

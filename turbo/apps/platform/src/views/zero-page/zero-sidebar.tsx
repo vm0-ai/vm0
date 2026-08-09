@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
-  ChartLine,
   LayoutGrid,
   Package,
   Route,
@@ -57,19 +56,13 @@ type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
 const slackIcon = settingsIconAssetUrl("slack");
 
-type ManageNavId =
-  | "activities"
-  | "agents"
-  | "artifacts"
-  | "connectors"
-  | "workflows";
+type ManageNavId = "agents" | "artifacts" | "connectors" | "workflows";
 
 interface ManageNavItem {
   readonly id: ManageNavId;
   readonly activeKeys: readonly RouteKey[];
   readonly pathname: string;
   readonly icon: NavIcon;
-  readonly featureGate?: FeatureSwitchKey;
 }
 
 const MANAGE_NAV: readonly ManageNavItem[] = [
@@ -103,13 +96,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/artifacts",
     icon: Package as NavIcon,
   },
-  {
-    id: "activities",
-    activeKeys: ["activities", "activityDetail", "activityInspect"],
-    pathname: "/activities",
-    icon: ChartLine as NavIcon,
-    featureGate: FeatureSwitchKey.ZeroDebug,
-  },
 ];
 
 interface FooterNavItem {
@@ -135,15 +121,9 @@ const FOOTER_NAV = [
 
 function useResolvedNavItems() {
   const { t } = useTranslation();
-  const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageLabel = (id: ManageNavId): string => {
     switch (id) {
-      case "activities": {
-        return t(($) => {
-          return $.appShell.sidebar.navigation.activity;
-        });
-      }
       case "agents": {
         return t(($) => {
           return $.appShell.sidebar.navigation.agents;
@@ -166,9 +146,7 @@ function useResolvedNavItems() {
       }
     }
   };
-  const manageNav = MANAGE_NAV.filter((item) => {
-    return !item.featureGate || features?.[item.featureGate];
-  }).map((item) => {
+  const manageNav = MANAGE_NAV.map((item) => {
     return { ...item, label: manageLabel(item.id) };
   });
   const footerNav = FOOTER_NAV.map((item) => {
@@ -686,11 +664,6 @@ function LabeledRailLink({
       case "chat": {
         return t(($) => {
           return $.appShell.sidebar.rail.new;
-        });
-      }
-      case "activities": {
-        return t(($) => {
-          return $.appShell.sidebar.rail.activity;
         });
       }
       case "workflows": {

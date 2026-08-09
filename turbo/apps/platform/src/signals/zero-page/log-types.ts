@@ -79,21 +79,6 @@ export function getTriggerSourceLabel(source: TriggerSource): string {
   }
 }
 
-// List response - contains basic fields for list display
-export interface LogEntry {
-  id: string;
-  sessionId: string | null;
-  agentId: string | null;
-  displayName: string | null;
-  framework: string | null;
-  triggerSource: TriggerSource | null;
-  status: LogStatus;
-  prompt: string;
-  createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
-}
-
 // Detail response - full log information
 interface Artifact {
   name: string | null;

@@ -3694,7 +3694,13 @@ describe("activity detail polling", () => {
         "This log doesn't exist or you don't have permission to view it in the current workspace.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Back to activity")).toBeInTheDocument();
+    const backLink = queryAllByRoleFast("link").find((candidate) => {
+      return candidate.textContent?.trim() === "Back to chats";
+    });
+    if (!backLink) {
+      throw new Error("Back to chats link not found");
+    }
+    expect(backLink).toHaveAttribute("href", "/");
   });
 
   it("shows empty network logs and unknown runner reuse for an older activity", async () => {

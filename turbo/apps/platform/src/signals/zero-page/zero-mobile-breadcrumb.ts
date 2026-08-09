@@ -18,7 +18,7 @@ import { locale$ } from "../locale.ts";
 
 interface MobileBreadcrumb {
   section: string;
-  sectionPath: RoutePath;
+  sectionPath?: RoutePath;
   sectionOptions?: {
     pathParams?: RouterPathParams;
     searchParams?: URLSearchParams;
@@ -67,7 +67,7 @@ const activityDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     get(locale$);
     const section = i18n.t(($) => {
-      return $.appShell.sidebar.navigation.activity;
+      return $.activity.detail.activity;
     });
     const features = await get(featureSwitch$);
     if (!features?.[FeatureSwitchKey.ZeroDebug]) {
@@ -80,12 +80,11 @@ const activityDetailBreadcrumb$ = computed(
       if (detail && detail.id === activityRunId) {
         return {
           section,
-          sectionPath: ROUTES.activities,
           name: detail.displayName ?? undefined,
         };
       }
     }
-    return { section, sectionPath: ROUTES.activities };
+    return { section };
   },
 );
 
@@ -167,7 +166,7 @@ export const mobileBreadcrumb$ = computed(
       return await get(teamDetailBreadcrumb$);
     }
 
-    if (route === "activities" || route === "activityDetail") {
+    if (route === "activityDetail") {
       return await get(activityDetailBreadcrumb$);
     }
 

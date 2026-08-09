@@ -200,7 +200,6 @@ export type SidebarNavId =
   | "artifacts"
   | "connectors"
   | "workflows"
-  | "activities"
   | "insights"
   | "works"
   | "settings"
@@ -226,7 +225,6 @@ export const handleZeroNavSelect$ = command(
         artifacts: ROUTES.artifacts,
         connectors: ROUTES.connectors,
         workflows: ROUTES.workflows,
-        activities: ROUTES.activities,
         insights: ROUTES.insights,
         works: ROUTES.works,
         settings: ROUTES.settings,

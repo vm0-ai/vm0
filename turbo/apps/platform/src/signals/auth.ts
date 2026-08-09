@@ -13,7 +13,8 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
-import { setupForegroundAuthRecovery$ } from "./auth-retry.ts";
+import { createAuthRecovery, setupAuthCatchUp$ } from "./auth-retry.ts";
+import { rootSignal$ } from "./root-signal.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -359,6 +360,13 @@ export const clerk$ = computed(async (get) => {
   return clerkInstance;
 });
 
+export const authRecovery$ = computed(async (get) => {
+  const clerk = await get(clerk$);
+  return createAuthRecovery(clerk, () => {
+    return get(rootSignal$);
+  });
+});
+
 /**
  * Command to setup Clerk authentication listeners.
  * This command initializes the Clerk instance and sets up a listener
@@ -368,7 +376,9 @@ export const setupClerk$ = command(
   async ({ set, get }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
     signal.throwIfAborted();
-    set(setupForegroundAuthRecovery$, clerk, signal);
+    const authRecovery = await get(authRecovery$);
+    signal.throwIfAborted();
+    set(setupAuthCatchUp$, authRecovery, signal);
 
     // Set initial Sentry user context
     if (clerk.user) {

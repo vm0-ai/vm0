@@ -27,7 +27,8 @@ function extractError(
     body.error !== null &&
     typeof body.error === "object" &&
     "message" in body.error &&
-    typeof body.error.message === "string"
+    typeof body.error.message === "string" &&
+    body.error.message.trim().length > 0
   ) {
     const code =
       "code" in body.error && typeof body.error.code === "string"
