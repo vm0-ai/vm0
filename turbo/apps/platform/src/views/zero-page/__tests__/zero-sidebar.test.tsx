@@ -2670,7 +2670,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ZeroDebug]: true,
       },
     });
 
@@ -2682,7 +2681,6 @@ describe("zero sidebar", () => {
     expect(within(rail).getByText("Fluxos de trabalho")).toBeInTheDocument();
     expect(within(rail).getByText("Conectores")).toBeInTheDocument();
     expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
-    expect(within(rail).getByText("Atividade")).toBeInTheDocument();
     expect(
       within(rail).getByLabelText("Onde Zero trabalha"),
     ).toBeInTheDocument();
@@ -2729,7 +2727,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ZeroDebug]: true,
       },
     });
 
@@ -2741,7 +2738,6 @@ describe("zero sidebar", () => {
     expect(within(rail).getByText("ワークフロー")).toBeInTheDocument();
     expect(within(rail).getByText("コネクター")).toBeInTheDocument();
     expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
-    expect(within(rail).getByText("アクティビティ")).toBeInTheDocument();
     expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
     expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
     expect(
@@ -2788,7 +2784,6 @@ describe("zero sidebar", () => {
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
         [FeatureSwitchKey.ThreeColumnNav]: true,
-        [FeatureSwitchKey.ZeroDebug]: true,
       },
     });
 
@@ -2800,7 +2795,6 @@ describe("zero sidebar", () => {
     expect(within(rail).getByText("Flujos de trabajo")).toBeInTheDocument();
     expect(within(rail).getByText("Conectores")).toBeInTheDocument();
     expect(within(rail).getByText("Artefactos")).toBeInTheDocument();
-    expect(within(rail).getByText("Actividad")).toBeInTheDocument();
     expect(
       within(rail).getByLabelText("Dónde trabaja Zero"),
     ).toBeInTheDocument();
@@ -2839,9 +2833,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ZeroDebug]: true,
-      },
     });
 
     const nav = await screen.findByRole("navigation", {
@@ -2849,7 +2840,6 @@ describe("zero sidebar", () => {
     });
     expect(within(nav).getByText("Gerenciar")).toBeInTheDocument();
     expect(within(nav).getByText("Fluxos de trabalho")).toBeInTheDocument();
-    expect(within(nav).getByText("Logs de atividade")).toBeInTheDocument();
 
     click(screen.getByLabelText("Recolher barra lateral"));
 
@@ -2858,7 +2848,6 @@ describe("zero sidebar", () => {
       screen.getAllByRole("navigation", { name: "Barra lateral" }).length,
     ).toBeGreaterThan(0);
     expect(screen.getByLabelText("Agentes")).toBeInTheDocument();
-    expect(screen.getByLabelText("Logs de atividade")).toBeInTheDocument();
 
     click(expandButton);
     await screen.findByLabelText("Recolher barra lateral");

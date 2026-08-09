@@ -212,18 +212,15 @@ function RunErrorBanner({ error }: { error: string }) {
 // Component
 // ---------------------------------------------------------------------------
 
-function ActivityBreadcrumbLink() {
+function ActivityBreadcrumbLabel() {
   const { t } = useTranslation();
   return (
-    <Link
-      pathname="/activities"
-      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
-    >
+    <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5">
       <ChartLine size={14} strokeWidth={1.5} className="shrink-0" />
       {t(($) => {
         return $.activity.detail.activity;
       })}
-    </Link>
+    </span>
   );
 }
 
@@ -235,7 +232,7 @@ function ActivityNotFound() {
       <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
         {features?.[FeatureSwitchKey.ZeroDebug] && (
           <>
-            <ActivityBreadcrumbLink />
+            <ActivityBreadcrumbLabel />
             <span className="text-muted-foreground/40 select-none">/</span>
           </>
         )}
@@ -258,7 +255,7 @@ function ActivityNotFound() {
           })}
         </p>
         <Link
-          pathname="/activities"
+          pathname="/"
           className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-state-hover"
         >
           {t(($) => {
@@ -877,7 +874,7 @@ function ActivityDetailContent({
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           {features?.[FeatureSwitchKey.ZeroDebug] && (
             <>
-              <ActivityBreadcrumbLink />
+              <ActivityBreadcrumbLabel />
               <span className="text-muted-foreground/40 select-none">/</span>
             </>
           )}
@@ -1008,7 +1005,7 @@ function ActivitySkeleton() {
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           {features?.[FeatureSwitchKey.ZeroDebug] && (
             <>
-              <ActivityBreadcrumbLink />
+              <ActivityBreadcrumbLabel />
               <span className="text-muted-foreground/40 select-none">/</span>
             </>
           )}

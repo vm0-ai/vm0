@@ -108,7 +108,7 @@
         "title": "ネットワークログがありません"
       },
       "notFound": {
-        "back": "アクティビティに戻る",
+        "back": "チャットに戻る",
         "description": "このログは存在しないか、現在のワークスペースで表示する権限がありません。",
         "title": "ログが見つかりません"
       },
@@ -205,22 +205,6 @@
         "title": "ログがロードされていません",
         "upload": "JSONをアップロード"
       }
-    },
-    "list": {
-      "description": "エージェントのログと実行履歴。",
-      "errors": {
-        "description": "何か問題が発生しました。後でもう一度試してください。",
-        "title": "アクティビティデータのロードに失敗しました"
-      },
-      "filters": {
-        "agent": "エージェントフィルター",
-        "allAgents": "すべてのエージェント",
-        "allSources": "すべてのソース",
-        "allStatuses": "すべてのステータス",
-        "source": "ソースフィルター",
-        "status": "ステータスフィルター"
-      },
-      "title": "アクティビティ"
     },
     "network": {
       "actions": {
@@ -321,15 +305,6 @@
       "unknown": "不明",
       "yes": "はい"
     },
-    "pagination": {
-      "backTwo": "2ページ戻る",
-      "forwardTwo": "2ページ進む",
-      "next": "次のページ",
-      "page": "ページ {{current}}",
-      "pageOf": "ページ {{current}} / {{total}}",
-      "previous": "前のページへ",
-      "rowsPerPage": "ページあたりの行数"
-    },
     "sources": {
       "agent": "エージェント",
       "agentphone": "エージェントフォン",
@@ -353,34 +328,6 @@
       "queued": "キューに入れられました",
       "running": "ランニング",
       "timeout": "タイムアウト"
-    },
-    "statusFilters": {
-      "cancelled": "キャンセルされました",
-      "completed": "完了しました",
-      "failed": "失敗しました",
-      "pending": "保留中",
-      "queued": "キューに入れられました",
-      "running": "ランニング",
-      "timeout": "タイムアウト"
-    },
-    "table": {
-      "empty": {
-        "description": "エージェントが作業を開始すると、そのアクティビティがここに表示されます。",
-        "title": "今はみんな静かに"
-      },
-      "filteredEmpty": {
-        "description": "さまざまなフィルターを試して、探しているものを見つけてください。",
-        "title": "これらのフィルターに一致するものはありません"
-      },
-      "headers": {
-        "agent": "エージェント",
-        "description": "説明",
-        "duration": "期間",
-        "session": "セッション",
-        "source": "ソース",
-        "startTime": "開始時間",
-        "status": "ステータス"
-      }
     }
   },
   "appShell": {
@@ -472,7 +419,6 @@
         "overlay": "サイドバーのオーバーレイ"
       },
       "navigation": {
-        "activity": "アクティビティログ",
         "agents": "エージェント",
         "artifacts": "アーティファクト",
         "connectors": "コネクター",
@@ -484,7 +430,6 @@
         "works": "{{agentName}}の連携先"
       },
       "rail": {
-        "activity": "アクティビティ",
         "new": "新しい",
         "workflows": "ワークフロー",
         "works": "連携先"

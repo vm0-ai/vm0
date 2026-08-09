@@ -108,7 +108,7 @@
         "title": "Keine Netzwerkprotokolle"
       },
       "notFound": {
-        "back": "Zurück zur Aktivität",
+        "back": "Zurück zu den Chats",
         "description": "Dieses Protokoll existiert nicht oder Sie haben keine Berechtigung, es im aktuellen Arbeitsbereich anzuzeigen.",
         "title": "Protokoll nicht gefunden"
       },
@@ -205,22 +205,6 @@
         "title": "Kein Protokoll geladen",
         "upload": "Laden Sie JSON hoch"
       }
-    },
-    "list": {
-      "description": "Protokolliert und führt von Ihren Agenten aus.",
-      "errors": {
-        "description": "Etwas ist schief gelaufen. Bitte versuchen Sie es später noch einmal.",
-        "title": "Aktivitätsdaten konnten nicht geladen werden"
-      },
-      "filters": {
-        "agent": "Agentenfilter",
-        "allAgents": "Alle Agenten",
-        "allSources": "Alle Quellen",
-        "allStatuses": "Alle Status",
-        "source": "Quellfilter",
-        "status": "Statusfilter"
-      },
-      "title": "Aktivität"
     },
     "network": {
       "actions": {
@@ -321,15 +305,6 @@
       "unknown": "unbekannt",
       "yes": "Ja"
     },
-    "pagination": {
-      "backTwo": "2 Seiten zurück",
-      "forwardTwo": "2 Seiten weiterleiten",
-      "next": "Nächste Seite",
-      "page": "Seite {{current}}",
-      "pageOf": "Seite {{current}} von {{total}}",
-      "previous": "Vorherige Seite",
-      "rowsPerPage": "Zeilen pro Seite"
-    },
     "sources": {
       "agent": "Agent",
       "agentphone": "AgentPhone",
@@ -353,34 +328,6 @@
       "queued": "In der Warteschlange",
       "running": "Läuft",
       "timeout": "Time-out"
-    },
-    "statusFilters": {
-      "cancelled": "Abgesagt",
-      "completed": "Vollendet",
-      "failed": "Fehlgeschlagen",
-      "pending": "Ausstehend",
-      "queued": "In der Warteschlange",
-      "running": "Läuft",
-      "timeout": "Time-out"
-    },
-    "table": {
-      "empty": {
-        "description": "Wenn Ihre Agenten mit der Arbeit beginnen, wird ihre Aktivität hier angezeigt.",
-        "title": "Im Moment ist alles ruhig"
-      },
-      "filteredEmpty": {
-        "description": "Probieren Sie verschiedene Filter aus, um das Gesuchte zu finden.",
-        "title": "Nichts entspricht diesen Filtern"
-      },
-      "headers": {
-        "agent": "Agent",
-        "description": "Beschreibung",
-        "duration": "Dauer",
-        "session": "Sitzung",
-        "source": "Quelle",
-        "startTime": "Startzeit",
-        "status": "Status"
-      }
     }
   },
   "appShell": {
@@ -472,7 +419,6 @@
         "overlay": "Seitenleisten-Overlay"
       },
       "navigation": {
-        "activity": "Aktivitätsprotokolle",
         "agents": "Agenten",
         "artifacts": "Artefakte",
         "connectors": "Integrationen",
@@ -484,7 +430,6 @@
         "works": "Einsatzorte von {{agentName}}"
       },
       "rail": {
-        "activity": "Aktivität",
         "new": "Neu",
         "workflows": "Workflows",
         "works": "Kanäle"

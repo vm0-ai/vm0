@@ -274,13 +274,17 @@ function MobileTopBar() {
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-center gap-2 min-w-0">
             <div className="text-sm font-medium text-foreground flex items-center gap-1 min-w-0">
-              <Link
-                pathname={breadcrumb.sectionPath}
-                options={breadcrumb.sectionOptions}
-                className="hover:opacity-70 transition-opacity no-underline text-inherit"
-              >
-                {breadcrumb.section}
-              </Link>
+              {breadcrumb.sectionPath ? (
+                <Link
+                  pathname={breadcrumb.sectionPath}
+                  options={breadcrumb.sectionOptions}
+                  className="hover:opacity-70 transition-opacity no-underline text-inherit"
+                >
+                  {breadcrumb.section}
+                </Link>
+              ) : (
+                <span>{breadcrumb.section}</span>
+              )}
               {breadcrumb.name && (
                 <>
                   <span className="text-foreground/30 select-none">/</span>

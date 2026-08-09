@@ -10,7 +10,6 @@ export const ROUTES = {
   workflowDetailAutomations: "/workflows/:workflowId/automations",
   workflowDetailInstructions: "/workflows/:workflowId/instructions",
   workflowDetailInfo: "/workflows/:workflowId/info",
-  activities: "/activities",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:activityRunId",
   chat: "/chats/:threadId",
