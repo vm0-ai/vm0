@@ -51,12 +51,13 @@ export const requestForegroundCatchUp$ = command(({ get }) => {
  */
 export function createAuthRecovery(
   clerk: ClerkLike,
-  rootSignal: AbortSignal,
+  getRootSignal: () => AbortSignal,
 ): AuthRecovery {
   let refreshPromise: Promise<string | null> | null = null;
 
   const refreshAuth = (signal?: AbortSignal): Promise<string | null> => {
     if (!refreshPromise) {
+      const rootSignal = getRootSignal();
       const refresh = withCleanup(runAuthRefresh(clerk, rootSignal), () => {
         if (refreshPromise === refresh) {
           refreshPromise = null;
@@ -64,19 +65,13 @@ export function createAuthRecovery(
       });
       refreshPromise = refresh;
     }
-    return waitForAuthRecovery(
-      refreshPromise,
-      recoveryWaitSignal(rootSignal, signal),
-    );
+    return waitForAuthRecovery(refreshPromise, signal);
   };
 
   return {
     getToken: (signal?: AbortSignal) => {
       const tokenPromise = refreshPromise ?? readCachedToken(clerk);
-      return waitForAuthRecovery(
-        tokenPromise,
-        recoveryWaitSignal(rootSignal, signal),
-      );
+      return waitForAuthRecovery(tokenPromise, signal);
     },
     refreshAuth,
   };
@@ -215,19 +210,13 @@ async function readCachedToken(clerk: ClerkLike): Promise<string | null> {
   return (await clerk.session?.getToken()) ?? null;
 }
 
-function recoveryWaitSignal(
-  rootSignal: AbortSignal,
-  requestSignal: AbortSignal | undefined,
-): AbortSignal {
-  return requestSignal
-    ? AbortSignal.any([rootSignal, requestSignal])
-    : rootSignal;
-}
-
 function waitForAuthRecovery<T>(
   recovery: Promise<T>,
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
 ): Promise<T> {
+  if (!signal) {
+    return recovery;
+  }
   signal.throwIfAborted();
   const aborted = createDeferredPromise<never>(signal);
   return withCleanup(Promise.race([recovery, aborted.promise]), () => {

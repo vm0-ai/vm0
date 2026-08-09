@@ -362,7 +362,9 @@ export const clerk$ = computed(async (get) => {
 
 export const authRecovery$ = computed(async (get) => {
   const clerk = await get(clerk$);
-  return createAuthRecovery(clerk, get(rootSignal$));
+  return createAuthRecovery(clerk, () => {
+    return get(rootSignal$);
+  });
 });
 
 /**
