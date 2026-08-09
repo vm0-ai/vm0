@@ -80,7 +80,7 @@ const CommandInput = React.forwardRef<
       <Search
         size={16}
         strokeWidth={2}
-        data-explicit-stroke-width
+        data-stroke
         className="shrink-0 text-muted-foreground"
       />
       <CommandPrimitive.Input

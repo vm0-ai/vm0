@@ -413,7 +413,7 @@ function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
             size={13}
             strokeWidth={2}
             className="shrink-0 transition-transform group-open:rotate-90"
-            data-explicit-stroke-width
+            data-stroke
           />
           <span>
             {t(($) => {
