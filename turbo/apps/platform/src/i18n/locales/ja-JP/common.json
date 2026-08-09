@@ -1291,6 +1291,8 @@
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
+      "setAsDefault": "デフォルトに設定",
+      "temporaryModelNotice": "一時的に {{model}} に切り替えました",
       "threadSuggestions": "チャットスレッド",
       "visualAttachmentsUnsupported": "{{modelName}} は画像またはビデオを認識できません。ビジョン対応モデルに切り替えて取り付けてください。",
       "workflows": {
@@ -4258,9 +4260,6 @@
         "balancedUse": "バランスよく使う",
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
-        "defaultModel": "デフォルト",
-        "defaultModelDescription": "新しいチャットと新しい自動化のデフォルト",
-        "defaultModelUpdated": "{{model}} がデフォルトモデルになりました",
         "fast": "速い",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
@@ -4282,7 +4281,6 @@
           "deepseek": "ディープシーク"
         },
         "runSpeed": "走行速度",
-        "setModelAsDefault": "{{model}} をデフォルトに設定",
         "standard": "標準"
       },
       "policies": {
