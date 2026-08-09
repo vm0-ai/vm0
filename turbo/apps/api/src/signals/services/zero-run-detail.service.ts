@@ -7,7 +7,8 @@ import type {
 } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { and, eq } from "drizzle-orm";
+import { piThreadMessages } from "@vm0/db/schema/pi-thread-message";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db$, type Db } from "../external/db";
 import { getDatasetName, queryAxiom } from "../external/axiom";
@@ -232,6 +233,8 @@ interface AxiomAgentEvent {
   eventData: Record<string, unknown>;
 }
 
+const PI_MESSAGE_COMPLETED_EVENT_TYPE = "pi.message.completed";
+
 // Decide whether the page read needs to wait for Axiom indexing and which
 // sequence to wait for.
 function getAgentEventsVisibilityTarget(
@@ -339,6 +342,34 @@ ${paginationFilter}
 
     const pageHasMore = events.length > limit;
     const resultEvents = pageHasMore ? events.slice(0, limit) : events;
+    const piSequenceNumbers = resultEvents.flatMap((event) => {
+      return event.eventType === PI_MESSAGE_COMPLETED_EVENT_TYPE
+        ? [event.sequenceNumber]
+        : [];
+    });
+    const piMessages =
+      piSequenceNumbers.length === 0
+        ? []
+        : await db
+            .select({
+              sequenceNumber: piThreadMessages.runEventSequenceNumber,
+              payload: piThreadMessages.payload,
+            })
+            .from(piThreadMessages)
+            .where(
+              and(
+                eq(piThreadMessages.runId, params.runId),
+                inArray(
+                  piThreadMessages.runEventSequenceNumber,
+                  piSequenceNumbers,
+                ),
+              ),
+            );
+    const piPayloadBySequence = new Map(
+      piMessages.map((message) => {
+        return [message.sequenceNumber, message.payload] as const;
+      }),
+    );
     const nextCursor = nextSequenceCursor(
       resultEvents,
       pageHasMore,
@@ -349,10 +380,17 @@ ${paginationFilter}
 
     return {
       events: resultEvents.map((e) => {
+        const piPayload =
+          e.eventType === PI_MESSAGE_COMPLETED_EVENT_TYPE
+            ? piPayloadBySequence.get(e.sequenceNumber)
+            : undefined;
         return {
           sequenceNumber: e.sequenceNumber,
           eventType: e.eventType,
-          eventData: e.eventData,
+          eventData:
+            piPayload === undefined
+              ? e.eventData
+              : { ...e.eventData, message: piPayload },
           createdAt: e._time,
         } satisfies RunEvent;
       }),

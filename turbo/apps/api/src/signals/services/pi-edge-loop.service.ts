@@ -15,6 +15,7 @@ import type {
   EventConsumerPayload,
 } from "../../lib/event-consumer/verify";
 import { logger } from "../../lib/log";
+import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import {
   publishPiHandoffToRunnerGroupSafely,
@@ -26,6 +27,7 @@ import {
   type PiEdgeModelUsage,
   type PiEdgeModelUsageEntry,
 } from "./agent-event-consumer-run-output.service";
+import { ingestAxiomEvents } from "./agent-event-consumer-axiom.service";
 import {
   completeAgentRun$,
   dispatchCompleteSideEffects$,
@@ -36,6 +38,7 @@ import {
   readPiTranscript,
 } from "./pi-transcript.service";
 import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
+import { tapError } from "../utils";
 
 const L = logger("pi:edge");
 
@@ -148,13 +151,31 @@ function piMessageEvent(args: {
   readonly runId: string;
   readonly sequenceNumber: number;
   readonly message: PiAgentMessage;
+  readonly handoff: boolean;
 }): AgentEvent {
   return {
     type: PI_MESSAGE_COMPLETED_EVENT_TYPE,
+    source: "api",
     sequenceNumber: args.sequenceNumber,
     messageId: `${args.runId}/${args.sequenceNumber}`,
     message: args.message,
+    ...(args.handoff ? { handoff: { from: "api", to: "sandbox" } } : {}),
   };
+}
+
+function dispatchPiEdgeAxiomTrace(
+  payload: EventConsumerPayload,
+  signal: AbortSignal,
+): void {
+  waitUntil(
+    tapError(ingestAxiomEvents(payload, signal), (error) => {
+      L.error("Optional Pi edge Axiom trace delivery failed", {
+        runId: payload.runId,
+        sequenceNumber: payload.events[0]?.sequenceNumber,
+        error,
+      });
+    }),
+  );
 }
 
 function failedAssistantMessage(message: PiAgentMessage): string | null {
@@ -210,10 +231,12 @@ export const runPiEdgeTurn$ = command(
           if (handedOff) {
             return;
           }
+          const requiresSandbox = piMessageRequiresSandbox(message);
           const event = piMessageEvent({
             runId: args.runId,
             sequenceNumber,
             message,
+            handoff: requiresSandbox,
           });
           const payload: EventConsumerPayload = {
             runId: args.runId,
@@ -232,10 +255,11 @@ export const runPiEdgeTurn$ = command(
             modelUsage,
           );
           signal.throwIfAborted();
+          dispatchPiEdgeAxiomTrace(payload, signal);
           lastEventSequence = sequenceNumber;
           sequenceNumber += 1;
           modelFailure ??= failedAssistantMessage(message);
-          if (piMessageRequiresSandbox(message)) {
+          if (requiresSandbox) {
             handedOff = true;
             await publishPiHandoffToRunnerGroupSafely(
               args.runnerGroup,

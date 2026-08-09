@@ -18,7 +18,10 @@ import {
   publishMaterializedChatProjection,
   type MaterializedChatProjection,
 } from "./agent-event-consumer-run-output.service";
-import { PiTranscriptRejectedError } from "./pi-transcript.service";
+import {
+  PI_MESSAGE_COMPLETED_EVENT_TYPE,
+  PiTranscriptRejectedError,
+} from "./pi-transcript.service";
 import { refreshTelegramTypingEvents$ } from "./agent-event-consumer-telegram-typing.service";
 import { settle, tapError } from "../utils";
 
@@ -76,9 +79,17 @@ function immutableEventPayload(
   auth: SandboxAuth,
   body: AgentEventsBody,
 ): EventConsumerPayload {
+  const events = body.events.map((event): AgentEvent => {
+    if (event.type !== PI_MESSAGE_COMPLETED_EVENT_TYPE) {
+      return event;
+    }
+    // Trust the authenticated transport boundary rather than guest-provided
+    // metadata, including runners deployed before the source field existed.
+    return { ...event, source: "sandbox" };
+  });
   return Object.freeze({
     runId: body.runId,
-    events: Object.freeze([...body.events]),
+    events: Object.freeze(events),
     context: Object.freeze({
       userId: auth.userId,
       orgId: auth.orgId,

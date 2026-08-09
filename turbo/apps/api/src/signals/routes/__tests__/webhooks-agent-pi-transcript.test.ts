@@ -15,6 +15,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { webhooksAgentEventsRoutes } from "../webhooks-agent-events";
 import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
@@ -35,8 +36,20 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const reads = createRunReadsApi(context);
 
 const PI_EVENT_TYPE = "pi.message.completed";
+
+function zeroUsage() {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+}
 
 async function entitledChatActor(): Promise<{
   readonly actor: ApiTestUser;
@@ -83,22 +96,39 @@ function assistantMessage(text: string): Record<string, unknown> {
     role: "assistant",
     content: [
       { type: "text", text },
-      { type: "tool_call", id: "tool-1", name: "bash", arguments: {} },
+      { type: "toolCall", id: "tool-1", name: "bash", arguments: {} },
     ],
+    api: "openai-completions",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    usage: zeroUsage(),
+    stopReason: "toolUse",
+    timestamp: 1,
   };
 }
 
 function toolCallOnlyMessage(): Record<string, unknown> {
   return {
     role: "assistant",
-    content: [{ type: "tool_call", id: "tool-1", name: "bash", arguments: {} }],
+    content: [{ type: "toolCall", id: "tool-1", name: "bash", arguments: {} }],
+    api: "openai-completions",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    usage: zeroUsage(),
+    stopReason: "toolUse",
+    timestamp: 1,
   };
 }
 
 function toolResultMessage(): Record<string, unknown> {
   return {
     role: "toolResult",
-    content: [{ type: "tool_result", toolCallId: "tool-1", output: "ok" }],
+    toolCallId: "tool-1",
+    toolName: "bash",
+    content: [{ type: "text", text: "ok" }],
+    details: {},
+    isError: false,
+    timestamp: 2,
   };
 }
 
@@ -323,7 +353,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     await readTranscript(run.runId, [404]);
   });
 
-  it("keeps the canonical payload out of Axiom telemetry", async () => {
+  it("keeps the canonical payload out of Axiom and restores it for authorized logs", async () => {
     const { actor, agentId } = await entitledChatActor();
     const { runId } = await chatRun(actor, agentId);
     mockEnv("AXIOM_TOKEN_SESSIONS", "axiom-bdd-token");
@@ -364,11 +394,52 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     const eventData = piIngest[0]?.eventData as Record<string, unknown>;
     expect(eventData.message).toBeUndefined();
     expect(eventData).toMatchObject({
+      source: "sandbox",
       messageId: "pi-m1",
       role: "assistant",
     });
     expect(typeof eventData.payloadBytes).toBe("number");
     expect(JSON.stringify(ingested)).not.toContain("secret transcript");
+
+    const axiomEvent = piIngest[0];
+    if (axiomEvent === undefined) {
+      throw new Error("Expected the Pi event metadata to reach Axiom");
+    }
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (typeof apl !== "string") {
+        return Promise.resolve([]);
+      }
+      if (apl.includes("| project sequenceNumber")) {
+        return Promise.resolve([{ sequenceNumber: 1 }]);
+      }
+      if (apl.includes("['agent-run-events']")) {
+        return Promise.resolve([
+          { ...axiomEvent, _time: "2026-08-09T00:00:00.000Z" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const logs = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 10, order: "asc" },
+      [200],
+    );
+    if (logs.status !== 200) {
+      throw new Error("Expected the authorized run event read to succeed");
+    }
+    expect(logs.body.events).toMatchObject([
+      {
+        sequenceNumber: 1,
+        eventType: PI_EVENT_TYPE,
+        eventData: {
+          source: "sandbox",
+          messageId: "pi-m1",
+          message: assistantMessage("secret transcript"),
+        },
+      },
+    ]);
   });
 });
 

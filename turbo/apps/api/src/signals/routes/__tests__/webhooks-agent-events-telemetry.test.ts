@@ -75,6 +75,25 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
             message: {
               role: "assistant",
               content: [{ type: "text", text: secretTranscript }],
+              api: "openai-completions",
+              provider: "deepseek",
+              model: "deepseek-chat",
+              usage: {
+                input: 1,
+                output: 1,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 2,
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  total: 0,
+                },
+              },
+              stopReason: "stop",
+              timestamp: 1,
             },
           },
         ],
@@ -98,6 +117,7 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
           eventType: "pi.message.completed",
           eventData: {
             type: "pi.message.completed",
+            source: "sandbox",
             sequenceNumber: 1,
             messageId: "pi-legacy-message",
             role: "assistant",

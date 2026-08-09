@@ -21,11 +21,38 @@ export const PI_TRANSCRIPT_PAGE_SIZE = 10;
  */
 export class PiTranscriptRejectedError extends Error {}
 
-const piMessageEventSchema = z.object({
-  sequenceNumber: z.number().int().nonnegative(),
-  messageId: z.string().min(1).max(255),
-  message: z.object({ role: z.string().min(1).max(64) }).passthrough(),
-});
+const piHandoffSchema = z
+  .object({
+    from: z.literal("api"),
+    to: z.literal("sandbox"),
+  })
+  .strict();
+
+const piMessageEventSchema = z
+  .object({
+    source: z.enum(["api", "sandbox"]),
+    sequenceNumber: z.number().int().nonnegative(),
+    messageId: z.string().min(1).max(255),
+    message: z.object({ role: z.string().min(1).max(64) }).passthrough(),
+    handoff: piHandoffSchema.optional(),
+  })
+  .superRefine((event, context) => {
+    if (event.handoff === undefined) {
+      return;
+    }
+    if (event.source !== "api") {
+      context.addIssue({
+        code: "custom",
+        message: "Pi handoff events must originate from the API",
+      });
+    }
+    if (event.message.role !== "assistant") {
+      context.addIssue({
+        code: "custom",
+        message: "Pi handoff events must carry an assistant message",
+      });
+    }
+  });
 
 type PiMessageEvent = z.infer<typeof piMessageEventSchema>;
 
@@ -265,8 +292,10 @@ export function redactPiEventForTelemetry(
   const message = recordOf(event.message);
   return {
     type: event.type,
+    source: event.source,
     sequenceNumber: event.sequenceNumber,
     messageId: event.messageId,
+    ...(event.handoff === undefined ? {} : { handoff: event.handoff }),
     role: message?.role,
     payloadBytes:
       message === null

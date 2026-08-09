@@ -16,6 +16,7 @@ const MAX_STRINGIFY_OBJECT_FIELDS = 100;
 const MAX_DEDUPE_DEPTH = 64;
 const MAX_DEDUPE_VALUES = 20_000;
 const MAX_DEDUPE_STRING_LENGTH = 1_000_000;
+const PI_MESSAGE_COMPLETED_EVENT_TYPE = "pi.message.completed";
 
 /**
  * Normalizes tool result content to a string.
@@ -336,7 +337,7 @@ export interface ToolOperation {
 }
 
 export interface EventGroup {
-  type: "system" | "assistant" | "result" | "todo";
+  type: "system" | "assistant" | "result" | "todo" | "handoff";
   sequenceNumber: number;
   createdAt: string;
   thinkingBlocks?: string[];
@@ -403,6 +404,7 @@ interface ToolResultMeta {
 interface GroupingEventData {
   subtype?: string;
   parent_tool_use_id?: string;
+  handoff?: unknown;
   message?: {
     content: unknown[] | null;
   };
@@ -724,12 +726,14 @@ function parseAssistantContent(
       if (typeof content.text === "string" && content.text) {
         textParts.push(content.text);
       }
-    } else if (content.type === "tool_use") {
+    } else if (content.type === "tool_use" || content.type === "toolCall") {
       if (typeof content.name !== "string" || !content.name) {
         continue;
       }
       foundToolUse = true;
-      const input = isRecord(content.input) ? content.input : {};
+      const rawInput =
+        content.type === "toolCall" ? content.arguments : content.input;
+      const input = isRecord(rawInput) ? rawInput : {};
       const toolUseId =
         typeof content.id === "string" && content.id.length > 0
           ? content.id
@@ -1213,6 +1217,181 @@ function processUserEvent(
   }
 }
 
+function piToolResultContent(message: Record<string, unknown>): unknown {
+  if (!Array.isArray(message.content)) {
+    return message.content;
+  }
+  const textParts = message.content.flatMap((block) => {
+    return isRecord(block) &&
+      block.type === "text" &&
+      typeof block.text === "string"
+      ? [block.text]
+      : [];
+  });
+  return textParts.length === message.content.length
+    ? textParts.join("\n")
+    : message.content;
+}
+
+interface PiEventPayload {
+  readonly eventData: Record<string, unknown>;
+  readonly message: Record<string, unknown>;
+  readonly source: "api" | "sandbox";
+}
+
+function piEventPayload(event: AgentEvent): PiEventPayload {
+  const eventData = isRecord(event.eventData) ? event.eventData : null;
+  const message =
+    eventData && isRecord(eventData.message) ? eventData.message : null;
+  if (!eventData || !message) {
+    throw new Error("Pi message event is missing its native message payload");
+  }
+  if (eventData.source !== "api" && eventData.source !== "sandbox") {
+    throw new Error("Pi message is missing its execution source");
+  }
+  return { eventData, message, source: eventData.source };
+}
+
+function piAssistantContent(message: Record<string, unknown>): unknown[] {
+  if (!Array.isArray(message.content)) {
+    throw new Error("Pi assistant message has invalid content");
+  }
+  for (const block of message.content) {
+    if (!isRecord(block) || block.type !== "toolCall") {
+      continue;
+    }
+    if (
+      typeof block.id !== "string" ||
+      block.id.length === 0 ||
+      typeof block.name !== "string" ||
+      block.name.length === 0 ||
+      !isRecord(block.arguments)
+    ) {
+      throw new Error("Pi assistant message has an invalid tool call");
+    }
+  }
+  return message.content;
+}
+
+function piHandoffToolCallIndex(
+  eventData: Record<string, unknown>,
+  content: readonly unknown[],
+  source: PiEventPayload["source"],
+): number {
+  const handoff = eventData.handoff;
+  if (handoff === undefined) {
+    return -1;
+  }
+  if (
+    !isRecord(handoff) ||
+    handoff.from !== "api" ||
+    handoff.to !== "sandbox"
+  ) {
+    throw new Error("Pi message has an invalid handoff marker");
+  }
+  if (source !== "api") {
+    throw new Error("Pi handoff marker must originate from the API");
+  }
+  const toolCallIndex = content.findIndex((block) => {
+    return isRecord(block) && block.type === "toolCall";
+  });
+  if (toolCallIndex === -1) {
+    throw new Error("Pi handoff message contains no tool call");
+  }
+  return toolCallIndex;
+}
+
+function processPiAssistantMessage(
+  event: AgentEvent,
+  payload: PiEventPayload,
+  ctx: GroupingContext,
+  nextSequenceNumber: number | undefined,
+): void {
+  const content = piAssistantContent(payload.message);
+  const toolCallIndex = piHandoffToolCallIndex(
+    payload.eventData,
+    content,
+    payload.source,
+  );
+  processAssistantEvent(
+    event,
+    {
+      message: {
+        content:
+          toolCallIndex === -1 ? content : content.slice(0, toolCallIndex),
+      },
+    },
+    ctx,
+    nextSequenceNumber,
+  );
+  if (toolCallIndex === -1) {
+    return;
+  }
+
+  ctx.grouped.push({
+    type: "handoff",
+    sequenceNumber: event.sequenceNumber,
+    createdAt: event.createdAt,
+    eventData: event.eventData,
+  });
+  const toolCallEvent: AgentEvent = {
+    ...event,
+    sequenceNumber: sequenceNumberWithContentOffset({
+      sequenceNumber: event.sequenceNumber,
+      contentIndex: 0,
+      contentCount: 1,
+      nextSequenceNumber,
+    }),
+  };
+  processAssistantEvent(
+    toolCallEvent,
+    { message: { content: content.slice(toolCallIndex) } },
+    ctx,
+    nextSequenceNumber,
+  );
+}
+
+function processPiToolResultMessage(
+  message: Record<string, unknown>,
+  ctx: GroupingContext,
+): void {
+  const toolCallId = stringValue(message.toolCallId);
+  if (toolCallId === undefined) {
+    throw new Error("Pi ToolResult message is missing its toolCallId");
+  }
+  const pending = takePendingToolUse(
+    ctx.pendingToolUses,
+    toolCallId,
+    undefined,
+  );
+  if (pending === undefined) {
+    throw new Error(`Pi ToolResult ${toolCallId} has no matching tool call`);
+  }
+  pending.operation.result = {
+    content: normalizeToolResultContent(piToolResultContent(message)),
+    isError: message.isError === true,
+  };
+}
+
+function processPiMessageCompletedEvent(
+  event: AgentEvent,
+  ctx: GroupingContext,
+  nextSequenceNumber: number | undefined,
+): void {
+  const payload = piEventPayload(event);
+  if (payload.message.role === "assistant") {
+    processPiAssistantMessage(event, payload, ctx, nextSequenceNumber);
+    return;
+  }
+  if (payload.message.role === "user") {
+    return;
+  }
+  if (payload.message.role !== "toolResult") {
+    throw new Error("Pi message has an invalid role");
+  }
+  processPiToolResultMessage(payload.message, ctx);
+}
+
 /**
  * Groups flat event array into group-centric structure.
  * - Consecutive assistant groups are merged (text + tools in one card)
@@ -1277,6 +1456,8 @@ export function groupEventsIntoGroups(
       processAssistantEvent(event, eventData, ctx, nextSequenceNumber);
     } else if (event.eventType === "user") {
       processUserEvent(event, eventData, ctx, nextSequenceNumber);
+    } else if (event.eventType === PI_MESSAGE_COMPLETED_EVENT_TYPE) {
+      processPiMessageCompletedEvent(event, ctx, nextSequenceNumber);
     }
   }
 

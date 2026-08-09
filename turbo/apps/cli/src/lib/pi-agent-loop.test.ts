@@ -100,11 +100,12 @@ function persistedMessage(
   ordinal: number,
   sequenceNumber: number,
   payload: PiAgentMessage,
+  runId = CONFIG.runId,
 ) {
   return {
     ordinal,
-    messageId: `${CONFIG.runId}/${sequenceNumber}`,
-    runId: CONFIG.runId,
+    messageId: `${runId}/${sequenceNumber}`,
+    runId,
     runEventSequenceNumber: sequenceNumber,
     role: payload.role,
     payload,
@@ -400,6 +401,51 @@ describe("internal Pi standby agent loop", () => {
               : transcriptPage([persistedMessage(1, 7, HANDOFF_ASSISTANT)]),
         });
       }
+    });
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
+    let resumed = false;
+    const resume = (async () => {
+      resumed = true;
+    }) satisfies PiAgentResume;
+
+    try {
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: CONFIG,
+          executionEnv,
+          standbyTtlSeconds: 1,
+          pollIntervalMs: 1,
+          resume,
+        },
+        new AbortController().signal,
+      );
+    } finally {
+      await executionEnv.cleanup();
+    }
+
+    expect(transcriptReads).toBe(2);
+    expect(resumed).toBeTruthy();
+  });
+
+  it("does not take over a tool call from a previous run", async () => {
+    const previousRunId = "00000000-0000-4000-8000-000000000122";
+    let transcriptReads = 0;
+    const io = new ControlledIo((frame, controlled) => {
+      if (frame.type !== "pi-transcript-read") {
+        return;
+      }
+      transcriptReads += 1;
+      controlled.push({
+        type: "pi-transcript",
+        requestId: frame.requestId,
+        transcript:
+          transcriptReads === 1
+            ? transcriptPage([
+                persistedMessage(1, 7, HANDOFF_ASSISTANT, previousRunId),
+              ])
+            : transcriptPage([persistedMessage(2, 1, HANDOFF_ASSISTANT)]),
+      });
     });
     const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
     let resumed = false;

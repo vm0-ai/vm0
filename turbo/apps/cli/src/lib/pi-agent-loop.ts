@@ -352,9 +352,12 @@ function appendTranscriptPage(
   transcript.lastOrdinal = page.lastOrdinal;
 }
 
-function latestMessageRequiresSandbox(transcript: FollowedTranscript): boolean {
+function latestMessageRequiresSandbox(
+  transcript: FollowedTranscript,
+  runId: string,
+): boolean {
   const latest = transcript.messages.at(-1);
-  if (latest === undefined) {
+  if (latest === undefined || latest.runId !== runId) {
     return false;
   }
   const [message] = parsePiAgentMessages([latest.payload]);
@@ -408,7 +411,7 @@ export async function runPiStandbyAgentLoop(
     if (result.page.hasMore) {
       continue;
     }
-    if (latestMessageRequiresSandbox(transcript)) {
+    if (latestMessageRequiresSandbox(transcript, args.config.runId)) {
       const result = await resumeFromTranscript(
         {
           io: args.io,

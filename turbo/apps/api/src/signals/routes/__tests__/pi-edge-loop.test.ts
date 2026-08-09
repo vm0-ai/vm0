@@ -928,8 +928,20 @@ describe("PiLoop edge turn", () => {
       }
     });
     const completionRequests: unknown[] = [];
+    const axiomIngestBodies: unknown[] = [];
     let modelCall = 0;
     server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          axiomIngestBodies.push(await request.json());
+          return HttpResponse.json({
+            ingested: 1,
+            failed: 0,
+            processedBytes: 0,
+          });
+        },
+      ),
       http.post(COMPLETIONS_URL, async ({ request }) => {
         completionRequests.push(await request.json());
         const currentCall = modelCall;
@@ -1079,6 +1091,30 @@ describe("PiLoop edge turn", () => {
     });
     expect(systemPromptFromRequest(completionRequests[0])).toBe(piSystemPrompt);
     expect(JSON.stringify(completionRequests)).not.toContain(legacyPrompt);
+    const handoffTelemetry = axiomIngestBodies
+      .flatMap((body) => {
+        return Array.isArray(body) ? body : [];
+      })
+      .map(recordOf)
+      .find((event) => {
+        const eventData = recordOf(event?.eventData);
+        return (
+          event?.runId === edge.runId &&
+          event?.eventType === "pi.message.completed" &&
+          eventData?.messageId === `${edge.runId}/2`
+        );
+      });
+    const handoffEventData = recordOf(handoffTelemetry?.eventData);
+    expect(handoffEventData).toMatchObject({
+      source: "api",
+      messageId: `${edge.runId}/2`,
+      role: "assistant",
+      handoff: { from: "api", to: "sandbox" },
+    });
+    expect(handoffEventData?.message).toBeUndefined();
+    expect(JSON.stringify(axiomIngestBodies)).not.toContain(
+      "inspect the pinned skill",
+    );
 
     // The first-round read hands off to the Sandbox: it executes the read
     // against its own filesystem and resumes the turn.
