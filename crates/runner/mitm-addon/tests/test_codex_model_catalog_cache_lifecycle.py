@@ -23,7 +23,7 @@ async def test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions(real_fl
         assert await install_catalog(cold) == {
             "model_catalog_cache_status": "model_catalog_cold_stored",
             "model_catalog_cache_validation_latency_ms": 0,
-            "model_catalog_cache_upstream_encoding": "br",
+            "model_catalog_cache_upstream_encoding": "identity",
         }
 
         monotonic.return_value = 150.0
