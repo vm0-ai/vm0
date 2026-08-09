@@ -10,7 +10,7 @@ import {
   zeroConnectorsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { PublicConnectorCatalogDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { connectorOauthStatesInsertTarget } from "@vm0/db/custom-connector-insert-targets";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -537,7 +537,7 @@ const startConnectorOauthInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    await writeDb.insert(connectorOauthStatesInsertTarget).values({
+    await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
       connectorSlug: resolved.connectorSlug,
       authMethod: resolved.authMethodId,
@@ -650,7 +650,7 @@ const startConnectorOpenIdInner$ = command(
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
-    await writeDb.insert(connectorOauthStatesInsertTarget).values({
+    await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
       connectorSlug: resolved.connectorSlug,
       authMethod: resolved.authMethodId,

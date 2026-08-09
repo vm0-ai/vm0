@@ -2,7 +2,6 @@ import {
   bigint,
   boolean,
   check,
-  integer,
   pgTable,
   uuid,
   varchar,
@@ -75,7 +74,6 @@ export const orgCustomConnectors = pgTable(
     }).$type<OrgCustomConnectorMcpTransport>(),
     mcpResource: text("mcp_resource"),
     skillMarkdown: text("skill_markdown"),
-    revision: integer("revision").notNull().default(1),
     storageVersion: bigint("storage_version", { mode: "number" })
       .notNull()
       .default(1),
@@ -108,10 +106,6 @@ export const orgCustomConnectors = pgTable(
           ${table.mcpEndpoint} IS NOT NULL
           AND ${table.mcpTransport} = 'streamable-http'
         )`,
-      ),
-      check(
-        "chk_org_custom_connectors_revision_positive",
-        sql`${table.revision} > 0`,
       ),
       check(
         "chk_org_custom_connectors_storage_version_positive",

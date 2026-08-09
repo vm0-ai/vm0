@@ -2,7 +2,6 @@ import { isDeepStrictEqual } from "node:util";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 import { FEISHU_OAUTH_SCOPES } from "@vm0/api-contracts/contracts/zero-feishu-connect";
-import { orgCustomConnectorsInsertTarget } from "@vm0/db/custom-connector-insert-targets";
 import { connectors } from "@vm0/db/schema/connector";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
@@ -250,7 +249,7 @@ async function createFeishuCustomConnector(
   signal: AbortSignal,
 ): Promise<ReconciledFeishuCustomConnector> {
   const [connector] = await tx
-    .insert(orgCustomConnectorsInsertTarget)
+    .insert(orgCustomConnectors)
     .values({
       orgId: args.orgId,
       slug,
