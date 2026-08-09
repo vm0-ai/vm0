@@ -838,7 +838,7 @@ function PermissionGroupHeader({
           size={14}
           strokeWidth={2}
           className={`transition-transform ${expanded ? "rotate-90" : ""}`}
-          data-explicit-stroke-width
+          data-stroke
         />
         {category} ({permissions.length})
       </button>

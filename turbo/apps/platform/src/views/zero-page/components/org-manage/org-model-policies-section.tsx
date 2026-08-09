@@ -604,7 +604,7 @@ function AddModelButton({
       disabled={disabled}
       onClick={onClick}
     >
-      <Plus size={14} strokeWidth={2} data-explicit-stroke-width />
+      <Plus size={14} strokeWidth={2} data-stroke />
       {t(($) => {
         return $.settings.models.actions.addModel;
       })}
