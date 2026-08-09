@@ -24,6 +24,10 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import type {
+  SandboxReuseResult,
+  WorkspaceReuseResult,
+} from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { fetchDownloadExtra$ } from "../../signals/activity-page/activity-download.ts";
@@ -618,6 +622,108 @@ function ActivityContextTab({ detailId }: { detailId: string }) {
   return <ContextContent context={context} />;
 }
 
+type RunnerStartupPath = "sandbox" | "workspace" | "cold" | "unknown";
+
+interface ReuseOutcomeInfo {
+  readonly label: string;
+  readonly description: string | null;
+}
+
+function isCurrentSandboxMiss(result: SandboxReuseResult | null): boolean {
+  return (
+    result === "noReuseKey" ||
+    result === "poolMiss" ||
+    result === "profileMismatch" ||
+    result === "deviceLimitMismatch" ||
+    result === "unparkFailed"
+  );
+}
+
+function isWorkspaceMiss(result: WorkspaceReuseResult | null): boolean {
+  return result !== null && result !== "reused" && result !== "sandboxReused";
+}
+
+function runnerStartupPath(
+  sandbox: SandboxReuseResult | null,
+  workspace: WorkspaceReuseResult | null,
+): RunnerStartupPath {
+  if (sandbox === "reused" && workspace === "sandboxReused") {
+    return "sandbox";
+  }
+  if (isCurrentSandboxMiss(sandbox) && workspace === "reused") {
+    return "workspace";
+  }
+  if (isCurrentSandboxMiss(sandbox) && isWorkspaceMiss(workspace)) {
+    return "cold";
+  }
+  return "unknown";
+}
+
+function isActiveRunnerStatus(status: LogStatus | undefined): boolean {
+  return status === "queued" || status === "pending" || status === "running";
+}
+
+function sandboxOutcomeInfo(
+  result: SandboxReuseResult | null,
+  descriptions: Record<SandboxReuseResult, string>,
+  labels: {
+    readonly missing: string;
+    readonly notReused: string;
+    readonly reused: string;
+  },
+): ReuseOutcomeInfo {
+  if (result === null) {
+    return { label: labels.missing, description: null };
+  }
+  return {
+    label: result === "reused" ? labels.reused : labels.notReused,
+    description: descriptions[result],
+  };
+}
+
+function workspaceOutcomeInfo(
+  result: WorkspaceReuseResult | null,
+  descriptions: Record<WorkspaceReuseResult, string>,
+  labels: {
+    readonly missing: string;
+    readonly notReused: string;
+    readonly reused: string;
+  },
+): ReuseOutcomeInfo {
+  if (result === null) {
+    return { label: labels.missing, description: null };
+  }
+  const wasReused = result === "reused" || result === "sandboxReused";
+  return {
+    label: wasReused ? labels.reused : labels.notReused,
+    description: descriptions[result],
+  };
+}
+
+function RunnerOutcomeRow({
+  title,
+  info,
+}: {
+  readonly title: string;
+  readonly info: ReuseOutcomeInfo;
+}) {
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-foreground mb-2">{title}</h3>
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
+          {info.label}
+        </span>
+        {info.description ? (
+          <span className="text-sm text-muted-foreground">
+            {info.description}
+          </span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function ActivityRunnerTab({ detailId }: { detailId: string }) {
   const { t } = useTranslation();
   const runnerLoadable = useLastLoadable(zeroActivityRunner$);
@@ -637,112 +743,131 @@ function ActivityRunnerTab({ detailId }: { detailId: string }) {
   }
 
   const runner = runnerLoadable.data?.runner ?? null;
-  const reuse = runner?.sandboxReuseResult ?? null;
+  const sandboxReuse = runner?.sandboxReuseResult ?? null;
+  const workspaceReuse = runner?.workspaceReuseResult ?? null;
+  const missing = isActiveRunnerStatus(runnerLoadable.data?.status)
+    ? t(($) => {
+        return $.activity.detail.runner.provisioning;
+      })
+    : t(($) => {
+        return $.activity.detail.runner.unavailable;
+      });
   const notReused = t(($) => {
     return $.activity.detail.runner.notReused;
   });
-  const info = (() => {
-    switch (reuse) {
-      case "reused": {
-        return {
-          label: t(($) => {
-            return $.activity.detail.runner.reused;
-          }),
-          description: t(($) => {
-            return $.activity.detail.runner.reusedDescription;
-          }),
-        };
-      }
-      case "featureDisabled": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.featureDisabled;
-          }),
-        };
-      }
-      case "noSessionId": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.noSessionId;
-          }),
-        };
-      }
-      case "noReuseKey": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.noReuseKey;
-          }),
-        };
-      }
-      case "poolMiss": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.poolMiss;
-          }),
-        };
-      }
-      case "profileMismatch": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.profileMismatch;
-          }),
-        };
-      }
-      case "deviceLimitMismatch": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.deviceLimitMismatch;
-          }),
-        };
-      }
-      case "unparkFailed": {
-        return {
-          label: notReused,
-          description: t(($) => {
-            return $.activity.detail.runner.unparkFailed;
-          }),
-        };
-      }
-      case null: {
-        return null;
-      }
-    }
-  })() satisfies {
-    label: string;
-    description: string;
-  } | null;
+  const reused = t(($) => {
+    return $.activity.detail.runner.reused;
+  });
+  const sandboxDescriptions = {
+    reused: t(($) => {
+      return $.activity.detail.runner.reusedDescription;
+    }),
+    featureDisabled: t(($) => {
+      return $.activity.detail.runner.featureDisabled;
+    }),
+    noSessionId: t(($) => {
+      return $.activity.detail.runner.noSessionId;
+    }),
+    noReuseKey: t(($) => {
+      return $.activity.detail.runner.noReuseKey;
+    }),
+    poolMiss: t(($) => {
+      return $.activity.detail.runner.poolMiss;
+    }),
+    profileMismatch: t(($) => {
+      return $.activity.detail.runner.profileMismatch;
+    }),
+    deviceLimitMismatch: t(($) => {
+      return $.activity.detail.runner.deviceLimitMismatch;
+    }),
+    unparkFailed: t(($) => {
+      return $.activity.detail.runner.unparkFailed;
+    }),
+  } satisfies Record<SandboxReuseResult, string>;
+  const workspaceDescriptions = {
+    reused: t(($) => {
+      return $.activity.detail.runner.workspaceReusedDescription;
+    }),
+    sandboxReused: t(($) => {
+      return $.activity.detail.runner.sandboxReusedDescription;
+    }),
+    cacheMiss: t(($) => {
+      return $.activity.detail.runner.cacheMiss;
+    }),
+    noReuseKey: t(($) => {
+      return $.activity.detail.runner.workspaceNoReuseKey;
+    }),
+    invalidWorkingDir: t(($) => {
+      return $.activity.detail.runner.invalidWorkingDir;
+    }),
+    lockBusy: t(($) => {
+      return $.activity.detail.runner.lockBusy;
+    }),
+    invalidMetadata: t(($) => {
+      return $.activity.detail.runner.invalidMetadata;
+    }),
+    diskPressure: t(($) => {
+      return $.activity.detail.runner.diskPressure;
+    }),
+    notConfigured: t(($) => {
+      return $.activity.detail.runner.notConfigured;
+    }),
+    sandboxPrepareFallback: t(($) => {
+      return $.activity.detail.runner.sandboxPrepareFallback;
+    }),
+  } satisfies Record<WorkspaceReuseResult, string>;
+  const labels = { missing, notReused, reused };
+  const sandboxInfo = sandboxOutcomeInfo(
+    sandboxReuse,
+    sandboxDescriptions,
+    labels,
+  );
+  const workspaceInfo = workspaceOutcomeInfo(
+    workspaceReuse,
+    workspaceDescriptions,
+    labels,
+  );
+  const startupLabels = {
+    sandbox: t(($) => {
+      return $.activity.detail.runner.startupSandbox;
+    }),
+    workspace: t(($) => {
+      return $.activity.detail.runner.startupWorkspace;
+    }),
+    cold: t(($) => {
+      return $.activity.detail.runner.startupCold;
+    }),
+    unknown: t(($) => {
+      return $.activity.detail.runner.startupUnknown;
+    }),
+  } satisfies Record<RunnerStartupPath, string>;
+  const startup =
+    startupLabels[runnerStartupPath(sandboxReuse, workspaceReuse)];
 
   return (
     <div className="flex flex-col gap-6 pb-8">
       <section>
         <h3 className="text-sm font-semibold text-foreground mb-2">
           {t(($) => {
-            return $.activity.detail.runner.sandbox;
+            return $.activity.detail.runner.startup;
           })}
         </h3>
-        {info ? (
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
-              {info.label}
-            </span>
-            <span className="text-sm text-muted-foreground">
-              {info.description}
-            </span>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t(($) => {
-              return $.activity.detail.runner.unknown;
-            })}
-          </p>
-        )}
+        <span className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
+          {startup}
+        </span>
       </section>
+      <RunnerOutcomeRow
+        title={t(($) => {
+          return $.activity.detail.runner.sandbox;
+        })}
+        info={sandboxInfo}
+      />
+      <RunnerOutcomeRow
+        title={t(($) => {
+          return $.activity.detail.runner.workspace;
+        })}
+        info={workspaceInfo}
+      />
     </div>
   );
 }

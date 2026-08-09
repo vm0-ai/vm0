@@ -41,14 +41,12 @@ use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
-#[cfg(test)]
-use crate::types::PiExecutionMode;
 use crate::types::{
     CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
     ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PollResponse,
-    SandboxReuseResult,
 };
-use sandbox::SandboxId;
+#[cfg(test)]
+use crate::types::{PiExecutionMode, SandboxReuseResult, WorkspaceReuseResult};
 
 fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
     reuse_key.is_some_and(|key| key.starts_with("thread:"))
@@ -766,15 +764,8 @@ impl JobProvider for ApiProvider {
         self.builtin_firewall_catalog_refresh.shutdown().await;
     }
 
-    async fn complete(
-        &self,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-        completion_auth: CompletionAuth,
-    ) {
+    async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth) {
+        let run_id = request.run_id;
         let token = match completion_auth.into_sandbox_token(run_id) {
             Ok(token) => token,
             Err(CompletionAuthError::NotSandbox) => {
@@ -795,11 +786,7 @@ impl JobProvider for ApiProvider {
         const RETRY_DELAY: Duration = Duration::from_secs(2);
 
         for attempt in 1..=MAX_ATTEMPTS {
-            match self
-                .api
-                .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
-                .await
-            {
+            match self.api.complete(&token, &request).await {
                 Ok(()) => return,
                 Err(e) => {
                     let (retryable, status, failure_kind) = match &e {
@@ -1149,27 +1136,11 @@ impl ApiClient {
             .await
     }
     /// Report job completion. Uses the per-job **sandbox token** for auth.
-    async fn complete(
-        &self,
-        sandbox_token: &str,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-    ) -> RunnerResult<()> {
-        let body = CompleteRequest {
-            run_id,
-            exit_code,
-            error: error.map(String::from),
-            sandbox_id,
-            sandbox_reuse_result: reuse_result,
-        };
-
+    async fn complete(&self, sandbox_token: &str, request: &CompleteRequest) -> RunnerResult<()> {
         let resp = send_api(
             self.http
                 .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
-                .json(&body),
+                .json(request),
             "complete",
         )
         .await?;
@@ -2179,6 +2150,17 @@ mod tests {
                 .any(|line| line.eq_ignore_ascii_case(&expected)),
             "completion request should use sandbox auth; request was:\n{request}",
         );
+    }
+
+    fn complete_request(run_id: RunId) -> CompleteRequest {
+        CompleteRequest {
+            run_id,
+            exit_code: 0,
+            error: None,
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+        }
     }
 
     #[tokio::test]
@@ -3934,7 +3916,17 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .complete("sandbox-token", RunId::nil(), 1, Some("boom"), None, None)
+            .complete(
+                "sandbox-token",
+                &CompleteRequest {
+                    run_id: RunId::nil(),
+                    exit_code: 1,
+                    error: Some("boom".to_string()),
+                    sandbox_id: None,
+                    sandbox_reuse_result: None,
+                    workspace_reuse_result: None,
+                },
+            )
             .await
             .unwrap_err();
 
@@ -3960,6 +3952,7 @@ mod tests {
                         "runId": run_id,
                         "exitCode": 0,
                         "sandboxReuseResult": "noReuseKey",
+                        "workspaceReuseResult": "noReuseKey",
                     }));
                 then.status(200);
             })
@@ -3968,11 +3961,14 @@ mod tests {
 
         api.complete(
             "sandbox-token",
-            run_id,
-            0,
-            None,
-            None,
-            Some(SandboxReuseResult::NoReuseKey),
+            &CompleteRequest {
+                run_id,
+                exit_code: 0,
+                error: None,
+                sandbox_id: None,
+                sandbox_reuse_result: Some(SandboxReuseResult::NoReuseKey),
+                workspace_reuse_result: Some(WorkspaceReuseResult::NoReuseKey),
+            },
         )
         .await
         .unwrap();
@@ -4316,7 +4312,7 @@ mod tests {
         assert!(active_input_source.is_none());
 
         provider
-            .complete(run_id, 0, None, None, None, completion_auth)
+            .complete(complete_request(run_id), completion_auth)
             .await;
 
         claim_mock.assert_calls_async(1).await;
@@ -4550,10 +4546,10 @@ mod tests {
         assert!(active_input_source_b.is_none());
 
         provider
-            .complete(context_b.run_id, 0, None, None, None, completion_auth_b)
+            .complete(complete_request(context_b.run_id), completion_auth_b)
             .await;
         provider
-            .complete(context_a.run_id, 0, None, None, None, completion_auth_a)
+            .complete(complete_request(context_a.run_id), completion_auth_a)
             .await;
 
         claim_mock_a.assert_calls_async(1).await;
@@ -4582,11 +4578,7 @@ mod tests {
 
         provider
             .complete(
-                run_id,
-                0,
-                None,
-                None,
-                None,
+                complete_request(run_id),
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .await;
@@ -4611,7 +4603,7 @@ mod tests {
         );
 
         provider
-            .complete(RunId::nil(), 0, None, None, None, CompletionAuth::local())
+            .complete(complete_request(RunId::nil()), CompletionAuth::local())
             .await;
 
         mock.assert_calls_async(0).await;
@@ -4635,11 +4627,7 @@ mod tests {
 
         provider
             .complete(
-                RunId::nil(),
-                0,
-                None,
-                None,
-                None,
+                complete_request(RunId::nil()),
                 CompletionAuth::sandbox_token(RunId::new_v4(), "sandbox-token".to_string()),
             )
             .await;
@@ -4661,11 +4649,7 @@ mod tests {
             capture_api_provider_events(async move {
                 provider
                     .complete(
-                        run_id,
-                        0,
-                        None,
-                        None,
-                        None,
+                        complete_request(run_id),
                         CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                     )
                     .await;
@@ -4720,11 +4704,7 @@ mod tests {
             let complete_task = tokio::spawn(async move {
                 provider
                     .complete(
-                        run_id,
-                        0,
-                        None,
-                        None,
-                        None,
+                        complete_request(run_id),
                         CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                     )
                     .await;
@@ -4771,11 +4751,7 @@ mod tests {
         let complete_task = tokio::spawn(async move {
             provider
                 .complete(
-                    run_id,
-                    0,
-                    None,
-                    None,
-                    None,
+                    complete_request(run_id),
                     CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                 )
                 .await;
@@ -4808,11 +4784,7 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
         let ((), events) = capture_api_provider_events(provider.complete(
-            run_id,
-            0,
-            None,
-            None,
-            None,
+            complete_request(run_id),
             CompletionAuth::sandbox_token(run_id, "invalid\nheader".to_string()),
         ))
         .await;
@@ -4840,11 +4812,11 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         let completion = provider
             .complete(
-                run_id,
-                1,
-                Some("boom"),
-                None,
-                None,
+                CompleteRequest {
+                    exit_code: 1,
+                    error: Some("boom".to_string()),
+                    ..complete_request(run_id)
+                },
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .with_subscriber(subscriber);

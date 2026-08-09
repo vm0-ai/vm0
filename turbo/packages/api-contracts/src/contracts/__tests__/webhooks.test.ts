@@ -7,6 +7,7 @@ import {
   storageManifestFilesSchema,
 } from "../storages";
 import {
+  webhookCompleteContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
   webhookTelemetryContract,
@@ -56,6 +57,81 @@ describe("storage webhook manifest limits", () => {
         files: overFiles,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("agent completion reuse outcomes", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    exitCode: 0,
+  };
+
+  it("accepts legacy sandbox-only completion payloads", () => {
+    for (const sandboxReuseResult of ["reused", "noSessionId"] as const) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          sandboxReuseResult,
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("accepts coherent final sandbox and workspace outcomes", () => {
+    const workspaceMisses = [
+      "cacheMiss",
+      "noReuseKey",
+      "invalidWorkingDir",
+      "lockBusy",
+      "invalidMetadata",
+      "diskPressure",
+      "notConfigured",
+      "sandboxPrepareFallback",
+    ] as const;
+    const coherentPairs = [
+      ["reused", "sandboxReused"],
+      ["noReuseKey", "reused"],
+      ...workspaceMisses.map((workspaceResult) => {
+        return ["poolMiss", workspaceResult] as const;
+      }),
+    ] as const;
+
+    for (const [sandboxReuseResult, workspaceReuseResult] of coherentPairs) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          sandboxReuseResult,
+          workspaceReuseResult,
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("rejects missing, legacy, or contradictory sandbox context", () => {
+    const incoherentBodies = [
+      { workspaceReuseResult: "cacheMiss" },
+      {
+        sandboxReuseResult: "reused",
+        workspaceReuseResult: "cacheMiss",
+      },
+      {
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "sandboxReused",
+      },
+      {
+        sandboxReuseResult: "noSessionId",
+        workspaceReuseResult: "cacheMiss",
+      },
+    ] as const;
+
+    for (const body of incoherentBodies) {
+      expect(
+        webhookCompleteContract.complete.body.safeParse({
+          ...baseBody,
+          ...body,
+        }).success,
+      ).toBe(false);
+    }
   });
 });
 

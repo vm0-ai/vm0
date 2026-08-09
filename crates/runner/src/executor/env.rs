@@ -10,7 +10,9 @@ use super::cli_framework::{
 };
 use super::{JOB_TIMEOUT, RunnerError, RunnerResult, guest_runtime_dir, guest_runtime_path};
 use crate::ids::RunId;
-use crate::types::{CodexRuntimeConfig, ExecutionContext, SandboxReuseResult};
+use crate::types::{
+    CodexRuntimeConfig, ExecutionContext, SandboxReuseResult, WorkspaceReuseResult,
+};
 
 pub(super) struct ProtectedModelProviderEnvKey {
     name: &'static str,
@@ -361,7 +363,7 @@ pub(super) fn build_env_json_with_host_env(
     reuse_result: SandboxReuseResult,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
-    build_env_json_with_host_env_for_run(context, api_url, sandbox_id, reuse_result, host_env)
+    build_env_json_with_host_env_inner(context, api_url, sandbox_id, reuse_result, None, host_env)
 }
 
 /// Build the guest-agent bootstrap environment.
@@ -373,9 +375,17 @@ pub(super) fn build_env_json_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
+    workspace_reuse_result: WorkspaceReuseResult,
 ) -> RunnerResult<HashMap<String, String>> {
     let host_env = HostEnv::from_process();
-    build_env_json_with_host_env_for_run(context, api_url, sandbox_id, reuse_result, &host_env)
+    build_env_json_with_host_env_for_run(
+        context,
+        api_url,
+        sandbox_id,
+        reuse_result,
+        workspace_reuse_result,
+        &host_env,
+    )
 }
 
 pub(super) fn build_env_json_with_host_env_for_run(
@@ -383,6 +393,25 @@ pub(super) fn build_env_json_with_host_env_for_run(
     api_url: &str,
     sandbox_id: &str,
     reuse_result: SandboxReuseResult,
+    workspace_reuse_result: WorkspaceReuseResult,
+    host_env: &HostEnv,
+) -> RunnerResult<HashMap<String, String>> {
+    build_env_json_with_host_env_inner(
+        context,
+        api_url,
+        sandbox_id,
+        reuse_result,
+        Some(workspace_reuse_result),
+        host_env,
+    )
+}
+
+fn build_env_json_with_host_env_inner(
+    context: &ExecutionContext,
+    api_url: &str,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    workspace_reuse_result: Option<WorkspaceReuseResult>,
     host_env: &HostEnv,
 ) -> RunnerResult<HashMap<String, String>> {
     let mut env = HashMap::new();
@@ -408,6 +437,12 @@ pub(super) fn build_env_json_with_host_env_for_run(
         guest_contracts::env::SANDBOX_REUSE_RESULT_ENV.into(),
         reuse_result.as_wire().into(),
     );
+    if let Some(workspace_reuse_result) = workspace_reuse_result {
+        env.insert(
+            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV.into(),
+            workspace_reuse_result.as_wire().into(),
+        );
+    }
     env.insert(
         guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV.into(),
         JOB_TIMEOUT.as_secs().to_string(),

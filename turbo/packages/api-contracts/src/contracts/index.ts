@@ -235,6 +235,7 @@ export {
 export { zeroEmailInboundContract } from "./zero-email";
 export {
   sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
   webhookClerkContract,
   webhookEventsContract,
   webhookFirewallAuthContract,
@@ -258,6 +259,7 @@ export {
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
   type SandboxReuseResult,
+  type WorkspaceReuseResult,
   type WebhookWorkflowAutomationContract,
   type WebhookEventsContract,
   type WebhookFirewallAuthContract,

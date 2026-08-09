@@ -10,12 +10,12 @@
 //! runner's fallback is the correctness guarantee. One attempt (matching
 //! telemetry) so a flaky network does not tie up VM shutdown.
 //!
-//! Trust model: `sandbox_id` and `sandbox_reuse_result` are relayed from
+//! Trust model: sandbox and workspace metadata are relayed from
 //! runner-set env vars and included in the payload for analytics only. The
 //! guest is semi-trusted under the normal threat model, and the runner's
 //! fallback call is idempotency-short-circuited, so a compromised guest
 //! could skew these values with no way for the runner to correct them. Do
-//! not treat either field as authoritative for security decisions.
+//! not treat these fields as authoritative for security decisions.
 
 use crate::http::HttpClient;
 use guest_common::{log_info, log_warn};
@@ -34,6 +34,8 @@ struct CompletePayload<'a> {
     sandbox_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox_reuse_result: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_reuse_result: Option<&'a str>,
 }
 
 fn as_optional(value: &str) -> Option<&str> {
@@ -45,7 +47,7 @@ fn as_optional(value: &str) -> Option<&str> {
 /// create CLI session checkpoints; their acknowledged terminal transcript
 /// message is the host-side completion proof instead.
 ///
-/// `sandbox_id` and `sandbox_reuse_result` are relayed analytics values;
+/// Sandbox and workspace reuse fields are relayed analytics values;
 /// empty strings are serialized as absent so an unset env var is equivalent
 /// to omitting the field.
 ///
@@ -60,6 +62,7 @@ pub async fn report_success_for_run(
     run_id: &str,
     sandbox_id: &str,
     sandbox_reuse_result: &str,
+    workspace_reuse_result: &str,
     last_event_sequence: Option<u32>,
 ) {
     report_for_run(
@@ -68,6 +71,7 @@ pub async fn report_success_for_run(
         0,
         sandbox_id,
         sandbox_reuse_result,
+        workspace_reuse_result,
         last_event_sequence,
     )
     .await;
@@ -82,6 +86,7 @@ pub async fn report_user_cancellation_for_run(
     run_id: &str,
     sandbox_id: &str,
     sandbox_reuse_result: &str,
+    workspace_reuse_result: &str,
     last_event_sequence: Option<u32>,
 ) {
     report_for_run(
@@ -90,6 +95,7 @@ pub async fn report_user_cancellation_for_run(
         1,
         sandbox_id,
         sandbox_reuse_result,
+        workspace_reuse_result,
         last_event_sequence,
     )
     .await;
@@ -101,6 +107,7 @@ async fn report_for_run(
     exit_code: i32,
     sandbox_id: &str,
     sandbox_reuse_result: &str,
+    workspace_reuse_result: &str,
     last_event_sequence: Option<u32>,
 ) {
     if !http.has_api() {
@@ -113,6 +120,7 @@ async fn report_for_run(
         last_event_sequence,
         sandbox_id: as_optional(sandbox_id),
         sandbox_reuse_result: as_optional(sandbox_reuse_result),
+        workspace_reuse_result: as_optional(workspace_reuse_result),
     };
 
     // 1 attempt — the runner's fallback is the safety net. Retrying from the
@@ -142,6 +150,7 @@ mod tests {
             last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert_eq!(json, r#"{"runId":"run-123","exitCode":0}"#);
@@ -155,16 +164,16 @@ mod tests {
             last_event_sequence: None,
             sandbox_id: Some("abc"),
             sandbox_reuse_result: Some("reused"),
+            workspace_reuse_result: Some("sandboxReused"),
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains(r#""sandboxId":"abc""#));
         assert!(json.contains(r#""sandboxReuseResult":"reused""#));
+        assert!(json.contains(r#""workspaceReuseResult":"sandboxReused""#));
     }
 
-    /// Both metadata fields must be skipped independently — a regression that
-    /// ties them together (e.g. switching to a single `Option<Metadata>` without
-    /// care) would silently drop whichever field happened to be empty on one
-    /// side.
+    /// Completion metadata fields must be skipped independently so one absent
+    /// runner value does not silently drop another useful value.
     #[test]
     fn payload_skips_sandbox_id_when_only_reuse_result_present() {
         let payload = CompletePayload {
@@ -173,6 +182,7 @@ mod tests {
             last_event_sequence: None,
             sandbox_id: None,
             sandbox_reuse_result: Some("poolMiss"),
+            workspace_reuse_result: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(!json.contains("sandboxId"));
@@ -187,10 +197,12 @@ mod tests {
             last_event_sequence: None,
             sandbox_id: Some("sid"),
             sandbox_reuse_result: None,
+            workspace_reuse_result: Some("cacheMiss"),
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains(r#""sandboxId":"sid""#));
         assert!(!json.contains("sandboxReuseResult"));
+        assert!(json.contains(r#""workspaceReuseResult":"cacheMiss""#));
     }
 
     #[test]
@@ -207,6 +219,7 @@ mod tests {
             last_event_sequence: Some(7),
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert_eq!(

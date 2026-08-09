@@ -33,6 +33,7 @@ interface SeedRunArgs {
   readonly completedAt?: Date | null;
   readonly continuedFromSessionId?: string | null;
   readonly sandboxReuseResult?: string | null;
+  readonly workspaceReuseResult?: string | null;
   readonly result?: Record<string, unknown> | null;
   readonly error?: string | null;
   readonly lastEventSequence?: number | null;
@@ -236,6 +237,7 @@ export const seedRun$ = command(
       completed_at: dateToWire(args.completedAt),
       continued_from_session_id: args.continuedFromSessionId,
       sandbox_reuse_result: args.sandboxReuseResult,
+      workspace_reuse_result: args.workspaceReuseResult,
       result: args.result,
       error: args.error,
       last_event_sequence: args.lastEventSequence,

@@ -50,6 +50,7 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       completed_at: nullableDateStringSchema.optional(),
       continued_from_session_id: z.string().nullable().optional(),
       sandbox_reuse_result: z.string().nullable().optional(),
+      workspace_reuse_result: z.string().nullable().optional(),
       result: z.record(z.string(), z.unknown()).nullable().optional(),
       error: z.string().nullable().optional(),
       last_event_sequence: z.number().nullable().optional(),

@@ -5,7 +5,7 @@ use super::super::support::{
     wait_idle_pool_reuse_keys,
 };
 
-use crate::types::SandboxReuseResult;
+use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
 
 // -----------------------------------------------------------------------
 // Test 13: Same-thread work reuses an idle VM
@@ -44,6 +44,10 @@ async fn same_thread_reuses_idle_vm() {
         completion.reuse_result,
         Some(SandboxReuseResult::Reused),
         "reuse_result should be Reused"
+    );
+    assert_eq!(
+        completion.workspace_reuse_result,
+        Some(WorkspaceReuseResult::SandboxReused),
     );
     assert_eq!(
         completion.sandbox_id,

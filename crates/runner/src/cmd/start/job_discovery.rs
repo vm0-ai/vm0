@@ -49,8 +49,8 @@ use crate::run_cancellation::{
 };
 use crate::status::StatusTracker;
 use crate::types::{
-    ExecutionContext, HeldWorkspaceState, SandboxReuseResult, WORKSPACE_AFFINITY_VERSION,
-    reuse_key_kind,
+    CompleteRequest, ExecutionContext, HeldWorkspaceState, SandboxReuseResult,
+    WORKSPACE_AFFINITY_VERSION, reuse_key_kind,
 };
 
 pub(super) struct DiscoveredJob {
@@ -1870,11 +1870,14 @@ async fn complete_claimed_failure(
     ctx.spawn_ctx
         .provider
         .complete(
-            run_id,
-            failure.exit_code,
-            Some(&failure.error),
-            None,
-            reuse_result,
+            CompleteRequest {
+                run_id,
+                exit_code: failure.exit_code,
+                error: Some(failure.error),
+                sandbox_id: None,
+                sandbox_reuse_result: reuse_result,
+                workspace_reuse_result: None,
+            },
             completion_auth,
         )
         .await;

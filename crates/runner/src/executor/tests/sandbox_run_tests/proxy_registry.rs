@@ -191,6 +191,7 @@ async fn execute_inner_proxy_unregister_failure_marks_successful_run_failed() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
