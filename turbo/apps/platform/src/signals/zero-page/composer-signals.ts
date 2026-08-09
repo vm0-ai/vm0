@@ -146,7 +146,7 @@ interface ComposerDraftSignals {
 }
 
 interface ComposerModelSignals extends ComposerModelUiSignals {
-  readonly explicitDefaultModelActionEnabled$: Computed<boolean>;
+  readonly temporaryModelNoticeEnabled$: Computed<boolean>;
   readonly modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
   readonly runningModel$: Computed<Promise<string | null>>;
   readonly selectedModelOauthAvailable$: Computed<Promise<boolean>>;
@@ -442,7 +442,7 @@ export function createComposerSignals(
     return (await get(options.agent$)).agentId;
   });
   const feedback = createComposerFeedbackModel(options.threadId);
-  const explicitDefaultModelActionEnabled$ = computed((get): boolean => {
+  const temporaryModelNoticeEnabled$ = computed((get): boolean => {
     return (
       options.threadId === undefined &&
       (get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false)
@@ -494,7 +494,7 @@ export function createComposerSignals(
     },
     model: {
       ...ui.model,
-      explicitDefaultModelActionEnabled$,
+      temporaryModelNoticeEnabled$,
       modelSelection$: options.modelSelection$,
       runningModel$: eventSignals.runningModel$,
       selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,

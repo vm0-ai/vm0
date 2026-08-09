@@ -29,6 +29,7 @@ import {
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
+  IconLoader2,
   IconPresentation,
   IconMicrophone,
   IconPaperclip,
@@ -163,6 +164,11 @@ import { customConnectors$ } from "../../signals/zero-page/settings/custom-conne
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
+import {
+  updateUserModelPreference$,
+  userModelPreference$,
+} from "../../signals/external/user-model-preference.ts";
 import {
   codexFastModeEnabled$,
   composerConnectorPermissionsEnabled$,
@@ -215,6 +221,7 @@ import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
+import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -7343,9 +7350,6 @@ function ModelConfigurationWarning({
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
-  const explicitDefaultModelActionEnabled = useGet(
-    signals.model.explicitDefaultModelActionEnabled$,
-  );
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
@@ -7421,11 +7425,86 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         onOpenChange={setModelPickerOpen}
         disabled={modelPicker.disabled}
         resolveDefaultSelection={false}
-        showDefaultModelAction={explicitDefaultModelActionEnabled}
       />
       <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
     </>
   );
+}
+
+function ComposerTemporaryModelNotice({
+  signals,
+}: {
+  signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const selection = useLastResolved(signals.model.modelSelection$);
+  const policies = useLastResolved(orgModelPolicies$);
+  const userPreference = useLastResolved(userModelPreference$);
+  const [updateLoadable, updatePreference] = useLoadableSet(
+    updateUserModelPreference$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const defaultSelection = resolveModelFirstUserDefaultSelection({
+    userPreference,
+    policies,
+  });
+  if (
+    !selection ||
+    !defaultSelection ||
+    selection.selectedModel === defaultSelection.selectedModel
+  ) {
+    return null;
+  }
+  const updating = updateLoadable.state === "loading";
+  const modelName = getModelDisplayName(selection.selectedModel);
+  const setAsDefault = () => {
+    if (updating) {
+      return;
+    }
+    detach(
+      updatePreference({ selectedModel: selection.selectedModel }, pageSignal),
+      Reason.DomCallback,
+    );
+  };
+  return (
+    <div
+      className="mt-1.5 flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 px-3 text-xs leading-5 text-muted-foreground sm:px-4"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span>
+        {t(
+          ($) => {
+            return $.chat.composer.temporaryModelNotice;
+          },
+          { model: modelName },
+        )}
+      </span>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"
+        disabled={updating}
+        aria-busy={updating}
+        onClick={setAsDefault}
+      >
+        {updating && (
+          <IconLoader2 size={12} className="animate-spin" aria-hidden="true" />
+        )}
+        {t(($) => {
+          return $.chat.composer.setAsDefault;
+        })}
+      </button>
+    </div>
+  );
+}
+
+function ComposerTemporaryModelNoticeSlot({
+  signals,
+}: {
+  signals: ComposerSignals;
+}) {
+  const enabled = useGet(signals.model.temporaryModelNoticeEnabled$);
+  return enabled ? <ComposerTemporaryModelNotice signals={signals} /> : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -8004,6 +8083,7 @@ function ComposerSurface({ signals }: { signals: ComposerSignals }) {
       <div className="relative flex w-full min-w-0 flex-col">
         <PendingItemsStrip signals={signals} />
         <ComposerCard signals={signals} />
+        <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />
         <WebsiteTemplatePreviewDialogSlot signals={signals} />
       </div>

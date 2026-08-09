@@ -179,13 +179,14 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Opus 4.7");
   });
 
-  it("keeps a new-chat model choice separate from the default until the explicit action", async () => {
+  it("offers to make a temporary new-chat model choice the default below the composer", async () => {
     const user = userEvent.setup({ delay: null });
     let preference: UserModelPreferenceResponse = {
       selectedModel: "kimi-k2.7-code",
       updatedAt: "2026-03-10T00:00:00Z",
     };
     const updatedModels: UserModelPreferenceResponse["selectedModel"][] = [];
+    const preferenceUpdate = context.mocks.deferred<void>();
 
     mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
@@ -193,8 +194,9 @@ describe("chat composer models", () => {
     });
     context.mocks.api(
       zeroUserModelPreferenceContract.update,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
         updatedModels.push(body.selectedModel);
+        await preferenceUpdate.promise;
         preference = {
           selectedModel: body.selectedModel,
           updatedAt: "2026-03-10T00:01:00Z",
@@ -224,36 +226,41 @@ describe("chat composer models", () => {
     const modelPicker = await screen.findByRole("listbox");
     expect(within(modelPicker).getByText("Models")).toBeInTheDocument();
     expect(
-      within(modelPicker).getByText(
+      within(modelPicker).queryByText(
         "Default for new chats and new automations",
       ),
-    ).toBeInTheDocument();
-    expect(
-      within(modelPicker).getByRole("option", {
-        name: /Kimi K2\.7 Code.*Default/,
-      }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(within(modelPicker).getByText("Kimi K2.7 Code")).toBeInTheDocument();
+    expect(within(modelPicker).queryByText("Default")).not.toBeInTheDocument();
 
-    await user.click(
-      buttonContainingText("Set Claude Sonnet 4.6 as default", modelPicker),
+    await user.keyboard("{Escape}");
+    expect(
+      screen.getByText("Temporarily switched to Claude Sonnet 4.6"),
+    ).toBeInTheDocument();
+    const setDefaultButton = buttonContainingText(
+      "Set as default",
+      document.body,
     );
+
+    await user.click(setDefaultButton);
 
     await waitFor(() => {
       expect(updatedModels).toStrictEqual(["claude-sonnet-4-6"]);
+    });
+    expect(setDefaultButton).toHaveAttribute("aria-busy", "true");
+    expect(setDefaultButton.querySelector(".animate-spin")).not.toBeNull();
+
+    preferenceUpdate.resolve();
+    await waitFor(() => {
       expect(
-        queryAllByRoleFast("button", modelPicker).some((button) => {
-          return button.textContent === "Set Claude Sonnet 4.6 as default";
+        screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
+      ).not.toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "Set as default";
         }),
       ).toBeFalsy();
-      expect(
-        within(modelPicker).getByRole("option", {
-          name: /Claude Sonnet 4\.6.*Default/,
-        }),
-      ).toBeInTheDocument();
     });
-    await expect(
-      screen.findByText("Claude Sonnet 4.6 is now your default model"),
-    ).resolves.toBeInTheDocument();
   });
 
   it("preserves selection-as-default behavior while the feature switch is off", async () => {
@@ -290,6 +297,9 @@ describe("chat composer models", () => {
     });
     expect(
       screen.queryByText("Default for new chats and new automations"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
     ).not.toBeInTheDocument();
   });
 
@@ -1323,6 +1333,9 @@ describe("chat composer models", () => {
     expect(preferenceRequestStarted).toBeFalsy();
     expect(
       screen.queryByText("Default for new chats and new automations"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
     ).not.toBeInTheDocument();
   });
 
