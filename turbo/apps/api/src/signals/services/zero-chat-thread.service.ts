@@ -52,7 +52,6 @@ import {
   exists,
   gt,
   gte,
-  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -81,10 +80,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTextCondition,
-  chatEventTextMatchCondition,
-} from "./zero-chat-event-type.service";
+import { chatEventTextCondition } from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
@@ -199,13 +195,6 @@ const searchContextMessageColumns = {
     .mapWith(chatEvents.eventType)
     .as("context_event_type"),
 } as const;
-
-function escapeLikePattern(value: string): string {
-  return value
-    .replace(/\\/g, String.raw`\\`)
-    .replace(/%/g, String.raw`\%`)
-    .replace(/_/g, String.raw`\_`);
-}
 
 function parseHostedArtifactKind(
   value: unknown,
@@ -1031,27 +1020,6 @@ function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   };
 }
 
-function userMessageSearchText(): SQL {
-  return sql`concat_ws(
-    ' ',
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].text')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].titleSnapshot')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].nameSnapshot')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].filenameSnapshot')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].quote')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].text')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].nameSnapshot')::text
-  )`;
-}
-
-function chatSearchKeywordCondition(pattern: string): SQL {
-  return chatEventTextMatchCondition({
-    userMessage: ilike(userMessageSearchText(), pattern),
-    content: ilike(chatEvents.content, pattern),
-  });
-}
-
 /**
  * Resolves matches from the chat_event_search_docs projection alone: keyword,
  * ownership, agent scope, `since`, ordering and the limit are all answered by
@@ -1127,49 +1095,6 @@ async function chatSearchIndexedMatches(
       ),
     )
     .orderBy(desc(chatEvents.createdAt));
-}
-
-/**
- * Pre-projection fallback: scans the caller's own chat_events with ILIKE and
- * evaluates visibility while matching.
- */
-async function chatSearchLegacyMatches(
-  db: ReadonlyDb,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly keyword: string;
-    readonly agentId?: string;
-    readonly since?: Date;
-    readonly limit: number;
-  },
-): Promise<ChatSearchMatchRow[]> {
-  const matchConditions = [
-    eq(chatThreads.userId, args.userId),
-    eq(agentComposes.orgId, args.orgId),
-    chatEventTextCondition(),
-    visibleChatEventCondition(db),
-    excludeGoalMarkerCondition(),
-    chatSearchKeywordCondition(`%${escapeLikePattern(args.keyword)}%`),
-  ];
-  if (args.since) {
-    matchConditions.push(gte(chatEvents.createdAt, args.since));
-  }
-  if (args.agentId) {
-    matchConditions.push(eq(zeroAgents.id, args.agentId));
-  }
-  return await db
-    .select({
-      ...searchMessageColumns,
-      agentName: agentComposes.name,
-    })
-    .from(chatEvents)
-    .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
-    .innerJoin(agentComposes, eq(chatThreads.agentComposeId, agentComposes.id))
-    .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(and(...matchConditions))
-    .orderBy(desc(chatEvents.createdAt))
-    .limit(args.limit);
 }
 
 function chatSearchMatchesTable(messageIds: readonly string[]): SQL {
@@ -1300,7 +1225,6 @@ export function zeroChatSearch(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly keyword: string;
-  readonly useSearchIndex: boolean;
   readonly agentId?: string;
   readonly since?: number;
   readonly limit: number;
@@ -1316,27 +1240,18 @@ export function zeroChatSearch(args: {
     const db = get(db$);
     const sinceDate = args.since ? new Date(args.since) : undefined;
 
-    const matches = args.useSearchIndex
-      ? await chatSearchIndexedMatches(db, {
-          userId: args.userId,
-          orgId: args.orgId,
-          eventIds: await chatSearchIndexedEventIds(db, {
-            userId: args.userId,
-            orgId: args.orgId,
-            keyword: args.keyword,
-            agentId: args.agentId,
-            since: sinceDate,
-            limit: args.limit + 1,
-          }),
-        })
-      : await chatSearchLegacyMatches(db, {
-          userId: args.userId,
-          orgId: args.orgId,
-          keyword: args.keyword,
-          agentId: args.agentId,
-          since: sinceDate,
-          limit: args.limit + 1,
-        });
+    const matches = await chatSearchIndexedMatches(db, {
+      userId: args.userId,
+      orgId: args.orgId,
+      eventIds: await chatSearchIndexedEventIds(db, {
+        userId: args.userId,
+        orgId: args.orgId,
+        keyword: args.keyword,
+        agentId: args.agentId,
+        since: sinceDate,
+        limit: args.limit + 1,
+      }),
+    });
 
     const hasMore = matches.length > args.limit;
     const truncated = hasMore ? matches.slice(0, args.limit) : matches;
