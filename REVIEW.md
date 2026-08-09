@@ -222,11 +222,11 @@ Review the diff for:
 Apply `docs/fallback.md`. The default is no fallback. `docs/fallback.md` is the
 authoritative source for the rules below, including this severity table:
 
-| Rule                                                                    | Severity |
-| ----------------------------------------------------------------------- | -------- |
-| No negative tests asserting removed behavior stays removed              | P1       |
-| Every fallback in the diff must be declared in the PR summary           | P1       |
-| A rollout fallback must name its surface, window, and removal condition | P1       |
+| Rule                                                                     | Severity |
+| ------------------------------------------------------------------------ | -------- |
+| No negative tests asserting removed behavior stays removed               | P1       |
+| Every fallback introduced by the diff must be declared in the PR summary | P1       |
+| A rollout fallback must name its surface, window, and removal condition  | P1       |
 
 - Request changes for a fallback that guards a state the owning contract
   already prevents: a `??`/`||` chain on a required SDK field, Zod-required
@@ -247,23 +247,24 @@ authoritative source for the rules below, including this severity table:
   nominal gap, is a finding. For DB/API changes, check both directions defined
   in `docs/deployment-compatibility.md`: old code after migration and new code
   before migration.
-- A PR that removes a fallback must state its evidence — type/schema,
-  single-writer, production query, or closed rollback window — and must delete
-  the branch, its contract entry, and its own tests together.
+- A PR that removes a fallback must establish its evidence — type/schema,
+  single-writer, production query, or closed rollback window — through the
+  diff, tests, or linked data, and must delete the branch, its contract entry,
+  and its own tests together. It needs no `Fallbacks` section or separate
+  fallback declaration in the PR summary.
 - Flag negative tests that only assert deleted behavior is still deleted
   (retired route still 404s, legacy field still ignored). The exception is a
   fail-closed security boundary, where rejection is the product behavior.
-- The PR summary must contain a `Fallbacks` section listing **every** fallback
-  or compatibility behavior the PR introduces, keeps, or removes, or an
-  explicit `Fallbacks: none`. An undeclared fallback is a **P1** finding on its
-  own, independent of whether the fallback itself is justified. Report it under
-  High Priority (P1), require the author to add the missing entry to the PR
-  summary, and set the verdict to `Changes Requested`. Record it even when the
-  fallback is correct and stays: the finding is the missing declaration, not
-  the code.
-- The review comment must itself list every fallback found in the diff, with
-  its surface, window, removal condition, and a justified / not-justified
-  verdict. A review that stays silent about fallbacks in a PR that has one is
+- When a PR introduces a fallback or compatibility behavior, its summary must
+  contain a `Fallbacks` section listing every new one. An undeclared new
+  fallback is a **P1** finding on its own, independent of whether the fallback
+  itself is justified. Report it under High Priority (P1), require the author
+  to add the missing entry to the PR summary, and set the verdict to
+  `Changes Requested`. PRs that introduce none need neither the section nor
+  `Fallbacks: none`.
+- The review comment must itself list every fallback introduced by the diff,
+  with its surface, window, removal condition, and a justified / not-justified
+  verdict. A review that stays silent about fallbacks in a PR that adds one is
   incomplete.
 
 **Testing Coverage**
@@ -323,20 +324,24 @@ LGTM
 #### High Priority (P1)
 - <file path>: <issue description>
 
-### Fallbacks
-- <file path and symbol>: <old/new interaction it protects> — surface <DB/API up to ~102min | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, declared in PR summary <Yes / No — P1>, verdict <Justified / Not justified>
-- <or: None>
-
 ### Testing
 - Coverage: <Adequate / Insufficient - missing tests for: ...>
 - Conventions: <Compliant / Violations: ...>
 ```
 
-The `Fallbacks` section is mandatory in every review, including when the answer
-is `None`. List each fallback the diff introduces, keeps, or removes, and mark
-whether the PR summary declares it. Every fallback missing from the summary is
-also a P1 entry under Findings, phrased as a request to add it to the PR
-summary, and forces the `Changes Requested` verdict.
+When the diff introduces a fallback, insert this section between Findings and
+Testing:
+
+```
+### Fallbacks
+- <file path and symbol>: <old/new interaction it protects> — surface <DB/API up to ~102min | runner or sandbox up to 2h | web or app client ~2d | none, non-GA feature switch>, removal condition <condition and follow-up>, declared in PR summary <Yes / No — P1>, verdict <Justified / Not justified>
+```
+
+Do not include a `Fallbacks` section when the diff introduces none, including
+when the PR only keeps or removes an existing fallback. Every introduced
+fallback missing from the PR summary is also a P1 entry under Findings, phrased
+as a request to add it to the summary, and forces the `Changes Requested`
+verdict.
 
 Or if there are P0/P1 blockers:
 
@@ -354,21 +359,21 @@ Changes Requested
 #### High Priority (P1) - should fix before merge
 - <issue>
 
-### Fallbacks
-...
-
 ### Testing
 ...
 ```
 
+Insert the same conditional `Fallbacks` section before Testing when the PR
+introduces a fallback.
+
 **Verdict rules:**
 
 - Start with `LGTM` if there are no P0 issues, no missing tests on
-  `feat:`/`fix:` commits, and every fallback in the diff is declared in the PR
-  summary
+  `feat:`/`fix:` commits, and every fallback introduced by the diff is declared
+  in the PR summary
 - Start with `Changes Requested` if there are any P0 issues, OR missing required
-  tests, OR any fallback or compatibility behavior in the diff that the PR
-  summary does not declare
+  tests, OR any fallback or compatibility behavior introduced by the diff that
+  the PR summary does not declare
 
 If the caller asks for pr-auto marker-comment mode:
 
@@ -378,7 +383,7 @@ If the caller asks for pr-auto marker-comment mode:
 - Include the caller-provided pr-auto marker lines near the top of the same
   comment.
 - Keep the rest of the body as the detailed pr-review result, including Summary,
-  Findings, Fallbacks, and Testing.
+  Findings, Testing, and Fallbacks when the diff introduces one.
 
 ```bash
 gh pr comment <PR_NUMBER> --repo vm0-ai/vm0 --body-file "<REVIEW_BODY_FILE>"

@@ -1291,6 +1291,8 @@
       "selectedModelUnavailable": "चयनित मॉडल उपलब्ध नहीं है. भेजने से पहले इसे कॉन्फ़िगर करें.",
       "selectedModelUnavailableToast": "चयनित मॉडल उपलब्ध नहीं है",
       "selectModel": "मॉडल चुनें",
+      "setAsDefault": "डिफ़ॉल्ट के रूप में सेट करें",
+      "temporaryModelNotice": "अस्थायी रूप से {{model}} पर स्विच किया गया",
       "threadSuggestions": "चैट थ्रेड",
       "visualAttachmentsUnsupported": "{{modelName}} छवियों या वीडियो को नहीं पहचान सकता। उन्हें संलग्न करने के लिए दृष्टि-सक्षम मॉडल पर स्विच करें।",
       "workflows": {
@@ -4259,9 +4261,6 @@
         "balancedUse": "संतुलित उपयोग",
         "builtInModel": "अंतर्निर्मित मॉडल",
         "byokHelp": "आपके कॉन्फ़िगर किए गए प्रोवाइडर का उपयोग करता है",
-        "defaultModel": "डिफ़ॉल्ट",
-        "defaultModelDescription": "नई चैट और नए ऑटोमेशन के लिए डिफ़ॉल्ट",
-        "defaultModelUpdated": "{{model}} अब आपका डिफ़ॉल्ट मॉडल है",
         "fast": "तेज़",
         "inheritDefault": "ऑर्ग डिफॉल्ट से इनहेरिट करें",
         "loadError": "मॉडल लोड करने में असमर्थ.",
@@ -4283,7 +4282,6 @@
           "deepseek": "गहन खोज"
         },
         "runSpeed": "भागने की गति",
-        "setModelAsDefault": "{{model}} को डिफ़ॉल्ट के रूप में सेट करें",
         "standard": "मानक"
       },
       "policies": {

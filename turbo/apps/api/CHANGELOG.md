@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.407.2](https://github.com/vm0-ai/vm0/compare/api-v1.407.1...api-v1.407.2) (2026-08-09)
+
+
+### Refactoring
+
+* reduce fallback slop in chat dispatch and queue drains ([#25850](https://github.com/vm0-ai/vm0/issues/25850)) ([a5d2fc9](https://github.com/vm0-ai/vm0/commit/a5d2fc9ed8835c7d0eceeb2f3f742e1dd6c342a0))
+* remove expired deployment compatibility ([#25847](https://github.com/vm0-ai/vm0/issues/25847)) ([f1724ce](https://github.com/vm0-ai/vm0/commit/f1724cefb0da496525a6948c60ad02006cd53e16))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.2
+    * @vm0/core bumped to 8.532.3
+    * @vm0/db bumped to 1.181.4
+    * @vm0/pi-agent-runtime bumped to 1.3.17
+
 ## [1.407.1](https://github.com/vm0-ai/vm0/compare/api-v1.407.0...api-v1.407.1) (2026-08-08)
 
 

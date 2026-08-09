@@ -1291,6 +1291,8 @@
       "selectedModelUnavailable": "The selected model is not available. Configure it before sending.",
       "selectedModelUnavailableToast": "The selected model is not available",
       "selectModel": "Select model",
+      "setAsDefault": "Set as default",
+      "temporaryModelNotice": "Temporarily switched to {{model}}",
       "threadSuggestions": "Chat threads",
       "visualAttachmentsUnsupported": "{{modelName}} cannot recognize images or videos. Switch to a vision-capable model to attach them.",
       "workflows": {
@@ -4259,9 +4261,6 @@
         "balancedUse": "Balanced use",
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
-        "defaultModel": "Default",
-        "defaultModelDescription": "Default for new chats and new automations",
-        "defaultModelUpdated": "{{model}} is now your default model",
         "fast": "Fast",
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
@@ -4283,7 +4282,6 @@
           "deepseek": "Deepseek"
         },
         "runSpeed": "Run speed",
-        "setModelAsDefault": "Set {{model}} as default",
         "standard": "Standard"
       },
       "policies": {

@@ -1317,6 +1317,8 @@
       "selectedModelUnavailable": "Le modèle sélectionné n'est pas disponible. Configurez-le avant d'envoyer.",
       "selectedModelUnavailableToast": "Le modèle sélectionné n'est pas disponible",
       "selectModel": "Sélectionner le modèle",
+      "setAsDefault": "Définir par défaut",
+      "temporaryModelNotice": "Passage temporaire à {{model}}",
       "threadSuggestions": "Conversations",
       "visualAttachmentsUnsupported": "{{modelName}} ne peut pas reconnaître les images ou les vidéos. Passez à un modèle capable de vision pour les joindre.",
       "workflows": {
@@ -4327,9 +4329,6 @@
         "balancedUse": "Utilisation équilibrée",
         "builtInModel": "Modèle intégré",
         "byokHelp": "Utilise votre fournisseur configuré",
-        "defaultModel": "Par défaut",
-        "defaultModelDescription": "Par défaut pour les nouveaux chats et les nouvelles automatisations",
-        "defaultModelUpdated": "{{model}} est désormais votre modèle par défaut",
         "fast": "Rapide",
         "inheritDefault": "Hériter des paramètres par défaut de l'organisation",
         "loadError": "Impossible de charger les modèles.",
@@ -4351,7 +4350,6 @@
           "deepseek": "Deepseek"
         },
         "runSpeed": "Vitesse d'exécution",
-        "setModelAsDefault": "Définir {{model}} par défaut",
         "standard": "Standard"
       },
       "policies": {

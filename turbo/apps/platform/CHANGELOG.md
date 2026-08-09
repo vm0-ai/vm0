@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.711.2](https://github.com/vm0-ai/vm0/compare/app-v0.711.1...app-v0.711.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* align follow-up card rail with the composer edges ([#25849](https://github.com/vm0-ai/vm0/issues/25849)) ([3fcab9d](https://github.com/vm0-ai/vm0/commit/3fcab9dbe667e4fdac1fa4c2ada4db0c62d7274f))
+* right align model change dividers ([#25851](https://github.com/vm0-ai/vm0/issues/25851)) ([89fa60b](https://github.com/vm0-ai/vm0/commit/89fa60b9dbb493d398ce10efcadf6960fb356fe8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.298.2
+    * @vm0/core bumped to 8.532.3
+
 ## [0.711.1](https://github.com/vm0-ai/vm0/compare/app-v0.711.0...app-v0.711.1) (2026-08-08)
 
 
