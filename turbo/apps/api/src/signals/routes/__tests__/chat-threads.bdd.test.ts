@@ -6,8 +6,6 @@ import {
   cronCompactChatThreadSnapshotsContract,
   cronProjectChatEventSearchContract,
 } from "@vm0/api-contracts/contracts/cron";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import {
   chatThreadsContract,
@@ -72,7 +70,6 @@ import { cronPassCount, latestCronPassFields } from "./helpers/cron-pass-log";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { seedVm0ManagedDefaultModelKey } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -86,7 +83,6 @@ import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
 import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
-import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
 import { zeroGoalsRoutes } from "../zero-goals";
 
 const TEST_APP_ROUTES = Object.freeze([
@@ -94,7 +90,6 @@ const TEST_APP_ROUTES = Object.freeze([
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...zeroChatThreadRoutes,
-  ...zeroFeatureSwitchesRoutes,
   ...zeroGoalsRoutes,
 ]);
 
@@ -106,7 +101,7 @@ const TEST_APP_ROUTES = Object.freeze([
  *
  * Most Given state is constructed through public APIs (Stripe-webhook
  * entitlement, org model provider routes, runner heartbeat/claim, sandbox
- * report webhooks, connector OAuth flows, feature-switch and skills routes).
+ * report webhooks, connector OAuth flows, and skills routes).
  * Targeted database checks are kept for migration and side-effect coverage
  * where the persisted row shape is the contract under test.
  */
@@ -2418,25 +2413,21 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 });
 
-async function setChatSearchIndex(
-  actor: ApiTestUser,
-  enabled: boolean,
-): Promise<void> {
-  createZeroRouteMocks(context).clerk.session(
-    actor.userId,
-    actor.orgId,
-    actor.orgRole,
-  );
-  const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
-    zeroFeatureSwitchesContract,
-  );
-  await accept(
-    client.update({
-      headers: { authorization: "Bearer clerk-session" },
-      body: { switches: { [FeatureSwitchKey.ChatSearchIndex]: enabled } },
+const CHAT_EVENT_SEARCH_CRON_SECRET = "chat-event-search-cron-secret";
+
+async function projectChatEventSearch() {
+  mockEnv("CRON_SECRET", CHAT_EVENT_SEARCH_CRON_SECRET);
+  const client = setupApp({
+    context,
+    routes: cronProjectChatEventSearchRoutes,
+  })(cronProjectChatEventSearchContract);
+  const response = await accept(
+    client.project({
+      headers: { authorization: `Bearer ${CHAT_EVENT_SEARCH_CRON_SECRET}` },
     }),
     [200],
   );
+  return response.body;
 }
 
 describe("CHAT-01 chat search", () => {
@@ -2470,11 +2461,10 @@ describe("CHAT-01 chat search", () => {
     expect(forbidden.body.error.message).toContain("chat-event:read");
   });
 
-  it("searches own messages with filters, context, and like-escaping", async () => {
+  it("searches own messages with filters and context", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
-    await setChatSearchIndex(owner, false);
     bdd.acceptAgentStorageWrites();
     const agentA = await bdd.createAgent(owner, {
       displayName: "Search agent A",
@@ -2502,6 +2492,7 @@ describe("CHAT-01 chat search", () => {
       agentId: agentA.agentId,
       prompt: "owner says supercalifragilistic",
     });
+    await projectChatEventSearch();
     const isolation = await chat.searchChat(owner, "supercalifragilistic");
     expect(isolation.results).toHaveLength(1);
     expect(isolation.results[0]?.chatThreadId).toBe(ownerThreadA);
@@ -2533,6 +2524,7 @@ describe("CHAT-01 chat search", () => {
         ],
       },
     });
+    await projectChatEventSearch();
     const canonicalSearch = await chat.searchChat(owner, canonicalKeyword);
     expect(canonicalSearch.results).toHaveLength(1);
     expect(canonicalSearch.results[0]?.matchedMessage.content).toBe(
@@ -2559,6 +2551,7 @@ describe("CHAT-01 chat search", () => {
         ],
       },
     });
+    await projectChatEventSearch();
     const mentionSearch = await chat.searchChat(owner, mentionKeyword);
     expect(mentionSearch.results).toHaveLength(1);
     expect(mentionSearch.results[0]?.matchedMessage.content).toBe(
@@ -2574,6 +2567,7 @@ describe("CHAT-01 chat search", () => {
       agentId: otherOrgAgent.agentId,
       prompt: "other-org supercalifragilistic sighting",
     });
+    await projectChatEventSearch();
     const crossOrg = await chat.searchChat(owner, "supercalifragilistic");
     expect(crossOrg.results).toHaveLength(1);
     expect(crossOrg.results[0]?.chatThreadId).toBe(ownerThreadA);
@@ -2588,6 +2582,7 @@ describe("CHAT-01 chat search", () => {
       agentId: agentA.agentId,
       prompt: "recent quokka spotted",
     });
+    await projectChatEventSearch();
     const since = await chat.searchChat(owner, "quokka", {
       since: sinceBoundary,
     });
@@ -2605,6 +2600,7 @@ describe("CHAT-01 chat search", () => {
       agentId: agentA.agentId,
       prompt: "agent A mentions narwhal",
     });
+    await projectChatEventSearch();
     const byAgent = await chat.searchChat(owner, "narwhal", {
       agentId: agentA.agentId,
     });
@@ -2629,6 +2625,7 @@ describe("CHAT-01 chat search", () => {
       threadId: contextThread,
       prompt: "context round three",
     });
+    await projectChatEventSearch();
     const contextual = await chat.searchChat(owner, "okapi", {
       before: 2,
       after: 2,
@@ -2688,24 +2685,10 @@ describe("CHAT-01 chat search", () => {
       agentId: agentA.agentId,
       prompt: "capybara sighting three",
     });
+    await projectChatEventSearch();
     const limited = await chat.searchChat(owner, "capybara", { limit: 2 });
     expect(limited.results).toHaveLength(2);
     expect(limited.hasMore).toBeTruthy();
-
-    // LIKE wildcards in the keyword are escaped, not interpreted.
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "discount is 50% today",
-    });
-    await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
-      prompt: "50 apples and bananas",
-    });
-    const escaped = await chat.searchChat(owner, "50%");
-    expect(escaped.results).toHaveLength(1);
-    expect(escaped.results[0]?.matchedMessage.content).toBe(
-      "discount is 50% today",
-    );
   }, 60_000);
 
   it("returns literal punctuation match ranges from the chat search route", async () => {
@@ -2732,7 +2715,6 @@ describe("CHAT-01 chat search", () => {
 
   it("associates batched context windows across matches and threads", async () => {
     const owner = bdd.user();
-    await setChatSearchIndex(owner, false);
     bdd.acceptAgentStorageWrites();
     const agentA = await bdd.createAgent(owner, {
       displayName: "Batched search agent A",
@@ -2786,6 +2768,7 @@ describe("CHAT-01 chat search", () => {
       prompt: `${marker} second tail`,
     });
 
+    await projectChatEventSearch();
     const contextual = await chat.searchChat(owner, `${marker} needle`, {
       limit: 3,
       before: 2,
@@ -2895,23 +2878,6 @@ describe("CHAT-01 chat search", () => {
 });
 
 describe("CHAT-01 chat search index", () => {
-  const CHAT_EVENT_SEARCH_CRON_SECRET = "chat-event-search-cron-secret";
-
-  async function projectChatEventSearch() {
-    mockEnv("CRON_SECRET", CHAT_EVENT_SEARCH_CRON_SECRET);
-    const client = setupApp({
-      context,
-      routes: cronProjectChatEventSearchRoutes,
-    })(cronProjectChatEventSearchContract);
-    const response = await accept(
-      client.project({
-        headers: { authorization: `Bearer ${CHAT_EVENT_SEARCH_CRON_SECRET}` },
-      }),
-      [200],
-    );
-    return response.body;
-  }
-
   function assistantOutputEvent(
     sequenceNumber: number,
     text: string,
@@ -2934,8 +2900,6 @@ describe("CHAT-01 chat search index", () => {
     const peerAgent = await bdd.createAgent(peer, {
       displayName: "Search index peer agent",
     });
-    await setChatSearchIndex(peer, false);
-
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
       prompt: "今天天气很好，今天天气，vercel 部署完成",
@@ -2945,13 +2909,10 @@ describe("CHAT-01 chat search index", () => {
       prompt: "peer 今天天气 message",
     });
 
-    // The index is globally enabled but the projector has not indexed the
-    // thread yet, so the index path recalls nothing while the peer's explicit
-    // legacy override still works.
+    // The projector has not indexed either thread yet, so search recalls
+    // nothing until the first projection tick.
     const beforeProjection = await chat.searchChat(owner, "天气");
     expect(beforeProjection.results).toStrictEqual([]);
-    const peerLegacy = await chat.searchChat(peer, "天气");
-    expect(peerLegacy.results).toHaveLength(1);
 
     const firstTick = await projectChatEventSearch();
     expect(firstTick.success).toBeTruthy();
@@ -2973,8 +2934,8 @@ describe("CHAT-01 chat search index", () => {
       { start: 7, end: 11 },
     ]);
 
-    // Unindexable keywords stay on the index path instead of falling back to
-    // ILIKE, so neither a single CJK character nor punctuation can match.
+    // Neither a single CJK character nor punctuation has an indexable form,
+    // so those keywords cannot match.
     const singleChar = await chat.searchChat(owner, "好");
     expect(singleChar.results).toStrictEqual([]);
     const punctuation = await chat.searchChat(owner, "，");

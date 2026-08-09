@@ -369,18 +369,34 @@ export async function publishCancelToRunnerGroup(
   L.debug(`Published ${mode} cancel ${runId} to runner-group:${group}`);
 }
 
-export async function publishNetworkPolicyRefreshToRunnerGroup(
+/**
+ * Best-effort post-commit wakeup. Delivery failure leaves an active run on its
+ * last-known-good policy and must not reinterpret the committed grant change.
+ */
+export async function publishNetworkPolicyRefreshToRunnerGroupSafely(
   group: string,
   runId: string,
   connectorSlug: string,
 ): Promise<void> {
-  const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("network-policy-refresh", {
-    runId,
-    connectorSlug,
-  });
-  L.debug(
-    `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
+  await tapError(
+    (async () => {
+      const channel = ablyClient().channels.get(`runner-group:${group}`);
+      await channel.publish("network-policy-refresh", {
+        runId,
+        connectorSlug,
+      });
+      L.debug(
+        `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
+      );
+    })(),
+    (error) => {
+      L.warn("Failed to publish network policy refresh", {
+        group,
+        runId,
+        connectorSlug,
+        error,
+      });
+    },
   );
 }
 

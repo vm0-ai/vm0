@@ -10523,9 +10523,24 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         permission: "files:write",
         action: "deny",
       },
-      [500],
+      [200],
     );
-    expect(failedRefreshNotification.status).toBe(500);
+    expect(failedRefreshNotification.status).toBe(200);
+    expect(failedRefreshNotification.body).toContainEqual(
+      expect.objectContaining({
+        connectorSlug: "slack",
+        permission: "files:write",
+        action: "deny",
+      }),
+    );
+    const committedGrants = await api.listUserPermissionGrants(actor, agentId);
+    expect(committedGrants).toContainEqual(
+      expect.objectContaining({
+        connectorSlug: "slack",
+        permission: "files:write",
+        action: "deny",
+      }),
+    );
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const cancelledRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
