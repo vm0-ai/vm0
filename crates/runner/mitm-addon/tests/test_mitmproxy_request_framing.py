@@ -1,5 +1,6 @@
 """Request framing integration tests through mitmproxy's real hook pipeline."""
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Literal
@@ -595,6 +596,7 @@ async def _catalog_http_stream(
     addon_context: taddons.context,
     *,
     catalog_path: str,
+    prefetch: bool = False,
 ) -> tuple[HttpStream, http.HTTPFlow]:
     _, http_layer = _start_http_layer(
         addon_context,
@@ -617,6 +619,7 @@ async def _catalog_http_stream(
                 "Content-Length": "0",
                 "Authorization": "Bearer resolved-access",
                 "ChatGPT-Account-ID": "resolved-account",
+                "Accept-Encoding": "identity",
             }
         ),
     )
@@ -629,8 +632,12 @@ async def _catalog_http_stream(
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     flow.metadata[metadata_keys.ORIGINAL_URL] = f"https://chatgpt.com{catalog_path}"
+    if prefetch:
+        flow.request.headers["X-VM0-Codex-Model-Catalog-Prefetch"] = "1"
+        codex_model_catalog_cache.capture_and_strip_prefetch_marker(flow)
     await codex_model_catalog_cache.prepare_request(flow, request_end_stream=True)
-    assert flow.request.headers["Accept-Encoding"] == "br"
+    assert flow.request.headers["Accept-Encoding"] == ("br" if prefetch else "identity")
+    assert "X-VM0-Codex-Model-Catalog-Prefetch" not in flow.request.headers
     assert "If-None-Match" not in flow.request.headers
 
     stream.flow = flow
@@ -727,13 +734,217 @@ async def test_head_connector_diagnostic_emits_no_response_data(
     assert any(isinstance(event, ResponseEndOfMessage) for event in client_events)
 
 
-async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
+async def test_http2_prefetch_brotli_catalog_is_streamed_unchanged_while_cached(
     tmp_path: Path,
     real_flow,
 ) -> None:
     catalog_path = "/backend-api/codex/models?client_version=0.145.0"
     catalog_body = b'{"models":[{"slug":"gpt-test"}]}'
     compressed_body = brotli.compress(catalog_body)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        stream, flow = await _catalog_http_stream(
+            addon_context,
+            catalog_path=catalog_path,
+            prefetch=True,
+        )
+        upstream_response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {
+                    "Content-Type": "application/json",
+                    "Content-Encoding": "br",
+                    "ETag": '"catalog-v1"',
+                }
+            ),
+        )
+        response_header_commands = list(
+            stream.handle_event(ResponseHeaders(1, upstream_response, end_stream=False))
+        )
+        response_headers_hook = next(
+            command
+            for command in response_header_commands
+            if isinstance(command, HttpResponseHeadersHook)
+        )
+        await addon_context.master.addons.invoke_addon(
+            mitm_addon,
+            response_headers_hook,
+        )
+        assert flow.response is not None
+        assert flow.response.status_code == 200
+        assert callable(flow.response.stream)
+        assert flow.response.headers["Content-Encoding"] == "br"
+        assert "Content-Length" not in flow.response.headers
+
+        after_headers = list(stream.handle_event(events.HookCompleted(response_headers_hook, None)))
+        assert any(
+            isinstance(command, SendHttp)
+            and isinstance(command.event, ResponseHeaders)
+            and command.event.response.status_code == 200
+            for command in after_headers
+        )
+
+        follower = catalog_flow(
+            real_flow,
+            version="0.145.0",
+            auth_value="resolved-access",
+            account="resolved-account",
+        )
+        follower_prepare = asyncio.create_task(
+            codex_model_catalog_cache.prepare_request(follower, request_end_stream=True)
+        )
+        await asyncio.sleep(0)
+        assert not follower_prepare.done()
+        assert follower.request.headers["Accept-Encoding"] == "identity"
+
+        body_commands = list(stream.handle_event(ResponseData(1, compressed_body)))
+        assert (
+            b"".join(
+                command.event.data
+                for command in body_commands
+                if isinstance(command, SendHttp) and isinstance(command.event, ResponseData)
+            )
+            == compressed_body
+        )
+
+        end_commands = list(stream.handle_event(ResponseEndOfMessage(1)))
+        response_hook = next(
+            command for command in end_commands if isinstance(command, HttpResponseHook)
+        )
+
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_hook)
+        assert flow.response.status_code == 200
+        assert flow.response.headers["Content-Encoding"] == "br"
+        assert "Content-Length" not in flow.response.headers
+
+        await asyncio.wait_for(follower_prepare, timeout=0.1)
+        assert follower.response is not None
+        assert follower.response.content == catalog_body
+        assert "Content-Encoding" not in follower.response.headers
+        follower_telemetry: dict[str, object] = {}
+        codex_model_catalog_cache.add_network_log_fields(follower, follower_telemetry)
+        assert follower_telemetry["model_catalog_prefetch_role"] == "inflight_consumer"
+
+        cache_hit = catalog_flow(
+            real_flow,
+            version="0.145.0",
+            auth_value="resolved-access",
+            account="resolved-account",
+        )
+        await codex_model_catalog_cache.prepare_request(cache_hit, request_end_stream=True)
+        assert cache_hit.response is not None
+        assert cache_hit.response.content == catalog_body
+        codex_model_catalog_cache.release_flow_state(follower)
+        codex_model_catalog_cache.release_flow_state(cache_hit)
+
+        after_response = list(stream.handle_event(events.HookCompleted(response_hook, None)))
+
+    client_commands = [*after_headers, *body_commands, *end_commands, *after_response]
+    client_events = [command.event for command in client_commands if isinstance(command, SendHttp)]
+    assert any(
+        isinstance(event, ResponseHeaders)
+        and event.response.status_code == 200
+        and event.response.headers["Content-Encoding"] == "br"
+        for event in client_events
+    )
+    assert (
+        b"".join(event.data for event in client_events if isinstance(event, ResponseData))
+        == compressed_body
+    )
+    assert any(isinstance(event, ResponseEndOfMessage) for event in client_events)
+
+
+async def test_http2_ordinary_identity_catalog_is_streamed_unchanged_while_cached(
+    tmp_path: Path,
+    real_flow,
+) -> None:
+    catalog_path = "/backend-api/codex/models?client_version=0.145.0"
+    catalog_body = b'{"models":[{"slug":"gpt-test"}]}'
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        stream, flow = await _catalog_http_stream(
+            addon_context,
+            catalog_path=catalog_path,
+        )
+        upstream_response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {
+                    "Content-Type": "application/json",
+                    "ETag": '"catalog-v1"',
+                }
+            ),
+        )
+        response_header_commands = list(
+            stream.handle_event(ResponseHeaders(1, upstream_response, end_stream=False))
+        )
+        response_headers_hook = next(
+            command
+            for command in response_header_commands
+            if isinstance(command, HttpResponseHeadersHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_headers_hook)
+        assert flow.response is not None
+        assert flow.response.status_code == 200
+        assert callable(flow.response.stream)
+        assert "Content-Encoding" not in flow.response.headers
+        assert "Content-Length" not in flow.response.headers
+
+        after_headers = list(stream.handle_event(events.HookCompleted(response_headers_hook, None)))
+        body_commands = list(stream.handle_event(ResponseData(1, catalog_body)))
+        assert (
+            b"".join(
+                command.event.data
+                for command in body_commands
+                if isinstance(command, SendHttp) and isinstance(command.event, ResponseData)
+            )
+            == catalog_body
+        )
+
+        end_commands = list(stream.handle_event(ResponseEndOfMessage(1)))
+        response_hook = next(
+            command for command in end_commands if isinstance(command, HttpResponseHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_hook)
+        after_response = list(stream.handle_event(events.HookCompleted(response_hook, None)))
+
+        cache_hit = catalog_flow(
+            real_flow,
+            version="0.145.0",
+            auth_value="resolved-access",
+            account="resolved-account",
+        )
+        await codex_model_catalog_cache.prepare_request(cache_hit, request_end_stream=True)
+        assert cache_hit.response is not None
+        assert cache_hit.response.content == catalog_body
+        codex_model_catalog_cache.release_flow_state(cache_hit)
+
+    client_commands = [*after_headers, *body_commands, *end_commands, *after_response]
+    client_events = [command.event for command in client_commands if isinstance(command, SendHttp)]
+    assert any(
+        isinstance(event, ResponseHeaders)
+        and event.response.status_code == 200
+        and "Content-Encoding" not in event.response.headers
+        for event in client_events
+    )
+    assert (
+        b"".join(event.data for event in client_events if isinstance(event, ResponseData))
+        == catalog_body
+    )
+    assert any(isinstance(event, ResponseEndOfMessage) for event in client_events)
+
+
+async def test_http2_ordinary_catalog_rejects_unsolicited_brotli_before_body(
+    tmp_path: Path,
+) -> None:
+    catalog_path = "/backend-api/codex/models?client_version=0.145.0"
+    compressed_body = brotli.compress(b'{"models":[{"slug":"gpt-test"}]}')
 
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
@@ -762,24 +973,12 @@ async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
             for command in response_header_commands
             if isinstance(command, HttpResponseHeadersHook)
         )
-        await addon_context.master.addons.invoke_addon(
-            mitm_addon,
-            response_headers_hook,
-        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, response_headers_hook)
         assert flow.response is not None
-        assert flow.response.status_code == 200
-        assert callable(flow.response.stream)
-        assert flow.response.headers["Content-Encoding"] == "br"
-        assert flow.response.headers["Content-Length"] == str(len(compressed_body))
+        assert flow.response.status_code == 502
+        assert "Content-Encoding" not in flow.response.headers
 
         after_headers = list(stream.handle_event(events.HookCompleted(response_headers_hook, None)))
-        assert any(
-            isinstance(command, SendHttp)
-            and isinstance(command.event, ResponseHeaders)
-            and command.event.response.status_code == 200
-            for command in after_headers
-        )
-
         body_commands = list(stream.handle_event(ResponseData(1, compressed_body)))
         assert (
             b"".join(
@@ -787,44 +986,25 @@ async def test_http2_brotli_catalog_is_streamed_unchanged_while_cached(
                 for command in body_commands
                 if isinstance(command, SendHttp) and isinstance(command.event, ResponseData)
             )
-            == compressed_body
+            == b""
         )
 
         end_commands = list(stream.handle_event(ResponseEndOfMessage(1)))
         response_hook = next(
             command for command in end_commands if isinstance(command, HttpResponseHook)
         )
-
         await addon_context.master.addons.invoke_addon(mitm_addon, response_hook)
-        assert flow.response.status_code == 200
-        assert flow.response.headers["Content-Encoding"] == "br"
-        assert flow.response.headers["Content-Length"] == str(len(compressed_body))
-
-        cache_hit = catalog_flow(
-            real_flow,
-            version="0.145.0",
-            auth_value="resolved-access",
-            account="resolved-account",
-        )
-        await codex_model_catalog_cache.prepare_request(cache_hit, request_end_stream=True)
-        assert cache_hit.response is not None
-        assert cache_hit.response.content == catalog_body
-        codex_model_catalog_cache.release_flow_state(cache_hit)
-
         after_response = list(stream.handle_event(events.HookCompleted(response_hook, None)))
 
     client_commands = [*after_headers, *body_commands, *end_commands, *after_response]
     client_events = [command.event for command in client_commands if isinstance(command, SendHttp)]
     assert any(
         isinstance(event, ResponseHeaders)
-        and event.response.status_code == 200
-        and event.response.headers["Content-Encoding"] == "br"
+        and event.response.status_code == 502
+        and "Content-Encoding" not in event.response.headers
         for event in client_events
     )
-    assert (
-        b"".join(event.data for event in client_events if isinstance(event, ResponseData))
-        == compressed_body
-    )
+    assert b"".join(event.data for event in client_events if isinstance(event, ResponseData)) == b""
     assert any(isinstance(event, ResponseEndOfMessage) for event in client_events)
 
 
@@ -842,6 +1022,7 @@ async def test_http2_invalid_brotli_catalog_passes_through_without_cache_rewrite
         stream, flow = await _catalog_http_stream(
             addon_context,
             catalog_path=catalog_path,
+            prefetch=True,
         )
         upstream_response = tutils.tresp(
             status_code=200,
@@ -925,6 +1106,7 @@ async def test_http2_unbounded_brotli_catalog_is_passed_through_but_not_retained
         stream, flow = await _catalog_http_stream(
             addon_context,
             catalog_path=catalog_path,
+            prefetch=True,
         )
         upstream_response = tutils.tresp(
             status_code=200,

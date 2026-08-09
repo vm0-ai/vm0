@@ -24,6 +24,7 @@ from tests.codex_model_catalog_cache_helpers import (
     finish_response,
     install_catalog,
     prepare_miss,
+    prepare_prefetch_miss,
     responses_flow,
 )
 from tests.flow_helpers import header_map, response_stream
@@ -357,7 +358,7 @@ async def test_catalog_wait_revalidates_only_provider_continuation(
                 owner.error = Error("upstream reset")
                 catalog_cache.handle_error(owner)
             elif owner_result == "local-response":
-                owner.response = catalog_response(encoding="br")
+                owner.response = catalog_response()
                 await finish_response(owner)
 
             await follower_task
@@ -479,7 +480,7 @@ async def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
         account="sensitive-account",
     )
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = str(tmp_path / "network.jsonl")
-    await prepare_miss(flow)
+    await prepare_prefetch_miss(flow)
     flow.response = catalog_response(encoding="br")
     mitm_addon.responseheaders(flow)
     compressed_body = flow.response.raw_content or b""
@@ -493,6 +494,7 @@ async def test_network_log_contains_bounded_encoding_telemetry_and_cleanup(
     [entry] = read_jsonl_entries_after_flush(tmp_path / "network.jsonl")
     assert entry["model_catalog_cache_status"] == "model_catalog_cold_stored"
     assert entry["model_catalog_cache_upstream_encoding"] == "br"
+    assert entry["model_catalog_prefetch_role"] == "producer"
     assert entry["model_catalog_cache_validation_latency_ms"] >= 0
     assert entry["response_size"] == len(compressed_body)
     serialized = json.dumps(entry)
