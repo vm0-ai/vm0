@@ -22,7 +22,6 @@ import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
 } from "@vm0/connectors/firewall-types";
-import { orgCustomConnectorsInsertTarget } from "@vm0/db/custom-connector-insert-targets";
 import { connectors } from "@vm0/db/schema/connector";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
@@ -1401,7 +1400,7 @@ export const createCustomConnector$ = command(
         return prefixConflict;
       }
       const [row] = await tx
-        .insert(orgCustomConnectorsInsertTarget)
+        .insert(orgCustomConnectors)
         .values({
           orgId: args.orgId,
           slug,

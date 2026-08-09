@@ -16,10 +16,6 @@
       "import": "./src/jsonb-contracts/*.ts",
       "types": "./src/jsonb-contracts/*.ts"
     },
-    "./custom-connector-insert-targets": {
-      "import": "./src/custom-connector-insert-targets.ts",
-      "types": "./src/custom-connector-insert-targets.ts"
-    },
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"
