@@ -136,7 +136,7 @@ class TestTrustedAuthorityRejection:
             host="203.0.113.10",
             sni=invalid_hostname,
             path="/repos",
-            request_headers=headers(("Host", "api.github.com")),
+            request_headers=headers(("Host", invalid_hostname)),
         )
 
         with pytest.raises(AuthorityValidationError) as exc_info:
@@ -147,7 +147,7 @@ class TestTrustedAuthorityRejection:
             reason="invalid_sni",
             sni=invalid_hostname,
             request_host="203.0.113.10",
-            host_header="api.github.com",
+            host_header=invalid_hostname,
             request_port=443,
             fallback_url="https://203.0.113.10/repos",
         )
