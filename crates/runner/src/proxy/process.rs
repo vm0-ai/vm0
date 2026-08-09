@@ -1134,6 +1134,7 @@ exit 42
             "flow_metadata_keys.py",
             "generated/__init__.py",
             "generated/model_usage.py",
+            "generated/public_destination_policy.py",
             "matching.py",
             "mitmproxy_compat.py",
             "registry.py",

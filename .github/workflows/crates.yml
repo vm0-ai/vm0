@@ -144,6 +144,7 @@ jobs:
               turbo/packages/api-contracts/src/contracts/* | \
               turbo/packages/api-contracts/src/python-bindings/* | \
               turbo/packages/api-contracts/src/rust-bindings/* | \
+              turbo/packages/connectors/src/public-destination-policy.ts | \
               turbo/pnpm-lock.yaml)
                 api_contracts_rust_bindings_changed=true
                 break
@@ -156,7 +157,7 @@ jobs:
           # Shared firewall contracts are stored under turbo but are read by
           # mitm-addon tests. Keep this separate from any-changed so a turbo-only
           # contract edit runs mitm-addon-test without forcing every crate job.
-          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx "turbo/packages/connectors/src/__tests__/(firewall-semantics-contract|firewall-base-url-validation-contract)\\.json"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx "turbo/packages/connectors/src/__tests__/(firewall-semantics-contract|firewall-base-url-validation-contract|public-destination-policy-contract)\\.json"; then
             echo "mitm-addon-test-inputs-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "mitm-addon-test-inputs-changed=false" >> "$GITHUB_OUTPUT"
