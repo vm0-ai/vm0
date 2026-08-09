@@ -56,6 +56,18 @@ class TestSanitizeHeadersForCapture:
         assert result[name] == expected
 
     @pytest.mark.parametrize(
+        "value",
+        [
+            "Fri, 31 Feb 2026 03:29:48 GMT",
+            "Thu, 31 Apr 2026 03:29:48 GMT",
+            "Thu, 29 Feb 2025 03:29:48 GMT",
+        ],
+    )
+    def test_imf_fixdate_values_with_impossible_dates_are_redacted(self, headers, value):
+        result = _sanitize_headers_for_capture(headers(("Date", value)))
+        assert result["Date"] == "***"
+
+    @pytest.mark.parametrize(
         ("name", "value"),
         [
             ("Content-Type", "https://app.example/private/secret-token"),
