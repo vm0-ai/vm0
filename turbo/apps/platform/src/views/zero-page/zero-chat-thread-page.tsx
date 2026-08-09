@@ -4160,8 +4160,11 @@ function RecommendedFollowupList({
         return $.chat.run.keepGoing;
       })}
       className={cn(
+        // The flat list pulls out by the row buttons' own px-2 so its text
+        // aligns with the message column. Cards carry no such inner offset,
+        // so the rail must stay flush with the column and the composer.
         showFollowupCards
-          ? "-mx-2 flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           : "-mx-2",
       )}
     >

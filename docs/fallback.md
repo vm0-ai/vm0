@@ -204,7 +204,6 @@ How to use them:
 
   This surface also has **two independent directions**, and a fallback that
   covers one does not cover the other:
-
   - **Old code after migration** — the schema has changed while the previous
     API is still serving or draining. Every statement that API can issue must
     stay legal, including columns an ORM adds to `SELECT` or `RETURNING`.
@@ -278,27 +277,26 @@ Requirements for this pattern:
 An "old shape tolerated forever" branch with no removal condition is not a
 rollout fallback; it is section 5 slop.
 
-## 9. Declare Every Fallback in the PR Summary and the Review
+## 9. Declare New Fallbacks in the PR Summary and the Review
 
 A fallback that nobody records is a fallback that nobody removes. Declaring it
-is mandatory on both sides of the review.
+is mandatory on both sides of the review when a PR introduces it.
 
-**Every fallback belongs in the PR summary. A fallback or compatibility
-behavior present in the diff but missing from the summary is a P1 finding and
-blocks the review verdict**: the review is `Changes Requested` until the author
-adds the missing entry. This holds even when the fallback itself is correct and
-stays — the defect is the undeclared behavior, not the branch.
+**Every fallback introduced by a PR belongs in the PR summary. A fallback or
+compatibility behavior added by the diff but missing from the summary is a P1
+finding and blocks the review verdict**: the review is `Changes Requested`
+until the author adds the missing entry. This holds even when the fallback
+itself is correct — the defect is the undeclared behavior, not the branch.
 
-**Author — in the PR summary.** When a PR introduces, keeps, or removes any
-fallback, the summary must contain a `Fallbacks` section listing each one. Do
-not bury it in the diff. For each fallback give:
+**Author — in the PR summary.** When a PR introduces one or more fallbacks, the
+summary must contain a `Fallbacks` section listing each new one. Do not bury it
+in the diff. For each fallback give:
 
 - the file and symbol,
 - what old/new interaction it protects,
 - the surface and its window from section 7 (or `none — non-GA feature
 switch`),
-- the removal condition and the follow-up issue or PR,
-- for a removed fallback, the evidence from section 10.
+- the removal condition and the follow-up issue or PR.
 
 ```md
 ## Fallbacks
@@ -309,17 +307,16 @@ switch`),
   #25694.
 ```
 
-When a PR contains no fallback at all, say so explicitly: `Fallbacks: none`.
-That one line is what makes a later audit trustworthy, and it is what pr-auto
-reports as `none observed` after merge.
+PRs that do not introduce a fallback need no `Fallbacks` section. This includes
+PRs that only keep or remove existing fallbacks; do not require
+`Fallbacks: none` or a removal declaration.
 
 **Reviewer — in the review comment.** The review must list every fallback the
-diff introduces or keeps, in the same shape, and state whether each one is
-justified under section 6, correctly time-boxed under section 7, and declared
-in the PR summary. Raise each undeclared one as a P1 finding asking the author
-to record it in the summary, and request changes until it is recorded. A review
-that says nothing about fallbacks in a PR that adds one is not a completed
-review.
+diff introduces, in the same shape, and state whether each one is justified
+under section 6, correctly time-boxed under section 7, and declared in the PR
+summary. Raise each undeclared one as a P1 finding asking the author to record
+it in the summary, and request changes until it is recorded. A review that says
+nothing about fallbacks in a PR that adds one is not a completed review.
 
 ## 10. Evidence Required When Removing a Fallback
 
@@ -336,8 +333,10 @@ must show why the removed branch is unreachable:
 - **Rollout evidence** — the deploy that made the old version unreachable is
   past its rollback window.
 
-State which of these applies for each removed branch, and keep the invariant
-throw so monitoring surfaces a violation if the assumption ever breaks.
+The evidence can come from the diff, tests, or linked production or rollout
+data. Removing a fallback does not require a `Fallbacks` section or a separate
+fallback declaration in the PR summary. Keep the invariant throw so monitoring
+surfaces a violation if the assumption ever breaks.
 
 ## Review Checklist
 
@@ -352,12 +351,13 @@ throw so monitoring surfaces a violation if the assumption ever breaks.
   removal condition, and a follow-up?
 - Is the window the right one? A runner-protocol branch sized to the ~4 second
   DB window, or a client branch sized to the ~2 hour runner window, is wrong.
-- Does the PR summary contain a `Fallbacks` section, or an explicit
-  `Fallbacks: none`? Every fallback in the diff that the summary omits is a P1
-  finding and blocks the verdict: ask the author to record it there and request
-  changes.
-- Does the review comment list every fallback the diff introduces or keeps,
-  with a justified/not-justified verdict for each?
+- If the PR adds a fallback, does its summary contain a `Fallbacks` section
+  listing every new fallback? Every introduced fallback that the summary omits
+  is a P1 finding and blocks the verdict: ask the author to record it there and
+  request changes. PRs that add none need neither the section nor
+  `Fallbacks: none`.
+- Does the review comment list every fallback the diff introduces, with a
+  justified/not-justified verdict for each?
 - Does a removal PR carry type, single-writer, production, or rollout evidence?
 - Does the removal delete the branch, the contract entry, and the branch's own
   tests together?
