@@ -453,8 +453,8 @@
       sans-serif;
   }
 
-  /* Global icon stroke width for Tabler Icons */
-  svg[class*="tabler-icon"] {
+  /* Global icon stroke width for Lucide Icons */
+  svg[class*="lucide"] {
     stroke-width: var(--icon-stroke-width);
   }
 }

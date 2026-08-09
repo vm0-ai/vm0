@@ -1,12 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  IconChevronDown,
-  IconCheck,
-  IconX,
-  IconSearch,
-} from "@tabler/icons-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
@@ -138,7 +133,7 @@ export function MultiSelectCombobox({
                       }}
                       aria-label={`Remove ${opt.label}`}
                     >
-                      <IconX size={12} />
+                      <X size={12} />
                     </span>
                   </span>
                 );
@@ -147,10 +142,7 @@ export function MultiSelectCombobox({
               <span className="text-muted-foreground">{placeholder}</span>
             )}
           </div>
-          <IconChevronDown
-            size={16}
-            className="shrink-0 text-muted-foreground"
-          />
+          <ChevronDown size={16} className="shrink-0 text-muted-foreground" />
         </div>
       </PopoverTrigger>
       <PopoverContent
@@ -166,7 +158,7 @@ export function MultiSelectCombobox({
         }}
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <IconSearch size={14} className="shrink-0 text-muted-foreground" />
+          <Search size={14} className="shrink-0 text-muted-foreground" />
           <input
             ref={searchInputRef}
             type="text"
@@ -202,7 +194,7 @@ export function MultiSelectCombobox({
                   )}
                   <span className="flex-1 text-left">{opt.label}</span>
                   {isSelected && (
-                    <IconCheck size={16} className="shrink-0 text-primary" />
+                    <Check size={16} className="shrink-0 text-primary" />
                   )}
                 </button>
               );
