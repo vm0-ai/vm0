@@ -39,6 +39,7 @@ export type ArtifactRef = {
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
   readonly shareAvailable?: boolean;
+  readonly releaseObjectUrl?: () => void;
 };
 
 export type ArtifactFileRef = {
@@ -116,7 +117,17 @@ export function createThreadSidebarSignals(
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
+  const internalAttachmentObjectUrlReleases$ = state<readonly (() => void)[]>(
+    [],
+  );
   const resetSession$ = resetSignal();
+
+  const releaseAttachmentObjectUrls$ = command(({ get, set }) => {
+    for (const release of get(internalAttachmentObjectUrlReleases$)) {
+      release();
+    }
+    set(internalAttachmentObjectUrlReleases$, []);
+  });
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
@@ -144,6 +155,15 @@ export function createThreadSidebarSignals(
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
+    const releaseObjectUrl =
+      target.type === "artifact" &&
+      target.source.kind === "attachment" &&
+      target.source.ref.releaseObjectUrl;
+    if (releaseObjectUrl) {
+      set(internalAttachmentObjectUrlReleases$, (current) => {
+        return [...current, releaseObjectUrl];
+      });
+    }
     set(internalTarget$, target);
   });
 
@@ -155,6 +175,7 @@ export function createThreadSidebarSignals(
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
+    set(releaseAttachmentObjectUrls$);
   });
 
   const claimAutoOpenCandidate$ = command(

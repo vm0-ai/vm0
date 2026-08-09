@@ -59,8 +59,9 @@ export function MermaidDiagram({
           if (result.status !== "rendered") {
             return;
           }
-          // The lightbox and sidebar reuse the chat panel-owned object URL and
-          // carry the File metadata needed to present it as diagram.svg.
+          // The inline image keeps its chat-panel-owned URL. File metadata lets
+          // each preview surface create an independently owned URL and present
+          // it as diagram.svg.
           openImageLightbox({
             url: result.url,
             file: result.file,

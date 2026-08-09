@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -13,9 +19,6 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-pane-state.ts";
-import { detachedNavigateTo$ } from "../../../signals/route.ts";
-import { ROUTES } from "../../../signals/route-paths.ts";
 import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
@@ -362,7 +365,7 @@ describe("assistant markdown", () => {
     );
     const lightboxUrl = lightboxImage.getAttribute("src") ?? "";
     expect(lightboxUrl).toContain("blob:mock-download-");
-    expect(lightboxUrl).toBe(inlineUrl);
+    expect(lightboxUrl).not.toBe(inlineUrl);
     const lightbox = screen.getByTestId("attachment-lightbox");
     expect(
       within(lightbox).getByLabelText("Open in split view"),
@@ -378,15 +381,23 @@ describe("assistant markdown", () => {
     const sidebarUrl = sidebarImage.getAttribute("src") ?? "";
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
     expect(sidebarUrl).toContain("blob:mock-download-");
-    expect(sidebarUrl).toBe(inlineUrl);
+    expect(sidebarUrl).not.toBe(inlineUrl);
+    expect(sidebarUrl).not.toBe(lightboxUrl);
     expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
     expect(objectUrls.revokedUrls).not.toContain(inlineUrl);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+      expect(objectUrls.revokedUrls).toContain(lightboxUrl);
+    });
 
     click(within(sidebar).getByTestId("artifact-sidebar-close"));
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
-    expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
+    expect(objectUrls.revokedUrls).toContain(sidebarUrl);
+    expect(objectUrls.revokedUrls).not.toContain(inlineUrl);
   });
 
   it("opens a mermaid diagram directly in an existing artifact sidebar", async () => {
@@ -429,7 +440,7 @@ describe("assistant markdown", () => {
     const sidebarUrl = sidebarImage.getAttribute("src") ?? "";
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
     expect(sidebarUrl).toContain("blob:mock-download-");
-    expect(sidebarUrl).toBe(inlineUrl);
+    expect(sidebarUrl).not.toBe(inlineUrl);
     expect(screen.queryByTestId("attachment-lightbox")).toBeNull();
     expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
 
@@ -437,7 +448,8 @@ describe("assistant markdown", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
-    expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
+    expect(objectUrls.revokedUrls).toContain(sidebarUrl);
+    expect(objectUrls.revokedUrls).not.toContain(inlineUrl);
   });
 
   it("revokes a mermaid object URL when its chat panel signal aborts", async () => {
@@ -475,7 +487,7 @@ describe("assistant markdown", () => {
     expect(objectUrls.revokedUrls).not.toContain(replacementUrl);
   });
 
-  it("keeps a mermaid object URL while query navigation replaces the same thread panel", async () => {
+  it("keeps a mermaid preview while query navigation replaces the same thread panel", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     const sidebarThreadId = "c0000000-0000-4000-a000-000000000003";
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```", [
@@ -490,29 +502,29 @@ describe("assistant markdown", () => {
     const originalDiagram = await screen.findByAltText("Diagram");
     const originalUrl = originalDiagram.getAttribute("src") ?? "";
     expect(objectUrls.revokedUrls).not.toContain(originalUrl);
-    const originalPanel = context.store.get(currentLeftThread$);
-    if (!originalPanel) {
-      throw new Error("Expected the main chat panel");
+    const originalExpand = originalDiagram.closest("button");
+    if (!originalExpand) {
+      throw new Error("Expected the diagram expand button");
     }
-    const originalPanelAborted = context.mocks.deferred<void>();
-    originalPanel.signal.addEventListener(
-      "abort",
-      () => {
-        originalPanelAborted.resolve();
-      },
-      { once: true },
+
+    // Alt-click is the product interaction for opening a thread in the second
+    // pane. Open the preview from the still-mounted original diagram while the
+    // route transition replaces its panel.
+    fireEvent.click(
+      await waitFor(() => {
+        return getLinkByText(document, "Sidebar thread");
+      }),
+      { altKey: true },
     );
-
-    context.store.set(detachedNavigateTo$, ROUTES.chat, {
-      pathParams: { threadId: THREAD_ID },
-      searchParams: new URLSearchParams([["sidebar", sidebarThreadId]]),
-    });
-
-    // Observe the old panel after its owner ended but before React replaces the
-    // retained semantic diagram. The still-mounted image must keep a usable URL.
-    await originalPanelAborted.promise;
     expect(originalDiagram).toBeInTheDocument();
-    expect(objectUrls.revokedUrls).not.toContain(originalUrl);
+    click(originalExpand);
+
+    const lightboxImage = await screen.findByTestId(
+      "attachment-lightbox-image",
+    );
+    const lightboxUrl = lightboxImage.getAttribute("src") ?? "";
+    expect(lightboxUrl).not.toBe(originalUrl);
+    expect(objectUrls.blobForUrl(lightboxUrl)).not.toBeNull();
 
     await waitFor(() => {
       expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
@@ -525,15 +537,14 @@ describe("assistant markdown", () => {
       "Diagram",
     );
     const retainedUrl = retainedDiagram.getAttribute("src") ?? "";
+    await waitFor(() => {
+      expect(objectUrls.revokedUrls).toContain(originalUrl);
+    });
+    expect(retainedUrl).not.toBe(originalUrl);
     expect(objectUrls.revokedUrls).not.toContain(retainedUrl);
-
-    click(within(mainThread as HTMLElement).getByLabelText("Expand diagram"));
-
-    const lightboxImage = await screen.findByTestId(
-      "attachment-lightbox-image",
-    );
-    expect(lightboxImage).toHaveAttribute("src", retainedUrl);
-    expect(objectUrls.blobForUrl(retainedUrl)).not.toBeNull();
+    expect(lightboxImage).toHaveAttribute("src", lightboxUrl);
+    expect(objectUrls.revokedUrls).not.toContain(lightboxUrl);
+    expect(objectUrls.blobForUrl(lightboxUrl)).not.toBeNull();
   });
 
   it("leaves a streaming mermaid fence as code until it closes", async () => {

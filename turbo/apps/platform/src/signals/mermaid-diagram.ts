@@ -216,7 +216,8 @@ function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
 
 /**
  * Keep the rendered SVG as a browser-native file. The containing chat panel or
- * page owns its object URL, while preview surfaces reuse it with File metadata.
+ * page owns the inline object URL, while preview surfaces materialize their own
+ * URLs from the File under their respective consumer lifetimes.
  */
 function svgFile(markup: string): File {
   return new File([markup], "diagram.svg", { type: "image/svg+xml" });

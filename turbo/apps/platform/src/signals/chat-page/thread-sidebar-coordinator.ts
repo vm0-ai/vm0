@@ -14,6 +14,8 @@ import type {
   ArtifactRefInput,
   ThreadSidebarTarget,
 } from "./thread-sidebar.ts";
+import { createObjectUrlResource } from "../object-url-resource.ts";
+import { rootSignal$ } from "../root-signal.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -137,7 +139,10 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
   };
 }
 
-function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
+function materializeArtifactRef(
+  input: ArtifactRefInput,
+  ownerSignal: AbortSignal,
+): ArtifactRef {
   if (typeof input === "string") {
     return artifactRefFromUrl(input);
   }
@@ -155,14 +160,16 @@ function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
         : { shareAvailable: input.shareAvailable }),
     };
   }
+  const resource = createObjectUrlResource(input.file, ownerSignal);
   return {
-    url: input.url,
+    url: resource.url,
     kind: classifyChatAttachment({
       contentType: input.file.type,
       filename: input.file.name,
-      url: input.url,
+      url: resource.url,
     }),
     filename: input.file.name,
+    releaseObjectUrl: resource.release,
     ...(input.shareAvailable === undefined
       ? {}
       : { shareAvailable: input.shareAvailable }),
@@ -181,7 +188,10 @@ export const openThreadArtifactSplitView$ = command(
     }
     set(openOnThread$, thread, {
       type: "artifact",
-      source: { kind: "attachment", ref: materializeArtifactRef(input) },
+      source: {
+        kind: "attachment",
+        ref: materializeArtifactRef(input, get(rootSignal$)),
+      },
     });
   },
 );
@@ -204,7 +214,10 @@ export const openArtifactInOpenSidebar$ = command(
     // swaps its content without closing and reopening the pane.
     set(active.thread.sidebar.open$, {
       type: "artifact",
-      source: { kind: "attachment", ref: materializeArtifactRef(input) },
+      source: {
+        kind: "attachment",
+        ref: materializeArtifactRef(input, get(rootSignal$)),
+      },
     });
     return true;
   },
