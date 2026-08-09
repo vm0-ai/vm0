@@ -3,7 +3,9 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
+use crate::active_input::{
+    API_ACTIVE_INPUT_RECHECK_INTERVAL, ActiveInputNotifications, ActiveInputSource,
+};
 use crate::executor::agent_run::{RunControls, RunStart, run_in_sandbox};
 use crate::executor::tests::support::{
     RUN_IN_SANDBOX_TEST_TIMEOUT, create_overridden_sandbox, minimal_context, test_executor_config,
@@ -44,6 +46,37 @@ async fn read_http_request(socket: &mut TcpStream) -> String {
         request.extend_from_slice(&buffer[..read]);
     }
     String::from_utf8(request).unwrap()
+}
+
+fn http_response(status: &str, body: &str) -> String {
+    format!(
+        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+async fn spawn_http_server(
+    responses: Vec<String>,
+) -> (
+    String,
+    tokio::sync::mpsc::UnboundedReceiver<String>,
+    tokio::task::JoinHandle<()>,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let api_url = format!("http://{}", listener.local_addr().unwrap());
+    let (request_tx, request_rx) = tokio::sync::mpsc::unbounded_channel();
+    let server = tokio::spawn(async move {
+        for response in responses {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_http_request(&mut socket).await;
+            socket.write_all(response.as_bytes()).await.unwrap();
+            socket.shutdown().await.unwrap();
+            let mut closed = [0_u8; 1];
+            assert_eq!(socket.read(&mut closed).await.unwrap(), 0);
+            request_tx.send(request).unwrap();
+        }
+    });
+    (api_url, request_rx, server)
 }
 
 #[tokio::test]
@@ -145,29 +178,13 @@ async fn run_in_sandbox_retries_api_active_input_after_transient_read_failure() 
     let active_input_path = format!("/api/runners/runs/{run_id}/active-inputs");
     let claim_path = format!("{active_input_path}/claim");
 
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let api_url = format!("http://{}", listener.local_addr().unwrap());
-    let response = |status: &str, body: &str| {
-        format!(
-            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        )
-    };
-    let responses = [
-        response("200 OK", r#"{"eventIds":[]}"#),
-        response("503 Service Unavailable", r#"{"error":"transient"}"#),
-        response("200 OK", r#"{"eventIds":["event-1"]}"#),
-        response("200 OK", r#"{"prompt":"retry delivered"}"#),
-    ];
-    let (request_tx, mut request_rx) = tokio::sync::mpsc::unbounded_channel();
-    let server = tokio::spawn(async move {
-        for response in responses {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let request = read_http_request(&mut socket).await;
-            socket.write_all(response.as_bytes()).await.unwrap();
-            request_tx.send(request).unwrap();
-        }
-    });
+    let (api_url, mut request_rx, server) = spawn_http_server(vec![
+        http_response("200 OK", r#"{"eventIds":[]}"#),
+        http_response("503 Service Unavailable", r#"{"error":"transient"}"#),
+        http_response("200 OK", r#"{"eventIds":["event-1"]}"#),
+        http_response("200 OK", r#"{"prompt":"retry delivered"}"#),
+    ])
+    .await;
 
     let notifications = ActiveInputNotifications::new();
     let source = ActiveInputSource::api(
@@ -241,6 +258,105 @@ async fn run_in_sandbox_retries_api_active_input_after_transient_read_failure() 
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&calls[0].payload).unwrap()["text"],
         "retry delivered"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_rechecks_api_active_input_without_notification() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let active_input_path = format!("/api/runners/runs/{run_id}/active-inputs");
+    let claim_path = format!("{active_input_path}/claim");
+
+    let (api_url, mut request_rx, server) = spawn_http_server(vec![
+        http_response("200 OK", r#"{"eventIds":[]}"#),
+        http_response("200 OK", r#"{"eventIds":["event-1"]}"#),
+        http_response("200 OK", r#"{"prompt":"fallback delivered"}"#),
+    ])
+    .await;
+
+    let notifications = ActiveInputNotifications::new();
+    let source = ActiveInputSource::api(
+        ApiClient::new(
+            HttpClient::new(HttpClientConfig {
+                api_url,
+                vercel_bypass: None,
+                client_session_id: "active-input-fallback-test".to_string(),
+            })
+            .unwrap(),
+            "runner-token".to_string(),
+        ),
+        run_id,
+        "sandbox-token".to_string(),
+        notifications.subscribe(run_id),
+    );
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let run_task = tokio::spawn(async move {
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(cancel, Some(source)),
+        )
+        .await
+    });
+
+    let initial_list = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, request_rx.recv())
+        .await
+        .expect("initial active-input list request should reach the server")
+        .expect("active-input request channel should remain open");
+    assert!(initial_list.starts_with(&format!("GET {active_input_path} ")));
+
+    tokio::time::pause();
+    tokio::task::yield_now().await;
+    tokio::time::advance(API_ACTIVE_INPUT_RECHECK_INTERVAL).await;
+    tokio::time::resume();
+
+    assert!(
+        overrides
+            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await,
+        "active input should be rechecked without a notification"
+    );
+    wait_gate.notify_one();
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(result.failure.is_none());
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, server)
+        .await
+        .expect("active-input server should finish")
+        .unwrap();
+    let mut remaining_requests = Vec::new();
+    while let Some(request) = request_rx.recv().await {
+        remaining_requests.push(request);
+    }
+    assert_eq!(remaining_requests.len(), 2);
+    assert!(remaining_requests[0].starts_with(&format!("GET {active_input_path} ")));
+    assert!(remaining_requests[1].starts_with(&format!("POST {claim_path} ")));
+
+    let calls = overrides.process_control_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&calls[0].payload).unwrap()["text"],
+        "fallback delivered"
     );
 }
 

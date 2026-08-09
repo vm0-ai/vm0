@@ -319,12 +319,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatSearchIndex]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Serve chat keyword search from the chat_event_search_docs projection instead of scanning chat_events with ILIKE.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ChatEventSnapshotRead]: {
     maintainer: "ethan@vm0.ai",
     description:

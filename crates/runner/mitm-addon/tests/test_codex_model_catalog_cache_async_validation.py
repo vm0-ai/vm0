@@ -238,7 +238,7 @@ async def test_catalog_validation_cancellation_preserves_atomic_ownership(
                     await waiting_task
                 await asyncio.wait_for(follower_prepare, timeout=1)
                 assert follower.response is None
-                assert follower.request.headers["Accept-Encoding"] == "br"
+                assert follower.request.headers["Accept-Encoding"] == "identity"
                 assert executor.submission_count == 1
                 catalog_cache.handle_error(follower)
 

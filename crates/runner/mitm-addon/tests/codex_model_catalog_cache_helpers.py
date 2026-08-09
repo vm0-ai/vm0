@@ -131,11 +131,17 @@ def catalog_response(
     )
 
 
-async def prepare_miss(flow: http.HTTPFlow) -> None:
+async def prepare_miss(flow: http.HTTPFlow, *, expected_encoding: str = "identity") -> None:
     await catalog_cache.prepare_request(flow, request_end_stream=True)
     assert flow.response is None
-    assert flow.request.headers["Accept-Encoding"] == "br"
+    assert flow.request.headers["Accept-Encoding"] == expected_encoding
     assert "If-None-Match" not in flow.request.headers
+
+
+async def prepare_prefetch_miss(flow: http.HTTPFlow) -> None:
+    flow.request.headers["X-VM0-Codex-Model-Catalog-Prefetch"] = "1"
+    catalog_cache.capture_and_strip_prefetch_marker(flow)
+    await prepare_miss(flow, expected_encoding="br")
 
 
 async def finish_response(flow: http.HTTPFlow) -> dict[str, object]:
@@ -160,8 +166,11 @@ async def install_catalog(
     *,
     body: bytes = CATALOG_BODY,
     etag: str = CATALOG_ETAG,
-    encoding: str = "br",
+    encoding: str = "identity",
 ) -> dict[str, object]:
-    await prepare_miss(flow)
+    if encoding == "br":
+        await prepare_prefetch_miss(flow)
+    else:
+        await prepare_miss(flow)
     flow.response = catalog_response(body=body, etag=etag, encoding=encoding)
     return await finish_response(flow)
