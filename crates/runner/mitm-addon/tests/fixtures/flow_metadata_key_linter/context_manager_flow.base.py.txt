@@ -206,3 +206,24 @@ def class_nonlocal_removes_alias_before_failure(flow, manager):
             raise RuntimeError()
 
     return metadata["firewall_error"]
+
+
+def sync_sequence_target_unpack_may_preserve_alias(flow, manager):
+    metadata = flow.metadata
+    with manager as (metadata, other):
+        pass
+    return metadata["firewall_error"]
+
+
+async def async_starred_target_unpack_may_preserve_alias(flow, manager):
+    metadata = flow.metadata
+    async with manager as [metadata, *middle, other]:
+        pass
+    return metadata["trusted_authority_host"]
+
+
+def target_unpack_failure_reaches_after_terminal_body(flow, manager):
+    metadata = flow.metadata
+    with manager as (metadata, other):
+        return None
+    return metadata["auth_base_forward_admission"]
