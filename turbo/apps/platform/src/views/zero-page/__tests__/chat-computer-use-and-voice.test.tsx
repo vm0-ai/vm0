@@ -1074,8 +1074,17 @@ describe("chat lifecycle", () => {
     const draftPatches: unknown[] = [];
     const uploadedAudio: string[] = [];
     const transcriptionRequested = context.mocks.deferred<void>();
+    const recorderTransitions: ("start" | "stop")[] = [];
     let transcriptionCalls = 0;
-    context.mocks.browser.voiceInput({ rms: [0.1, 0.1, 0, 0, 0] });
+    context.mocks.browser.voiceInput({
+      onRecorderStart: () => {
+        recorderTransitions.push("start");
+      },
+      onRecorderStop: () => {
+        recorderTransitions.push("stop");
+      },
+      rms: [0.1, 0.1, 0, 0, 0],
+    });
     mockChatLifecycle(context, { threadId });
     context.mocks.http.patch(
       "*/api/zero/chat-threads/:id",
@@ -1109,12 +1118,12 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
     });
-    // The silence-triggered segment upload reaching the server proves the
-    // capture rotated recorders instead of ending the session; recording may
-    // legitimately auto-stop moments later, so check the label now rather
-    // than after the transcription response renders.
     await transcriptionRequested.promise;
-    expect(screen.getByLabelText("Stop recording")).toBeInTheDocument();
+    expect(recorderTransitions.slice(0, 3)).toStrictEqual([
+      "start",
+      "stop",
+      "start",
+    ]);
     await waitFor(() => {
       expect(composer).toHaveTextContent("First sentence");
     });
@@ -1134,6 +1143,12 @@ describe("chat lifecycle", () => {
       expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
     });
     expect(transcriptionCalls).toBe(1);
+    expect(recorderTransitions).toStrictEqual([
+      "start",
+      "stop",
+      "start",
+      "stop",
+    ]);
   });
 
   it("uploads voice input segments one at a time", async () => {

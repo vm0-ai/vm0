@@ -144,6 +144,7 @@ async function transitionRunStatus(
     readonly result?: RunResult;
     readonly sandboxId?: string;
     readonly sandboxReuseResult?: WebhookCompleteBody["sandboxReuseResult"];
+    readonly workspaceReuseResult?: WebhookCompleteBody["workspaceReuseResult"];
   },
   allowedFromStatuses: readonly RunStatus[],
 ): Promise<boolean> {
@@ -247,16 +248,37 @@ async function handleCancelledCompletion(
   run: RunRecord,
   signal: AbortSignal,
 ): Promise<CompletionResponse> {
-  if (run.cancellationRecoveryCompleted === false) {
+  // Guest and host completion may both arrive after cancellation. Preserve the
+  // first terminal metadata just like the completed/failed transition paths.
+  const update = {
+    ...(run.cancellationRecoveryCompleted === false
+      ? { cancellationRecoveryCompleted: true }
+      : {}),
+    ...(input.body.sandboxId !== undefined
+      ? {
+          sandboxId: sql`coalesce(${agentRuns.sandboxId}, ${input.body.sandboxId})`,
+        }
+      : {}),
+    ...(input.body.sandboxReuseResult !== undefined
+      ? {
+          sandboxReuseResult: sql`coalesce(${agentRuns.sandboxReuseResult}, ${input.body.sandboxReuseResult})`,
+        }
+      : {}),
+    ...(input.body.workspaceReuseResult !== undefined
+      ? {
+          workspaceReuseResult: sql`coalesce(${agentRuns.workspaceReuseResult}, ${input.body.workspaceReuseResult})`,
+        }
+      : {}),
+  };
+  if (Object.keys(update).length > 0) {
     await db
       .update(agentRuns)
-      .set({ cancellationRecoveryCompleted: true })
+      .set(update)
       .where(
         and(
           eq(agentRuns.id, input.body.runId),
           eq(agentRuns.userId, input.auth.userId),
           eq(agentRuns.status, "cancelled"),
-          eq(agentRuns.cancellationRecoveryCompleted, false),
         ),
       );
     signal.throwIfAborted();
@@ -298,6 +320,7 @@ async function handleMissingCheckpoint(
       error,
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
+      workspaceReuseResult: input.body.workspaceReuseResult,
     },
     ["pending", "running", "timeout"],
   );
@@ -414,6 +437,7 @@ async function persistSuccessfulCompletion(
       ...(result ? { result } : {}),
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
+      workspaceReuseResult: input.body.workspaceReuseResult,
     },
     ["pending", "running", "timeout"],
   );
@@ -449,6 +473,7 @@ async function handleFailedCompletion(
       error,
       sandboxId: input.body.sandboxId,
       sandboxReuseResult: input.body.sandboxReuseResult,
+      workspaceReuseResult: input.body.workspaceReuseResult,
     },
     ["pending", "running", "timeout"],
   );

@@ -23,7 +23,7 @@ export function customConnector(
     headerInjections: [],
     queryInjections: [],
     authMode: "manual",
-    revision: 1,
+    storageVersion: 1,
     connected: false,
     missingRequiredFields: ["apiKey"],
     configuredFieldKeys: [],

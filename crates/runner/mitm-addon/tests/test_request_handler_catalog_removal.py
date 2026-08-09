@@ -225,6 +225,7 @@ async def test_custom_connector_id_selects_active_owner_and_does_not_fall_throug
                     }
                     for name in (custom_name, sibling_name)
                 },
+                "connectorRoutingVariables": {f"custom:{custom_connector_id}": {}},
                 "billableFirewalls": [],
             }
         },
@@ -265,6 +266,7 @@ async def test_custom_connector_id_selects_active_owner_and_does_not_fall_throug
                     "networkLogPath": str(tmp_path / "network.jsonl"),
                     "proxyLogPath": str(tmp_path / "proxy.jsonl"),
                     "encryptedSecrets": "iv:tag:data",
+                    "connectorRoutingVariables": {f"custom:{custom_connector_id}": {}},
                     "firewalls": [
                         {
                             "kind": "inline",

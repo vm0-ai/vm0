@@ -32,7 +32,13 @@ export const apiRunsHandlers = [
   // GET /api/zero/runs/queue
   mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
     respond(200, {
-      concurrency: { tier: "free", limit: 1, active: 0, available: 1 },
+      concurrency: {
+        tier: "free",
+        limit: 1,
+        active: 0,
+        available: 1,
+        memberUsage: [],
+      },
       queue: [],
       runningTasks: [],
       estimatedTimePerRun: 30_000,

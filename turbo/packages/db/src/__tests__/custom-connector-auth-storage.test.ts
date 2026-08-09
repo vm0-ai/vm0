@@ -1,7 +1,6 @@
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { agentRunCustomConnectorAuthRefs } from "../schema/agent-run-custom-connector-auth-ref";
 import { connectorOauthStates } from "../schema/connector-oauth-state";
 import { connectors } from "../schema/connector";
 import { orgCustomConnectorOauthConfigs } from "../schema/org-custom-connector-oauth-config";
@@ -22,7 +21,6 @@ describe("custom connector auth storage schema", () => {
 
     expect(orgCustomConnectors.authMode.notNull).toBe(true);
     expect(orgCustomConnectors.enabled.notNull).toBe(true);
-    expect(orgCustomConnectors.revision.notNull).toBe(true);
     expect(orgCustomConnectors.storageVersion.notNull).toBe(true);
     expect(orgCustomConnectors.storageVersion.hasDefault).toBe(true);
     expect(orgCustomConnectors.storageVersion.columnType).toBe("PgBigInt53");
@@ -34,7 +32,6 @@ describe("custom connector auth storage schema", () => {
         "chk_org_custom_connectors_slug",
         "chk_org_custom_connectors_auth_mode",
         "chk_org_custom_connectors_mcp",
-        "chk_org_custom_connectors_revision_positive",
         "chk_org_custom_connectors_storage_version_positive",
         "chk_org_custom_connectors_skill_size",
       ]),
@@ -84,13 +81,12 @@ describe("custom connector auth storage schema", () => {
     expect(names(stateConfig.checks)).toEqual(
       expect.arrayContaining([
         "chk_connector_oauth_states_identity",
-        "chk_connector_oauth_states_custom_revision",
         "chk_connector_oauth_states_custom_storage_version",
       ]),
     );
   });
 
-  it("owns OAuth tokens by connection and versions agent grants", () => {
+  it("owns OAuth tokens by connection and stores agent grants", () => {
     const secretConfig = getTableConfig(secrets);
     const grantConfig = getTableConfig(userCustomConnectors);
 
@@ -106,16 +102,11 @@ describe("custom connector auth storage schema", () => {
     );
     expect(secretConfig.foreignKeys[0]?.onDelete).toBe("cascade");
 
-    expect(userCustomConnectors.connectorRevision.notNull).toBe(true);
     expect(userCustomConnectors.permissionNames.notNull).toBe(true);
     expect(userCustomConnectors.allowAllMcpTools.notNull).toBe(true);
     expect(userCustomConnectors.mcpToolNames.notNull).toBe(true);
     expect(names(grantConfig.checks)).toContain(
       "chk_user_custom_connectors_mcp_grant",
-    );
-
-    expect(agentRunCustomConnectorAuthRefs.connectorRevision.notNull).toBe(
-      true,
     );
   });
 });

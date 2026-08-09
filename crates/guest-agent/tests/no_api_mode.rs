@@ -94,6 +94,7 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         &runtime.config.run_id,
         "sandbox-no-api",
         "reused",
+        "sandboxReused",
         Some(1),
     )
     .await;

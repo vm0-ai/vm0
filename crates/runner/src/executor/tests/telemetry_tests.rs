@@ -27,7 +27,7 @@ use crate::http::{HttpClient, HttpClientConfig};
 use crate::ids::RunId;
 use crate::run_cancellation::RunCancellationSignals;
 use crate::telemetry::{JobTelemetry, RunnerStartupPath};
-use crate::types::SandboxReuseResult;
+use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
 
 #[test]
 fn elapsed_since_api_start_ms_returns_elapsed_duration() {
@@ -52,31 +52,20 @@ fn elapsed_since_api_start_ms_rejects_seconds_shaped_start() {
 
 #[test]
 fn api_to_spawn_records_the_effective_startup_path_and_exact_reuse_result() {
-    for (reuse_result, reused_workspace, expected_path) in [
+    for (reuse_result, workspace_reuse_result, expected_path) in [
         (
             SandboxReuseResult::Reused,
-            false,
+            WorkspaceReuseResult::SandboxReused,
             RunnerStartupPath::Sandbox,
         ),
         (
             SandboxReuseResult::NoReuseKey,
-            true,
+            WorkspaceReuseResult::Reused,
             RunnerStartupPath::Workspace,
         ),
-        (SandboxReuseResult::PoolMiss, false, RunnerStartupPath::Cold),
         (
-            SandboxReuseResult::ProfileMismatch,
-            false,
-            RunnerStartupPath::Cold,
-        ),
-        (
-            SandboxReuseResult::DeviceLimitMismatch,
-            false,
-            RunnerStartupPath::Cold,
-        ),
-        (
-            SandboxReuseResult::UnparkFailed,
-            false,
+            SandboxReuseResult::PoolMiss,
+            WorkspaceReuseResult::CacheMiss,
             RunnerStartupPath::Cold,
         ),
     ] {
@@ -84,7 +73,12 @@ fn api_to_spawn_records_the_effective_startup_path_and_exact_reuse_result() {
         context.api_start_time = Some(chrono::Utc::now().timestamp_millis().max(0) as u64);
         let mut telemetry = new_telemetry();
 
-        record_api_to_spawn(&context, &mut telemetry, reuse_result, reused_workspace);
+        record_api_to_spawn(
+            &context,
+            &mut telemetry,
+            reuse_result,
+            workspace_reuse_result,
+        );
 
         let operations = telemetry.pending_ops_with_runner_startup_snapshot();
         let [operation] = operations.as_slice() else {

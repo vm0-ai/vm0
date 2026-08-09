@@ -41,6 +41,9 @@ pub const SANDBOX_ID_ENV: &str = "VM0_SANDBOX_ID";
 /// not happen, such as `poolMiss` or `noReuseKey`.
 pub const SANDBOX_REUSE_RESULT_ENV: &str = "VM0_SANDBOX_REUSE_RESULT";
 
+/// Wire value for the runner's final workspace-reuse decision.
+pub const WORKSPACE_REUSE_RESULT_ENV: &str = "VM0_WORKSPACE_REUSE_RESULT";
+
 /// Logical run-payload field name for the user prompt.
 pub const PROMPT_ENV: &str = "VM0_PROMPT";
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.534.1](https://github.com/vm0-ai/vm0/compare/core-v8.534.0...core-v8.534.1) (2026-08-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.1
+
+## [8.534.0](https://github.com/vm0-ai/vm0/compare/core-v8.533.3...core-v8.534.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+* **platform:** show concurrency usage by member ([#25938](https://github.com/vm0-ai/vm0/issues/25938)) ([d78f3cc](https://github.com/vm0-ai/vm0/commit/d78f3cce54aaf0623c28a9249944bee476f93ac9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.0
+
 ## [8.533.3](https://github.com/vm0-ai/vm0/compare/core-v8.533.2...core-v8.533.3) (2026-08-09)
 
 

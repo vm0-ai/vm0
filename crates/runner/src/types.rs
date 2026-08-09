@@ -129,8 +129,7 @@ pub struct ExecutionContext {
     pub network_policies: Option<std::collections::HashMap<String, NetworkPolicy>>,
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
-    #[serde(default)]
-    pub connector_runtime_targets: Option<Vec<ConnectorRuntimeTargetRegistration>>,
+    pub connector_runtime_targets: Vec<ConnectorRuntimeTargetRegistration>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -1244,20 +1243,6 @@ pub struct NetworkPolicyRefresh {
     pub next_refresh_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkPolicyRefreshResponse {
-    pub connector_slug: String,
-    pub network_policy: NetworkPolicy,
-    pub next_refresh_at: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkPolicyRefreshBatchResponse {
-    pub refreshes: Vec<NetworkPolicyRefreshResponse>,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ConnectorRuntimeTarget {
@@ -1327,13 +1312,6 @@ impl ConnectorRuntimeTarget {
             Self::Custom {
                 custom_connector_id,
             } => format!("custom:{custom_connector_id}"),
-        }
-    }
-
-    pub(crate) fn builtin_connector_slug(&self) -> Option<&str> {
-        match self {
-            Self::Builtin { connector_slug } => Some(connector_slug),
-            Self::Custom { .. } => None,
         }
     }
 }
@@ -1659,6 +1637,10 @@ pub struct CompleteRequest {
     /// that the caller could not determine it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_reuse_result: Option<SandboxReuseResult>,
+    /// Final outcome of the workspace-reuse decision. `None` means the run
+    /// failed before the runner reached a reliable final decision.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_reuse_result: Option<WorkspaceReuseResult>,
 }
 
 /// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
@@ -1686,6 +1668,41 @@ impl SandboxReuseResult {
             Self::ProfileMismatch => "profileMismatch",
             Self::DeviceLimitMismatch => "deviceLimitMismatch",
             Self::UnparkFailed => "unparkFailed",
+        }
+    }
+}
+
+/// Final outcome of workspace reuse after sandbox preparation has settled.
+/// Wire name: `workspaceReuseResult`.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkspaceReuseResult {
+    Reused,
+    SandboxReused,
+    CacheMiss,
+    NoReuseKey,
+    InvalidWorkingDir,
+    LockBusy,
+    InvalidMetadata,
+    DiskPressure,
+    NotConfigured,
+    SandboxPrepareFallback,
+}
+
+impl WorkspaceReuseResult {
+    /// Wire-format string, kept lockstep with the serde derive in tests.
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Reused => "reused",
+            Self::SandboxReused => "sandboxReused",
+            Self::CacheMiss => "cacheMiss",
+            Self::NoReuseKey => "noReuseKey",
+            Self::InvalidWorkingDir => "invalidWorkingDir",
+            Self::LockBusy => "lockBusy",
+            Self::InvalidMetadata => "invalidMetadata",
+            Self::DiskPressure => "diskPressure",
+            Self::NotConfigured => "notConfigured",
+            Self::SandboxPrepareFallback => "sandboxPrepareFallback",
         }
     }
 }
@@ -1820,6 +1837,7 @@ mod tests {
                 "model": "deepseek-v4-flash",
                 "apiKeyEnv": "OPENAI_API_KEY"
             },
+            "connectorRuntimeTargets": [],
             "runSkillSnapshot": {
                 "schemaVersion": 1,
                 "policyVersion": 1,
@@ -1861,6 +1879,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": [],
             "firewalls": [{
                 "name": "github",
                 "apis": [{
@@ -1885,6 +1904,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": [],
             "firewalls": [{
                 "kind": "unknown",
                 "name": "github",
@@ -2100,6 +2120,7 @@ mod tests {
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert!(json.get("runId").is_some());
@@ -2108,6 +2129,7 @@ mod tests {
         assert!(json.get("error").is_none());
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
+        assert!(json.get("workspaceReuseResult").is_none());
     }
 
     #[test]
@@ -2120,11 +2142,13 @@ mod tests {
             error: Some("timeout".into()),
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
+        assert!(json.get("workspaceReuseResult").is_none());
     }
 
     #[test]
@@ -2138,10 +2162,12 @@ mod tests {
             error: None,
             sandbox_id: Some(sid),
             sandbox_reuse_result: Some(SandboxReuseResult::Reused),
+            workspace_reuse_result: Some(WorkspaceReuseResult::SandboxReused),
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["sandboxId"], "11111111-2222-3333-4444-555555555555");
         assert_eq!(json["sandboxReuseResult"], "reused");
+        assert_eq!(json["workspaceReuseResult"], "sandboxReused");
     }
 
     #[test]
@@ -2185,6 +2211,23 @@ mod tests {
                 serde_json::Value::String(variant.as_wire().to_string()),
             );
         }
+        for variant in [
+            WorkspaceReuseResult::Reused,
+            WorkspaceReuseResult::SandboxReused,
+            WorkspaceReuseResult::CacheMiss,
+            WorkspaceReuseResult::NoReuseKey,
+            WorkspaceReuseResult::InvalidWorkingDir,
+            WorkspaceReuseResult::LockBusy,
+            WorkspaceReuseResult::InvalidMetadata,
+            WorkspaceReuseResult::DiskPressure,
+            WorkspaceReuseResult::NotConfigured,
+            WorkspaceReuseResult::SandboxPrepareFallback,
+        ] {
+            assert_eq!(
+                serde_json::to_value(variant).unwrap(),
+                serde_json::Value::String(variant.as_wire().to_string()),
+            );
+        }
     }
 
     #[test]
@@ -2194,7 +2237,8 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude_code",
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert!(ctx.cli_agent_session_id().is_none());
@@ -2211,7 +2255,8 @@ mod tests {
                 "sessionId": "sess-abc-123",
                 "sessionHistory": "{}"
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-abc-123"));
@@ -2243,7 +2288,8 @@ mod tests {
                     "encodedSize": 42
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2275,7 +2321,8 @@ mod tests {
                     "downloadSource": "configured_public_endpoint"
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2311,7 +2358,8 @@ mod tests {
                     "downloadSource": "future_edge_cache"
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2341,7 +2389,8 @@ mod tests {
                     "encodedSize": 18
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2363,7 +2412,8 @@ mod tests {
             "sandboxToken": "tok",
             "storageManifest": storage_manifest,
             "cliAgentType": "claude_code",
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         })
     }
 

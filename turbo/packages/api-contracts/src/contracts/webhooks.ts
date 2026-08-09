@@ -382,6 +382,64 @@ export const sandboxReuseResultSchema = z.enum([
 
 export type SandboxReuseResult = z.infer<typeof sandboxReuseResultSchema>;
 
+/** Final workspace reuse outcome after sandbox preparation has settled. */
+export const workspaceReuseResultSchema = z.enum([
+  "reused",
+  "sandboxReused",
+  "cacheMiss",
+  "noReuseKey",
+  "invalidWorkingDir",
+  "lockBusy",
+  "invalidMetadata",
+  "diskPressure",
+  "notConfigured",
+  "sandboxPrepareFallback",
+]);
+
+export type WorkspaceReuseResult = z.infer<typeof workspaceReuseResultSchema>;
+
+const currentSandboxReuseMissSchema = z.enum([
+  "noReuseKey",
+  "poolMiss",
+  "profileMismatch",
+  "deviceLimitMismatch",
+  "unparkFailed",
+]);
+
+const webhookCompleteBodySchema = z
+  .object({
+    runId: z.string().min(1, "runId is required"),
+    exitCode: z.number(),
+    error: z.string().optional(),
+    lastEventSequence: eventSequenceNumberSchema.optional(),
+    // Sandbox id the run executed against. Optional because a run that fails
+    // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
+    // the 255-char cap matches the DB column (defense in depth).
+    sandboxId: z.string().max(255).optional(),
+    sandboxReuseResult: sandboxReuseResultSchema.optional(),
+    workspaceReuseResult: workspaceReuseResultSchema.optional(),
+  })
+  .superRefine((body, context) => {
+    const workspaceResult = body.workspaceReuseResult;
+    if (workspaceResult === undefined) {
+      return;
+    }
+    const sandboxResult = body.sandboxReuseResult;
+    const coherentSandboxReuse =
+      sandboxResult === "reused" && workspaceResult === "sandboxReused";
+    const coherentSandboxMiss =
+      sandboxResult !== undefined &&
+      currentSandboxReuseMissSchema.safeParse(sandboxResult).success &&
+      workspaceResult !== "sandboxReused";
+    if (!coherentSandboxReuse && !coherentSandboxMiss) {
+      context.addIssue({
+        code: "custom",
+        path: ["workspaceReuseResult"],
+        message: "workspace reuse result does not match sandbox reuse result",
+      });
+    }
+  });
+
 /**
  * Agent event schema for webhook events
  * Note: Claude Code JSONL events have varying structures with different fields
@@ -456,7 +514,7 @@ const matchedFirewallAuthContextSchema = z
     apiId: z.string().min(1),
     connectorSlug: connectorSlugSchema.optional(),
     customConnectorId: z.uuid().optional(),
-    routingVariables: z.record(z.string(), z.string()).optional(),
+    routingVariables: z.record(z.string(), z.string()),
   })
   .refine(
     (context) => {
@@ -493,8 +551,8 @@ export const webhookFirewallAuthContract = c.router({
       // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
-      // Stable matched-firewall identity plus run-pinned routing inputs.
-      // Older addons omit builtin context and routingVariables.
+      // Stable matched-firewall identity plus exact routing inputs.
+      // Inline and model-provider firewalls do not identify a connector.
       matchedFirewall: matchedFirewallAuthContextSchema.optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.
@@ -602,21 +660,7 @@ export const webhookCompleteContract = c.router({
     method: "POST",
     path: "/api/webhooks/agent/complete",
     headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().min(1, "runId is required"),
-      exitCode: z.number(),
-      error: z.string().optional(),
-      lastEventSequence: eventSequenceNumberSchema.optional(),
-      // Sandbox id the run executed against. Optional because a run that fails
-      // before VM creation has no sandbox. Persisted to agent_runs.sandbox_id;
-      // the 255-char cap matches the DB column (defense in depth).
-      sandboxId: z.string().max(255).optional(),
-      // Sandbox reuse outcome. One enum value covers both "reused" and the
-      // non-reuse reasons, because (reused, reason) is a partial function —
-      // encoding it as one field makes inconsistent states unrepresentable.
-      // Optional/nullable for old runners and historical rows.
-      sandboxReuseResult: sandboxReuseResultSchema.optional(),
-    }),
+    body: webhookCompleteBodySchema,
     responses: {
       200: z.object({
         success: z.boolean(),

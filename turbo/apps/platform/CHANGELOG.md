@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.714.1](https://github.com/vm0-ai/vm0/compare/app-v0.714.0...app-v0.714.1) (2026-08-09)
+
+
+### Refactoring
+
+* **connectors:** remove legacy runtime compatibility ([#25941](https://github.com/vm0-ai/vm0/issues/25941)) ([e2cd0fe](https://github.com/vm0-ai/vm0/commit/e2cd0fe886dd0c903ba7322fabd93dca38d80ba0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.1
+    * @vm0/core bumped to 8.534.1
+
+## [0.714.0](https://github.com/vm0-ai/vm0/compare/app-v0.713.1...app-v0.714.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+* **platform:** show concurrency usage by member ([#25938](https://github.com/vm0-ai/vm0/issues/25938)) ([d78f3cc](https://github.com/vm0-ai/vm0/commit/d78f3cce54aaf0623c28a9249944bee476f93ac9))
+
+
+### Bug Fixes
+
+* **browser:** handle missing thread browser actions ([#25936](https://github.com/vm0-ai/vm0/issues/25936)) ([cb41699](https://github.com/vm0-ai/vm0/commit/cb41699af17a854d4df6319e8d35313a9d833fc1))
+
+
+### Performance Improvements
+
+* **platform:** avoid agent reload when opening picker ([#25939](https://github.com/vm0-ai/vm0/issues/25939)) ([07a502e](https://github.com/vm0-ai/vm0/commit/07a502e0915f1b9db2e0a8fe94f0ce9eae5d89b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.0
+    * @vm0/core bumped to 8.534.0
+
 ## [0.713.1](https://github.com/vm0-ai/vm0/compare/app-v0.713.0...app-v0.713.1) (2026-08-09)
 
 

@@ -18,7 +18,7 @@ Lifecycle:
 """
 
 from collections.abc import Callable
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from mitmproxy import http
 from wsproto.utilities import generate_accept_token
@@ -28,6 +28,7 @@ import body_decoding
 import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import runtime_url_parsing
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
@@ -49,8 +50,16 @@ _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _HTTP_OWS_CHARS = " \t"
 
 _ANTHROPIC_MESSAGES_SSE_PROTOCOL = "anthropic_messages_sse"
+_OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL = "openai_chat_completions_sse"
+_OPENAI_RESPONSES_SSE_PROTOCOL = "openai_responses_sse"
 _ANTHROPIC_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 _ANTHROPIC_MESSAGE_STOP_EVENT = "message_stop"
+
+ModelUsageProtocol = Literal[
+    "anthropic_messages",
+    "openai_chat_completions",
+    "openai_responses",
+]
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
@@ -81,14 +90,15 @@ class _ResponseUsageStreamSetup(NamedTuple):
     needs_buffered_fallback: bool
 
 
-def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
-    """Return whether a flow should use OpenAI Responses usage parsing.
-
-    Read-only predicate used from parser setup and response fallback extraction.
-    Codex flows use the OpenAI Responses
-    usage protocol, while other model-provider flows use the Anthropic protocol.
-    """
-    return flow_metadata.cli_agent_type(flow.metadata) == "codex"
+def model_usage_protocol(flow: http.HTTPFlow) -> ModelUsageProtocol:
+    """Classify model usage from the observed request and CLI fallback."""
+    request_target = flow_metadata.original_url(flow.metadata) or flow.request.path
+    request_path = runtime_url_parsing.strip_url_query_and_fragment(request_target).rstrip("/")
+    if request_path.endswith("/chat/completions"):
+        return "openai_chat_completions"
+    if flow_metadata.cli_agent_type(flow.metadata) == "codex":
+        return "openai_responses"
+    return "anthropic_messages"
 
 
 def _response_has_event_stream_media_type(response: http.Response) -> bool:
@@ -226,9 +236,10 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     # extraction. Model-provider usage reporting is gated separately.
     is_billable_flow = flow_metadata.is_firewall_billable(flow.metadata)
     is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
+    model_protocol = model_usage_protocol(flow) if is_observable_model_provider else None
     if (
         is_observable_model_provider
-        and uses_openai_responses_usage_protocol(flow)
+        and model_protocol == "openai_responses"
         and _is_confirmed_websocket_upgrade_response(flow)
     ):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
@@ -242,8 +253,8 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
             anthropic_accounting_events: set[str] = set()
             openai_recoverable_usage: dict = {}
-            if uses_openai_responses_usage_protocol(flow):
-                usage_protocol = "openai_responses_sse"
+            if model_protocol == "openai_responses":
+                usage_protocol = _OPENAI_RESPONSES_SSE_PROTOCOL
                 log_parse_error = _make_model_sse_parse_error_logger(
                     flow,
                     usage_protocol=usage_protocol,
@@ -258,6 +269,15 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                 parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor(
                     on_parse_error=log_parse_error,
                     on_terminal_usage=record_openai_terminal_usage,
+                )
+            elif model_protocol == "openai_chat_completions":
+                usage_protocol = _OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL
+                log_parse_error = _make_model_sse_parse_error_logger(
+                    flow,
+                    usage_protocol=usage_protocol,
+                )
+                parser_fn, usage_dict = usage.create_openai_chat_completions_sse_usage_extractor(
+                    on_parse_error=log_parse_error,
                 )
             else:
                 usage_protocol = _ANTHROPIC_MESSAGES_SSE_PROTOCOL
@@ -294,7 +314,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                             accounting_status,
                         )
                     elif (
-                        usage_protocol == "openai_responses_sse"
+                        usage_protocol == _OPENAI_RESPONSES_SSE_PROTOCOL
                         and decode_error == body_decoding.INCOMPLETE_COMPRESSED_BODY
                     ):
                         usage_dict.clear()
@@ -312,8 +332,10 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_usage
             return _ResponseUsageStreamSetup(decode_session.feed, False)
 
-        if uses_openai_responses_usage_protocol(flow):
+        if model_protocol == "openai_responses":
             extractor = usage.create_openai_responses_json_usage_extractor()
+        elif model_protocol == "openai_chat_completions":
+            extractor = usage.create_openai_chat_completions_json_usage_extractor()
         else:
             extractor = usage.create_anthropic_messages_json_usage_extractor()
         decode_session = _make_response_decode_session(

@@ -10,8 +10,7 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
-        CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
-        NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
 };
@@ -29,7 +28,7 @@ use super::api_direct_candidates::{
 use super::builtin_firewall_catalog::{
     BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshController,
 };
-use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use super::connector_runtime_sync::ConnectorRuntimeSyncHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
     RunnerPreference, RunnerPreferenceClaimState, parse_runner_preference,
@@ -41,14 +40,12 @@ use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
-#[cfg(test)]
-use crate::types::PiExecutionMode;
 use crate::types::{
     CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
-    ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PollResponse,
-    SandboxReuseResult,
+    ExecutionContext, HeartbeatState, Job, PollResponse,
 };
-use sandbox::SandboxId;
+#[cfg(test)]
+use crate::types::{PiExecutionMode, SandboxReuseResult, WorkspaceReuseResult};
 
 fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
     reuse_key.is_some_and(|key| key.starts_with("thread:"))
@@ -107,15 +104,9 @@ struct PollRequestBody<'a> {
     telemetry: PollRequestTelemetry,
 }
 
-pub(super) enum NetworkPolicyRefreshOutcome {
-    Refreshed(NetworkPolicyRefreshBatchResponse),
-    RunTerminal,
-}
-
 pub(super) enum ConnectorRuntimeSyncOutcome {
     Synced(ConnectorRuntimeSyncBatchResponse),
     RunTerminal,
-    RouteUnavailable,
 }
 
 #[derive(Deserialize)]
@@ -201,7 +192,7 @@ const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
 const CLAIM_COOLDOWN_CAPACITY: usize = RUNNER_POLL_EXCLUDED_RUN_IDS_MAX as usize;
 const CLAIM_TRANSIENT_COOLDOWN: Duration = POLL_FAST;
 const CLAIM_DETERMINISTIC_COOLDOWN: Duration = POLL_SLOW;
-const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
+const CONNECTOR_RUNTIME_SYNC_TIMEOUT: Duration = Duration::from_secs(3);
 const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum DiscoveryWakeup {
@@ -258,7 +249,7 @@ pub struct ApiProvider {
     /// Background Ably control-plane task.
     ably_supervisor: Mutex<Option<AblySupervisor>>,
     cancel_tokens: RunCancellationRegistry,
-    network_policy_refresh: NetworkPolicyRefreshHandle,
+    connector_runtime_sync: ConnectorRuntimeSyncHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
     pi_standby_notifications: PiStandbyNotifications,
@@ -295,7 +286,7 @@ impl ApiProvider {
             supported_profiles,
         } = config;
         let api = ApiClient::new(http, token);
-        let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
+        let connector_runtime_sync = ConnectorRuntimeSyncHandle::new(api.clone());
         let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshController::new(
             api.clone(),
             builtin_firewall_catalog_cache_paths.cache_path,
@@ -321,7 +312,7 @@ impl ApiProvider {
             claim_cooldowns: ClaimCooldowns::new(CLAIM_COOLDOWN_CAPACITY),
             ably_supervisor: Mutex::new(None),
             cancel_tokens,
-            network_policy_refresh,
+            connector_runtime_sync,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
             pi_standby_notifications,
@@ -329,8 +320,8 @@ impl ApiProvider {
         })
     }
 
-    pub(crate) fn network_policy_refresh_handle(&self) -> NetworkPolicyRefreshHandle {
-        self.network_policy_refresh.clone()
+    pub(crate) fn connector_runtime_sync_handle(&self) -> ConnectorRuntimeSyncHandle {
+        self.connector_runtime_sync.clone()
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
@@ -483,7 +474,7 @@ impl ApiProvider {
             poll_wakeups: Arc::clone(&self.poll_wakeups),
             direct_candidates: Arc::clone(&self.direct_candidates),
             cancel_tokens: self.cancel_tokens.clone(),
-            network_policy_refresh: self.network_policy_refresh.clone(),
+            connector_runtime_sync: self.connector_runtime_sync.clone(),
             active_input_notifications: self.active_input_notifications.clone(),
             pi_standby_notifications: self.pi_standby_notifications.clone(),
             provider_cancel: self.cancel.clone(),
@@ -762,19 +753,12 @@ impl JobProvider for ApiProvider {
         if let Some(ably_supervisor) = ably_supervisor {
             ably_supervisor.shutdown().await;
         }
-        self.network_policy_refresh.shutdown().await;
+        self.connector_runtime_sync.shutdown().await;
         self.builtin_firewall_catalog_refresh.shutdown().await;
     }
 
-    async fn complete(
-        &self,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-        completion_auth: CompletionAuth,
-    ) {
+    async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth) {
+        let run_id = request.run_id;
         let token = match completion_auth.into_sandbox_token(run_id) {
             Ok(token) => token,
             Err(CompletionAuthError::NotSandbox) => {
@@ -795,11 +779,7 @@ impl JobProvider for ApiProvider {
         const RETRY_DELAY: Duration = Duration::from_secs(2);
 
         for attempt in 1..=MAX_ATTEMPTS {
-            match self
-                .api
-                .complete(&token, run_id, exit_code, error, sandbox_id, reuse_result)
-                .await
-            {
+            match self.api.complete(&token, &request).await {
                 Ok(()) => return,
                 Err(e) => {
                     let (retryable, status, failure_kind) = match &e {
@@ -1149,27 +1129,11 @@ impl ApiClient {
             .await
     }
     /// Report job completion. Uses the per-job **sandbox token** for auth.
-    async fn complete(
-        &self,
-        sandbox_token: &str,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-    ) -> RunnerResult<()> {
-        let body = CompleteRequest {
-            run_id,
-            exit_code,
-            error: error.map(String::from),
-            sandbox_id,
-            sandbox_reuse_result: reuse_result,
-        };
-
+    async fn complete(&self, sandbox_token: &str, request: &CompleteRequest) -> RunnerResult<()> {
         let resp = send_api(
             self.http
                 .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
-                .json(&body),
+                .json(request),
             "complete",
         )
         .await?;
@@ -1196,50 +1160,6 @@ impl ApiClient {
         decode_api_json(resp, "realtime token").await
     }
 
-    pub(super) async fn refresh_network_policies(
-        &self,
-        run_id: RunId,
-        connector_slugs: &[String],
-    ) -> RunnerResult<NetworkPolicyRefreshOutcome> {
-        let run_id = run_id.to_string();
-        let resp = send_api(
-            self.network_policy_refresh_request(&run_id, connector_slugs),
-            "network policy refresh",
-        )
-        .await?;
-
-        if resp.status() == StatusCode::CONFLICT {
-            let (status, body) = read_api_error(resp).await;
-            if serde_json::from_str::<ApiErrorEnvelope>(&body).is_ok_and(|response| {
-                response.error.code == NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE
-            }) {
-                return Ok(NetworkPolicyRefreshOutcome::RunTerminal);
-            }
-            return Err(api_status_error("network policy refresh", status, &body));
-        }
-
-        let resp = check_api_status(resp, "network policy refresh").await?;
-        decode_api_json(resp, "network policy refresh")
-            .await
-            .map(NetworkPolicyRefreshOutcome::Refreshed)
-    }
-
-    fn network_policy_refresh_request(
-        &self,
-        run_id: &str,
-        connector_slugs: &[String],
-    ) -> ApiRequestBuilder {
-        self.http
-            .request_resolved_route(
-                routes::runners::runs::by_run_id::network_policy_refresh::route(
-                    routes::runners::runs::by_run_id::network_policy_refresh::Params { run_id },
-                ),
-                &self.token,
-            )
-            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
-            .json(&serde_json::json!({ "connectorSlugs": connector_slugs }))
-    }
-
     pub(super) async fn sync_connector_runtime(
         &self,
         run_id: RunId,
@@ -1252,9 +1172,6 @@ impl ApiClient {
         )
         .await?;
 
-        if resp.status() == StatusCode::NOT_FOUND {
-            return Ok(ConnectorRuntimeSyncOutcome::RouteUnavailable);
-        }
         if resp.status() == StatusCode::CONFLICT {
             let (status, body) = read_api_error(resp).await;
             if serde_json::from_str::<ApiErrorEnvelope>(&body).is_ok_and(|response| {
@@ -1283,7 +1200,7 @@ impl ApiClient {
                 ),
                 &self.token,
             )
-            .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
+            .timeout(CONNECTOR_RUNTIME_SYNC_TIMEOUT)
             .json(&serde_json::json!({ "targets": targets }))
     }
 
@@ -1732,6 +1649,7 @@ mod tests {
             "sandboxToken": "pi-sandbox-token",
             "cliAgentType": "codex",
             "billableFirewalls": [],
+            "connectorRuntimeTargets": [],
             "piSystemPrompt": "fixed Pi system prompt",
             "piModelConfig": {
                 "provider": "deepseek",
@@ -1778,33 +1696,6 @@ mod tests {
             .unwrap(),
             "runner-token".to_string(),
         )
-    }
-
-    #[test]
-    fn network_policy_refresh_request_uses_short_timeout() {
-        let server = MockServer::start();
-        let api = api_client_for_server(&server);
-
-        let request = api
-            .network_policy_refresh_request(
-                "00000000-0000-0000-0000-000000000001",
-                &["slack".to_string()],
-            )
-            .build()
-            .expect("network policy refresh request should build");
-
-        assert_eq!(request.timeout(), Some(&NETWORK_POLICY_REFRESH_TIMEOUT));
-        assert_eq!(
-            request.url().path(),
-            "/api/runners/runs/00000000-0000-0000-0000-000000000001/network-policy-refresh"
-        );
-        assert_eq!(
-            request
-                .body()
-                .and_then(reqwest::Body::as_bytes)
-                .expect("request should include JSON body"),
-            br#"{"connectorSlugs":["slack"]}"#
-        );
     }
 
     #[test]
@@ -1987,7 +1878,7 @@ mod tests {
             "runner-token".to_string(),
         );
         Arc::new(ApiProvider {
-            network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
+            connector_runtime_sync: ConnectorRuntimeSyncHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
@@ -2179,6 +2070,17 @@ mod tests {
                 .any(|line| line.eq_ignore_ascii_case(&expected)),
             "completion request should use sandbox auth; request was:\n{request}",
         );
+    }
+
+    fn complete_request(run_id: RunId) -> CompleteRequest {
+        CompleteRequest {
+            run_id,
+            exit_code: 0,
+            error: None,
+            sandbox_id: None,
+            sandbox_reuse_result: None,
+            workspace_reuse_result: None,
+        }
     }
 
     #[tokio::test]
@@ -3646,7 +3548,8 @@ mod tests {
                         "kind": "secret-kind-value",
                         "name": "github"
                     }],
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3695,7 +3598,8 @@ mod tests {
                         "kind": "missing field `secret-kind-value`",
                         "name": "github"
                     }],
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3744,7 +3648,8 @@ mod tests {
                         "name": "github",
                         "apis": []
                     }],
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3803,7 +3708,8 @@ mod tests {
                             "encodedSize": 42
                         }
                     },
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3851,7 +3757,8 @@ mod tests {
                     "environment": {
                         "OPENAI_API_KEY": 123
                     },
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -3934,7 +3841,17 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .complete("sandbox-token", RunId::nil(), 1, Some("boom"), None, None)
+            .complete(
+                "sandbox-token",
+                &CompleteRequest {
+                    run_id: RunId::nil(),
+                    exit_code: 1,
+                    error: Some("boom".to_string()),
+                    sandbox_id: None,
+                    sandbox_reuse_result: None,
+                    workspace_reuse_result: None,
+                },
+            )
             .await
             .unwrap_err();
 
@@ -3960,6 +3877,7 @@ mod tests {
                         "runId": run_id,
                         "exitCode": 0,
                         "sandboxReuseResult": "noReuseKey",
+                        "workspaceReuseResult": "noReuseKey",
                     }));
                 then.status(200);
             })
@@ -3968,11 +3886,14 @@ mod tests {
 
         api.complete(
             "sandbox-token",
-            run_id,
-            0,
-            None,
-            None,
-            Some(SandboxReuseResult::NoReuseKey),
+            &CompleteRequest {
+                run_id,
+                exit_code: 0,
+                error: None,
+                sandbox_id: None,
+                sandbox_reuse_result: Some(SandboxReuseResult::NoReuseKey),
+                workspace_reuse_result: Some(WorkspaceReuseResult::NoReuseKey),
+            },
         )
         .await
         .unwrap();
@@ -4117,7 +4038,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_provider_claim_accepts_previous_minimal_response() {
+    async fn api_provider_claim_accepts_current_minimal_response() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
         let claim_path = format!("/api/runners/jobs/{run_id}/claim");
@@ -4136,9 +4057,10 @@ mod tests {
                     );
                 then.status(200).json_body(serde_json::json!({
                     "runId": run_id,
-                    "prompt": "previous response",
-                    "sandboxToken": "previous-sandbox-token",
-                    "cliAgentType": "claude_code"
+                    "prompt": "minimal response",
+                    "sandboxToken": "minimal-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -4154,10 +4076,10 @@ mod tests {
                 crate::profile::DEFAULT_PROFILE.to_string(),
             ))
             .await
-            .expect("previous minimal claim response should remain compatible");
+            .expect("current minimal claim response should decode");
         let context = claimed.context();
 
-        assert_eq!(context.prompt, "previous response");
+        assert_eq!(context.prompt, "minimal response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
         claim_mock.assert_calls_async(1).await;
@@ -4176,6 +4098,7 @@ mod tests {
                     "prompt": "response with additive field",
                     "sandboxToken": "additive-sandbox-token",
                     "cliAgentType": "claude_code",
+                    "connectorRuntimeTargets": [],
                     "futureClaimMetadata": {"version": 2}
                 }));
             })
@@ -4211,6 +4134,7 @@ mod tests {
                     "prompt": "attempt local secret trust",
                     "sandboxToken": "local-secret-sandbox-token",
                     "cliAgentType": "claude_code",
+                    "connectorRuntimeTargets": [],
                     "localSecretEnvKeys": ["ANTHROPIC_API_KEY"]
                 }));
             })
@@ -4247,7 +4171,8 @@ mod tests {
                     "prompt": "hello",
                     "sandboxToken": "claim-sandbox-token",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -4284,7 +4209,8 @@ mod tests {
                     "prompt": "hello",
                     "sandboxToken": "claim-sandbox-token",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -4316,7 +4242,7 @@ mod tests {
         assert!(active_input_source.is_none());
 
         provider
-            .complete(run_id, 0, None, None, None, completion_auth)
+            .complete(complete_request(run_id), completion_auth)
             .await;
 
         claim_mock.assert_calls_async(1).await;
@@ -4484,7 +4410,8 @@ mod tests {
                     "prompt": "first",
                     "sandboxToken": "sandbox-token-a",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -4496,7 +4423,8 @@ mod tests {
                     "prompt": "second",
                     "sandboxToken": "sandbox-token-b",
                     "cliAgentType": "claude_code",
-                    "billableFirewalls": []
+                    "billableFirewalls": [],
+                    "connectorRuntimeTargets": []
                 }));
             })
             .await;
@@ -4550,10 +4478,10 @@ mod tests {
         assert!(active_input_source_b.is_none());
 
         provider
-            .complete(context_b.run_id, 0, None, None, None, completion_auth_b)
+            .complete(complete_request(context_b.run_id), completion_auth_b)
             .await;
         provider
-            .complete(context_a.run_id, 0, None, None, None, completion_auth_a)
+            .complete(complete_request(context_a.run_id), completion_auth_a)
             .await;
 
         claim_mock_a.assert_calls_async(1).await;
@@ -4582,11 +4510,7 @@ mod tests {
 
         provider
             .complete(
-                run_id,
-                0,
-                None,
-                None,
-                None,
+                complete_request(run_id),
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .await;
@@ -4611,7 +4535,7 @@ mod tests {
         );
 
         provider
-            .complete(RunId::nil(), 0, None, None, None, CompletionAuth::local())
+            .complete(complete_request(RunId::nil()), CompletionAuth::local())
             .await;
 
         mock.assert_calls_async(0).await;
@@ -4635,11 +4559,7 @@ mod tests {
 
         provider
             .complete(
-                RunId::nil(),
-                0,
-                None,
-                None,
-                None,
+                complete_request(RunId::nil()),
                 CompletionAuth::sandbox_token(RunId::new_v4(), "sandbox-token".to_string()),
             )
             .await;
@@ -4661,11 +4581,7 @@ mod tests {
             capture_api_provider_events(async move {
                 provider
                     .complete(
-                        run_id,
-                        0,
-                        None,
-                        None,
-                        None,
+                        complete_request(run_id),
                         CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                     )
                     .await;
@@ -4720,11 +4636,7 @@ mod tests {
             let complete_task = tokio::spawn(async move {
                 provider
                     .complete(
-                        run_id,
-                        0,
-                        None,
-                        None,
-                        None,
+                        complete_request(run_id),
                         CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                     )
                     .await;
@@ -4771,11 +4683,7 @@ mod tests {
         let complete_task = tokio::spawn(async move {
             provider
                 .complete(
-                    run_id,
-                    0,
-                    None,
-                    None,
-                    None,
+                    complete_request(run_id),
                     CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
                 )
                 .await;
@@ -4808,11 +4716,7 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
         let ((), events) = capture_api_provider_events(provider.complete(
-            run_id,
-            0,
-            None,
-            None,
-            None,
+            complete_request(run_id),
             CompletionAuth::sandbox_token(run_id, "invalid\nheader".to_string()),
         ))
         .await;
@@ -4840,11 +4744,11 @@ mod tests {
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         let completion = provider
             .complete(
-                run_id,
-                1,
-                Some("boom"),
-                None,
-                None,
+                CompleteRequest {
+                    exit_code: 1,
+                    error: Some("boom".to_string()),
+                    ..complete_request(run_id)
+                },
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .with_subscriber(subscriber);

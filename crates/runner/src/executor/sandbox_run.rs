@@ -1,6 +1,5 @@
 //! Sandbox preparation, reuse, and post-run cleanup glue.
 
-use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
@@ -41,13 +40,13 @@ use crate::dns::{DnsReadinessLogObservation, inspect_readiness_log_segment};
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
-use crate::provider::NetworkPolicyRefreshRegistration;
+use crate::provider::ConnectorRuntimeSyncRegistration;
 use crate::proxy;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_cache::PreparedFreshStorage;
 use crate::storage_plan::build_storage_plan;
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, FirewallEntry};
+use crate::types::{ExecutionContext, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
@@ -490,6 +489,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     )
     .await;
     let mut used_retry = false;
+    let mut used_workspace_fallback = false;
     let mut dns_replacement: Option<DnsReadinessReplacement> = None;
     let prepared = loop {
         let result = create_started_sandbox(
@@ -606,6 +606,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         }
 
         if cache_hit {
+            used_workspace_fallback = true;
             controls.session_history_restore_plan =
                 replace_local_sidecar_restore_plan_for_workspace_retry(
                     std::mem::take(&mut controls.session_history_restore_plan),
@@ -660,6 +661,11 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         None,
     );
 
+    let workspace_reuse_result = final_workspace_reuse_result(
+        workspace_image.as_ref().map(WorkspaceImageLease::result),
+        used_workspace_fallback,
+    );
+
     let mut outcome = execute_prepared_sandbox_run(
         prepared,
         context,
@@ -667,6 +673,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         RunStart {
             restore_guest_state: params.restore_guest_state,
             reuse_result,
+            workspace_reuse_result,
             prev_storage: workspace_image
                 .as_ref()
                 .and_then(WorkspaceImageLease::previous_storage),
@@ -948,6 +955,29 @@ fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option
             Some(WORKSPACE_IMAGE_PREPARE_INVALID_METADATA)
         }
         WorkspaceCacheCheckoutResult::DiskPressure => Some(WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE),
+    }
+}
+
+fn final_workspace_reuse_result(
+    checkout_result: Option<WorkspaceCacheCheckoutResult>,
+    used_workspace_fallback: bool,
+) -> WorkspaceReuseResult {
+    if used_workspace_fallback {
+        return WorkspaceReuseResult::SandboxPrepareFallback;
+    }
+    match checkout_result {
+        Some(WorkspaceCacheCheckoutResult::Hit) => WorkspaceReuseResult::Reused,
+        Some(WorkspaceCacheCheckoutResult::Miss) => WorkspaceReuseResult::CacheMiss,
+        Some(WorkspaceCacheCheckoutResult::NoReuseKey) => WorkspaceReuseResult::NoReuseKey,
+        Some(WorkspaceCacheCheckoutResult::InvalidWorkingDir) => {
+            WorkspaceReuseResult::InvalidWorkingDir
+        }
+        Some(WorkspaceCacheCheckoutResult::LockBusy) => WorkspaceReuseResult::LockBusy,
+        Some(WorkspaceCacheCheckoutResult::InvalidMetadata) => {
+            WorkspaceReuseResult::InvalidMetadata
+        }
+        Some(WorkspaceCacheCheckoutResult::DiskPressure) => WorkspaceReuseResult::DiskPressure,
+        None => WorkspaceReuseResult::NotConfigured,
     }
 }
 
@@ -1295,6 +1325,7 @@ pub(super) async fn execute_reused_sandbox(
                 source_ip,
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
             };
@@ -1320,6 +1351,7 @@ pub(super) async fn execute_reused_sandbox(
         RunStart {
             restore_guest_state: true,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: WorkspaceReuseResult::SandboxReused,
             prev_storage: Some(prev_storage),
         },
         telemetry,
@@ -1365,6 +1397,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
     } = run;
     let cleanup_cancel = controls.cancel.clone();
     let reuse_result = start.reuse_result;
+    let workspace_reuse_result = start.workspace_reuse_result;
 
     let mut controls = controls;
     controls.prepared_guest_runtime = prepared_guest_runtime;
@@ -1456,6 +1489,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
         source_ip,
         network_log_session: Some(network_log_session),
         workspace_image: None,
+        workspace_reuse_result: Some(workspace_reuse_result),
         discovered_cli_agent_session_id,
         restored_session_identity,
     }
@@ -1509,7 +1543,7 @@ pub(super) async fn register_proxy(
         proxy_log_path: &proxy_log_path,
         firewalls: context.firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
-        connector_runtime_targets: context.connector_runtime_targets.as_deref(),
+        connector_runtime_targets: Some(&context.connector_runtime_targets),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),
@@ -1527,40 +1561,18 @@ pub(super) async fn register_proxy(
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
         .await;
-    if let Some(refresh) = config.network_policy_refresh.as_ref() {
-        let connector_slugs = active_connector_slugs(context);
-        refresh
-            .register_run(NetworkPolicyRefreshRegistration {
+    if let Some(runtime_sync) = config.connector_runtime_sync.as_ref() {
+        runtime_sync
+            .register_run(ConnectorRuntimeSyncRegistration {
                 run_id: context.run_id,
                 source_ip,
                 registry: config.registry.clone(),
-                connector_slugs,
-                targets: context.connector_runtime_targets.as_deref(),
+                targets: &context.connector_runtime_targets,
                 refreshes: context.network_policy_refreshes.as_ref(),
             })
             .await;
     }
     Ok(network_log_session)
-}
-
-fn active_connector_slugs(context: &ExecutionContext) -> HashSet<String> {
-    let Some(network_policies) = context.network_policies.as_ref() else {
-        return HashSet::new();
-    };
-    context
-        .firewalls
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|entry| {
-            let FirewallEntry::Builtin { name, .. } = entry else {
-                return None;
-            };
-            (!name.starts_with("model-provider:") && network_policies.contains_key(name.as_str()))
-                .then_some(name)
-        })
-        .map(|name| name.to_string())
-        .collect()
 }
 
 pub(super) fn log_proxy_register_success(
@@ -1624,8 +1636,8 @@ pub(super) async fn unregister_proxy_registry(
         .unregister_vm(source_ip)
         .await
         .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")));
-    if let Some(refresh) = config.network_policy_refresh.as_ref() {
-        refresh.unregister_run(run_id).await;
+    if let Some(runtime_sync) = config.connector_runtime_sync.as_ref() {
+        runtime_sync.unregister_run(run_id).await;
     }
     result
 }
@@ -1652,69 +1664,4 @@ pub(super) async fn post_job_cleanup(
     )
     .await;
     unregister_proxy_registry(config, source_ip, context.run_id).await
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use super::*;
-    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallPermission, NetworkPolicy};
-
-    fn network_policy() -> NetworkPolicy {
-        NetworkPolicy {
-            allow: Vec::new(),
-            deny: Vec::new(),
-            ask: Vec::new(),
-            unknown_policy: "ask".to_string(),
-        }
-    }
-
-    #[test]
-    fn active_connector_slugs_only_include_builtin_connectors_with_network_policy() {
-        let mut context =
-            crate::test_fixtures::execution_context::execution_context_for_test(RunId::nil());
-        context.firewalls = Some(vec![
-            FirewallEntry::Builtin {
-                name: "github".to_string(),
-                base_url_vars: None,
-            },
-            FirewallEntry::Inline {
-                firewall: Firewall {
-                    name: "custom-crm".to_string(),
-                    apis: vec![FirewallApi {
-                        id: "custom-crm-api".to_string(),
-                        base: "https://crm.example.com".to_string(),
-                        auth: FirewallAuth {
-                            headers: HashMap::new(),
-                            base: None,
-                            query: None,
-                            aws_sigv4: None,
-                        },
-                        host_policy: None,
-                        permissions: Some(vec![FirewallPermission {
-                            name: "records.read".to_string(),
-                            description: None,
-                            rules: vec!["GET /records".to_string()],
-                        }]),
-                    }],
-                },
-                custom_connector_id: None,
-            },
-            FirewallEntry::Builtin {
-                name: "model-provider:openai".to_string(),
-                base_url_vars: None,
-            },
-        ]);
-        context.network_policies = Some(HashMap::from([
-            ("github".to_string(), network_policy()),
-            ("custom-crm".to_string(), network_policy()),
-            ("model-provider:openai".to_string(), network_policy()),
-            ("not-active".to_string(), network_policy()),
-        ]));
-
-        let slugs = active_connector_slugs(&context);
-
-        assert_eq!(slugs, HashSet::from(["github".to_string()]));
-    }
 }

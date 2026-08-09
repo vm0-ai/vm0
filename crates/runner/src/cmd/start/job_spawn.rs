@@ -205,8 +205,8 @@ impl ExecutorInvocation {
                 }
             }
             Err(e) => {
-                if let Some(refresh) = exec_config_for_panic.network_policy_refresh.as_ref() {
-                    refresh.unregister_run(run_id).await;
+                if let Some(runtime_sync) = exec_config_for_panic.connector_runtime_sync.as_ref() {
+                    runtime_sync.unregister_run(run_id).await;
                 }
                 // Panic lost the in-flight telemetry buffer; substitute an
                 // empty collector so the post-complete flush path stays
@@ -225,6 +225,7 @@ impl ExecutorInvocation {
                         source_ip: String::new(),
                         network_log_session: None,
                         workspace_image: None,
+                        workspace_reuse_result: None,
                         discovered_cli_agent_session_id: None,
                         restored_session_identity: None,
                     },
@@ -314,6 +315,7 @@ impl FinalizationPhase {
             source_ip,
             network_log_session,
             workspace_image,
+            workspace_reuse_result,
             discovered_cli_agent_session_id,
             restored_session_identity,
         } = outcome;
@@ -328,7 +330,8 @@ impl FinalizationPhase {
             sandbox_id,
             reuse_result,
             completion_auth,
-        );
+        )
+        .with_workspace_reuse_result(workspace_reuse_result);
         // Cancellation can arrive after terminal logging or while
         // `sandbox.park()` is in flight. Pass the live handle so finalization
         // can synchronize the final idle-pool ownership transfer.
@@ -873,11 +876,7 @@ mod tests {
 
         async fn complete(
             &self,
-            _run_id: RunId,
-            _exit_code: i32,
-            _error: Option<&str>,
-            _sandbox_id: Option<SandboxId>,
-            _reuse_result: Option<SandboxReuseResult>,
+            _request: crate::types::CompleteRequest,
             _completion_auth: CompletionAuth,
         ) {
         }
@@ -1041,6 +1040,7 @@ mod tests {
                 source_ip: "10.0.0.1".into(),
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity,
             },
@@ -1059,6 +1059,7 @@ mod tests {
                 source_ip: String::new(),
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
             },

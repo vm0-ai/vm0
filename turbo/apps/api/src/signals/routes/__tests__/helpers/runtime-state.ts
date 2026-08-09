@@ -348,18 +348,6 @@ export async function readStoragePersistenceState(
   return response.storage_persistence;
 }
 
-export async function replaceCustomConnectorPrefixes(
-  context: TestContext,
-  connectorId: string,
-  prefixes: readonly string[],
-): Promise<void> {
-  await postAction(context, {
-    action: "replace-custom-connector-prefixes",
-    connector_id: connectorId,
-    prefixes: [...prefixes],
-  });
-}
-
 export async function holdOrgAdmissionLock(
   context: TestContext,
   orgId: string,

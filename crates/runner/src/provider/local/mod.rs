@@ -18,12 +18,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
-use crate::ids::RunId;
 use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
 use crate::run_cancellation::RunCancellationRegistry;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState};
 use cancel::{LocalCancelScanner, LocalCancelWatcher};
-use sandbox::SandboxId;
 
 /// Poll interval for discovering new job files and local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -190,7 +188,7 @@ impl JobProvider for LocalProvider {
             firewalls: None,
             network_policies: None,
             network_policy_refreshes: None,
-            connector_runtime_targets: None,
+            connector_runtime_targets: Vec::new(),
             disallowed_tools: None,
             tools: None,
             settings: None,
@@ -231,18 +229,15 @@ impl JobProvider for LocalProvider {
         }
     }
 
-    async fn complete(
-        &self,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        _sandbox_id: Option<SandboxId>,
-        _reuse_result: Option<SandboxReuseResult>,
-        _completion_auth: CompletionAuth,
-    ) {
+    async fn complete(&self, request: CompleteRequest, _completion_auth: CompletionAuth) {
+        let CompleteRequest {
+            run_id,
+            exit_code,
+            error,
+            ..
+        } = request;
         self.cancel_scanner.remove_owned_claim(run_id).await;
         let queue = self.queue.clone();
-        let error = error.map(str::to_owned);
         if let Err(e) =
             tokio::task::spawn_blocking(move || queue.complete_job_sync(run_id, exit_code, error))
                 .await

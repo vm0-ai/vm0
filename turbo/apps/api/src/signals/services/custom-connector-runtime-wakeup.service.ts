@@ -105,7 +105,7 @@ async function publishCustomConnectorRuntimeSyncWakeupsInner(
     const parsed = compatibleStoredExecutionContextSchema.safeParse(
       row.executionContext,
     );
-    if (!parsed.success || parsed.data.connectorRuntimeTargets === undefined) {
+    if (!parsed.success) {
       skippedStoredContextCount += 1;
       continue;
     }

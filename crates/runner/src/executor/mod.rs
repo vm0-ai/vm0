@@ -159,7 +159,7 @@ use crate::network_log_manager::NetworkLogSession;
 use crate::paths::{HomePaths, LogPaths};
 use crate::proxy::{MitmJsonlFlushHandle, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceImageActiveLeaseRequest, WorkspaceImageCache, WorkspaceImageLease,
     WorkspaceImageLeaseIdentity, WorkspaceImagePromotionContext,
@@ -195,7 +195,7 @@ pub struct ExecutorConfig {
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
-    pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
+    pub(crate) connector_runtime_sync: Option<crate::provider::ConnectorRuntimeSyncHandle>,
     pub(crate) session_history_cpu: SessionHistoryCpuPool,
     pub(crate) session_history_probe: SessionHistoryProbe,
     pub(crate) fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission,
@@ -359,6 +359,8 @@ pub struct ExecuteOutcome {
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,
     pub workspace_image: Option<WorkspaceImageLease>,
+    /// Final workspace-reuse outcome, when execution reached `RunStart`.
+    pub workspace_reuse_result: Option<WorkspaceReuseResult>,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for late session tracking and finalization when `resume_session`
     /// is absent.
@@ -380,6 +382,7 @@ impl ExecuteOutcome {
             source_ip,
             network_log_session: None,
             workspace_image,
+            workspace_reuse_result: None,
             discovered_cli_agent_session_id: None,
             restored_session_identity: None,
         }
@@ -617,6 +620,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             source_ip: String::new(),
             network_log_session: None,
             workspace_image: None,
+            workspace_reuse_result: None,
             discovered_cli_agent_session_id: None,
             restored_session_identity: None,
         }
@@ -646,6 +650,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                 source_ip: String::new(),
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
             },

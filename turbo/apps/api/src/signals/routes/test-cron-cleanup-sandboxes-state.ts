@@ -13,7 +13,6 @@ import {
 import { artifacts } from "@vm0/db/schema/artifact";
 import { browserSessions } from "@vm0/db/schema/browser-session";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
-import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -627,31 +626,6 @@ async function seedRunnerJobForAction(
   return actionOk();
 }
 
-async function seedCustomConnectorAuthRefForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const runId = readString(body, "run_id");
-  const secretName = readString(body, "secret_name");
-  const expiresAt = readDate(body, "expires_at");
-  if (!runId || !secretName || !expiresAt) {
-    return actionBadRequest("run_id, secret_name, and expires_at are required");
-  }
-
-  await db.insert(agentRunCustomConnectorAuthRefs).values({
-    runId,
-    secretName,
-    connectorId: readOptionalString(body, "connector_id") ?? randomUUID(),
-    kind: readOptionalString(body, "kind") ?? "secret",
-    key: readOptionalString(body, "key") ?? "secret",
-    encryptedValue: readOptionalString(body, "encrypted_value") ?? "encrypted",
-    expiresAt,
-  });
-  signal.throwIfAborted();
-  return actionOk();
-}
-
 async function seedQueueEntryForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -689,6 +663,7 @@ async function seedQueueEntryForAction(
           secretValueEnvironmentKeys: null,
           resumeSession: null,
           encryptedSecrets: null,
+          connectorRuntimeTargets: [],
           cliAgentType: "claude-code",
           apiStartTime: MIN_EPOCH_MS_TIMESTAMP,
         },
@@ -898,30 +873,6 @@ async function getRunnerJobForAction(
   return actionOk({ runner_job: job ?? null });
 }
 
-async function getCustomConnectorAuthRefForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const runId = readString(body, "run_id");
-  const secretName = readString(body, "secret_name");
-  if (!runId || !secretName) {
-    return actionBadRequest("run_id and secret_name are required");
-  }
-  const [ref] = await db
-    .select({ runId: agentRunCustomConnectorAuthRefs.runId })
-    .from(agentRunCustomConnectorAuthRefs)
-    .where(
-      and(
-        eq(agentRunCustomConnectorAuthRefs.runId, runId),
-        eq(agentRunCustomConnectorAuthRefs.secretName, secretName),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return actionOk({ custom_connector_auth_ref: ref ?? null });
-}
-
 async function getQueueEntryForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -988,7 +939,6 @@ const cronCleanupSandboxesActionHandlers = {
   "delete-run-ownership": deleteRunOwnershipForAction,
   "delete-run-thread": deleteRunThreadForAction,
   "seed-runner-job": seedRunnerJobForAction,
-  "seed-custom-connector-auth-ref": seedCustomConnectorAuthRefForAction,
   "seed-queue-entry": seedQueueEntryForAction,
   "seed-queue-marker": seedQueueMarkerForAction,
   "seed-export-job": seedExportJobForAction,
@@ -996,7 +946,6 @@ const cronCleanupSandboxesActionHandlers = {
   "get-run": getRunForAction,
   "get-run-ownership": getRunOwnershipForAction,
   "get-runner-job": getRunnerJobForAction,
-  "get-custom-connector-auth-ref": getCustomConnectorAuthRefForAction,
   "get-queue-entry": getQueueEntryForAction,
   "get-queue-marker-revoker": getQueueMarkerRevokerForAction,
   "get-export-job": getExportJobForAction,

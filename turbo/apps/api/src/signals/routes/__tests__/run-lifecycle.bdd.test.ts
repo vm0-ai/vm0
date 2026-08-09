@@ -9,7 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
-  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
@@ -99,7 +98,6 @@ import {
   mutateRunnerJobConnectorPermissionBaseline,
   mutateRunnerJobSecretValueEnvironmentKeys,
   removeRunCanonicalStorageState,
-  replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
   readRunApiStart,
@@ -603,6 +601,7 @@ function customConnectorRuntimeAuthBody(
         name: runtime.firewall.firewall.name,
         apiId: api.id,
         customConnectorId: runtime.firewall.customConnectorId,
+        routingVariables: runtime.baseUrlVars,
       },
     },
   };
@@ -8270,36 +8269,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
     expect(claim.secretValues).not.toContain("custom-secret-value");
-    expect(claim.connectorRuntimeTargets ?? []).toContainEqual({
+    expect(claim.connectorRuntimeTargets).toContainEqual({
       kind: "custom",
       customConnectorId: custom.id,
       baseUrlVars: {},
     });
-    const legacyCustomFirewall = findFirewallEntry(
-      claim.firewalls,
-      internalName,
-    );
-    if (!legacyCustomFirewall || legacyCustomFirewall.kind !== "inline") {
-      throw new Error("Expected the legacy custom firewall snapshot");
+    const customFirewall = findFirewallEntry(claim.firewalls, internalName);
+    if (!customFirewall || customFirewall.kind !== "inline") {
+      throw new Error("Expected the custom connector firewall");
     }
-    expect(legacyCustomFirewall.customConnectorId).toBe(custom.id);
-
-    const resolved = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({}),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-        },
-      },
-      [200],
-    );
-    if (resolved.status !== 200) {
-      throw new Error("Expected the custom firewall auth to resolve");
-    }
-    expect(resolved.body.headers).toStrictEqual({
-      Authorization: "Bearer custom-secret-value",
-    });
+    expect(customFirewall.customConnectorId).toBe(custom.id);
 
     const targetIdentity = {
       kind: "custom" as const,
@@ -8754,19 +8733,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.secretValues).not.toContain(
       "Bearer custom-oauth-initial-access-token",
     );
-    const revisionPinnedAuth = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({}),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-        },
-      },
-      [200],
-    );
-    expect(revisionPinnedAuth.body).toMatchObject({
-      headers: { Authorization: "Bearer custom-oauth-initial-access-token" },
-    });
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [{ kind: "custom", customConnectorId: custom.id }],
     });
@@ -9056,148 +9022,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.requestCancelRun(actor, firstRun.runId, [200]);
     await api.requestCancelRun(actor, secondRun.runId, [200]);
-  });
-
-  it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {
-    const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
-    const fw = createFirewallApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-
-    const rand = randomUUID().slice(0, 8);
-    const saved = await connectors.saveCustomConnectorProposal(actor, {
-      proposal: {
-        operation: "create",
-        displayName: "BDD Auth Ref API",
-        prefixTemplates: [`https://auth-ref-${rand}.example.com/api/`],
-        fields: [
-          {
-            key: "api_key",
-            label: "API key",
-            kind: "secret",
-            required: true,
-          },
-          {
-            key: "tenant_id",
-            label: "Tenant ID",
-            kind: "variable",
-            required: true,
-          },
-        ],
-        headerInjections: [
-          {
-            name: "Authorization",
-            valueTemplate: "Bearer {{secrets.api_key}}",
-          },
-        ],
-        queryInjections: [
-          {
-            name: "tenant",
-            valueTemplate: "{{variables.tenant_id}}",
-          },
-        ],
-      },
-      values: [
-        { key: "api_key", kind: "secret", value: "auth-ref-secret" },
-        { key: "tenant_id", kind: "variable", value: "auth-ref-tenant" },
-      ],
-      agentId,
-    });
-
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
-
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "use the custom connector auth ref",
-      modelProvider: "anthropic-api-key",
-    });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    const idPart = saved.connector.id.replaceAll("-", "");
-    const internalName = `custom_connector_${idPart}`;
-    const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
-    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
-    const missingSecretKey = `CUSTOM_${idPart}_S_MISSING`;
-    const customApis = inlineFirewallApis(claim.firewalls, internalName);
-    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
-      `Bearer \${{ secrets.${secretKey} }}`,
-    );
-    expect(customApis[0]?.auth?.query?.tenant).toBe(
-      `\${{ secrets.${tenantVarKey} }}`,
-    );
-
-    const resolvedFromRef = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({}),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-        },
-        authQuery: {
-          tenant: `\${{ secrets.${tenantVarKey} }}`,
-        },
-      },
-      [200],
-    );
-    if (resolvedFromRef.status !== 200) {
-      throw new Error("Expected the custom auth ref to resolve");
-    }
-    expect(resolvedFromRef.body.headers).toStrictEqual({
-      Authorization: "Bearer auth-ref-secret",
-    });
-    expect(resolvedFromRef.body.query).toStrictEqual({
-      tenant: "auth-ref-tenant",
-    });
-
-    const resolvedFromBody = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({
-          [secretKey]: "explicit-secret",
-          [tenantVarKey]: "explicit-tenant",
-        }),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-        },
-        authQuery: {
-          tenant: `\${{ secrets.${tenantVarKey} }}`,
-        },
-      },
-      [200],
-    );
-    if (resolvedFromBody.status !== 200) {
-      throw new Error("Expected the explicit encrypted secret to resolve");
-    }
-    expect(resolvedFromBody.body.headers).toStrictEqual({
-      Authorization: "Bearer explicit-secret",
-    });
-    expect(resolvedFromBody.body.query).toStrictEqual({
-      tenant: "explicit-tenant",
-    });
-
-    const missing = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({}),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${missingSecretKey} }}`,
-        },
-      },
-      [424],
-    );
-    if (missing.status !== 424) {
-      throw new Error("Expected missing custom auth ref to fail closed");
-    }
-    expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-    const cancelled = await api.readRun(actor, run.runId);
-    expect(cancelled.status).toBe("cancelled");
   });
 
   it("injects only enabled custom connector firewalls for Zero-backed direct runs", async () => {
@@ -9567,23 +9391,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       query: {},
     });
 
-    const resolved = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({}),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-        },
-      },
-      [200],
-    );
-    if (resolved.status !== 200) {
-      throw new Error("Expected the optional custom firewall auth to resolve");
-    }
-    expect(resolved.body.headers).toStrictEqual({
-      Authorization: "Bearer optional-primary",
-    });
-
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
@@ -9936,53 +9743,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
-  });
-
-  it("keeps a configured legacy custom connector with an invalid hostname unresolved", async () => {
-    const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    const secret = "legacy-invalid-host-secret";
-    const custom = await connectors.createCustomConnector(actor, {
-      slug: `_bdd-legacy-host-${randomUUID().slice(0, 8)}`,
-      displayName: "BDD Legacy Invalid Host",
-      prefixes: ["https://valid.example.test/v1/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
-    await connectors.setCustomConnectorSecret(actor, custom.id, secret);
-    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
-
-    const legacyPrefix = "https://\u088f.example/v1/";
-    await replaceCustomConnectorPrefixes(context, custom.id, [legacyPrefix]);
-
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "use the legacy invalid custom connector",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-    const target = {
-      kind: "custom" as const,
-      customConnectorId: custom.id,
-    };
-    expect(claim.connectorRuntimeTargets).toContainEqual(target);
-    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
-    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
-
-    const [unresolved] = await api.syncConnectorRuntime(run.runId, {
-      targets: [target],
-    });
-    expect(unresolved).toMatchObject({
-      target,
-      state: "unresolved",
-      reason: "runtime-configuration-unavailable",
-    });
-    expect(JSON.stringify(unresolved)).not.toContain(secret);
-    expect(JSON.stringify(unresolved)).not.toContain("\u088f.example");
-
-    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("keeps connector-owned vars out of custom connector base urls", async () => {
@@ -10428,21 +10188,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const actorRunnerKey = await api.createCliToken(actor);
     const memberRunnerKey = await api.createCliToken(member);
-    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
-      `Bearer ${actorRunnerKey.token}`,
-      snapshotRun.runId,
-      { connectorSlugs: ["slack"] },
-      [200],
-    );
-    if (sameUserRefresh.status !== 200) {
-      throw new Error("Expected same-user network policy refresh to succeed");
-    }
-    expect(sameUserRefresh.body.refreshes[0]?.networkPolicy.deny).toContain(
-      "chat:write",
-    );
-    expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
-      connectorSlug: "slack",
-    });
     const sameUserRuntime = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
@@ -10462,22 +10207,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRuntime.body.results[1]).toMatchObject({
       target: { kind: "builtin", connectorSlug: "slack" },
       state: "available",
+      networkPolicy: expect.objectContaining({
+        deny: expect.arrayContaining(["chat:write"]),
+      }),
       nextSyncAt: expect.any(String),
     });
-    const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
-      `Bearer ${memberRunnerKey.token}`,
-      snapshotRun.runId,
-      { connectorSlugs: ["slack"] },
-      [403],
-    );
-    if (otherUserRefresh.status !== 403) {
-      throw new Error(
-        "Expected other-user network policy refresh to be forbidden",
-      );
-    }
-    expect(otherUserRefresh.body.error.message).toBe(
-      "Run does not belong to user",
-    );
     const otherUserRuntime = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
@@ -10497,20 +10231,23 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "allow",
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "network-policy-refresh",
+      "connector-runtime-sync",
       {
         runId: snapshotRun.runId,
-        connectorSlug: "slack",
+        target: { kind: "builtin", connectorSlug: "slack" },
       },
     );
-    const refreshedPolicy = await api.refreshRunnerNetworkPolicy(
+    const [refreshedRuntime] = await api.syncConnectorRuntime(
       snapshotRun.runId,
-      "slack",
+      { targets: [{ kind: "builtin", connectorSlug: "slack" }] },
     );
-    expect(refreshedPolicy.networkPolicy.deny).toContain("chat:write");
-    expect(refreshedPolicy.networkPolicy.allow).not.toContain("chat:write");
-    expect(refreshedPolicy.networkPolicy.allow).toContain("files:write");
-    expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
+    if (refreshedRuntime?.state !== "available") {
+      throw new Error("Expected refreshed connector runtime to be available");
+    }
+    expect(refreshedRuntime.networkPolicy.deny).toContain("chat:write");
+    expect(refreshedRuntime.networkPolicy.allow).not.toContain("chat:write");
+    expect(refreshedRuntime.networkPolicy.allow).toContain("files:write");
+    expect(refreshedRuntime.nextSyncAt).toStrictEqual(expect.any(String));
 
     context.mocks.ably.publish.mockRejectedValueOnce(
       new Error("network policy refresh publish failed"),
@@ -10543,15 +10280,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
-    const cancelledRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
-      `Bearer ${actorRunnerKey.token}`,
-      snapshotRun.runId,
-      { connectorSlugs: ["slack"] },
-      [409],
-    );
-    expect(cancelledRefresh.body.error.code).toBe(
-      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-    );
     const cancelledRuntime = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
@@ -10567,7 +10295,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
-  it("distinguishes a terminal policy refresh from missing runs", async () => {
+  it("distinguishes terminal connector runtime sync from missing runs", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -10608,40 +10336,34 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const actorRunnerKey = await api.createCliToken(actor);
     const memberRunnerKey = await api.createCliToken(member);
-    const body = { connectorSlugs: ["slack"] };
-    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+    const body = {
+      targets: [{ kind: "builtin" as const, connectorSlug: "slack" }],
+    };
+    const sameUserSync = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${actorRunnerKey.token}`,
       run.runId,
       body,
       [409],
     );
-    expect(sameUserRefresh.body.error).toStrictEqual({
-      code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    expect(sameUserSync.body.error).toStrictEqual({
+      code: CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
       message: "Run is terminal",
     });
-    const officialRefresh = await api.requestRefreshRunnerNetworkPolicy(
-      run.runId,
-      body,
-      [409],
-    );
-    expect(officialRefresh.body.error.code).toBe(
-      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-    );
 
-    const foreignRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+    const foreignSync = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${memberRunnerKey.token}`,
       run.runId,
       body,
       [404],
     );
-    expect(foreignRefresh.body.error.code).toBe("NOT_FOUND");
-    const missingRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+    expect(foreignSync.body.error.code).toBe("NOT_FOUND");
+    const missingSync = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${actorRunnerKey.token}`,
       randomUUID(),
       body,
       [404],
     );
-    expect(missingRefresh.body.error.code).toBe("NOT_FOUND");
+    expect(missingSync.body.error.code).toBe("NOT_FOUND");
 
     const failedRun = await api.createRun(actor, {
       agentId,
@@ -10660,14 +10382,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       [200],
     );
     expect((await api.readRun(actor, failedRun.runId)).status).toBe("failed");
-    const failedRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+    const failedSync = await api.requestSyncConnectorRuntimeAs(
       `Bearer ${actorRunnerKey.token}`,
       failedRun.runId,
       body,
       [409],
     );
-    expect(failedRefresh.body.error.code).toBe(
-      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    expect(failedSync.body.error.code).toBe(
+      CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
     );
   });
 
@@ -10691,13 +10413,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(queued.status).toBe("queued");
 
     for (const run of [firstPending, secondPending, queued]) {
-      const refresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      const sync = await api.requestSyncConnectorRuntimeAs(
         `Bearer ${runnerKey.token}`,
         run.runId,
-        { connectorSlugs: ["slack"] },
+        { targets: [{ kind: "builtin", connectorSlug: "slack" }] },
         [404],
       );
-      expect(refresh.body.error.code).toBe("NOT_FOUND");
+      expect(sync.body.error.code).toBe("NOT_FOUND");
     }
 
     await api.requestCancelRun(actor, queued.runId, [200]);
@@ -10913,17 +10635,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "allow",
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "network-policy-refresh",
+      "connector-runtime-sync",
       {
         runId: parent.runId,
-        connectorSlug: "slack",
+        target: { kind: "builtin", connectorSlug: "slack" },
       },
     );
 
-    const refreshed = await api.refreshRunnerNetworkPolicy(
-      parent.runId,
-      "slack",
-    );
+    const [refreshed] = await api.syncConnectorRuntime(parent.runId, {
+      targets: [{ kind: "builtin", connectorSlug: "slack" }],
+    });
+    if (refreshed?.state !== "available") {
+      throw new Error("Expected refreshed connector runtime to be available");
+    }
     expect(refreshed.networkPolicy.allow).toContain("chat:write");
     expect(refreshed.networkPolicy.allow).toContain("files:write");
     expect(refreshed.networkPolicy.deny).not.toContain("files:write");
@@ -14173,6 +13897,8 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         exitCode: 124,
         error: "runner job timed out",
         lastEventSequence: 0,
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "lockBusy",
       },
       sandboxHeaders,
       [200],
@@ -14181,6 +13907,11 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("runner job timed out");
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "lockBusy",
+    });
 
     const telemetry = await webhooks.requestAgentTelemetry(
       { runId: run.runId },
@@ -14278,7 +14009,13 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     };
 
     const missing = await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "cacheMiss",
+      },
       sandboxHeaders,
       [200],
     );
@@ -14295,6 +14032,11 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("Checkpoint for run not found");
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "cacheMiss",
+    });
   });
 
   it("reports the settled status when a checkpoint-less completion races a cancellation", async () => {
@@ -14310,7 +14052,13 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     await api.requestCancelRun(actor, run.runId, [200]);
 
     const late = await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "diskPressure",
+      },
       { authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}` },
       [200],
     );
@@ -14320,6 +14068,25 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(late.body).toStrictEqual({ success: true, status: "failed" });
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "diskPressure",
+    });
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        sandboxReuseResult: "reused",
+        workspaceReuseResult: "sandboxReused",
+      },
+      { authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}` },
+      [200],
+    );
+    const retainedRunner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(retainedRunner.body).toStrictEqual(runner.body);
   });
 
   it("keeps a cancelled run settled when its checkpointed completion arrives late", async () => {

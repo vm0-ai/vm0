@@ -9,20 +9,19 @@ mod api_ably_supervisor;
 mod api_claim_cooldowns;
 mod api_direct_candidates;
 mod builtin_firewall_catalog;
+mod connector_runtime_sync;
 mod local;
 #[cfg(test)]
 pub mod mock;
-mod network_policy_refresh;
 
 pub(crate) use api::ApiClient;
 pub use api::{ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths};
-pub use local::LocalProvider;
-pub(crate) use network_policy_refresh::{
-    NetworkPolicyRefreshHandle, NetworkPolicyRefreshRegistration,
+pub(crate) use connector_runtime_sync::{
+    ConnectorRuntimeSyncHandle, ConnectorRuntimeSyncRegistration,
 };
+pub use local::LocalProvider;
 
 use chrono::{DateTime, FixedOffset, Utc};
-use sandbox::SandboxId;
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -32,7 +31,7 @@ use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 use crate::pi_standby::PiStandbySubscription;
-use crate::types::{ExecutionContext, HeartbeatState, PiExecutionMode, SandboxReuseResult};
+use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState, PiExecutionMode};
 
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -787,22 +786,13 @@ pub trait JobProvider: Send + Sync {
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///
-    /// `sandbox_id` is the VM the run executed against (reused or freshly
-    /// allocated). `reuse_result` describes the sandbox-reuse decision made
-    /// before the run started. Both are `Option` so non-runner callers
-    /// (tests, future transports) can omit them.
+    /// The request carries the exit status and optional sandbox/workspace reuse
+    /// outcomes. Reuse fields remain optional for failures that happen before
+    /// the corresponding decision is final.
     ///
     /// `completion_auth` is returned by [`claim()`](JobProvider::claim) and
     /// carried by the claimed job lifecycle until completion.
-    async fn complete(
-        &self,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-        completion_auth: CompletionAuth,
-    );
+    async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth);
 
     /// Report runner state to the server as a best-effort operation.
     ///

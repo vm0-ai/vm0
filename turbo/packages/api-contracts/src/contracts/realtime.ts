@@ -25,6 +25,23 @@ export type BrowserSessionChangedPayload = z.infer<
 >;
 
 /**
+ * Preference keys that can flip as part of a `userPreferenceChanged` push.
+ * Consumers subscribe and reload the corresponding resource when its key is
+ * present in the payload's `kinds`.
+ */
+export const userPreferenceKinds = ["defaultModel"] as const;
+
+export type UserPreferenceKind = (typeof userPreferenceKinds)[number];
+
+export const userPreferenceChangedPayloadSchema = z.object({
+  kinds: z.array(z.enum(userPreferenceKinds)),
+});
+
+export type UserPreferenceChangedPayload = z.infer<
+  typeof userPreferenceChangedPayloadSchema
+>;
+
+/**
  * Ably token request schema (matches Ably SDK's TokenRequest type)
  */
 export const ablyTokenRequestSchema = z.object({

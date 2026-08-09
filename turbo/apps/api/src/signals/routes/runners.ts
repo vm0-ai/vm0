@@ -4,19 +4,16 @@ import {
   compatibleStoredExecutionContextSchema,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
   elapsedSinceApiStartMs,
-  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   piExecutionModeSchema,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
-  runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
   storedConnectorPermissionBaselineSchema,
   type CompatibleStoredExecutionContext,
-  type ConnectorRuntimeTargetRegistration,
   type ExecutionContext,
   type HeldSandboxState,
   type HeldWorkspaceState,
@@ -791,9 +788,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const claimBody$ = bodyResultOf(runnersJobClaimContract.claim);
-const networkPolicyRefreshBody$ = bodyResultOf(
-  runnersNetworkPolicyRefreshContract.refresh,
-);
 const connectorRuntimeSyncBody$ = bodyResultOf(
   runnersConnectorRuntimeSyncContract.sync,
 );
@@ -1423,36 +1417,6 @@ function connectorPermissionBaselineMatchesStoredContext(
   );
 }
 
-function connectorRuntimeTargetsForClaim(
-  storedContext: StoredExecutionContext,
-): ConnectorRuntimeTargetRegistration[] | undefined {
-  if (storedContext.connectorRuntimeTargets !== undefined) {
-    return storedContext.connectorRuntimeTargets;
-  }
-  const networkPolicies = storedContext.networkPolicies ?? {};
-  const seenConnectorSlugs = new Set<string>();
-  const targets = (storedContext.firewalls ?? []).flatMap((firewall) => {
-    if (
-      firewall.kind !== "builtin" ||
-      !Object.hasOwn(networkPolicies, firewall.name)
-    ) {
-      return [];
-    }
-    const connectorSlug = connectorSlugSchema.safeParse(firewall.name);
-    if (!connectorSlug.success || seenConnectorSlugs.has(connectorSlug.data)) {
-      return [];
-    }
-    seenConnectorSlugs.add(connectorSlug.data);
-    return [
-      {
-        kind: "builtin" as const,
-        connectorSlug: connectorSlug.data,
-      },
-    ];
-  });
-  return targets.length > 0 ? targets : undefined;
-}
-
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
@@ -1962,9 +1926,7 @@ async function buildClaimResponseBody(
         resumeSession,
         sandboxToken,
         secretValues,
-        connectorRuntimeTargets: connectorRuntimeTargetsForClaim(
-          args.storedContext,
-        ),
+        connectorRuntimeTargets: args.storedContext.connectorRuntimeTargets,
         networkPolicies: refreshedPolicies.networkPolicies,
         networkPolicyRefreshes: refreshedPolicies.networkPolicyRefreshes,
       };
@@ -2711,78 +2673,6 @@ const runnerRealtimeTokenBody$ = bodyResultOf(
   runnerRealtimeTokenContract.create,
 );
 
-const networkPolicyRefreshInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = await set(runnerAuth$, get(authorization$), signal);
-    signal.throwIfAborted();
-    if (!auth) {
-      return unauthorizedAuthenticationRequired;
-    }
-
-    const body = await get(networkPolicyRefreshBody$);
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-
-    const runId = get(
-      pathParamsOf(runnersNetworkPolicyRefreshContract.refresh),
-    ).runId;
-    const db = set(writeDb$);
-    const run = await getRunNetworkPolicyScope(db, runId, signal);
-    if (!run) {
-      return notFound("Run not found");
-    }
-
-    const authError = runnerRunAuthorizationError(auth, run);
-    if (run.status !== "running") {
-      if (authError || !isTerminalRunStatus(run.status)) {
-        return notFound("Run not found");
-      }
-      return {
-        status: 409 as const,
-        body: {
-          error: {
-            code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-            message: "Run is terminal",
-          },
-        },
-      };
-    }
-    if (authError) {
-      return authError;
-    }
-
-    const { connectorSlugs } = body.data;
-    const refreshes = await resolveActiveNetworkPolicyRefreshes(
-      db,
-      {
-        orgId: run.orgId,
-        userId: run.userId,
-        agentId: run.agentId,
-      },
-      connectorSlugs,
-    );
-    signal.throwIfAborted();
-    if (refreshes.length === 0) {
-      return notFound(`Connectors not found: ${connectorSlugs.join(", ")}`);
-    }
-
-    return {
-      status: 200 as const,
-      body: {
-        refreshes: refreshes.map((refresh) => {
-          return {
-            connectorSlug: refresh.connectorSlug,
-            networkPolicy: refresh.networkPolicy,
-            nextRefreshAt: refresh.nextRefreshAt,
-          };
-        }),
-      },
-    };
-  },
-);
-
 const connectorRuntimeSyncInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -3217,10 +3107,6 @@ export const runnersRoutes: readonly RouteEntry[] = [
       { accept: ["sandbox"], acceptAnySandboxCapability: true },
       claimActiveInputsInner$,
     ),
-  },
-  {
-    route: runnersNetworkPolicyRefreshContract.refresh,
-    handler: networkPolicyRefreshInner$,
   },
   {
     route: runnersConnectorRuntimeSyncContract.sync,
