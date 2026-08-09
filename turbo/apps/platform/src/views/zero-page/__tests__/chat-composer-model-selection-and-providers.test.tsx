@@ -316,6 +316,14 @@ describe("chat composer models", () => {
     preferenceUpdate.resolve();
     await waitFor(() => {
       expect(
+        context.mocks.ably.hasSubscription("userPreferenceChanged"),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.trigger("userPreferenceChanged", {
+      kinds: ["defaultModel"],
+    });
+    await waitFor(() => {
+      expect(
         screen.queryByText("Temporarily switched to Claude Sonnet 4.6"),
       ).not.toBeInTheDocument();
       expect(

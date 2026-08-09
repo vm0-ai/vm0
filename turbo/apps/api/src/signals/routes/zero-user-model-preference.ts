@@ -1,7 +1,9 @@
 import { command, computed } from "ccstate";
+import type { UserPreferenceChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 
 import { badRequestMessage } from "../../lib/error";
+import { publishUserPreferenceChangedForUserSafely } from "../external/realtime";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -54,6 +56,12 @@ const updateUserModelPreferenceInner$ = command(
       },
       signal,
     );
+    signal.throwIfAborted();
+    await publishUserPreferenceChangedForUserSafely(
+      auth.userId,
+      ["defaultModel"] satisfies UserPreferenceChangedPayload["kinds"],
+    );
+    signal.throwIfAborted();
     return { status: 200 as const, body: result };
   },
 );
