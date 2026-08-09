@@ -54,6 +54,7 @@ function queueResponse(overrides?: {
       limit: 1,
       active: 1,
       available: 0,
+      memberUsage: [],
     },
     queue: overrides?.queue ?? [],
     runningTasks: [],
@@ -250,7 +251,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
+          concurrency: {
+            tier: "free",
+            limit: 1,
+            active: 1,
+            available: 0,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -272,7 +279,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
+          concurrency: {
+            tier: "pro",
+            limit: 2,
+            active: 2,
+            available: 0,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -291,7 +304,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 3,
+            available: 2,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -314,7 +333,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "custom", limit: 10, active: 10, available: 0 },
+          concurrency: {
+            tier: "custom",
+            limit: 10,
+            active: 10,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -344,7 +369,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -406,7 +437,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -434,7 +471,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
+          concurrency: {
+            tier: "pro",
+            limit: 2,
+            active: 2,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -459,7 +502,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );

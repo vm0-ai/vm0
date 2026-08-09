@@ -166,7 +166,7 @@ function CurrentPlanStatus({
   readonly tierLabel: string;
 }) {
   const { i18n, t } = useTranslation();
-  const memberUsage = showMemberUsage ? concurrency.memberUsage : undefined;
+  const { memberUsage } = concurrency;
   const numberFormat = new Intl.NumberFormat(i18n.resolvedLanguage);
   const slotCountLabel = (count: number): string => {
     return t(
@@ -205,7 +205,7 @@ function CurrentPlanStatus({
           },
         )}
       </p>
-      {memberUsage === undefined ? (
+      {!showMemberUsage ? (
         <p className="mt-1.5 text-[13px] font-light leading-relaxed text-muted-foreground">
           {concurrency.available === 0
             ? t(

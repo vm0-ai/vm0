@@ -249,6 +249,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       limit: 1,
       active: 0,
       available: 1,
+      memberUsage: [],
     });
   });
 
