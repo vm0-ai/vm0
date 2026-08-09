@@ -1145,20 +1145,16 @@ describe("chat composer templates", () => {
     await appendAndSend(user, "Introduce our new product");
 
     await waitFor(() => {
-      const avatarOptions = {
-        titleSnapshot: selectedAvatar.name,
-        previewUrl: selectedAvatar.coverUrl,
-        voiceId: selectedVoice.id,
-        aspectRatio: "landscape" as const,
-      };
-      // Nested options carry the selection; the flat fields are mirrored for
-      // readers that predate avatarOptions.
       expect(submittedTemplate).toStrictEqual({
         type: "video",
         selection: {
           stylePresetId: avatarTemplateStylePresetId(selectedAvatar.id),
-          avatarOptions,
-          ...avatarOptions,
+          avatarOptions: {
+            titleSnapshot: selectedAvatar.name,
+            previewUrl: selectedAvatar.coverUrl,
+            voiceId: selectedVoice.id,
+            aspectRatio: "landscape" as const,
+          },
         },
       });
     });

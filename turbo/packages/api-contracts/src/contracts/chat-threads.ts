@@ -252,11 +252,13 @@ const videoGenerationTemplateRequestSchema = z.object({
     avatarOptions: avatarGenerationOptionsSchema.optional(),
 
     /**
-     * The four fields below are still written alongside avatarOptions so that
-     * readers predating it do not lose the selection. Stop writing them once
-     * the web-client floor has been raised past the app version shipping this
-     * change; keep reading them until a backfill moves existing rows.
-     * Tracked in https://github.com/vm0-ai/vm0/issues/25620.
+     * The four fields below are no longer written: the web-client floor has
+     * been raised past the app version that introduced avatarOptions, so no
+     * live reader predates the nested object. They stay parseable because rows
+     * persisted before the split only carry the flat shape, and
+     * readAvatarTemplateOptions still reads them. Dropping them here would
+     * strip those historical selections on parse; they can only go away with a
+     * jsonb backfill. Tracked in https://github.com/vm0-ai/vm0/issues/25620.
      *
      * @deprecated Read-only fallback; write avatarOptions.titleSnapshot.
      */
