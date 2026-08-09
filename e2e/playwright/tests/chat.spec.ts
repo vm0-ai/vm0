@@ -185,30 +185,54 @@ async function mockChatThread(
   page: Page,
   options: MockChatThreadOptions,
 ): Promise<void> {
+  const createdEventId = `d${options.threadId.slice(1)}`;
+  let createdEventSeqId: number | null = null;
+
   await page.route("**/api/zero/chat-threads/snapshot", async (route) => {
     await route.fulfill({
       json: {
-        chatThreads: [
-          {
-            id: options.threadId,
-            agentId: options.agentId,
-            title: options.title,
-            sortAt: options.createdAt,
-            createdAt: options.createdAt,
-            updatedAt: options.createdAt,
-            pinnedAt: null,
-            renamedAt: null,
-            selectedModel: options.selectedModel,
-            serviceTier: null,
-            computerUseHostId: null,
-            cloudBrowserEnabled: false,
-          },
-        ],
+        chatThreads: [],
         latestEventId: null,
         latestSeqId: null,
       },
     });
   });
+  await page.route(
+    (url) => url.pathname === "/api/zero/chat-threads/events",
+    async (route) => {
+      const requestUrl = new URL(route.request().url());
+      const rawSinceSeqId = requestUrl.searchParams.get("sinceSeqId");
+      const sinceSeqId = rawSinceSeqId === null ? 0 : Number(rawSinceSeqId);
+      if (!Number.isSafeInteger(sinceSeqId) || sinceSeqId < 0) {
+        throw new Error("Thread event cursor is invalid");
+      }
+
+      // The initial real page can persist a thread-list cursor before these
+      // routes are installed. Deliver the synthetic thread through the
+      // incremental event stream so both cold and already-cached starts own a
+      // deterministic path to the same thread metadata.
+      createdEventSeqId ??= sinceSeqId + 1;
+      const events =
+        sinceSeqId < createdEventSeqId
+          ? [
+              {
+                id: createdEventId,
+                seqId: createdEventSeqId,
+                kind: "created",
+                chatThreadId: options.threadId,
+                agentId: options.agentId,
+                title: options.title,
+                selectedModel: options.selectedModel,
+                serviceTier: null,
+                computerUseHostId: null,
+                cloudBrowserEnabled: false,
+                createdAt: options.createdAt,
+              },
+            ]
+          : [];
+      await route.fulfill({ json: { events, hasMore: false } });
+    },
+  );
   await page.route(
     (url) =>
       url.pathname === `/api/zero/chat-threads/${options.threadId}/events`,
