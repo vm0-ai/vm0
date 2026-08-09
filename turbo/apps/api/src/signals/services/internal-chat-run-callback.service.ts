@@ -5293,7 +5293,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     { get, set },
     args: {
       readonly chatThreadId: string;
-      readonly apiStartTime?: number;
+      readonly apiStartTime: number;
       readonly queueItemCreatedBefore?: Date;
       readonly timing?: ChatCallbackPreCreateTimingCollector;
     },
@@ -5324,7 +5324,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     if (!createQueuedRun) {
       return;
     }
-    const admissionTime = args.apiStartTime ?? now();
+    const admissionTime = args.apiStartTime;
     await autoSendQueuedMessageForThread(
       {
         db,

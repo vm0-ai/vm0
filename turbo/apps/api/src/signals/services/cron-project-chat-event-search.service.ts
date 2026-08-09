@@ -97,6 +97,18 @@ async function projectThread(
   thread: LaggingThread,
 ): Promise<{ readonly indexedEvents: number; readonly deletedDocs: number }> {
   return await db.transaction(async (tx) => {
+    // The outer batch is a snapshot: a thread can be deleted before its turn.
+    // Keep the parent alive while this transaction writes child projection rows.
+    const [lockedThread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, thread.chatThreadId))
+      .for("key share")
+      .limit(1);
+    if (!lockedThread) {
+      return { indexedEvents: 0, deletedDocs: 0 };
+    }
+
     const rows = await tx
       .select({
         id: chatEvents.id,
