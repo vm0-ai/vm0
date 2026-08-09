@@ -1214,21 +1214,11 @@ function createTranscriptEventsComputed(
   return computed((get): Promise<EnrichedChatEvent[]> => {
     return Promise.resolve(
       get(semanticEvents$).map((entry) => {
-        const { event, isQueued, isOptimisticRun } = entry;
-        const role = chatEventCompatibilityRole(event.eventType);
-        if (role !== "assistant") {
-          return {
-            ...event,
-            blocks: entry.blocks,
-            isQueued,
-            isOptimisticRun,
-          };
-        }
+        const { event, isQueued } = entry;
         return {
           ...event,
           blocks: entry.blocks,
           isQueued,
-          isOptimisticRun: false,
         };
       }),
     );

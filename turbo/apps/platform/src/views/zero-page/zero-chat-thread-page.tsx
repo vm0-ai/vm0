@@ -376,26 +376,40 @@ function selectedModelFromUserMessage(
   return modelPart?.type === "model" ? modelPart.selectedModel : undefined;
 }
 
+function modelChangeRunKey(
+  inputEvent: ChatInputEvent,
+  selectedModel: string | undefined,
+): string | undefined {
+  if (inputEvent.runId !== undefined) {
+    return `run:${inputEvent.runId}`;
+  }
+  if (inputEvent.seqId === undefined && selectedModel !== undefined) {
+    return `event:${inputEvent.id}`;
+  }
+  return undefined;
+}
+
 function modelChangesByEventId(
   groups: readonly ChatEventGroup[],
 ): ReadonlyMap<string, string> {
   const changes = new Map<string, string>();
-  let previousRunId: string | undefined;
+  let previousRunKey: string | undefined;
   let previousModel: string | undefined;
   let hasPreviousRun = false;
 
   for (const group of groups) {
     for (const event of group.events) {
       const inputEvent = asInputChatEvent(event);
-      if (
-        inputEvent?.runId === undefined ||
-        inputEvent.runId === previousRunId
-      ) {
+      if (inputEvent === undefined) {
         continue;
       }
       const selectedModel = selectedModelFromUserMessage(
         inputEvent.userMessage,
       );
+      const runKey = modelChangeRunKey(inputEvent, selectedModel);
+      if (runKey === undefined || runKey === previousRunKey) {
+        continue;
+      }
       if (
         hasPreviousRun &&
         previousModel !== undefined &&
@@ -404,7 +418,7 @@ function modelChangesByEventId(
       ) {
         changes.set(event.id, selectedModel);
       }
-      previousRunId = inputEvent.runId;
+      previousRunKey = runKey;
       previousModel = selectedModel;
       hasPreviousRun = true;
     }

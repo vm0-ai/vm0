@@ -22,7 +22,6 @@ import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 export type EnrichedChatEvent = ChatEvent & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;
-  isOptimisticRun: boolean;
 };
 
 /** A group of consecutive events with the same role. */

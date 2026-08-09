@@ -304,6 +304,7 @@ interface MockLifecycleControl {
   setRunStatus: (status: RunStatus) => void;
   setQueuePosition: (n: number) => void;
   setEvents: (e: AgentEvent[]) => void;
+  setRunOutput: (content: string) => void;
   setThreadList: (list: ThreadListItem[]) => void;
   setCodexServiceTier: (tier: CodexServiceTier | null) => void;
   completeRun: (content?: string) => void;
@@ -475,10 +476,10 @@ export function mockChatLifecycle(
      */
     appendGate?: Promise<void>;
     /**
-     * Promise the initial send handler awaits before responding. Lets tests
-     * keep the new-thread optimistic view mounted while interacting with it.
+     * Gate or per-send gate factory awaited before the initial send responds.
+     * Lets tests keep an optimistic run mounted while interacting with it.
      */
-    sendGate?: Promise<void>;
+    sendGate?: Promise<void> | (() => Promise<void>);
     /**
      * Promise the paged history handler awaits before responding to beforeSeqId.
      * Lets tests prove the latest-event view renders before silent backfill.
@@ -515,6 +516,7 @@ export function mockChatLifecycle(
     }) => void;
     onThreadCreate?: (body: {
       clientThreadId?: string;
+      eventId?: string;
       model?: string;
       modelSelection: ModelSelectionRequest;
     }) => void;
@@ -769,7 +771,9 @@ export function mockChatLifecycle(
     cloudBrowserEnabled?: boolean;
     revokesEventId?: string;
   }) => {
-    if (options?.sendGate) {
+    if (typeof options?.sendGate === "function") {
+      await options.sendGate();
+    } else if (options?.sendGate) {
       await options.sendGate;
     }
     if (body.prompt) {
@@ -945,6 +949,7 @@ export function mockChatLifecycle(
     selectedModel = modelSelection.selectedModel;
     options?.onThreadCreate?.({
       clientThreadId: body.clientThreadId,
+      eventId: body.eventId,
       model: body.model,
       modelSelection,
     });
@@ -1048,6 +1053,11 @@ export function mockChatLifecycle(
     },
     setEvents: (e) => {
       events = e;
+    },
+    setRunOutput: (content) => {
+      resultContent = content;
+      assistantVersion++;
+      createChatEvent(threadId);
     },
     setThreadList: (list) => {
       threadListOverride = list;

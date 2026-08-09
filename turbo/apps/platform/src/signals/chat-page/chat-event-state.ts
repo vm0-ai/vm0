@@ -89,7 +89,6 @@ export function isInterruptedAssistantCancellation(
 export interface SemanticChatEventState {
   readonly event: ChatEvent;
   readonly isQueued: boolean;
-  readonly isOptimisticRun: boolean;
 }
 
 type QueuedChatEvent = Extract<
@@ -173,7 +172,6 @@ export function semanticChatEventsFromChatEvents(
             event.interruptsRunId,
           ),
           isQueued: false,
-          isOptimisticRun: false,
         },
       ];
     }
@@ -182,15 +180,13 @@ export function semanticChatEventsFromChatEvents(
       chatEventCompatibilityRole(event.eventType) === "user" &&
       event.runId === undefined;
     const optimisticAssociation = event.optimisticUserMessageAssociation;
-    const isOptimisticRun =
-      isUnassociatedUser && optimisticAssociation === "run";
     const isQueued =
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
       (event.eventType === "input.automation" ||
         (event.eventType === "input.prompt" &&
           isTemporarilyQueuedMorningBrief(event)));
-    return [{ event, isQueued, isOptimisticRun }];
+    return [{ event, isQueued }];
   });
 }
 

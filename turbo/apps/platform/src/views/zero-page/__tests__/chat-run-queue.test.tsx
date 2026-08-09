@@ -1,8 +1,9 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import {
   chatThreadByIdContract,
+  chatThreadsContract,
   type ChatRunOptionsRequest,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -13,6 +14,7 @@ import type {
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { optimisticChatThreadCreateUnsettled } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { triggerAblyEvent, triggerAblyReconnect } from "../../../mocks/ably.ts";
 import {
   click,
@@ -36,6 +38,7 @@ const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 const CANCELLATION_RECOVERY_COPY =
   "Finalizing the cancelled run before queued work continues.";
 const NEXT_RUN_MODEL_COPY = "Next run will use Claude Opus 4.8";
+const NEXT_RUN_SONNET_MODEL_COPY = "Next run will use Claude Sonnet 4.6";
 const MODEL_CHANGED_COPY = "Model changed to Claude Sonnet 4.6";
 
 afterEach(async () => {
@@ -466,6 +469,305 @@ describe("chat run queue", () => {
     ).resolves.toBeInTheDocument();
     expectTextBefore("First answer", MODEL_CHANGED_COPY);
     expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
+  });
+
+  it("inserts a model change divider before an optimistic run reconciles", async () => {
+    const user = userEvent.setup({ delay: null });
+    const secondSendGate = context.mocks.deferred<void>();
+    let sendCount = 0;
+    let clientThreadId: string | undefined;
+    let threadCreateEventId: string | undefined;
+    let secondUserMessage: UserMessageDocument | undefined;
+    onTestFinished(() => {
+      if (!secondSendGate.settled()) {
+        secondSendGate.resolve();
+      }
+    });
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      updatedAt: "2026-08-06T09:00:00Z",
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+      }),
+      buildModelPolicy({
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: false,
+      }),
+    ]);
+    const lifecycle = mockChatLifecycle(context, {
+      sendGate: () => {
+        sendCount++;
+        return sendCount === 2
+          ? secondSendGate.promise
+          : Promise.resolve(undefined);
+      },
+      onSendRequest: ({ prompt, userMessage }) => {
+        if (prompt === "Second prompt") {
+          secondUserMessage = userMessage;
+        }
+      },
+      onThreadCreate: (body) => {
+        clientThreadId = body.clientThreadId;
+        threadCreateEventId = body.eventId;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
+      path: AGENT_CHAT_PATH,
+    });
+
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "First prompt",
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    const settledThreadId = clientThreadId;
+    const settledThreadCreateEventId = threadCreateEventId;
+    if (
+      settledThreadId === undefined ||
+      settledThreadCreateEventId === undefined
+    ) {
+      throw new Error("Expected the optimistic thread create identifiers");
+    }
+
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: settledThreadCreateEventId,
+            seqId: 1,
+            kind: "created",
+            chatThreadId: settledThreadId,
+            agentId: AGENT_ID,
+            title: null,
+            selectedModel: "gpt-5.5",
+            serviceTier: null,
+            computerUseHostId: null,
+            cloudBrowserEnabled: true,
+            createdAt: "2026-08-06T09:00:00Z",
+          },
+        ],
+        hasMore: false,
+      });
+    });
+    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(
+        context.store.get(optimisticChatThreadCreateUnsettled(settledThreadId)),
+      ).toBeFalsy();
+    });
+
+    lifecycle.completeRun("First answer");
+    await waitFor(() => {
+      expect(screen.getByText("First answer")).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByRole("combobox", { name: "GPT 5.5" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      ).toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Second prompt",
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Send"));
+
+    await expect(
+      screen.findByText("Second prompt"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(secondUserMessage?.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-sonnet-4-6",
+      });
+    });
+    expect(secondSendGate.settled()).toBeFalsy();
+    expect(screen.getByText(MODEL_CHANGED_COPY)).toBeInTheDocument();
+    expectTextBefore("First answer", MODEL_CHANGED_COPY);
+    expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
+  });
+
+  it("keeps a model change pending through a steer before showing the next run divider optimistically", async () => {
+    const user = userEvent.setup({ delay: null });
+    const nextRunSendGate = context.mocks.deferred<void>();
+    const steerMessages: QueuedMessageCapture[] = [];
+    let runCreateCount = 0;
+    let nextRunUserMessage: UserMessageDocument | undefined;
+    onTestFinished(() => {
+      if (!nextRunSendGate.settled()) {
+        nextRunSendGate.resolve();
+      }
+    });
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      updatedAt: "2026-08-06T09:00:00Z",
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+      }),
+      buildModelPolicy({
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: false,
+      }),
+    ]);
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "gpt-5.5",
+      sendGate: () => {
+        runCreateCount++;
+        return runCreateCount === 2
+          ? nextRunSendGate.promise
+          : Promise.resolve(undefined);
+      },
+      onQueuedEventAppend: (body) => {
+        steerMessages.push(body);
+      },
+      onSendRequest: ({ prompt, userMessage }) => {
+        if (prompt === "Start the model B run") {
+          nextRunUserMessage = userMessage;
+        }
+      },
+    });
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
+      path: CHAT_PATH,
+    });
+
+    await sendMessageInUI(
+      user,
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "Start the model A run",
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    lifecycle.setRunOutput("Working with model A.");
+    await waitFor(() => {
+      expect(screen.getByText("Working with model A.")).toBeInTheDocument();
+    });
+
+    await user.click(await screen.findByRole("combobox", { name: "GPT 5.5" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expect(
+      screen.findByText(NEXT_RUN_SONNET_MODEL_COPY),
+    ).resolves.toBeInTheDocument();
+
+    await sendQueuedMessage(user, "Steer the model A run");
+    await expect(
+      screen.findByText("Steer the model A run"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(steerMessages).toHaveLength(1);
+    });
+    expect(
+      steerMessages[0]?.userMessage?.parts.find((part) => {
+        return part.type === "model";
+      }),
+    ).toBeUndefined();
+    expect(screen.getByText(NEXT_RUN_SONNET_MODEL_COPY)).toBeInTheDocument();
+    expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
+
+    lifecycle.completeRun("Model A finished.");
+    await waitFor(() => {
+      expect(screen.getByText("Model A finished.")).toBeInTheDocument();
+      expect(
+        screen.queryByText(NEXT_RUN_SONNET_MODEL_COPY),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Start the model B run",
+    );
+    await user.click(screen.getByLabelText("Send"));
+
+    await expect(
+      screen.findByText("Start the model B run"),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(nextRunUserMessage?.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-sonnet-4-6",
+      });
+    });
+    expect(nextRunSendGate.settled()).toBeFalsy();
+    expect(screen.getByText(MODEL_CHANGED_COPY)).toBeInTheDocument();
+    expectTextBefore("Model A finished.", MODEL_CHANGED_COPY);
+    expectTextBefore(MODEL_CHANGED_COPY, "Start the model B run");
+  });
+
+  it("does not mistake a persisted steer model annotation for a new run", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: `${THREAD_ID}-active-user`,
+          role: "user",
+          content: "Start the model A run",
+          userMessage: modelAnnotatedMessage(
+            "Start the model A run",
+            "gpt-5.5",
+          ),
+          runId: "run-active",
+          createdAt: "2026-08-06T09:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-active-assistant`,
+          role: "assistant",
+          content: "Model A finished.",
+          runId: "run-active",
+          createdAt: "2026-08-06T09:00:01Z",
+        },
+        {
+          id: `${THREAD_ID}-persisted-steer`,
+          role: "user",
+          content: "Legacy persisted steer",
+          userMessage: modelAnnotatedMessage(
+            "Legacy persisted steer",
+            "claude-sonnet-4-6",
+          ),
+          runId: undefined,
+          createdAt: "2026-08-06T09:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
+      path: CHAT_PATH,
+    });
+
+    await expect(
+      screen.findByText("Legacy persisted steer"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -1106,7 +1408,6 @@ describe("chat run queue", () => {
               filenameSnapshot: "queued.mp4",
               contentType: "video/mp4",
             },
-            { type: "model", selectedModel: "glm-5.1" },
           ],
         },
       });

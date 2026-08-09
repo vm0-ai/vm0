@@ -100,10 +100,10 @@ function createSendInputChatEvent({
       const clientEventId = crypto.randomUUID();
       const createdAt = nowDate().toISOString();
       const chatThreadSortEventId = crypto.randomUUID();
-      const userMessage = withSelectedModelAnnotation(
-        input.userMessage,
-        input.selectedModel,
-      );
+      const userMessage =
+        input.delivery === "run"
+          ? withSelectedModelAnnotation(input.userMessage, input.selectedModel)
+          : input.userMessage;
       L.debug("send input prepared", {
         traceTime: chatEventTraceTime(),
         threadId,
