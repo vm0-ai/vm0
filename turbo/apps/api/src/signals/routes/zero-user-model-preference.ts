@@ -57,10 +57,9 @@ const updateUserModelPreferenceInner$ = command(
       signal,
     );
     signal.throwIfAborted();
-    await publishUserPreferenceChangedForUserSafely(
-      auth.userId,
-      ["defaultModel"] satisfies UserPreferenceChangedPayload["kinds"],
-    );
+    await publishUserPreferenceChangedForUserSafely(auth.userId, [
+      "defaultModel",
+    ] satisfies UserPreferenceChangedPayload["kinds"]);
     signal.throwIfAborted();
     return { status: 200 as const, body: result };
   },
