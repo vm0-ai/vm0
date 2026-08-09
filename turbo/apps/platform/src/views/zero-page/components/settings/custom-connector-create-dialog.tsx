@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 
-import { IconChevronRight, IconPlus, IconTrash } from "@tabler/icons-react";
+import { ChevronRight, Plus, Trash } from "lucide-react";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorResponse,
@@ -188,7 +188,7 @@ function ApiAuthenticationFields({
             })}
             onClick={onRemove}
           >
-            <IconTrash size={16} />
+            <Trash size={16} />
           </Button>
         )}
       </div>
@@ -365,7 +365,7 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
   return (
     <details className="group rounded-lg border border-border">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium text-foreground">
-        <IconChevronRight
+        <ChevronRight
           size={16}
           className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
         />
@@ -535,7 +535,7 @@ function OAuth2AuthenticationFields({
           })}
           onClick={onRemove}
         >
-          <IconTrash size={16} />
+          <Trash size={16} />
         </Button>
       </div>
       <OAuth2EndpointFields form={form} setField={setField} />
@@ -961,7 +961,7 @@ function AuthenticationFields({
             className="self-start"
             disabled={availableAuthMethods.length === 0}
           >
-            <IconPlus size={16} />
+            <Plus size={16} />
             {t(($) => {
               return $.connectors.custom.create.addAuthentication;
             })}

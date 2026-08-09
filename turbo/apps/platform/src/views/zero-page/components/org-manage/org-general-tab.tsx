@@ -3,7 +3,7 @@
 import { useLoadable, useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { IconUpload } from "@tabler/icons-react";
+import { Upload } from "lucide-react";
 import {
   Input,
   Button,
@@ -231,7 +231,12 @@ function ProfileSection({
               )}
               {isAdmin && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <IconUpload size={14} stroke={2} className="text-white" />
+                  <Upload
+                    size={14}
+                    strokeWidth={2}
+                    className="text-white"
+                    data-explicit-stroke-width
+                  />
                 </div>
               )}
             </button>

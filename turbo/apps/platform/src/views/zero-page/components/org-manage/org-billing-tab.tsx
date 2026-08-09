@@ -5,14 +5,14 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@vm0/core";
 import {
-  IconExternalLink,
-  IconCrown,
-  IconArrowLeft,
-  IconChevronRight,
-  IconCoins,
-  IconMinus,
-  IconPlus,
-} from "@tabler/icons-react";
+  ExternalLink,
+  Crown,
+  ArrowLeft,
+  ChevronRight,
+  Coins,
+  Minus,
+  Plus,
+} from "lucide-react";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX,
@@ -606,7 +606,7 @@ function PlanCard({
     <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
       {plan.tier === "pro" && (
         <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconCrown size={12} stroke={1.8} className="text-amber-500" />
+          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
           {i18n.t(($) => {
             return $.billing.plans.popular;
           })}
@@ -771,7 +771,7 @@ function PricingPage({
                   return $.billing.common.back;
                 })}
               >
-                <IconArrowLeft size={16} stroke={1.8} />
+                <ArrowLeft size={16} strokeWidth={1.8} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -1350,7 +1350,7 @@ function ConcurrencyQuantityControl({
             onQuantityChange(quantity - 1);
           }}
         >
-          <IconMinus size={13} stroke={2} />
+          <Minus size={13} strokeWidth={2} data-explicit-stroke-width />
         </button>
         <span className="flex h-8 w-11 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
           {formatLocalizedNumber(quantity)}
@@ -1368,7 +1368,7 @@ function ConcurrencyQuantityControl({
             onQuantityChange(quantity + 1);
           }}
         >
-          <IconPlus size={13} stroke={2} />
+          <Plus size={13} strokeWidth={2} data-explicit-stroke-width />
         </button>
       </div>
     </div>
@@ -2225,7 +2225,7 @@ export function OrgBillingTab() {
                       {t(($) => {
                         return $.billing.common.manage;
                       })}
-                      <IconExternalLink size={13} stroke={1.5} />
+                      <ExternalLink size={13} strokeWidth={1.5} />
                     </Button>
                   </div>
                 </>
@@ -2242,15 +2242,15 @@ export function OrgBillingTab() {
                   {t(($) => {
                     return $.billing.plans.compareAll;
                   })}
-                  <IconCoins
+                  <Coins
                     size={14}
-                    stroke={1.5}
+                    strokeWidth={1.5}
                     className="text-foreground/40"
                   />
                 </span>
-                <IconChevronRight
+                <ChevronRight
                   size={14}
-                  stroke={1.5}
+                  strokeWidth={1.5}
                   className="shrink-0 text-muted-foreground/50"
                 />
               </button>

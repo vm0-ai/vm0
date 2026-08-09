@@ -3,7 +3,7 @@ import type {
   ConnectorCatalogDiagnostics,
   ConnectorCatalogSyncFailureCode,
 } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
-import { IconDatabase } from "@tabler/icons-react";
+import { Database } from "lucide-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -504,9 +504,9 @@ export function ConnectorCatalogDiagnosticsBlock() {
     >
       <div className="shrink-0">
         <div className="flex h-7 w-7 items-center justify-center">
-          <IconDatabase
+          <Database
             size={22}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="text-muted-foreground"
           />
         </div>

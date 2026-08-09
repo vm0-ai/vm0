@@ -1,9 +1,4 @@
-import {
-  IconArrowLeft,
-  IconCheck,
-  IconCrown,
-  IconUser,
-} from "@tabler/icons-react";
+import { ArrowLeft, Check, Crown, User } from "lucide-react";
 import {
   Button,
   Select,
@@ -247,7 +242,7 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <IconUser size={15} stroke={1.8} />
+          <User size={15} strokeWidth={1.8} />
         )}
       </span>
       <span className="min-w-0">
@@ -448,9 +443,9 @@ function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
       {planFeatures(tier).map((feature) => {
         return (
           <li key={feature} className="flex items-center gap-2">
-            <IconCheck
+            <Check
               size={14}
-              stroke={1.8}
+              strokeWidth={1.8}
               className="shrink-0 text-muted-foreground/50"
             />
             <span className="text-[13px] text-muted-foreground">{feature}</span>
@@ -486,7 +481,7 @@ function PlanSelectionCard({
     >
       {plan.popular && (
         <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <IconCrown size={12} stroke={1.8} className="text-amber-500" />
+          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
           {i18n.t(($) => {
             return $.billing.plans.popular;
           })}
@@ -586,7 +581,7 @@ function PricingPageHeader({
                 return $.billing.common.back;
               })}
             >
-              <IconArrowLeft size={16} stroke={1.8} />
+              <ArrowLeft size={16} strokeWidth={1.8} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom">

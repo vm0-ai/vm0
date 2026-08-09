@@ -1,6 +1,6 @@
 import { useGet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { IconWorld } from "@tabler/icons-react";
+import { Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Select,
@@ -144,9 +144,9 @@ export function LanguageSettings() {
         <div className="flex flex-1 items-center gap-4 min-w-0">
           <div className="shrink-0">
             <div className="flex h-7 w-7 items-center justify-center">
-              <IconWorld
+              <Globe
                 size={22}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="text-muted-foreground"
               />
             </div>

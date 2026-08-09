@@ -6,7 +6,7 @@ import { Button } from "@vm0/ui/components/ui/button";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { IconSunrise } from "@tabler/icons-react";
+import { Sunrise } from "lucide-react";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   userPreferences$,
@@ -88,9 +88,9 @@ export function MorningBriefSettings() {
       <div className="flex flex-1 items-center gap-4 min-w-0">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <IconSunrise
+            <Sunrise
               size={22}
-              stroke={1.5}
+              strokeWidth={1.5}
               className="text-muted-foreground"
             />
           </div>

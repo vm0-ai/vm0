@@ -2,14 +2,14 @@ import type { FormEvent } from "react";
 
 import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import {
-  IconArrowLeft,
-  IconCircleCheck,
-  IconCopy,
-  IconLoader2,
-  IconPlus,
-  IconTrash,
-  IconWebhook,
-} from "@tabler/icons-react";
+  ArrowLeft,
+  CircleCheck,
+  Copy,
+  Loader2,
+  Plus,
+  Trash,
+  Webhook,
+} from "lucide-react";
 import { Button } from "@vm0/ui";
 import {
   Dialog,
@@ -88,7 +88,7 @@ function CopyField({
             copyValue(value, label);
           }}
         >
-          <IconCopy size={14} />
+          <Copy size={14} />
           {t(($) => {
             return $.connectors.providerSettings.strapi.actions.copy;
           })}
@@ -115,7 +115,7 @@ function StrapiIntegrationHeader({
   return (
     <div className="flex items-start gap-4 p-4">
       <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#4945ff]/10 text-[#4945ff]">
-        <IconWebhook size={20} />
+        <Webhook size={20} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="font-medium text-foreground">{integration.name}</div>
@@ -125,7 +125,7 @@ function StrapiIntegrationHeader({
       </div>
       {integration.lastTestedAt ? (
         <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs font-medium">
-          <IconCircleCheck size={14} className="text-green-600" />
+          <CircleCheck size={14} className="text-green-600" />
           {t(($) => {
             return $.connectors.providerSettings.strapi.tested;
           })}
@@ -163,7 +163,7 @@ function StrapiAdminActions({
           );
         }}
       >
-        {checking ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        {checking ? <Loader2 size={14} className="animate-spin" /> : null}
         {t(($) => {
           return $.connectors.providerSettings.strapi.actions.checkTest;
         })}
@@ -171,7 +171,7 @@ function StrapiAdminActions({
       <Dialog>
         <DialogTrigger asChild>
           <Button type="button" variant="ghost" size="sm">
-            <IconTrash size={14} />
+            <Trash size={14} />
             {t(($) => {
               return $.connectors.providerSettings.strapi.actions.remove;
             })}
@@ -273,9 +273,7 @@ function StrapiIntegrationCard({
               );
             }}
           >
-            {revealing ? (
-              <IconLoader2 size={14} className="animate-spin" />
-            ) : null}
+            {revealing ? <Loader2 size={14} className="animate-spin" /> : null}
             {t(($) => {
               return $.connectors.providerSettings.strapi.actions
                 .revealAuthorization;
@@ -384,9 +382,9 @@ function StrapiIntegrationForm() {
       </div>
       <Button type="submit" disabled={creating}>
         {creating ? (
-          <IconLoader2 size={16} className="animate-spin" />
+          <Loader2 size={16} className="animate-spin" />
         ) : (
-          <IconPlus size={16} />
+          <Plus size={16} />
         )}
         {t(($) => {
           return $.connectors.providerSettings.strapi.actions.create;
@@ -413,7 +411,7 @@ export function ZeroStrapiSettingsPage() {
             pathname={ROUTES.works}
             className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
-            <IconArrowLeft size={16} />
+            <ArrowLeft size={16} />
             {t(($) => {
               return $.connectors.providerSettings.strapi.whereZeroWorks;
             })}
