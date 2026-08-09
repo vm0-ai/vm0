@@ -41,6 +41,45 @@ class TestSanitizeHeadersForCapture:
         assert result["Content-Type"] == expected
 
     @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param(
+                (" " * 256) + "application/json",
+                "application/json",
+                id="leading-at-limit",
+            ),
+            pytest.param(
+                (" " * 257) + "application/json",
+                "***",
+                id="leading-over-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 256),
+                "application/json",
+                id="trailing-at-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 257),
+                "***",
+                id="trailing-over-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 256) + "; charset=utf-8",
+                "application/json",
+                id="before-parameter-at-limit",
+            ),
+            pytest.param(
+                "application/json" + (" " * 257) + "; charset=utf-8",
+                "***",
+                id="before-parameter-over-limit",
+            ),
+        ],
+    )
+    def test_content_type_optional_whitespace_is_bounded(self, headers, value, expected):
+        result = _sanitize_headers_for_capture(headers(("Content-Type", value)))
+        assert result["Content-Type"] == expected
+
+    @pytest.mark.parametrize(
         ("name", "value", "expected"),
         [
             ("Accept-Encoding", "\tgzip, br ", "gzip, br"),
