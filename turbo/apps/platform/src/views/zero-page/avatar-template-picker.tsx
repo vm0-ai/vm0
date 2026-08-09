@@ -27,6 +27,7 @@ import {
   Skeleton,
   cn,
 } from "@vm0/ui";
+import { readAvatarTemplateOptions } from "@vm0/core/avatar-template";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -1040,7 +1041,9 @@ function AvatarVoiceCatalog({
         : undefined;
   const pageSignal = useGet(pageSignal$);
   const selectedVoiceId =
-    value?.type === "video" ? value.selection.voiceId : undefined;
+    value?.type === "video"
+      ? readAvatarTemplateOptions(value.selection).voiceId
+      : undefined;
   const recommendedVoice =
     recommendation.state === "hasData"
       ? (recommendation.data ?? visibleCatalog?.voices[0] ?? null)
