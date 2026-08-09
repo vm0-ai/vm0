@@ -7288,7 +7288,7 @@ function ComposerSendButton({
         return $.chat.actions.send;
       })}
     >
-      <ArrowUp size={18} strokeWidth={2} />
+      <ArrowUp size={18} strokeWidth={2} data-explicit-stroke-width />
     </Button>
   );
 }
