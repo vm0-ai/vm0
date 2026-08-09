@@ -289,6 +289,14 @@ impl From<CodexAppServerError> for AgentError {
 /// and subsequent calls surface the saved protocol reason instead of attempting
 /// to reuse a potentially desynchronized app-server process.
 ///
+/// Cancellation is operation-specific. Dropping a started request or write can
+/// leave request correlation or the outbound stream uncertain; later protocol
+/// use then poisons the client, closes stdio, and terminates the owned child.
+/// Cancelling [`Self::next_notification`] while it is only waiting for stdout
+/// preserves partial input, but cancelling its server-request rejection write
+/// follows the unsafe write rule. A cancelled close operation may be retried to
+/// finish cleanup, but JSON-RPC operations must not resume after closing starts.
+///
 /// Dropping a client that was not closed through [`Self::shutdown`] or
 /// [`Self::terminate`] performs best-effort cleanup: stdio handles are closed,
 /// the owned child process group is killed before the child handle is dropped,
@@ -435,6 +443,13 @@ impl CodexAppServerClient {
     /// The request advertises the experimental app-server API, disables
     /// attestation, and includes configured opt-out notification methods. The
     /// returned payload is the raw app-server initialization response.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future after it starts can interrupt either the initialize
+    /// request or the subsequent `initialized` notification write. Do not resume
+    /// JSON-RPC operations on the client; use [`Self::shutdown`] or
+    /// [`Self::terminate`] to finish cleanup.
     pub async fn initialize(&mut self) -> Result<InitializeResponse, CodexAppServerError> {
         let mut capabilities = Map::new();
         capabilities.insert("experimentalApi".to_string(), Value::Bool(true));
@@ -475,6 +490,12 @@ impl CodexAppServerClient {
     /// not match the generated request id, or if the response shape does not
     /// deserialize into `T`, the stream is poisoned because request correlation
     /// can no longer be trusted.
+    ///
+    /// # Cancellation safety
+    ///
+    /// This method has the same cancellation contract as
+    /// [`Self::request_value`]. Dropping it after it starts makes later protocol
+    /// reuse unsafe; use [`Self::shutdown`] or [`Self::terminate`] for cleanup.
     pub async fn request<T>(
         &mut self,
         method: &str,
@@ -497,6 +518,14 @@ impl CodexAppServerClient {
     /// 128 entries or 16 MiB of raw line data. Unsupported app-server requests
     /// received during the wait are rejected with JSON-RPC `METHOD_NOT_FOUND`,
     /// after which the client continues waiting for the original response.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future after it starts leaves the request correlation
+    /// unresolved and can also leave its outbound write uncertain. A later
+    /// protocol operation poisons the client, closes stdio, and terminates the
+    /// owned child. Use [`Self::shutdown`] or [`Self::terminate`] for cleanup
+    /// instead of resuming JSON-RPC operations.
     pub async fn request_value(
         &mut self,
         method: &str,
@@ -574,6 +603,15 @@ impl CodexAppServerClient {
     /// buffered, the client reads stdout until a notification arrives. This
     /// method cannot be used while a request is in flight because that would
     /// split response ownership across two callers.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future while it is waiting for stdout is safe. Partial line
+    /// bytes remain buffered, so a later notification read or request can
+    /// continue using the client. However, this method writes a
+    /// `METHOD_NOT_FOUND` response when it receives an app-server request.
+    /// Dropping the future during that rejection write leaves the outbound
+    /// stream uncertain and makes later protocol reuse unsafe.
     pub async fn next_notification(
         &mut self,
         pending_method: &str,
@@ -608,6 +646,13 @@ impl CodexAppServerClient {
     /// `null` params are omitted from the wire message, matching app-server's
     /// notification shape. The stream must be usable and no other write may be
     /// in progress.
+    ///
+    /// # Cancellation safety
+    ///
+    /// Dropping this future after its wire write starts leaves the outbound
+    /// stream uncertain. A later protocol operation poisons the client, closes
+    /// stdio, and terminates the owned child. Use [`Self::shutdown`] or
+    /// [`Self::terminate`] for cleanup instead of resuming JSON-RPC operations.
     pub async fn notify(&mut self, method: &str, params: Value) -> Result<(), CodexAppServerError> {
         self.ensure_stream_usable()?;
         self.write_message(&outgoing_notification(method, params))
@@ -620,6 +665,12 @@ impl CodexAppServerClient {
     /// closes stdio, yields once to let the child observe EOF, then performs
     /// process-group cleanup while the child is still owned and unreaped. Stderr
     /// is drained best-effort before the client is marked closed.
+    ///
+    /// # Cancellation safety
+    ///
+    /// If this future is dropped after it first returns `Pending`, protocol I/O
+    /// has already been closed. Call `shutdown` again to finish child and stderr
+    /// cleanup, but do not resume JSON-RPC operations.
     pub async fn shutdown(&mut self) -> Result<(), CodexAppServerError> {
         if self.closed {
             return Ok(());
@@ -649,6 +700,12 @@ impl CodexAppServerClient {
     /// app-server should stop promptly. It closes stdio, performs process-group
     /// cleanup while the child is still owned and unreaped, and then waits for
     /// the child. Stderr is still drained best-effort before close completes.
+    ///
+    /// # Cancellation safety
+    ///
+    /// If this future is dropped after it first returns `Pending`, protocol I/O
+    /// has already been closed. Call `terminate` again to finish child and stderr
+    /// cleanup, but do not resume JSON-RPC operations.
     pub async fn terminate(&mut self) -> Result<(), CodexAppServerError> {
         if self.closed {
             return Ok(());
