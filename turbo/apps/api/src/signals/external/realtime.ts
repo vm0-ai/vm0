@@ -3,6 +3,7 @@ import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-ident
 import type {
   BrowserSessionChangedPayload,
   ConnectorChangedPayload,
+  UserPreferenceChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
   ConnectorRuntimeTarget,
@@ -120,6 +121,24 @@ export async function publishCustomConnectorListChangedForUserSafely(
     publishUserSignal([userId], "customConnectorListChanged"),
     (error) => {
       L.warn("Failed to publish custom connector list changed signal", {
+        error,
+      });
+    },
+  );
+}
+
+export async function publishUserPreferenceChangedForUserSafely(
+  userId: string,
+  kinds: UserPreferenceChangedPayload["kinds"],
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "userPreferenceChanged", {
+      kinds,
+    } satisfies UserPreferenceChangedPayload),
+    (error) => {
+      L.warn("Failed to publish user preference changed signal", {
+        userId,
+        kinds,
         error,
       });
     },
