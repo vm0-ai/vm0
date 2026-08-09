@@ -77,7 +77,7 @@ export function AgentDialogSearch({
           size={16}
           strokeWidth={2}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          data-explicit-stroke-width
+          data-stroke
         />
         <Input
           type="text"
@@ -101,7 +101,7 @@ export function AgentDialogSearch({
               return $.sidebar.clearSearch;
             })}
           >
-            <X size={14} strokeWidth={2} data-explicit-stroke-width />
+            <X size={14} strokeWidth={2} data-stroke />
           </button>
         )}
       </div>
@@ -196,7 +196,7 @@ function AgentCommandSearch({
               return $.sidebar.clearSearch;
             })}
           >
-            <X size={14} strokeWidth={2} data-explicit-stroke-width />
+            <X size={14} strokeWidth={2} data-stroke />
           </button>
         )}
       </div>
@@ -382,9 +382,7 @@ function PinnedAgentCommandItem({
                 return $.sidebar.unpin;
               }),
               disabled,
-              icon: (
-                <PinOff size={16} strokeWidth={2} data-explicit-stroke-width />
-              ),
+              icon: <PinOff size={16} strokeWidth={2} data-stroke />,
               onSelect: onUnpin,
             }}
           />
@@ -536,9 +534,7 @@ function UnpinnedAgentsCommandSection({
                     return $.sidebar.pin;
                   }),
                   disabled,
-                  icon: (
-                    <Pin size={16} strokeWidth={2} data-explicit-stroke-width />
-                  ),
+                  icon: <Pin size={16} strokeWidth={2} data-stroke />,
                   onSelect: () => {
                     return onTogglePin(agent.id);
                   },

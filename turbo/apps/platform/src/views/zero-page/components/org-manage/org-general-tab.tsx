@@ -235,7 +235,7 @@ function ProfileSection({
                     size={14}
                     strokeWidth={2}
                     className="text-white"
-                    data-explicit-stroke-width
+                    data-stroke
                   />
                 </div>
               )}

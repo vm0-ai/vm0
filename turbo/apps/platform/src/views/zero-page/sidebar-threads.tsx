@@ -136,7 +136,7 @@ function SessionStateIndicator({
       })}
       className="flex items-center justify-center text-sidebar-foreground/50"
     >
-      <Pencil size={16} strokeWidth={2} data-explicit-stroke-width />
+      <Pencil size={16} strokeWidth={2} data-stroke />
     </span>
   );
 }
@@ -230,21 +230,17 @@ function ChatThreadMenu({
                         size={16}
                         strokeWidth={2}
                         className="md:hidden"
-                        data-explicit-stroke-width
+                        data-stroke
                       />
                       <Ellipsis
                         size={16}
                         strokeWidth={2}
                         className="hidden md:block"
-                        data-explicit-stroke-width
+                        data-stroke
                       />
                     </>
                   ) : (
-                    <Ellipsis
-                      size={16}
-                      strokeWidth={2}
-                      data-explicit-stroke-width
-                    />
+                    <Ellipsis size={16} strokeWidth={2} data-stroke />
                   )}
                 </span>
               </TooltipTrigger>
@@ -266,7 +262,7 @@ function ChatThreadMenu({
                   size={16}
                   strokeWidth={2}
                   className="mr-2"
-                  data-explicit-stroke-width
+                  data-stroke
                 />
                 {t(($) => {
                   return $.chat.sidebar.unpin;
@@ -274,12 +270,7 @@ function ChatThreadMenu({
               </>
             ) : (
               <>
-                <Pin
-                  size={16}
-                  strokeWidth={2}
-                  className="mr-2"
-                  data-explicit-stroke-width
-                />
+                <Pin size={16} strokeWidth={2} className="mr-2" data-stroke />
                 {t(($) => {
                   return $.chat.sidebar.pin;
                 })}
@@ -287,12 +278,7 @@ function ChatThreadMenu({
             )}
           </DropdownMenuItem>
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
-            <Pencil
-              size={16}
-              strokeWidth={2}
-              className="mr-2"
-              data-explicit-stroke-width
-            />
+            <Pencil size={16} strokeWidth={2} className="mr-2" data-stroke />
             {t(($) => {
               return $.chat.sidebar.rename;
             })}
@@ -303,12 +289,7 @@ function ChatThreadMenu({
             }}
             className="text-destructive focus:text-destructive"
           >
-            <Trash
-              size={16}
-              strokeWidth={2}
-              className="mr-2"
-              data-explicit-stroke-width
-            />
+            <Trash size={16} strokeWidth={2} className="mr-2" data-stroke />
             {t(($) => {
               return $.chat.sidebar.delete;
             })}
@@ -353,7 +334,7 @@ function ChatThreadSideDecorator({
                 })}
                 className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
-                <Pin size={16} strokeWidth={2} data-explicit-stroke-width />
+                <Pin size={16} strokeWidth={2} data-stroke />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -688,7 +669,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <Ellipsis size={16} strokeWidth={2} data-explicit-stroke-width />
+          <Ellipsis size={16} strokeWidth={2} data-stroke />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -746,7 +727,7 @@ function ChatThreadsTitle() {
             size={12}
             strokeWidth={2}
             className={collapsed ? "" : "rotate-90"}
-            data-explicit-stroke-width
+            data-stroke
           />
         </span>
       </span>
@@ -780,12 +761,7 @@ function ChatThreadsTitle() {
                 }}
                 disabled={!currentChatAgentId || newChatDisabled}
               >
-                <Plus
-                  size={16}
-                  strokeWidth={2}
-                  className="mr-2"
-                  data-explicit-stroke-width
-                />
+                <Plus size={16} strokeWidth={2} className="mr-2" data-stroke />
                 {t(($) => {
                   return $.chat.newChat;
                 })}
@@ -800,7 +776,7 @@ function ChatThreadsTitle() {
                   size={16}
                   strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
-                  data-explicit-stroke-width
+                  data-stroke
                 />
                 {t(($) => {
                   return $.chat.sidebar.allChats;
@@ -815,7 +791,7 @@ function ChatThreadsTitle() {
                   size={16}
                   strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
-                  data-explicit-stroke-width
+                  data-stroke
                 />
                 {t(($) => {
                   return $.chat.sidebar.unreadOnly;

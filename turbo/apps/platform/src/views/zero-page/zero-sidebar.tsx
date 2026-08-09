@@ -489,7 +489,7 @@ function ExpandedManageSection() {
               size={12}
               strokeWidth={2}
               className={manageCollapsed ? "" : "rotate-90"}
-              data-explicit-stroke-width
+              data-stroke
             />
           </span>
         </span>

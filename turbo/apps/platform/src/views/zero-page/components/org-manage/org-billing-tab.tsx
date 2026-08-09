@@ -1350,7 +1350,7 @@ function ConcurrencyQuantityControl({
             onQuantityChange(quantity - 1);
           }}
         >
-          <Minus size={13} strokeWidth={2} data-explicit-stroke-width />
+          <Minus size={13} strokeWidth={2} data-stroke />
         </button>
         <span className="flex h-8 w-11 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
           {formatLocalizedNumber(quantity)}
@@ -1368,7 +1368,7 @@ function ConcurrencyQuantityControl({
             onQuantityChange(quantity + 1);
           }}
         >
-          <Plus size={13} strokeWidth={2} data-explicit-stroke-width />
+          <Plus size={13} strokeWidth={2} data-stroke />
         </button>
       </div>
     </div>

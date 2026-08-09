@@ -256,7 +256,7 @@ export function ZeroIdeationPage() {
                                   size={14}
                                   strokeWidth={2}
                                   className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-                                  data-explicit-stroke-width
+                                  data-stroke
                                 />
                                 <p className="text-sm font-semibold text-foreground pr-5">
                                   {useCase.title}

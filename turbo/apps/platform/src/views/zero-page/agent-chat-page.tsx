@@ -304,7 +304,7 @@ function PinPill() {
               return $.sidebar.pin;
             })}
           >
-            <Pin size={12} strokeWidth={2} data-explicit-stroke-width />
+            <Pin size={12} strokeWidth={2} data-stroke />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -403,7 +403,7 @@ function SuggestedPromptButton({
         size={14}
         strokeWidth={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-        data-explicit-stroke-width
+        data-stroke
       />
       <p className="text-sm font-semibold text-foreground pr-5">{item.title}</p>
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
@@ -451,7 +451,7 @@ function IdeasUseCasesButton() {
         size={14}
         strokeWidth={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-        data-explicit-stroke-width
+        data-stroke
       />
       <p className="text-sm font-semibold text-foreground pr-5">
         {t(($) => {
@@ -469,7 +469,7 @@ function IdeasUseCasesButton() {
             return $.ideation.entry.viewAll;
           })}
         </span>
-        <ArrowUpRight size={14} strokeWidth={2} data-explicit-stroke-width />
+        <ArrowUpRight size={14} strokeWidth={2} data-stroke />
       </div>
     </button>
   );

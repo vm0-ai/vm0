@@ -305,7 +305,7 @@ function InviteDialog() {
     >
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
-          <Plus size={14} strokeWidth={2} data-explicit-stroke-width />
+          <Plus size={14} strokeWidth={2} data-stroke />
           {t(($) => {
             return $.settings.workspace.members.addMember;
           })}
@@ -923,7 +923,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.acceptTitle;
           })}
         >
-          <Check size={15} strokeWidth={2} data-explicit-stroke-width />
+          <Check size={15} strokeWidth={2} data-stroke />
         </button>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
@@ -933,7 +933,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
             return $.settings.workspace.members.membershipRequest.rejectTitle;
           })}
         >
-          <X size={15} strokeWidth={2} data-explicit-stroke-width />
+          <X size={15} strokeWidth={2} data-stroke />
         </button>
       </div>
     </div>
