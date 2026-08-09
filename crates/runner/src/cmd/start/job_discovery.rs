@@ -15,7 +15,7 @@ use tokio::sync::OwnedMutexGuard;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::active_runs::{ActiveRunGuard, ActiveRunProof};
+use super::active_runs::{ActiveRunGuard, ActiveRunReuseProof};
 use super::factory_lifecycle::SharedFactory;
 use super::finalizing_claim::{FinalizingClaimRequest, spawn_finalizing_claim};
 use super::idle_lifecycle::{
@@ -119,7 +119,7 @@ enum SandboxAdmittedResource {
 }
 
 pub(super) struct FinalizingAdmission {
-    pub(super) predecessor: ActiveRunProof,
+    pub(super) predecessor: ActiveRunReuseProof,
     pub(super) deadline: Instant,
     pub(super) reuse_key: String,
     pub(super) history_generation_run_id: RunId,
@@ -1054,7 +1054,7 @@ fn exact_speculative_preparation(
 
 fn finalizing_preparation(
     candidate: JobCandidate,
-    predecessor: ActiveRunProof,
+    predecessor: ActiveRunReuseProof,
     deadline: Instant,
     reuse_key: &str,
     history_generation_run_id: RunId,

@@ -15,6 +15,7 @@ use sandbox::{
 };
 use tracing::{info, warn};
 
+use super::active_runs::ActiveRunReusePublisher;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::{
     SharedIdlePool, destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait,
@@ -172,6 +173,7 @@ pub(super) struct FinalizeContext {
     pub(super) idle_pool: SharedIdlePool,
     pub(super) status: Arc<StatusTracker>,
     pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
+    pub(super) active_run_reuse: ActiveRunReusePublisher,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) parking_gate: ParkingGate,
     pub(super) network_log_drain: NetworkLogDrainCoordinator,
@@ -256,6 +258,7 @@ async fn finalize_sandbox_for_completion_inner(
         idle_pool,
         status,
         reuse_state_notify,
+        active_run_reuse,
         workspace_cache_snapshot,
         parking_gate,
         network_log_drain,
@@ -318,6 +321,16 @@ async fn finalize_sandbox_for_completion_inner(
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
+        let history_generation_run_id = match sandbox_reuse_disposition {
+            SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success) => Some(run_id),
+            SandboxReuseDisposition::Eligible(
+                SandboxReuseTerminal::NonzeroExit
+                | SandboxReuseTerminal::ExecutionTimeout
+                | SandboxReuseTerminal::CooperativeCancellation,
+            )
+            | SandboxReuseDisposition::Ineligible(_) => None,
+        };
+        let publishes_exact_sandbox = history_generation_run_id == Some(run_id);
         let park_request = IdleParkRequest::new(IdleParkRequestParts {
             run_id,
             sandbox,
@@ -330,15 +343,7 @@ async fn finalize_sandbox_for_completion_inner(
             source_ip,
             storage_fingerprints,
             restored_session_identity,
-            history_generation_run_id: match sandbox_reuse_disposition {
-                SandboxReuseDisposition::Eligible(SandboxReuseTerminal::Success) => Some(run_id),
-                SandboxReuseDisposition::Eligible(
-                    SandboxReuseTerminal::NonzeroExit
-                    | SandboxReuseTerminal::ExecutionTimeout
-                    | SandboxReuseTerminal::CooperativeCancellation,
-                )
-                | SandboxReuseDisposition::Ineligible(_) => None,
-            },
+            history_generation_run_id,
             guest_timezone_intent,
             workspace_image_size_bytes,
             workspace_promotion,
@@ -603,6 +608,9 @@ async fn finalize_sandbox_for_completion_inner(
                         let snapshot = pool.status_snapshot();
                         drop(transfer_guard);
                         drop(pool);
+                        if publishes_exact_sandbox {
+                            active_run_reuse.publish_exact_sandbox();
+                        }
                         let ownership = OwnershipTransitions::new(status.as_ref());
                         ownership
                             .publish_idle_status_after_pool_transfer(snapshot)
@@ -629,6 +637,9 @@ async fn finalize_sandbox_for_completion_inner(
                         let snapshot = pool.status_snapshot();
                         drop(transfer_guard);
                         drop(pool);
+                        if publishes_exact_sandbox {
+                            active_run_reuse.publish_exact_sandbox();
+                        }
                         let ownership = OwnershipTransitions::new(status.as_ref());
                         ownership
                             .publish_idle_status_after_pool_transfer(snapshot)
@@ -1037,6 +1048,7 @@ mod tests {
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
                 reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
+                active_run_reuse: ActiveRunReusePublisher::detached(),
                 workspace_cache_snapshot: WorkspaceCacheStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
