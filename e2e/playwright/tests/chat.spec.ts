@@ -210,7 +210,8 @@ async function mockChatThread(
     });
   });
   await page.route(
-    new RegExp(`/api/zero/chat-threads/${options.threadId}/events(?:\\?.*)?$`),
+    (url) =>
+      url.pathname === `/api/zero/chat-threads/${options.threadId}/events`,
     async (route) => {
       const requestUrl = new URL(route.request().url());
       const isIncremental =
@@ -222,7 +223,8 @@ async function mockChatThread(
     },
   );
   await page.route(
-    new RegExp(`/api/zero/chat-threads/${options.threadId}/draft(?:\\?.*)?$`),
+    (url) =>
+      url.pathname === `/api/zero/chat-threads/${options.threadId}/draft`,
     async (route) => {
       await route.fulfill({
         json: { draftUserMessage: null, draftAttachments: null },
@@ -230,9 +232,8 @@ async function mockChatThread(
     },
   );
   await page.route(
-    new RegExp(
-      `/api/zero/chat-threads/${options.threadId}/mark-read(?:\\?.*)?$`,
-    ),
+    (url) =>
+      url.pathname === `/api/zero/chat-threads/${options.threadId}/mark-read`,
     async (route) => {
       await route.fulfill({
         json: { lastReadAt: options.createdAt, unreads: [] },
@@ -240,9 +241,9 @@ async function mockChatThread(
     },
   );
   await page.route(
-    new RegExp(
-      `/api/zero/chat-threads/${options.threadId}/event-snapshot(?:\\?.*)?$`,
-    ),
+    (url) =>
+      url.pathname ===
+      `/api/zero/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
       await route.fulfill({
         status: 404,
@@ -251,7 +252,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    new RegExp(`/api/zero/chat-threads/${options.threadId}(?:\\?.*)?$`),
+    (url) => url.pathname === `/api/zero/chat-threads/${options.threadId}`,
     async (route) => {
       await route.fulfill({
         json: {
