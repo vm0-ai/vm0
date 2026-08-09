@@ -117,6 +117,52 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
 
+async def test_authority_validation_deny_logs_malformed_fallback_target(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    fallback_url = "https://target.example:not-a-port/repos"
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="target.example:not-a-port",
+        sni="",
+        path="/repos",
+        request_headers=headers(("Host", "request.example")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "missing_sni"
+    auth_fetch.assert_not_called()
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "missing_sni"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == fallback_url
+    assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET] == {
+        "url": fallback_url,
+        "host": "request.example",
+        "port": 443,
+    }
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert entry["action"] == "DENY"
+    assert entry["firewall_error"] == "missing_sni"
+    assert entry["host"] == "request.example"
+    assert entry["port"] == 443
+    assert entry["url"] == fallback_url
+    assert entry["status"] == 403
+
+
 async def test_browser_user_agent_marker_survives_authority_validation_block(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
