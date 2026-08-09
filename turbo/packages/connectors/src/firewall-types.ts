@@ -5,6 +5,7 @@ import {
   FIREWALL_HOSTNAME_POLICY_VERSION,
 } from "./firewall-hostname-policy";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
+import { PUBLIC_DESTINATION_ADDRESS_POLICY } from "./public-destination-policy";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
 export { normalizeFirewallFixedHost } from "./firewall-url-utils";
@@ -340,23 +341,28 @@ const AUTH_TEMPLATE_START = "${{";
 const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
 const IPV4_MAX_OCTET = 255;
 const IPV4_OCTET_BASE = IPV4_MAX_OCTET + 1;
-const IPV4_NON_PUBLIC_RANGES: readonly (readonly [number, number])[] = [
-  [0x00000000, 0x00ffffff],
-  [0x0a000000, 0x0affffff],
-  [0x64400000, 0x647fffff],
-  [0x7f000000, 0x7fffffff],
-  [0xa9fe0000, 0xa9feffff],
-  [0xac100000, 0xac1fffff],
-  [0xc0000000, 0xc0000008],
-  [0xc000000b, 0xc00000ff],
-  [0xc0000200, 0xc00002ff],
-  [0xc0586300, 0xc05863ff],
-  [0xc0a80000, 0xc0a8ffff],
-  [0xc6120000, 0xc613ffff],
-  [0xc6336400, 0xc63364ff],
-  [0xcb007100, 0xcb0071ff],
-  [0xe0000000, 0xffffffff],
-];
+const IPV4_NON_PUBLIC_RANGES =
+  PUBLIC_DESTINATION_ADDRESS_POLICY.ipv4NonPublicRanges;
+const {
+  globalUnicastFirstMin: IPV6_GLOBAL_UNICAST_FIRST_MIN,
+  globalUnicastFirstMax: IPV6_GLOBAL_UNICAST_FIRST_MAX,
+  ietfProtocolAssignmentsFirst: IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST,
+  ietfProtocolAssignmentsSecondMax: IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX,
+  documentationSecond: IPV6_DOCUMENTATION_SECOND,
+  sixToFourFirst: IPV6_6TO4_FIRST,
+  specialExactSecond: IPV6_SPECIAL_EXACT_SECOND,
+  specialExactLastMin: IPV6_SPECIAL_EXACT_LAST_MIN,
+  specialExactLastMax: IPV6_SPECIAL_EXACT_LAST_MAX,
+  amtSecond: IPV6_AMT_SECOND,
+  as112Second: IPV6_AS112_SECOND,
+  as112Third: IPV6_AS112_THIRD,
+  orchidSecondMin: IPV6_ORCHID_SECOND_MIN,
+  orchidSecondMax: IPV6_ORCHID_SECOND_MAX,
+  droneRemoteIdSecondMin: IPV6_DRONE_REMOTE_ID_SECOND_MIN,
+  droneRemoteIdSecondMax: IPV6_DRONE_REMOTE_ID_SECOND_MAX,
+  expandedDocumentationFirst: IPV6_EXPANDED_DOCUMENTATION_FIRST,
+  expandedDocumentationSecondMax: IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX,
+} = PUBLIC_DESTINATION_ADDRESS_POLICY.ipv6;
 
 export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
 
@@ -1582,27 +1588,30 @@ function isPublicIpv6SpecialRegistryException(
 ): boolean {
   const second = words[1]!;
   if (
-    second === 0x0001 &&
+    second === IPV6_SPECIAL_EXACT_SECOND &&
     words[2] === 0 &&
     words[3] === 0 &&
     words[4] === 0 &&
     words[5] === 0 &&
     words[6] === 0 &&
-    words[7]! >= 1 &&
-    words[7]! <= 3
+    words[7]! >= IPV6_SPECIAL_EXACT_LAST_MIN &&
+    words[7]! <= IPV6_SPECIAL_EXACT_LAST_MAX
   ) {
     return true;
   }
-  if (second === 0x0003) {
+  if (second === IPV6_AMT_SECOND) {
     return true;
   }
-  if (second === 0x0004 && words[2] === 0x0112) {
+  if (second === IPV6_AS112_SECOND && words[2] === IPV6_AS112_THIRD) {
     return true;
   }
-  if (second >= 0x0020 && second <= 0x002f) {
+  if (second >= IPV6_ORCHID_SECOND_MIN && second <= IPV6_ORCHID_SECOND_MAX) {
     return true;
   }
-  return second >= 0x0030 && second <= 0x003f;
+  return (
+    second >= IPV6_DRONE_REMOTE_ID_SECOND_MIN &&
+    second <= IPV6_DRONE_REMOTE_ID_SECOND_MAX
+  );
 }
 
 function isPublicIpv6Address(words: readonly number[]): boolean {
@@ -1611,19 +1620,31 @@ function isPublicIpv6Address(words: readonly number[]): boolean {
   }
   const first = words[0]!;
   const second = words[1]!;
-  if ((first & 0xe000) !== 0x2000) {
+  if (
+    first < IPV6_GLOBAL_UNICAST_FIRST_MIN ||
+    first > IPV6_GLOBAL_UNICAST_FIRST_MAX
+  ) {
     return false;
   }
-  if (first === 0x2001 && second <= 0x01ff) {
+  if (
+    first === IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST &&
+    second <= IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX
+  ) {
     return isPublicIpv6SpecialRegistryException(words);
   }
-  if (first === 0x2001 && second === 0x0db8) {
+  if (
+    first === IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST &&
+    second === IPV6_DOCUMENTATION_SECOND
+  ) {
     return false;
   }
-  if (first === 0x3fff && second <= 0x0fff) {
+  if (
+    first === IPV6_EXPANDED_DOCUMENTATION_FIRST &&
+    second <= IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX
+  ) {
     return false;
   }
-  if (first === 0x2002) {
+  if (first === IPV6_6TO4_FIRST) {
     return false;
   }
   return true;

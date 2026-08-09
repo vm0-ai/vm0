@@ -28,6 +28,10 @@
       "import": "./src/firewall-types.ts",
       "types": "./src/firewall-types.ts"
     },
+    "./public-destination-policy": {
+      "import": "./src/public-destination-policy.ts",
+      "types": "./src/public-destination-policy.ts"
+    },
     "./firewall-metadata/policy": {
       "import": "./src/firewall-metadata/policy.ts",
       "types": "./src/firewall-metadata/policy.ts"
