@@ -5,7 +5,6 @@ import {
   chatEventRowSchema,
   type ChatEventRow,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
-import { serializeError } from "@vm0/core/log-utils";
 import { command, type Computed } from "ccstate";
 import {
   and,
@@ -26,7 +25,6 @@ import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 import { env, optionalEnv } from "../../lib/env";
-import { logger } from "../../lib/log";
 import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { isForeignKeyViolation, isUniqueViolation } from "../../lib/pg-errors";
 import { nowDate } from "../../lib/time";
@@ -34,7 +32,6 @@ import { writeDb$, type Db } from "../external/db";
 import {
   deleteS3Objects,
   downloadS3Buffer,
-  ensureS3CorsGetOrigin,
   listS3ObjectsPage,
   putImmutableS3Object,
   type S3Object,
@@ -44,10 +41,7 @@ import { withCronPassLog, type CronPassFields } from "./cron-pass-log.service";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
-const L = logger("api:chat-event-snapshot-cron");
-
 interface ChatEventSnapshotStats {
-  readonly corsChanged: boolean;
   readonly snapshots: number;
   readonly archivedEvents: number;
   readonly r2ObjectsScanned: number;
@@ -57,38 +51,6 @@ interface ChatEventSnapshotStats {
   readonly r2BytesDeleted: number;
   readonly r2GcShardsScanned: number;
   readonly r2GcSubpartitionedShards: number;
-}
-
-/**
- * Bucket CORS is bucket-level configuration that changes approximately never,
- * so the cron owns reconciliation. Read paths must not depend on an R2
- * control-plane call to serve a presigned URL.
- */
-function chatEventSnapshotCorsReady() {
-  const appOrigin = new URL(env("APP_URL")).origin;
-  return ensureS3CorsGetOrigin(env("R2_USER_STORAGES_BUCKET_NAME"), appOrigin);
-}
-
-/**
- * Reconciles bucket CORS without letting it gate archiving. Reconciliation is
- * an R2 control-plane call, so a credential that may only read and write
- * objects answers it with `AccessDenied` and every pass would abort before
- * archiving a single thread. A failure is reported through `corsReconciled`
- * and warned about instead; browser reads then need the rule set by hand,
- * which is bucket configuration a person can fix out of band.
- */
-async function reconcileSnapshotCors(get: ComputedGetter): Promise<{
-  readonly changed: boolean;
-  readonly reconciled: boolean;
-}> {
-  const reconciled = await settle(get(chatEventSnapshotCorsReady()));
-  if (!reconciled.ok) {
-    L.warn("chat event snapshot bucket CORS reconciliation failed", {
-      error: serializeError(reconciled.error),
-    });
-    return { changed: false, reconciled: false };
-  }
-  return { changed: reconciled.value.changed, reconciled: true };
 }
 
 interface SnapshotCandidate {
@@ -735,8 +697,6 @@ export const snapshotChatEvents$ = command(
     const db = set(writeDb$);
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     return await withCronPassLog(SNAPSHOT_CRON, async () => {
-      const cors = await reconcileSnapshotCors(get);
-      signal.throwIfAborted();
       const candidates = await db
         .select({
           chatThreadId: chatThreads.id,
@@ -787,7 +747,6 @@ export const snapshotChatEvents$ = command(
       signal.throwIfAborted();
       return {
         result: {
-          corsChanged: cors.changed,
           snapshots,
           archivedEvents,
           r2ObjectsScanned: r2Gc.scanned,
@@ -801,7 +760,6 @@ export const snapshotChatEvents$ = command(
         fields: {
           ...progress,
           ...scale,
-          corsReconciled: cors.reconciled,
           passSnapshots: snapshots,
           passArchivedEvents: archivedEvents,
         },

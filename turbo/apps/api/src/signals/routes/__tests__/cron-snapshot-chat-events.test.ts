@@ -351,43 +351,9 @@ describe("cron snapshot chat events", () => {
     // Source table scale for the payload reclaim and cleanup work that follows.
     expect(cronPassCount(event, "chatEventRows")).toBeGreaterThanOrEqual(1);
     expect(cronPassCount(event, "chatEventBytes")).toBeGreaterThan(0);
-    expect(event.corsReconciled).toBeTruthy();
 
     const head = await readChatEventSnapshotHead(context, threadId);
     expect(head.archive_schema_version).toBe(3);
-  }, 60_000);
-
-  it("keeps archiving when bucket CORS reconciliation is denied", async () => {
-    // An R2 credential scoped to object read/write answers the CORS
-    // control-plane commands with AccessDenied. Reconciliation runs before the
-    // first thread, so letting it throw stops archiving entirely.
-    installFakeChatEventR2(context, recordedPuts, { denyBucketCors: true });
-
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Cors denied agent",
-    });
-    const threadId = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
-      prompt: `cors-denied-${randomUUID()}`,
-    });
-    await projectChatEventSearch();
-
-    const pass = await runSnapshotCron();
-    expect(pass.success).toBeTruthy();
-    expect(pass.corsChanged).toBeFalsy();
-    expect(pass.snapshots).toBeGreaterThanOrEqual(1);
-    expect(putsForThread(threadId)).toHaveLength(1);
-
-    const head = await readChatEventSnapshotHead(context, threadId);
-    expect(head.archive_schema_version).toBe(3);
-
-    // The denial is reported instead of thrown, so the dashboard sees a healthy
-    // pass with CORS flagged.
-    const event = latestCronPassFields(context, "snapshot-chat-events");
-    expect(event.ok).toBeTruthy();
-    expect(event.corsReconciled).toBeFalsy();
-    expect(cronPassCount(event, "pendingThreads")).toBe(0);
   }, 60_000);
 
   it("fails the pass when a parent object no longer matches its content hash", async () => {

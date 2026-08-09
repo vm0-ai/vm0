@@ -81,9 +81,6 @@ interface FakeS3CommandRecord {
     readonly Delete?: {
       readonly Objects?: readonly { readonly Key?: string }[];
     };
-    readonly CORSConfiguration?: {
-      readonly CORSRules?: readonly unknown[];
-    };
   };
 }
 
@@ -153,25 +150,8 @@ function fakeDeleteObjects(record: FakeS3CommandRecord) {
   return Promise.resolve({ Errors: [] });
 }
 
-interface FakeChatEventR2Options {
-  /**
-   * Answers the CORS control-plane commands with `AccessDenied`, the way an R2
-   * credential that may only read and write objects does.
-   */
-  readonly denyBucketCors?: boolean;
-}
-
-function accessDeniedError(): Error {
-  return Object.assign(new Error("Access Denied"), {
-    name: "AccessDenied",
-    Code: "AccessDenied",
-  });
-}
-
 function handleFakeS3Command(
   command: unknown,
-  corsRulesByBucket: Map<string, readonly unknown[]>,
-  options: FakeChatEventR2Options,
   recordedPuts?: RecordedChatEventPut[],
 ) {
   const record = command as FakeS3CommandRecord;
@@ -188,25 +168,6 @@ function handleFakeS3Command(
   if (commandName === "ListObjectsV2Command") {
     return fakeListObjects(record);
   }
-  if (
-    options.denyBucketCors === true &&
-    (commandName === "GetBucketCorsCommand" ||
-      commandName === "PutBucketCorsCommand")
-  ) {
-    return Promise.reject(accessDeniedError());
-  }
-  if (commandName === "GetBucketCorsCommand") {
-    return Promise.resolve({
-      CORSRules: corsRulesByBucket.get(record.input?.Bucket ?? "") ?? [],
-    });
-  }
-  if (commandName === "PutBucketCorsCommand") {
-    corsRulesByBucket.set(
-      record.input?.Bucket ?? "",
-      record.input?.CORSConfiguration?.CORSRules ?? [],
-    );
-    return Promise.resolve({});
-  }
   if (commandName === "DeleteObjectsCommand") {
     return fakeDeleteObjects(record);
   }
@@ -216,18 +177,11 @@ function handleFakeS3Command(
 export function installFakeChatEventR2(
   context: TestContext,
   recordedPuts?: RecordedChatEventPut[],
-  options: FakeChatEventR2Options = {},
 ): void {
-  const corsRulesByBucket = new Map<string, readonly unknown[]>();
   // The suite-wide mock reset primes getSignedUrl in afterEach, so the first
   // test of a file starts unprimed; presigned downloads are part of this fake.
   context.mocks.s3.getSignedUrl.mockResolvedValue(FAKE_CHAT_EVENT_SNAPSHOT_URL);
   context.mocks.s3.send.mockImplementation((command: unknown) => {
-    return handleFakeS3Command(
-      command,
-      corsRulesByBucket,
-      options,
-      recordedPuts,
-    );
+    return handleFakeS3Command(command, recordedPuts);
   });
 }
