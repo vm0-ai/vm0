@@ -21,6 +21,7 @@ from flow_metadata_linter.ast_helpers import (
     _static_first_call_argument_nodes,
     _static_truth_value,
     _target_names,
+    _target_requires_unpacking,
     _truth_test_may_raise,
     _type_alias_target_names,
     _type_alias_value,
@@ -173,7 +174,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
       backedges for the nearest loop, so the next iteration or truth test records
       the state that exists after the loop body. Assignment targets are visited in
       binding order so a later fallible attribute or subscript target observes
-      earlier name bindings.
+      earlier name bindings. Context-manager sequence targets record their outer
+      unpack before that traversal; because those bindings only remove metadata
+      aliases, the pre-binding state covers nested partial-binding failures.
     """
 
     def __init__(self, path: Path) -> None:
@@ -1052,6 +1055,8 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         exception_state = _ExceptionAliasState()
         self._exception_alias_scopes.append(exception_state)
         if item.optional_vars is not None:
+            if _target_requires_unpacking(item.optional_vars):
+                self._record_implicit_exception_aliases()
             self._visit_assignment_target(item.optional_vars, direct_value_is_metadata_alias=False)
         protected_region_falls_through = (
             self._visit_with_items(remaining_items, body)

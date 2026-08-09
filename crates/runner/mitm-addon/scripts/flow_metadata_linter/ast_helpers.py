@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from typing import TypeGuard
 
 
+def _target_requires_unpacking(node: ast.AST | None) -> bool:
+    """Return whether binding ``node`` starts with structural sequence unpacking."""
+    return isinstance(node, ast.List | ast.Tuple)
+
+
 def _target_names(node: ast.AST | None) -> set[str]:
     if isinstance(node, ast.Name):
         return {node.id}
@@ -621,7 +626,7 @@ def _annotation_target_may_raise(node: ast.AST) -> bool:
 
 def _with_protected_region_may_raise(items: list[ast.withitem], body_flow: _FlowSummary) -> bool:
     target_may_raise = any(
-        _expression_may_raise(item.optional_vars)
+        _target_requires_unpacking(item.optional_vars) or _expression_may_raise(item.optional_vars)
         for item in items
         if item.optional_vars is not None
     )
