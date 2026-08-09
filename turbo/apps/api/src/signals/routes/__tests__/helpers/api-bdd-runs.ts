@@ -33,7 +33,6 @@ import {
 import {
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
-  runnersNetworkPolicyRefreshContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -102,10 +101,6 @@ interface RunsListQuery {
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
-type RunnerNetworkPolicyRefreshRequest = z.input<
-  (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
->;
-type RunnerNetworkPolicyRefreshStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type RunnerConnectorRuntimeSyncRequest = z.input<
   (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
 >;
@@ -545,61 +540,6 @@ export function createRunsApi(context: TestContext) {
         [409],
       );
       return response.body;
-    },
-
-    async refreshRunnerNetworkPolicy(runId: string, connectorSlug: string) {
-      const response = await accept(
-        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
-          headers: runnerHeaders(true),
-          params: { runId },
-          body: {
-            connectorSlugs: [connectorSlug],
-          },
-        }),
-        [200],
-      );
-      const [refresh] = response.body.refreshes;
-      if (!refresh) {
-        throw new Error(
-          `Expected refreshed network policy for ${connectorSlug}`,
-        );
-      }
-      return refresh;
-    },
-
-    async requestRefreshRunnerNetworkPolicy<
-      TStatus extends RunnerNetworkPolicyRefreshStatus,
-    >(
-      runId: string,
-      body: RunnerNetworkPolicyRefreshRequest,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
-          headers: runnerHeaders(true),
-          params: { runId },
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestRefreshRunnerNetworkPolicyAs<
-      TStatus extends RunnerNetworkPolicyRefreshStatus,
-    >(
-      authorization: string | undefined,
-      runId: string,
-      body: RunnerNetworkPolicyRefreshRequest,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
-          headers: authorization === undefined ? {} : { authorization },
-          params: { runId },
-          body,
-        }),
-        statuses,
-      );
     },
 
     async requestSyncConnectorRuntimeAs<

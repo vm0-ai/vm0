@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.0...runner-rs-v0.162.1) (2026-08-09)
+
+
+### Refactoring
+
+* **connectors:** remove legacy runtime compatibility ([#25941](https://github.com/vm0-ai/vm0/issues/25941)) ([e2cd0fe](https://github.com/vm0-ai/vm0/commit/e2cd0fe886dd0c903ba7322fabd93dca38d80ba0))
+
 ## [0.162.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.7...runner-rs-v0.162.0) (2026-08-09)
 
 

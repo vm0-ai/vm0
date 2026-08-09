@@ -3,6 +3,7 @@ import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-ident
 import type {
   BrowserSessionChangedPayload,
   ConnectorChangedPayload,
+  UserPreferenceChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
   ConnectorRuntimeTarget,
@@ -120,6 +121,24 @@ export async function publishCustomConnectorListChangedForUserSafely(
     publishUserSignal([userId], "customConnectorListChanged"),
     (error) => {
       L.warn("Failed to publish custom connector list changed signal", {
+        error,
+      });
+    },
+  );
+}
+
+export async function publishUserPreferenceChangedForUserSafely(
+  userId: string,
+  kinds: UserPreferenceChangedPayload["kinds"],
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "userPreferenceChanged", {
+      kinds,
+    } satisfies UserPreferenceChangedPayload),
+    (error) => {
+      L.warn("Failed to publish user preference changed signal", {
+        userId,
+        kinds,
         error,
       });
     },
@@ -373,27 +392,18 @@ export async function publishCancelToRunnerGroup(
  * Best-effort post-commit wakeup. Delivery failure leaves an active run on its
  * last-known-good policy and must not reinterpret the committed grant change.
  */
-export async function publishNetworkPolicyRefreshToRunnerGroupSafely(
+export async function publishConnectorRuntimeSyncToRunnerGroupSafely(
   group: string,
   runId: string,
-  connectorSlug: string,
+  target: ConnectorRuntimeTarget,
 ): Promise<void> {
   await tapError(
-    (async () => {
-      const channel = ablyClient().channels.get(`runner-group:${group}`);
-      await channel.publish("network-policy-refresh", {
-        runId,
-        connectorSlug,
-      });
-      L.debug(
-        `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
-      );
-    })(),
+    publishConnectorRuntimeSyncToRunnerGroup(group, runId, target),
     (error) => {
-      L.warn("Failed to publish network policy refresh", {
+      L.warn("Failed to publish connector runtime sync", {
         group,
         runId,
-        connectorSlug,
+        target,
         error,
       });
     },

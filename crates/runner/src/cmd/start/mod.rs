@@ -64,8 +64,8 @@ use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{
-    ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobCandidate, JobProvider,
-    LocalProvider, NetworkPolicyRefreshHandle, RunnerPreferenceRemovalReason,
+    ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, ConnectorRuntimeSyncHandle,
+    JobCandidate, JobProvider, LocalProvider, RunnerPreferenceRemovalReason,
 };
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
@@ -679,10 +679,10 @@ async fn run_start_with_home(
     // Create provider — handles discovery + claim + complete
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
 
-    let (provider, group_name, network_policy_refresh): (
+    let (provider, group_name, connector_runtime_sync): (
         Arc<dyn JobProvider>,
         String,
-        Option<NetworkPolicyRefreshHandle>,
+        Option<ConnectorRuntimeSyncHandle>,
     ) = if let Some(group_dir) = local_group_dir {
         let profiles: Vec<String> = runner_config.profiles.keys().cloned().collect();
         let provider =
@@ -707,8 +707,8 @@ async fn run_start_with_home(
             cancel.clone(),
             cancel_tokens.clone(),
         );
-        let network_policy_refresh = provider.network_policy_refresh_handle();
-        (provider, group_name, Some(network_policy_refresh))
+        let connector_runtime_sync = provider.connector_runtime_sync_handle();
+        (provider, group_name, Some(connector_runtime_sync))
     };
 
     let exec_config = Arc::new(ExecutorConfig {
@@ -719,7 +719,7 @@ async fn run_start_with_home(
         network_log_manager,
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle()),
-        network_policy_refresh,
+        connector_runtime_sync,
         session_history_cpu: SessionHistoryCpuPool::for_host_cpus(host_cpus),
         session_history_probe: SessionHistoryProbe::default(),
         fresh_archive_delivery: crate::storage_cache::FreshArchiveDeliveryAdmission::new(),

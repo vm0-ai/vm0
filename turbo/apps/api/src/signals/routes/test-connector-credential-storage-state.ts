@@ -13,10 +13,7 @@ import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import {
-  parseCustomConnectorOAuthStateContext,
-  type CustomConnectorOAuthStateContext,
-} from "../services/custom-connector-oauth2.service";
+import { parseCustomConnectorOAuthStateContext } from "../services/custom-connector-oauth2.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -188,44 +185,6 @@ async function readCustomOAuthState(
       context_storage_version: context.storageVersion ?? null,
     },
   });
-}
-
-async function downgradeCustomOAuthState(
-  db: Db,
-  body: ConnectorCredentialStorageAction<"downgrade-custom-oauth-state">,
-  signal: AbortSignal,
-) {
-  const [state] = await db
-    .select({ oauthContext: connectorOauthStates.oauthContext })
-    .from(connectorOauthStates)
-    .where(eq(connectorOauthStates.state, body.state))
-    .limit(1);
-  signal.throwIfAborted();
-  const context = state
-    ? parseCustomConnectorOAuthStateContext(state.oauthContext)
-    : null;
-  if (!context) {
-    return {
-      status: 400 as const,
-      body: { error: "Custom connector OAuth state was not found" },
-    };
-  }
-  const legacyContext: CustomConnectorOAuthStateContext = {
-    connectorId: context.connectorId,
-    connectorRevision: context.connectorRevision,
-    ...(context.providerContext
-      ? { providerContext: context.providerContext }
-      : {}),
-  };
-  await db
-    .update(connectorOauthStates)
-    .set({
-      storageVersion: null,
-      oauthContext: JSON.stringify(legacyContext),
-    })
-    .where(eq(connectorOauthStates.state, body.state));
-  signal.throwIfAborted();
-  return actionOk();
 }
 
 async function seedOwnedSecret(
@@ -422,9 +381,6 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "read-custom-oauth-state": {
         return await readCustomOAuthState(db, body, signal);
-      }
-      case "downgrade-custom-oauth-state": {
-        return await downgradeCustomOAuthState(db, body, signal);
       }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);

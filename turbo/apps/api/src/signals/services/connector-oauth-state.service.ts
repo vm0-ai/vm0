@@ -10,7 +10,6 @@ const storedOAuthStateSelection = Object.freeze({
   state: connectorOauthStates.state,
   connectorSlug: connectorOauthStates.connectorSlug,
   customConnectorId: connectorOauthStates.customConnectorId,
-  connectorRevision: connectorOauthStates.connectorRevision,
   storageVersion: connectorOauthStates.storageVersion,
   authMethod: connectorOauthStates.authMethod,
   userId: connectorOauthStates.userId,
@@ -26,7 +25,10 @@ const storedOAuthStateSelection = Object.freeze({
   consumedAt: connectorOauthStates.consumedAt,
 });
 
-export type StoredOAuthState = typeof connectorOauthStates.$inferSelect;
+export type StoredOAuthState = Pick<
+  typeof connectorOauthStates.$inferSelect,
+  keyof typeof storedOAuthStateSelection
+>;
 
 type ConnectorOAuthStateClaimResult =
   | { readonly kind: "missing" }

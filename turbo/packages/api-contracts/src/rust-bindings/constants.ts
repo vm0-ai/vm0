@@ -21,8 +21,6 @@ import {
   CANCELLATION_RECOVERY_STALE_AFTER_MS,
   CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
-  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
-  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
@@ -280,15 +278,6 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX",
-    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX),
-    rustDoc: [
-      "Maximum connector slugs accepted by the runner network policy refresh endpoint.",
-      "Rust runners use this shared contract value to split refresh requests before calling the API.",
-    ],
-  },
-  {
-    rustModulePath: ["runners"],
     rustConstName: "CONNECTOR_RUNTIME_SYNC_TARGETS_MAX",
     value: rustU64(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX),
     rustDoc: [
@@ -302,15 +291,6 @@ export const rustConstantBindings = [
     value: rustString(CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE),
     rustDoc: [
       "API error code returned when connector runtime synchronization targets a terminal run.",
-    ],
-  },
-  {
-    rustModulePath: ["runners"],
-    rustConstName: "NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE",
-    value: rustString(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
-    rustDoc: [
-      "API error code returned when network policy refresh targets a terminal run.",
-      "Rust runners use this shared contract value to distinguish terminal sync from ambiguous refresh failures.",
     ],
   },
   {

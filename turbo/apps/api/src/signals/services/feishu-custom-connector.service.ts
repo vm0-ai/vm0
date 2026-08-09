@@ -11,6 +11,10 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 import { commitCustomConnectorRuntimeMutation } from "./custom-connector-runtime-wakeup.service";
+import {
+  customConnectorDefinitionSelection,
+  type CustomConnectorDefinitionRow,
+} from "./custom-connector-definition-selection";
 import type { Tx } from "../../lib/db-types";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
@@ -43,7 +47,7 @@ interface FeishuConnectorInstallation {
 }
 
 interface ExistingFeishuCustomConnector {
-  readonly connector: typeof orgCustomConnectors.$inferSelect;
+  readonly connector: CustomConnectorDefinitionRow;
   readonly oauthConfig:
     | typeof orgCustomConnectorOauthConfigs.$inferSelect
     | null;
@@ -196,7 +200,7 @@ function desiredOAuthConfig(installation: FeishuConnectorInstallation) {
 }
 
 function connectorDefinitionMatches(
-  connector: typeof orgCustomConnectors.$inferSelect,
+  connector: CustomConnectorDefinitionRow,
   installation: FeishuConnectorInstallation,
 ): boolean {
   const desired = desiredConnectorDefinition(installation);
@@ -284,7 +288,6 @@ async function repairFeishuCustomConnector(
     .update(orgCustomConnectors)
     .set({
       ...desiredConnectorDefinition(installation),
-      revision: existing.connector.revision + 1,
       storageVersion: credentialContractChanged
         ? existing.connector.storageVersion + 1
         : existing.connector.storageVersion,
@@ -347,7 +350,7 @@ async function reconcileFeishuCustomConnector(
   const slug = feishuCustomConnectorSlug(args.installationId);
   const [existing] = await tx
     .select({
-      connector: orgCustomConnectors,
+      connector: customConnectorDefinitionSelection(),
       oauthConfig: orgCustomConnectorOauthConfigs,
     })
     .from(orgCustomConnectors)

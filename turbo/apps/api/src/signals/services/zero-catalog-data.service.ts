@@ -9,6 +9,7 @@ import {
   normaliseCustomConnectorRow,
   serialiseCustomConnector,
 } from "./zero-custom-connector.service";
+import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
   loadCurrentCustomConnectorOAuthConnectionIds,
   loadCurrentCustomConnectorValueMarkers,
@@ -23,7 +24,7 @@ export function zeroCustomConnectorList(args: {
     const [connectorRows, markers, oauthConnected] = await Promise.all([
       db
         .select({
-          connector: orgCustomConnectors,
+          connector: customConnectorDefinitionSelection(),
           oauthConfig: orgCustomConnectorOauthConfigs,
         })
         .from(orgCustomConnectors)

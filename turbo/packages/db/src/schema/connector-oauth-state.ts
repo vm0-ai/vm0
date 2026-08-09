@@ -56,16 +56,6 @@ export const connectorOauthStates = pgTable(
         sql`num_nonnulls(${table.connectorSlug}, ${table.customConnectorId}) = 1`,
       ),
       check(
-        "chk_connector_oauth_states_custom_revision",
-        sql`(
-          ${table.customConnectorId} IS NULL
-          AND ${table.connectorRevision} IS NULL
-        ) OR (
-          ${table.customConnectorId} IS NOT NULL
-          AND ${table.connectorRevision} IS NOT NULL
-        )`,
-      ),
-      check(
         "chk_connector_oauth_states_custom_storage_version",
         sql`(
           ${table.customConnectorId} IS NULL

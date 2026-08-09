@@ -51,6 +51,7 @@ import {
   type CustomConnectorRow,
   type StoredValueRow,
 } from "./zero-custom-connector.service";
+import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 
 const CUSTOM_CONNECTOR_OAUTH_METHOD_ID = "oauth2";
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
@@ -58,8 +59,7 @@ const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
 const customConnectorOAuthStateContextSchema = z.object({
   connectorId: z.string().uuid(),
-  connectorRevision: z.number().int().positive(),
-  storageVersion: z.number().int().positive().optional(),
+  storageVersion: z.number().int().positive(),
   providerContext: z
     .object({
       provider: z.literal("feishu"),
@@ -513,7 +513,6 @@ export const startCustomConnectorOAuth2$ = command(
     });
     const context: CustomConnectorOAuthStateContext = {
       connectorId: connector.id,
-      connectorRevision: connector.revision,
       storageVersion: connector.storageVersion,
       ...(providerAdapter === "feishu"
         ? {
@@ -536,7 +535,6 @@ export const startCustomConnectorOAuth2$ = command(
       .values({
         state,
         customConnectorId: connector.id,
-        connectorRevision: connector.revision,
         storageVersion: connector.storageVersion,
         authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
         userId: args.userId,
@@ -571,7 +569,6 @@ export function parseCustomConnectorOAuthStateContext(
 type StoredCustomConnectorOAuthState = Pick<
   typeof connectorOauthStates.$inferSelect,
   | "authMethod"
-  | "connectorRevision"
   | "connectorSlug"
   | "customConnectorId"
   | "oauthContext"
@@ -588,18 +585,7 @@ export function parseValidCustomConnectorOAuthState(
     !context ||
     storedState.connectorSlug !== null ||
     storedState.customConnectorId !== context.connectorId ||
-    storedState.connectorRevision !== context.connectorRevision ||
-    storedState.authMethod !== CUSTOM_CONNECTOR_OAUTH_METHOD_ID
-  ) {
-    return null;
-  }
-  const hasStoredVersion = storedState.storageVersion !== null;
-  const hasContextVersion = context.storageVersion !== undefined;
-  if (hasStoredVersion !== hasContextVersion) {
-    return null;
-  }
-  if (
-    storedState.storageVersion !== null &&
+    storedState.authMethod !== CUSTOM_CONNECTOR_OAUTH_METHOD_ID ||
     storedState.storageVersion !== context.storageVersion
   ) {
     return null;
@@ -609,14 +595,12 @@ export function parseValidCustomConnectorOAuthState(
 
 export function customConnectorOAuthStateMatchesDefinition(
   context: CustomConnectorOAuthStateContext,
-  connector: Pick<CustomConnectorRow, "id" | "revision" | "storageVersion">,
+  connector: Pick<CustomConnectorRow, "id" | "storageVersion">,
 ): boolean {
-  if (connector.id !== context.connectorId) {
-    return false;
-  }
-  return context.storageVersion === undefined
-    ? connector.revision === context.connectorRevision
-    : connector.storageVersion === context.storageVersion;
+  return (
+    connector.id === context.connectorId &&
+    connector.storageVersion === context.storageVersion
+  );
 }
 
 export async function decryptCustomConnectorOAuth2Credentials(
@@ -1171,7 +1155,7 @@ async function loadLiveCustomConnector(args: {
 }): Promise<CustomConnectorRow | null> {
   const [row] = await args.db
     .select({
-      connector: orgCustomConnectors,
+      connector: customConnectorDefinitionSelection(),
       oauthConfig: orgCustomConnectorOauthConfigs,
     })
     .from(orgCustomConnectors)
@@ -1209,36 +1193,6 @@ export async function resolveCurrentCustomConnectorOAuth2AccessToken(
   const connector = await loadLiveCustomConnector(args);
   signal.throwIfAborted();
   if (!connector || connector.authMode !== "oauth") {
-    return { kind: "unavailable" };
-  }
-  return await resolveCustomConnectorOAuth2AccessToken(
-    {
-      ...args,
-      connector,
-    },
-    signal,
-  );
-}
-
-export async function resolveRevisionPinnedCustomConnectorOAuth2AccessToken(
-  args: {
-    readonly db: Db;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connectorId: string;
-    readonly connectorRevision: number;
-    readonly featureContext: FeatureSwitchContext;
-    readonly forceRefresh?: boolean;
-  },
-  signal: AbortSignal,
-): Promise<CustomConnectorOAuth2AccessTokenResolution> {
-  const connector = await loadLiveCustomConnector(args);
-  signal.throwIfAborted();
-  if (
-    !connector ||
-    connector.revision !== args.connectorRevision ||
-    connector.authMode !== "oauth"
-  ) {
     return { kind: "unavailable" };
   }
   return await resolveCustomConnectorOAuth2AccessToken(

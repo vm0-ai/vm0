@@ -9,17 +9,17 @@ mod api_ably_supervisor;
 mod api_claim_cooldowns;
 mod api_direct_candidates;
 mod builtin_firewall_catalog;
+mod connector_runtime_sync;
 mod local;
 #[cfg(test)]
 pub mod mock;
-mod network_policy_refresh;
 
 pub(crate) use api::ApiClient;
 pub use api::{ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths};
-pub use local::LocalProvider;
-pub(crate) use network_policy_refresh::{
-    NetworkPolicyRefreshHandle, NetworkPolicyRefreshRegistration,
+pub(crate) use connector_runtime_sync::{
+    ConnectorRuntimeSyncHandle, ConnectorRuntimeSyncRegistration,
 };
+pub use local::LocalProvider;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};

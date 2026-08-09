@@ -47,6 +47,10 @@ import {
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  customConnectorDefinitionSelection,
+  type CustomConnectorDefinitionRow,
+} from "./custom-connector-definition-selection";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
   loadCustomConnectorCredentialAccesses,
@@ -117,7 +121,6 @@ export interface CustomConnectorRow {
   readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
   readonly skillMarkdown: string | null;
-  readonly revision: number;
   readonly storageVersion: number;
   readonly createdBy: string;
   readonly createdAt: Date;
@@ -302,7 +305,7 @@ function legacyHeaderTemplateFromCanonical(template: string): string {
 }
 
 export function normaliseCustomConnectorRow(
-  row: typeof orgCustomConnectors.$inferSelect,
+  row: CustomConnectorDefinitionRow,
   oauthConfig: CustomConnectorOAuthConfigRow | null = null,
 ): CustomConnectorRow {
   const prefixTemplates = stringArray(row.prefixTemplates);
@@ -563,7 +566,6 @@ export function serialiseCustomConnector(args: {
       : {}),
     permissionBundleRef: effectivePermissionBundleRef(args.row),
     skillMarkdown: args.row.skillMarkdown,
-    revision: args.row.revision,
     storageVersion: args.row.storageVersion,
     connected,
     missingRequiredFields: [...responseMissingRequiredFields],
@@ -1416,7 +1418,7 @@ export const createCustomConnector$ = command(
           storageVersion: args.input.storageVersion ?? 1,
           createdBy: args.userId,
         })
-        .returning();
+        .returning(customConnectorDefinitionSelection());
       if (!row) {
         throw new Error("Expected insert to return a row");
       }
@@ -1470,7 +1472,7 @@ async function loadCustomConnectorForUpdate(
 ): Promise<CustomConnectorRow | null> {
   const [result] = await db
     .select({
-      connector: orgCustomConnectors,
+      connector: customConnectorDefinitionSelection(),
       oauthConfig: orgCustomConnectorOauthConfigs,
     })
     .from(orgCustomConnectors)
@@ -1534,7 +1536,7 @@ async function persistCustomConnectorUpdate(
   args: PersistCustomConnectorUpdateArgs,
 ): Promise<
   | {
-      readonly row: typeof orgCustomConnectors.$inferSelect;
+      readonly row: CustomConnectorDefinitionRow;
       readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
     }
   | BadRequestResponse
@@ -1565,9 +1567,6 @@ async function persistCustomConnectorUpdate(
         permissionBundleRef: args.definition.permissionBundleRef,
         skillMarkdown: args.definition.skillMarkdown,
         storageVersion: args.storageVersion,
-        revision: args.grantConfigurationChanged
-          ? args.existing.revision + 1
-          : args.existing.revision,
         updatedAt: nowDate(),
       })
       .where(
@@ -1575,7 +1574,6 @@ async function persistCustomConnectorUpdate(
           eq(orgCustomConnectors.id, args.id),
           eq(orgCustomConnectors.orgId, args.orgId),
           eq(orgCustomConnectors.storageVersion, args.existing.storageVersion),
-          eq(orgCustomConnectors.revision, args.existing.revision),
           gte(orgCustomConnectors.updatedAt, args.existing.updatedAt),
           lt(
             orgCustomConnectors.updatedAt,
@@ -1583,7 +1581,7 @@ async function persistCustomConnectorUpdate(
           ),
         ),
       )
-      .returning();
+      .returning(customConnectorDefinitionSelection());
     if (!updated) {
       const [current] = await tx
         .select({ id: orgCustomConnectors.id })
@@ -1857,7 +1855,7 @@ export function getCustomConnectorById(args: {
     const db = get(db$);
     const [result] = await db
       .select({
-        connector: orgCustomConnectors,
+        connector: customConnectorDefinitionSelection(),
         oauthConfig: orgCustomConnectorOauthConfigs,
       })
       .from(orgCustomConnectors)
@@ -2118,7 +2116,7 @@ async function prepareCustomConnectorValueWrite(args: {
   CustomConnectorValueWriteState | BadRequestResponse | NotFoundResponse
 > {
   const [lockedDefinition] = await args.tx
-    .select()
+    .select(customConnectorDefinitionSelection())
     .from(orgCustomConnectors)
     .where(
       and(
@@ -2857,7 +2855,7 @@ export async function loadCustomConnectorRuntimeData(
   const connectorRows = await measure("connectorRows", async () => {
     return await db
       .select({
-        connector: orgCustomConnectors,
+        connector: customConnectorDefinitionSelection(),
         oauthConfig: orgCustomConnectorOauthConfigs,
       })
       .from(orgCustomConnectors)

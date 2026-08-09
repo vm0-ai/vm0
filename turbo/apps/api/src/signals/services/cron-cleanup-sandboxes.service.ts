@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { exportJobs } from "@vm0/db/schema/export-job";
@@ -446,45 +445,11 @@ async function cleanupExpiredRunnerJobs(
   return deletedCount;
 }
 
-async function cleanupExpiredCustomConnectorAuthRefs(
-  db: Db,
-  signal: AbortSignal,
-): Promise<number> {
-  const { rowCount } = await db
-    .delete(agentRunCustomConnectorAuthRefs)
-    .where(lte(agentRunCustomConnectorAuthRefs.expiresAt, sql`now()`));
-  signal.throwIfAborted();
-
-  const deletedCount = rowCount ?? 0;
-  if (deletedCount > 0) {
-    L.debug("Cleaned up expired custom connector auth refs", {
-      count: deletedCount,
-    });
-  }
-  return deletedCount;
-}
-
-async function cleanupExpiredCustomConnectorAuthRefsSafely(
-  db: Db,
-  signal: AbortSignal,
-): Promise<number> {
-  const deleted = await tapError(
-    cleanupExpiredCustomConnectorAuthRefs(db, signal),
-    (error) => {
-      L.error("Failed to cleanup expired custom connector auth refs", {
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    },
-  );
-  return deleted ?? 0;
-}
-
 function logQueueMaintenance(args: {
   readonly expired: number;
   readonly expiredTimedOut: number;
   readonly launchOrphansTimedOut: number;
   readonly expiredRunnerJobs: number;
-  readonly expiredCustomConnectorAuthRefs: number;
   readonly drained: number;
 }): void {
   if (
@@ -553,9 +518,6 @@ export const cleanupSandboxes$ = command(
     signal.throwIfAborted();
     const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(db, signal);
     signal.throwIfAborted();
-    const expiredCustomConnectorAuthRefCount =
-      await cleanupExpiredCustomConnectorAuthRefsSafely(db, signal);
-    signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();
     await set(
@@ -585,7 +547,6 @@ export const cleanupSandboxes$ = command(
       expiredTimedOut: expiredQueueResult.timedOutRuns.length,
       launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
       expiredRunnerJobs: expiredRunnerJobCount,
-      expiredCustomConnectorAuthRefs: expiredCustomConnectorAuthRefCount,
       drained: drainedCount,
     });
 

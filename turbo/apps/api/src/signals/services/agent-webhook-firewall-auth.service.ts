@@ -49,13 +49,12 @@ import {
   type ModelProviderRefreshProviderKey,
 } from "@vm0/connectors/auth-providers/model-provider-auth";
 import { isChatgptRefreshError } from "@vm0/connectors/auth-providers/model-providers/codex-oauth/oauth";
-import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { variables as variablesTable } from "@vm0/db/schema/variable";
-import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
@@ -105,7 +104,6 @@ import {
 import {
   CustomConnectorOAuth2TokenRefreshError,
   resolveCurrentCustomConnectorOAuth2AccessToken,
-  resolveRevisionPinnedCustomConnectorOAuth2AccessToken,
 } from "./custom-connector-oauth2.service";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
@@ -154,7 +152,7 @@ interface FirewallAuthBody {
     readonly apiId: string;
     readonly connectorSlug?: ConnectorSlug;
     readonly customConnectorId?: string;
-    readonly routingVariables?: Record<string, string>;
+    readonly routingVariables: Record<string, string>;
   };
 }
 
@@ -3043,103 +3041,6 @@ function syncPlatformRuntimeSecrets(args: {
   }
 }
 
-async function syncCustomConnectorRuntimeSecrets(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly secrets: Record<string, string>;
-  readonly referencedKeys: Set<string>;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly forceRefresh: boolean;
-}): Promise<void> {
-  const missingKeys = [...args.referencedKeys].filter((key) => {
-    return !Object.hasOwn(args.secrets, key);
-  });
-  if (missingKeys.length === 0) {
-    return;
-  }
-
-  const rows = await args.db
-    .select({
-      secretName: agentRunCustomConnectorAuthRefs.secretName,
-      connectorId: agentRunCustomConnectorAuthRefs.connectorId,
-      connectorRevision: agentRunCustomConnectorAuthRefs.connectorRevision,
-      key: agentRunCustomConnectorAuthRefs.key,
-      encryptedValue: agentRunCustomConnectorAuthRefs.encryptedValue,
-    })
-    .from(agentRunCustomConnectorAuthRefs)
-    .where(
-      and(
-        eq(agentRunCustomConnectorAuthRefs.runId, args.runId),
-        inArray(agentRunCustomConnectorAuthRefs.secretName, missingKeys),
-        gt(agentRunCustomConnectorAuthRefs.expiresAt, sql`now()`),
-      ),
-    );
-
-  if (rows.length > 0) {
-    L.debug("Revision-pinned custom connector auth references remain in use", {
-      runId: args.runId,
-      connectorCount: new Set(
-        rows.map((row) => {
-          return row.connectorId;
-        }),
-      ).size,
-      authRefCount: rows.length,
-    });
-  }
-
-  for (const row of rows) {
-    if (Object.hasOwn(args.secrets, row.secretName)) {
-      continue;
-    }
-    let encryptedValue = row.encryptedValue;
-    if (row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY) {
-      const accessToken = await tapError(
-        resolveRevisionPinnedCustomConnectorOAuth2AccessToken(
-          {
-            db: args.db,
-            orgId: args.orgId,
-            userId: args.userId,
-            connectorId: row.connectorId,
-            connectorRevision: row.connectorRevision,
-            featureContext: args.featureSwitchContext,
-            forceRefresh: args.forceRefresh,
-          },
-          AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
-        ),
-        (error) => {
-          L.warn("Failed to resolve live custom connector OAuth token", {
-            runId: args.runId,
-            connectorId: row.connectorId,
-            error,
-          });
-        },
-      );
-      encryptedValue =
-        accessToken?.kind === "available"
-          ? accessToken.encryptedAccessToken
-          : null;
-    }
-    if (!encryptedValue) {
-      continue;
-    }
-    const decrypted = await tapError(
-      decryptStoredSecretValue(encryptedValue, args.featureSwitchContext),
-      (error) => {
-        L.warn("Failed to decrypt custom connector auth ref", {
-          runId: args.runId,
-          secretName: row.secretName,
-          error,
-        });
-      },
-    );
-    if (decrypted !== undefined) {
-      args.secrets[row.secretName] = decrypted;
-    }
-  }
-}
-
 async function syncFirewallRuntimeSecrets(args: {
   readonly db: Db;
   readonly auth: SandboxAuth;
@@ -3170,16 +3071,6 @@ async function syncFirewallRuntimeSecrets(args: {
     secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
     referencedKeys: args.referencedKeys,
     featureSwitchContext: args.featureSwitchContext,
-  });
-  await syncCustomConnectorRuntimeSecrets({
-    db: args.db,
-    runId: args.auth.runId,
-    orgId: args.orgId,
-    userId: args.auth.userId,
-    secrets: args.secrets,
-    referencedKeys: args.referencedKeys,
-    featureSwitchContext: args.featureSwitchContext,
-    forceRefresh: args.body.forceRefresh === true,
   });
   syncPlatformRuntimeSecrets({
     secrets: args.secrets,
@@ -3584,10 +3475,11 @@ async function resolveMatchedBuiltinConnectorVariables(
   body: FirewallAuthBody,
   context: FirewallAuthResolutionContext,
 ): Promise<Record<string, string> | undefined> {
-  const connectorSlug = body.matchedFirewall?.connectorSlug;
-  if (connectorSlug === undefined) {
+  const matchedFirewall = body.matchedFirewall;
+  if (matchedFirewall?.connectorSlug === undefined) {
     return body.vars ?? {};
   }
+  const connectorSlug = matchedFirewall.connectorSlug;
   const connectorAccess = context.connectorAccessBySlug.get(connectorSlug);
   if (connectorAccess === undefined) {
     return undefined;
@@ -3639,8 +3531,7 @@ async function resolveMatchedBuiltinConnectorVariables(
     if (currentValue === undefined) {
       return undefined;
     }
-    const pinnedValue =
-      body.matchedFirewall?.routingVariables?.[binding.envName];
+    const pinnedValue = matchedFirewall.routingVariables[binding.envName];
     vars[binding.envName] = pinnedValue ?? currentValue;
   }
   return vars;
@@ -4582,14 +4473,11 @@ function omitMissingOptionalCustomAuthEntries(args: {
   };
 }
 
-function applyPinnedCustomConnectorRoutingVariables(args: {
+function applyCustomConnectorRoutingVariables(args: {
   readonly currentSecrets: Record<string, string>;
   readonly authRefs: readonly CurrentCustomConnectorAuthRef[];
-  readonly routingVariables: Record<string, string> | undefined;
+  readonly routingVariables: Record<string, string>;
 }): Record<string, string> {
-  if (args.routingVariables === undefined) {
-    return args.currentSecrets;
-  }
   const secrets = { ...args.currentSecrets };
   for (const ref of args.authRefs) {
     const pinnedValue = args.routingVariables[ref.key];
@@ -4610,6 +4498,7 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
   readonly auth: SandboxAuth;
   readonly body: FirewallAuthBody;
   readonly customConnectorId: string;
+  readonly routingVariables: Record<string, string>;
 }): Promise<ResolveFirewallAuthResult> {
   const orgId = await findRefreshRunOrgId(args.db, args.auth);
   if (!orgId) {
@@ -4659,10 +4548,10 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
     authQuery: args.body.authQuery,
     missingOptionalSecrets: currentSecrets.missingOptionalSecrets,
   });
-  const effectiveSecrets = applyPinnedCustomConnectorRoutingVariables({
+  const effectiveSecrets = applyCustomConnectorRoutingVariables({
     currentSecrets: currentSecrets.secrets,
     authRefs,
-    routingVariables: args.body.matchedFirewall?.routingVariables,
+    routingVariables: args.routingVariables,
   });
   const resolved = resolveTemplates({
     authHeaders: availableAuth.authHeaders,
@@ -4698,13 +4587,13 @@ export async function resolveFirewallAuth(
   auth: SandboxAuth,
   body: FirewallAuthBody,
 ): Promise<ResolveFirewallAuthResult> {
-  const customConnectorId = body.matchedFirewall?.customConnectorId;
-  if (customConnectorId) {
+  if (body.matchedFirewall?.customConnectorId) {
     return await resolveCurrentCustomConnectorFirewallAuth({
       db,
       auth,
       body,
-      customConnectorId,
+      customConnectorId: body.matchedFirewall.customConnectorId,
+      routingVariables: body.matchedFirewall.routingVariables,
     });
   }
   const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);

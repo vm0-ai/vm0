@@ -295,6 +295,7 @@ function customConnector(
       },
     ],
     queryInjections: [],
+    storageVersion: 1,
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
@@ -462,6 +463,7 @@ function mockCustomConnectorStory(): {
           headerInjections: body.headerInjections,
           queryInjections: body.queryInjections,
           authMode: body.authMode ?? connector.authMode,
+          storageVersion: body.storageVersion ?? connector.storageVersion,
           ...(body.oauthConfig
             ? {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
@@ -4047,7 +4049,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("Acme Billing API")).toBeInTheDocument();
     });
-    expect(story.updateBodies[0]?.storageVersion).toBeUndefined();
+    expect(story.updateBodies[0]?.storageVersion).toBe(1);
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Disconnect"));

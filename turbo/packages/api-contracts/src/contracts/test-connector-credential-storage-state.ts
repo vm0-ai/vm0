@@ -47,10 +47,6 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       state: z.string(),
     }),
     z.object({
-      action: z.literal("downgrade-custom-oauth-state"),
-      state: z.string(),
-    }),
-    z.object({
       action: z.literal("seed-owned-secret"),
       org_id: z.string(),
       user_id: z.string(),

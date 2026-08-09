@@ -1409,6 +1409,7 @@ fn execution_context_deserializes_with_firewalls() {
         "sandboxToken": "tok",
         "cliAgentType": "claude-code",
         "billableFirewalls": [],
+        "connectorRuntimeTargets": [],
         "firewalls": [{
             "kind": "inline",
             "firewall": {
@@ -1456,7 +1457,8 @@ fn execution_context_deserializes_without_firewalls() {
         "prompt": "test",
         "sandboxToken": "tok",
         "cliAgentType": "claude-code",
-        "billableFirewalls": []
+        "billableFirewalls": [],
+        "connectorRuntimeTargets": []
     });
     let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
     assert!(ctx.firewalls.is_none());

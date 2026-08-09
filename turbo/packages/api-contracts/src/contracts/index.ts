@@ -631,7 +631,6 @@ export {
 export {
   runnersPollContract,
   runnersJobClaimContract,
-  runnersNetworkPolicyRefreshContract,
   runnersConnectorRuntimeSyncContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -662,7 +661,6 @@ export {
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
-  type RunnersNetworkPolicyRefreshContract,
   type RunnersConnectorRuntimeSyncContract,
   type RunnersBuiltinFirewallsResolveContract,
   type RunnersHeartbeatContract,
