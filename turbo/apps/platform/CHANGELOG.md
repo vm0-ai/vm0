@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.714.1](https://github.com/vm0-ai/vm0/compare/app-v0.714.0...app-v0.714.1) (2026-08-09)
+
+
+### Refactoring
+
+* **connectors:** remove legacy runtime compatibility ([#25941](https://github.com/vm0-ai/vm0/issues/25941)) ([e2cd0fe](https://github.com/vm0-ai/vm0/commit/e2cd0fe886dd0c903ba7322fabd93dca38d80ba0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.1
+    * @vm0/core bumped to 8.534.1
+
 ## [0.714.0](https://github.com/vm0-ai/vm0/compare/app-v0.713.1...app-v0.714.0) (2026-08-09)
 
 

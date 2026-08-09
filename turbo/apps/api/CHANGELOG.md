@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.411.1](https://github.com/vm0-ai/vm0/compare/api-v1.411.0...api-v1.411.1) (2026-08-09)
+
+
+### Refactoring
+
+* **connectors:** remove legacy runtime compatibility ([#25941](https://github.com/vm0-ai/vm0/issues/25941)) ([e2cd0fe](https://github.com/vm0-ai/vm0/commit/e2cd0fe886dd0c903ba7322fabd93dca38d80ba0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.1
+    * @vm0/core bumped to 8.534.1
+    * @vm0/db bumped to 1.182.1
+    * @vm0/pi-agent-runtime bumped to 1.3.22
+
 ## [1.411.0](https://github.com/vm0-ai/vm0/compare/api-v1.410.1...api-v1.411.0) (2026-08-09)
 
 
