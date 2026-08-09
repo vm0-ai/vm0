@@ -26,7 +26,7 @@ const PI_MODEL_CONFIG_ENV = "VM0_PI_MODEL_CONFIG";
 const RUN_SKILL_SNAPSHOT_ENV = "VM0_RUN_SKILL_SNAPSHOT";
 
 export const DEFAULT_PI_STANDBY_TTL_SECONDS = 300;
-const DEFAULT_PI_TRANSCRIPT_POLL_INTERVAL_MS = 1_000;
+const DEFAULT_PI_TRANSCRIPT_POLL_INTERVAL_MS = 10_000;
 
 type PiTranscriptPage = z.infer<typeof piTranscriptResponseSchema>;
 type PiTranscriptMessage = PiTranscriptPage["messages"][number];
