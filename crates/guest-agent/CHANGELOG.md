@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.65.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.5...guest-agent-v0.65.6) (2026-08-09)
+
+
+### Documentation
+
+* **rust:** document app-server cancellation semantics ([#25880](https://github.com/vm0-ai/vm0/issues/25880)) ([1b1d984](https://github.com/vm0-ai/vm0/commit/1b1d984b2c9ad2ad2a216ec678ec9bd1d26e2a87))
+
+
+### Refactoring
+
+* **pi:** replace handoff fallbacks with session polling ([#25906](https://github.com/vm0-ai/vm0/issues/25906)) ([66cbcad](https://github.com/vm0-ai/vm0/commit/66cbcada1c224b1c7541b6d7c90696d3733e53f8))
+
+
+### Performance Improvements
+
+* **guest-agent:** compact artifact manifests ([#25886](https://github.com/vm0-ai/vm0/issues/25886)) ([94ab439](https://github.com/vm0-ai/vm0/commit/94ab43970058094f4ffe095db41339a6354cc5b9))
+
 ## [0.65.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.4...guest-agent-v0.65.5) (2026-08-08)
 
 
