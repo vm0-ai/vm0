@@ -424,7 +424,6 @@ describe("chat run queue", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
       path: CHAT_PATH,
     });
 
@@ -437,21 +436,6 @@ describe("chat run queue", () => {
     expectTextBefore(NEXT_RUN_MODEL_COPY, "Follow up after the active run");
   });
 
-  it("keeps the model change notice hidden when its switch is off", async () => {
-    mockActiveRunModelChange();
-
-    detachedSetupPage({
-      context,
-      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: false },
-      path: CHAT_PATH,
-    });
-
-    await expect(
-      screen.findByText("Follow up after the active run"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByText(NEXT_RUN_MODEL_COPY)).not.toBeInTheDocument();
-  });
-
   it("inserts a model change divider between adjacent runs", async () => {
     mockCompletedRunModelHistory({
       previousModel: "gpt-5.5",
@@ -460,7 +444,6 @@ describe("chat run queue", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
       path: CHAT_PATH,
     });
 
@@ -518,7 +501,6 @@ describe("chat run queue", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
       path: AGENT_CHAT_PATH,
     });
 
@@ -650,7 +632,6 @@ describe("chat run queue", () => {
     });
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
       path: CHAT_PATH,
     });
 
@@ -758,7 +739,6 @@ describe("chat run queue", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
       path: CHAT_PATH,
     });
 
@@ -789,7 +769,6 @@ describe("chat run queue", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: { [FeatureSwitchKey.ChatNextRunModelNotice]: true },
       path: CHAT_PATH,
     });
 

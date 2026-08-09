@@ -103,7 +103,7 @@ async fn run_forwarder(
                 if retry_after_read_error {
                     tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
                 } else {
-                    source.wait(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
+                    source.wait_until_next_read().await;
                 }
             } => {}
         }

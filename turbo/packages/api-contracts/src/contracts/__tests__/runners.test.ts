@@ -150,35 +150,33 @@ describe("Pi execution mode contract", () => {
     },
   };
 
-  it.each(["standby", "cold-start"])(
-    "preserves complete %s state across stored and Runner-facing contexts",
-    (piExecutionMode) => {
-      expect(
-        storedExecutionContextSchema.parse({
-          ...storedContext,
-          ...piRuntimeContext,
-          piExecutionMode,
-        }).piExecutionMode,
-      ).toBe(piExecutionMode);
-      expect(
-        compatibleStoredExecutionContextSchema.parse({
-          ...storedContext,
-          ...piRuntimeContext,
-          piExecutionMode,
-        }).piExecutionMode,
-      ).toBe(piExecutionMode);
-      expect(
-        executionContextSchema.parse({
-          ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
-          ...piRuntimeContext,
-          piExecutionMode,
-        }).piExecutionMode,
-      ).toBe(piExecutionMode);
-      expect(
-        jobSchema.parse({ ...pollJob, piExecutionMode }).piExecutionMode,
-      ).toBe(piExecutionMode);
-    },
-  );
+  it("preserves complete standby state across stored and Runner-facing contexts", () => {
+    const piExecutionMode = "standby";
+    expect(
+      storedExecutionContextSchema.parse({
+        ...storedContext,
+        ...piRuntimeContext,
+        piExecutionMode,
+      }).piExecutionMode,
+    ).toBe(piExecutionMode);
+    expect(
+      compatibleStoredExecutionContextSchema.parse({
+        ...storedContext,
+        ...piRuntimeContext,
+        piExecutionMode,
+      }).piExecutionMode,
+    ).toBe(piExecutionMode);
+    expect(
+      executionContextSchema.parse({
+        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+        ...piRuntimeContext,
+        piExecutionMode,
+      }).piExecutionMode,
+    ).toBe(piExecutionMode);
+    expect(
+      jobSchema.parse({ ...pollJob, piExecutionMode }).piExecutionMode,
+    ).toBe(piExecutionMode);
+  });
 
   it("rejects unknown modes on persisted and Runner-facing boundaries", () => {
     const invalidModeContext = {
@@ -221,7 +219,7 @@ describe("Pi execution mode contract", () => {
         executionContextSchema.safeParse({
           ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
           ...incompleteContext,
-          piExecutionMode: "cold-start",
+          piExecutionMode: "standby",
         }).success,
       ).toBe(false);
     },

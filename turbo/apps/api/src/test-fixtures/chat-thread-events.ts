@@ -9,7 +9,7 @@ import { z } from "zod";
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { appendChatThreadEvent } from "../signals/services/zero-chat-thread-event.service";
-import { createDeferredPromise, settleIncludingAbort } from "../signals/utils";
+import { createDeferredPromise } from "../signals/utils";
 
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
@@ -36,24 +36,13 @@ async function withScopeWritesPausedFixture<T>(
   lockTables: SQL,
   args: ScopeWritesPausedFixtureArgs<T>,
 ): Promise<T> {
-  const started = createDeferredPromise<void>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const done = db().transaction(async (tx) => {
+  return await db().transaction(async (tx) => {
     await tx.execute(lockTables);
-    started.resolve(undefined);
-    await released.promise;
+    args.signal.throwIfAborted();
+    const result = await args.run();
+    args.signal.throwIfAborted();
+    return result;
   });
-  await started.promise;
-
-  const result = await settleIncludingAbort(args.run());
-  if (!released.settled()) {
-    released.resolve(undefined);
-  }
-  await done;
-  if (!result.ok) {
-    throw result.error;
-  }
-  return result.value;
 }
 
 /**
@@ -86,7 +75,10 @@ export async function withChatEventSnapshotScopeWritesPausedFixture<T>(args: {
   readonly run: () => Promise<T>;
 }): Promise<T> {
   return await withScopeWritesPausedFixture(
-    sql`LOCK TABLE ${chatThreads}, ${chatEventSearchWatermarks} IN SHARE MODE`,
+    // Every new or advanced archiver target writes its watermark. Locking that
+    // table alone freezes fresh backlog without blocking unrelated chat-thread
+    // writers while the archiver publishes snapshot heads on another connection.
+    sql`LOCK TABLE ${chatEventSearchWatermarks} IN SHARE MODE`,
     args,
   );
 }

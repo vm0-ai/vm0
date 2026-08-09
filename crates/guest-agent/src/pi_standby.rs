@@ -15,7 +15,7 @@
 //! corresponding [`PiStandbyReader`] and translates those signals into JSONL
 //! frames for the child.
 //!
-//! # One-shot lifecycle
+//! # Lifecycle
 //!
 //! The TypeScript `zero __agent-loop --standby` child and guest-agent follow
 //! this sequence:
@@ -24,31 +24,26 @@
 //!    Skill-snapshot digest. Guest-agent accepts this frame exactly once,
 //!    verifies all three values against the fixed run inputs, and rejects work
 //!    before it.
-//! 2. A runner handoff becomes `pi-handoff`. An API-driven release becomes
-//!    `pi-standby-release`; the child can observe it before handoff or later
-//!    while waiting for a transcript or message acknowledgement. If no initial
-//!    control arrives before the child's standby TTL, the child releases
-//!    itself.
-//! 3. After handoff, the child sends a numbered `pi-transcript-read` and waits
-//!    for the matching `pi-transcript` response. Guest-agent reads the
-//!    canonical transcript with its own authenticated HTTP client.
-//! 4. The child resumes Pi and sends each completed native message as a
-//!    `pi-message`. Its event includes transcript-tail CAS coordinates, an
-//!    intended sequence, and a `<run-id>/<sequence>` message id. Guest-agent
-//!    validates the event identity, writes the exact event through the API,
-//!    requires successfully acknowledged sequences to advance, and returns a
-//!    matching `pi-message-ack` before the child continues.
-//! 5. A 409 acknowledgement makes the child emit `pi-transcript-conflict`,
-//!    re-read the transcript, and replay from the refreshed tail. Guest-agent
-//!    rejects a conflict marker without the preceding 409 and rejects
-//!    completion while conflict recovery is outstanding.
-//! 6. The child finishes with `pi-complete`, `pi-released`, or `pi-error`.
+//! 2. Immediately after startup, the child repeatedly sends a numbered
+//!    `pi-transcript-read` with its current ordinal. Guest-agent reads the next
+//!    canonical transcript page with its authenticated HTTP client. A runner
+//!    `pi-handoff` only accelerates the next read; an API-driven
+//!    `pi-standby-release` retires an unused standby.
+//! 3. When the latest persisted message is an assistant tool-use batch, the
+//!    child takes over without waiting for runner control and ignores later
+//!    controls. If no tool-use batch is persisted before the standby TTL, the
+//!    child fails and guest-agent completes the run with an error.
+//! 4. The child sends each completed native message as a `pi-message` with an
+//!    intended sequence and `<run-id>/<sequence>` message id. Guest-agent
+//!    validates the event identity, writes it through the API, requires
+//!    acknowledged sequences to advance, and returns a matching
+//!    `pi-message-ack` before the child continues.
+//! 5. The child finishes with `pi-complete`, `pi-released`, or `pi-error`.
 //!    Completion is accepted only when the fixed digests are unchanged, its
 //!    exit code is 0 or 1, and its final event sequence equals guest-agent's
-//!    last acknowledged sequence. Release reasons are limited to
-//!    `api-complete` and `ttl`.
+//!    last acknowledged sequence. Release is limited to `api-complete`.
 //!
-//! Frame names, ordering, identity fields, digests, CAS behavior, and the final
+//! Frame names, ordering, identity fields, digests, and the final
 //! acknowledgement watermark form a cross-language compatibility contract
 //! with `turbo/apps/cli/src/lib/pi-agent-loop.ts`; changes must keep both sides
 //! in sync.
@@ -70,9 +65,7 @@
 //! because acknowledged Pi events already persist its output. A valid release
 //! yields [`crate::cli::CliCompletionDisposition::PiStandbyReleased`], so
 //! top-level execution skips checkpoint and `/complete`. API-driven release
-//! exits successfully; TTL release uses
-//! [`guest_contracts::pi_standby::TTL_RELEASE_EXIT_CODE`] so the runner can
-//! requeue the retained execution context on the cold-start profile.
+//! exits successfully.
 
 use tokio::sync::mpsc;
 

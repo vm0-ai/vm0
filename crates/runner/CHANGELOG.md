@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.161.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.5...runner-rs-v0.161.6) (2026-08-09)
+
+
+### Bug Fixes
+
+* **runner:** preserve codex catalog identity responses ([#25889](https://github.com/vm0-ai/vm0/issues/25889)) ([14d67f8](https://github.com/vm0-ai/vm0/commit/14d67f884a698a4a69ef9136e300d985a20bf48e))
+* **runner:** recheck active input after dropped wakeup ([#25888](https://github.com/vm0-ai/vm0/issues/25888)) ([43206a3](https://github.com/vm0-ai/vm0/commit/43206a300a494de7bcd85a65a11c6f54a1f759a1))
+
+
+### Refactoring
+
+* **connectors:** share public destination address policy ([#25914](https://github.com/vm0-ai/vm0/issues/25914)) ([27f6260](https://github.com/vm0-ai/vm0/commit/27f6260b2f2430f7c7e86d5cab130d077311ef7e))
+* **pi:** replace handoff fallbacks with session polling ([#25906](https://github.com/vm0-ai/vm0/issues/25906)) ([66cbcad](https://github.com/vm0-ai/vm0/commit/66cbcada1c224b1c7541b6d7c90696d3733e53f8))
+
 ## [0.161.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.4...runner-rs-v0.161.5) (2026-08-09)
 
 

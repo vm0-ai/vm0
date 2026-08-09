@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.712.3](https://github.com/vm0-ai/vm0/compare/app-v0.712.2...app-v0.712.3) (2026-08-09)
+
+
+### Refactoring
+
+* **pi:** replace handoff fallbacks with session polling ([#25906](https://github.com/vm0-ai/vm0/issues/25906)) ([66cbcad](https://github.com/vm0-ai/vm0/commit/66cbcada1c224b1c7541b6d7c90696d3733e53f8))
+* **platform:** bound chat event pagination loops ([#25903](https://github.com/vm0-ai/vm0/issues/25903)) ([1bd9ecb](https://github.com/vm0-ai/vm0/commit/1bd9ecb60c8b4b98a06a954ee23a805ad56cb268))
+* remove chatNextRunModelNotice feature switch ([#25907](https://github.com/vm0-ai/vm0/issues/25907)) ([9ba7b2b](https://github.com/vm0-ai/vm0/commit/9ba7b2bcfed524974d4c30bf193476a9b063cc58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.299.1
+    * @vm0/connectors bumped to 1.204.4
+    * @vm0/core bumped to 8.533.1
+
+## [0.712.2](https://github.com/vm0-ai/vm0/compare/app-v0.712.1...app-v0.712.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** keep agent chat default model cached ([#25896](https://github.com/vm0-ai/vm0/issues/25896)) ([e33b9fe](https://github.com/vm0-ai/vm0/commit/e33b9fe99ae576cd37d9f454b37e0041342a149e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.533.0
+
 ## [0.712.1](https://github.com/vm0-ai/vm0/compare/app-v0.712.0...app-v0.712.1) (2026-08-09)
 
 

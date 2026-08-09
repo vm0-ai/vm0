@@ -1,6 +1,6 @@
 {
   "name": "@vm0/desktop",
-  "version": "0.29.42",
+  "version": "0.29.43",
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Zero desktop shell",
@@ -23,7 +23,7 @@
     "upload:sentry": "node scripts/upload-sentry-artifacts.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@modelcontextprotocol/server-filesystem": "2026.1.14",
     "@sentry/electron": "^7.13.0",
     "@sentry/react": "^10.50.0",

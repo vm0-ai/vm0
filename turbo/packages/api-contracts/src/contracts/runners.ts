@@ -417,10 +417,7 @@ const runnerBuiltinFirewallsResolveResponseSchema = z.object({
  */
 export const DEFAULT_PROFILE = "vm0/default";
 
-/** Non-terminal Guest/Runner exit used to request Pi cold-start fallback. */
-export const PI_STANDBY_TTL_RELEASE_EXIT_CODE = 75;
-
-export const piExecutionModeSchema = z.enum(["standby", "cold-start"]);
+export const piExecutionModeSchema = z.literal("standby");
 export type PiExecutionMode = z.infer<typeof piExecutionModeSchema>;
 
 /**

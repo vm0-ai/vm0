@@ -107,7 +107,8 @@ const syncChatThreadRowsToIndexedDb$ = command(
 
     const syncedEvents: ChatEvent[] = [];
     let sinceSeqId = lastSeqId;
-    for (;;) {
+    let shouldLoadNextPage = true;
+    while (shouldLoadNextPage) {
       const page = await set(listRowsAfter$, { threadId, sinceSeqId }, signal);
       signal.throwIfAborted();
       if (page.kind === "expired") {
@@ -129,10 +130,9 @@ const syncChatThreadRowsToIndexedDb$ = command(
         }),
       );
       sinceSeqId = page.rows.at(-1)!.seqId;
-      if (page.rows.length < CHAT_EVENT_ROWS_PAGE_LIMIT) {
-        return syncedEvents;
-      }
+      shouldLoadNextPage = page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
     }
+    return syncedEvents;
   },
 );
 

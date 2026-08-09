@@ -163,8 +163,8 @@ export async function runPiAgentPrompt(
 }
 
 /**
- * Resume a handed-off Pi turn by executing the latest unresolved assistant
- * tool batch in the Sandbox, then continuing the native model loop.
+ * Resume a handed-off Pi turn by executing the latest assistant tool batch in
+ * the Sandbox, then continuing the native model loop.
  */
 export async function runPiAgentResume(
   args: {

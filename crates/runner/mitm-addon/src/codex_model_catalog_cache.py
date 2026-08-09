@@ -42,6 +42,7 @@ _ASCII_CONTROL_BOUNDARY = 0x20
 _ASCII_DELETE = 0x7F
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
 _HTTP_STATUS_OK = 200
+_HTTP_STATUS_BAD_GATEWAY = 502
 _FLOW_STATE = "_codex_model_catalog_cache_state"
 _FLOW_TELEMETRY = "_codex_model_catalog_cache_telemetry"
 _PREFETCH_REQUEST = "_codex_model_catalog_prefetch_request"
@@ -641,7 +642,8 @@ async def prepare_request(flow: http.HTTPFlow, *, request_end_stream: bool) -> b
             prefetch_owner=is_prefetch,
         )
         flow.metadata[_FLOW_STATE] = state
-        flow.request.headers["Accept-Encoding"] = _BROTLI_ENCODING
+        if is_prefetch:
+            flow.request.headers["Accept-Encoding"] = _BROTLI_ENCODING
         return wait_deadline is not None
 
 
@@ -695,14 +697,34 @@ def _bypass_response(
     _release_flow_capacity(state)
 
 
+def _discard_upstream_response_body(_chunk: bytes) -> bytes:
+    return b""
+
+
+def _reject_encoded_response(
+    flow: http.HTTPFlow,
+    state: _FlowState,
+) -> None:
+    _set_not_stored(flow, state, "response_encoding")
+    state.finalized = True
+    _release_flow_capacity(state)
+    flow.response = http.Response.make(
+        _HTTP_STATUS_BAD_GATEWAY,
+        b"",
+        {"Content-Type": "text/plain"},
+    )
+    flow.response.stream = _discard_upstream_response_body
+
+
 def handle_response_headers(flow: http.HTTPFlow) -> bool:
     """Prepare catalog handling and tell mitm_addon.responseheaders() whether to continue.
 
-    Return False only for a fresh response served from the local catalog cache; the hook
-    must stop the normal response-header pipeline in that case. Return True for all other flows,
-    including unrelated traffic, cache bypasses, and eligible cold responses, so the hook
-    continues that pipeline. For an eligible cold response, ordinary streaming is installed before
-    wrap_response_stream() composes the bounded catalog capture.
+    Return False when the hook must stop the normal response-header pipeline: either for a
+    fresh response served from the local catalog cache or for an encoded ordinary response
+    replaced with a fixed proxy error. Return True for all other flows, including unrelated
+    traffic, cache bypasses, and eligible cold responses. For an eligible cold response,
+    ordinary streaming is installed before wrap_response_stream() composes the bounded catalog
+    capture.
 
     ``mitm_addon.responseheaders()`` implements this contract. Focused coverage is
     ``test_fresh_hit_is_partitioned_and_expiry_never_uses_conditions`` for the stop branch and
@@ -725,6 +747,11 @@ def handle_response_headers(flow: http.HTTPFlow) -> bool:
         if bypass_reason is not None:
             _bypass_response(flow, state, bypass_reason)
         return True
+    if not state.prefetch_owner:
+        if encoding == _BROTLI_ENCODING:
+            state.upstream_encoding = _BROTLI_ENCODING
+        _reject_encoded_response(flow, state)
+        return False
     if encoding != _BROTLI_ENCODING:
         _bypass_response(flow, state, "response_encoding")
         return True

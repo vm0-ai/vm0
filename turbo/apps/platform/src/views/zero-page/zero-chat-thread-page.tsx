@@ -2717,11 +2717,7 @@ function ChatThreadRenderedEventGroups({
     }) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedEventsForThinkingIndicator(renderedGroups);
-  const chatModelNoticesEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
-  const modelChanges = chatModelNoticesEnabled
-    ? modelChangesByEventId(renderedActiveGroups)
-    : new Map<string, string>();
+  const modelChanges = modelChangesByEventId(renderedActiveGroups);
   const scrollTargetEventId =
     useGet(thread.threadScrollPosition$)?.targetEventId ?? null;
   const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
@@ -2842,14 +2838,11 @@ function ChatThreadNextRunModelNotice({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
-  const enabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatNextRunModelNotice] ?? false;
   const selectedModel = useLastResolved(
     thread.composer.model.modelSelection$,
   )?.selectedModel;
   const runningModel = useLastResolved(thread.composer.model.runningModel$);
   if (
-    !enabled ||
     selectedModel === undefined ||
     runningModel === undefined ||
     runningModel === null ||

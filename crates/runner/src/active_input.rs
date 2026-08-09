@@ -91,6 +91,8 @@ pub(crate) enum ActiveInputBatch {
     Api(Option<String>),
 }
 
+const LOCAL_ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(250);
+pub(crate) const API_ACTIVE_INPUT_RECHECK_INTERVAL: Duration = Duration::from_secs(30);
 const ACTIVE_INPUT_NOTIFICATION_CAPACITY: usize = 256;
 
 #[derive(Clone)]
@@ -188,10 +190,15 @@ impl ActiveInputSource {
         }
     }
 
-    pub(crate) async fn wait(&mut self, timeout: Duration) {
+    pub(crate) async fn wait_until_next_read(&mut self) {
         match self {
-            Self::LocalQueue(_) => tokio::time::sleep(timeout).await,
-            Self::Api(source) => source.notifications.wait().await,
+            Self::LocalQueue(_) => tokio::time::sleep(LOCAL_ACTIVE_INPUT_POLL_INTERVAL).await,
+            Self::Api(source) => {
+                tokio::select! {
+                    () = source.notifications.wait() => {}
+                    () = tokio::time::sleep(API_ACTIVE_INPUT_RECHECK_INTERVAL) => {}
+                }
+            }
         }
     }
 }

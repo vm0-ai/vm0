@@ -155,6 +155,8 @@ export const updateCodexFastModeDefaultForSelection$ = command(
   },
 );
 
-export const resetChatPageModelSelection$ = command(({ set }) => {
-  set(internalChatPageUserOverride$, { kind: "unset" });
+export const resetChatPageModelSelection$ = command(({ get, set }) => {
+  if (get(internalChatPageUserOverride$).kind === "set") {
+    set(internalChatPageUserOverride$, { kind: "unset" });
+  }
 });

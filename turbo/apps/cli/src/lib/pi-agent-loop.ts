@@ -12,6 +12,7 @@ import { piTranscriptResponseSchema } from "@vm0/api-contracts/contracts/webhook
 import {
   createPiNodeExecutionEnv as createNodeExecutionEnv,
   parsePiAgentMessages,
+  piMessageRequiresSandbox,
   runPiAgentResume,
   type ExecutionEnv,
   type PiAgentMessage,
@@ -25,8 +26,10 @@ const PI_MODEL_CONFIG_ENV = "VM0_PI_MODEL_CONFIG";
 const RUN_SKILL_SNAPSHOT_ENV = "VM0_RUN_SKILL_SNAPSHOT";
 
 export const DEFAULT_PI_STANDBY_TTL_SECONDS = 300;
+const DEFAULT_PI_TRANSCRIPT_POLL_INTERVAL_MS = 10_000;
 
-type PiTranscript = z.infer<typeof piTranscriptResponseSchema>;
+type PiTranscriptPage = z.infer<typeof piTranscriptResponseSchema>;
+type PiTranscriptMessage = PiTranscriptPage["messages"][number];
 
 const standbyControlSchema = z
   .object({ type: z.literal("pi-handoff") })
@@ -75,14 +78,14 @@ export interface PiStandbyAgentConfig {
 
 export type PiAgentResume = typeof runPiAgentResume;
 
-class PiTranscriptConflict extends Error {}
-class PiStandbyReleased extends Error {}
-
 interface TranscriptTail {
-  readonly version: number;
-  lastOrdinal: number;
   nextSequence: number;
   lastAcknowledgedSequence: number | undefined;
+}
+
+interface FollowedTranscript {
+  lastOrdinal: number;
+  readonly messages: PiTranscriptMessage[];
 }
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
@@ -126,7 +129,7 @@ function systemPromptDigest(systemPrompt: string): string {
 }
 
 function transcriptTail(
-  transcript: PiTranscript,
+  transcript: FollowedTranscript,
   runId: string,
 ): TranscriptTail {
   let lastRunSequence = 0;
@@ -139,8 +142,6 @@ function transcriptTail(
     }
   }
   return {
-    version: transcript.version,
-    lastOrdinal: transcript.lastOrdinal,
     nextSequence: lastRunSequence + 1,
     lastAcknowledgedSequence:
       lastRunSequence === 0 ? undefined : lastRunSequence,
@@ -155,37 +156,99 @@ async function readFrame(io: PiAgentLoopIo): Promise<InboundFrame> {
   return inboundFrameSchema.parse(frame);
 }
 
-async function readInitialFrame(
-  io: PiAgentLoopIo,
-  standbyTtlSeconds: number,
-): Promise<InboundFrame | null> {
-  let timeout: NodeJS.Timeout | undefined;
-  const timedOut = new Promise<null>((resolve) => {
-    timeout = setTimeout(() => {
-      resolve(null);
-    }, standbyTtlSeconds * 1000);
-  });
-  const frame = await Promise.race([readFrame(io), timedOut]);
-  if (timeout) {
-    clearTimeout(timeout);
+class InboundFrames {
+  readonly #io: PiAgentLoopIo;
+  #pending: Promise<InboundFrame> | undefined;
+
+  constructor(io: PiAgentLoopIo) {
+    this.#io = io;
+  }
+
+  #next(): Promise<InboundFrame> {
+    this.#pending ??= readFrame(this.#io);
+    return this.#pending;
+  }
+
+  async read(): Promise<InboundFrame> {
+    const pending = this.#next();
+    const frame = await pending;
+    if (this.#pending === pending) {
+      this.#pending = undefined;
+    }
+    return frame;
+  }
+
+  async readWithin(timeoutMs: number): Promise<InboundFrame | null> {
+    const pending = this.#next();
+    let timeout: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<null>((resolve) => {
+      timeout = setTimeout(() => {
+        resolve(null);
+      }, timeoutMs);
+    });
+    try {
+      const frame = await Promise.race([pending, timedOut]);
+      if (frame !== null && this.#pending === pending) {
+        this.#pending = undefined;
+      }
+      return frame;
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+}
+
+function standbyTimeout(): Error {
+  return new Error("Pi standby timed out waiting for a persisted tool call");
+}
+
+async function readBeforeDeadline(
+  frames: InboundFrames,
+  deadline: number,
+): Promise<InboundFrame> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) {
+    throw standbyTimeout();
+  }
+  const frame = await frames.readWithin(remainingMs);
+  if (frame === null) {
+    throw standbyTimeout();
   }
   return frame;
 }
 
+type TranscriptRequestResult =
+  | { readonly kind: "page"; readonly page: PiTranscriptPage }
+  | { readonly kind: "release"; readonly reason: string | undefined };
+
 async function requestTranscript(
   io: PiAgentLoopIo,
+  frames: InboundFrames,
   requestNumber: number,
-): Promise<PiTranscript> {
+  afterOrdinal: number,
+  deadline: number,
+): Promise<TranscriptRequestResult> {
   const requestId = `transcript-${requestNumber}`;
-  await io.write({ type: "pi-transcript-read", requestId });
-  const frame = await readFrame(io);
-  if (frame.type === "pi-standby-release") {
-    throw new PiStandbyReleased(frame.reason);
+  await io.write({
+    type: "pi-transcript-read",
+    requestId,
+    afterOrdinal,
+  });
+  while (true) {
+    const frame = await readBeforeDeadline(frames, deadline);
+    if (frame.type === "pi-standby-release") {
+      return { kind: "release", reason: frame.reason };
+    }
+    if (frame.type === "pi-handoff") {
+      continue;
+    }
+    if (frame.type !== "pi-transcript" || frame.requestId !== requestId) {
+      throw new Error(`Expected Pi transcript response for ${requestId}`);
+    }
+    return { kind: "page", page: frame.transcript };
   }
-  if (frame.type !== "pi-transcript" || frame.requestId !== requestId) {
-    throw new Error(`Expected Pi transcript response for ${requestId}`);
-  }
-  return frame.transcript;
 }
 
 function messageFailure(message: PiAgentMessage): string | undefined {
@@ -200,6 +263,7 @@ function messageFailure(message: PiAgentMessage): string | undefined {
 
 async function acknowledgeMessage(
   io: PiAgentLoopIo,
+  frames: InboundFrames,
   config: PiStandbyAgentConfig,
   tail: TranscriptTail,
   message: PiAgentMessage,
@@ -212,27 +276,24 @@ async function acknowledgeMessage(
       type: "pi.message.completed",
       sequenceNumber,
       messageId,
-      expectedVersion: tail.version,
-      expectedLastOrdinal: tail.lastOrdinal,
       message,
     },
   });
-  const frame = await readFrame(io);
-  if (frame.type === "pi-standby-release") {
-    throw new PiStandbyReleased(frame.reason);
+  while (true) {
+    const frame = await frames.read();
+    if (frame.type === "pi-handoff" || frame.type === "pi-standby-release") {
+      continue;
+    }
+    if (frame.type !== "pi-message-ack" || frame.messageId !== messageId) {
+      throw new Error(`Expected acknowledgement for Pi message ${messageId}`);
+    }
+    if (frame.status !== 200) {
+      throw new Error(
+        frame.error ?? `Pi message ${messageId} failed with ${frame.status}`,
+      );
+    }
+    break;
   }
-  if (frame.type !== "pi-message-ack" || frame.messageId !== messageId) {
-    throw new Error(`Expected acknowledgement for Pi message ${messageId}`);
-  }
-  if (frame.status === 409) {
-    throw new PiTranscriptConflict(frame.error);
-  }
-  if (frame.status !== 200) {
-    throw new Error(
-      frame.error ?? `Pi message ${messageId} failed with ${frame.status}`,
-    );
-  }
-  tail.lastOrdinal += 1;
   tail.nextSequence += 1;
   tail.lastAcknowledgedSequence = sequenceNumber;
 }
@@ -240,8 +301,9 @@ async function acknowledgeMessage(
 async function resumeFromTranscript(
   args: {
     readonly io: PiAgentLoopIo;
+    readonly frames: InboundFrames;
     readonly config: PiStandbyAgentConfig;
-    readonly transcript: PiTranscript;
+    readonly transcript: FollowedTranscript;
     readonly executionEnv: ExecutionEnv;
     readonly resume: PiAgentResume;
   },
@@ -264,7 +326,13 @@ async function resumeFromTranscript(
       messages,
       executionEnv: args.executionEnv,
       async onMessage(message: PiAgentMessage) {
-        await acknowledgeMessage(args.io, args.config, tail, message);
+        await acknowledgeMessage(
+          args.io,
+          args.frames,
+          args.config,
+          tail,
+          message,
+        );
         failure ??= messageFailure(message);
       },
     },
@@ -276,6 +344,26 @@ async function resumeFromTranscript(
   };
 }
 
+function appendTranscriptPage(
+  transcript: FollowedTranscript,
+  page: PiTranscriptPage,
+): void {
+  transcript.messages.push(...page.messages);
+  transcript.lastOrdinal = page.lastOrdinal;
+}
+
+function latestMessageRequiresSandbox(
+  transcript: FollowedTranscript,
+  runId: string,
+): boolean {
+  const latest = transcript.messages.at(-1);
+  if (latest === undefined || latest.runId !== runId) {
+    return false;
+  }
+  const [message] = parsePiAgentMessages([latest.payload]);
+  return message !== undefined && piMessageRequiresSandbox(message);
+}
+
 /** Run the internal one-shot Pi standby protocol used by guest-agent. */
 export async function runPiStandbyAgentLoop(
   args: {
@@ -283,6 +371,7 @@ export async function runPiStandbyAgentLoop(
     readonly config: PiStandbyAgentConfig;
     readonly executionEnv: ExecutionEnv;
     readonly standbyTtlSeconds?: number;
+    readonly pollIntervalMs?: number;
     readonly resume?: PiAgentResume;
   },
   signal: AbortSignal,
@@ -294,33 +383,39 @@ export async function runPiStandbyAgentLoop(
     systemPromptDigest: promptDigest,
     skillSnapshotDigest: args.config.skillSnapshot.digest,
   });
-  const initialFrame = await readInitialFrame(
-    args.io,
-    args.standbyTtlSeconds ?? DEFAULT_PI_STANDBY_TTL_SECONDS,
-  );
-  if (initialFrame === null) {
-    await args.io.write({ type: "pi-released", reason: "ttl" });
-    return;
-  }
-  if (initialFrame.type === "pi-standby-release") {
-    await args.io.write({
-      type: "pi-released",
-      reason: initialFrame.reason ?? "api-complete",
-    });
-    return;
-  }
-  if (initialFrame.type !== "pi-handoff") {
-    throw new Error("Pi standby expected a handoff or release control");
-  }
-
+  const frames = new InboundFrames(args.io);
+  const deadline =
+    Date.now() +
+    (args.standbyTtlSeconds ?? DEFAULT_PI_STANDBY_TTL_SECONDS) * 1_000;
+  const pollIntervalMs =
+    args.pollIntervalMs ?? DEFAULT_PI_TRANSCRIPT_POLL_INTERVAL_MS;
+  const transcript: FollowedTranscript = { lastOrdinal: 0, messages: [] };
   let requestNumber = 0;
   while (!signal.aborted) {
     requestNumber += 1;
-    const transcript = await requestTranscript(args.io, requestNumber);
-    try {
+    const result = await requestTranscript(
+      args.io,
+      frames,
+      requestNumber,
+      transcript.lastOrdinal,
+      deadline,
+    );
+    if (result.kind === "release") {
+      await args.io.write({
+        type: "pi-released",
+        reason: result.reason ?? "api-complete",
+      });
+      return;
+    }
+    appendTranscriptPage(transcript, result.page);
+    if (result.page.hasMore) {
+      continue;
+    }
+    if (latestMessageRequiresSandbox(transcript, args.config.runId)) {
       const result = await resumeFromTranscript(
         {
           io: args.io,
+          frames,
           config: args.config,
           transcript,
           executionEnv: args.executionEnv,
@@ -339,17 +434,32 @@ export async function runPiStandbyAgentLoop(
         skillSnapshotDigest: args.config.skillSnapshot.digest,
       });
       return;
-    } catch (error) {
-      if (error instanceof PiTranscriptConflict) {
-        await args.io.write({ type: "pi-transcript-conflict" });
-        continue;
-      }
-      if (error instanceof PiStandbyReleased) {
-        await args.io.write({ type: "pi-released", reason: "api-complete" });
-        return;
-      }
-      throw error;
     }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw standbyTimeout();
+    }
+    const control = await frames.readWithin(
+      Math.min(pollIntervalMs, remainingMs),
+    );
+    if (control === null) {
+      if (Date.now() >= deadline) {
+        throw standbyTimeout();
+      }
+      continue;
+    }
+    if (control.type === "pi-handoff") {
+      continue;
+    }
+    if (control.type === "pi-standby-release") {
+      await args.io.write({
+        type: "pi-released",
+        reason: control.reason ?? "api-complete",
+      });
+      return;
+    }
+    throw new Error("Pi standby expected a handoff or release control");
   }
   signal.throwIfAborted();
 }

@@ -414,7 +414,7 @@ fn write_manifest(manifest_path: &Path, files: &[FileEntry]) -> Result<(), Manif
         created_at: guest_common::log::timestamp(),
     };
 
-    serde_json::to_writer_pretty(&mut writer, &manifest).map_err(ManifestWriteError::Serialize)?;
+    serde_json::to_writer(&mut writer, &manifest).map_err(ManifestWriteError::Serialize)?;
     writer.flush().map_err(ManifestWriteError::Flush)
 }
 
@@ -560,8 +560,10 @@ mod tests {
         let Ok(body) = serde_json::from_slice::<serde_json::Value>(req.body_ref()) else {
             return http_status(400);
         };
+        let compact_body_len = body.to_string().len();
         let expected_files = serde_json::Value::Array(expected_files.to_vec());
         if request_header_eq(req, "content-type", "application/json")
+            && req.body_ref().len() == compact_body_len
             && body.get("version") == Some(&serde_json::json!(1))
             && body.get("files") == Some(&expected_files)
             && body

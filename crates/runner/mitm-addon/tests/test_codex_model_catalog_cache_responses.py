@@ -18,13 +18,14 @@ from tests.codex_model_catalog_cache_helpers import (
     finish_response,
     install_catalog,
     prepare_miss,
+    prepare_prefetch_miss,
 )
 from tests.flow_helpers import header_map, response_stream
 
 
 async def test_brotli_miss_without_length_is_cached_and_passed_through(real_flow):
     brotli_flow = catalog_flow(real_flow)
-    await prepare_miss(brotli_flow)
+    await prepare_prefetch_miss(brotli_flow)
     brotli_flow.response = catalog_response(encoding="br")
     compressed_body = brotli_flow.response.raw_content or b""
     del brotli_flow.response.headers["Content-Length"]
@@ -49,6 +50,7 @@ async def test_brotli_miss_without_length_is_cached_and_passed_through(real_flow
     assert brotli_telemetry == {
         "model_catalog_cache_status": "model_catalog_cold_stored",
         "model_catalog_cache_upstream_encoding": "br",
+        "model_catalog_prefetch_role": "producer",
     }
     brotli_hit = catalog_flow(real_flow)
     await catalog_cache.prepare_request(brotli_hit, request_end_stream=True)
@@ -70,9 +72,61 @@ async def test_brotli_miss_without_length_is_cached_and_passed_through(real_flow
     }
 
 
+@pytest.mark.parametrize("encoding", ["br", "gzip"])
+async def test_ordinary_owner_rejects_unsolicited_encoded_response(real_flow, encoding: str):
+    flow = catalog_flow(real_flow, version=f"unsolicited-{encoding}")
+    await prepare_miss(flow)
+    upstream_response = catalog_response(encoding=encoding)
+    upstream_body = upstream_response.raw_content or b""
+    flow.response = upstream_response
+
+    mitm_addon.responseheaders(flow)
+
+    assert flow.response.status_code == 502
+    assert "Content-Encoding" not in flow.response.headers
+    assert callable(flow.response.stream)
+    assert response_stream(flow)(upstream_body) == b""
+    assert catalog_cache.finalize_response(flow) is None
+    telemetry: dict[str, object] = {}
+    catalog_cache.add_network_log_fields(flow, telemetry)
+    validation_latency = telemetry.pop("model_catalog_cache_validation_latency_ms")
+    assert isinstance(validation_latency, int)
+    assert validation_latency >= 0
+    expected: dict[str, object] = {
+        "model_catalog_cache_status": "model_catalog_cold_not_stored",
+        "model_catalog_cache_bypass_reason": "response_encoding",
+    }
+    if encoding == "br":
+        expected["model_catalog_cache_upstream_encoding"] = "br"
+    assert telemetry == expected
+
+    retry = catalog_flow(real_flow, version=f"unsolicited-{encoding}")
+    await prepare_miss(retry)
+    catalog_cache.handle_error(retry)
+
+
+async def test_ordinary_identity_miss_without_length_streams_and_caches(real_flow):
+    flow = catalog_flow(real_flow, version="identity-without-length")
+    await prepare_miss(flow)
+    flow.response = catalog_response()
+    del flow.response.headers["Content-Length"]
+
+    telemetry = await finish_response(flow)
+
+    assert flow.response.status_code == 200
+    assert flow.response.raw_content == CATALOG_BODY
+    assert "Content-Encoding" not in flow.response.headers
+    assert "Content-Length" not in flow.response.headers
+    assert telemetry["model_catalog_cache_status"] == "model_catalog_cold_stored"
+    hit = catalog_flow(real_flow, version="identity-without-length")
+    await catalog_cache.prepare_request(hit, request_end_stream=True)
+    assert hit.response is not None
+    assert hit.response.content == CATALOG_BODY
+
+
 async def test_set_cookie_is_not_replayed_from_cached_brotli_response(real_flow):
     cold = catalog_flow(real_flow, version="set-cookie")
-    await prepare_miss(cold)
+    await prepare_prefetch_miss(cold)
     cold.response = catalog_response(
         encoding="br",
         headers={"Set-Cookie": "catalog_session=opaque; Secure"},
@@ -280,7 +334,7 @@ async def test_invalid_streamed_brotli_passes_through_without_installing(
     reason: str,
 ):
     flow = catalog_flow(real_flow)
-    await prepare_miss(flow)
+    await prepare_prefetch_miss(flow)
     length = len(wire_body) if declared_length is None else declared_length
     flow.response = tutils.tresp(
         status_code=200,
@@ -315,6 +369,7 @@ async def test_invalid_streamed_brotli_passes_through_without_installing(
         "model_catalog_cache_status": "model_catalog_cold_not_stored",
         "model_catalog_cache_bypass_reason": reason,
         "model_catalog_cache_upstream_encoding": "br",
+        "model_catalog_prefetch_role": "producer",
     }
 
 
@@ -336,7 +391,7 @@ async def test_brotli_cache_policy_bypasses_body_validation(
     body: bytes,
 ):
     flow = catalog_flow(real_flow, version=f"cache-policy-{len(body)}")
-    await prepare_miss(flow)
+    await prepare_prefetch_miss(flow)
     flow.response = catalog_response(
         body=body,
         etag=None,
@@ -363,7 +418,10 @@ async def test_catalog_responses_with_trailers_are_never_cached(
     encoding: str,
 ):
     flow = catalog_flow(real_flow, version=f"trailers-{encoding}")
-    await prepare_miss(flow)
+    if encoding == "br":
+        await prepare_prefetch_miss(flow)
+    else:
+        await prepare_miss(flow)
     flow.response = catalog_response(encoding=encoding)
     flow.response.trailers = header_map({"Digest": "sha-256=:opaque:"})
 
@@ -460,7 +518,7 @@ async def test_unsafe_encoded_headers_pass_through_without_caching(
     expected_encoding: str | None,
 ):
     flow = catalog_flow(real_flow, version=f"unsafe-{encoding}-{reason}")
-    await prepare_miss(flow)
+    await prepare_prefetch_miss(flow)
     response = catalog_response(encoding=encoding, headers=headers)
     if headers.get("Content-Length") == "":
         del response.headers["Content-Length"]
@@ -488,6 +546,7 @@ async def test_unsafe_encoded_headers_pass_through_without_caching(
     }
     if expected_encoding is not None:
         expected["model_catalog_cache_upstream_encoding"] = expected_encoding
+    expected["model_catalog_prefetch_role"] = "producer"
     assert telemetry == expected
 
 
@@ -498,9 +557,9 @@ async def test_complete_decoded_body_bound_is_cached(real_flow):
         prefix + b"x" * (catalog_cache.MAX_ENTRY_BYTES - len(prefix) - len(suffix)) + suffix
     )
     exact = catalog_flow(real_flow, version="exact-cap")
-    assert (await install_catalog(exact, body=exact_body))["model_catalog_cache_status"] == (
-        "model_catalog_cold_stored"
-    )
+    assert (await install_catalog(exact, body=exact_body, encoding="br"))[
+        "model_catalog_cache_status"
+    ] == "model_catalog_cold_stored"
     exact_hit = catalog_flow(real_flow, version="exact-cap")
     await catalog_cache.prepare_request(exact_hit, request_end_stream=True)
     assert exact_hit.response is not None

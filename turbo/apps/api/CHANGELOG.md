@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.409.1](https://github.com/vm0-ai/vm0/compare/api-v1.409.0...api-v1.409.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **connectors:** keep runtime wakeups best effort ([#25915](https://github.com/vm0-ai/vm0/issues/25915)) ([825e20c](https://github.com/vm0-ai/vm0/commit/825e20c5636dbc838a26389bde15bd511177e9e8))
+
+
+### Refactoring
+
+* **chat-search:** remove chat search index feature switch ([#25909](https://github.com/vm0-ai/vm0/issues/25909)) ([4ca2131](https://github.com/vm0-ai/vm0/commit/4ca213130629c0d060f377c4e093973ab0394e2d))
+* **pi:** replace handoff fallbacks with session polling ([#25906](https://github.com/vm0-ai/vm0/issues/25906)) ([66cbcad](https://github.com/vm0-ai/vm0/commit/66cbcada1c224b1c7541b6d7c90696d3733e53f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.299.1
+    * @vm0/connectors bumped to 1.204.4
+    * @vm0/core bumped to 8.533.1
+    * @vm0/db bumped to 1.181.7
+    * @vm0/pi-agent-runtime bumped to 1.3.19
+
+## [1.409.0](https://github.com/vm0-ai/vm0/compare/api-v1.408.0...api-v1.409.0) (2026-08-09)
+
+
+### Features
+
+* **chat-search:** enable indexed search for all users ([#25887](https://github.com/vm0-ai/vm0/issues/25887)) ([8cdca52](https://github.com/vm0-ai/vm0/commit/8cdca52c3b75e021dbab3a6573f991a6ceea84f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.533.0
+    * @vm0/db bumped to 1.181.6
+
 ## [1.408.0](https://github.com/vm0-ai/vm0/compare/api-v1.407.2...api-v1.408.0) (2026-08-09)
 
 

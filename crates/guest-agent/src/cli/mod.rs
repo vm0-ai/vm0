@@ -288,10 +288,6 @@ pub enum PiStandbyReleaseReason {
     /// API-side execution completed the run, so guest-agent exits successfully
     /// without calling `/complete` again.
     ApiComplete,
-    /// The unused standby expired, so guest-agent exits with
-    /// [`guest_contracts::pi_standby::TTL_RELEASE_EXIT_CODE`] for runner
-    /// requeue instead of completing the run.
-    Ttl,
 }
 
 /// Heartbeat completion signal observed by CLI execution.

@@ -123,13 +123,14 @@ async fn pi_transcript_read_keeps_sandbox_auth_inside_guest_http_client()
         when.method(GET)
             .path("/api/webhooks/agent/pi-transcript")
             .query_param("runId", TEST_RUN_ID)
+            .query_param("afterOrdinal", "1")
             .header("Authorization", "Bearer test-token-abc123")
             .header("x-vercel-protection-bypass", "test-bypass-value")
             .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
             .header(CLIENT_SESSION_ID_HEADER, TEST_RUN_ID);
         then.status(200).json_body(json!({
-            "version": 1,
             "lastOrdinal": 2,
+            "hasMore": false,
             "messages": [{
                 "ordinal": 2,
                 "messageId": "origin-run/1",
@@ -143,12 +144,12 @@ async fn pi_transcript_read_keeps_sandbox_auth_inside_guest_http_client()
     });
 
     let transcript = guest_agent::http::HttpClient::for_config(&config)?
-        .get_pi_transcript(TEST_RUN_ID, 1)
+        .get_pi_transcript(TEST_RUN_ID, 1, 1)
         .await?;
 
     mock.assert_calls_async(1).await;
-    assert_eq!(transcript.version, 1);
     assert_eq!(transcript.last_ordinal, 2);
+    assert!(!transcript.has_more);
     assert_eq!(transcript.messages[0].payload["role"], "assistant");
     Ok(())
 }

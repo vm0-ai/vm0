@@ -300,12 +300,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatNextRunModelNotice]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a composer notice when the selected model differs from the running chat model.",
-    enabled: true,
-  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -324,12 +318,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ChatSearchIndex]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Serve chat keyword search from the chat_event_search_docs projection instead of scanning chat_events with ILIKE.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatEventSnapshotRead]: {
     maintainer: "ethan@vm0.ai",

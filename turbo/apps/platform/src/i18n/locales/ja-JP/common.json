@@ -156,6 +156,7 @@
       "emptyOutput": "(空の出力)",
       "files_one": "{{formattedCount}} ファイル",
       "files_other": "{{formattedCount}} ファイル",
+      "handoffApiToSandbox": "ハンドオフ · API サーバー → サンドボックス",
       "initialize": "初期化する",
       "inputTokens": "入力: {{formattedCount}}",
       "models_one": "{{formattedCount}} モデル",

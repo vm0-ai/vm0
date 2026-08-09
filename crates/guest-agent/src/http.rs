@@ -473,13 +473,14 @@ impl HttpClient {
         self.post_json_bytes(url, body, max_attempts).await
     }
 
-    /// Read the canonical versioned Pi transcript for a standby handoff.
+    /// Read the next Pi transcript page after the standby's current cursor.
     ///
     /// The sandbox token remains inside guest-agent; the zero child receives
     /// only the parsed response through its local JSONL protocol.
     pub async fn get_pi_transcript(
         &self,
         run_id: &str,
+        after_ordinal: u32,
         max_attempts: u32,
     ) -> Result<PiTranscriptResponse, AgentError> {
         let client = self.inner()?;
@@ -489,7 +490,8 @@ impl HttpClient {
             .map_err(|error| AgentError::Http(format!("invalid Pi transcript URL: {error}")))?;
         transcript_url
             .query_pairs_mut()
-            .append_pair("runId", run_id);
+            .append_pair("runId", run_id)
+            .append_pair("afterOrdinal", &after_ordinal.to_string());
         let response = send_with_retry(
             "GET Pi transcript",
             max_attempts,

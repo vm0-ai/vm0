@@ -52,7 +52,6 @@ export enum FeatureSwitchKey {
   WorkdayConnector = "workdayConnector",
   CodexFastMode = "codexFastMode",
   NewChatDefaultModelAction = "newChatDefaultModelAction",
-  ChatNextRunModelNotice = "chatNextRunModelNotice",
   RealAgentInPreview = "realAgentInPreview",
   UsagePackPlans = "usagePackPlans",
   PaymentMethodManagement = "paymentMethodManagement",
@@ -71,6 +70,5 @@ export enum FeatureSwitchKey {
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",
   VideoTemplateOptions = "videoTemplateOptions",
-  ChatSearchIndex = "chatSearchIndex",
   ChatEventSnapshotRead = "chatEventSnapshotRead",
 }

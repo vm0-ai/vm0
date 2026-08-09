@@ -151,7 +151,7 @@ async function enableResponsiveFollowupCards(page: Page): Promise<void> {
   });
 }
 
-async function enableModelChangeNotices(page: Page): Promise<void> {
+async function disableChatEventSnapshotRead(page: Page): Promise<void> {
   await page.route("**/api/zero/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
@@ -165,7 +165,6 @@ async function enableModelChangeNotices(page: Page): Promise<void> {
         effectiveSwitches: {
           ...body.effectiveSwitches,
           chatEventSnapshotRead: false,
-          chatNextRunModelNotice: true,
         },
       },
     });
@@ -598,7 +597,7 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
 test("model change labels follow the divider at the right edge", async ({
   page,
 }) => {
-  await enableModelChangeNotices(page);
+  await disableChatEventSnapshotRead(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });

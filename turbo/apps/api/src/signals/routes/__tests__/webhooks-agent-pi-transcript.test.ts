@@ -15,6 +15,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { webhooksAgentEventsRoutes } from "../webhooks-agent-events";
 import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
@@ -35,8 +36,20 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const reads = createRunReadsApi(context);
 
 const PI_EVENT_TYPE = "pi.message.completed";
+
+function zeroUsage() {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+}
 
 async function entitledChatActor(): Promise<{
   readonly actor: ApiTestUser;
@@ -83,38 +96,51 @@ function assistantMessage(text: string): Record<string, unknown> {
     role: "assistant",
     content: [
       { type: "text", text },
-      { type: "tool_call", id: "tool-1", name: "bash", arguments: {} },
+      { type: "toolCall", id: "tool-1", name: "bash", arguments: {} },
     ],
+    api: "openai-completions",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    usage: zeroUsage(),
+    stopReason: "toolUse",
+    timestamp: 1,
   };
 }
 
 function toolCallOnlyMessage(): Record<string, unknown> {
   return {
     role: "assistant",
-    content: [{ type: "tool_call", id: "tool-1", name: "bash", arguments: {} }],
+    content: [{ type: "toolCall", id: "tool-1", name: "bash", arguments: {} }],
+    api: "openai-completions",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    usage: zeroUsage(),
+    stopReason: "toolUse",
+    timestamp: 1,
   };
 }
 
 function toolResultMessage(): Record<string, unknown> {
   return {
     role: "toolResult",
-    content: [{ type: "tool_result", toolCallId: "tool-1", output: "ok" }],
+    toolCallId: "tool-1",
+    toolName: "bash",
+    content: [{ type: "text", text: "ok" }],
+    details: {},
+    isError: false,
+    timestamp: 2,
   };
 }
 
 function piEvent(args: {
   readonly sequenceNumber: number;
   readonly messageId: string;
-  readonly expectedLastOrdinal: number;
-  readonly expectedVersion?: number;
   readonly message?: Record<string, unknown>;
 }): { type: string; sequenceNumber: number } & Record<string, unknown> {
   return {
     type: PI_EVENT_TYPE,
     sequenceNumber: args.sequenceNumber,
     messageId: args.messageId,
-    expectedVersion: args.expectedVersion ?? 1,
-    expectedLastOrdinal: args.expectedLastOrdinal,
     message: args.message ?? assistantMessage("hello from pi"),
   };
 }
@@ -137,7 +163,7 @@ async function sendEvents(
     string,
     unknown
   >)[],
-  statuses: readonly (200 | 400 | 401 | 409 | 503)[],
+  statuses: readonly (200 | 400 | 401 | 503)[],
 ) {
   return await accept(
     eventsClient().send({
@@ -152,6 +178,7 @@ async function readTranscript(
   runId: string,
   statuses: readonly (200 | 401 | 404)[],
   tokenRunId?: string,
+  afterOrdinal = 0,
 ) {
   return await accept(
     transcriptClient().read({
@@ -159,14 +186,14 @@ async function readTranscript(
         runId,
         ...(tokenRunId === undefined ? {} : { tokenRunId }),
       }),
-      query: { runId },
+      query: { runId, afterOrdinal },
     }),
     statuses,
   );
 }
 
-async function readTranscriptOk(runId: string) {
-  const response = await readTranscript(runId, [200]);
+async function readTranscriptOk(runId: string, afterOrdinal = 0) {
+  const response = await readTranscript(runId, [200], undefined, afterOrdinal);
   if (response.status !== 200) {
     throw new Error("Expected the pi transcript read to succeed");
   }
@@ -203,13 +230,11 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
         piEvent({
           sequenceNumber: 1,
           messageId: "pi-m1",
-          expectedLastOrdinal: 0,
           message: assistantMessage("first reply"),
         }),
         piEvent({
           sequenceNumber: 2,
           messageId: "pi-m2",
-          expectedLastOrdinal: 1,
           message: toolResultMessage(),
         }),
       ],
@@ -218,8 +243,8 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     expect(response.body).toMatchObject({ received: 2 });
 
     const transcript = await readTranscriptOk(runId);
-    expect(transcript.version).toBe(1);
     expect(transcript.lastOrdinal).toBe(2);
+    expect(transcript.hasMore).toBeFalsy();
     expect(transcript.messages).toHaveLength(2);
     expect(transcript.messages[0]).toMatchObject({
       ordinal: 1,
@@ -258,13 +283,11 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
         piEvent({
           sequenceNumber: 1,
           messageId: "pi-m1",
-          expectedLastOrdinal: 0,
           message: toolCallOnlyMessage(),
         }),
         piEvent({
           sequenceNumber: 2,
           messageId: "pi-m2",
-          expectedLastOrdinal: 1,
           message: toolResultMessage(),
         }),
       ],
@@ -279,105 +302,6 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     expect(topicCount(threadId)).toBe(publishCountBefore);
   });
 
-  it("treats a retried delivery as an idempotent replay", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const { runId, threadId } = await chatRun(actor, agentId);
-    const batch = [
-      piEvent({
-        sequenceNumber: 1,
-        messageId: "pi-m1",
-        expectedLastOrdinal: 0,
-        message: assistantMessage("only once"),
-      }),
-    ];
-
-    await sendEvents(runId, batch, [200]);
-    await flushWaitUntilForTest();
-    const topicsAfterFirst = topicCount(threadId);
-
-    await sendEvents(runId, batch, [200]);
-
-    const transcript = await readTranscriptOk(runId);
-    expect(transcript.lastOrdinal).toBe(1);
-    expect(transcript.messages).toHaveLength(1);
-    await expect(outputMessages(actor, threadId)).resolves.toHaveLength(1);
-
-    await flushWaitUntilForTest();
-    expect(topicCount(threadId)).toBe(topicsAfterFirst);
-  });
-
-  it("rejects a stale tail with 409 and leaves state unchanged", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const { runId, threadId } = await chatRun(actor, agentId);
-
-    await sendEvents(
-      runId,
-      [
-        piEvent({
-          sequenceNumber: 1,
-          messageId: "pi-m1",
-          expectedLastOrdinal: 0,
-        }),
-      ],
-      [200],
-    );
-    await flushWaitUntilForTest();
-    const publishCountBefore = topicCount(threadId);
-
-    const stale = await sendEvents(
-      runId,
-      [
-        piEvent({
-          sequenceNumber: 2,
-          messageId: "pi-m2",
-          expectedLastOrdinal: 0,
-          message: assistantMessage("stale append"),
-        }),
-      ],
-      [409],
-    );
-    expect(stale.body).toMatchObject({
-      error: { code: "CONFLICT" },
-    });
-
-    const transcript = await readTranscriptOk(runId);
-    expect(transcript.lastOrdinal).toBe(1);
-    await expect(outputMessages(actor, threadId)).resolves.toHaveLength(1);
-
-    await flushWaitUntilForTest();
-    expect(topicCount(threadId)).toBe(publishCountBefore);
-  });
-
-  it("rejects reusing a message id with different content", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const { runId } = await chatRun(actor, agentId);
-
-    await sendEvents(
-      runId,
-      [
-        piEvent({
-          sequenceNumber: 1,
-          messageId: "pi-m1",
-          expectedLastOrdinal: 0,
-        }),
-      ],
-      [200],
-    );
-    const conflicted = await sendEvents(
-      runId,
-      [
-        piEvent({
-          sequenceNumber: 1,
-          messageId: "pi-m1",
-          expectedLastOrdinal: 0,
-          message: assistantMessage("rewritten history"),
-        }),
-      ],
-      [409],
-    );
-    expect(conflicted.body).toMatchObject({ error: { code: "CONFLICT" } });
-  });
-
   it("rejects malformed pi events without opening a transcript", async () => {
     const { actor, agentId } = await entitledChatActor();
     const { runId } = await chatRun(actor, agentId);
@@ -388,8 +312,6 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
         {
           type: PI_EVENT_TYPE,
           sequenceNumber: 1,
-          expectedVersion: 1,
-          expectedLastOrdinal: 0,
           message: assistantMessage("missing message id"),
         },
       ],
@@ -423,7 +345,6 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
         piEvent({
           sequenceNumber: 1,
           messageId: "pi-m1",
-          expectedLastOrdinal: 0,
         }),
       ],
       [400],
@@ -432,7 +353,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     await readTranscript(run.runId, [404]);
   });
 
-  it("keeps the canonical payload out of Axiom telemetry", async () => {
+  it("keeps the canonical payload out of Axiom and restores it for authorized logs", async () => {
     const { actor, agentId } = await entitledChatActor();
     const { runId } = await chatRun(actor, agentId);
     mockEnv("AXIOM_TOKEN_SESSIONS", "axiom-bdd-token");
@@ -459,7 +380,6 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
         piEvent({
           sequenceNumber: 1,
           messageId: "pi-m1",
-          expectedLastOrdinal: 0,
           message: assistantMessage("secret transcript"),
         }),
       ],
@@ -474,11 +394,52 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     const eventData = piIngest[0]?.eventData as Record<string, unknown>;
     expect(eventData.message).toBeUndefined();
     expect(eventData).toMatchObject({
+      source: "sandbox",
       messageId: "pi-m1",
       role: "assistant",
     });
     expect(typeof eventData.payloadBytes).toBe("number");
     expect(JSON.stringify(ingested)).not.toContain("secret transcript");
+
+    const axiomEvent = piIngest[0];
+    if (axiomEvent === undefined) {
+      throw new Error("Expected the Pi event metadata to reach Axiom");
+    }
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (typeof apl !== "string") {
+        return Promise.resolve([]);
+      }
+      if (apl.includes("| project sequenceNumber")) {
+        return Promise.resolve([{ sequenceNumber: 1 }]);
+      }
+      if (apl.includes("['agent-run-events']")) {
+        return Promise.resolve([
+          { ...axiomEvent, _time: "2026-08-09T00:00:00.000Z" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const logs = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 10, order: "asc" },
+      [200],
+    );
+    if (logs.status !== 200) {
+      throw new Error("Expected the authorized run event read to succeed");
+    }
+    expect(logs.body.events).toMatchObject([
+      {
+        sequenceNumber: 1,
+        eventType: PI_EVENT_TYPE,
+        eventData: {
+          source: "sandbox",
+          messageId: "pi-m1",
+          message: assistantMessage("secret transcript"),
+        },
+      },
+    ]);
   });
 });
 
@@ -491,19 +452,33 @@ describe("GET /api/webhooks/agent/pi-transcript", () => {
 
     await sendEvents(
       firstRun.runId,
-      [
-        piEvent({
-          sequenceNumber: 1,
-          messageId: "pi-m1",
-          expectedLastOrdinal: 0,
-          message: assistantMessage("thread one message"),
-        }),
-      ],
+      Array.from({ length: 11 }, (_, index) => {
+        const sequenceNumber = index + 1;
+        return piEvent({
+          sequenceNumber,
+          messageId: `pi-m${sequenceNumber}`,
+          message: assistantMessage(`thread one message ${sequenceNumber}`),
+        });
+      }),
       [200],
     );
 
     const other = await readTranscriptOk(secondRun.runId);
     expect(other.messages).toHaveLength(0);
+
+    const firstPage = await readTranscriptOk(firstRun.runId);
+    expect(firstPage).toMatchObject({
+      lastOrdinal: 10,
+      hasMore: true,
+    });
+    expect(firstPage.messages).toHaveLength(10);
+
+    const delta = await readTranscriptOk(firstRun.runId, 10);
+    expect(delta).toMatchObject({
+      lastOrdinal: 11,
+      hasMore: false,
+      messages: [{ ordinal: 11, messageId: "pi-m11" }],
+    });
 
     await readTranscript(firstRun.runId, [401], secondRun.runId);
   });
