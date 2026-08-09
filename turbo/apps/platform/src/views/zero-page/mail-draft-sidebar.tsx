@@ -194,13 +194,9 @@ function MailMessageHeader({
             }
           >
             {active ? (
-              <Pencil size={11} strokeWidth={2} data-explicit-stroke-width />
+              <Pencil size={11} strokeWidth={2} data-stroke />
             ) : (
-              <CircleCheck
-                size={11}
-                strokeWidth={2}
-                data-explicit-stroke-width
-              />
+              <CircleCheck size={11} strokeWidth={2} data-stroke />
             )}
             {active
               ? t(($) => {

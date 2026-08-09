@@ -103,13 +103,7 @@ function PinnedAgentSideDecorator({
               return $.sidebar.markAllRead;
             }),
             disabled: markingRead,
-            icon: (
-              <CheckCheck
-                size={16}
-                strokeWidth={2}
-                data-explicit-stroke-width
-              />
-            ),
+            icon: <CheckCheck size={16} strokeWidth={2} data-stroke />,
             onSelect: markAllRead,
           },
         ]
@@ -122,13 +116,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.unpin;
                 }),
                 disabled: savingPinned,
-                icon: (
-                  <PinOff
-                    size={16}
-                    strokeWidth={2}
-                    data-explicit-stroke-width
-                  />
-                ),
+                icon: <PinOff size={16} strokeWidth={2} data-stroke />,
                 onSelect: unpinAgent,
               }
             : {
@@ -136,9 +124,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.pin;
                 }),
                 disabled: savingPinned,
-                icon: (
-                  <Pin size={16} strokeWidth={2} data-explicit-stroke-width />
-                ),
+                icon: <Pin size={16} strokeWidth={2} data-stroke />,
                 onSelect: pinAgent,
               },
         ]
@@ -297,7 +283,7 @@ export function PinnedAgentListSection({
             className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={16} strokeWidth={2} data-explicit-stroke-width />
+              <Plus size={16} strokeWidth={2} data-stroke />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
@@ -329,7 +315,7 @@ export function PinnedAgentListSection({
               size={12}
               strokeWidth={2}
               className={collapsed ? "" : "rotate-90"}
-              data-explicit-stroke-width
+              data-stroke
             />
           </span>
         </span>
