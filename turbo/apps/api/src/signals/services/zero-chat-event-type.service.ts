@@ -22,13 +22,3 @@ export function chatEventTextCondition(): SQL {
     ),
   ) as SQL;
 }
-
-export function chatEventTextMatchCondition(args: {
-  readonly userMessage: SQL;
-  readonly content: SQL;
-}): SQL {
-  return or(
-    and(chatEventTypeIn(CHAT_EVENT_USER_MESSAGE_TEXT_TYPES), args.userMessage),
-    and(chatEventTypeIn(CHAT_EVENT_CONTENT_TEXT_TYPES), args.content),
-  ) as SQL;
-}
