@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.408.0](https://github.com/vm0-ai/vm0/compare/api-v1.407.2...api-v1.408.0) (2026-08-09)
+
+
+### Features
+
+* **api:** report catch-up cron progress and source table scale ([#25837](https://github.com/vm0-ai/vm0/issues/25837)) ([0482b68](https://github.com/vm0-ai/vm0/commit/0482b68b4ba27859d1024a2baee45a74ab679ac7))
+
+
+### Bug Fixes
+
+* **connectors:** align active-run auth variable semantics ([#25839](https://github.com/vm0-ai/vm0/issues/25839)) ([9bd1638](https://github.com/vm0-ai/vm0/commit/9bd1638358794f39aaa09445a0f14c9911f44536))
+
+
+### Refactoring
+
+* **chat-search:** remove agent compose rollout fallback ([#25856](https://github.com/vm0-ai/vm0/issues/25856)) ([70a816e](https://github.com/vm0-ai/vm0/commit/70a816e9074de62797f3c586338d591eed1704c5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.299.0
+    * @vm0/core bumped to 8.532.4
+    * @vm0/db bumped to 1.181.5
+    * @vm0/pi-agent-runtime bumped to 1.3.18
+
 ## [1.407.2](https://github.com/vm0-ai/vm0/compare/api-v1.407.1...api-v1.407.2) (2026-08-09)
 
 

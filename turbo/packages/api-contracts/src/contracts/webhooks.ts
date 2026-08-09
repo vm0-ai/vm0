@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
@@ -449,11 +450,24 @@ const firewallAuthResponseSchema = z.object({
   refreshedSecrets: z.array(z.string()),
 });
 
-const matchedFirewallAuthContextSchema = z.object({
-  name: z.string().min(1),
-  apiId: z.string().min(1),
-  customConnectorId: z.uuid().optional(),
-});
+const matchedFirewallAuthContextSchema = z
+  .object({
+    name: z.string().min(1),
+    apiId: z.string().min(1),
+    connectorSlug: connectorSlugSchema.optional(),
+    customConnectorId: z.uuid().optional(),
+    routingVariables: z.record(z.string(), z.string()).optional(),
+  })
+  .refine(
+    (context) => {
+      return (
+        Number(context.connectorSlug !== undefined) +
+          Number(context.customConnectorId !== undefined) ===
+        1
+      );
+    },
+    { message: "Matched firewall must identify exactly one connector" },
+  );
 
 export const webhookFirewallAuthContract = c.router({
   /**
@@ -479,8 +493,8 @@ export const webhookFirewallAuthContract = c.router({
       // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
-      // Stable matched-firewall identity used to resolve custom connector auth.
-      // Older addons omit this field and retain run-scoped auth-reference behavior.
+      // Stable matched-firewall identity plus run-pinned routing inputs.
+      // Older addons omit builtin context and routingVariables.
       matchedFirewall: matchedFirewallAuthContextSchema.optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.

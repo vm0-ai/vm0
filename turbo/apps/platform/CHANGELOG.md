@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.712.0](https://github.com/vm0-ai/vm0/compare/app-v0.711.2...app-v0.712.0) (2026-08-09)
+
+
+### Features
+
+* **platform:** move default model action below composer ([#25855](https://github.com/vm0-ai/vm0/issues/25855)) ([35395b1](https://github.com/vm0-ai/vm0/commit/35395b15f172f92dfb94d2aa0477670317609654))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.299.0
+    * @vm0/core bumped to 8.532.4
+
 ## [0.711.2](https://github.com/vm0-ai/vm0/compare/app-v0.711.1...app-v0.711.2) (2026-08-09)
 
 

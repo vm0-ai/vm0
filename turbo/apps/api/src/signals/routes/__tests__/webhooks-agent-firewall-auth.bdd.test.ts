@@ -269,6 +269,52 @@ describe("FW-2: template resolution without connector refresh", () => {
     expect(missing.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
   });
 
+  it("uses pinned routing variables and current auth-only variables for builtin connectors", async () => {
+    const fw = createFirewallApi(context);
+    const connectorsApi = createConnectorBddApi(context);
+    const { actor, headers } = await firewallRun();
+    await connectorsApi.connectManualGrant(actor, "jira", "api-token", {
+      apiToken: "current-jira-token",
+      domain: "current.atlassian.net",
+      email: "current@example.test",
+    });
+    const body = {
+      encryptedSecrets: fw.encryptedSecretsBody({}),
+      authHeaders: {
+        "X-Domain": varTemplate("JIRA_DOMAIN"),
+        "X-Email": varTemplate("JIRA_EMAIL"),
+      },
+      vars: {
+        JIRA_DOMAIN: "run-start.atlassian.net",
+        JIRA_EMAIL: "run-start@example.test",
+      },
+      matchedFirewall: {
+        name: "jira",
+        apiId: "jira:0",
+        connectorSlug: "jira" as const,
+        routingVariables: {
+          JIRA_DOMAIN: "run-start.atlassian.net",
+        },
+      },
+    };
+
+    const resolved = await fw.requestFirewallAuth(headers, body, [200]);
+    if (resolved.status !== 200) {
+      throw new Error("Expected builtin connector auth resolution to succeed");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      "X-Domain": "run-start.atlassian.net",
+      "X-Email": "current@example.test",
+    });
+
+    await connectorsApi.deleteConnectorBySlug(actor, "jira");
+    const disconnected = await fw.requestFirewallAuth(headers, body, [424]);
+    if (disconnected.status !== 424) {
+      throw new Error("Expected disconnected builtin connector auth to fail");
+    }
+    expect(disconnected.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+  });
+
   it("passes literals through query templates and keeps basic-literal templates opaque", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();

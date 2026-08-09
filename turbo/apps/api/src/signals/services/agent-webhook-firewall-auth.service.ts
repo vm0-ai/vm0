@@ -152,7 +152,9 @@ interface FirewallAuthBody {
   readonly matchedFirewall?: {
     readonly name: string;
     readonly apiId: string;
+    readonly connectorSlug?: ConnectorSlug;
     readonly customConnectorId?: string;
+    readonly routingVariables?: Record<string, string>;
   };
 }
 
@@ -3399,6 +3401,57 @@ function hasMissingUnresolvableSecrets(args: {
   });
 }
 
+function firewallAuthReferencedConnectorSlugs(args: {
+  readonly body: FirewallAuthBody;
+  readonly referencedSecretKeys: Set<string>;
+}): readonly string[] {
+  const matchedConnectorSlug = args.body.matchedFirewall?.connectorSlug;
+  return [
+    ...new Set([
+      ...referencedConnectorSlugs({
+        secretConnectorMap: args.body.secretConnectorMap,
+        secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+        referencedKeys: args.referencedSecretKeys,
+      }),
+      ...(matchedConnectorSlug === undefined ? [] : [matchedConnectorSlug]),
+    ]),
+  ];
+}
+
+function matchedBuiltinConnectorVariableAliases(args: {
+  readonly connectorSlug: ConnectorSlug | undefined;
+  readonly connectorAccessBySlug: ReadonlyMap<string, ConnectorAccessState>;
+}): ReadonlySet<string> {
+  if (args.connectorSlug === undefined) {
+    return new Set();
+  }
+  const runtimeBindings =
+    args.connectorAccessBySlug.get(args.connectorSlug)?.runtimeMetadata
+      .runtimeBindings ?? [];
+  return new Set(
+    runtimeBindings.flatMap((binding) => {
+      return binding.source.kind === "connector-variable"
+        ? [binding.envName]
+        : [];
+    }),
+  );
+}
+
+function hasMissingFirewallVariables(args: {
+  readonly vars: Readonly<Record<string, string>>;
+  readonly referencedVariableKeys: ReadonlySet<string>;
+  readonly matchedConnectorSlug: ConnectorSlug | undefined;
+  readonly connectorAccessBySlug: ReadonlyMap<string, ConnectorAccessState>;
+}): boolean {
+  const connectorVariableAliases = matchedBuiltinConnectorVariableAliases({
+    connectorSlug: args.matchedConnectorSlug,
+    connectorAccessBySlug: args.connectorAccessBySlug,
+  });
+  return [...args.referencedVariableKeys].some((key) => {
+    return !Object.hasOwn(args.vars, key) && !connectorVariableAliases.has(key);
+  });
+}
+
 async function prepareFirewallAuthResolutionContext(args: {
   readonly db: Db;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
@@ -3429,17 +3482,23 @@ async function prepareFirewallAuthResolutionContext(args: {
   ) {
     return { ok: false, response: forbiddenModelProviderOwner() };
   }
+  const matchedConnectorSlug = args.body.matchedFirewall?.connectorSlug;
   const connectorAccessBySlug = await loadConnectorAccessStates(
     args.db,
     args.orgId,
     args.auth.userId,
-    referencedConnectorSlugs({
-      secretConnectorMap: args.body.secretConnectorMap,
-      secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
-      referencedKeys: referenced.secrets,
+    firewallAuthReferencedConnectorSlugs({
+      body: args.body,
+      referencedSecretKeys: referenced.secrets,
     }),
     args.connectorCatalogSnapshot,
   );
+  if (
+    matchedConnectorSlug !== undefined &&
+    !connectorAccessBySlug.has(matchedConnectorSlug)
+  ) {
+    return { ok: false, response: connectorNotConfigured() };
+  }
   const modelProviderRefreshable = referencedModelProviderAccessMap({
     secretConnectorMap: args.body.secretConnectorMap,
     secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
@@ -3493,7 +3552,6 @@ async function prepareFirewallAuthResolutionContext(args: {
     connectorAccessBySlug,
     featureSwitchContext: args.featureSwitchContext,
   });
-
   const hasMissingSecrets = hasMissingUnresolvableSecrets({
     secrets: args.secrets,
     referencedKeys: referenced.secrets,
@@ -3501,8 +3559,11 @@ async function prepareFirewallAuthResolutionContext(args: {
     secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
     connectorAccessBySlug,
   });
-  const hasMissingVars = [...referenced.vars].some((key) => {
-    return !Object.hasOwn(vars, key);
+  const hasMissingVars = hasMissingFirewallVariables({
+    vars,
+    referencedVariableKeys: referenced.vars,
+    matchedConnectorSlug,
+    connectorAccessBySlug,
   });
   if (hasMissingSecrets || hasMissingVars) {
     return { ok: false, response: connectorNotConfigured() };
@@ -3516,6 +3577,73 @@ async function prepareFirewallAuthResolutionContext(args: {
       connectorAccessBySlug,
     },
   };
+}
+
+async function resolveMatchedBuiltinConnectorVariables(
+  db: Db,
+  body: FirewallAuthBody,
+  context: FirewallAuthResolutionContext,
+): Promise<Record<string, string> | undefined> {
+  const connectorSlug = body.matchedFirewall?.connectorSlug;
+  if (connectorSlug === undefined) {
+    return body.vars ?? {};
+  }
+  const connectorAccess = context.connectorAccessBySlug.get(connectorSlug);
+  if (connectorAccess === undefined) {
+    return undefined;
+  }
+  const referencedBindings =
+    connectorAccess.runtimeMetadata.runtimeBindings.filter((binding) => {
+      return (
+        binding.source.kind === "connector-variable" &&
+        context.referenced.vars.has(binding.envName)
+      );
+    });
+  const storageNames = [
+    ...new Set(
+      referencedBindings.flatMap((binding) => {
+        return binding.source.kind === "connector-variable"
+          ? [binding.source.name]
+          : [];
+      }),
+    ),
+  ];
+  const rows =
+    storageNames.length === 0
+      ? []
+      : await db
+          .select({ name: variablesTable.name, value: variablesTable.value })
+          .from(variablesTable)
+          .where(
+            connectorCredentialVariableReadCondition({
+              db,
+              groups: [
+                {
+                  access: connectorAccess.access,
+                  names: storageNames,
+                },
+              ],
+            }),
+          );
+  const currentValuesByName = new Map(
+    rows.map((row) => {
+      return [row.name, row.value] as const;
+    }),
+  );
+  const vars = { ...body.vars };
+  for (const binding of referencedBindings) {
+    if (binding.source.kind !== "connector-variable") {
+      continue;
+    }
+    const currentValue = currentValuesByName.get(binding.source.name);
+    if (currentValue === undefined) {
+      return undefined;
+    }
+    const pinnedValue =
+      body.matchedFirewall?.routingVariables?.[binding.envName];
+    vars[binding.envName] = pinnedValue ?? currentValue;
+  }
+  return vars;
 }
 
 function hasMissingResolvedSecrets(
@@ -4198,6 +4326,7 @@ function hasEmptyAwsSigv4Credential(
 interface CurrentCustomConnectorAuthRef {
   readonly secretName: string;
   readonly connectorId: string;
+  readonly kind: "secret" | "variable";
   readonly key: string;
   readonly encryptedValue: string | null;
   readonly required: boolean;
@@ -4247,6 +4376,7 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
+      kind: value.kind,
       key: value.key,
       encryptedValue: value.encryptedValue,
       required: field.required,
@@ -4259,6 +4389,7 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
+      kind: field.kind,
       key: field.key,
       encryptedValue: null,
       required: field.required,
@@ -4273,6 +4404,7 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
     refs.set(secretName, {
       secretName,
       connectorId: runtime.connector.id,
+      kind: "secret",
       key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
       encryptedValue: null,
       required: true,
@@ -4450,6 +4582,29 @@ function omitMissingOptionalCustomAuthEntries(args: {
   };
 }
 
+function applyPinnedCustomConnectorRoutingVariables(args: {
+  readonly currentSecrets: Record<string, string>;
+  readonly authRefs: readonly CurrentCustomConnectorAuthRef[];
+  readonly routingVariables: Record<string, string> | undefined;
+}): Record<string, string> {
+  if (args.routingVariables === undefined) {
+    return args.currentSecrets;
+  }
+  const secrets = { ...args.currentSecrets };
+  for (const ref of args.authRefs) {
+    const pinnedValue = args.routingVariables[ref.key];
+    if (
+      ref.kind !== "variable" ||
+      !Object.hasOwn(secrets, ref.secretName) ||
+      pinnedValue === undefined
+    ) {
+      continue;
+    }
+    secrets[ref.secretName] = pinnedValue;
+  }
+  return secrets;
+}
+
 async function resolveCurrentCustomConnectorFirewallAuth(args: {
   readonly db: Db;
   readonly auth: SandboxAuth;
@@ -4504,9 +4659,14 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
     authQuery: args.body.authQuery,
     missingOptionalSecrets: currentSecrets.missingOptionalSecrets,
   });
+  const effectiveSecrets = applyPinnedCustomConnectorRoutingVariables({
+    currentSecrets: currentSecrets.secrets,
+    authRefs,
+    routingVariables: args.body.matchedFirewall?.routingVariables,
+  });
   const resolved = resolveTemplates({
     authHeaders: availableAuth.authHeaders,
-    secrets: currentSecrets.secrets,
+    secrets: effectiveSecrets,
     vars: args.body.vars ?? {},
     authBase: args.body.authBase,
     authQuery: availableAuth.authQuery,
@@ -4578,7 +4738,7 @@ export async function resolveFirewallAuth(
   if (!prepared.ok) {
     return prepared.response;
   }
-  const { connectorAccessBySlug, referenced, vars } = prepared.context;
+  const { connectorAccessBySlug, referenced } = prepared.context;
 
   const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
     db,
@@ -4635,6 +4795,15 @@ export async function resolveFirewallAuth(
         secretConnectorMap: body.secretConnectorMap,
       }),
     );
+  }
+
+  const vars = await resolveMatchedBuiltinConnectorVariables(
+    db,
+    body,
+    prepared.context,
+  );
+  if (vars === undefined) {
+    return connectorNotConfigured();
   }
 
   const resolved = resolveTemplates({

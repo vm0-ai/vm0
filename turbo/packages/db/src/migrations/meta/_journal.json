@@ -428,6 +428,13 @@
       "when": 1786206182379,
       "tag": "0868_amused_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 869,
+      "version": "7",
+      "when": 1786243854133,
+      "tag": "0869_sad_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

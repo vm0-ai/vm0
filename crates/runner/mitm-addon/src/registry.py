@@ -275,6 +275,11 @@ def _classify_registry_vms(
         except ValueError as e:
             invalid_vms[client_ip] = InvalidVmEntry("invalid_omitted_intents", str(e))
             continue
+        try:
+            _validate_connector_routing_variables(vm)
+        except (TypeError, ValueError) as e:
+            invalid_vms[client_ip] = InvalidVmEntry("invalid_connector_routing_variables", str(e))
+            continue
 
         raw_firewalls = vm.get("firewalls")
         vm_uses_builtin_catalog_dependency = isinstance(raw_firewalls, list) and any(
@@ -331,6 +336,36 @@ def _omitted_runtime_intents(vm: dict, field_name: str) -> frozenset[str]:
     if len(set(raw_values)) != len(raw_values):
         raise ValueError(f"proxy registry VM entry {field_name} must be unique")
     return frozenset(raw_values)
+
+
+def _validate_connector_routing_variables(vm: dict) -> None:
+    routing_variables = vm.get("connectorRoutingVariables", {})
+    if not isinstance(routing_variables, dict):
+        raise TypeError("proxy registry VM entry connectorRoutingVariables must be an object")
+    for identity, values in routing_variables.items():
+        if not isinstance(identity, str):
+            raise TypeError(
+                "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
+            )
+        if not identity.startswith(("builtin:", "custom:")):
+            raise ValueError(
+                "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
+            )
+        _, connector_identity = identity.split(":", 1)
+        if connector_identity == "":
+            raise ValueError(
+                "proxy registry VM entry connectorRoutingVariables keys must identify a connector"
+            )
+        if not isinstance(values, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str) for key, value in values.items()
+        ):
+            raise TypeError(
+                "proxy registry VM entry connectorRoutingVariables values must be string maps"
+            )
+        if any(key == "" for key in values):
+            raise ValueError(
+                "proxy registry VM entry connectorRoutingVariables values must be string maps"
+            )
 
 
 def _read_registry_vms(raw_bytes: bytes) -> dict:

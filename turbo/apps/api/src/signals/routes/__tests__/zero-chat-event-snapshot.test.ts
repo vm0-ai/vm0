@@ -269,8 +269,7 @@ describe("chat event snapshot read endpoints", () => {
 
     await projectChatEventSearch();
     // The cron scope is global, so only this thread's own head is asserted.
-    const archived = await runSnapshotCron();
-    expect(archived.corsChanged).toBeTruthy();
+    await runSnapshotCron();
 
     const head = await readChatEventSnapshotHead(context, threadId);
     expect(readFakeChatEventObject(head.object_key)).toBeDefined();

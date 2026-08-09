@@ -158,6 +158,11 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
                 "ask": [],
                 "unknownPolicy": "allow",
             },
+            vm_fields={
+                "connectorRoutingVariables": {
+                    f"custom:{custom_connector_id}": {"subdomain": "münich"}
+                }
+            },
         ),
     )
     flow = real_flow(
@@ -183,8 +188,44 @@ async def test_custom_connector_id_is_forwarded_with_matched_firewall(
         "name": firewall_name,
         "apiId": api_id,
         "customConnectorId": custom_connector_id,
+        "routingVariables": {"subdomain": "münich"},
     }
     assert flow.request.headers["Authorization"] == "Bearer resolved"
+
+
+async def test_builtin_connector_routing_variables_are_forwarded_with_matched_firewall(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={
+            "connectorRoutingVariables": {"builtin:github": {"GITHUB_HOST": "münich.example.test"}}
+        },
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos",
+    )
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    await_args = auth_fetch.await_args
+    assert await_args is not None
+    request = await_args.args[0]
+    assert request.to_body()["matchedFirewall"] == {
+        "name": "github",
+        "apiId": flow.metadata[metadata_keys.FIREWALL_API_ID],
+        "connectorSlug": "github",
+        "routingVariables": {"GITHUB_HOST": "münich.example.test"},
+    }
 
 
 async def test_custom_firewall_change_during_auth_discards_stale_credentials(

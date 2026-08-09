@@ -1,0 +1,1 @@
+ALTER TABLE "chat_event_search_docs" ALTER COLUMN "agent_compose_id" SET NOT NULL;

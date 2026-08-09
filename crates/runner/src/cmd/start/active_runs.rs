@@ -168,7 +168,9 @@ impl ActiveRunGuard {
         lock_entries(&self.active_runs.entries).remove(&run_id);
         self.phase.send_replace(ActiveRunPhase::Released);
         bump_changes(&self.active_runs.changes);
-        self.active_runs.reuse_state_notify.notify_one();
+        if self.has_reuse_key {
+            self.active_runs.reuse_state_notify.notify_one();
+        }
         self.has_reuse_key
     }
 }
