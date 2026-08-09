@@ -3463,11 +3463,29 @@ const RUN_SECTION_LABEL_CLASS =
 const RUN_SECTION_ROW_CLASS =
   "-mt-5 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start";
 
-function RunSectionDivider({ label }: { label: string }) {
+function RunSectionDivider({
+  label,
+  labelPosition = "left",
+}: {
+  label: string;
+  labelPosition?: "left" | "right";
+}) {
   return (
-    <div className="flex min-h-5 items-center gap-2">
-      <p className={RUN_SECTION_LABEL_CLASS}>{label}</p>
-      <div className="h-px flex-1 bg-border/40" />
+    <div
+      className={cn(
+        "flex min-h-5 items-center gap-2",
+        labelPosition === "right" && "flex-row-reverse",
+      )}
+    >
+      <p
+        className={cn(
+          RUN_SECTION_LABEL_CLASS,
+          labelPosition === "right" && "text-right",
+        )}
+      >
+        {label}
+      </p>
+      <div role="separator" className="h-px flex-1 bg-border/40" />
     </div>
   );
 }
@@ -3487,7 +3505,7 @@ function RunSectionDividerRow({
     >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
-        <RunSectionDivider label={label} />
+        <RunSectionDivider label={label} labelPosition="right" />
       </div>
     </div>
   );
@@ -4142,8 +4160,11 @@ function RecommendedFollowupList({
         return $.chat.run.keepGoing;
       })}
       className={cn(
+        // The flat list pulls out by the row buttons' own px-2 so its text
+        // aligns with the message column. Cards carry no such inner offset,
+        // so the rail must stay flush with the column and the composer.
         showFollowupCards
-          ? "-mx-2 flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          ? "flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           : "-mx-2",
       )}
     >

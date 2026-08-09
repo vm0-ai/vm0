@@ -8,7 +8,6 @@ import { logger } from "../../lib/log";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
-import { now } from "../../lib/time";
 import { AUTONOMY_BUDGET_EXHAUSTED_MESSAGE } from "../../lib/error";
 import {
   childAutonomyBudget,
@@ -119,7 +118,7 @@ interface WorkflowEventLaunch {
 }
 
 interface DrainWorkflowQueueArgs {
-  readonly apiStartTime?: number;
+  readonly apiStartTime: number;
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
@@ -322,7 +321,7 @@ export const drainWorkflowQueueForThread$ = command(
               launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
-          apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime ?? now(),
+          apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime,
           prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,

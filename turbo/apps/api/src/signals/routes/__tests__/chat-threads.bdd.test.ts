@@ -34,6 +34,7 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import {
   holdChatEventInsertTransactionFixture,
+  holdChatThreadRowLockFixture,
   insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
 } from "../../../test-fixtures/chat-events";
@@ -3057,6 +3058,56 @@ describe("CHAT-01 chat search index", () => {
     // lifecycle rows around them stay out of the index.
     const both = await chat.searchChat(actor, "部署");
     expect(both.results).toHaveLength(2);
+  }, 60_000);
+
+  it("continues when a selected thread is deleted during projection", async () => {
+    const owner = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Search deletion race agent",
+    });
+    await enableChatSearchIndex(owner);
+    const marker = `projectiondelete${randomUUID().replaceAll("-", "")}`;
+    const threadA = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `${marker} alpha`,
+    });
+    const threadB = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `${marker} beta`,
+    });
+    const [blockedThreadId, deletedThreadId] = [threadA, threadB].sort();
+    if (!blockedThreadId || !deletedThreadId) {
+      throw new Error("Expected two chat threads");
+    }
+
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: blockedThreadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const [tick] = await Promise.all([
+      projectChatEventSearch(),
+      (async () => {
+        await expect
+          .poll(threadLock.blockedWaiterCount)
+          .toBeGreaterThanOrEqual(1);
+        await chat.deleteThread(owner, deletedThreadId);
+        threadLock.release();
+        await threadLock.done;
+      })(),
+    ]);
+    expect(tick.success).toBeTruthy();
+
+    const found = await chat.searchChat(owner, marker);
+    expect(found.results).toHaveLength(1);
+    expect(found.results[0]?.chatThreadId).toBe(blockedThreadId);
+    const deleted = await chat.requestReadThread(owner, deletedThreadId, [404]);
+    expectApiError(deleted.body);
   }, 60_000);
 
   it("applies agent, since and limit filters inside the projection", async () => {
