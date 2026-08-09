@@ -2720,6 +2720,7 @@ describe("connectors page", () => {
       disconnectedAxiom,
     ];
     let catalogStatusRequestCount = 0;
+    let manualGrantConnectResponded = false;
     context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
       catalogStatusRequestCount += 1;
       return respond(200, { connectors: [...catalogStatusItems] });
@@ -2746,6 +2747,7 @@ describe("connectors page", () => {
             connectionStatus: "connected",
           },
         ];
+        manualGrantConnectResponded = true;
         return respond(200, {
           id: crypto.randomUUID(),
           slug: "axiom",
@@ -2788,7 +2790,12 @@ describe("connectors page", () => {
     const originalThrowIfAborted = abortSignal.throwIfAborted.bind(abortSignal);
     Object.defineProperty(abortSignal, "throwIfAborted", {
       value: () => {
-        context.store.set(resetAfterManualGrantConnectSignal$, context.signal);
+        if (manualGrantConnectResponded) {
+          context.store.set(
+            resetAfterManualGrantConnectSignal$,
+            context.signal,
+          );
+        }
         originalThrowIfAborted();
       },
     });
