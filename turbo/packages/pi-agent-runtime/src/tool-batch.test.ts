@@ -4,16 +4,9 @@ import { join } from "node:path";
 
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import type {
-  AssistantMessage,
-  Message,
-  ToolResultMessage,
-} from "@earendil-works/pi-ai";
+import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 
-import {
-  executePiUnresolvedToolBatch,
-  findPiUnresolvedToolBatch,
-} from "./recovery";
+import { executePiToolBatch } from "./tool-batch";
 
 const ZERO_USAGE = {
   input: 0,
@@ -46,45 +39,8 @@ function assistant(
   };
 }
 
-function toolResult(toolCallId: string): ToolResultMessage {
-  return {
-    role: "toolResult",
-    toolCallId,
-    toolName: "read",
-    content: [{ type: "text", text: "already complete" }],
-    details: {},
-    isError: false,
-    timestamp: 2,
-  };
-}
-
-describe("Pi handoff recovery", () => {
-  it("selects the newest unresolved batch and skips acknowledged ToolResults", () => {
-    const first = assistant("first", [
-      { id: "read-1", name: "read", arguments: { path: "/first" } },
-    ]);
-    const second = assistant("second", [
-      { id: "read-2", name: "read", arguments: { path: "/second" } },
-      { id: "write-2", name: "write", arguments: { path: "/out" } },
-    ]);
-    const messages: Message[] = [
-      first,
-      toolResult("read-1"),
-      second,
-      toolResult("read-2"),
-    ];
-
-    const batch = findPiUnresolvedToolBatch(messages);
-
-    expect(batch?.assistant).toBe(second);
-    expect(
-      batch?.pendingToolCalls.map(({ id }) => {
-        return id;
-      }),
-    ).toEqual(["write-2"]);
-  });
-
-  it("executes a pending read through the Node ExecutionEnv", async () => {
+describe("Pi handoff tool batch", () => {
+  it("executes the latest read through the Node ExecutionEnv", async () => {
     const root = await mkdtemp(join(tmpdir(), "pi-recovery-"));
     const file = join(root, "skill", "references", "answer.txt");
     await mkdir(join(root, "skill", "references"), { recursive: true });
@@ -102,7 +58,7 @@ describe("Pi handoff recovery", () => {
     const events: AgentEvent[] = [];
 
     try {
-      const results = await executePiUnresolvedToolBatch(
+      const results = await executePiToolBatch(
         {
           messages,
           executionEnv: env,
@@ -135,7 +91,7 @@ describe("Pi handoff recovery", () => {
   it("returns an error ToolResult for an unavailable tool", async () => {
     const env = new NodeExecutionEnv({ cwd: tmpdir() });
     try {
-      const results = await executePiUnresolvedToolBatch(
+      const results = await executePiToolBatch(
         {
           messages: [
             assistant("handoff", [

@@ -17,8 +17,6 @@ import { chatThreads } from "./chat-thread";
  * Append-only model transcript for Pi chat threads: one row per completed Pi
  * message (user, assistant, or tool result). The latest `version` is the
  * canonical transcript; version bumps are reserved for future compaction.
- * Appends are guarded by a tail compare-and-swap, so ordinals stay contiguous
- * within a version.
  */
 export const piThreadMessages = pgTable(
   "pi_thread_messages",
@@ -41,7 +39,7 @@ export const piThreadMessages = pgTable(
     messageId: text("message_id").notNull(),
     role: text("role").notNull(),
     payload: jsonb("payload").$type<PiThreadMessagePayload>().notNull(),
-    // SHA-256 hex of the canonical payload JSON; replayed deliveries must match.
+    // SHA-256 hex of the canonical payload JSON.
     payloadHash: text("payload_hash").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

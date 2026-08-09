@@ -569,7 +569,7 @@ mod tests {
                     )),
                 )
                 .with_history_generation_run_id(Some(run_id(7)))
-                .with_pi_execution_mode(Some(PiExecutionMode::ColdStart)),
+                .with_pi_execution_mode(None),
             )
             .await;
 
@@ -584,7 +584,7 @@ mod tests {
                         RunnerNoPreferenceReason::NoViableHolder,
                     )),
                 )
-                .with_pi_execution_mode(Some(PiExecutionMode::ColdStart)),
+                .with_pi_execution_mode(None),
             )
             .await;
 
@@ -594,10 +594,7 @@ mod tests {
             .expect("retained direct candidate")
             .into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("session:first-decision"));
-        assert_eq!(
-            candidate.pi_execution_mode(),
-            Some(PiExecutionMode::ColdStart)
-        );
+        assert_eq!(candidate.pi_execution_mode(), None);
         assert_eq!(
             candidate.history_generation_run_id(),
             Some(first_history_generation)

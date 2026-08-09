@@ -107,7 +107,7 @@ pub mod webhooks {
             }
         }
 
-        /// DTOs for reading the immutable Pi transcript handoff state.
+        /// DTOs for incrementally following the persisted Pi transcript.
         pub mod pi_transcript {
             /// One persisted Pi message in canonical transcript order.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -129,14 +129,14 @@ pub mod webhooks {
                 pub created_at: String,
             }
 
-            /// Versioned transcript returned to a standby Pi agent.
+            /// Transcript page returned to a standby Pi agent.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
             pub struct Response {
-                /// CAS version shared by all messages in this transcript.
-                pub version: i64,
                 /// Highest persisted transcript ordinal.
                 pub last_ordinal: u64,
+                /// Whether another transcript page is available.
+                pub has_more: bool,
                 /// Canonical ordered Pi messages.
                 pub messages: Vec<ResponseMessage>,
             }

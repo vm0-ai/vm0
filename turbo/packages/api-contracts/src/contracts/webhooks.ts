@@ -540,7 +540,6 @@ export const webhookEventsContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
-      409: apiErrorSchema,
       500: apiErrorSchema,
       503: apiErrorSchema,
     },
@@ -559,15 +558,15 @@ const piTranscriptMessageSchema = z.object({
 });
 
 export const piTranscriptResponseSchema = z.object({
-  version: z.number().int().positive(),
   lastOrdinal: z.number().int().nonnegative(),
+  hasMore: z.boolean().describe("Whether another transcript page is available"),
   messages: z.array(piTranscriptMessageSchema),
 });
 
 /**
  * Pi transcript read contract for /api/webhooks/agent/pi-transcript.
- * Returns the latest-version Pi transcript of the chat thread the run
- * belongs to, for sandbox handoff/resume.
+ * Returns messages after the caller's cursor so a standby Sandbox can follow
+ * the chat thread before handoff without repeatedly loading the full history.
  */
 export const webhookPiTranscriptContract = c.router({
   read: {
@@ -576,6 +575,11 @@ export const webhookPiTranscriptContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       runId: z.string().min(1, "runId is required"),
+      afterOrdinal: z.coerce
+        .number()
+        .int()
+        .nonnegative()
+        .describe("Last transcript ordinal already received"),
     }),
     responses: {
       200: piTranscriptResponseSchema,
@@ -616,7 +620,7 @@ export const webhookCompleteContract = c.router({
     responses: {
       200: z.object({
         success: z.boolean(),
-        status: z.enum(["completed", "failed", "released"]),
+        status: z.enum(["completed", "failed"]),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

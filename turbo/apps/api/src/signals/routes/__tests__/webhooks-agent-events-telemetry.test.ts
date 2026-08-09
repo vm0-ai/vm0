@@ -72,8 +72,6 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
             type: "pi.message.completed",
             sequenceNumber: 1,
             messageId: "pi-legacy-message",
-            expectedVersion: 1,
-            expectedLastOrdinal: 0,
             message: {
               role: "assistant",
               content: [{ type: "text", text: secretTranscript }],
@@ -102,8 +100,6 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
             type: "pi.message.completed",
             sequenceNumber: 1,
             messageId: "pi-legacy-message",
-            expectedVersion: 1,
-            expectedLastOrdinal: 0,
             role: "assistant",
             payloadBytes: expect.any(Number),
           },

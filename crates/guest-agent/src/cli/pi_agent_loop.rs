@@ -12,7 +12,6 @@ use super::{
     HeartbeatStatus, PiStandbyReleaseReason, child_env, cli_exit_summary_from_status, diagnostics,
     exec_boundary, line_reader, process_group::ChildProcessGroup, set_cli_current_dir,
 };
-use crate::constants;
 use crate::env::GuestConfig;
 use crate::error::AgentError;
 use crate::events;
@@ -51,11 +50,11 @@ enum PiOutputFrame {
     TranscriptRead {
         #[serde(rename = "requestId")]
         request_id: String,
+        #[serde(rename = "afterOrdinal")]
+        after_ordinal: u32,
     },
     #[serde(rename = "pi-message")]
     Message { event: Value },
-    #[serde(rename = "pi-transcript-conflict")]
-    TranscriptConflict,
     #[serde(rename = "pi-complete")]
     Complete {
         #[serde(rename = "exitCode")]
@@ -85,7 +84,6 @@ enum PiProtocolOutcome {
 
 struct PiProtocolState {
     ready: bool,
-    awaiting_conflict_marker: bool,
     last_acknowledged_sequence: Option<u32>,
     expected_system_prompt_digest: String,
     expected_skill_snapshot_digest: String,
@@ -221,7 +219,6 @@ pub(super) async fn execute_pi_standby(
     let expected_skill_snapshot_digest = skill_snapshot_digest(&config.run_skill_snapshot)?;
     let mut state = PiProtocolState {
         ready: false,
-        awaiting_conflict_marker: false,
         last_acknowledged_sequence: None,
         expected_system_prompt_digest,
         expected_skill_snapshot_digest,
@@ -413,10 +410,13 @@ async fn handle_frame(
             state.ready = true;
             log_info!(LOG_TAG, "Pi standby ready");
         }
-        PiOutputFrame::TranscriptRead { request_id } => {
+        PiOutputFrame::TranscriptRead {
+            request_id,
+            after_ordinal,
+        } => {
             require_ready(state)?;
             let transcript = http
-                .get_pi_transcript(&config.run_id, constants::HTTP_MAX_ATTEMPTS)
+                .get_pi_transcript(&config.run_id, after_ordinal, 1)
                 .await?;
             send_frame(
                 frame_tx,
@@ -432,46 +432,25 @@ async fn handle_frame(
             require_ready(state)?;
             let (sequence, message_id) = pi_event_identity(&config.run_id, &event)?;
             let payload = exact_pi_event_payload(&config.run_id, event);
-            let status = match http
-                .post_json(http.events_url()?, &payload, constants::HTTP_MAX_ATTEMPTS)
-                .await
+            http.post_json(http.events_url()?, &payload, 1).await?;
+            if state
+                .last_acknowledged_sequence
+                .is_some_and(|last| sequence <= last)
             {
-                Ok(_) => {
-                    if state
-                        .last_acknowledged_sequence
-                        .is_some_and(|last| sequence <= last)
-                    {
-                        return Err(protocol_error(
-                            "Pi standby acknowledged event sequence did not advance",
-                        ));
-                    }
-                    state.last_acknowledged_sequence = Some(sequence);
-                    state.awaiting_conflict_marker = false;
-                    (200, None)
-                }
-                Err(AgentError::HttpStatus { status, message }) => {
-                    state.awaiting_conflict_marker = status == 409;
-                    (status, Some(message))
-                }
-                Err(error) => return Err(error),
-            };
-            let mut ack = json!({
-                "type": "pi-message-ack",
-                "messageId": message_id,
-                "status": status.0,
-            });
-            if let (Some(error), Some(ack)) = (status.1, ack.as_object_mut()) {
-                ack.insert("error".to_string(), Value::String(error));
-            }
-            send_frame(frame_tx, ack).await?;
-        }
-        PiOutputFrame::TranscriptConflict => {
-            if !state.awaiting_conflict_marker {
                 return Err(protocol_error(
-                    "Pi standby emitted a conflict marker without a 409 acknowledgement",
+                    "Pi standby acknowledged event sequence did not advance",
                 ));
             }
-            state.awaiting_conflict_marker = false;
+            state.last_acknowledged_sequence = Some(sequence);
+            send_frame(
+                frame_tx,
+                json!({
+                "type": "pi-message-ack",
+                "messageId": message_id,
+                "status": 200,
+                }),
+            )
+            .await?;
         }
         PiOutputFrame::Complete {
             exit_code,
@@ -481,11 +460,6 @@ async fn handle_frame(
             skill_snapshot_digest,
         } => {
             require_ready(state)?;
-            if state.awaiting_conflict_marker {
-                return Err(protocol_error(
-                    "Pi standby completed before replaying a transcript conflict",
-                ));
-            }
             if system_prompt_digest != state.expected_system_prompt_digest
                 || skill_snapshot_digest != state.expected_skill_snapshot_digest
             {
@@ -511,7 +485,6 @@ async fn handle_frame(
             require_ready(state)?;
             let reason = match reason.as_str() {
                 "api-complete" => PiStandbyReleaseReason::ApiComplete,
-                "ttl" => PiStandbyReleaseReason::Ttl,
                 _ => {
                     return Err(protocol_error(format!(
                         "Pi standby returned an unknown release reason: {reason}"
@@ -687,8 +660,6 @@ mod tests {
             "type": "pi.message.completed",
             "sequenceNumber": 2,
             "messageId": "run-1/2",
-            "expectedVersion": 1,
-            "expectedLastOrdinal": 4,
             "message": {
                 "role": "toolResult",
                 "toolCallId": "read_1",

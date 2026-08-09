@@ -16,8 +16,10 @@ import type {
 } from "../../lib/event-consumer/verify";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
-import { publishPiStandbyReleaseToRunnerGroupSafely } from "../external/realtime";
-import { settle } from "../utils";
+import {
+  publishPiHandoffToRunnerGroupSafely,
+  publishPiStandbyReleaseToRunnerGroupSafely,
+} from "../external/realtime";
 import {
   materializeRunOutputEvents$,
   publishMaterializedChatProjection,
@@ -27,7 +29,6 @@ import {
 import {
   completeAgentRun$,
   dispatchCompleteSideEffects$,
-  dispatchPiSandboxHandoff$,
 } from "./agent-webhook-complete.service";
 import type { PiEdgeTurnArgs } from "./pi-edge-config";
 import {
@@ -37,8 +38,6 @@ import {
 import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
 
 const L = logger("pi:edge");
-
-class PiHandoffRequested extends Error {}
 
 interface PiEdgeUsageQuantities {
   readonly input: number;
@@ -148,16 +147,12 @@ function piEdgeModelUsage(args: {
 function piMessageEvent(args: {
   readonly runId: string;
   readonly sequenceNumber: number;
-  readonly expectedVersion: number;
-  readonly expectedLastOrdinal: number;
   readonly message: PiAgentMessage;
 }): AgentEvent {
   return {
     type: PI_MESSAGE_COMPLETED_EVENT_TYPE,
     sequenceNumber: args.sequenceNumber,
     messageId: `${args.runId}/${args.sequenceNumber}`,
-    expectedVersion: args.expectedVersion,
-    expectedLastOrdinal: args.expectedLastOrdinal,
     message: args.message,
   };
 }
@@ -170,11 +165,6 @@ function failedAssistantMessage(message: PiAgentMessage): string | null {
     return null;
   }
   return message.errorMessage ?? `Pi model turn ${message.stopReason}`;
-}
-
-function piEdgeFailure(runId: string, error: unknown): string {
-  L.error("Pi edge turn failed", { runId, error });
-  return error instanceof Error ? error.message : "Pi edge turn failed";
 }
 
 function transcriptMessagePayload(message: {
@@ -194,29 +184,35 @@ export const runPiEdgeTurn$ = command(
     const context = { userId: args.userId, orgId: args.orgId };
     let lastEventSequence: number | undefined;
     let modelFailure: string | null = null;
+    let handedOff = false;
 
-    const outcome = await settle(
-      (async () => {
-        const db = set(writeDb$);
-        const thread = await chatThreadForRunFromDb(db, args.runId);
-        signal.throwIfAborted();
-        if (!thread) {
-          throw new Error("Pi edge turn requires a chat thread");
-        }
-        const transcript = await readPiTranscript(db, thread.chatThreadId);
-        signal.throwIfAborted();
-        const priorMessages = parsePiAgentMessages(
-          transcript.messages.map(transcriptMessagePayload),
-        );
-        let sequenceNumber = 1;
-        let expectedLastOrdinal = transcript.lastOrdinal;
+    const db = set(writeDb$);
+    const thread = await chatThreadForRunFromDb(db, args.runId);
+    signal.throwIfAborted();
+    if (!thread) {
+      throw new Error("Pi edge turn requires a chat thread");
+    }
+    const transcript = await readPiTranscript(db, thread.chatThreadId);
+    signal.throwIfAborted();
+    const priorMessages = parsePiAgentMessages(
+      transcript.messages.map(transcriptMessagePayload),
+    );
+    let sequenceNumber = 1;
 
-        const project = async (message: PiAgentMessage): Promise<void> => {
+    await runPiAgentPrompt(
+      {
+        model: args.model,
+        systemPrompt: args.systemPrompt,
+        prompt: args.prompt,
+        messages: priorMessages,
+        executionEnv: args.executionEnv,
+        async onMessage(message) {
+          if (handedOff) {
+            return;
+          }
           const event = piMessageEvent({
             runId: args.runId,
             sequenceNumber,
-            expectedVersion: transcript.version,
-            expectedLastOrdinal,
             message,
           });
           const payload: EventConsumerPayload = {
@@ -236,6 +232,16 @@ export const runPiEdgeTurn$ = command(
             modelUsage,
           );
           signal.throwIfAborted();
+          lastEventSequence = sequenceNumber;
+          sequenceNumber += 1;
+          modelFailure ??= failedAssistantMessage(message);
+          if (piMessageRequiresSandbox(message)) {
+            handedOff = true;
+            await publishPiHandoffToRunnerGroupSafely(
+              args.runnerGroup,
+              args.runId,
+            );
+          }
           if (projection) {
             await publishMaterializedChatProjection(
               payload,
@@ -244,55 +250,20 @@ export const runPiEdgeTurn$ = command(
             );
             signal.throwIfAborted();
           }
-          lastEventSequence = sequenceNumber;
-          sequenceNumber += 1;
-          expectedLastOrdinal += 1;
-        };
-
-        await runPiAgentPrompt(
-          {
-            model: args.model,
-            systemPrompt: args.systemPrompt,
-            prompt: args.prompt,
-            messages: priorMessages,
-            executionEnv: args.executionEnv,
-            async onMessage(message) {
-              await project(message);
-              modelFailure ??= failedAssistantMessage(message);
-              if (!piMessageRequiresSandbox(message)) {
-                return;
-              }
-              await set(
-                dispatchPiSandboxHandoff$,
-                {
-                  runId: args.runId,
-                  userId: args.userId,
-                  runnerGroup: args.runnerGroup,
-                },
-                signal,
-              );
-              throw new PiHandoffRequested();
-            },
-          },
-          signal,
-        );
-        if (modelFailure !== null) {
-          throw new Error(modelFailure);
-        }
-      })(),
+        },
+      },
+      signal,
     );
-    signal.throwIfAborted();
-    if (!outcome.ok && outcome.error instanceof PiHandoffRequested) {
+    if (handedOff) {
       L.debug("Pi edge turn handed off", {
         runId: args.runId,
         skillSnapshotDigest: args.skillSnapshot.digest,
       });
       return;
     }
-
-    const failure = outcome.ok
-      ? undefined
-      : piEdgeFailure(args.runId, outcome.error);
+    if (modelFailure !== null) {
+      throw new Error(modelFailure);
+    }
 
     const result = await set(
       completeAgentRun$,
@@ -301,8 +272,7 @@ export const runPiEdgeTurn$ = command(
         allowCheckpointlessSuccess: true,
         body: {
           runId: args.runId,
-          exitCode: failure === undefined ? 0 : 1,
-          ...(failure === undefined ? {} : { error: failure }),
+          exitCode: 0,
           ...(lastEventSequence === undefined ? {} : { lastEventSequence }),
         },
       },

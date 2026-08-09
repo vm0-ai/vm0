@@ -1,12 +1,9 @@
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
 use tokio::sync::oneshot;
 
 use crate::ids::RunId;
-
-const PI_STANDBY_PENDING_CAPACITY: usize = 256;
 
 /// Control actions for a claimed Pi standby run. Release is intentionally
 /// distinct from cancellation: it retires unused prewarm capacity without
@@ -31,48 +28,6 @@ pub(crate) struct PiStandbySubscription {
 #[derive(Default)]
 struct PiStandbyNotificationState {
     active_waiters: HashMap<RunId, oneshot::Sender<PiStandbySignal>>,
-    pending: PendingPiStandbyNotifications,
-}
-
-#[derive(Default)]
-struct PendingPiStandbyNotifications {
-    signals: HashMap<RunId, PiStandbySignal>,
-    order: VecDeque<RunId>,
-}
-
-impl PendingPiStandbyNotifications {
-    fn insert(&mut self, run_id: RunId, signal: PiStandbySignal) {
-        if !self.signals.contains_key(&run_id) {
-            self.order.push_back(run_id);
-        }
-        self.signals.insert(run_id, signal);
-        while self.signals.len() > PI_STANDBY_PENDING_CAPACITY {
-            let Some(expired_run_id) = self.order.pop_front() else {
-                break;
-            };
-            self.signals.remove(&expired_run_id);
-        }
-    }
-
-    fn take(&mut self, run_id: RunId) -> Option<PiStandbySignal> {
-        let signal = self.signals.remove(&run_id)?;
-        if let Some(index) = self.order.iter().position(|candidate| *candidate == run_id) {
-            self.order.remove(index);
-        }
-        Some(signal)
-    }
-}
-
-impl PiStandbyNotificationState {
-    fn deliver_or_cache(&mut self, run_id: RunId, signal: PiStandbySignal) {
-        let Some(sender) = self.active_waiters.remove(&run_id) else {
-            self.pending.insert(run_id, signal);
-            return;
-        };
-        if sender.send(signal).is_err() {
-            self.pending.insert(run_id, signal);
-        }
-    }
 }
 
 impl PiStandbyNotifications {
@@ -88,23 +43,12 @@ impl PiStandbyNotifications {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let duplicate = if let Some(signal) = state.pending.take(run_id) {
-            let _ = sender.send(signal);
-            false
-        } else {
-            match state.active_waiters.entry(run_id) {
-                Entry::Vacant(entry) => {
-                    entry.insert(sender);
-                    false
-                }
-                Entry::Occupied(_) => true,
-            }
-        };
-        drop(state);
         assert!(
-            !duplicate,
+            !state.active_waiters.contains_key(&run_id),
             "Pi standby subscription already active for run {run_id}"
         );
+        state.active_waiters.insert(run_id, sender);
+        drop(state);
 
         PiStandbySubscription {
             run_id,
@@ -114,42 +58,35 @@ impl PiStandbyNotifications {
     }
 
     pub(crate) fn notify(&self, run_id: RunId, signal: PiStandbySignal) {
-        self.state
+        let sender = self
+            .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .deliver_or_cache(run_id, signal);
+            .active_waiters
+            .remove(&run_id);
+        if let Some(sender) = sender {
+            let _ = sender.send(signal);
+        }
     }
 }
 
 impl PiStandbySubscription {
-    pub(crate) async fn wait(mut self) -> PiStandbySignal {
-        let result = (&mut self.receiver).await;
-        match result {
-            Ok(signal) => signal,
-            // Subscriptions hold a weak state reference, so closure means the
-            // final notification owner has gone away.
-            Err(_) => PiStandbySignal::Release,
-        }
+    pub(crate) async fn wait(mut self) -> Option<PiStandbySignal> {
+        (&mut self.receiver).await.ok()
     }
 }
 
 impl Drop for PiStandbySubscription {
     fn drop(&mut self) {
-        // Close before locking so a concurrent sender either fails and caches
-        // the signal or leaves it here for this subscription to recover.
         self.receiver.close();
-        let delivery = self.receiver.try_recv().ok();
         let Some(state) = self.state.upgrade() else {
             return;
         };
-        let mut state = state
+        state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(signal) = delivery {
-            state.deliver_or_cache(self.run_id, signal);
-        } else {
-            state.active_waiters.remove(&self.run_id);
-        }
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .active_waiters
+            .remove(&self.run_id);
     }
 }
 
@@ -168,9 +105,7 @@ mod tests {
             let run_id = RunId::new_v4();
             let subscription = notifications.subscribe(run_id);
 
-            for _ in 0..=PI_STANDBY_PENDING_CAPACITY {
-                notifications.notify(RunId::new_v4(), PiStandbySignal::Handoff);
-            }
+            notifications.notify(RunId::new_v4(), PiStandbySignal::Handoff);
 
             let wait = subscription.wait();
             tokio::pin!(wait);
@@ -178,7 +113,7 @@ mod tests {
 
             notifications.notify(run_id, signal);
 
-            assert_eq!(wait.await, signal);
+            assert_eq!(wait.await, Some(signal));
         }
     }
 
@@ -190,36 +125,29 @@ mod tests {
             let subscription = notifications.subscribe(run_id);
 
             notifications.notify(run_id, signal);
-            for _ in 0..=PI_STANDBY_PENDING_CAPACITY {
-                notifications.notify(RunId::new_v4(), PiStandbySignal::Handoff);
-            }
 
-            assert_eq!(subscription.wait().await, signal);
+            assert_eq!(subscription.wait().await, Some(signal));
         }
     }
 
     #[tokio::test]
-    async fn notification_before_subscription_is_delivered_once() {
+    async fn notification_before_subscription_is_best_effort() {
         let notifications = PiStandbyNotifications::new();
         let run_id = RunId::new_v4();
         notifications.notify(run_id, PiStandbySignal::Handoff);
 
         let subscription = notifications.subscribe(run_id);
-
-        assert_eq!(subscription.wait().await, PiStandbySignal::Handoff);
-
-        let next_subscription = notifications.subscribe(run_id);
-        let wait = next_subscription.wait();
+        let wait = subscription.wait();
         tokio::pin!(wait);
         assert!(matches!(poll!(&mut wait), Poll::Pending));
 
         notifications.notify(run_id, PiStandbySignal::Release);
 
-        assert_eq!(wait.await, PiStandbySignal::Release);
+        assert_eq!(wait.await, Some(PiStandbySignal::Release));
     }
 
     #[tokio::test]
-    async fn dropped_subscription_returns_later_notification_to_pending() {
+    async fn notification_after_subscription_drop_is_best_effort() {
         let notifications = PiStandbyNotifications::new();
         let run_id = RunId::new_v4();
         let subscription = notifications.subscribe(run_id);
@@ -227,10 +155,12 @@ mod tests {
 
         notifications.notify(run_id, PiStandbySignal::Handoff);
 
-        assert_eq!(
-            notifications.subscribe(run_id).wait().await,
-            PiStandbySignal::Handoff
-        );
+        let subscription = notifications.subscribe(run_id);
+        let wait = subscription.wait();
+        tokio::pin!(wait);
+        assert!(matches!(poll!(&mut wait), Poll::Pending));
+        notifications.notify(run_id, PiStandbySignal::Release);
+        assert_eq!(wait.await, Some(PiStandbySignal::Release));
     }
 
     #[tokio::test]
@@ -245,46 +175,6 @@ mod tests {
 
         notifications.notify(run_id, PiStandbySignal::Release);
 
-        assert_eq!(subscription.wait().await, PiStandbySignal::Release);
-    }
-
-    #[tokio::test]
-    async fn delivered_signal_is_recovered_when_subscription_drops() {
-        let notifications = PiStandbyNotifications::new();
-        let run_id = RunId::new_v4();
-        let subscription = notifications.subscribe(run_id);
-
-        notifications.notify(run_id, PiStandbySignal::Release);
-        drop(subscription);
-
-        assert_eq!(
-            notifications.subscribe(run_id).wait().await,
-            PiStandbySignal::Release
-        );
-    }
-
-    #[tokio::test]
-    async fn closed_receiver_returns_failed_delivery_to_pending() {
-        let notifications = PiStandbyNotifications::new();
-        let run_id = RunId::new_v4();
-        let mut subscription = notifications.subscribe(run_id);
-        subscription.receiver.close();
-
-        notifications.notify(run_id, PiStandbySignal::Release);
-        drop(subscription);
-
-        assert_eq!(
-            notifications.subscribe(run_id).wait().await,
-            PiStandbySignal::Release
-        );
-    }
-
-    #[tokio::test]
-    async fn final_notification_owner_drop_releases_subscription() {
-        let notifications = PiStandbyNotifications::new();
-        let subscription = notifications.subscribe(RunId::new_v4());
-        drop(notifications);
-
-        assert_eq!(subscription.wait().await, PiStandbySignal::Release);
+        assert_eq!(subscription.wait().await, Some(PiStandbySignal::Release));
     }
 }

@@ -22,7 +22,7 @@ export const zeroAgentLoopCommand = new Command()
   .requiredOption("--standby", "Wait for a Pi handoff control")
   .option(
     "--standby-ttl-seconds <seconds>",
-    "Release an unused standby process after this duration",
+    "Fail when no persisted tool call appears before this duration",
     positiveInteger,
     DEFAULT_PI_STANDBY_TTL_SECONDS,
   )

@@ -6,7 +6,6 @@ import {
   DEFAULT_PROFILE,
   PI_MEMORY_ROOT,
   PI_SKILLS_ROOT,
-  PI_STANDBY_TTL_RELEASE_EXIT_CODE,
 } from "@vm0/api-contracts/contracts/runners";
 import { webhookPiTranscriptContract } from "@vm0/api-contracts/contracts/webhooks";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -39,14 +38,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { readModelStatsObservations } from "./helpers/model-stats-state";
-import {
-  secretKmsPlaintext,
-  useSecretKmsProbe,
-} from "./helpers/secret-kms-probe";
-import {
-  mutateRunnerJobSecretValueEnvironmentKeys,
-  seedVm0ManagedModelKey,
-} from "./helpers/runtime-state";
+import { seedVm0ManagedModelKey } from "./helpers/runtime-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { webhooksAgentPiTranscriptRoutes } from "../webhooks-agent-pi-transcript";
@@ -799,7 +791,7 @@ async function readTranscript(runId: string) {
       webhookPiTranscriptContract,
     ).read({
       headers: webhooks.sandboxWebhookHeaders({ runId }),
-      query: { runId },
+      query: { runId, afterOrdinal: 0 },
     }),
     [200],
   );
@@ -1100,8 +1092,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 3,
           messageId: `${edge.runId}/3`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 2,
           message: {
             role: "toolResult",
             toolCallId: "read_skill_1",
@@ -1121,8 +1111,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 4,
           messageId: `${edge.runId}/4`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 3,
           message: {
             role: "assistant",
             content: [
@@ -1162,8 +1150,8 @@ describe("PiLoop edge turn", () => {
 
     const transcript = await readTranscript(edge.runId);
     expect(transcript).toMatchObject({
-      version: 1,
       lastOrdinal: 4,
+      hasMore: false,
       messages: [
         {
           ordinal: 1,
@@ -1307,8 +1295,8 @@ describe("PiLoop edge turn", () => {
     expect(JSON.stringify(completionRequests[1])).not.toContain(legacyPrompt);
     const continuedTranscript = await readTranscript(followUp.runId);
     expect(continuedTranscript).toMatchObject({
-      version: 1,
       lastOrdinal: 6,
+      hasMore: false,
       messages: [
         expect.objectContaining({ ordinal: 1, runId: edge.runId }),
         expect.objectContaining({ ordinal: 2, runId: edge.runId }),
@@ -1433,8 +1421,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 3,
           messageId: `${run.runId}/3`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 2,
           message: {
             role: "toolResult",
             toolCallId: "read_memory_1",
@@ -1448,8 +1434,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 4,
           messageId: `${run.runId}/4`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 3,
           message: {
             role: "assistant",
             content: [
@@ -1554,8 +1538,8 @@ describe("PiLoop edge turn", () => {
 
     const transcript = await readTranscript(run.runId);
     expect(transcript).toMatchObject({
-      version: 1,
       lastOrdinal: 2,
+      hasMore: false,
       messages: [
         {
           ordinal: 1,
@@ -1709,8 +1693,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 3,
           messageId: `${run.runId}/3`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 2,
           message: {
             role: "toolResult",
             toolCallId: "read_billing_1",
@@ -1724,8 +1706,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 4,
           messageId: `${run.runId}/4`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 3,
           message: {
             role: "assistant",
             content: [
@@ -1841,6 +1821,19 @@ describe("PiLoop edge turn", () => {
     const run = await sendChatRun(fixture, "bill usage received before error");
     await flushWaitUntilForTest();
 
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "Pi standby timed out waiting for a persisted tool call",
+        lastEventSequence: 2,
+      },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
       model: MANAGED_MODEL,
@@ -1891,34 +1884,20 @@ describe("PiLoop edge turn", () => {
     expect(modelCall).toBe(1);
     expect(completionRequests).toHaveLength(1);
 
-    // The read hands off to the Sandbox. A failing standby is first requeued
-    // onto the cold-start lane, and the cold-start Sandbox failure settles the
-    // run; the edge's successful managed response must still be settled.
+    // The read hands off to the Sandbox. Its failure settles the run directly;
+    // the edge's successful managed response must still be billed.
     const standbyContext = await api.claimRunnerJob(run.runId);
-    const released = await webhooks.requestAgentComplete(
-      {
-        runId: run.runId,
-        exitCode: 1,
-        error: "the standby failed after the handoff",
-      },
-      { authorization: `Bearer ${standbyContext.sandboxToken}` },
-      [200],
-    );
-    expect(released.body).toStrictEqual({ success: true, status: "released" });
-    await flushWaitUntilForTest();
-
-    const coldContext = await api.claimRunnerJob(run.runId);
-    expect(coldContext.piExecutionMode).toBe("cold-start");
-    await webhooks.requestAgentComplete(
+    const failed = await webhooks.requestAgentComplete(
       {
         runId: run.runId,
         exitCode: 1,
         error: "the Sandbox failed after the handoff",
         lastEventSequence: 2,
       },
-      { authorization: `Bearer ${coldContext.sandboxToken}` },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
     );
+    expect(failed.body).toStrictEqual({ success: true, status: "failed" });
     await flushWaitUntilForTest();
 
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
@@ -1953,10 +1932,23 @@ describe("PiLoop edge turn", () => {
     const run = await sendChatRun(fixture, prompt);
     await flushWaitUntilForTest();
 
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "Pi standby timed out waiting for a persisted tool call",
+        lastEventSequence: 1,
+      },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
     await expect(readTranscript(run.runId)).resolves.toMatchObject({
-      version: 1,
       lastOrdinal: 1,
+      hasMore: false,
       messages: [
         {
           ordinal: 1,
@@ -2145,173 +2137,6 @@ describe("PiLoop edge turn", () => {
     });
   });
 
-  it("requeues an expired standby onto the cold-start lane without settling the run", async () => {
-    const fixture = await piEdgeFixture({
-      runnerProfile: "vm0/pi-lifecycle-integration",
-    });
-    await enablePiLoop(fixture);
-    const modelStarted = createDeferredPromise<void>(context.signal);
-    const releaseModel = createDeferredPromise<void>(context.signal);
-    const claimDecryptStarted = createDeferredPromise<void>(context.signal);
-    const releaseStaleClaim = createDeferredPromise<void>(context.signal);
-    let stallNextDecrypt = false;
-    useSecretKmsProbe(undefined, () => {
-      if (!stallNextDecrypt) {
-        return undefined;
-      }
-      stallNextDecrypt = false;
-      claimDecryptStarted.resolve();
-      return (async () => {
-        await releaseStaleClaim.promise;
-        return secretKmsPlaintext();
-      })();
-    });
-    onTestFinished(() => {
-      if (!releaseModel.settled()) {
-        releaseModel.resolve();
-      }
-      if (!releaseStaleClaim.settled()) {
-        releaseStaleClaim.resolve();
-      }
-    });
-    server.use(
-      http.post(COMPLETIONS_URL, async () => {
-        modelStarted.resolve();
-        await releaseModel.promise;
-        return assistantToolStream({
-          id: "bash_ttl_fallback_1",
-          name: "bash",
-          arguments: { command: "pwd" },
-          thinking: "Sandbox work is required after the standby TTL.",
-        });
-      }),
-    );
-
-    const run = await sendChatRun(fixture, "wait past the standby TTL");
-    await modelStarted.promise;
-    const standbyPoll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [fixture.runnerProfile],
-      },
-      [200],
-    );
-    if (standbyPoll.status !== 200) {
-      throw new Error("Expected Pi standby poll to return 200");
-    }
-    expect(standbyPoll.body.job).toMatchObject({
-      runId: run.runId,
-      experimentalProfile: fixture.runnerProfile,
-      piExecutionMode: "standby",
-    });
-    await mutateRunnerJobSecretValueEnvironmentKeys(
-      context,
-      run.runId,
-      "invalid",
-    );
-    stallNextDecrypt = true;
-    const staleStandbyClaim = api.claimRunnerJob(run.runId);
-    await claimDecryptStarted.promise;
-    const standbyContext = await api.claimRunnerJob(run.runId);
-    expect(standbyContext.piExecutionMode).toBe("standby");
-    const duplicateStandbyClaim = await api.requestClaimRunnerJob(
-      true,
-      run.runId,
-      [404],
-    );
-    if (duplicateStandbyClaim.status !== 404) {
-      throw new Error("Expected the duplicate standby claim to return 404");
-    }
-    expect(duplicateStandbyClaim.body.error.message).toBe("Run not found");
-    const publishedBeforeRelease = context.mocks.ably.publish.mock.calls.length;
-
-    const released = await webhooks.requestAgentComplete(
-      {
-        runId: run.runId,
-        exitCode: PI_STANDBY_TTL_RELEASE_EXIT_CODE,
-      },
-      { authorization: `Bearer ${standbyContext.sandboxToken}` },
-      [200],
-    );
-    expect(released.body).toStrictEqual({ success: true, status: "released" });
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
-      "running",
-    );
-
-    const prematureColdPoll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [fixture.runnerProfile],
-      },
-      [200],
-    );
-    if (prematureColdPoll.status !== 200) {
-      throw new Error("Expected premature Pi cold-start poll to return 200");
-    }
-    expect(prematureColdPoll.body.job).toBeNull();
-
-    releaseModel.resolve();
-    await flushWaitUntilForTest();
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
-      "pending",
-    );
-    const coldPoll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [fixture.runnerProfile],
-      },
-      [200],
-    );
-    if (coldPoll.status !== 200) {
-      throw new Error("Expected Pi cold-start poll to return 200");
-    }
-    expect(coldPoll.body.job).toMatchObject({
-      runId: run.runId,
-      experimentalProfile: fixture.runnerProfile,
-      piExecutionMode: "cold-start",
-    });
-    expect(
-      context.mocks.ably.publish.mock.calls
-        .slice(publishedBeforeRelease)
-        .some(([topic, payload]) => {
-          const job = recordOf(payload);
-          const preference = recordOf(job?.runnerPreference);
-          return (
-            topic === "job" &&
-            job?.runId === run.runId &&
-            job.profile === fixture.runnerProfile &&
-            job.piExecutionMode === "cold-start" &&
-            preference?.kind === "noPreference" &&
-            preference.reason === "noReuseKey"
-          );
-        }),
-    ).toBeTruthy();
-    releaseStaleClaim.resolve();
-    const coldContext = await staleStandbyClaim;
-    expect(coldContext.piExecutionMode).toBe("cold-start");
-    expect(coldContext.piSystemPrompt).toBe(standbyContext.piSystemPrompt);
-    expect(coldContext.runSkillSnapshot).toStrictEqual(
-      standbyContext.runSkillSnapshot,
-    );
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
-      "running",
-    );
-    const duplicateColdClaim = await api.requestClaimRunnerJob(
-      true,
-      run.runId,
-      [404],
-    );
-    if (duplicateColdClaim.status !== 404) {
-      throw new Error("Expected the duplicate cold claim to return 404");
-    }
-    expect(duplicateColdClaim.body.error.message).toBe(
-      "Job not found in queue",
-    );
-  });
-
   it("fails the run after preserving the user message when the model call fails", async () => {
     const fixture = await piEdgeFixture();
     await enablePiLoop(fixture);
@@ -2328,11 +2153,24 @@ describe("PiLoop edge turn", () => {
     const run = await sendChatRun(fixture, prompt);
     await flushWaitUntilForTest();
 
+    const standbyContext = await api.claimRunnerJob(run.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 1,
+        error: "Pi standby timed out waiting for a persisted tool call",
+        lastEventSequence: 2,
+      },
+      { authorization: `Bearer ${standbyContext.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
     const transcript = await readTranscript(run.runId);
     expect(transcript).toMatchObject({
-      version: 1,
       lastOrdinal: 2,
+      hasMore: false,
       messages: [
         {
           ordinal: 1,
@@ -2360,7 +2198,7 @@ describe("PiLoop edge turn", () => {
     ).resolves.toHaveLength(0);
   });
 
-  it("bills edge and runner usage once across a replayed sandbox handoff", async () => {
+  it("bills edge and runner usage once across a sandbox handoff", async () => {
     await unitPriceModelTokens(MANAGED_MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
@@ -2396,8 +2234,8 @@ describe("PiLoop edge turn", () => {
     );
     const transcript = await readTranscript(run.runId);
     expect(transcript).toMatchObject({
-      version: 1,
       lastOrdinal: 2,
+      hasMore: false,
       messages: [
         {
           ordinal: 1,
@@ -2468,8 +2306,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 3,
           messageId: `${run.runId}/3`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 2,
           message: {
             role: "toolResult",
             toolCallId: "bash_handoff_1",
@@ -2484,8 +2320,6 @@ describe("PiLoop edge turn", () => {
           type: "pi.message.completed",
           sequenceNumber: 4,
           messageId: `${run.runId}/4`,
-          expectedVersion: 1,
-          expectedLastOrdinal: 3,
           message: {
             role: "assistant",
             content: [
@@ -2514,7 +2348,6 @@ describe("PiLoop edge turn", () => {
         },
       ],
     };
-    await webhooks.requestAgentEvents(continuation, sandboxHeaders, [200]);
     await webhooks.requestAgentEvents(continuation, sandboxHeaders, [200]);
 
     const runnerUsage: AgentUsageEventBody = {
@@ -2546,8 +2379,8 @@ describe("PiLoop edge turn", () => {
     );
     const completedTranscript = await readTranscript(run.runId);
     expect(completedTranscript).toMatchObject({
-      version: 1,
       lastOrdinal: 4,
+      hasMore: false,
       messages: [
         expect.objectContaining({ messageId: `${run.runId}/1` }),
         expect.objectContaining({ messageId: `${run.runId}/2` }),

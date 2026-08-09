@@ -10,8 +10,8 @@ use serde_json::json;
 #[test]
 fn generated_pi_transcript_response_preserves_native_message_payload() {
     let response: pi_transcript::Response = serde_json::from_value(json!({
-        "version": 3,
         "lastOrdinal": 7,
+        "hasMore": false,
         "messages": [{
             "ordinal": 7,
             "messageId": "run-1/4",
@@ -28,8 +28,8 @@ fn generated_pi_transcript_response_preserves_native_message_payload() {
     }))
     .unwrap();
 
-    assert_eq!(response.version, 3);
     assert_eq!(response.last_ordinal, 7);
+    assert!(!response.has_more);
     assert_eq!(response.messages[0].payload["toolCallId"], "bash_1");
     assert_eq!(
         response.messages[0].payload["content"][0]["text"],

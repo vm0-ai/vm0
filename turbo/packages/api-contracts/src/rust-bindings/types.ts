@@ -63,7 +63,7 @@ export const rustTypeModuleDocs = [
   },
   {
     rustModulePath: ["webhooks", "agent", "pi_transcript"],
-    rustDoc: ["DTOs for reading the immutable Pi transcript handoff state."],
+    rustDoc: ["DTOs for incrementally following the persisted Pi transcript."],
   },
   {
     rustModulePath: ["webhooks", "agent", "storages"],
@@ -108,10 +108,10 @@ export const rustTypeBindings = [
       },
       {
         rustTypeName: "Response",
-        rustDoc: ["Versioned transcript returned to a standby Pi agent."],
+        rustDoc: ["Transcript page returned to a standby Pi agent."],
         fields: {
-          version: ["CAS version shared by all messages in this transcript."],
           lastOrdinal: ["Highest persisted transcript ordinal."],
+          hasMore: ["Whether another transcript page is available."],
           messages: ["Canonical ordered Pi messages."],
         },
       },

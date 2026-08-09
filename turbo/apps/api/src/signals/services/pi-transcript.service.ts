@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lte, sql } from "drizzle-orm";
 import { piThreadMessages } from "@vm0/db/schema/pi-thread-message";
 import { z } from "zod";
 
@@ -13,6 +13,7 @@ import type { ChatThreadEventTransaction } from "./zero-chat-thread-event.servic
 export const PI_MESSAGE_COMPLETED_EVENT_TYPE = "pi.message.completed";
 
 const MAX_PI_PAYLOAD_BYTES = 1_048_576;
+export const PI_TRANSCRIPT_PAGE_SIZE = 10;
 
 /**
  * Permanently rejected pi.message.completed deliveries. Retrying the same
@@ -20,18 +21,9 @@ const MAX_PI_PAYLOAD_BYTES = 1_048_576;
  */
 export class PiTranscriptRejectedError extends Error {}
 
-/**
- * Transcript tail moved or a message id was reused with different content.
- * The sender must re-read the transcript before appending again; the events
- * webhook maps this to 409.
- */
-export class PiTranscriptConflictError extends Error {}
-
 const piMessageEventSchema = z.object({
   sequenceNumber: z.number().int().nonnegative(),
   messageId: z.string().min(1).max(255),
-  expectedVersion: z.number().int().min(1),
-  expectedLastOrdinal: z.number().int().nonnegative(),
   message: z.object({ role: z.string().min(1).max(64) }).passthrough(),
 });
 
@@ -89,15 +81,7 @@ function piAssistantText(message: PiMessageEvent["message"]): string | null {
   return parts.join("\n\n");
 }
 
-/**
- * Appends pi.message.completed deliveries to the thread transcript with a
- * tail compare-and-swap. Deliveries whose message id already exists with the
- * same content at the same position are treated as replays; their assistant
- * items are still returned so a retried delivery repairs any missing chat
- * event projection (insertion dedups on the deterministic event id).
- *
- * Callers must hold the per-thread pi transcript advisory lock.
- */
+/** Append completed Pi messages while holding the per-thread transcript lock. */
 async function appendPiMessagesInTransaction(
   tx: ChatThreadEventTransaction,
   args: {
@@ -115,33 +99,8 @@ async function appendPiMessagesInTransaction(
     .where(eq(piThreadMessages.chatThreadId, args.chatThreadId))
     .orderBy(desc(piThreadMessages.version), desc(piThreadMessages.ordinal))
     .limit(1);
-  const existingRows = await tx
-    .select({
-      messageId: piThreadMessages.messageId,
-      version: piThreadMessages.version,
-      ordinal: piThreadMessages.ordinal,
-      runId: piThreadMessages.runId,
-      payloadHash: piThreadMessages.payloadHash,
-    })
-    .from(piThreadMessages)
-    .where(
-      and(
-        eq(piThreadMessages.chatThreadId, args.chatThreadId),
-        inArray(
-          piThreadMessages.messageId,
-          args.events.map((event) => {
-            return event.messageId;
-          }),
-        ),
-      ),
-    );
-  const existingByMessageId = new Map(
-    existingRows.map((row) => {
-      return [row.messageId, row] as const;
-    }),
-  );
-
-  let head = headRow ?? { version: 1, ordinal: 0 };
+  const version = headRow?.version ?? 1;
+  let nextOrdinal = (headRow?.ordinal ?? 0) + 1;
   const assistantItems: {
     readonly runEventSequenceNumber: number;
     readonly content: string;
@@ -157,41 +116,19 @@ async function appendPiMessagesInTransaction(
       );
     }
     const payloadHash = createHash("sha256").update(payloadJson).digest("hex");
-    const existing = existingByMessageId.get(event.messageId);
-    if (existing) {
-      const replayed =
-        existing.payloadHash === payloadHash &&
-        existing.runId === args.runId &&
-        existing.version === event.expectedVersion &&
-        existing.ordinal === event.expectedLastOrdinal + 1;
-      if (!replayed) {
-        throw new PiTranscriptConflictError(
-          `Pi message ${event.messageId} conflicts with an existing transcript message`,
-        );
-      }
-    } else {
-      if (
-        head.version !== event.expectedVersion ||
-        head.ordinal !== event.expectedLastOrdinal
-      ) {
-        throw new PiTranscriptConflictError(
-          `Transcript tail is at ${head.version}/${head.ordinal}, delivery expected ${event.expectedVersion}/${event.expectedLastOrdinal}`,
-        );
-      }
-      rowsToInsert.push({
-        chatThreadId: args.chatThreadId,
-        version: event.expectedVersion,
-        ordinal: event.expectedLastOrdinal + 1,
-        runId: args.runId,
-        runEventSequenceNumber: event.sequenceNumber,
-        messageId: event.messageId,
-        role: event.message.role,
-        payload: event.message,
-        payloadHash,
-        createdAt: appendedAt,
-      });
-      head = { version: event.expectedVersion, ordinal: head.ordinal + 1 };
-    }
+    rowsToInsert.push({
+      chatThreadId: args.chatThreadId,
+      version,
+      ordinal: nextOrdinal,
+      runId: args.runId,
+      runEventSequenceNumber: event.sequenceNumber,
+      messageId: event.messageId,
+      role: event.message.role,
+      payload: event.message,
+      payloadHash,
+      createdAt: appendedAt,
+    });
+    nextOrdinal += 1;
     const text = piAssistantText(event.message);
     if (text !== null) {
       assistantItems.push({
@@ -255,14 +192,16 @@ interface PiTranscriptMessage {
 }
 
 interface PiTranscript {
-  readonly version: number;
   readonly lastOrdinal: number;
+  readonly hasMore: boolean;
   readonly messages: readonly PiTranscriptMessage[];
 }
 
 export async function readPiTranscript(
   db: Pick<Db, "select">,
   chatThreadId: string,
+  afterOrdinal = 0,
+  limit?: number,
 ): Promise<PiTranscript> {
   const [headRow] = await db
     .select({
@@ -274,7 +213,7 @@ export async function readPiTranscript(
     .orderBy(desc(piThreadMessages.version), desc(piThreadMessages.ordinal))
     .limit(1);
   if (!headRow) {
-    return { version: 1, lastOrdinal: 0, messages: [] };
+    return { lastOrdinal: afterOrdinal, hasMore: false, messages: [] };
   }
   const rows = await db
     .select({
@@ -291,12 +230,16 @@ export async function readPiTranscript(
       and(
         eq(piThreadMessages.chatThreadId, chatThreadId),
         eq(piThreadMessages.version, headRow.version),
+        gt(piThreadMessages.ordinal, afterOrdinal),
+        lte(piThreadMessages.ordinal, headRow.ordinal),
       ),
     )
-    .orderBy(asc(piThreadMessages.ordinal));
+    .orderBy(asc(piThreadMessages.ordinal))
+    .limit(limit ?? headRow.ordinal);
+  const lastOrdinal = rows.at(-1)?.ordinal ?? afterOrdinal;
   return {
-    version: headRow.version,
-    lastOrdinal: headRow.ordinal,
+    lastOrdinal,
+    hasMore: lastOrdinal < headRow.ordinal,
     messages: rows.map((row): PiTranscriptMessage => {
       return {
         ordinal: row.ordinal,
@@ -324,8 +267,6 @@ export function redactPiEventForTelemetry(
     type: event.type,
     sequenceNumber: event.sequenceNumber,
     messageId: event.messageId,
-    expectedVersion: event.expectedVersion,
-    expectedLastOrdinal: event.expectedLastOrdinal,
     role: message?.role,
     payloadBytes:
       message === null

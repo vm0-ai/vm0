@@ -33,7 +33,6 @@ pub struct PollResponse {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum PiExecutionMode {
     Standby,
-    ColdStart,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1813,7 +1812,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "codex",
-            "piExecutionMode": "cold-start",
+            "piExecutionMode": "standby",
             "piSystemPrompt": "fixed Pi prompt",
             "piModelConfig": {
                 "provider": "deepseek",
@@ -1840,7 +1839,7 @@ mod tests {
 
         let context: ExecutionContext = serde_json::from_value(json).unwrap();
 
-        assert_eq!(context.pi_execution_mode, Some(PiExecutionMode::ColdStart));
+        assert_eq!(context.pi_execution_mode, Some(PiExecutionMode::Standby));
         assert_eq!(context.pi_system_prompt.as_deref(), Some("fixed Pi prompt"));
         assert_eq!(
             context

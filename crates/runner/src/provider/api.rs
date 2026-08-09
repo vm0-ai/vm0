@@ -41,10 +41,12 @@ use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
+#[cfg(test)]
+use crate::types::PiExecutionMode;
 use crate::types::{
     CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
-    ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PiExecutionMode,
-    PollResponse, SandboxReuseResult,
+    ExecutionContext, HeartbeatState, Job, NetworkPolicyRefreshBatchResponse, PollResponse,
+    SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -683,18 +685,8 @@ impl JobProvider for ApiProvider {
                     .await;
                     return None;
                 }
-                let pi_standby_source = pi_execution_mode.map(|mode| {
-                    let source = self.pi_standby_notifications.subscribe(run_id);
-                    if mode == PiExecutionMode::ColdStart {
-                        // A standby failure/TTL requeues the exact context on
-                        // its real profile. Cold-started Pi must resume immediately
-                        // because the original Ably handoff may predate this
-                        // replacement subscription.
-                        self.pi_standby_notifications
-                            .notify(run_id, crate::pi_standby::PiStandbySignal::Handoff);
-                    }
-                    source
-                });
+                let pi_standby_source =
+                    pi_execution_mode.map(|_| self.pi_standby_notifications.subscribe(run_id));
                 let active_input_source = (pi_execution_mode.is_none()
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
                 .then(|| {
@@ -4332,44 +4324,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cold_start_claim_mode_overrides_stale_standby_discovery() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(200)
-                    .json_body(pi_claim_response(run_id, Some("cold-start")));
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-
-        let candidate = JobCandidate::new(run_id, "vm0/large".to_string())
-            .with_pi_execution_mode(Some(PiExecutionMode::Standby));
-        let claimed = provider
-            .claim(candidate)
-            .await
-            .expect("cold Pi claim should succeed");
-        let (_, _, _, pi_standby_source) = claimed.into_run_parts();
-        let signal = tokio::time::timeout(
-            Duration::from_millis(100),
-            pi_standby_source
-                .expect("Pi context should install standby control")
-                .wait(),
-        )
-        .await
-        .expect("cold Pi claim should not wait for another Ably handoff");
-
-        assert_eq!(signal, crate::pi_standby::PiStandbySignal::Handoff);
-        claim_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
     async fn standby_claim_waits_for_its_run_notification() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
@@ -4405,7 +4359,10 @@ mod tests {
             .pi_standby_notifications
             .notify(run_id, crate::pi_standby::PiStandbySignal::Handoff);
 
-        assert_eq!(wait.await, crate::pi_standby::PiStandbySignal::Handoff);
+        assert_eq!(
+            wait.await,
+            Some(crate::pi_standby::PiStandbySignal::Handoff)
+        );
         claim_mock.assert_calls_async(1).await;
     }
 
