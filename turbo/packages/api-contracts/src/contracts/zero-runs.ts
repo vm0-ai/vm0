@@ -18,7 +18,10 @@ import {
   logsSearchResponseSchema,
   createLogPaginationQuerySchema,
 } from "./runs";
-import { sandboxReuseResultSchema } from "./webhooks";
+import {
+  sandboxReuseResultSchema,
+  workspaceReuseResultSchema,
+} from "./webhooks";
 
 /**
  * Zero run request schema — subset of unified schema.
@@ -307,6 +310,7 @@ export const zeroRunNetworkLogsContract = c.router({
  */
 const runRunnerResponseSchema = z.object({
   sandboxReuseResult: sandboxReuseResultSchema.nullable(),
+  workspaceReuseResult: workspaceReuseResultSchema.nullable().optional(),
 });
 
 export const zeroRunRunnerContract = c.router({

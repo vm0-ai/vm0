@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.411.0](https://github.com/vm0-ai/vm0/compare/api-v1.410.1...api-v1.411.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+* **platform:** show concurrency usage by member ([#25938](https://github.com/vm0-ai/vm0/issues/25938)) ([d78f3cc](https://github.com/vm0-ai/vm0/commit/d78f3cce54aaf0623c28a9249944bee476f93ac9))
+
+
+### Bug Fixes
+
+* **browser:** handle missing thread browser actions ([#25936](https://github.com/vm0-ai/vm0/issues/25936)) ([cb41699](https://github.com/vm0-ai/vm0/commit/cb41699af17a854d4df6319e8d35313a9d833fc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.0
+    * @vm0/core bumped to 8.534.0
+    * @vm0/db bumped to 1.182.0
+    * @vm0/pi-agent-runtime bumped to 1.3.21
+
 ## [1.410.1](https://github.com/vm0-ai/vm0/compare/api-v1.410.0...api-v1.410.1) (2026-08-09)
 
 

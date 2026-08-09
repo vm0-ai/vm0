@@ -10,7 +10,12 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroRunsQueueContract } from "@vm0/api-contracts/contracts/zero-runs";
-import type { QueueEntry } from "@vm0/api-contracts/contracts/runs";
+import type {
+  ConcurrencyInfo,
+  QueueEntry,
+  QueueResponse,
+} from "@vm0/api-contracts/contracts/runs";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -40,24 +45,35 @@ function queuedEntry(): QueueEntry {
 }
 
 function queueResponse(overrides?: {
-  concurrency?: {
-    tier: "free" | "pro-suspend" | "pro" | "team" | "custom";
-    limit: number;
-    active: number;
-    available: number;
-  };
+  concurrency?: ConcurrencyInfo;
   queue?: QueueEntry[];
-}) {
+}): QueueResponse {
   return {
     concurrency: overrides?.concurrency ?? {
       tier: "free" as const,
       limit: 1,
       active: 1,
       available: 0,
+      memberUsage: [],
     },
     queue: overrides?.queue ?? [],
     runningTasks: [],
     estimatedTimePerRun: null,
+  };
+}
+
+function concurrencyWithMemberUsage(): ConcurrencyInfo {
+  return {
+    tier: "custom",
+    limit: 80,
+    active: 17,
+    available: 63,
+    memberUsage: [
+      { userId: "user-bingjie", displayName: "Bingjie Zang", active: 7 },
+      { userId: "user-qiqi", displayName: "You Liang", active: 5 },
+      { userId: "user-ethan", displayName: "Ethan Zhang", active: 3 },
+      { userId: "user-linghan", displayName: "Linghan Hu", active: 2 },
+    ],
   };
 }
 
@@ -172,9 +188,15 @@ function getButtonByText(text: string): HTMLElement {
   return button;
 }
 
-async function openDrawer(): Promise<void> {
+async function openDrawer(memberUsageEnabled = false): Promise<void> {
   mockQueuedThread();
-  detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+  detachedSetupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: {
+      [FeatureSwitchKey.ConcurrencyMemberUsage]: memberUsageEnabled,
+    },
+  });
   const queueButton = await waitFor(() => {
     return getButtonByText("queue...");
   });
@@ -182,12 +204,60 @@ async function openDrawer(): Promise<void> {
 }
 
 describe("queue drawer", () => {
+  it("shows active slot usage grouped by member", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({ concurrency: concurrencyWithMemberUsage() }),
+      );
+    });
+
+    await openDrawer(true);
+
+    await waitFor(() => {
+      expect(screen.getByText("17 of 80 slots in use")).toBeInTheDocument();
+      expect(screen.getByText("Bingjie Zang")).toBeInTheDocument();
+      expect(screen.getByText("7 slots")).toBeInTheDocument();
+      expect(screen.getByText("You Liang")).toBeInTheDocument();
+      expect(screen.getByText("5 slots")).toBeInTheDocument();
+      expect(screen.getByText("Ethan Zhang")).toBeInTheDocument();
+      expect(screen.getByText("3 slots")).toBeInTheDocument();
+      expect(screen.getByText("Linghan Hu")).toBeInTheDocument();
+      expect(screen.getByText("2 slots")).toBeInTheDocument();
+      expect(screen.getByText("Available now")).toBeInTheDocument();
+      expect(screen.getByText("63 slots")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the existing availability summary when member usage is disabled", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({ concurrency: concurrencyWithMemberUsage() }),
+      );
+    });
+
+    await openDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText("63 slots available")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Bingjie Zang")).not.toBeInTheDocument();
+    expect(screen.queryByText("Available now")).not.toBeInTheDocument();
+  });
+
   it("shows the free tier limit and upgrade path", async () => {
     context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
+          concurrency: {
+            tier: "free",
+            limit: 1,
+            active: 1,
+            available: 0,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -209,7 +279,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
+          concurrency: {
+            tier: "pro",
+            limit: 2,
+            active: 2,
+            available: 0,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -228,7 +304,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 3, available: 2 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 3,
+            available: 2,
+            memberUsage: [],
+          },
         }),
       );
     });
@@ -251,7 +333,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "custom", limit: 10, active: 10, available: 0 },
+          concurrency: {
+            tier: "custom",
+            limit: 10,
+            active: 10,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -281,7 +369,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -343,7 +437,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -371,7 +471,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "pro", limit: 2, active: 2, available: 0 },
+          concurrency: {
+            tier: "pro",
+            limit: 2,
+            active: 2,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );
@@ -396,7 +502,13 @@ describe("queue drawer", () => {
       return respond(
         200,
         queueResponse({
-          concurrency: { tier: "team", limit: 5, active: 5, available: 0 },
+          concurrency: {
+            tier: "team",
+            limit: 5,
+            active: 5,
+            available: 0,
+            memberUsage: [],
+          },
           queue: [queuedEntry()],
         }),
       );

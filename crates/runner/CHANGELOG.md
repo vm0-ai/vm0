@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.162.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.7...runner-rs-v0.162.0) (2026-08-09)
+
+
+### Features
+
+* persist and display runner reuse outcomes ([#25942](https://github.com/vm0-ai/vm0/issues/25942)) ([90f8d8f](https://github.com/vm0-ai/vm0/commit/90f8d8ffb713f7f99acd8377b8cba26a91504d0b))
+
+
+### Bug Fixes
+
+* **mitm-addon:** retain aliases across context target unpacking ([#25937](https://github.com/vm0-ai/vm0/issues/25937)) ([91eee65](https://github.com/vm0-ai/vm0/commit/91eee6520a0092154799811582da758aa8a30ca1))
+
 ## [0.161.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.6...runner-rs-v0.161.7) (2026-08-09)
 
 ## [0.161.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.5...runner-rs-v0.161.6) (2026-08-09)

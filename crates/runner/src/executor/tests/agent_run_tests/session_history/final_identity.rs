@@ -97,6 +97,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::SandboxReused,
             prev_storage: None,
         },
         &mut telemetry,
@@ -161,6 +162,7 @@ async fn run_in_sandbox_uses_final_identity_without_resume_request() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
@@ -207,6 +209,7 @@ async fn run_in_sandbox_records_invalid_final_identity_metadata_reason() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
@@ -251,6 +254,7 @@ async fn run_in_sandbox_records_oversized_final_identity_metadata_reason() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
@@ -308,6 +312,7 @@ async fn run_in_sandbox_records_large_final_identity_metadata() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
@@ -350,6 +355,7 @@ async fn run_in_sandbox_records_final_identity_metadata_read_failure_reason() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
@@ -405,6 +411,7 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,

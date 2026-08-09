@@ -1,20 +1,27 @@
 import { computed } from "ccstate";
 import { zeroRunRunnerContract } from "@vm0/api-contracts/contracts/zero-runs";
-import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
+import type {
+  SandboxReuseResult,
+  WorkspaceReuseResult,
+} from "@vm0/api-contracts/contracts/webhooks";
 import { zeroClient$ } from "../api-client.ts";
-import { currentRunId$ } from "./activity-signals.ts";
+import { currentRunId$, zeroActivityDetail$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
+import type { LogStatus } from "../zero-page/log-types.ts";
 
 interface ZeroActivityRunner {
   runId: string;
+  status: LogStatus;
   runner: {
     sandboxReuseResult: SandboxReuseResult | null;
+    workspaceReuseResult: WorkspaceReuseResult | null;
   };
 }
 
 export const zeroActivityRunner$ = computed(async (get) => {
   const runId = get(currentRunId$);
-  if (!runId) {
+  const detail = await get(zeroActivityDetail$);
+  if (!runId || !detail || detail.id !== runId) {
     return null;
   }
 
@@ -25,6 +32,10 @@ export const zeroActivityRunner$ = computed(async (get) => {
   );
   return {
     runId,
-    runner: result.body,
+    status: detail.status,
+    runner: {
+      sandboxReuseResult: result.body.sandboxReuseResult,
+      workspaceReuseResult: result.body.workspaceReuseResult ?? null,
+    },
   } satisfies ZeroActivityRunner;
 });

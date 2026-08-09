@@ -76,7 +76,7 @@ use crate::storage_plan::{StoragePlan, build_storage_plan};
 use crate::telemetry::{
     JobTelemetry, SessionHistoryTelemetryMetadata, session_history_prefix_extension_action_type,
 };
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, WorkspaceReuseResult};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
@@ -1172,11 +1172,12 @@ fn append_process_diagnostic(stderr: &mut String, diagnostic: &str) {
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:
 /// `restore_guest_state` gates clock/entropy repair, `prev_storage` enables
-/// the download-skip optimization on reuse, and `reuse_result` is forwarded
-/// to the guest for /complete metadata.
+/// the download-skip optimization on reuse, and both reuse outcomes are
+/// forwarded to the guest for /complete metadata.
 pub(super) struct RunStart<'a> {
     pub(super) restore_guest_state: bool,
     pub(super) reuse_result: SandboxReuseResult,
+    pub(super) workspace_reuse_result: WorkspaceReuseResult,
     pub(super) prev_storage: Option<&'a crate::storage_fingerprints::StorageFingerprints>,
 }
 
@@ -2097,6 +2098,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         &config.api_url,
         sandbox.id(),
         start.reuse_result,
+        start.workspace_reuse_result,
     ) {
         Ok(env_map) => env_map,
         Err(error) => {
@@ -2232,7 +2234,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         context,
         telemetry,
         start.reuse_result,
-        start.prev_storage.is_some(),
+        start.workspace_reuse_result,
     );
 
     // Start locally owned input and output work, then release deferred cache

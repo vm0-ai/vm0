@@ -1783,6 +1783,19 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     expectApiError(malformedComplete.body);
     expect(malformedComplete.body.error.code).toBe("BAD_REQUEST");
 
+    const incoherentReuseComplete = await api.requestAgentCompleteUnchecked(
+      {
+        runId,
+        exitCode: 0,
+        sandboxReuseResult: "reused",
+        workspaceReuseResult: "cacheMiss",
+      },
+      headers,
+      [400],
+    );
+    expectApiError(incoherentReuseComplete.body);
+    expect(incoherentReuseComplete.body.error.code).toBe("BAD_REQUEST");
+
     const mismatchedComplete = await api.requestAgentComplete(
       { runId, exitCode: 0, lastEventSequence: 0 },
       mismatchedHeaders,

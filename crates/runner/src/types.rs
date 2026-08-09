@@ -1659,6 +1659,10 @@ pub struct CompleteRequest {
     /// that the caller could not determine it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_reuse_result: Option<SandboxReuseResult>,
+    /// Final outcome of the workspace-reuse decision. `None` means the run
+    /// failed before the runner reached a reliable final decision.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_reuse_result: Option<WorkspaceReuseResult>,
 }
 
 /// Outcome of the sandbox-reuse decision made at job dispatch time. `Reused`
@@ -1686,6 +1690,41 @@ impl SandboxReuseResult {
             Self::ProfileMismatch => "profileMismatch",
             Self::DeviceLimitMismatch => "deviceLimitMismatch",
             Self::UnparkFailed => "unparkFailed",
+        }
+    }
+}
+
+/// Final outcome of workspace reuse after sandbox preparation has settled.
+/// Wire name: `workspaceReuseResult`.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkspaceReuseResult {
+    Reused,
+    SandboxReused,
+    CacheMiss,
+    NoReuseKey,
+    InvalidWorkingDir,
+    LockBusy,
+    InvalidMetadata,
+    DiskPressure,
+    NotConfigured,
+    SandboxPrepareFallback,
+}
+
+impl WorkspaceReuseResult {
+    /// Wire-format string, kept lockstep with the serde derive in tests.
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Reused => "reused",
+            Self::SandboxReused => "sandboxReused",
+            Self::CacheMiss => "cacheMiss",
+            Self::NoReuseKey => "noReuseKey",
+            Self::InvalidWorkingDir => "invalidWorkingDir",
+            Self::LockBusy => "lockBusy",
+            Self::InvalidMetadata => "invalidMetadata",
+            Self::DiskPressure => "diskPressure",
+            Self::NotConfigured => "notConfigured",
+            Self::SandboxPrepareFallback => "sandboxPrepareFallback",
         }
     }
 }
@@ -2100,6 +2139,7 @@ mod tests {
             error: None,
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert!(json.get("runId").is_some());
@@ -2108,6 +2148,7 @@ mod tests {
         assert!(json.get("error").is_none());
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
+        assert!(json.get("workspaceReuseResult").is_none());
     }
 
     #[test]
@@ -2120,11 +2161,13 @@ mod tests {
             error: Some("timeout".into()),
             sandbox_id: None,
             sandbox_reuse_result: None,
+            workspace_reuse_result: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
         assert!(json.get("sandboxId").is_none());
         assert!(json.get("sandboxReuseResult").is_none());
+        assert!(json.get("workspaceReuseResult").is_none());
     }
 
     #[test]
@@ -2138,10 +2181,12 @@ mod tests {
             error: None,
             sandbox_id: Some(sid),
             sandbox_reuse_result: Some(SandboxReuseResult::Reused),
+            workspace_reuse_result: Some(WorkspaceReuseResult::SandboxReused),
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["sandboxId"], "11111111-2222-3333-4444-555555555555");
         assert_eq!(json["sandboxReuseResult"], "reused");
+        assert_eq!(json["workspaceReuseResult"], "sandboxReused");
     }
 
     #[test]
@@ -2179,6 +2224,23 @@ mod tests {
             SandboxReuseResult::ProfileMismatch,
             SandboxReuseResult::DeviceLimitMismatch,
             SandboxReuseResult::UnparkFailed,
+        ] {
+            assert_eq!(
+                serde_json::to_value(variant).unwrap(),
+                serde_json::Value::String(variant.as_wire().to_string()),
+            );
+        }
+        for variant in [
+            WorkspaceReuseResult::Reused,
+            WorkspaceReuseResult::SandboxReused,
+            WorkspaceReuseResult::CacheMiss,
+            WorkspaceReuseResult::NoReuseKey,
+            WorkspaceReuseResult::InvalidWorkingDir,
+            WorkspaceReuseResult::LockBusy,
+            WorkspaceReuseResult::InvalidMetadata,
+            WorkspaceReuseResult::DiskPressure,
+            WorkspaceReuseResult::NotConfigured,
+            WorkspaceReuseResult::SandboxPrepareFallback,
         ] {
             assert_eq!(
                 serde_json::to_value(variant).unwrap(),

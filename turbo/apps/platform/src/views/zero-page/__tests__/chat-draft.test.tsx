@@ -277,6 +277,7 @@ describe("chat drafts", () => {
           limit: 2,
           active: 0,
           available: 2,
+          memberUsage: [],
         },
         queue: [],
         runningTasks: [],

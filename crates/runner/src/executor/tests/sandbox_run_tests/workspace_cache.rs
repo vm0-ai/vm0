@@ -9,7 +9,7 @@ use crate::executor::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
 use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::{
     ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
-    ResumeSessionHistoryRefKind,
+    ResumeSessionHistoryRefKind, WorkspaceReuseResult,
 };
 use crate::workspace_image_cache::WorkspaceSessionHistorySidecarRepresentation;
 
@@ -149,6 +149,10 @@ async fn workspace_sidecar_materialization_overlaps_sandbox_creation() {
 
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_some());
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::Reused),
+    );
     assert_api_to_spawn_path(
         &telemetry,
         RunnerStartupPath::Workspace,
@@ -254,6 +258,10 @@ async fn workspace_retry_cancels_sidecar_materialization_before_cache_invalidati
     .expect("cancelled sidecar CPU work should finish");
     assert_eq!(outcome.exit_code(), 0);
     assert!(outcome.workspace_image.is_none());
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::SandboxPrepareFallback),
+    );
     assert_api_to_spawn_path(
         &telemetry,
         RunnerStartupPath::Cold,
@@ -933,6 +941,10 @@ async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
 
     assert_eq!(outcome.exit_code(), 0);
     let configs = overrides.create_configs();
+    assert_eq!(
+        outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::LockBusy),
+    );
     assert_eq!(configs.len(), 1);
     assert_eq!(
         configs[0].workspace_drive,
@@ -1199,6 +1211,10 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
 
     assert_eq!(reuse_outcome.exit_code(), 0);
     assert!(reuse_outcome.workspace_image.is_some());
+    assert_eq!(
+        reuse_outcome.workspace_reuse_result,
+        Some(WorkspaceReuseResult::SandboxReused),
+    );
     assert_api_to_spawn_path(
         &telemetry,
         RunnerStartupPath::Sandbox,

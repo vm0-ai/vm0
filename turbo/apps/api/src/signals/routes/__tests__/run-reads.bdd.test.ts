@@ -1,16 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 
+import { createStore } from "ccstate";
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
 } from "@vm0/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now, withMockNowForTest } from "../../../lib/time";
+import { now, nowDate, withMockNowForTest } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import {
   createBddApi,
@@ -27,6 +28,12 @@ import {
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteUsageInsightFixture$,
+  seedCompose$,
+  seedRun$,
+  seedUsageInsightFixture$,
+} from "./helpers/zero-usage-insight";
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
@@ -50,6 +57,7 @@ const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const reads = createRunReadsApi(context);
+const store = createStore();
 
 function mustOk<TResponse extends { readonly status: number }>(
   response: TResponse,
@@ -235,6 +243,66 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
 });
 
 describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
+  it("keeps limited-free plan concurrency visible when the runtime cap is disabled", async () => {
+    const actor = bdd.user();
+    await bdd.bootstrapLimitedFreeOnboarding(actor, {
+      displayName: "BDD limited-free agent",
+    });
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+
+    const queue = await api.readRunQueue(actor);
+
+    expect(queue.body.concurrency).toMatchObject({
+      tier: "limited-free-1",
+      limit: 1,
+      active: 0,
+      available: 1,
+      memberUsage: [],
+    });
+  });
+
+  it("groups active concurrency by workspace member", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const actorCompose = await createClaudeCompose(actor, "bdd-actor-usage");
+    const memberCompose = await createClaudeCompose(member, "bdd-member-usage");
+
+    await api.createDirectRun(actor, {
+      agentComposeId: actorCompose.composeId,
+      prompt: "actor active run",
+    });
+    await api.createDirectRun(member, {
+      agentComposeId: memberCompose.composeId,
+      prompt: "member active run",
+    });
+    await bdd.readMe(actor);
+    await bdd.readMe(member);
+
+    const queue = await api.readRunQueue(actor);
+
+    expect(queue.body.concurrency).toMatchObject({
+      tier: "pro",
+      limit: 2,
+      active: 2,
+      available: 0,
+    });
+    expect(queue.body.concurrency.memberUsage).toHaveLength(2);
+    expect(queue.body.concurrency.memberUsage).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: actor.userId,
+          displayName: "BDD User",
+          active: 1,
+        }),
+        expect.objectContaining({
+          userId: member.userId,
+          displayName: "BDD User",
+          active: 1,
+        }),
+      ]),
+    );
+  });
+
   it("lists, reads, and queues direct runs with status, agent, and window filters", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
@@ -2600,7 +2668,7 @@ describe("RUN-04: agent run telemetry families", () => {
     });
   });
 
-  it("preserves sandbox reuse reasons from completion through runner reads", async () => {
+  it("preserves reuse outcomes from completion through runner reads", async () => {
     const actor = await entitledActor();
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -2611,11 +2679,13 @@ describe("RUN-04: agent run telemetry families", () => {
     const scenarios = [
       {
         name: "legacy no session ID",
-        result: "noSessionId",
+        sandboxResult: "noSessionId",
+        workspaceResult: undefined,
       },
       {
         name: "no reuse key",
-        result: "noReuseKey",
+        sandboxResult: "noReuseKey",
+        workspaceResult: "reused",
       },
     ] as const;
 
@@ -2645,7 +2715,8 @@ describe("RUN-04: agent run telemetry families", () => {
         {
           runId: run.runId,
           exitCode: 0,
-          sandboxReuseResult: scenario.result,
+          sandboxReuseResult: scenario.sandboxResult,
+          workspaceReuseResult: scenario.workspaceResult,
         },
         headers,
         [200],
@@ -2657,9 +2728,66 @@ describe("RUN-04: agent run telemetry families", () => {
 
       const runner = await api.requestRunRunner(actor, run.runId, [200]);
       expect(runner.body).toStrictEqual({
-        sandboxReuseResult: scenario.result,
+        sandboxReuseResult: scenario.sandboxResult,
+        workspaceReuseResult: scenario.workspaceResult ?? null,
       });
     }
+  });
+
+  it("drops invalid persisted reuse outcomes independently", async () => {
+    const fixture = await store.set(
+      seedUsageInsightFixture$,
+      undefined,
+      context.signal,
+    );
+    onTestFinished(async () => {
+      await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+    });
+    const compose = await store.set(seedCompose$, fixture, context.signal);
+    const actor = bdd.user(fixture);
+    const invalidSandbox = await store.set(
+      seedRun$,
+      {
+        ...fixture,
+        composeId: compose.composeId,
+        status: "completed",
+        completedAt: nowDate(),
+        sandboxReuseResult: "unknownSandboxResult",
+        workspaceReuseResult: "reused",
+      },
+      context.signal,
+    );
+    const invalidWorkspace = await store.set(
+      seedRun$,
+      {
+        ...fixture,
+        composeId: compose.composeId,
+        status: "completed",
+        completedAt: nowDate(),
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "unknownWorkspaceResult",
+      },
+      context.signal,
+    );
+
+    const sandboxResult = await api.requestRunRunner(
+      actor,
+      invalidSandbox.runId,
+      [200],
+    );
+    expect(sandboxResult.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: "reused",
+    });
+    const workspaceResult = await api.requestRunRunner(
+      actor,
+      invalidWorkspace.runId,
+      [200],
+    );
+    expect(workspaceResult.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: null,
+    });
   });
 
   it("maps zero run context, network, events, and runner metadata from axiom snapshots", async () => {
@@ -2697,6 +2825,7 @@ describe("RUN-04: agent run telemetry families", () => {
         exitCode: 0,
         lastEventSequence: 1,
         sandboxReuseResult: "reused",
+        workspaceReuseResult: "sandboxReused",
       },
       headers,
       [200],
@@ -3225,11 +3354,17 @@ describe("RUN-04: agent run telemetry families", () => {
     ).toBeUndefined();
     expectRunContextFrameworkQuery(noWatermarkStart, bareRun.runId);
 
-    // Runner metadata mirrors the sandbox reuse outcome from completion.
+    // Runner metadata mirrors the final reuse outcomes from completion.
     const runner = await api.requestRunRunner(actor, runId, [200]);
-    expect(runner.body).toStrictEqual({ sandboxReuseResult: "reused" });
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: "reused",
+      workspaceReuseResult: "sandboxReused",
+    });
     const bareRunner = await api.requestRunRunner(actor, bareRun.runId, [200]);
-    expect(bareRunner.body).toStrictEqual({ sandboxReuseResult: null });
+    expect(bareRunner.body).toStrictEqual({
+      sandboxReuseResult: null,
+      workspaceReuseResult: null,
+    });
 
     await api.requestCancelRun(actor, bareRun.runId, [200]);
   });

@@ -65,6 +65,7 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
@@ -146,6 +147,7 @@ async fn run_in_sandbox_reports_cancelled_while_workspace_sidecar_read_is_pendin
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
                 prev_storage: None,
             },
             &mut telemetry,
@@ -244,6 +246,7 @@ async fn run_in_sandbox_reports_cancelled_while_session_history_download_is_pend
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
                 prev_storage: None,
             },
             &mut telemetry,
@@ -297,6 +300,7 @@ async fn run_in_sandbox_starts_no_guest_work_when_already_cancelled() {
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,
@@ -366,6 +370,7 @@ async fn run_in_sandbox_preserves_ready_start_result_when_cancellation_arrives()
         RunStart {
             restore_guest_state: false,
             reuse_result: SandboxReuseResult::PoolMiss,
+            workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
             prev_storage: None,
         },
         &mut telemetry,

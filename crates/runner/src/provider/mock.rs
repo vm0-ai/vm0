@@ -29,7 +29,9 @@ use tracing::warn;
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{
+    CompleteRequest, ExecutionContext, HeartbeatState, SandboxReuseResult, WorkspaceReuseResult,
+};
 use sandbox::SandboxId;
 
 /// Recorded completion from [`JobProvider::complete`].
@@ -40,6 +42,7 @@ pub struct Completion {
     pub error: Option<String>,
     pub sandbox_id: Option<SandboxId>,
     pub reuse_result: Option<SandboxReuseResult>,
+    pub workspace_reuse_result: Option<WorkspaceReuseResult>,
 }
 
 /// Channel-driven mock provider.
@@ -631,24 +634,17 @@ impl JobProvider for MockJobProvider {
             .pop_front()
     }
 
-    async fn complete(
-        &self,
-        run_id: RunId,
-        exit_code: i32,
-        error: Option<&str>,
-        sandbox_id: Option<SandboxId>,
-        reuse_result: Option<SandboxReuseResult>,
-        _completion_auth: CompletionAuth,
-    ) {
+    async fn complete(&self, request: CompleteRequest, _completion_auth: CompletionAuth) {
         self.completions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(Completion {
-                run_id,
-                exit_code,
-                error: error.map(String::from),
-                sandbox_id,
-                reuse_result,
+                run_id: request.run_id,
+                exit_code: request.exit_code,
+                error: request.error,
+                sandbox_id: request.sandbox_id,
+                reuse_result: request.sandbox_reuse_result,
+                workspace_reuse_result: request.workspace_reuse_result,
             });
         // Wake all pending `wait_completion` waiters — they re-scan the vec
         // and return if their run_id is now present.

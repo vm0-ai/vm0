@@ -14173,6 +14173,8 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
         exitCode: 124,
         error: "runner job timed out",
         lastEventSequence: 0,
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "lockBusy",
       },
       sandboxHeaders,
       [200],
@@ -14181,6 +14183,11 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("runner job timed out");
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "lockBusy",
+    });
 
     const telemetry = await webhooks.requestAgentTelemetry(
       { runId: run.runId },
@@ -14278,7 +14285,13 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     };
 
     const missing = await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "cacheMiss",
+      },
       sandboxHeaders,
       [200],
     );
@@ -14295,6 +14308,11 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("Checkpoint for run not found");
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "cacheMiss",
+    });
   });
 
   it("reports the settled status when a checkpoint-less completion races a cancellation", async () => {
@@ -14310,7 +14328,13 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     await api.requestCancelRun(actor, run.runId, [200]);
 
     const late = await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "diskPressure",
+      },
       { authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}` },
       [200],
     );
@@ -14320,6 +14344,25 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     expect(late.body).toStrictEqual({ success: true, status: "failed" });
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+    const runner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(runner.body).toStrictEqual({
+      sandboxReuseResult: "poolMiss",
+      workspaceReuseResult: "diskPressure",
+    });
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: run.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+        sandboxReuseResult: "reused",
+        workspaceReuseResult: "sandboxReused",
+      },
+      { authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}` },
+      [200],
+    );
+    const retainedRunner = await api.requestRunRunner(actor, run.runId, [200]);
+    expect(retainedRunner.body).toStrictEqual(runner.body);
   });
 
   it("keeps a cancelled run settled when its checkpointed completion arrives late", async () => {
