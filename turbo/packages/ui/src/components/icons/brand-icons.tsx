@@ -1,6 +1,6 @@
 import { createLucideIcon, type IconNode } from "lucide-react";
 
-// Lucide intentionally does not ship brand marks. Keep the five product brand
+// Lucide intentionally does not ship brand marks. Keep the product brand
 // icons local while exposing the same props and rendering contract as Lucide.
 const brandGithub: IconNode = [
   [
@@ -36,6 +36,15 @@ const brandSlack: IconNode = [
   ["path", { d: "M12 12h-6a2 2 0 0 1 0 -4h6m-2 0a2 2 0 1 1 2 -2v6" }],
 ];
 
+const brandStripe: IconNode = [
+  [
+    "path",
+    {
+      d: "M11.453 8.056c0 -.623 .518 -.979 1.442 -.979c1.69 0 3.41 .343 4.605 .923l.5 -4c-.948 -.449 -2.82 -1 -5.5 -1c-1.895 0 -3.373 .087 -4.5 1c-1.172 .956 -2 2.33 -2 4c0 3.03 1.958 4.906 5 6c1.961 .69 3 .743 3 1.5c0 .735 -.851 1.5 -2 1.5c-1.423 0 -3.963 -.609 -5.5 -1.5l-.5 4c1.321 .734 3.474 1.5 6 1.5c2 0 3.957 -.468 5.084 -1.36c1.263 -.979 1.916 -2.268 1.916 -4.14c0 -3.096 -1.915 -4.547 -5 -5.637c-1.646 -.605 -2.544 -1.07 -2.544 -1.807l-.003 0",
+    },
+  ],
+];
+
 const brandTelegram: IconNode = [
   ["path", { d: "M15 10l-4 4l6 6l4 -16l-18 7l4 2l2 6l3 -4" }],
 ];
@@ -47,4 +56,5 @@ export const BrandGoogleDrive = createLucideIcon(
 );
 export const BrandNotion = createLucideIcon("BrandNotion", brandNotion);
 export const BrandSlack = createLucideIcon("BrandSlack", brandSlack);
+export const BrandStripe = createLucideIcon("BrandStripe", brandStripe);
 export const BrandTelegram = createLucideIcon("BrandTelegram", brandTelegram);

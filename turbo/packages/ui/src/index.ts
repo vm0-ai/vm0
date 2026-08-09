@@ -114,6 +114,7 @@ export {
   BrandGoogleDrive,
   BrandNotion,
   BrandSlack,
+  BrandStripe,
   BrandTelegram,
 } from "./components/icons/brand-icons";
 export {
