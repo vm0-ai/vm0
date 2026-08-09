@@ -2418,6 +2418,27 @@ describe("CHAT-03 run usage events", () => {
   }, 60_000);
 });
 
+async function setChatSearchIndex(
+  actor: ApiTestUser,
+  enabled: boolean,
+): Promise<void> {
+  createZeroRouteMocks(context).clerk.session(
+    actor.userId,
+    actor.orgId,
+    actor.orgRole,
+  );
+  const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
+    zeroFeatureSwitchesContract,
+  );
+  await accept(
+    client.update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { switches: { [FeatureSwitchKey.ChatSearchIndex]: enabled } },
+    }),
+    [200],
+  );
+}
+
 describe("CHAT-01 chat search", () => {
   it("rejects search without an org session or the chat-event:read capability", async () => {
     const unauthenticated = await chat.requestSearchChat(
@@ -2453,6 +2474,7 @@ describe("CHAT-01 chat search", () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
+    await setChatSearchIndex(owner, false);
     bdd.acceptAgentStorageWrites();
     const agentA = await bdd.createAgent(owner, {
       displayName: "Search agent A",
@@ -2685,6 +2707,7 @@ describe("CHAT-01 chat search", () => {
 
   it("associates batched context windows across matches and threads", async () => {
     const owner = bdd.user();
+    await setChatSearchIndex(owner, false);
     bdd.acceptAgentStorageWrites();
     const agentA = await bdd.createAgent(owner, {
       displayName: "Batched search agent A",
@@ -2864,24 +2887,6 @@ describe("CHAT-01 chat search index", () => {
     return response.body;
   }
 
-  async function enableChatSearchIndex(actor: ApiTestUser): Promise<void> {
-    createZeroRouteMocks(context).clerk.session(
-      actor.userId,
-      actor.orgId,
-      actor.orgRole,
-    );
-    const client = setupApp({ context, routes: zeroFeatureSwitchesRoutes })(
-      zeroFeatureSwitchesContract,
-    );
-    await accept(
-      client.update({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { switches: { [FeatureSwitchKey.ChatSearchIndex]: true } },
-      }),
-      [200],
-    );
-  }
-
   function assistantOutputEvent(
     sequenceNumber: number,
     text: string,
@@ -2893,7 +2898,7 @@ describe("CHAT-01 chat search index", () => {
     };
   }
 
-  it("serves index-backed keyword search from the projection behind the switch", async () => {
+  it("serves index-backed keyword search from the projection by default", async () => {
     const orgId = `org_${randomUUID()}`;
     const owner = bdd.user({ orgId });
     const peer = bdd.user({ orgId });
@@ -2904,7 +2909,7 @@ describe("CHAT-01 chat search index", () => {
     const peerAgent = await bdd.createAgent(peer, {
       displayName: "Search index peer agent",
     });
-    await enableChatSearchIndex(owner);
+    await setChatSearchIndex(peer, false);
 
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
@@ -2915,8 +2920,9 @@ describe("CHAT-01 chat search index", () => {
       prompt: "peer 今天天气 message",
     });
 
-    // The switch is on but the projector has not indexed the thread yet, so
-    // the index path recalls nothing while the peer's legacy path still works.
+    // The index is globally enabled but the projector has not indexed the
+    // thread yet, so the index path recalls nothing while the peer's explicit
+    // legacy override still works.
     const beforeProjection = await chat.searchChat(owner, "天气");
     expect(beforeProjection.results).toStrictEqual([]);
     const peerLegacy = await chat.searchChat(peer, "天气");
@@ -2961,7 +2967,6 @@ describe("CHAT-01 chat search index", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Follow-up search exclusion agent",
     );
-    await enableChatSearchIndex(actor);
     const visibleNeedle = `visiblemessage${randomUUID().replaceAll("-", "")}`;
     const followupOnlyNeedle = `futurefollowup${randomUUID().replaceAll("-", "")}`;
     mockOptionalEnv("OPENROUTER_API_KEY", "follow-up-search-key");
@@ -3028,7 +3033,6 @@ describe("CHAT-01 chat search index", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Search index assistant agent",
     );
-    await enableChatSearchIndex(actor);
 
     const run = await sendChatRun(actor, {
       agentId,
@@ -3069,7 +3073,6 @@ describe("CHAT-01 chat search index", () => {
     const agent = await bdd.createAgent(owner, {
       displayName: "Search deletion race agent",
     });
-    await enableChatSearchIndex(owner);
     const marker = `projectiondelete${randomUUID().replaceAll("-", "")}`;
     const threadA = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
@@ -3123,7 +3126,6 @@ describe("CHAT-01 chat search index", () => {
     const agentB = await bdd.createAgent(owner, {
       displayName: "Index filter agent B",
     });
-    await enableChatSearchIndex(owner);
 
     await sendNoCreditMessage(owner, {
       agentId: agentA.agentId,

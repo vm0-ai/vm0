@@ -15,6 +15,7 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatSearchIndex, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
