@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.714.2](https://github.com/vm0-ai/vm0/compare/app-v0.714.1...app-v0.714.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** avoid url.canparse for older ios safari ([#25945](https://github.com/vm0-ai/vm0/issues/25945)) ([51d80bb](https://github.com/vm0-ai/vm0/commit/51d80bbeb602d32c338c589de1e45cb9ad767b6a))
+
 ## [0.714.1](https://github.com/vm0-ai/vm0/compare/app-v0.714.0...app-v0.714.1) (2026-08-09)
 
 
