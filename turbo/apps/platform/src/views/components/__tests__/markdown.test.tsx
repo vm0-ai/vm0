@@ -10,6 +10,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
 import { StoreProvider } from "ccstate-react";
 import { describe, expect, it } from "vitest";
 
@@ -86,6 +87,17 @@ function mockThread(
   });
 }
 
+function mockAgentsPage(): void {
+  context.mocks.data.composesList([]);
+  context.mocks.api(logsListContract.list, ({ respond }) => {
+    return respond(200, {
+      data: [],
+      pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+      filters: { statuses: [], sources: [], agents: [] },
+    });
+  });
+}
+
 type BlobDownloadMock = ReturnType<typeof context.mocks.browser.blobDownload>;
 
 /** The SVG a rendered diagram shows, read back out of its object URL. */
@@ -123,6 +135,15 @@ function getLinkByText(container: ParentNode, text: string): HTMLElement {
   }
 
   return link;
+}
+
+async function navigateToAgents(): Promise<void> {
+  click(
+    await waitFor(() => {
+      return getLinkByText(document, "Agents");
+    }),
+  );
+  await screen.findByRole("heading", { name: "Agents" });
 }
 
 async function openSettingsDialog(): Promise<HTMLElement> {
@@ -477,6 +498,49 @@ describe("assistant markdown", () => {
     }
   });
 
+  it("releases a mermaid sidebar object URL when leaving chat", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+    mockAgentsPage();
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const artifactsButton = await waitFor(() => {
+      const found = queryAllByRoleFast("button").find((element) => {
+        return element.getAttribute("aria-label") === "Open artifacts";
+      });
+      if (!found) {
+        throw new Error("Expected the artifacts header button");
+      }
+      return found;
+    });
+    click(artifactsButton);
+    await screen.findByTestId("thread-sidebar-artifacts");
+
+    const expand = await screen.findByLabelText("Expand diagram");
+    await waitFor(() => {
+      expect(expand).toBeEnabled();
+    });
+    click(expand);
+
+    const sidebarUrl = await waitFor(() => {
+      return within(screen.getByTestId("artifact-sidebar"))
+        .getByTestId("artifact-sidebar-body-image")
+        .getAttribute("src");
+    });
+    expect(sidebarUrl).toContain("blob:mock-download-");
+    expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
+
+    await navigateToAgents();
+
+    await waitFor(() => {
+      expect(objectUrls.revokedUrls).toContain(sidebarUrl);
+    });
+  });
+
   it("revokes a mermaid object URL when its chat panel signal aborts", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     const replacementThreadId = "c0000000-0000-4000-a000-000000000002";
@@ -518,6 +582,7 @@ describe("assistant markdown", () => {
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```", [
       threadSnapshot(sidebarThreadId, "Sidebar thread"),
     ]);
+    mockAgentsPage();
 
     detachedSetupPage({
       context,
@@ -570,6 +635,12 @@ describe("assistant markdown", () => {
     expect(lightboxImage).toHaveAttribute("src", lightboxUrl);
     expect(objectUrls.revokedUrls).not.toContain(lightboxUrl);
     expect(objectUrls.blobForUrl(lightboxUrl)).not.toBeNull();
+
+    await navigateToAgents();
+
+    await waitFor(() => {
+      expect(objectUrls.revokedUrls).toContain(lightboxUrl);
+    });
   });
 
   it("leaves a streaming mermaid fence as code until it closes", async () => {

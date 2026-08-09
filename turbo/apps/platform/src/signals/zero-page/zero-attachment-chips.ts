@@ -104,6 +104,7 @@ const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
 const internalLightboxDialogVisible$ = state(false);
 const internalLightboxDialogFullscreen$ = state(false);
 const internalLightboxDialogCloseToken$ = state(0);
+const internalLightboxDialogMountToken$ = state(0);
 const resetLightboxDialogCloseSignal$ = resetSignal();
 const internalLightboxObjectUrlResources$ = state<readonly ObjectUrlResource[]>(
   [],
@@ -115,6 +116,25 @@ const releaseLightboxObjectUrlResources$ = command(({ get, set }) => {
   }
   set(internalLightboxObjectUrlResources$, []);
 });
+
+const disposeLightboxSession$ = command(({ set }) => {
+  set(internalLightboxDialogCloseToken$, (value) => {
+    return value + 1;
+  });
+  set(internalLightboxDialogVisible$, false);
+  set(internalLightboxDialogFullscreen$, false);
+  set(internalLightboxState$, null);
+  set(releaseLightboxObjectUrlResources$);
+});
+
+const disposeLightboxForDialogUnmountToken$ = command(
+  ({ get, set }, token: number) => {
+    if (get(internalLightboxDialogMountToken$) !== token) {
+      return;
+    }
+    set(disposeLightboxSession$);
+  },
+);
 
 export const lightboxUrl$ = computed((get) => {
   return get(internalLightboxState$);
@@ -352,7 +372,21 @@ export const openAudioLightbox$ = command(
 // ---------------------------------------------------------------------------
 
 const closeLightboxOnEscape$ = command(
-  ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
+  ({ get, set }, el: HTMLDivElement, signal: AbortSignal) => {
+    const mountToken = get(internalLightboxDialogMountToken$) + 1;
+    set(internalLightboxDialogMountToken$, mountToken);
+    signal.addEventListener(
+      "abort",
+      () => {
+        // React can detach and immediately reattach a callback ref during a
+        // render or StrictMode check. Defer disposal so that replacement mount
+        // can supersede this token; a real route unmount has no replacement.
+        queueMicrotask(() => {
+          set(disposeLightboxForDialogUnmountToken$, mountToken);
+        });
+      },
+      { once: true },
+    );
     document.addEventListener(
       "keydown",
       (e: KeyboardEvent) => {
