@@ -1109,7 +1109,7 @@ export function WorkflowsPage() {
               openCreateWorkflowDialog();
             }}
           >
-            <Plus size={14} strokeWidth={2} data-explicit-stroke-width />
+            <Plus size={14} strokeWidth={2} data-stroke />
             {t(($) => {
               return $.workflows.list.createInChat;
             })}

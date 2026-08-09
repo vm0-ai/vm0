@@ -389,9 +389,9 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           })}
         >
           {theme === "dark" ? (
-            <Sun size={16} strokeWidth={2} data-explicit-stroke-width />
+            <Sun size={16} strokeWidth={2} data-stroke />
           ) : (
-            <Moon size={16} strokeWidth={2} data-explicit-stroke-width />
+            <Moon size={16} strokeWidth={2} data-stroke />
           )}
         </button>
 

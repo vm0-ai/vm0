@@ -55,7 +55,7 @@ function CollapsibleSection({
             size={14}
             strokeWidth={2}
             className="transition-transform group-open:rotate-90 text-muted-foreground shrink-0"
-            data-explicit-stroke-width
+            data-stroke
           />
           <span className="text-xs font-medium text-foreground">{title}</span>
           {badge && <InlineBadge color="muted">{badge}</InlineBadge>}

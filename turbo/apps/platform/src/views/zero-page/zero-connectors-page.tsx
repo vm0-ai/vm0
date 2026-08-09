@@ -438,7 +438,7 @@ function ConnectorFilterOption({
           size={15}
           strokeWidth={2}
           className="shrink-0 text-foreground"
-          data-explicit-stroke-width
+          data-stroke
         />
       )}
     </DropdownMenuItem>
@@ -640,7 +640,7 @@ function ConnectorsToolbarActions({
           className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
           onClick={onCreateCustom}
         >
-          <Plus size={14} strokeWidth={2} data-explicit-stroke-width />
+          <Plus size={14} strokeWidth={2} data-stroke />
           {t(($) => {
             return $.connectors.catalog.newConnector;
           })}

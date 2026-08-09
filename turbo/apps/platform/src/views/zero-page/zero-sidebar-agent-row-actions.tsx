@@ -220,11 +220,7 @@ export function AgentRowSideActions({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="flex h-full w-full items-center justify-center">
-                      <Ellipsis
-                        size={16}
-                        strokeWidth={2}
-                        data-explicit-stroke-width
-                      />
+                      <Ellipsis size={16} strokeWidth={2} data-stroke />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent

@@ -241,7 +241,7 @@ function AgentTabsView({
             return onCreate(activeTab);
           }}
         >
-          <Plus size={14} strokeWidth={2} data-explicit-stroke-width />
+          <Plus size={14} strokeWidth={2} data-stroke />
           {t(($) => {
             return $.list.actions.new;
           })}

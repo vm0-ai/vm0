@@ -926,7 +926,7 @@ function AgentHeader({
             size={14}
             strokeWidth={2}
             className="shrink-0"
-            data-explicit-stroke-width
+            data-stroke
           />
           <span className="truncate">
             {t(
