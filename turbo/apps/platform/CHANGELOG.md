@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.714.3](https://github.com/vm0-ai/vm0/compare/app-v0.714.2...app-v0.714.3) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** carry chat card signals with rendered events ([#25908](https://github.com/vm0-ai/vm0/issues/25908)) ([88cf282](https://github.com/vm0-ai/vm0/commit/88cf282bbd66a627d3c0bba3e1ba0891ed8707cd))
+
 ## [0.714.2](https://github.com/vm0-ai/vm0/compare/app-v0.714.1...app-v0.714.2) (2026-08-09)
 
 
