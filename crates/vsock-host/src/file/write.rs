@@ -491,8 +491,24 @@ impl VsockHost {
         content: &[u8],
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
+        self.write_private_file_with_write_observer_and_chunk_limit(
+            path,
+            content,
+            write_observer,
+            WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
+
+    pub(super) async fn write_private_file_with_write_observer_and_chunk_limit(
+        &self,
+        path: &str,
+        content: &[u8],
+        write_observer: FrameWriteObserver,
+        chunk_limit: usize,
+    ) -> io::Result<()> {
         validate_guest_file_path(path)?;
-        if content.len() <= WRITE_FILE_CHUNK_LIMIT {
+        if content.len() <= chunk_limit {
             let request = WriteFileChunkRequest::private(path, content, false);
             validate_write_file_chunk_request(request)?;
             let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
@@ -501,13 +517,13 @@ impl VsockHost {
                 .await;
         }
 
-        for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+        for (i, chunk) in content.chunks(chunk_limit).enumerate() {
             validate_write_file_chunk_request(WriteFileChunkRequest::private(path, chunk, i > 0))?;
         }
         let _path_guard = self.file_write_path_locks.acquire_exclusive(path).await;
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
         let result = async {
-            for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+            for (i, chunk) in content.chunks(chunk_limit).enumerate() {
                 self.write_file_chunk(
                     WriteFileChunkRequest::private(path, chunk, i > 0),
                     WriteFileChunkTracking::Composite(&mut normal_operation),
@@ -542,8 +558,26 @@ impl VsockHost {
         sudo: bool,
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
+        self.write_file_with_write_observer_and_chunk_limit(
+            path,
+            content,
+            sudo,
+            write_observer,
+            WRITE_FILE_CHUNK_LIMIT,
+        )
+        .await
+    }
+
+    pub(super) async fn write_file_with_write_observer_and_chunk_limit(
+        &self,
+        path: &str,
+        content: &[u8],
+        sudo: bool,
+        write_observer: FrameWriteObserver,
+        chunk_limit: usize,
+    ) -> io::Result<()> {
         validate_guest_file_path(path)?;
-        if content.len() <= WRITE_FILE_CHUNK_LIMIT {
+        if content.len() <= chunk_limit {
             let request = WriteFileChunkRequest::standard(path, content, sudo, false);
             validate_write_file_chunk_request(request)?;
             let _path_guard = self.file_write_path_locks.acquire_shared(path).await;
@@ -573,7 +607,7 @@ impl VsockHost {
         );
 
         let result = async {
-            for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
+            for (i, chunk) in content.chunks(chunk_limit).enumerate() {
                 self.write_file_chunk(
                     WriteFileChunkRequest::standard(&tmp, chunk, sudo, i > 0),
                     WriteFileChunkTracking::Composite(&mut normal_operation),

@@ -24,8 +24,7 @@ use super::super::support::{
 };
 use super::support::{
     ExecStartFrame, WriteFileFrame, expect_exec_start, expect_write_file, send_guest_error,
-    send_write_file_failure, send_write_file_success, send_write_files_success, spawn_write_file,
-    spawn_write_private_file,
+    send_write_file_failure, send_write_file_success, send_write_files_success,
 };
 use crate::{
     FrameWriteObserver, VsockHost, WriteFileEntry, operation_tracker::NormalOperationReadiness,
@@ -53,7 +52,7 @@ impl ChunkedWriteFixture {
     }
 
     fn chunk_limit() -> usize {
-        file_impl::test_support::WRITE_FILE_CHUNK_LIMIT
+        file_impl::test_support::TEST_WRITE_FILE_CHUNK_LIMIT
     }
 
     fn two_chunk_content() -> Vec<u8> {
@@ -66,7 +65,7 @@ impl ChunkedWriteFixture {
 
     fn spawn_write(&mut self, content: Vec<u8>, sudo: bool) -> JoinHandle<io::Result<()>> {
         self.sudo = sudo;
-        spawn_write_file(Arc::clone(&self.host), self.target_path, content, sudo)
+        spawn_write_file_with_small_chunks(Arc::clone(&self.host), self.target_path, content, sudo)
     }
 
     async fn expect_chunk(&mut self) -> WriteFileFrame {
@@ -127,6 +126,53 @@ impl ChunkedWriteFixture {
     }
 }
 
+async fn write_file_with_small_chunks(
+    host: &VsockHost,
+    path: &str,
+    content: &[u8],
+    sudo: bool,
+) -> io::Result<()> {
+    file_impl::test_support::write_file_with_small_chunks(
+        host,
+        path,
+        content,
+        sudo,
+        FrameWriteObserver::default(),
+    )
+    .await
+}
+
+async fn write_private_file_with_small_chunks(
+    host: &VsockHost,
+    path: &str,
+    content: &[u8],
+) -> io::Result<()> {
+    file_impl::test_support::write_private_file_with_small_chunks(
+        host,
+        path,
+        content,
+        FrameWriteObserver::default(),
+    )
+    .await
+}
+
+fn spawn_write_file_with_small_chunks(
+    host: Arc<VsockHost>,
+    path: &'static str,
+    content: Vec<u8>,
+    sudo: bool,
+) -> JoinHandle<io::Result<()>> {
+    tokio::spawn(async move { write_file_with_small_chunks(&host, path, &content, sudo).await })
+}
+
+fn spawn_write_private_file_with_small_chunks(
+    host: Arc<VsockHost>,
+    path: &'static str,
+    content: Vec<u8>,
+) -> JoinHandle<io::Result<()>> {
+    tokio::spawn(async move { write_private_file_with_small_chunks(&host, path, &content).await })
+}
+
 fn assert_helper_exec_capture_policy(frame: &ExecStartFrame) {
     let capture_policy = helper_exec_capture_policy();
     assert_eq!(frame.stdout, capture_policy);
@@ -167,12 +213,13 @@ async fn write_file_chunked_cancelled_before_first_frame_write_does_not_cleanup(
     let host = Arc::new(host);
     let write_start_count = Arc::new(AtomicUsize::new(0));
     let writer_guard = host.shared.writer.lock().await;
-    let content = vec![0xABu8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+    let content = ChunkedWriteFixture::two_chunk_content();
     let write_task = {
         let host = Arc::clone(&host);
         let write_start_count = Arc::clone(&write_start_count);
         tokio::spawn(async move {
-            host.write_file_with_write_observer(
+            file_impl::test_support::write_file_with_small_chunks(
+                &host,
                 "/tmp/big-blocked.bin",
                 &content,
                 false,
@@ -368,23 +415,23 @@ async fn write_file_chunked_rejects_invalid_path_before_cleanup_or_write() {
     let host = Arc::new(host);
     let write_start_count = Arc::new(AtomicUsize::new(0));
     let path = format!("/{}", "a".repeat(u16::MAX as usize));
-    let content = vec![0u8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+    let content = ChunkedWriteFixture::two_chunk_content();
 
-    let err = host
-        .write_file_with_write_observer(
-            &path,
-            &content,
-            false,
-            FrameWriteObserver::new({
-                let write_start_count = Arc::clone(&write_start_count);
-                move || {
-                    write_start_count.fetch_add(1, Ordering::SeqCst);
-                    Ok(())
-                }
-            }),
-        )
-        .await
-        .unwrap_err();
+    let err = file_impl::test_support::write_file_with_small_chunks(
+        &host,
+        &path,
+        &content,
+        false,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }),
+    )
+    .await
+    .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
@@ -402,23 +449,23 @@ async fn write_file_chunked_rejects_invalid_guest_path_before_cleanup_or_write()
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let write_start_count = Arc::new(AtomicUsize::new(0));
-    let content = vec![0u8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+    let content = ChunkedWriteFixture::two_chunk_content();
 
-    let err = host
-        .write_file_with_write_observer(
-            "/tmp/has\0nul",
-            &content,
-            false,
-            FrameWriteObserver::new({
-                let write_start_count = Arc::clone(&write_start_count);
-                move || {
-                    write_start_count.fetch_add(1, Ordering::SeqCst);
-                    Ok(())
-                }
-            }),
-        )
-        .await
-        .unwrap_err();
+    let err = file_impl::test_support::write_file_with_small_chunks(
+        &host,
+        "/tmp/has\0nul",
+        &content,
+        false,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }),
+    )
+    .await
+    .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
@@ -437,23 +484,23 @@ async fn write_file_chunked_rejects_temp_path_overflow_before_cleanup_or_write()
     let host = Arc::new(host);
     let write_start_count = Arc::new(AtomicUsize::new(0));
     let path = format!("/{}", "a".repeat(u16::MAX as usize - 1));
-    let content = vec![0u8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+    let content = ChunkedWriteFixture::two_chunk_content();
 
-    let err = host
-        .write_file_with_write_observer(
-            &path,
-            &content,
-            false,
-            FrameWriteObserver::new({
-                let write_start_count = Arc::clone(&write_start_count);
-                move || {
-                    write_start_count.fetch_add(1, Ordering::SeqCst);
-                    Ok(())
-                }
-            }),
-        )
-        .await
-        .unwrap_err();
+    let err = file_impl::test_support::write_file_with_small_chunks(
+        &host,
+        &path,
+        &content,
+        false,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }),
+    )
+    .await
+    .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
@@ -520,8 +567,11 @@ async fn test_write_file_chunked() {
 async fn write_private_file_single_chunk_sets_private_flag() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
-    let write_task =
-        spawn_write_private_file(Arc::clone(&host), "/tmp/private.env", b"secret".to_vec());
+    let write_task = super::support::spawn_write_private_file(
+        Arc::clone(&host),
+        "/tmp/private.env",
+        b"secret".to_vec(),
+    );
 
     let frame = expect_write_file(&mut guest).await;
     assert_eq!(frame.path, "/tmp/private.env");
@@ -540,7 +590,11 @@ async fn write_private_file_chunked_writes_final_path_without_rename() {
     let host = Arc::new(host);
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let content = vec![0xCD; chunk_limit + 100];
-    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-big.env", content);
+    let write_task = spawn_write_private_file_with_small_chunks(
+        Arc::clone(&host),
+        "/tmp/private-big.env",
+        content,
+    );
 
     let first = expect_write_file(&mut guest).await;
     assert_eq!(first.path, "/tmp/private-big.env");
@@ -571,9 +625,16 @@ async fn write_private_file_chunked_serializes_equivalent_destinations() {
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let content_a = vec![0xAA; chunk_limit + 1];
     let content_b = vec![0xBB; chunk_limit + 1];
-    let mut write_a = Box::pin(host.write_private_file("/tmp/private-serialized.bin", &content_a));
-    let mut write_b =
-        Box::pin(host.write_private_file("/tmp/./private-serialized.bin", &content_b));
+    let mut write_a = Box::pin(write_private_file_with_small_chunks(
+        &host,
+        "/tmp/private-serialized.bin",
+        &content_a,
+    ));
+    let mut write_b = Box::pin(write_private_file_with_small_chunks(
+        &host,
+        "/tmp/./private-serialized.bin",
+        &content_b,
+    ));
 
     let first_a = tokio::select! {
         _ = write_a.as_mut() => panic!("first private write completed before its first response"),
@@ -627,7 +688,11 @@ async fn write_private_file_chunked_excludes_single_private_ordinary_and_batch_w
     let (host, mut guest) = setup_host_and_guest().await;
     let target = "/tmp/private-exclusive.bin";
     let private_content = ChunkedWriteFixture::two_chunk_content();
-    let mut private_write = Box::pin(host.write_private_file(target, &private_content));
+    let mut private_write = Box::pin(write_private_file_with_small_chunks(
+        &host,
+        target,
+        &private_content,
+    ));
 
     let first_private = tokio::select! {
         _ = private_write.as_mut() => panic!("private write completed before its first response"),
@@ -719,8 +784,11 @@ async fn write_private_file_chunked_excludes_single_private_ordinary_and_batch_w
 async fn write_private_file_chunked_allows_independent_path_progress() {
     let (host, mut guest) = setup_host_and_guest().await;
     let private_content = ChunkedWriteFixture::two_chunk_content();
-    let mut private_write =
-        Box::pin(host.write_private_file("/tmp/private-progress.bin", &private_content));
+    let mut private_write = Box::pin(write_private_file_with_small_chunks(
+        &host,
+        "/tmp/private-progress.bin",
+        &private_content,
+    ));
 
     let first_private = tokio::select! {
         _ = private_write.as_mut() => panic!("private write completed before its first response"),
@@ -764,7 +832,11 @@ async fn write_private_file_chunked_guest_failure_releases_tracker() {
     let host = Arc::new(host);
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let content = vec![0xCD; chunk_limit + 100];
-    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-fail.env", content);
+    let write_task = spawn_write_private_file_with_small_chunks(
+        Arc::clone(&host),
+        "/tmp/private-fail.env",
+        content,
+    );
 
     let first = expect_write_file(&mut guest).await;
     assert_eq!(first.path, "/tmp/private-fail.env");
@@ -807,7 +879,8 @@ async fn write_private_file_chunked_cancelled_before_first_frame_write_releases_
         let host = Arc::clone(&host);
         let write_start_count = Arc::clone(&write_start_count);
         tokio::spawn(async move {
-            host.write_private_file_with_write_observer(
+            file_impl::test_support::write_private_file_with_small_chunks(
+                &host,
                 "/tmp/private-blocked.env",
                 &content,
                 FrameWriteObserver::new(move || {
@@ -836,7 +909,7 @@ async fn write_private_file_chunked_cancelled_before_first_frame_write_releases_
         NormalOperationReadiness::Idle
     );
 
-    let successor = spawn_write_file(
+    let successor = super::support::spawn_write_file(
         Arc::clone(&host),
         "/tmp/private-blocked.env",
         b"replacement".to_vec(),
@@ -859,20 +932,20 @@ async fn write_private_file_chunked_chunk_observer_error_keeps_tracker_fail_clos
     let write_start_count = Arc::new(AtomicUsize::new(0));
     let content = ChunkedWriteFixture::two_chunk_content();
 
-    let err = host
-        .write_private_file_with_write_observer(
-            "/tmp/private-observer.env",
-            &content,
-            FrameWriteObserver::new({
-                let write_start_count = Arc::clone(&write_start_count);
-                move || {
-                    write_start_count.fetch_add(1, Ordering::SeqCst);
-                    Err(io::Error::other("private chunk observer failed"))
-                }
-            }),
-        )
-        .await
-        .unwrap_err();
+    let err = file_impl::test_support::write_private_file_with_small_chunks(
+        &host,
+        "/tmp/private-observer.env",
+        &content,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Err(io::Error::other("private chunk observer failed"))
+            }
+        }),
+    )
+    .await
+    .unwrap_err();
 
     assert!(err.to_string().contains("private chunk observer failed"));
     assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
@@ -892,8 +965,11 @@ async fn write_private_file_chunked_unexpected_response_keeps_tracker_fail_close
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let content = ChunkedWriteFixture::two_chunk_content();
-    let write_task =
-        spawn_write_private_file(Arc::clone(&host), "/tmp/private-unexpected.env", content);
+    let write_task = spawn_write_private_file_with_small_chunks(
+        Arc::clone(&host),
+        "/tmp/private-unexpected.env",
+        content,
+    );
 
     let first = expect_write_file(&mut guest).await;
     assert_eq!(first.path, "/tmp/private-unexpected.env");
@@ -974,13 +1050,13 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
     let host = Arc::new(host);
     let target_path = "/tmp/shared.bin";
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
-    let write_a = spawn_write_file(
+    let write_a = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![0xAA; chunk_limit + 1],
         false,
     );
-    let write_b = spawn_write_file(
+    let write_b = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![0xBB; chunk_limit + 1],
@@ -1069,13 +1145,13 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let success_marker = 0xAA;
     let failure_marker = 0xBB;
-    let successful_write = spawn_write_file(
+    let successful_write = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![success_marker; chunk_limit + 1],
         false,
     );
-    let failing_write = spawn_write_file(
+    let failing_write = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![failure_marker; chunk_limit + 1],
@@ -1357,21 +1433,21 @@ async fn write_file_chunked_chunk_observer_error_keeps_tracker_fail_closed() {
     let write_start_count = Arc::new(AtomicUsize::new(0));
     let content = ChunkedWriteFixture::two_chunk_content();
 
-    let err = host
-        .write_file_with_write_observer(
-            "/tmp/big.bin",
-            &content,
-            false,
-            FrameWriteObserver::new({
-                let write_start_count = Arc::clone(&write_start_count);
-                move || {
-                    write_start_count.fetch_add(1, Ordering::SeqCst);
-                    Err(io::Error::other("chunk observer failed"))
-                }
-            }),
-        )
-        .await
-        .unwrap_err();
+    let err = file_impl::test_support::write_file_with_small_chunks(
+        &host,
+        "/tmp/big.bin",
+        &content,
+        false,
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Err(io::Error::other("chunk observer failed"))
+            }
+        }),
+    )
+    .await
+    .unwrap_err();
 
     assert!(err.to_string().contains("chunk observer failed"));
     assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
@@ -1491,7 +1567,8 @@ async fn write_file_chunked_rename_observer_error_keeps_tracker_fail_closed() {
         let host = Arc::clone(&fixture.host);
         let write_start_count = Arc::clone(&write_start_count);
         tokio::spawn(async move {
-            host.write_file_with_write_observer(
+            file_impl::test_support::write_file_with_small_chunks(
+                &host,
                 "/tmp/big.bin",
                 &content,
                 false,
@@ -1661,7 +1738,8 @@ async fn write_file_chunked_cleanup_retry_does_not_reuse_write_observer() {
         let host = Arc::clone(&fixture.host);
         let write_start_count = Arc::clone(&write_start_count);
         tokio::spawn(async move {
-            host.write_file_with_write_observer(
+            file_impl::test_support::write_file_with_small_chunks(
+                &host,
                 "/tmp/big.bin",
                 &content,
                 false,
@@ -1743,27 +1821,118 @@ async fn write_file_chunked_cleanup_nonzero_exit_retries_untracked_on_drop() {
 }
 
 #[tokio::test]
-async fn test_write_file_at_chunk_limit_uses_single_message() {
+async fn write_file_production_chunk_boundaries() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
-    let content = vec![0xABu8; chunk_limit];
-    let write_task = spawn_write_file(
-        Arc::clone(&host),
-        "/tmp/exact-limit.bin",
-        content.clone(),
-        false,
-    );
 
-    let write = expect_write_file(&mut guest).await;
-    assert_eq!(write.path, "/tmp/exact-limit.bin");
-    assert_eq!(write.content, content);
-    assert!(!write.append);
+    {
+        let marker = 0xAB;
+        let write_task = super::support::spawn_write_file(
+            Arc::clone(&host),
+            "/tmp/exact-limit.bin",
+            vec![marker; chunk_limit],
+            false,
+        );
 
-    send_write_file_success(&mut guest, write.seq()).await;
+        let write = expect_write_file(&mut guest).await;
+        assert_eq!(write.path, "/tmp/exact-limit.bin");
+        assert_eq!(write.content.len(), chunk_limit);
+        assert!(write.content.iter().all(|byte| *byte == marker));
+        assert!(!write.sudo);
+        assert!(!write.append);
+        assert!(!write.private);
+        send_write_file_success(&mut guest, write.seq()).await;
+        drop(write);
 
-    write_task.await.unwrap().unwrap();
+        write_task.await.unwrap().unwrap();
+    }
+
+    {
+        let marker = 0xCD;
+        let target_path = "/tmp/over-limit.bin";
+        let write_task = super::support::spawn_write_file(
+            Arc::clone(&host),
+            target_path,
+            vec![marker; chunk_limit + 1],
+            false,
+        );
+
+        let first = expect_write_file(&mut guest).await;
+        assert!(first.path.starts_with(&format!("{target_path}.vm0tmp-")));
+        let temp_path = first.path.clone();
+        assert_eq!(first.content.len(), chunk_limit);
+        assert!(first.content.iter().all(|byte| *byte == marker));
+        assert!(!first.sudo);
+        assert!(!first.append);
+        assert!(!first.private);
+        send_write_file_success(&mut guest, first.seq()).await;
+        drop(first);
+
+        let second = expect_write_file(&mut guest).await;
+        assert_eq!(second.path, temp_path);
+        assert_eq!(second.content, [marker]);
+        assert!(!second.sudo);
+        assert!(second.append);
+        assert!(!second.private);
+        send_write_file_success(&mut guest, second.seq()).await;
+        drop(second);
+
+        let rename = expect_exec_start(&mut guest).await;
+        assert_eq!(rename.label, "write-file-rename");
+        assert_eq!(
+            rename.command,
+            format!(
+                "mv -fT -- {} {}",
+                quote_shell_arg(&temp_path),
+                quote_shell_arg(target_path)
+            )
+        );
+        assert!(!rename.sudo);
+        assert_helper_exec_capture_policy(&rename);
+        send_exec_result(
+            &mut guest,
+            rename.seq(),
+            ExecTermination::Exited { exit_code: 0 },
+            &[],
+            &[],
+        )
+        .await;
+
+        write_task.await.unwrap().unwrap();
+    }
+
+    {
+        let marker = 0xEF;
+        let target_path = "/tmp/private-over-limit.bin";
+        let write_task = super::support::spawn_write_private_file(
+            Arc::clone(&host),
+            target_path,
+            vec![marker; chunk_limit + 1],
+        );
+
+        let first = expect_write_file(&mut guest).await;
+        assert_eq!(first.path, target_path);
+        assert_eq!(first.content.len(), chunk_limit);
+        assert!(first.content.iter().all(|byte| *byte == marker));
+        assert!(!first.sudo);
+        assert!(!first.append);
+        assert!(first.private);
+        send_write_file_success(&mut guest, first.seq()).await;
+        drop(first);
+
+        let second = expect_write_file(&mut guest).await;
+        assert_eq!(second.path, target_path);
+        assert_eq!(second.content, [marker]);
+        assert!(!second.sudo);
+        assert!(second.append);
+        assert!(second.private);
+        send_write_file_success(&mut guest, second.seq()).await;
+        drop(second);
+
+        write_task.await.unwrap().unwrap();
+    }
 }
 
 #[tokio::test]
@@ -1830,7 +1999,7 @@ async fn test_write_file_chunked_cleans_up_on_mv_failure() {
 async fn test_write_file_chunked_cleans_up_when_cancelled() {
     let (host_stream, guest) = make_pair();
 
-    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let content = vec![0xABu8; chunk_limit + 100];
     let (first_chunk_tx, first_chunk_rx) = oneshot::channel::<()>();
     let (cleanup_tx, cleanup_rx) = oneshot::channel::<String>();
@@ -1895,7 +2064,12 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    let mut write = Box::pin(host.write_file("/tmp/big.bin", &content, false));
+    let mut write = Box::pin(write_file_with_small_chunks(
+        &host,
+        "/tmp/big.bin",
+        &content,
+        false,
+    ));
     tokio::select! {
         _ = &mut write => panic!("chunked write completed before cancellation"),
         result = first_chunk_rx => {
