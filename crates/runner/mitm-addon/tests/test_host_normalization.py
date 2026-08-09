@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 import host_normalization
+from tests.host_normalization_cases import INVALID_IDNA_HOSTNAME_CASES
 
 
 def test_ascii_hostname_bypasses_unicode_pipeline():
@@ -48,6 +49,12 @@ def test_ascii_hostname_bypasses_unicode_pipeline():
 )
 def test_ascii_label_contract(label, expected):
     assert host_normalization.normalize_idna_label(label) == expected
+
+
+@pytest.mark.parametrize("hostname", INVALID_IDNA_HOSTNAME_CASES)
+def test_rejects_invalid_idna_hostname(hostname):
+    with pytest.raises(UnicodeError):
+        host_normalization.normalize_idna_hostname(hostname)
 
 
 @pytest.mark.parametrize(
