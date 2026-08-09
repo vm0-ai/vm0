@@ -346,6 +346,95 @@ def test_gzip_chunks_are_observed_without_changing_forwarded_bytes(
     ]
 
 
+@pytest.mark.parametrize(
+    ("sandbox_token", "api_url"),
+    [
+        pytest.param("", "https://api.test", id="missing-sandbox-token"),
+        pytest.param("tok-xyz", "", id="missing-api-url"),
+    ],
+)
+def test_incomplete_context_retains_timing_until_complete_retry(
+    tmp_path: Path,
+    real_flow,
+    mitm_ctx,
+    sandbox_token: str,
+    api_url: str,
+) -> None:
+    pending_path = tmp_path / "usage-pending"
+    usage.set_pending_path(str(pending_path))
+    delivery_available = False
+    admission_calls: list[tuple[str, str, dict[str, object], str, str]] = []
+
+    def enqueue_timing_delivery(
+        url: str,
+        admitted_sandbox_token: str,
+        payload: dict[str, object],
+        proxy_log_path: str,
+        log_type: str,
+    ) -> bool:
+        admission_calls.append((url, admitted_sandbox_token, payload, proxy_log_path, log_type))
+        return delivery_available
+
+    incomplete_flow = _claude_sse_flow(real_flow, tmp_path)
+    incomplete_flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = sandbox_token
+
+    with patch.object(
+        usage.webhook,
+        "enqueue_webhook_delivery",
+        side_effect=enqueue_timing_delivery,
+    ):
+        first_event_started_at = datetime.now(UTC)
+        with mitm_ctx(api_url=api_url):
+            mitm_addon.responseheaders(incomplete_flow)
+            _feed(incomplete_flow, _message_start(include_usage=False))
+            first_event_finished_at = datetime.now(UTC)
+            mitm_addon.response(incomplete_flow)
+
+        assert admission_calls == []
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="incomplete-context",
+        )
+
+        delivery_available = True
+        complete_flow = _claude_sse_flow(real_flow, tmp_path)
+        with mitm_ctx(api_url="https://api.test"):
+            mitm_addon.responseheaders(complete_flow)
+            _feed(complete_flow, _message_start(include_usage=False))
+            mitm_addon.response(complete_flow)
+
+    [(url, admitted_token, payload, proxy_log_path, log_type)] = admission_calls
+    assert url == "https://api.test/api/webhooks/agent/telemetry"
+    assert admitted_token == "tok-xyz"
+    assert proxy_log_path == str(tmp_path / "proxy.jsonl")
+    assert log_type == "claude_output_timing"
+    assert payload["runId"] == "run-abc-123"
+    operations = payload["sandboxOperations"]
+    assert isinstance(operations, list)
+    [operation] = operations
+    assert isinstance(operation, dict)
+    assert operation == {
+        "ts": operation["ts"],
+        "action_type": _FIRST_MESSAGE_START,
+        "duration_ms": 0,
+        "success": True,
+    }
+    observed_at_value = operation["ts"]
+    assert isinstance(observed_at_value, str)
+    observed_at = datetime.fromisoformat(observed_at_value)
+    assert first_event_started_at <= observed_at <= first_event_finished_at
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="complete-context",
+    )
+
+
 def test_eviction_and_reset_release_retained_buffered_report(
     tmp_path: Path,
     real_flow,
