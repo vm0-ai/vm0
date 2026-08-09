@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.713.0](https://github.com/vm0-ai/vm0/compare/app-v0.712.3...app-v0.713.0) (2026-08-09)
+
+
+### Features
+
+* unify conversation search results ([#25901](https://github.com/vm0-ai/vm0/issues/25901)) ([ce3cd5d](https://github.com/vm0-ai/vm0/commit/ce3cd5d2992214c49c0e98875949c9d4cf928b68))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.300.0
+    * @vm0/core bumped to 8.533.2
+
 ## [0.712.3](https://github.com/vm0-ai/vm0/compare/app-v0.712.2...app-v0.712.3) (2026-08-09)
 
 
