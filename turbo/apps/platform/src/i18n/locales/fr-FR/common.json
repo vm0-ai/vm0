@@ -162,6 +162,7 @@
       "files_one": "{{formattedCount}} fichier",
       "files_many": "{{formattedCount}} fichiers",
       "files_other": "{{formattedCount}} fichiers",
+      "handoffApiToSandbox": "Transfert · Serveur API → Sandbox",
       "initialize": "Initialiser",
       "inputTokens": "dans : {{formattedCount}}",
       "models_one": "{{formattedCount}} modèle",

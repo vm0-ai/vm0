@@ -56,6 +56,11 @@ const HANDOFF_ASSISTANT = assistantMessage([
   },
 ]);
 
+const PRIOR_ASSISTANT = assistantMessage(
+  [{ type: "text", text: "Previous answer." }],
+  "stop",
+);
+
 const TOOL_RESULT: ToolResultMessage = {
   role: "toolResult",
   toolCallId: "bash-1",
@@ -91,21 +96,31 @@ const CONFIG: PiStandbyAgentConfig = {
   skillSnapshot: SNAPSHOT,
 };
 
-function transcript(lastOrdinal = 3) {
+function persistedMessage(
+  ordinal: number,
+  sequenceNumber: number,
+  payload: PiAgentMessage,
+  runId = CONFIG.runId,
+) {
   return {
-    version: 1,
-    lastOrdinal,
-    messages: [
-      {
-        ordinal: 3,
-        messageId: `${CONFIG.runId}/7`,
-        runId: CONFIG.runId,
-        runEventSequenceNumber: 7,
-        role: "assistant",
-        payload: HANDOFF_ASSISTANT,
-        createdAt: "2026-08-06T00:00:00.000Z",
-      },
-    ],
+    ordinal,
+    messageId: `${runId}/${sequenceNumber}`,
+    runId,
+    runEventSequenceNumber: sequenceNumber,
+    role: payload.role,
+    payload,
+    createdAt: "2026-08-06T00:00:00.000Z",
+  };
+}
+
+function transcriptPage(
+  messages: ReturnType<typeof persistedMessage>[],
+  hasMore = false,
+) {
+  return {
+    lastOrdinal: messages.at(-1)?.ordinal ?? 0,
+    hasMore,
+    messages,
   };
 }
 
@@ -123,6 +138,49 @@ class FakeIo implements PiAgentLoopIo {
 
   async write(frame: Readonly<Record<string, unknown>>): Promise<void> {
     this.outputs.push({ ...frame });
+  }
+}
+
+class ControlledIo implements PiAgentLoopIo {
+  readonly outputs: Array<Record<string, unknown>> = [];
+  readonly #inputs: unknown[] = [];
+  readonly #readers: Array<(frame: unknown) => void> = [];
+  readonly #onWrite: (
+    frame: Readonly<Record<string, unknown>>,
+    io: ControlledIo,
+  ) => void;
+
+  constructor(
+    onWrite: (
+      frame: Readonly<Record<string, unknown>>,
+      io: ControlledIo,
+    ) => void,
+  ) {
+    this.#onWrite = onWrite;
+  }
+
+  push(frame: unknown): void {
+    const reader = this.#readers.shift();
+    if (reader === undefined) {
+      this.#inputs.push(frame);
+      return;
+    }
+    reader(frame);
+  }
+
+  async read(): Promise<unknown | null> {
+    const frame = this.#inputs.shift();
+    if (frame !== undefined) {
+      return frame;
+    }
+    return await new Promise<unknown>((resolve) => {
+      this.#readers.push(resolve);
+    });
+  }
+
+  async write(frame: Readonly<Record<string, unknown>>): Promise<void> {
+    this.outputs.push({ ...frame });
+    this.#onWrite(frame, this);
   }
 }
 
@@ -150,7 +208,7 @@ describe("internal Pi standby agent loop", () => {
     expect(config.skillSnapshot).toEqual(SNAPSHOT);
   });
 
-  it("releases an unused standby without starting the model", async () => {
+  it("starts reading immediately and honors an API release", async () => {
     const io = new FakeIo([
       { type: "pi-standby-release", reason: "api-complete" },
     ]);
@@ -175,11 +233,11 @@ describe("internal Pi standby agent loop", () => {
       await executionEnv.cleanup();
     }
 
-    expect(resumed).toBe(false);
-    expect(io.outputs[0]).toMatchObject({
-      type: "pi-ready",
-      runId: CONFIG.runId,
-      skillSnapshotDigest: SNAPSHOT_DIGEST,
+    expect(resumed).toBeFalsy();
+    expect(io.outputs[1]).toEqual({
+      type: "pi-transcript-read",
+      requestId: "transcript-1",
+      afterOrdinal: 0,
     });
     expect(io.outputs.at(-1)).toEqual({
       type: "pi-released",
@@ -187,11 +245,7 @@ describe("internal Pi standby agent loop", () => {
     });
   });
 
-  it("releases itself when the standby TTL expires with no control frame", async () => {
-    // A prewarmed standby waits with its control stream open and no frame
-    // pending. FakeIo cannot express that: an empty queue resolves `read()`
-    // with null, which makes `readFrame` throw before the TTL timer can win
-    // the race. This IO keeps the read pending so the TTL path is reachable.
+  it("fails when no tool call is persisted before the standby TTL", async () => {
     class SilentIo implements PiAgentLoopIo {
       readonly outputs: Array<Record<string, unknown>> = [];
 
@@ -206,43 +260,43 @@ describe("internal Pi standby agent loop", () => {
 
     const io = new SilentIo();
     const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
-    let resumed = false;
-    const resume = (async () => {
-      resumed = true;
-    }) satisfies PiAgentResume;
 
     try {
-      await runPiStandbyAgentLoop(
-        {
-          io,
-          config: CONFIG,
-          executionEnv,
-          standbyTtlSeconds: 0.05,
-          resume,
-        },
-        new AbortController().signal,
-      );
+      await expect(
+        runPiStandbyAgentLoop(
+          {
+            io,
+            config: CONFIG,
+            executionEnv,
+            standbyTtlSeconds: 0.01,
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toThrow("timed out waiting for a persisted tool call");
     } finally {
       await executionEnv.cleanup();
     }
 
-    expect(resumed).toBe(false);
-    expect(io.outputs.at(-1)).toEqual({ type: "pi-released", reason: "ttl" });
+    expect(io.outputs).not.toContainEqual({
+      type: "pi-released",
+      reason: "ttl",
+    });
   });
 
-  it("acks every message before reporting completion", async () => {
+  it("takes over from the database without handoff and ignores later controls", async () => {
     const io = new FakeIo([
-      { type: "pi-handoff" },
       {
         type: "pi-transcript",
         requestId: "transcript-1",
-        transcript: transcript(),
+        transcript: transcriptPage([persistedMessage(3, 7, HANDOFF_ASSISTANT)]),
       },
+      { type: "pi-handoff" },
       {
         type: "pi-message-ack",
         messageId: `${CONFIG.runId}/8`,
         status: 200,
       },
+      { type: "pi-standby-release", reason: "api-complete" },
       {
         type: "pi-message-ack",
         messageId: `${CONFIG.runId}/9`,
@@ -279,14 +333,11 @@ describe("internal Pi standby agent loop", () => {
       type: "pi.message.completed",
       sequenceNumber: 8,
       messageId: `${CONFIG.runId}/8`,
-      expectedVersion: 1,
-      expectedLastOrdinal: 3,
     });
     expect(eventMessage(messageFrames[0]!)).toEqual(TOOL_RESULT);
     expect(messageFrames[1]?.event).toMatchObject({
       sequenceNumber: 9,
       messageId: `${CONFIG.runId}/9`,
-      expectedLastOrdinal: 4,
     });
     expect(eventMessage(messageFrames[1]!)).toEqual(FINAL_ASSISTANT);
     expect(io.outputs.at(-1)).toMatchObject({
@@ -297,35 +348,64 @@ describe("internal Pi standby agent loop", () => {
     });
   });
 
-  it("re-reads and replays after a CAS conflict", async () => {
+  it("drains transcript pages before taking over", async () => {
     const io = new FakeIo([
-      { type: "pi-handoff" },
       {
         type: "pi-transcript",
         requestId: "transcript-1",
-        transcript: transcript(3),
-      },
-      {
-        type: "pi-message-ack",
-        messageId: `${CONFIG.runId}/8`,
-        status: 409,
+        transcript: transcriptPage(
+          [persistedMessage(1, 6, PRIOR_ASSISTANT)],
+          true,
+        ),
       },
       {
         type: "pi-transcript",
         requestId: "transcript-2",
-        transcript: transcript(4),
-      },
-      {
-        type: "pi-message-ack",
-        messageId: `${CONFIG.runId}/8`,
-        status: 200,
+        transcript: transcriptPage([persistedMessage(2, 7, HANDOFF_ASSISTANT)]),
       },
     ]);
     const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
-    let resumeCount = 0;
+    let resumedMessages: readonly PiAgentMessage[] = [];
     const resume = (async (args) => {
-      resumeCount += 1;
-      await args.onMessage(TOOL_RESULT);
+      resumedMessages = args.messages;
+    }) satisfies PiAgentResume;
+
+    try {
+      await runPiStandbyAgentLoop(
+        { io, config: CONFIG, executionEnv, standbyTtlSeconds: 1, resume },
+        new AbortController().signal,
+      );
+    } finally {
+      await executionEnv.cleanup();
+    }
+
+    expect(resumedMessages).toEqual([PRIOR_ASSISTANT, HANDOFF_ASSISTANT]);
+    expect(io.outputs[2]).toEqual({
+      type: "pi-transcript-read",
+      requestId: "transcript-2",
+      afterOrdinal: 1,
+    });
+  });
+
+  it("polls again when the handoff notification is missed", async () => {
+    let transcriptReads = 0;
+    const io = new ControlledIo((frame, controlled) => {
+      if (frame.type === "pi-transcript-read") {
+        transcriptReads += 1;
+        controlled.push({
+          type: "pi-transcript",
+          requestId: frame.requestId,
+          transcript:
+            transcriptReads === 1
+              ? transcriptPage([])
+              : transcriptPage([persistedMessage(1, 7, HANDOFF_ASSISTANT)]),
+        });
+      }
+    });
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
+    let resumed = false;
+    const resume = (async () => {
+      resumed = true;
     }) satisfies PiAgentResume;
 
     try {
@@ -335,6 +415,7 @@ describe("internal Pi standby agent loop", () => {
           config: CONFIG,
           executionEnv,
           standbyTtlSeconds: 1,
+          pollIntervalMs: 1,
           resume,
         },
         new AbortController().signal,
@@ -343,28 +424,52 @@ describe("internal Pi standby agent loop", () => {
       await executionEnv.cleanup();
     }
 
-    expect(resumeCount).toBe(2);
-    expect(
-      io.outputs.filter((frame) => {
-        return frame.type === "pi-transcript-read";
-      }),
-    ).toHaveLength(2);
-    expect(io.outputs).toContainEqual({ type: "pi-transcript-conflict" });
-    const messageFrames = io.outputs.filter((frame) => {
-      return frame.type === "pi-message";
+    expect(transcriptReads).toBe(2);
+    expect(resumed).toBeTruthy();
+  });
+
+  it("does not take over a tool call from a previous run", async () => {
+    const previousRunId = "00000000-0000-4000-8000-000000000122";
+    let transcriptReads = 0;
+    const io = new ControlledIo((frame, controlled) => {
+      if (frame.type !== "pi-transcript-read") {
+        return;
+      }
+      transcriptReads += 1;
+      controlled.push({
+        type: "pi-transcript",
+        requestId: frame.requestId,
+        transcript:
+          transcriptReads === 1
+            ? transcriptPage([
+                persistedMessage(1, 7, HANDOFF_ASSISTANT, previousRunId),
+              ])
+            : transcriptPage([persistedMessage(2, 1, HANDOFF_ASSISTANT)]),
+      });
     });
-    expect(messageFrames).toHaveLength(2);
-    expect(messageFrames[0]?.event).toMatchObject({
-      messageId: `${CONFIG.runId}/8`,
-      expectedLastOrdinal: 3,
-    });
-    expect(messageFrames[1]?.event).toMatchObject({
-      messageId: `${CONFIG.runId}/8`,
-      expectedLastOrdinal: 4,
-    });
-    expect(io.outputs.at(-1)).toMatchObject({
-      type: "pi-complete",
-      lastEventSequence: 8,
-    });
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
+    let resumed = false;
+    const resume = (async () => {
+      resumed = true;
+    }) satisfies PiAgentResume;
+
+    try {
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: CONFIG,
+          executionEnv,
+          standbyTtlSeconds: 1,
+          pollIntervalMs: 1,
+          resume,
+        },
+        new AbortController().signal,
+      );
+    } finally {
+      await executionEnv.cleanup();
+    }
+
+    expect(transcriptReads).toBe(2);
+    expect(resumed).toBeTruthy();
   });
 });

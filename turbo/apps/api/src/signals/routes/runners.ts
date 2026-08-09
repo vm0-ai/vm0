@@ -1042,8 +1042,7 @@ function piExecutionContextValidSql(): SQL {
     )
     OR COALESCE(
       (
-        ${runnerJobQueue.executionContext}->>'piExecutionMode'
-          IN ('standby', 'cold-start')
+        ${runnerJobQueue.executionContext}->>'piExecutionMode' = 'standby'
         AND jsonb_typeof(
           ${runnerJobQueue.executionContext}->'piSystemPrompt'
         ) = 'string'

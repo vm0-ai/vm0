@@ -584,7 +584,6 @@ async fn execute(
         );
         return match reason {
             cli::PiStandbyReleaseReason::ApiComplete => 0,
-            cli::PiStandbyReleaseReason::Ttl => guest_contracts::pi_standby::TTL_RELEASE_EXIT_CODE,
         };
     }
 

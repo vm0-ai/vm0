@@ -18,7 +18,7 @@ import { vercelAIGatewayProvider } from "@earendil-works/pi-ai/providers/vercel-
 import type { Api, Message, Model } from "@earendil-works/pi-ai";
 
 import { createPiExecutionTools } from "./tools";
-import { executePiUnresolvedToolBatch } from "./recovery";
+import { executePiToolBatch } from "./tool-batch";
 import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
 
 type PiOpenAICompletionsProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
@@ -57,6 +57,21 @@ function executionTools(env: ExecutionEnv): AgentTool[] {
     // pi-agent-core's heterogeneous native tool tuple is runtime-compatible
     // with AgentTool[] after its schema validator narrows each call.
     return tool as unknown as AgentTool;
+  });
+}
+
+function edgeHandoffTools(env: ExecutionEnv): AgentTool[] {
+  return executionTools(env).map((tool) => {
+    return {
+      ...tool,
+      execute() {
+        return Promise.resolve({
+          content: [],
+          details: {},
+          terminate: true,
+        });
+      },
+    } as unknown as AgentTool;
   });
 }
 
@@ -209,7 +224,7 @@ export async function runPiAgentPrompt(
     {
       systemPrompt: args.systemPrompt,
       messages: [...(args.messages ?? [])],
-      tools: executionTools(args.executionEnv),
+      tools: edgeHandoffTools(args.executionEnv),
     },
     {
       model,
@@ -226,8 +241,8 @@ export async function runPiAgentPrompt(
 }
 
 /**
- * Resume a handed-off Pi turn by executing the latest unresolved assistant
- * tool batch in the Sandbox, then continuing the native model loop.
+ * Resume a handed-off Pi turn by executing the latest assistant tool batch in
+ * the Sandbox, then continuing the native model loop.
  */
 export async function runPiAgentResume(
   args: {
@@ -246,7 +261,7 @@ export async function runPiAgentResume(
     );
   }
   const messages = [...args.messages];
-  const toolResults = await executePiUnresolvedToolBatch(
+  const toolResults = await executePiToolBatch(
     {
       messages,
       executionEnv: args.executionEnv,
@@ -255,9 +270,7 @@ export async function runPiAgentResume(
     signal,
   );
   if (toolResults.length === 0) {
-    throw new Error(
-      "Pi transcript has no unresolved assistant tool-call batch",
-    );
+    throw new Error("Pi transcript does not end with an assistant tool batch");
   }
   messages.push(...toolResults);
   const continued = await runAgentLoopContinue(

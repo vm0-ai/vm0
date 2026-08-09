@@ -16,10 +16,9 @@ import { createPiExecutionTools } from "./tools";
 
 type PiAgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
-interface PiUnresolvedToolBatch {
-  readonly assistantIndex: number;
+interface PiToolBatch {
   readonly assistant: AssistantMessage;
-  readonly pendingToolCalls: readonly AgentToolCall[];
+  readonly toolCalls: readonly AgentToolCall[];
 }
 
 interface PreparedToolCall {
@@ -50,48 +49,17 @@ function isAssistantMessage(
   return message.role === "assistant";
 }
 
-function completedToolCallIds(
+function latestPiToolBatch(
   messages: readonly AgentMessage[],
-  afterIndex: number,
-): ReadonlySet<string> {
-  const completed = new Set<string>();
-  for (let index = afterIndex + 1; index < messages.length; index += 1) {
-    const message = messages[index];
-    if (message?.role === "toolResult") {
-      completed.add(message.toolCallId);
-    }
+): PiToolBatch | null {
+  const message = messages.at(-1);
+  if (!message || !isAssistantMessage(message)) {
+    return null;
   }
-  return completed;
-}
-
-/** Locate the newest assistant tool batch with at least one missing ToolResult. */
-export function findPiUnresolvedToolBatch(
-  messages: readonly AgentMessage[],
-): PiUnresolvedToolBatch | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!message || !isAssistantMessage(message)) {
-      continue;
-    }
-    const toolCalls = message.content.filter((block) => {
-      return block.type === "toolCall";
-    });
-    if (toolCalls.length === 0) {
-      continue;
-    }
-    const completed = completedToolCallIds(messages, index);
-    const pendingToolCalls = toolCalls.filter((toolCall) => {
-      return !completed.has(toolCall.id);
-    });
-    if (pendingToolCalls.length > 0) {
-      return {
-        assistantIndex: index,
-        assistant: message,
-        pendingToolCalls,
-      };
-    }
-  }
-  return null;
+  const toolCalls = message.content.filter((block) => {
+    return block.type === "toolCall";
+  });
+  return toolCalls.length === 0 ? null : { assistant: message, toolCalls };
 }
 
 function errorToolResult(message: string): AgentToolResult<unknown> {
@@ -225,8 +193,8 @@ function toolResultMessage(finalized: FinalizedToolCall): ToolResultMessage {
   };
 }
 
-async function executePendingToolCalls(
-  batch: PiUnresolvedToolBatch,
+async function executeToolCalls(
+  batch: PiToolBatch,
   tools: readonly AgentTool[],
   signal: AbortSignal,
   onEvent: PiAgentEventSink,
@@ -234,7 +202,7 @@ async function executePendingToolCalls(
   const finalizedCalls: Array<
     FinalizedToolCall | (() => Promise<FinalizedToolCall>)
   > = [];
-  for (const toolCall of batch.pendingToolCalls) {
+  for (const toolCall of batch.toolCalls) {
     await onEvent({
       type: "tool_execution_start",
       toolCallId: toolCall.id,
@@ -277,11 +245,8 @@ async function executePendingToolCalls(
   return messages;
 }
 
-/**
- * Execute only the missing calls from the latest unresolved assistant batch.
- * Tool selection and ExecutionEnv adapters are shared with the ordinary Pi loop.
- */
-export async function executePiUnresolvedToolBatch(
+/** Execute the latest assistant tool batch after a database-observed handoff. */
+export async function executePiToolBatch(
   args: {
     readonly messages: readonly AgentMessage[];
     readonly executionEnv: ExecutionEnv;
@@ -289,12 +254,12 @@ export async function executePiUnresolvedToolBatch(
   },
   signal: AbortSignal,
 ): Promise<readonly ToolResultMessage[]> {
-  const batch = findPiUnresolvedToolBatch(args.messages);
+  const batch = latestPiToolBatch(args.messages);
   if (!batch) {
     return [];
   }
   const tools = createPiExecutionTools(args.executionEnv).map((tool) => {
     return tool as unknown as AgentTool;
   });
-  return await executePendingToolCalls(batch, tools, signal, args.onEvent);
+  return await executeToolCalls(batch, tools, signal, args.onEvent);
 }

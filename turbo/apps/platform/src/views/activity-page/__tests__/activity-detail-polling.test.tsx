@@ -1701,6 +1701,117 @@ describe("activity detail polling", () => {
     });
   });
 
+  it("shows the Pi handoff boundary without source prefixes", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000198";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Pi Weather Run",
+          status: "completed",
+          prompt: "Check today's weather",
+          completedAt: "2026-03-10T14:56:10Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [
+            {
+              sequenceNumber: 1,
+              eventType: "pi.message.completed",
+              eventData: {
+                type: "pi.message.completed",
+                source: "api",
+                handoff: { from: "api", to: "sandbox" },
+                message: {
+                  role: "assistant",
+                  content: [
+                    { type: "text", text: "I will check the weather." },
+                    {
+                      type: "toolCall",
+                      id: "weather-help",
+                      name: "bash",
+                      arguments: { command: "zero weather --help" },
+                    },
+                  ],
+                },
+              },
+              createdAt: "2026-03-10T14:56:02Z",
+            },
+            {
+              sequenceNumber: 2,
+              eventType: "pi.message.completed",
+              eventData: {
+                type: "pi.message.completed",
+                source: "sandbox",
+                message: {
+                  role: "toolResult",
+                  toolCallId: "weather-help",
+                  toolName: "bash",
+                  content: [{ type: "text", text: "Usage: zero weather" }],
+                  isError: false,
+                },
+              },
+              createdAt: "2026-03-10T14:56:03Z",
+            },
+            {
+              sequenceNumber: 3,
+              eventType: "pi.message.completed",
+              eventData: {
+                type: "pi.message.completed",
+                source: "sandbox",
+                message: {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text: "The weather command needs coordinates.",
+                    },
+                  ],
+                },
+              },
+              createdAt: "2026-03-10T14:56:04Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("I will check the weather.")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("zero weather --help")).toHaveLength(2);
+    expect(
+      screen.getByText("The weather command needs coordinates."),
+    ).toBeInTheDocument();
+    const assistantMessage = screen.getByText("I will check the weather.");
+    const handoffMarker = screen.getByText("Handoff · API Server → Sandbox");
+    const toolResult = screen.getByText("Usage: zero weather");
+    expect(
+      assistantMessage.compareDocumentPosition(handoffMarker) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      handoffMarker.compareDocumentPosition(toolResult) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.queryByText("[Server]")).not.toBeInTheDocument();
+    expect(screen.queryByText("[Sandbox]")).not.toBeInTheDocument();
+  });
+
   it("shows grouped steps search results and network logs for a completed activity", async () => {
     const runId = "a0000000-0000-4000-a000-000000000199";
 
