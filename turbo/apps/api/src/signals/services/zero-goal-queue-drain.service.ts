@@ -174,7 +174,7 @@ function buildQueueFirstGoalRunInput(args: {
       selectedModel: modelPin.selectedModel,
       modelProvider: effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
-      cliAgentType,
+      framework: cliAgentType,
     },
     codexServiceTier,
     callbacks: buildGoalChatCallbacks({

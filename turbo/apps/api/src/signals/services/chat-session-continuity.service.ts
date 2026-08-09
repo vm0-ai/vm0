@@ -1,27 +1,47 @@
 import {
-  MODEL_PROVIDER_TYPES,
-  areProvidersCompatible,
-  normalizeRunModelId,
-  type ModelProviderType,
+  getFrameworkForType,
+  getVm0ConcreteProviderType,
+  isSupportedRunModel,
+  modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
-import {
-  modelProviderConnections,
-  modelProviderSurfaces,
-} from "@vm0/db/schema/model-provider-gateway";
+import { piThreadMessages } from "@vm0/db/schema/pi-thread-message";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
+import { isPiEdgeLoopRoute, PI_CHAT_SESSION_FRAMEWORK } from "./pi-edge-config";
+import { isWebChatTriggerSource } from "./zero-chat-trigger-source.service";
 
 export interface ChatThreadSessionRoute {
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
   readonly modelProviderId: string | null;
-  readonly cliAgentType: string | null;
+  readonly framework: string | null;
+}
+
+export function effectiveChatThreadSessionRoute(args: {
+  readonly route: ChatThreadSessionRoute;
+  readonly triggerSource: TriggerSource | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): ChatThreadSessionRoute {
+  return args.triggerSource !== undefined &&
+    isWebChatTriggerSource(args.triggerSource) &&
+    isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext) &&
+    args.route.framework === "codex" &&
+    isPiEdgeLoopRoute(args.route)
+    ? { ...args.route, framework: PI_CHAT_SESSION_FRAMEWORK }
+    : args.route;
 }
 
 export type ChatThreadSessionResolutionAction =
@@ -47,77 +67,77 @@ export interface ChatThreadSessionResolution {
 interface HistoricalThreadSession {
   readonly sessionId: string;
   readonly conversationId: string | null;
-  readonly route: ChatThreadSessionRoute;
-  readonly routeRunCreatedAt: Date;
+  readonly framework: string | null;
 }
 
 interface SessionRunRoute {
+  readonly runId: string;
+  readonly cliAgentType: string | null;
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
-  readonly modelProviderId: string | null;
-  readonly createdAt: Date;
-}
-
-function isKnownModelProvider(
-  value: string | null | undefined,
-): value is ModelProviderType {
-  return (
-    value !== null &&
-    value !== undefined &&
-    Object.hasOwn(MODEL_PROVIDER_TYPES, value)
-  );
-}
-
-/**
- * Return the vendor/model stem used for chat session continuity.
- *
- * Model IDs may be provider-qualified (for example, anthropic/claude-opus),
- * while the session family is the first part of the canonical model ID
- * (claude, gpt, glm, ...). This intentionally treats model variants in one
- * family as compatible while keeping different families isolated.
- */
-function chatSessionModelFamily(model: string): string {
-  const normalized = normalizeRunModelId(model.trim()).toLowerCase();
-  const modelName = normalized.includes("/")
-    ? normalized.slice(normalized.lastIndexOf("/") + 1)
-    : normalized;
-  return modelName.split(/[-_.]/, 1)[0] ?? modelName;
 }
 
 function shouldStartNewChatSession(args: {
-  readonly latestModel: string | null | undefined;
-  readonly nextModel: string | null;
-  readonly latestModelProvider?: string | null;
-  readonly nextModelProvider?: string | null;
-  readonly latestCliAgentType?: string | null;
-  readonly nextCliAgentType?: string | null;
+  readonly latestFramework: string | null;
+  readonly nextFramework: string | null;
 }): boolean {
-  if (
-    args.latestCliAgentType &&
-    args.nextCliAgentType &&
-    args.latestCliAgentType !== args.nextCliAgentType
-  ) {
-    return true;
-  }
-  if (
-    isKnownModelProvider(args.latestModelProvider) &&
-    isKnownModelProvider(args.nextModelProvider) &&
-    !areProvidersCompatible(args.latestModelProvider, args.nextModelProvider)
-  ) {
-    return true;
-  }
-  if (
-    args.latestModel === undefined ||
-    args.latestModel === null ||
-    args.nextModel === null
-  ) {
-    return false;
-  }
+  return args.latestFramework !== args.nextFramework;
+}
 
-  return (
-    chatSessionModelFamily(args.latestModel) !==
-    chatSessionModelFamily(args.nextModel)
-  );
+async function runUsesPiFramework(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly runId: string;
+}): Promise<boolean> {
+  // Completed Pi turns persist transcript rows instead of a CLI conversation.
+  // Before the first Pi message arrives, the active standby/cold-start job is
+  // the durable framework marker for the bound run.
+  const [message] = await args.db
+    .select({ runId: piThreadMessages.runId })
+    .from(piThreadMessages)
+    .where(eq(piThreadMessages.runId, args.runId))
+    .limit(1);
+  if (message) {
+    return true;
+  }
+  const [job] = await args.db
+    .select({ runId: runnerJobQueue.runId })
+    .from(runnerJobQueue)
+    .where(
+      and(
+        eq(runnerJobQueue.runId, args.runId),
+        sql`${runnerJobQueue.executionContext}->>'piExecutionMode'
+          IN ('standby', 'cold-start')`,
+      ),
+    )
+    .limit(1);
+  return job !== undefined;
+}
+
+async function sessionFramework(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly runId: string | null;
+  readonly cliAgentType: string | null;
+  readonly selectedModel: string | null;
+  readonly modelProvider: string | null;
+}): Promise<string | null> {
+  if (
+    args.runId !== null &&
+    (await runUsesPiFramework({ db: args.db, runId: args.runId }))
+  ) {
+    return PI_CHAT_SESSION_FRAMEWORK;
+  }
+  if (args.cliAgentType !== null) {
+    return args.cliAgentType;
+  }
+  const provider = modelProviderTypeSchema.safeParse(args.modelProvider);
+  if (!provider.success) {
+    return null;
+  }
+  const concreteProvider =
+    provider.data === "vm0" && isSupportedRunModel(args.selectedModel)
+      ? getVm0ConcreteProviderType(args.selectedModel)
+      : provider.data;
+  return getFrameworkForType(concreteProvider);
 }
 
 async function latestHistoricalThreadSession(args: {
@@ -131,11 +151,7 @@ async function latestHistoricalThreadSession(args: {
     .select({
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
-      selectedModel: zeroRuns.selectedModel,
-      modelProvider: zeroRuns.modelProvider,
-      modelProviderId: zeroRuns.modelProviderId,
       cliAgentType: conversations.cliAgentType,
-      routeRunCreatedAt: agentRuns.createdAt,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -162,13 +178,7 @@ async function latestHistoricalThreadSession(args: {
   return {
     sessionId: row.sessionId,
     conversationId: row.conversationId,
-    route: {
-      selectedModel: row.selectedModel,
-      modelProvider: row.modelProvider,
-      modelProviderId: row.modelProviderId,
-      cliAgentType: row.cliAgentType,
-    },
-    routeRunCreatedAt: row.routeRunCreatedAt,
+    framework: row.cliAgentType,
   };
 }
 
@@ -178,111 +188,18 @@ async function latestSessionRunRoute(args: {
 }): Promise<SessionRunRoute | null> {
   const [row] = await args.db
     .select({
+      runId: agentRuns.id,
+      cliAgentType: conversations.cliAgentType,
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
-      modelProviderId: zeroRuns.modelProviderId,
-      createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .leftJoin(conversations, eq(conversations.runId, agentRuns.id))
     .where(eq(agentRuns.sessionId, args.sessionId))
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
   return row ?? null;
-}
-
-async function customSurfaceRouteChanged(args: {
-  readonly db: Db | ReadonlyDb;
-  readonly orgId: string;
-  readonly previousModelProviderId: string | null;
-  readonly nextModelProviderId: string | null;
-  readonly previousRunCreatedAt: Date | null;
-}): Promise<boolean> {
-  const candidateSurfaceIds = [
-    args.previousModelProviderId,
-    args.nextModelProviderId,
-  ].filter((id): id is string => {
-    return id !== null;
-  });
-  if (candidateSurfaceIds.length === 0) {
-    return false;
-  }
-  const surfaces = await args.db
-    .select({
-      surfaceUpdatedAt: modelProviderSurfaces.updatedAt,
-      connectionUpdatedAt: modelProviderConnections.updatedAt,
-    })
-    .from(modelProviderSurfaces)
-    .innerJoin(
-      modelProviderConnections,
-      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
-    )
-    .where(
-      and(
-        inArray(modelProviderSurfaces.id, candidateSurfaceIds),
-        eq(modelProviderConnections.orgId, args.orgId),
-      ),
-    );
-  if (args.previousModelProviderId !== args.nextModelProviderId) {
-    return surfaces.length > 0;
-  }
-  const [surface] = surfaces;
-  return (
-    surface !== undefined &&
-    args.previousRunCreatedAt !== null &&
-    (surface.surfaceUpdatedAt > args.previousRunCreatedAt ||
-      surface.connectionUpdatedAt > args.previousRunCreatedAt)
-  );
-}
-
-function shouldRotateCanonicalSession(args: {
-  readonly previousRoute: ChatThreadSessionRoute;
-  readonly nextRoute: ChatThreadSessionRoute;
-}): boolean {
-  const providerIdChanged =
-    args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId;
-  const gatewayAdapterInUse =
-    args.previousRoute.modelProvider === "vercel-ai-gateway" ||
-    args.previousRoute.modelProvider === "vercel-ai-gateway-codex" ||
-    args.nextRoute.modelProvider === "vercel-ai-gateway" ||
-    args.nextRoute.modelProvider === "vercel-ai-gateway-codex";
-  if (providerIdChanged && gatewayAdapterInUse) {
-    // A custom surface uses the same runtime adapter type as a legacy Vercel
-    // provider. Once its connection is deleted, the surface row can no longer
-    // prove that the previous route was custom, so the provider identity must
-    // remain part of the canonical continuity boundary.
-    return true;
-  }
-  return shouldStartNewChatSession({
-    latestModel: args.previousRoute.selectedModel,
-    nextModel: args.nextRoute.selectedModel,
-    latestModelProvider: args.previousRoute.modelProvider,
-    nextModelProvider: args.nextRoute.modelProvider,
-    latestCliAgentType: args.previousRoute.cliAgentType,
-    nextCliAgentType: args.nextRoute.cliAgentType,
-  });
-}
-
-async function shouldRotateResolvedSession(args: {
-  readonly db: Db | ReadonlyDb;
-  readonly orgId: string;
-  readonly previousRoute: ChatThreadSessionRoute;
-  readonly nextRoute: ChatThreadSessionRoute;
-  readonly previousRunCreatedAt: Date | null;
-}): Promise<boolean> {
-  const routeConfigurationChanged = await customSurfaceRouteChanged({
-    db: args.db,
-    orgId: args.orgId,
-    previousModelProviderId: args.previousRoute.modelProviderId,
-    nextModelProviderId: args.nextRoute.modelProviderId,
-    previousRunCreatedAt: args.previousRunCreatedAt,
-  });
-  return routeConfigurationChanged
-    ? true
-    : shouldRotateCanonicalSession({
-        previousRoute: args.previousRoute,
-        nextRoute: args.nextRoute,
-      });
 }
 
 export async function resolveChatThreadSession(args: {
@@ -299,11 +216,9 @@ export async function resolveChatThreadSession(args: {
       agentSessionRunId: chatThreads.agentSessionRunId,
       sessionId: agentSessions.id,
       conversationId: agentSessions.conversationId,
+      routeRunId: chatThreads.agentSessionRunId,
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
-      modelProviderId: zeroRuns.modelProviderId,
-      routeRunId: zeroRuns.id,
-      routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
@@ -318,7 +233,6 @@ export async function resolveChatThreadSession(args: {
       ),
     )
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
-    .leftJoin(agentRuns, eq(agentRuns.id, chatThreads.agentSessionRunId))
     .leftJoin(zeroRuns, eq(zeroRuns.id, chatThreads.agentSessionRunId))
     .where(
       and(
@@ -346,19 +260,16 @@ export async function resolveChatThreadSession(args: {
             sessionId: thread.sessionId,
           })
         : null;
-    const previousRoute = {
+    const previousFramework = await sessionFramework({
+      db: args.db,
+      runId: latestRoute?.runId ?? thread.routeRunId,
+      cliAgentType: latestRoute?.cliAgentType ?? thread.cliAgentType,
       selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
       modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
-      modelProviderId: latestRoute?.modelProviderId ?? thread.modelProviderId,
-      cliAgentType: thread.cliAgentType,
-    };
-    const rotate = await shouldRotateResolvedSession({
-      db: args.db,
-      orgId: args.orgId,
-      previousRoute,
-      nextRoute: args.route,
-      previousRunCreatedAt:
-        latestRoute?.createdAt ?? thread.routeRunCreatedAt ?? null,
+    });
+    const rotate = shouldStartNewChatSession({
+      latestFramework: previousFramework,
+      nextFramework: args.route.framework,
     });
     return {
       sessionId: rotate ? undefined : thread.sessionId,
@@ -383,12 +294,9 @@ export async function resolveChatThreadSession(args: {
     };
   }
 
-  const rotate = await shouldRotateResolvedSession({
-    db: args.db,
-    orgId: args.orgId,
-    previousRoute: historical.route,
-    nextRoute: args.route,
-    previousRunCreatedAt: historical.routeRunCreatedAt,
+  const rotate = shouldStartNewChatSession({
+    latestFramework: historical.framework,
+    nextFramework: args.route.framework,
   });
   return {
     sessionId: rotate ? undefined : historical.sessionId,

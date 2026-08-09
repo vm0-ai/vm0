@@ -11,7 +11,10 @@ import {
   type ChatRecommendedFollowup,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -168,7 +171,10 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
-import { resolveChatThreadSession } from "./chat-session-continuity.service";
+import {
+  effectiveChatThreadSessionRoute,
+  resolveChatThreadSession,
+} from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
@@ -929,7 +935,7 @@ function buildQueuedCreateZeroRunArgs(
       selectedModel: input.modelPin.selectedModel,
       modelProvider: input.effectiveModelProvider ?? null,
       modelProviderId: input.modelPin.modelProviderId,
-      cliAgentType: input.cliAgentType,
+      framework: input.cliAgentType,
     },
     body: {
       prompt: input.prompt,
@@ -2671,6 +2677,7 @@ interface CreateQueuedChatRunInputArgs {
 function loadQueuedMessageSessionState(
   args: CreateQueuedChatRunInputArgs,
   modelRoute: QueuedMessageModelRoute,
+  featureSwitchContext: FeatureSwitchContext,
 ) {
   return measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2683,12 +2690,18 @@ function loadQueuedMessageSessionState(
         userId: args.userId,
         orgId: args.agent.orgId,
         agentComposeId: args.agent.id,
-        route: {
-          selectedModel: modelRoute.modelPin.selectedModel,
-          modelProvider: modelRoute.effectiveModelProvider ?? null,
-          modelProviderId: modelRoute.modelPin.modelProviderId,
-          cliAgentType: modelRoute.cliAgentType,
-        },
+        route: effectiveChatThreadSessionRoute({
+          route: {
+            selectedModel: modelRoute.modelPin.selectedModel,
+            modelProvider: modelRoute.effectiveModelProvider ?? null,
+            modelProviderId: modelRoute.modelPin.modelProviderId,
+            framework: modelRoute.cliAgentType,
+          },
+          triggerSource: queuedUserMessageTriggerSource(
+            args.queuedMessage.contextType,
+          ),
+          featureSwitchContext,
+        }),
       });
       const incompleteContext = isWebChatContextType(
         args.queuedMessage.contextType,
@@ -3108,7 +3121,7 @@ async function buildCreateQueuedChatRunInput(
   const modelRoute = modelRouteResolution.route;
 
   const [startNewSession, loadedIncompleteContext] =
-    await loadQueuedMessageSessionState(args, modelRoute);
+    await loadQueuedMessageSessionState(args, modelRoute, featureSwitchContext);
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,

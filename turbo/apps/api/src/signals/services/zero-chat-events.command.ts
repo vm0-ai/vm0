@@ -2818,7 +2818,7 @@ function buildCreateZeroRunArgs(params: {
       selectedModel: modelPin.selectedModel,
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
       modelProviderId: modelPin.modelProviderId,
-      cliAgentType: providerAdmission.cliAgentType,
+      framework: providerAdmission.cliAgentType,
     },
     codexServiceTier,
     callbacks: [

@@ -2833,13 +2833,14 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
-  it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
+  it("reuses a Codex session when switching from DeepSeek to Luna with PiLoop disabled", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const { providerId } = await upsertOrgModelProvider(actor, {
       type: "deepseek",
       secret: "selected-deepseek-responses-key",
     });
+    await seedVm0ManagedModelKey("gpt-5.6-luna");
     await api.updateOrgModelPolicies(actor, [
       {
         model: "deepseek-v4-flash",
@@ -2847,6 +2848,13 @@ describe("CHAT-02: model-first provider policies", () => {
         defaultProviderType: "deepseek",
         credentialScope: "org",
         modelProviderId: providerId,
+      },
+      {
+        model: "gpt-5.6-luna",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
       },
     ]);
 
@@ -2894,7 +2902,8 @@ describe("CHAT-02: model-first provider policies", () => {
     const followUp = await sendChatRun(actor, {
       agentId,
       threadId: run.threadId,
-      prompt: "continue with DeepSeek Responses",
+      prompt: "continue with Luna on the same Codex session",
+      model: "gpt-5.6-luna",
     });
     const { claim: followUpClaim } = await claimChatRun(
       runnerGroup,
@@ -2903,14 +2912,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const followUpEnvironment = claimEnvironment(followUpClaim);
     expect(followUpClaim.cliAgentType).toBe("codex");
     expect(followUpClaim.resumeSession?.sessionId).toBe(`bdd-cli-${run.runId}`);
-    expect(followUpClaim.codexRuntimeConfig?.providerId).toBe("deepseek");
-    expect(followUpEnvironment.OPENAI_API_KEY).toBe(
-      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
-    );
-    expect(followUpEnvironment.OPENAI_BASE_URL).toBe(
-      "https://api.deepseek.com/",
-    );
-    expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
+    expect(followUpEnvironment.OPENAI_MODEL).toBe("gpt-5.6-luna");
 
     await cancelChatRun(actor, followUp.runId);
   });
@@ -3701,7 +3703,7 @@ describe("CHAT-02: model-first provider policies", () => {
 });
 
 describe("CHAT-02: run-level model overrides", () => {
-  it("uses send model overrides without mutating the thread model while preserving same-family sessions", async () => {
+  it("uses send model overrides without mutating the thread model while preserving same-framework sessions", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -3751,7 +3753,7 @@ describe("CHAT-02: run-level model overrides", () => {
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
     ).toMatch(/[0-9a-f-]{36}/);
 
-    // A run-level override of another model in the same family resumes the CLI
+    // A run-level override on the same framework resumes the CLI
     // session, which already carries the prior web round, so the prompt does
     // not replay it.
     const second = await sendChatRun(actor, {
@@ -3800,7 +3802,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await flushWaitUntilForTest();
 
     // Follow-ups without a send model override go back to the thread's stored
-    // model. Both models remain in the Claude family, so session continuity is
+    // model. Both models remain on Claude Code, so session continuity is
     // preserved.
     const third = await sendChatRun(actor, {
       agentId,
@@ -3817,7 +3819,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 
-  it("resumes the CLI session across same-family model switches", async () => {
+  it("resumes the CLI session across same-framework model switches", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4312,7 +4314,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
-  it("rebuilds Web prompt context when a stale retry rotates the session", async () => {
+  it("keeps the session when a same-framework gateway changes during a stale retry", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped actor for binding validation");
@@ -4471,15 +4473,15 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(sandboxOperationEventsForRun(retried.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "chat_thread_session_binding_persisted",
-        binding_action: "rotated",
+        binding_action: "reused",
       }),
     );
     const retriedRun = await api.readRun(actor, retried.runId);
     const appendSystemPrompt = retriedRun.appendSystemPrompt ?? "";
-    expect(appendSystemPrompt).toContain("# Web Chat Run Context");
-    expect(appendSystemPrompt).toContain(anchorPrompt);
+    expect(appendSystemPrompt).not.toContain("# Web Chat Run Context");
+    expect(appendSystemPrompt).not.toContain(anchorPrompt);
     expect(appendSystemPrompt).toContain(incompletePrompt);
-    expect(appendSystemPrompt).not.toContain("# Incomplete Rounds Context");
+    expect(appendSystemPrompt).toContain("# Incomplete Rounds Context");
 
     const retryTimingEvents = apiDispatchTimingEventsForRun(retried.runId);
     for (const actionType of [
@@ -4493,11 +4495,13 @@ describe("CHAT-02: run-level model overrides", () => {
       ).toHaveLength(2);
     }
     const retriedClaim = await claimChatRun(runnerGroup, retried.runId);
-    expect(retriedClaim.claim.resumeSession).toBeNull();
+    expect(retriedClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${anchor.runId}`,
+    );
     await cancelChatRun(actor, retried.runId);
   }, 90_000);
 
-  it("replays only each prior run's final answer when a model family rotates the session", async () => {
+  it("replays only each prior run's final answer when the framework changes", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4547,7 +4551,7 @@ describe("CHAT-02: run-level model overrides", () => {
       });
     });
 
-    // Switching model family rotates the CLI session, so the prior round is
+    // Switching framework rotates the CLI session, so the prior round is
     // replayed. An agentic run emits one chat message per step; only its final
     // answer carries information the next run needs.
     await chat.updateThreadModelSelection(
@@ -4558,7 +4562,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "continue after the family switch",
+      prompt: "continue after the framework switch",
     });
     const appended = (await api.readRun(actor, second.runId))
       .appendSystemPrompt;
@@ -4755,7 +4759,7 @@ describe("CHAT-02: run-level model overrides", () => {
     ).resolves.toStrictEqual(firstBinding);
   }, 90_000);
 
-  it("rotates after a custom gateway is deleted and replaced by its legacy adapter", async () => {
+  it("reuses the session after a custom gateway is replaced by its same-framework legacy adapter", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -4838,34 +4842,34 @@ describe("CHAT-02: run-level model overrides", () => {
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "rotate away from the deleted custom surface",
+      prompt: "continue after the custom surface is replaced",
     });
-    const rotatedBinding = await readThreadSessionBinding(
+    const reusedBinding = await readThreadSessionBinding(
       context,
       first.threadId,
     );
-    expect(rotatedBinding.agent_session_id).not.toBe(
-      originalBinding.agent_session_id,
-    );
-    expect(rotatedBinding).toMatchObject({
+    expect(reusedBinding).toMatchObject({
+      agent_session_id: originalBinding.agent_session_id,
       agent_session_run_id: second.runId,
-      run_session_id: rotatedBinding.agent_session_id,
+      run_session_id: originalBinding.agent_session_id,
     });
     expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "chat_thread_session_binding_persisted",
         chat_thread_id: first.threadId,
-        agent_session_id: rotatedBinding.agent_session_id,
+        agent_session_id: originalBinding.agent_session_id,
         agent_session_run_id: second.runId,
-        binding_action: "rotated",
+        binding_action: "reused",
       }),
     );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession).toBeNull();
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
-  it("rotates from the latest session run when binding provenance is deleted", async () => {
+  it("reuses the latest session framework when binding provenance is deleted", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4938,26 +4942,24 @@ describe("CHAT-02: run-level model overrides", () => {
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "rotate after the provenance run is removed",
+      prompt: "reuse after the provenance run is removed",
     });
-    const rotatedBinding = await readThreadSessionBinding(
+    const reusedBinding = await readThreadSessionBinding(
       context,
       first.threadId,
     );
-    expect(rotatedBinding.agent_session_id).not.toBe(
-      originalBinding.agent_session_id,
-    );
-    expect(rotatedBinding).toMatchObject({
+    expect(reusedBinding).toMatchObject({
+      agent_session_id: originalBinding.agent_session_id,
       agent_session_run_id: third.runId,
-      run_session_id: rotatedBinding.agent_session_id,
+      run_session_id: originalBinding.agent_session_id,
     });
     expect(sandboxOperationEventsForRun(third.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "chat_thread_session_binding_persisted",
         chat_thread_id: first.threadId,
-        agent_session_id: rotatedBinding.agent_session_id,
+        agent_session_id: originalBinding.agent_session_id,
         agent_session_run_id: third.runId,
-        binding_action: "rotated",
+        binding_action: "reused",
       }),
     );
     const thirdClaim = await claimChatRun(runnerGroup, third.runId);
@@ -5073,18 +5075,18 @@ describe("CHAT-02: run-level model overrides", () => {
       ),
     );
     expect(thirdClaim.claim.cliAgentType).toBe("claude-code");
-    expect(thirdClaim.claim.resumeSession).toBeNull();
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${second.runId}`,
+    );
     await completeChatRunOk(third.runId, thirdClaim.sandboxHeaders);
-    const rotatedBinding = await readThreadSessionBinding(
+    const reusedBinding = await readThreadSessionBinding(
       context,
       first.threadId,
     );
-    expect(rotatedBinding.agent_session_id).not.toBe(
-      originalBinding.agent_session_id,
-    );
-    expect(rotatedBinding).toMatchObject({
+    expect(reusedBinding).toMatchObject({
+      agent_session_id: originalBinding.agent_session_id,
       agent_session_run_id: third.runId,
-      run_session_id: rotatedBinding.agent_session_id,
+      run_session_id: originalBinding.agent_session_id,
     });
     await expectNoThreadModelUpdateEvent(
       actor,
@@ -5095,16 +5097,16 @@ describe("CHAT-02: run-level model overrides", () => {
     const fourth = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "continue after the canonical session rotates",
+      prompt: "continue on the reused framework session",
     });
     const fourthBinding = await readThreadSessionBinding(
       context,
       first.threadId,
     );
     expect(fourthBinding).toMatchObject({
-      agent_session_id: rotatedBinding.agent_session_id,
+      agent_session_id: originalBinding.agent_session_id,
       agent_session_run_id: fourth.runId,
-      run_session_id: rotatedBinding.agent_session_id,
+      run_session_id: originalBinding.agent_session_id,
     });
     const fourthClaim = await claimChatRun(runnerGroup, fourth.runId);
     expect(fourthClaim.claim.resumeSession?.sessionId).toBe(

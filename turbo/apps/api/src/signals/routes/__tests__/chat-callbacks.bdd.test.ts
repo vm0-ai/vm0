@@ -4843,7 +4843,7 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
-  it("recovers a queued message through the current same-family workspace default", async () => {
+  it("recovers a queued message through the current same-framework workspace default", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4984,7 +4984,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("resumes the CLI session by default when the queued model stays within the same family", async () => {
+  it("resumes the CLI session by default when the queued model stays on the same framework", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -5007,7 +5007,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
 
     const first = await startChatRun(actor, {
       agentId,
-      prompt: "start on opus before queueing a Claude family switch",
+      prompt: "start on opus before queueing a Claude Code model switch",
       selectedModel: "claude-opus-4-6",
     });
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);

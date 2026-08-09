@@ -24,6 +24,22 @@ import { z } from "zod";
 
 export type PiEdgeModelConfig = PiAgentModelConfig;
 
+export const PI_CHAT_SESSION_FRAMEWORK = "pi";
+
+function isPiEdgeLoopModel(model: string | null | undefined): boolean {
+  return model === "deepseek-v4-flash";
+}
+
+export function isPiEdgeLoopRoute(route: {
+  readonly selectedModel: string | null;
+  readonly modelProvider: string | null;
+}): boolean {
+  return (
+    isPiEdgeLoopModel(route.selectedModel) &&
+    (route.modelProvider === "deepseek" || route.modelProvider === "vm0")
+  );
+}
+
 export const piEdgeModelConfigSchema = z
   .object({
     provider: z.enum(PI_OPENAI_COMPATIBLE_PROVIDERS),
@@ -136,7 +152,11 @@ export function resolvePiEdgeModelConfig(
     readonly inlineFirewall?: boolean;
   } | null,
 ): PiEdgeModelConfig | null {
-  if (!provider || !provider.selectedModel || provider.inlineFirewall) {
+  if (
+    !provider ||
+    !isPiEdgeLoopModel(provider.selectedModel) ||
+    provider.inlineFirewall
+  ) {
     return null;
   }
   const concreteType = provider.concreteType ?? provider.type;

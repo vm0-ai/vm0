@@ -34,6 +34,7 @@ import {
   type ZeroRunModelPin,
 } from "./agent-run-create.service";
 import {
+  effectiveChatThreadSessionRoute,
   resolveChatThreadSession,
   type ChatThreadSessionResolution,
   type ChatThreadSessionRoute,
@@ -869,6 +870,11 @@ async function resolveThreadSessionForZeroRun(
   if (!threadSessionRoute) {
     throw new Error("Thread-bound Zero run is missing its model route");
   }
+  const sessionRoute = effectiveChatThreadSessionRoute({
+    route: threadSessionRoute,
+    triggerSource: input.command.triggerSource,
+    featureSwitchContext: input.featureSwitchContext,
+  });
   const resolution = await measureZeroPreCreate(
     input.timing,
     "api_dispatch_pre_create_zero_resolve_thread_session",
@@ -879,7 +885,7 @@ async function resolveThreadSessionForZeroRun(
         userId: input.command.auth.userId,
         orgId: input.command.auth.orgId,
         agentComposeId: input.agent.id,
-        route: threadSessionRoute,
+        route: sessionRoute,
       });
     },
   );
