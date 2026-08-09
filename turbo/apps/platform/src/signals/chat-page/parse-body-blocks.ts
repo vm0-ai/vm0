@@ -337,6 +337,14 @@ function rewritePlatformHostname(
   return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
 }
 
+function tryParseUrl(input: string, base?: string): URL | null {
+  try {
+    return typeof base === "string" ? new URL(input, base) : new URL(input);
+  } catch {
+    return null;
+  }
+}
+
 function addPlatformFileHostVariants(hosts: Set<string>, host: string | null) {
   if (!host) {
     return;
@@ -345,11 +353,11 @@ function addPlatformFileHostVariants(hosts: Set<string>, host: string | null) {
   hosts.add(host);
 
   const hostUrl = `https://${host}`;
-  if (!URL.canParse(hostUrl)) {
+  const parsed = tryParseUrl(hostUrl);
+  if (!parsed) {
     return;
   }
 
-  const parsed = new URL(hostUrl);
   for (const target of ["api", "www", "app", "platform"] as const) {
     parsed.hostname = rewritePlatformHostname(parsed.hostname, target);
     hosts.add(parsed.host);
@@ -379,10 +387,14 @@ function isPlatformFileHostname(hostname: string): boolean {
 }
 
 function artifactsCdnHost(baseUrl: string | undefined): string | null {
-  if (!baseUrl || !URL.canParse(baseUrl)) {
+  if (!baseUrl) {
     return null;
   }
-  return new URL(baseUrl).host;
+  const url = tryParseUrl(baseUrl);
+  if (!url) {
+    return null;
+  }
+  return url.host;
 }
 
 function hasExplicitUrlOrigin(url: string): boolean {
@@ -392,10 +404,10 @@ function hasExplicitUrlOrigin(url: string): boolean {
 function isPlatformFileUrl(url: string): boolean {
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
-  if (!URL.canParse(url, baseUrl)) {
+  const parsed = tryParseUrl(url, baseUrl);
+  if (!parsed) {
     return false;
   }
-  const parsed = new URL(url, baseUrl);
   const isLegacyPath = LEGACY_PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname);
   const isShortArtifactPath = SHORT_ARTIFACT_FILE_PATH_PATTERN.test(
     parsed.pathname,
@@ -431,11 +443,11 @@ function isHostedSiteUrl(url: string): boolean {
 
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
-  if (!URL.canParse(url, baseUrl)) {
+  const parsed = tryParseUrl(url, baseUrl);
+  if (!parsed) {
     return false;
   }
 
-  const parsed = new URL(url, baseUrl);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     return false;
   }
@@ -449,11 +461,11 @@ function hostedSiteAttachment(
 ): ChatAttachmentDescriptor | null {
   const host = browserHost();
   const baseUrl = host ? `https://${host}` : "https://vm0.local";
-  if (!URL.canParse(url, baseUrl)) {
+  const parsed = tryParseUrl(url, baseUrl);
+  if (!parsed) {
     return null;
   }
 
-  const parsed = new URL(url, baseUrl);
   const publicSlug = hostedSitePublicSlug(parsed.hostname);
   if (!publicSlug) {
     return null;
