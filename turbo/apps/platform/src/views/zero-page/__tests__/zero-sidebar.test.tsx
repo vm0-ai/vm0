@@ -14,6 +14,10 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroTeamContract,
+  type TeamComposeItem,
+} from "@vm0/api-contracts/contracts/zero-team";
 
 import {
   createMockWorkflowAutomation,
@@ -89,8 +93,8 @@ function prepareDefaultAgent(): void {
   ]);
 }
 
-function prepareAgentTeam(): void {
-  context.mocks.data.team([
+function prepareAgentTeam(): TeamComposeItem[] {
+  const team: TeamComposeItem[] = [
     {
       id: AGENT_ID,
       ownerId: "test-user-123",
@@ -124,7 +128,8 @@ function prepareAgentTeam(): void {
       headVersionId: "version_3",
       updatedAt: "2024-01-01T00:00:00Z",
     },
-  ]);
+  ];
+  context.mocks.data.team(team);
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
       [AGENT_ID]: "Zero",
@@ -143,6 +148,7 @@ function prepareAgentTeam(): void {
       preferPersonalProvider: false,
     });
   });
+  return team;
 }
 
 function createThread(
@@ -1419,6 +1425,33 @@ describe("zero sidebar", () => {
       ).not.toBeInTheDocument();
       expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
     });
+  });
+
+  it("does not reload agents when opening the conversation picker", async () => {
+    const team = prepareAgentTeam();
+    let teamRequests = 0;
+    context.mocks.api(zeroTeamContract.list, ({ respond }) => {
+      teamRequests += 1;
+      return respond(200, team);
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const sidebar = await waitFor(() => {
+      const currentSidebar = screen.getByRole("navigation", {
+        name: "Sidebar",
+      });
+      expect(pinnedAgentLink(currentSidebar, "Zero")).toBeInTheDocument();
+      return currentSidebar;
+    });
+    const requestsBeforeOpen = teamRequests;
+    expect(requestsBeforeOpen).toBeGreaterThan(0);
+
+    click(within(sidebar).getByLabelText("Open a conversation"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    expect(teamRequests).toBe(requestsBeforeOpen);
   });
 
   it("pins an agent from the conversation picker and opens that agent chat", async () => {

@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { localStorageSignals } from "../external/local-storage.ts";
-import { reloadAgents$ } from "../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Chat list dialog search query
@@ -158,7 +157,6 @@ export const setChatListOpen$ = command(({ set }, open: boolean) => {
 export const openAgentListDialog$ = command(({ set }) => {
   set(internalChatListQuery$, "");
   set(internalChatListOpen$, true);
-  set(reloadAgents$);
 });
 
 // ---------------------------------------------------------------------------
