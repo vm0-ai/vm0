@@ -734,7 +734,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsAfterCompletion);
   });
 
-  it("renders media prompts, provider recent history, and restarts sessions when the model route changes", async () => {
+  it("renders media prompts, provider recent history, and reuses sessions across same-framework routes", async () => {
     const ap = createAgentPhoneBddApi(context);
     const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
 
@@ -797,8 +797,8 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     await waitForSendCount(sends, beforeRun2Completion + 1);
     await waitForRunSessionId(actor, run2.runId, mediaSession);
 
-    // Re-pointing the default model policy at an incompatible provider
-    // forces the next DM onto a fresh session.
+    // Re-pointing the default model policy at another provider preserves the
+    // session because both routes use the Claude Code framework.
     await ap.switchDefaultModelRouteToOpenRouter(actor);
     await ap.postAgentPhoneInboundMessage({
       channel: "sms",
@@ -807,7 +807,7 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     const run3 = await claimDispatchedRun(runnerGroup);
     await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
-    await expect(ap.readRunSessionId(actor, run3.runId)).resolves.not.toBe(
+    await expect(ap.readRunSessionId(actor, run3.runId)).resolves.toBe(
       mediaSession,
     );
   });
