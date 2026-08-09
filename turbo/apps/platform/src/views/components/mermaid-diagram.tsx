@@ -19,11 +19,11 @@ import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chip
  * a reader. The SVG is letterboxed inside that box and opens at full size in
  * the lightbox.
  *
- * The button is keyed by theme and source so a theme switch remounts it, which
- * re-runs the render command (and aborts the previous render). It keeps its
- * position in the tree across statuses so the ref is not re-attached when the
- * render finishes — re-attaching would abort the render that just produced the
- * result and start it again.
+ * The button is keyed by scope, theme, and source so a semantic input change
+ * remounts it, which re-runs the render command and aborts the previous render.
+ * It keeps its position in the tree across statuses so the ref is not
+ * re-attached when the render finishes — re-attaching would abort the render
+ * that just produced the result and start it again.
  */
 export function MermaidDiagram({
   code,

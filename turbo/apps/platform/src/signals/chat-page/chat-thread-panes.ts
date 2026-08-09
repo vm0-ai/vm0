@@ -28,15 +28,24 @@ import {
   threadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import {
+  currentLeftThreadActive$,
   currentLeftThread$,
+  currentRightThreadActive$,
   currentRightThread$,
+  setCurrentLeftThreadActive$,
   setCurrentLeftThread$,
+  setCurrentRightThreadActive$,
   setCurrentRightThread$,
 } from "./chat-thread-pane-state.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
-export { currentLeftThread$, currentRightThread$ };
+export {
+  currentLeftThread$,
+  currentLeftThreadActive$,
+  currentRightThread$,
+  currentRightThreadActive$,
+};
 
 const L = logger("ChatPanes");
 
@@ -60,6 +69,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
   }
   set(resetRightSetupSignal$);
   set(setCurrentRightThread$, null);
+  set(setCurrentRightThreadActive$, false);
   const next = new URLSearchParams(get(searchParams$));
   if (next.has(SIDEBAR_PARAM)) {
     next.delete(SIDEBAR_PARAM);
@@ -69,6 +79,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
 
 interface PaneSpec {
   setPaneThread$: Command<void, [ChatPanelSignals | null]>;
+  setPaneThreadActive$: Command<void, [boolean]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
   onReady$?: Command<void, [AbortSignal]>;
 }
@@ -204,6 +215,13 @@ const setupPaneThread$ = command(
     parentSignal: AbortSignal,
   ): Promise<void> => {
     const signal = set(spec.resetSetupSignal$, parentSignal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(spec.setPaneThreadActive$, false);
+      },
+      { once: true },
+    );
 
     L.debug("setupPaneThread$ start", { threadId });
     await set(waitForThreadMetaResolution$, threadId, signal);
@@ -216,6 +234,7 @@ const setupPaneThread$ = command(
       signal,
     );
     set(spec.setPaneThread$, thread);
+    set(spec.setPaneThreadActive$, true);
     if (spec.onReady$) {
       set(spec.onReady$, signal);
     }
@@ -250,6 +269,7 @@ export const setupLeftThread$ = command(
         setupPaneThread$,
         {
           setPaneThread$: setCurrentLeftThread$,
+          setPaneThreadActive$: setCurrentLeftThreadActive$,
           resetSetupSignal$: resetLeftSetupSignal$,
           onReady$: hideAppSkeleton$,
         },
@@ -270,6 +290,7 @@ export const setupRightThread$ = command(
       setupPaneThread$,
       {
         setPaneThread$: setCurrentRightThread$,
+        setPaneThreadActive$: setCurrentRightThreadActive$,
         resetSetupSignal$: resetRightSetupSignal$,
       },
       threadId,

@@ -4,7 +4,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-page/chat-thread-pane-state.ts";
-import { pageLifecycleId$, pageSignal$ } from "./page-signal.ts";
+import { pageSignal$ } from "./page-signal.ts";
 
 export type MermaidDiagramResult =
   | { readonly status: "rendering" }
@@ -24,8 +24,8 @@ export const mermaidDiagramResultByKey$ = computed((get) => {
 });
 
 /**
- * Diagrams are identified by their panel lifetime, source, and theme. Identical
- * diagrams within one panel share a result, while a panel or theme switch
+ * Diagrams are identified by their thread scope, source, and theme. Identical
+ * diagrams within one scope share a result, while a thread or theme switch
  * renders a new one.
  */
 export function mermaidDiagramKey(
@@ -211,14 +211,9 @@ const renderMermaidDiagram$ = command(
       get(currentLeftThread$),
       get(currentRightThread$),
     ].find((thread) => {
-      return thread?.lifecycleId === scope;
+      return thread?.threadId === scope;
     })?.signal;
-    const pageLifecycleId = get(pageLifecycleId$);
-    // Resolve the owner before rendering so a panel or page replacement cannot
-    // make a completed render fall back to the source element's shorter life.
-    const objectUrlSignal =
-      panelSignal ??
-      (scope !== "" && pageLifecycleId === scope ? get(pageSignal$) : signal);
+    const objectUrlSignal = panelSignal ?? get(pageSignal$);
 
     set(retainMermaidDiagramResult$, key);
     signal.addEventListener(

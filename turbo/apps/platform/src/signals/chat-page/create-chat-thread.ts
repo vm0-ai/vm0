@@ -3709,7 +3709,6 @@ function createChatPanelSignalsWithDraft(
   signal: AbortSignal,
 ): ChatPanelSignals {
   const threadId = chatEvents.threadId;
-  const lifecycleId = crypto.randomUUID();
   const artifact = createArtifacts(threadId);
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
@@ -3752,7 +3751,6 @@ function createChatPanelSignalsWithDraft(
   });
   return {
     threadId,
-    lifecycleId,
     signal,
     threadDraft$,
     threadMeta$,

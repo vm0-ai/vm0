@@ -11,8 +11,8 @@ import {
   useLastLoadable,
   useLastResolved,
   useLoadable,
+  useResolved,
 } from "ccstate-react";
-import { equalArrays } from "../../lib/equality.ts";
 import { now } from "../../lib/time.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
@@ -309,7 +309,9 @@ import {
 } from "../../signals/view-component-state.ts";
 import {
   currentLeftThread$,
+  currentLeftThreadActive$,
   currentRightThread$,
+  currentRightThreadActive$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import {
   focusChatThreadContainer$,
@@ -2591,9 +2593,11 @@ function HeaderAutomationSidebar({
 // ---------------------------------------------------------------------------
 
 function ChatThread({
+  active,
   isMain,
   thread,
 }: {
+  active: boolean;
   isMain?: boolean;
   thread: ChatPanelSignals;
 }) {
@@ -2612,16 +2616,20 @@ function ChatThread({
       ref={setContainerRef}
       tabIndex={-1}
     >
-      <ChatThreadContent thread={thread} />
+      {active && <ChatThreadContent thread={thread} />}
     </section>
   );
 }
 
 function ChatThreadArea({
+  leftThreadActive,
   leftThread,
+  rightThreadActive,
   rightThread,
 }: {
+  leftThreadActive: boolean;
   leftThread: ChatPanelSignals | null;
+  rightThreadActive: boolean;
   rightThread: ChatPanelSignals | null;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
@@ -2631,11 +2639,13 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && <ChatThread isMain thread={leftThread} />}
+      {leftThread && (
+        <ChatThread active={leftThreadActive} isMain thread={leftThread} />
+      )}
       {rightThread && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread thread={rightThread} />
+          <ChatThread active={rightThreadActive} thread={rightThread} />
         </>
       )}
     </div>
@@ -2654,7 +2664,9 @@ function ThreadAutomationsSidebarSlot({
 export function ZeroChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
   const leftThread = useGet(currentLeftThread$);
+  const leftThreadActive = useGet(currentLeftThreadActive$);
   const rightThread = useGet(currentRightThread$);
+  const rightThreadActive = useGet(currentRightThreadActive$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   return (
     <>
@@ -2677,7 +2689,12 @@ export function ZeroChatThreadPage() {
           ) : null
         }
       >
-        <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
+        <ChatThreadArea
+          leftThread={leftThread}
+          leftThreadActive={leftThreadActive}
+          rightThread={rightThread}
+          rightThreadActive={rightThreadActive}
+        />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
       <ChatConnectorActionConnectModal />
@@ -2712,10 +2729,7 @@ function ChatThreadRenderedEventGroups({
 }: {
   thread: ChatPanelSignals;
 }) {
-  const renderedGroups =
-    useLastResolved(thread.visibleRenderedChatGroups$, {
-      equalityFn: equalArrays,
-    }) ?? [];
+  const renderedGroups = useResolved(thread.visibleRenderedChatGroups$) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedEventsForThinkingIndicator(renderedGroups);
   const modelChanges = modelChangesByEventId(renderedActiveGroups);
@@ -8122,7 +8136,7 @@ function PagedUserMessage({
                   <div className="px-4 py-3">
                     <BodyContentBlocks
                       blocks={bodyBlocks}
-                      mermaidScope={thread.lifecycleId}
+                      mermaidScope={thread.threadId}
                       openLightbox={openLightbox}
                       hardBreaks
                       escapeMarkdownHtml
@@ -8285,7 +8299,7 @@ function PagedAssistantEventItem({
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}
-            mermaidScope={thread.lifecycleId}
+            mermaidScope={thread.threadId}
             openLightbox={openLightbox}
             hardBreaks={false}
           />
