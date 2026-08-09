@@ -535,9 +535,6 @@ importers:
       '@solana/web3.js':
         specifier: ^1.98.4
         version: 1.98.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      '@tabler/icons-react':
-        specifier: 3.44.0
-        version: 3.44.0(react@19.2.6)
       '@tiptap/core':
         specifier: 3.21.0
         version: 3.21.0(@tiptap/pm@3.21.0)

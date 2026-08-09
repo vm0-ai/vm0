@@ -4,16 +4,16 @@ import type {
   ArtifactSummary,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
 import {
-  IconAlertTriangle,
-  IconChevronRight,
-  IconFile,
-  IconPhoto,
-  IconPresentationAnalytics,
-  IconMessages,
-  IconUser,
-  IconVideo,
-  IconWorld,
-} from "@tabler/icons-react";
+  AlertTriangle,
+  ChevronRight,
+  File,
+  Image,
+  Presentation,
+  MessagesSquare,
+  User,
+  Video,
+  Globe,
+} from "lucide-react";
 import { r2ImageTransformUrl } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { useGet, useLoadable, useSet } from "ccstate-react";
@@ -60,19 +60,19 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
   const { t } = useTranslation();
   const icon =
     kind === "presentation" ? (
-      <IconPresentationAnalytics size={16} stroke={1.7} />
+      <Presentation size={16} strokeWidth={1.7} />
     ) : kind === "hosted-site" ? (
-      <IconWorld size={16} stroke={1.7} />
+      <Globe size={16} strokeWidth={1.7} />
     ) : kind === "image" ? (
-      <IconPhoto size={16} stroke={1.7} />
+      <Image size={16} strokeWidth={1.7} />
     ) : kind === "video" ? (
-      <IconVideo size={16} stroke={1.7} />
+      <Video size={16} strokeWidth={1.7} />
     ) : kind === "avatar" ? (
-      <IconUser size={16} stroke={1.7} />
+      <User size={16} strokeWidth={1.7} />
     ) : kind === "shared-thread" ? (
-      <IconMessages size={16} stroke={1.7} />
+      <MessagesSquare size={16} strokeWidth={1.7} />
     ) : (
-      <IconFile size={16} stroke={1.7} />
+      <File size={16} strokeWidth={1.7} />
     );
   const kindLabel =
     kind === "presentation"
@@ -235,7 +235,7 @@ function ArtifactSharedConversationList({
               className="group flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground transition-colors group-hover:text-foreground">
-                <IconMessages size={16} stroke={1.7} aria-hidden />
+                <MessagesSquare size={16} strokeWidth={1.7} aria-hidden />
               </span>
               <span
                 title={artifact.title}
@@ -243,9 +243,9 @@ function ArtifactSharedConversationList({
               >
                 {artifact.title}
               </span>
-              <IconChevronRight
+              <ChevronRight
                 size={16}
-                stroke={1.7}
+                strokeWidth={1.7}
                 aria-hidden
                 className="shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
               />
@@ -340,7 +340,7 @@ export function ArtifactCatalogError() {
   const { t } = useTranslation();
   return (
     <Alert variant="destructive">
-      <IconAlertTriangle size={16} stroke={1.5} aria-hidden />
+      <AlertTriangle size={16} strokeWidth={1.5} aria-hidden />
       <AlertDescription>
         {t(($) => {
           return $.artifacts.catalog.error;

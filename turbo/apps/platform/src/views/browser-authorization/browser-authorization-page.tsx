@@ -1,4 +1,4 @@
-import { IconCheck, IconLoader2, IconWorld } from "@tabler/icons-react";
+import { Check, Loader2, Globe } from "lucide-react";
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
@@ -57,7 +57,7 @@ export function BrowserAuthorizationPage() {
   if (requestLoadable.state === "loading") {
     return (
       <div className="fixed inset-0 z-10 flex items-center justify-center">
-        <IconLoader2 size={22} className="animate-spin text-muted-foreground" />
+        <Loader2 size={22} className="animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -77,7 +77,7 @@ export function BrowserAuthorizationPage() {
         <div className="flex flex-col items-center gap-5 text-center">
           <Vm0LogoLink />
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-muted">
-            <IconWorld size={22} />
+            <Globe size={22} />
           </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-lg font-medium text-foreground">
@@ -102,11 +102,11 @@ export function BrowserAuthorizationPage() {
           className="h-10 w-full"
         >
           {applying ? (
-            <IconLoader2 size={16} className="animate-spin" />
+            <Loader2 size={16} className="animate-spin" />
           ) : enabled ? (
-            <IconCheck size={16} />
+            <Check size={16} />
           ) : (
-            <IconWorld size={16} />
+            <Globe size={16} />
           )}
           {enabled
             ? t(($) => {

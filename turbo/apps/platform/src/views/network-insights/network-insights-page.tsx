@@ -1,10 +1,6 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import {
-  IconChevronDown,
-  IconChevronLeft,
-  IconChevronRight,
-} from "@tabler/icons-react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { emptyInsightsImg } from "../zero-page/platform-assets.ts";
 import {
   Skeleton,
@@ -310,7 +306,7 @@ function CustomRangePicker({
             })}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-state-hover transition-colors"
           >
-            <IconChevronLeft size={14} stroke={1.5} />
+            <ChevronLeft size={14} strokeWidth={1.5} />
           </button>
           <p className="text-sm font-semibold">{monthLabel}</p>
           <button
@@ -321,7 +317,7 @@ function CustomRangePicker({
             })}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-state-hover transition-colors"
           >
-            <IconChevronRight size={14} stroke={1.5} />
+            <ChevronRight size={14} strokeWidth={1.5} />
           </button>
         </div>
         <CalendarMonth
@@ -370,9 +366,9 @@ function DateRangeFilter({
           className="flex items-center gap-2 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-state-hover transition-colors"
         >
           {dateRangeLabel(value)}
-          <IconChevronDown
+          <ChevronDown
             size={14}
-            stroke={1.5}
+            strokeWidth={1.5}
             className="text-muted-foreground"
           />
         </button>

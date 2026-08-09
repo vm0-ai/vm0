@@ -8,14 +8,14 @@ import {
 } from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  IconArrowsSort,
-  IconChevronDown,
-  IconLock,
-  IconPlus,
-  IconRoute,
-  IconUser,
-  IconWorld,
-} from "@tabler/icons-react";
+  ArrowUpDown,
+  ChevronDown,
+  Lock,
+  Plus,
+  Route,
+  User,
+  Globe,
+} from "lucide-react";
 import {
   Button,
   DropdownMenu,
@@ -187,11 +187,11 @@ function VisibilityIcon({
   readonly workflow: ZeroWorkflowSummary;
 }) {
   const isPublic = workflow.visibility === "public";
-  const Icon = isPublic ? IconWorld : IconLock;
+  const Icon = isPublic ? Globe : Lock;
   return (
     <Icon
       size={15}
-      stroke={1.7}
+      strokeWidth={1.7}
       className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
       aria-label={
         isPublic
@@ -364,7 +364,7 @@ function WorkflowRowIcon({
   }
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
-      <IconRoute size={16} stroke={1.7} />
+      <Route size={16} strokeWidth={1.7} />
     </span>
   );
 }
@@ -841,16 +841,16 @@ function SortDropdown({
           size="sm"
           className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
         >
-          <IconArrowsSort
+          <ArrowUpDown
             size={15}
-            stroke={1.8}
+            strokeWidth={1.8}
             className="text-muted-foreground"
           />
           {current?.label ??
             i18n.t(($) => {
               return $.workflows.list.sort.label;
             })}
-          <IconChevronDown size={14} stroke={1.8} />
+          <ChevronDown size={14} strokeWidth={1.8} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -900,9 +900,9 @@ function AgentFilterDropdown({
               size={16}
             />
           ) : (
-            <IconUser
+            <User
               size={15}
-              stroke={1.8}
+              strokeWidth={1.8}
               className="text-muted-foreground"
             />
           )}
@@ -912,7 +912,7 @@ function AgentFilterDropdown({
                 return $.workflows.list.allAgents;
               })}
           </span>
-          <IconChevronDown size={14} stroke={1.8} />
+          <ChevronDown size={14} strokeWidth={1.8} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -924,7 +924,7 @@ function AgentFilterDropdown({
             onChange(WORKFLOW_ALL_AGENTS);
           }}
         >
-          <IconUser size={15} stroke={1.8} className="text-muted-foreground" />
+          <User size={15} strokeWidth={1.8} className="text-muted-foreground" />
           {i18n.t(($) => {
             return $.workflows.list.allAgents;
           })}
@@ -1109,7 +1109,7 @@ export function WorkflowsPage() {
               openCreateWorkflowDialog();
             }}
           >
-            <IconPlus size={14} stroke={2} />
+            <Plus size={14} strokeWidth={2} data-explicit-stroke-width />
             {t(($) => {
               return $.workflows.list.createInChat;
             })}

@@ -1,12 +1,6 @@
 import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconAlertTriangle,
-  IconCheck,
-  IconDeviceDesktop,
-  IconDownload,
-  IconLoader2,
-} from "@tabler/icons-react";
+import { AlertTriangle, Check, Monitor, Download, Loader2 } from "lucide-react";
 import type {
   ComputerUseAuthorizationSource,
   ComputerUseHost,
@@ -75,7 +69,7 @@ function HostOption({
     <div className="flex w-full flex-col gap-3 rounded-lg border border-border bg-background px-3 py-3 text-left sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <IconDeviceDesktop size={18} />
+          <Monitor size={18} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
@@ -98,10 +92,10 @@ function HostOption({
         onClick={onAuthorize}
         className="h-9 w-full shrink-0 sm:w-auto"
       >
-        {applying && <IconLoader2 size={16} className="animate-spin" />}
+        {applying && <Loader2 size={16} className="animate-spin" />}
         {applied ? (
           <>
-            <IconCheck size={16} />
+            <Check size={16} />
             {t(($) => {
               return $.authorization.computerUse.authorized;
             })}
@@ -154,7 +148,7 @@ function EmptyHosts() {
       </div>
       {downloadSupportStatus === "unsupported-intel-mac" ? (
         <Button type="button" variant="outline" disabled className="h-9">
-          <IconAlertTriangle size={16} />
+          <AlertTriangle size={16} />
           {t(($) => {
             return $.authorization.computerUse.unsupportedIntelMac;
           })}
@@ -172,7 +166,7 @@ function EmptyHosts() {
           rel="noreferrer"
           className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-state-hover"
         >
-          <IconDownload size={16} />
+          <Download size={16} />
           {t(($) => {
             return $.authorization.computerUse.downloadMac;
           })}
@@ -225,7 +219,7 @@ export function ComputerUseAuthorizationPage() {
   if (requestLoadable.state === "loading") {
     return (
       <div className="fixed inset-0 z-10 flex items-center justify-center">
-        <IconLoader2 size={22} className="animate-spin text-muted-foreground" />
+        <Loader2 size={22} className="animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -244,7 +238,7 @@ export function ComputerUseAuthorizationPage() {
         <div className="flex flex-col items-center gap-5 text-center">
           <Vm0LogoLink />
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-muted">
-            <IconDeviceDesktop size={22} />
+            <Monitor size={22} />
           </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-lg font-medium text-foreground">

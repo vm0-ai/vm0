@@ -7,7 +7,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { SlidersHorizontal } from "lucide-react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Tooltip,
@@ -95,7 +95,7 @@ function CustomConnectorPermissionRow({
                   { connector: connector.displayName },
                 )}
               >
-                <IconAdjustmentsHorizontal size={15} stroke={1.5} />
+                <SlidersHorizontal size={15} strokeWidth={1.5} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="top">

@@ -1,5 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import { IconScanEye } from "@tabler/icons-react";
+import { ScanEye } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -110,7 +110,7 @@ export function OnboardingWorkflowRunPage() {
                   setUi({ workflowPreviewId: workflow.id });
                 }}
               >
-                <IconScanEye size={16} stroke={1.6} aria-hidden="true" />
+                <ScanEye size={16} strokeWidth={1.6} aria-hidden="true" />
               </button>
             </div>
           </section>

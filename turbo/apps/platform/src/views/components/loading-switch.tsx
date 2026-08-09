@@ -1,4 +1,4 @@
-import { IconLoader2 } from "@tabler/icons-react";
+import { Loader2 } from "lucide-react";
 import { Switch, cn } from "@vm0/ui";
 
 /** Track/thumb sizing shared with plain `Switch` when toggles must align (e.g. settings rows). */
@@ -38,9 +38,9 @@ export function LoadingSwitch({
         className={size === "default" ? compactSwitchClassName : undefined}
       />
       {loading && (
-        <IconLoader2
+        <Loader2
           size={10}
-          stroke={2.5}
+          strokeWidth={2.5}
           className={cn(
             "absolute top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-muted-foreground/70",
             checked ? "left-1/4" : "left-3/4",

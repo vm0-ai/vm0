@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useGet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { IconCheck, IconLoader2, IconX } from "@tabler/icons-react";
+import { Check, Loader2, X } from "lucide-react";
 import { Button } from "@vm0/ui";
 import {
   morningBriefUnsubscribeStatus$,
@@ -47,9 +47,9 @@ function CardIcon({
   status: MorningBriefUnsubscribeStatus;
 }): ReactNode {
   if (status === "unsubscribed") {
-    return <IconCheck size={40} className="text-green-600 opacity-80" />;
+    return <Check size={40} className="text-green-600 opacity-80" />;
   }
-  return <IconX size={40} className="text-destructive opacity-70" />;
+  return <X size={40} className="text-destructive opacity-70" />;
 }
 
 export function MorningBriefUnsubscribePage() {
@@ -59,7 +59,7 @@ export function MorningBriefUnsubscribePage() {
   if (!status) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
-        <IconLoader2 size={40} className="animate-spin text-muted-foreground" />
+        <Loader2 size={40} className="animate-spin text-muted-foreground" />
         <span className="sr-only">
           {t(($) => {
             return $.lifecycle.morningBriefUnsubscribe.loadingLabel;

@@ -11,15 +11,15 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconFileText,
-  IconUserCircle,
-  IconShield,
-  IconUsers,
-  IconSearch,
-  IconX,
-  IconMessageCircle,
-  IconWand,
-} from "@tabler/icons-react";
+  FileText,
+  UserCircle,
+  Shield,
+  Users,
+  Search,
+  X,
+  MessageCircle,
+  Wand,
+} from "lucide-react";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   Button,
@@ -158,7 +158,7 @@ function Breadcrumb({
         pathname="/agents"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
       >
-        <IconUsers size={14} stroke={1.5} className="shrink-0" />
+        <Users size={14} strokeWidth={1.5} className="shrink-0" />
         {t(($) => {
           return $.list.title;
         })}
@@ -317,14 +317,14 @@ function AgentTabNav({
       {/* Desktop: tab list */}
       <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
         <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
-          <IconShield size={14} stroke={1.5} />
+          <Shield size={14} strokeWidth={1.5} />
           {t(($) => {
             return $.detail.tabs.authorization;
           })}
         </TabsTrigger>
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
-            <IconUserCircle size={14} stroke={1.5} />
+            <UserCircle size={14} strokeWidth={1.5} />
             {t(($) => {
               return $.detail.tabs.profile;
             })}
@@ -332,7 +332,7 @@ function AgentTabNav({
         )}
         {showProfileAndInstructions && (
           <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
-            <IconFileText size={14} stroke={1.5} />
+            <FileText size={14} strokeWidth={1.5} />
             {t(($) => {
               return $.detail.tabs.instructions;
             })}
@@ -464,9 +464,9 @@ function ConnectedConnectorPermissions({
           </div>
           {searchActive && (
             <div className="absolute inset-0 flex items-center gap-2 px-5">
-              <IconSearch
+              <Search
                 size={14}
-                stroke={1.5}
+                strokeWidth={1.5}
                 className="shrink-0 text-muted-foreground"
               />
               <input
@@ -500,7 +500,7 @@ function ConnectedConnectorPermissions({
                   return $.authorization.closeSearch;
                 })}
               >
-                <IconX size={14} stroke={1.5} />
+                <X size={14} strokeWidth={1.5} />
               </button>
             </div>
           )}
@@ -515,7 +515,7 @@ function ConnectedConnectorPermissions({
                 return $.authorization.findConnectors;
               })}
             >
-              <IconSearch size={14} stroke={1.5} />
+              <Search size={14} strokeWidth={1.5} />
             </button>
           )}
         </div>
@@ -880,7 +880,7 @@ function AgentHeader({
                         return $.avatar.actions.customize;
                       })}
                     >
-                      <IconWand size={12} stroke={1.5} />
+                      <Wand size={12} strokeWidth={1.5} />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -922,7 +922,12 @@ function AgentHeader({
             { agentName: displayName },
           )}
         >
-          <IconMessageCircle size={14} stroke={2} className="shrink-0" />
+          <MessageCircle
+            size={14}
+            strokeWidth={2}
+            className="shrink-0"
+            data-explicit-stroke-width
+          />
           <span className="truncate">
             {t(
               ($) => {

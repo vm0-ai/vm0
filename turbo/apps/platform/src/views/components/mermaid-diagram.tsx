@@ -1,4 +1,4 @@
-import { IconLoader2 } from "@tabler/icons-react";
+import { Loader2 } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -78,7 +78,7 @@ export function MermaidDiagram({
           />
         ) : (
           <span className="mermaid-diagram-pending" aria-hidden="true">
-            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+            <Loader2 size={18} strokeWidth={1.8} className="animate-spin" />
           </span>
         )}
       </button>

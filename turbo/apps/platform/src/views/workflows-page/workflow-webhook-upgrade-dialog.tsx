@@ -1,5 +1,5 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
-import { IconLock } from "@tabler/icons-react";
+import { Lock } from "lucide-react";
 import {
   Button,
   Dialog,
@@ -47,7 +47,7 @@ export function WorkflowWebhookUpgradeDialog() {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
-            <IconLock size={19} stroke={1.6} />
+            <Lock size={19} strokeWidth={1.6} />
           </div>
           <DialogTitle>
             {t(($) => {
