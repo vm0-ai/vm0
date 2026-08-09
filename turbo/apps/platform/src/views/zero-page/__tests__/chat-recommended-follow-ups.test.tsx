@@ -231,9 +231,11 @@ describe("chat lifecycle", () => {
     expect(
       screen.getByText(`Keep going · ${completedAtLabel}`),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("group", { name: "Keep going" }),
-    ).toBeInTheDocument();
+    const rail = screen.getByRole("group", { name: "Keep going" });
+    expect(rail).toBeInTheDocument();
+    // Cards have no inner px-2 to cancel out, so the rail must not carry the
+    // flat list's negative margin or it overhangs the composer on both edges.
+    expect(rail.className).not.toContain("-mx-2");
     for (const prompt of prompts) {
       const card = buttonByText(prompt);
       expect(card).toBeVisible();
