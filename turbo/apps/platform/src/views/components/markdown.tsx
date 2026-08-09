@@ -11,7 +11,6 @@ import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethroug
 import remarkMath from "remark-math";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
-import { pageLifecycleId$ } from "../../signals/page-signal.ts";
 import { theme$ } from "../../signals/theme.ts";
 import {
   imageLoadStatusByKey$,
@@ -480,7 +479,6 @@ export function Markdown({
   escapeHtml?: boolean;
 }) {
   const theme = useGet(theme$);
-  const pageLifecycleId = useGet(pageLifecycleId$);
   const components = mediaPreview
     ? MEDIA_MARKDOWN_COMPONENTS
     : PLAIN_MARKDOWN_COMPONENTS;
@@ -505,7 +503,7 @@ export function Markdown({
       })}
       rehypePlugins={buildRehypePlugins({
         mathEnabled,
-        mermaidScope: mermaidScope ?? pageLifecycleId,
+        mermaidScope: mermaidScope ?? "",
         rehypePlugins,
       })}
       components={components}

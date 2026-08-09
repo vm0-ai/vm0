@@ -1118,7 +1118,6 @@
     },
     "attachments": {
       "attach": "Anhängen",
-      "file": "Datei {{filename}}",
       "fileTooLarge": "{{filename}} überschreitet die 1-GB-Grenze",
       "imageUnavailable": "[Bild nicht verfügbar: {{filename}}]",
       "loadingFile": "{{filename}} wird geladen",

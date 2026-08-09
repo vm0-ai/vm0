@@ -49,9 +49,12 @@ import {
   resolveChatEventRecommendedFollowups,
   type GenerationTemplateRequest,
   type ChatEvent as PersistedChatEvent,
+  type FeedbackNotePart,
   type ResolvedAttachFile,
   type ChatThreadArtifactRun,
+  type UserMessageDocument,
   type UserMessageInputDocument,
+  type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
@@ -78,7 +81,13 @@ import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
 } from "../zero-page/clipboard.ts";
-import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
+import type {
+  EnrichedChatEvent,
+  ChatEventGroup,
+  UserMessageFeedbackNoteRenderPart,
+  UserMessageRenderDocument,
+  UserMessageRenderPart,
+} from "./chat-event.ts";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 import {
   deriveRunIndicatorStateFromChatEvents,
@@ -202,7 +211,10 @@ import type {
   SendChatEventResult,
 } from "./chat-event-signals.ts";
 import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
-import { userMessageFileAttachments } from "./user-message-files.ts";
+import {
+  canonicalUserMessageFileUrl,
+  userMessageFileAttachments,
+} from "./user-message-files.ts";
 
 const L = logger("ChatThread");
 
@@ -215,14 +227,6 @@ function isInputChatEvent(
   return (
     event.eventType === "input.prompt" || event.eventType === "input.rejected"
   );
-}
-
-function chatEventFileAttachments(
-  event: ChatEvent,
-): ResolvedAttachFile[] | undefined {
-  return isInputChatEvent(event)
-    ? userMessageFileAttachments(event.userMessage)
-    : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -1072,6 +1076,7 @@ function createRenderedChatGroups(
 interface RegisteredChatEvent {
   readonly event: ChatEvent;
   readonly blocks: BodyRenderBlock[];
+  readonly userMessageRenderDocument: UserMessageRenderDocument | undefined;
 }
 
 type BodyBlocksRenderer = (
@@ -1111,44 +1116,130 @@ function skipsEventBodyRendering(event: ChatEvent): boolean {
   );
 }
 
-function registerEventAttachments(
-  event: ChatEvent,
-  artifactCardSignals: ArtifactCardSignalsRegistry,
-): void {
-  for (const attachment of chatEventFileAttachments(event) ?? []) {
-    artifactCardSignals.register({
-      filename: attachment.filename,
-      url: attachment.url,
-      kind: classifyChatAttachment(attachment),
-    });
+function registerFeedbackNoteRenderPart(
+  part: FeedbackNotePart,
+  agentReferenceSignals: AgentReferenceSignalsRegistry,
+): UserMessageFeedbackNoteRenderPart {
+  switch (part.type) {
+    case "text": {
+      return { type: "text", part };
+    }
+    case "chat_thread": {
+      return { type: "chat_thread", part };
+    }
+    case "template": {
+      return { type: "template", part };
+    }
+    case "agent": {
+      return {
+        type: part.type,
+        part,
+        signals: agentReferenceSignals.register(part.agentId),
+      };
+    }
   }
 }
 
-function registerEventAgentReferences(
-  event: ChatEvent,
+function registerUserMessageRenderPart(
+  part: UserMessagePart,
+  artifactCardSignals: ArtifactCardSignalsRegistry,
   agentReferenceSignals: AgentReferenceSignalsRegistry,
-): void {
-  if (!isInputChatEvent(event)) {
-    return;
+): UserMessageRenderPart {
+  switch (part.type) {
+    case "text": {
+      return { type: "text", part };
+    }
+    case "chat_thread": {
+      return { type: "chat_thread", part };
+    }
+    case "template": {
+      return { type: "template", part };
+    }
+    case "automation": {
+      return { type: "automation", part };
+    }
+    case "goal": {
+      return { type: "goal", part };
+    }
+    case "morning_brief": {
+      return { type: "morning_brief", part };
+    }
+    case "model": {
+      return { type: "model", part };
+    }
+    case "agent": {
+      return {
+        type: part.type,
+        part,
+        signals: agentReferenceSignals.register(part.agentId),
+      };
+    }
+    case "source": {
+      return part.kind === "agent"
+        ? {
+            type: part.type,
+            kind: "agent",
+            part,
+            signals: agentReferenceSignals.register(part.agentId),
+          }
+        : { type: part.type, kind: "external", part };
+    }
+    case "file": {
+      const url = canonicalUserMessageFileUrl(part.fileId);
+      return {
+        type: part.type,
+        part,
+        signals: artifactCardSignals.register({
+          filename: part.filenameSnapshot,
+          url,
+          kind: classifyChatAttachment({
+            filename: part.filenameSnapshot,
+            url,
+            contentType: part.contentType,
+          }),
+        }),
+      };
+    }
+    case "feedback": {
+      return {
+        type: part.type,
+        part,
+        note: part.note.map((notePart) => {
+          return registerFeedbackNoteRenderPart(
+            notePart,
+            agentReferenceSignals,
+          );
+        }),
+      };
+    }
   }
-  for (const part of event.userMessage.parts) {
-    if (part.type === "agent") {
-      agentReferenceSignals.register(part.agentId);
-      continue;
-    }
-    if (part.type === "source" && part.kind === "agent") {
-      agentReferenceSignals.register(part.agentId);
-      continue;
-    }
-    if (part.type !== "feedback") {
-      continue;
-    }
-    for (const notePart of part.note) {
-      if (notePart.type === "agent") {
-        agentReferenceSignals.register(notePart.agentId);
-      }
-    }
+}
+
+function chatEventUserMessage(
+  event: ChatEvent,
+): UserMessageDocument | undefined {
+  return "userMessage" in event ? event.userMessage : undefined;
+}
+
+function registerUserMessageRenderDocument(
+  event: ChatEvent,
+  artifactCardSignals: ArtifactCardSignalsRegistry,
+  agentReferenceSignals: AgentReferenceSignalsRegistry,
+): UserMessageRenderDocument | undefined {
+  const document = chatEventUserMessage(event);
+  if (!document) {
+    return undefined;
   }
+  return {
+    document,
+    parts: document.parts.map((part) => {
+      return registerUserMessageRenderPart(
+        part,
+        artifactCardSignals,
+        agentReferenceSignals,
+      );
+    }),
+  };
 }
 
 function registerChatEvent(
@@ -1158,18 +1249,25 @@ function registerChatEvent(
   artifactCardSignals: ArtifactCardSignalsRegistry,
   agentReferenceSignals: AgentReferenceSignalsRegistry,
 ): RegisteredChatEvent {
-  registerEventAttachments(event, artifactCardSignals);
-  registerEventAgentReferences(event, agentReferenceSignals);
   const blocks = skipsEventBodyRendering(event)
     ? []
     : registerBodyBlocks(parseChatEventBodyBlocks(event, threadId));
-  return { event, blocks };
+  return {
+    event,
+    blocks,
+    userMessageRenderDocument: registerUserMessageRenderDocument(
+      event,
+      artifactCardSignals,
+      agentReferenceSignals,
+    ),
+  };
 }
 
 interface ServerChatEventProjectionEntry {
   event: PersistedChatEvent;
   source: "server";
   blocks: BodyRenderBlock[];
+  userMessageRenderDocument: UserMessageRenderDocument | undefined;
   optimisticUserMessageAssociation?: never;
 }
 
@@ -1177,6 +1275,7 @@ interface OptimisticChatEventProjectionEntry {
   event: OptimisticChatEvent;
   source: "optimistic";
   blocks: BodyRenderBlock[];
+  userMessageRenderDocument: UserMessageRenderDocument | undefined;
   optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
 }
 
@@ -1214,11 +1313,12 @@ function createTranscriptEventsComputed(
   return computed((get): Promise<EnrichedChatEvent[]> => {
     return Promise.resolve(
       get(semanticEvents$).map((entry) => {
-        const { event, isQueued } = entry;
+        const { event, isQueued, userMessageRenderDocument } = entry;
         return {
           ...event,
           blocks: entry.blocks,
           isQueued,
+          userMessageRenderDocument,
         };
       }),
     );
@@ -1227,6 +1327,7 @@ function createTranscriptEventsComputed(
 
 interface SemanticChatEvent extends SemanticChatEventState {
   readonly blocks: BodyRenderBlock[];
+  readonly userMessageRenderDocument: UserMessageRenderDocument | undefined;
 }
 
 type SemanticChatGroups = GenericSemanticChatGroups<SemanticChatEvent>;
@@ -1236,15 +1337,23 @@ function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
   chatEvents: readonly ChatEvent[],
 ): SemanticChatEvent[] {
-  const blocksByEventId = new Map(
+  const renderDataByEventId = new Map(
     raw.map((entry) => {
-      return [entry.event.id, entry.blocks] as const;
+      return [
+        entry.event.id,
+        {
+          blocks: entry.blocks,
+          userMessageRenderDocument: entry.userMessageRenderDocument,
+        },
+      ] as const;
     }),
   );
   return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
+    const renderData = renderDataByEventId.get(entry.event.id);
     return {
       ...entry,
-      blocks: blocksByEventId.get(entry.event.id) ?? [],
+      blocks: renderData?.blocks ?? [],
+      userMessageRenderDocument: renderData?.userMessageRenderDocument,
     };
   });
 }
@@ -1807,7 +1916,6 @@ function createPagedEventResources(
     },
   );
   return {
-    agentReferenceSignals,
     artifactCardSignals,
     mailDraftCardSignals,
     publicSignals: {
@@ -1815,9 +1923,6 @@ function createPagedEventResources(
       subscribeBrowserSessions$: browserSessionSignals.subscribe$,
       artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
         return artifactCardSignals.find(url);
-      },
-      agentReferenceSignalsForId: (agentId: string) => {
-        return agentReferenceSignals.resolve(agentId);
       },
     },
     registeredEvents$,
@@ -3484,7 +3589,6 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
     eventImageGroups$: events.eventImageGroups$,
     artifactSignalsForUrl: events.artifactSignalsForUrl,
-    agentReferenceSignalsForId: events.agentReferenceSignalsForId,
     mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
@@ -3709,7 +3813,6 @@ function createChatPanelSignalsWithDraft(
   signal: AbortSignal,
 ): ChatPanelSignals {
   const threadId = chatEvents.threadId;
-  const lifecycleId = crypto.randomUUID();
   const artifact = createArtifacts(threadId);
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
@@ -3752,7 +3855,6 @@ function createChatPanelSignalsWithDraft(
   });
   return {
     threadId,
-    lifecycleId,
     signal,
     threadDraft$,
     threadMeta$,

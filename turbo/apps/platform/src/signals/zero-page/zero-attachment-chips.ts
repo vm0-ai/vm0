@@ -10,6 +10,11 @@ import {
   type TextPreviewKind,
 } from "../text-preview.ts";
 import { onRef, resetSignal } from "../utils.ts";
+import {
+  createObjectUrlResource,
+  type ObjectUrlResource,
+} from "../object-url-resource.ts";
+import { rootSignal$ } from "../root-signal.ts";
 
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
@@ -99,7 +104,37 @@ const internalLightboxState$ = state<AttachmentLightboxState | null>(null);
 const internalLightboxDialogVisible$ = state(false);
 const internalLightboxDialogFullscreen$ = state(false);
 const internalLightboxDialogCloseToken$ = state(0);
+const internalLightboxDialogMountToken$ = state(0);
 const resetLightboxDialogCloseSignal$ = resetSignal();
+const internalLightboxObjectUrlResources$ = state<readonly ObjectUrlResource[]>(
+  [],
+);
+
+const releaseLightboxObjectUrlResources$ = command(({ get, set }) => {
+  for (const resource of get(internalLightboxObjectUrlResources$)) {
+    resource.release();
+  }
+  set(internalLightboxObjectUrlResources$, []);
+});
+
+const disposeLightboxSession$ = command(({ set }) => {
+  set(internalLightboxDialogCloseToken$, (value) => {
+    return value + 1;
+  });
+  set(internalLightboxDialogVisible$, false);
+  set(internalLightboxDialogFullscreen$, false);
+  set(internalLightboxState$, null);
+  set(releaseLightboxObjectUrlResources$);
+});
+
+const disposeLightboxForDialogUnmountToken$ = command(
+  ({ get, set }, token: number) => {
+    if (get(internalLightboxDialogMountToken$) !== token) {
+      return;
+    }
+    set(disposeLightboxSession$);
+  },
+);
 
 export const lightboxUrl$ = computed((get) => {
   return get(internalLightboxState$);
@@ -128,6 +163,7 @@ const closeLightboxForDialogExitToken$ = command(
     set(internalLightboxDialogVisible$, false);
     set(internalLightboxDialogFullscreen$, false);
     set(internalLightboxState$, null);
+    set(releaseLightboxObjectUrlResources$);
   },
 );
 
@@ -155,8 +191,8 @@ export const closeLightboxWithDialogExit$ = command(
  * This is opt-out: a new lightbox caller is routed unless it sets
  * `splitViewAvailable: false`. Set it for previews that do not belong in the
  * thread sidebar, such as a pending composer upload. File-backed previews pass
- * the panel-owned object URL with the File metadata so the sidebar can preserve
- * its name and content type.
+ * the File metadata so each destination can create an object URL for its own
+ * consumer lifetime while preserving the name and content type.
  */
 type AttachmentSidebarPreviewInput = {
   readonly url: string;
@@ -214,17 +250,28 @@ function imageLightboxState(
 }
 
 export const openImageLightbox$ = command(
-  ({ set }, value: string | AttachmentImageLightboxInput) => {
+  ({ get, set }, value: string | AttachmentImageLightboxInput) => {
     const input = typeof value === "string" ? { url: value } : value;
     if (set(routeToOpenArtifactSidebar$, input)) {
       return;
+    }
+    const resource = input.file
+      ? createObjectUrlResource(input.file, get(rootSignal$))
+      : undefined;
+    if (resource) {
+      set(internalLightboxObjectUrlResources$, (current) => {
+        return [...current, resource];
+      });
     }
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    set(internalLightboxState$, imageLightboxState(input));
+    set(
+      internalLightboxState$,
+      imageLightboxState(resource ? { ...input, url: resource.url } : input),
+    );
   },
 );
 
@@ -325,7 +372,21 @@ export const openAudioLightbox$ = command(
 // ---------------------------------------------------------------------------
 
 const closeLightboxOnEscape$ = command(
-  ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
+  ({ get, set }, el: HTMLDivElement, signal: AbortSignal) => {
+    const mountToken = get(internalLightboxDialogMountToken$) + 1;
+    set(internalLightboxDialogMountToken$, mountToken);
+    signal.addEventListener(
+      "abort",
+      () => {
+        // React can detach and immediately reattach a callback ref during a
+        // render or StrictMode check. Defer disposal so that replacement mount
+        // can supersede this token; a real route unmount has no replacement.
+        queueMicrotask(() => {
+          set(disposeLightboxForDialogUnmountToken$, mountToken);
+        });
+      },
+      { once: true },
+    );
     document.addEventListener(
       "keydown",
       (e: KeyboardEvent) => {

@@ -84,10 +84,8 @@ import {
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
   ChatEventUsagePayload,
-  FeedbackNotePart,
   ChatRecommendedFollowup,
   GenerationTemplateRequest,
-  ResolvedAttachFile,
   UserMessageDocument,
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -151,10 +149,6 @@ import {
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
 import {
-  isTextPreviewKind,
-  type TextPreviewComputed,
-} from "../../signals/text-preview.ts";
-import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
   type CatalogConnectorSignals,
@@ -184,7 +178,6 @@ import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-bl
 import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
-import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -253,6 +246,9 @@ import {
   renameChatThread$,
   type EnrichedChatEvent,
   type ChatEventGroup,
+  type UserMessageFeedbackNoteRenderPart,
+  type UserMessageRenderDocument,
+  type UserMessageRenderPart,
 } from "../../signals/chat-page/chat-event.ts";
 import type {
   ChatInputEvent,
@@ -325,6 +321,11 @@ type UserMessageNonContentPart = Extract<
   { readonly type: "source" | "automation" | "goal" | "morning_brief" }
 >;
 
+type UserMessageAnnotationRenderPart = Extract<
+  UserMessageRenderPart,
+  { readonly type: "source" | "automation" | "goal" | "morning_brief" }
+>;
+
 function isUserMessageNonContentPart(
   part: UserMessagePart,
 ): part is UserMessageNonContentPart {
@@ -360,12 +361,6 @@ function isInputChatEvent(event: ChatEvent): event is ChatInputEvent {
 
 function asInputChatEvent(event: ChatEvent): ChatInputEvent | undefined {
   return isInputChatEvent(event) ? event : undefined;
-}
-
-function visibleUserMessage(
-  inputEvent: ChatInputEvent | undefined,
-): UserMessageDocument | undefined {
-  return inputEvent?.userMessage;
 }
 
 function selectedModelFromUserMessage(
@@ -436,6 +431,21 @@ function userMessageNonContentPart(
   document: UserMessageDocument | undefined,
 ): UserMessageNonContentPart | undefined {
   return document?.parts.find(isUserMessageNonContentPart);
+}
+
+function userMessageAnnotationRenderPart(
+  document: UserMessageRenderDocument | undefined,
+): UserMessageAnnotationRenderPart | undefined {
+  return document?.parts.find(
+    (renderPart): renderPart is UserMessageAnnotationRenderPart => {
+      return (
+        renderPart.type === "source" ||
+        renderPart.type === "automation" ||
+        renderPart.type === "goal" ||
+        renderPart.type === "morning_brief"
+      );
+    },
+  );
 }
 
 function eventNonContentPart(
@@ -3843,10 +3853,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
           standalonePwa && "overscroll-contain",
         )}
       >
-        <ChatThreadEventsMain
-          key={`messages:${thread.threadId}`}
-          thread={thread}
-        />
+        <ChatThreadEventsMain thread={thread} />
       </div>
       <ChatThreadSkeletonOverlay
         key={`skeleton:${thread.threadId}`}
@@ -6762,42 +6769,31 @@ interface ResolvedMessageAttachment {
   readonly contentType: string | undefined;
   readonly isImage: boolean;
   readonly kind: ReturnType<typeof classifyChatAttachment>;
-  readonly resourceUrl$: ArtifactSignals["resourceUrl$"];
-  readonly text$?: TextPreviewComputed;
+  readonly signals: ArtifactSignals;
 }
 
 type OpenMessageImagePreview = (url: string, filename?: string) => void;
 
-function resolveAttachments(
-  event: EnrichedChatEvent,
-  artifactSignalsForUrl: ChatPanelSignals["artifactSignalsForUrl"],
+function userMessageRenderAttachments(
+  document: UserMessageRenderDocument | undefined,
 ): ResolvedMessageAttachment[] {
-  const source = chatEventAttachments(event) ?? [];
-  return source.map((f) => {
-    const contentType =
-      "contentType" in f && typeof f.contentType === "string"
-        ? f.contentType
-        : undefined;
-    const kind = classifyChatAttachment({
-      filename: f.filename,
-      url: f.url,
-      contentType,
-    });
-    const artifactSignals = artifactSignalsForUrl(f.url);
-    if (!artifactSignals) {
-      throw new Error(`Attachment signals not registered for ${f.url}`);
+  return (document?.parts ?? []).flatMap((renderPart) => {
+    if (renderPart.type !== "file") {
+      return [];
     }
-    const text$ = isTextPreviewKind(kind) ? artifactSignals.text$ : undefined;
-    return {
-      id: "id" in f && typeof f.id === "string" ? f.id : null,
-      filename: f.filename,
-      url: f.url,
-      contentType,
-      isImage: kind === "image" || isImageFilename(f.filename),
-      kind,
-      resourceUrl$: artifactSignals.resourceUrl$,
-      ...(text$ ? { text$ } : {}),
-    };
+    const { part, signals } = renderPart;
+    return [
+      {
+        id: part.fileId,
+        filename: part.filenameSnapshot,
+        url: signals.url,
+        contentType: part.contentType,
+        isImage:
+          signals.kind === "image" || isImageFilename(part.filenameSnapshot),
+        kind: signals.kind,
+        signals,
+      },
+    ];
   });
 }
 
@@ -6853,7 +6849,7 @@ function MessageAttachment({
           onImageClick(a.url, a.filename);
         }}
         placeholderClassName="h-full w-full"
-        resourceUrl$={a.resourceUrl$}
+        resourceUrl$={a.signals.resourceUrl$}
         url={a.url}
       />
     );
@@ -6896,7 +6892,7 @@ function MessageAttachment({
         filename={a.filename}
         url={a.url}
         kind={a.kind}
-        text$={a.text$}
+        text$={a.signals.text$}
       />
     );
   }
@@ -6950,7 +6946,7 @@ function UserMessageAttachments({
   attachments,
   onImageClick,
 }: {
-  attachments: ReturnType<typeof resolveAttachments>;
+  attachments: ReturnType<typeof userMessageRenderAttachments>;
   onImageClick: OpenMessageImagePreview;
 }) {
   if (attachments.length === 0) {
@@ -7053,17 +7049,16 @@ const annotationIconImgs = {
 } as const;
 
 function MessageAnnotation({
-  part,
-  agentReferenceSignalsForId,
+  renderPart,
 }: {
-  part: UserMessageNonContentPart;
-  agentReferenceSignalsForId?: ChatPanelSignals["agentReferenceSignalsForId"];
+  renderPart: UserMessageAnnotationRenderPart;
 }) {
   const { t } = useTranslation();
   const className =
     "mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end " +
     "rounded-md px-1.5 text-xs font-medium text-muted-foreground";
-  if (part.type === "automation") {
+  if (renderPart.type === "automation") {
+    const { part } = renderPart;
     return (
       <div
         aria-label={t(
@@ -7082,7 +7077,7 @@ function MessageAnnotation({
       </div>
     );
   }
-  if (part.type === "goal") {
+  if (renderPart.type === "goal") {
     return (
       <div
         aria-label={t(($) => {
@@ -7099,7 +7094,7 @@ function MessageAnnotation({
       </div>
     );
   }
-  if (part.type === "morning_brief") {
+  if (renderPart.type === "morning_brief") {
     return (
       <div
         aria-label={t(($) => {
@@ -7117,36 +7112,28 @@ function MessageAnnotation({
     );
   }
   return (
-    <SourceMessageAnnotation
-      part={part}
-      className={className}
-      agentReferenceSignalsForId={agentReferenceSignalsForId}
-    />
+    <SourceMessageAnnotation renderPart={renderPart} className={className} />
   );
 }
 
 function SourceMessageAnnotation({
-  part,
+  renderPart,
   className,
-  agentReferenceSignalsForId,
 }: {
-  part: Extract<UserMessageNonContentPart, { type: "source" }>;
+  renderPart: Extract<UserMessageAnnotationRenderPart, { type: "source" }>;
   className: string;
-  agentReferenceSignalsForId?: ChatPanelSignals["agentReferenceSignalsForId"];
 }) {
   const { t } = useTranslation();
-  if (part.kind === "agent") {
-    if (!agentReferenceSignalsForId) {
-      return null;
-    }
+  if (renderPart.kind === "agent") {
     return (
       <AgentRunSourceMessageAnnotation
-        part={part}
+        part={renderPart.part}
         className={className}
-        signals={agentReferenceSignalsForId(part.agentId)}
+        signals={renderPart.signals}
       />
     );
   }
+  const { part } = renderPart;
   const sourceLabel =
     part.kind === "slack"
       ? t(($) => {
@@ -7279,10 +7266,6 @@ function AgentRunSourceMessageAnnotation({
   );
 }
 
-const STRUCTURED_REFERENCE_CHIP_CLASS =
-  "inline-flex max-w-[240px] items-center gap-1 rounded-md border " +
-  "border-foreground/15 bg-background/80 px-1.5 py-0.5 align-middle " +
-  "text-xs font-medium";
 // File chips carry their own border, so they need more breathing room from the
 // surrounding sentence than a borderless inline mention does.
 const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
@@ -7347,106 +7330,75 @@ function UserMessageTemplateReference({
 
 function UserMessageFileReference({
   part,
-  attachment,
+  signals,
 }: {
   part: Extract<UserMessagePart, { type: "file" }>;
-  attachment: ResolvedAttachFile | undefined;
+  signals: ArtifactSignals;
 }) {
   const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-
-  if (attachment) {
-    const kind = classifyChatAttachment({
-      filename: part.filenameSnapshot,
-      url: attachment.url,
-      contentType: part.contentType,
-    });
-    let reference: ReactNode;
-    if (kind === "video") {
-      reference = (
-        <ChatVideoPreviewButton
-          ariaLabel={t(
-            ($) => {
-              return $.chat.attachments.previewFile;
-            },
-            {
-              filename: part.filenameSnapshot,
-            },
-          )}
-          buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
-          filename={part.filenameSnapshot}
-          onPreview={() => {
-            openVideoLightbox({
-              url: attachment.url,
-              filename: part.filenameSnapshot,
-            });
-          }}
-          posterClassName="h-full w-full"
-          url={attachment.url}
-          videoClassName="h-full w-full object-contain"
-        />
-      );
-    } else if (
-      kind === "markdown" ||
-      kind === "text" ||
-      kind === "json" ||
-      kind === "csv" ||
-      kind === "pdf" ||
-      kind === "html"
-    ) {
-      reference = (
-        <PreviewableFileAttachmentChip
-          filename={part.filenameSnapshot}
-          url={attachment.url}
-          kind={kind}
-        />
-      );
-    } else if (kind === "audio") {
-      reference = (
-        <PreviewableAudioAttachmentChip
-          filename={part.filenameSnapshot}
-          url={attachment.url}
-          contentType={part.contentType}
-        />
-      );
-    } else {
-      reference = (
-        <FileAttachmentChip
-          contentType={part.contentType}
-          filename={part.filenameSnapshot}
-          url={attachment.url}
-        />
-      );
-    }
-    return (
-      <span
-        className={`${INLINE_FILE_REFERENCE_SPACING_CLASS} inline-flex align-middle`}
-      >
-        {reference}
-      </span>
+  let reference: ReactNode;
+  if (signals.kind === "video") {
+    reference = (
+      <ChatVideoPreviewButton
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: part.filenameSnapshot,
+          },
+        )}
+        buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
+        filename={part.filenameSnapshot}
+        onPreview={() => {
+          openVideoLightbox({
+            url: signals.url,
+            filename: part.filenameSnapshot,
+          });
+        }}
+        posterClassName="h-full w-full"
+        url={signals.url}
+        videoClassName="h-full w-full object-contain"
+      />
+    );
+  } else if (
+    signals.kind === "markdown" ||
+    signals.kind === "text" ||
+    signals.kind === "json" ||
+    signals.kind === "csv" ||
+    signals.kind === "pdf" ||
+    signals.kind === "html"
+  ) {
+    reference = (
+      <PreviewableFileAttachmentChip
+        filename={part.filenameSnapshot}
+        url={signals.url}
+        kind={signals.kind}
+      />
+    );
+  } else if (signals.kind === "audio") {
+    reference = (
+      <PreviewableAudioAttachmentChip
+        filename={part.filenameSnapshot}
+        url={signals.url}
+        contentType={part.contentType}
+      />
+    );
+  } else {
+    reference = (
+      <FileAttachmentChip
+        contentType={part.contentType}
+        filename={part.filenameSnapshot}
+        url={signals.url}
+      />
     );
   }
   return (
     <span
-      aria-label={t(
-        ($) => {
-          return $.chat.attachments.file;
-        },
-        {
-          filename: part.filenameSnapshot,
-        },
-      )}
-      className={`${STRUCTURED_REFERENCE_CHIP_CLASS} ${INLINE_FILE_REFERENCE_SPACING_CLASS} h-7`}
-      title={part.filenameSnapshot}
+      className={`${INLINE_FILE_REFERENCE_SPACING_CLASS} inline-flex align-middle`}
     >
-      <FilePreviewIcon
-        filename={part.filenameSnapshot}
-        contentType={part.contentType}
-        size="sm"
-        className="shrink-0"
-        testId="structured-message-file-icon"
-      />
-      <span className="min-w-0 truncate">{part.filenameSnapshot}</span>
+      {reference}
     </span>
   );
 }
@@ -7515,52 +7467,55 @@ function UserMessageAgentReference({
 
 function UserMessageFeedbackNote({
   note,
-  agentReferenceSignalsForId,
 }: {
-  note: readonly FeedbackNotePart[];
-  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
+  note: readonly UserMessageFeedbackNoteRenderPart[];
 }) {
   const partOccurrences = new Map<string, number>();
   return (
     <div>
-      {note.map((part) => {
-        const identity = JSON.stringify(part);
+      {note.map((renderPart) => {
+        const identity = JSON.stringify(renderPart.part);
         const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
         partOccurrences.set(identity, occurrence);
         const key = `${identity}:${String(occurrence)}`;
-        if (part.type === "chat_thread") {
+        if (renderPart.type === "chat_thread") {
           return (
             <UserMessageChatThreadReference
               key={key}
-              threadId={part.threadId}
-              title={part.titleSnapshot}
+              threadId={renderPart.part.threadId}
+              title={renderPart.part.titleSnapshot}
             />
           );
         }
-        if (part.type === "agent") {
+        if (renderPart.type === "agent") {
           return (
             <UserMessageAgentReference
               key={key}
-              agentId={part.agentId}
-              name={part.nameSnapshot}
-              signals={agentReferenceSignalsForId(part.agentId)}
+              agentId={renderPart.part.agentId}
+              name={renderPart.part.nameSnapshot}
+              signals={renderPart.signals}
             />
           );
         }
-        if (part.type === "template") {
-          return <UserMessageTemplateReference key={key} part={part} />;
+        if (renderPart.type === "template") {
+          return (
+            <UserMessageTemplateReference key={key} part={renderPart.part} />
+          );
         }
-        return <span key={key}>{part.text}</span>;
+        return <span key={key}>{renderPart.part.text}</span>;
       })}
     </div>
   );
 }
 
-type UserMessageFeedbackPart = Extract<UserMessagePart, { type: "feedback" }>;
+type UserMessageFeedbackRenderPart = Extract<
+  UserMessageRenderPart,
+  { type: "feedback" }
+>;
 
 function equalFeedbackSources(
-  left: UserMessageFeedbackPart["source"],
-  right: UserMessageFeedbackPart["source"],
+  left: UserMessageFeedbackRenderPart["part"]["source"],
+  right: UserMessageFeedbackRenderPart["part"]["source"],
 ): boolean {
   if (left === undefined || right === undefined) {
     return left === right;
@@ -7574,9 +7529,9 @@ function equalFeedbackSources(
 }
 
 function userMessageFeedbackHeading(
-  parts: readonly UserMessageFeedbackPart[],
+  parts: readonly UserMessageFeedbackRenderPart[],
 ): string {
-  const source = parts[0]?.source;
+  const source = parts[0]?.part.source;
   if (!source) {
     return parts.length === 1
       ? i18n.t(($) => {
@@ -7639,18 +7594,16 @@ function userMessageFeedbackHeading(
 
 function UserMessageFeedbackGroup({
   parts,
-  agentReferenceSignalsForId,
 }: {
-  parts: readonly UserMessageFeedbackPart[];
-  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
+  parts: readonly UserMessageFeedbackRenderPart[];
 }) {
   const partOccurrences = new Map<string, number>();
   let firstPart = true;
   return (
     <div data-structured-feedback-group="" className="space-y-3">
       <div>{userMessageFeedbackHeading(parts)}</div>
-      {parts.map((part) => {
-        const identity = JSON.stringify(part);
+      {parts.map((renderPart) => {
+        const identity = JSON.stringify(renderPart.part);
         const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
         partOccurrences.set(identity, occurrence);
         const showDivider = !firstPart;
@@ -7667,12 +7620,9 @@ function UserMessageFeedbackGroup({
               data-structured-feedback-quote=""
               className="border-l-2 border-border pl-3 text-muted-foreground"
             >
-              {part.quote}
+              {renderPart.part.quote}
             </blockquote>
-            <UserMessageFeedbackNote
-              note={part.note}
-              agentReferenceSignalsForId={agentReferenceSignalsForId}
-            />
+            <UserMessageFeedbackNote note={renderPart.note} />
           </div>
         );
       })}
@@ -7680,76 +7630,70 @@ function UserMessageFeedbackGroup({
   );
 }
 
-type UserMessageContentPart = Exclude<
-  UserMessagePart,
+type UserMessageContentRenderPart = Exclude<
+  UserMessageRenderPart,
   {
     readonly type: "source" | "automation" | "goal" | "morning_brief" | "model";
   }
 >;
-type UserMessageStandalonePart = Exclude<
-  UserMessageContentPart,
+type UserMessageStandaloneRenderPart = Exclude<
+  UserMessageContentRenderPart,
   { readonly type: "feedback" }
 >;
 
 function UserMessagePartView({
-  part,
-  attachments,
-  agentReferenceSignalsForId,
+  renderPart,
 }: {
-  part: UserMessageStandalonePart;
-  attachments: readonly ResolvedAttachFile[];
-  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
+  renderPart: UserMessageStandaloneRenderPart;
 }): ReactNode {
-  if (part.type === "text") {
-    return <span>{part.text}</span>;
+  if (renderPart.type === "text") {
+    return <span>{renderPart.part.text}</span>;
   }
-  if (part.type === "chat_thread") {
+  if (renderPart.type === "chat_thread") {
     return (
       <UserMessageChatThreadReference
-        threadId={part.threadId}
-        title={part.titleSnapshot}
+        threadId={renderPart.part.threadId}
+        title={renderPart.part.titleSnapshot}
       />
     );
   }
-  if (part.type === "agent") {
+  if (renderPart.type === "agent") {
     return (
       <UserMessageAgentReference
-        agentId={part.agentId}
-        name={part.nameSnapshot}
-        signals={agentReferenceSignalsForId(part.agentId)}
+        agentId={renderPart.part.agentId}
+        name={renderPart.part.nameSnapshot}
+        signals={renderPart.signals}
       />
     );
   }
-  if (part.type === "template") {
-    return <UserMessageTemplateReference part={part} />;
+  if (renderPart.type === "template") {
+    return <UserMessageTemplateReference part={renderPart.part} />;
   }
-  if (part.type === "file") {
-    const attachment = attachments.find((candidate) => {
-      return candidate.id === part.fileId;
-    });
-    return <UserMessageFileReference part={part} attachment={attachment} />;
+  if (renderPart.type === "file") {
+    return (
+      <UserMessageFileReference
+        part={renderPart.part}
+        signals={renderPart.signals}
+      />
+    );
   }
-  void (part satisfies never);
+  void (renderPart satisfies never);
   return null;
 }
 
 function UserMessageView({
   document,
-  attachments,
   elevatedFileIds,
-  agentReferenceSignalsForId,
 }: {
-  document: UserMessageDocument;
-  attachments: readonly ResolvedAttachFile[];
+  document: UserMessageRenderDocument;
   elevatedFileIds: ReadonlySet<string>;
-  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter(
-    (part): part is UserMessageContentPart => {
+    (renderPart): renderPart is UserMessageContentRenderPart => {
       return (
-        !isUserMessageHiddenPart(part) &&
-        !isElevatedUserMessagePart(part, elevatedFileIds)
+        !isUserMessageHiddenPart(renderPart.part) &&
+        !isElevatedUserMessagePart(renderPart, elevatedFileIds)
       );
     },
   );
@@ -7759,18 +7703,18 @@ function UserMessageView({
   const renderedParts: ReactNode[] = [];
   let index = 0;
   while (index < bodyParts.length) {
-    const part = bodyParts[index];
-    if (!part) {
+    const renderPart = bodyParts[index];
+    if (!renderPart) {
       break;
     }
-    if (part.type === "feedback") {
-      const feedbackParts: UserMessageFeedbackPart[] = [part];
+    if (renderPart.type === "feedback") {
+      const feedbackParts: UserMessageFeedbackRenderPart[] = [renderPart];
       let nextIndex = index + 1;
       while (nextIndex < bodyParts.length) {
         const candidate = bodyParts[nextIndex];
         if (
           candidate?.type !== "feedback" ||
-          !equalFeedbackSources(part.source, candidate.source)
+          !equalFeedbackSources(renderPart.part.source, candidate.part.source)
         ) {
           break;
         }
@@ -7781,21 +7725,18 @@ function UserMessageView({
         <UserMessageFeedbackGroup
           key={`feedback:${String(index)}`}
           parts={feedbackParts}
-          agentReferenceSignalsForId={agentReferenceSignalsForId}
         />,
       );
       index = nextIndex;
       continue;
     }
-    const identity = JSON.stringify(part);
+    const identity = JSON.stringify(renderPart.part);
     const occurrence = (partOccurrences.get(identity) ?? 0) + 1;
     partOccurrences.set(identity, occurrence);
     renderedParts.push(
       <UserMessagePartView
         key={`${identity}:${String(occurrence)}`}
-        part={part}
-        attachments={attachments}
-        agentReferenceSignalsForId={agentReferenceSignalsForId}
+        renderPart={renderPart}
       />,
     );
     index += 1;
@@ -7808,24 +7749,22 @@ function UserMessageView({
 }
 
 function isElevatedUserMessagePart(
-  part: UserMessagePart,
+  renderPart: UserMessageRenderPart,
   elevatedFileIds: ReadonlySet<string>,
 ): boolean {
-  return part.type === "file" && elevatedFileIds.has(part.fileId);
+  return (
+    renderPart.type === "file" && elevatedFileIds.has(renderPart.part.fileId)
+  );
 }
 
 function UserMessageContent({
   document,
   attachments,
-  referenceAttachments,
   onImageClick,
-  agentReferenceSignalsForId,
 }: {
-  document: UserMessageDocument;
-  attachments: ReturnType<typeof resolveAttachments>;
-  referenceAttachments: readonly ResolvedAttachFile[];
+  document: UserMessageRenderDocument;
+  attachments: ReturnType<typeof userMessageRenderAttachments>;
   onImageClick: OpenMessageImagePreview;
-  agentReferenceSignalsForId: ChatPanelSignals["agentReferenceSignalsForId"];
 }) {
   // Attachments read as their own object, so they all sit above the bubble
   // instead of interrupting the sentence they were dropped into. Attachments
@@ -7838,10 +7777,10 @@ function UserMessageContent({
       return attachment.id ? [attachment.id] : [];
     }),
   );
-  const hasBody = document.parts.some((part) => {
+  const hasBody = document.parts.some((renderPart) => {
     return (
-      !isUserMessageHiddenPart(part) &&
-      !isElevatedUserMessagePart(part, elevatedFileIds)
+      !isUserMessageHiddenPart(renderPart.part) &&
+      !isElevatedUserMessagePart(renderPart, elevatedFileIds)
     );
   });
 
@@ -7856,9 +7795,7 @@ function UserMessageContent({
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
-              attachments={referenceAttachments}
               elevatedFileIds={elevatedFileIds}
-              agentReferenceSignalsForId={agentReferenceSignalsForId}
             />
           </div>
         </div>
@@ -7873,10 +7810,13 @@ function WorkflowUserMessage({
   event: EnrichedChatEvent & ChatInputEvent;
 }) {
   const { t } = useTranslation();
-  const part = eventNonContentPart(event);
-  if (part?.type !== "automation") {
+  const renderPart = userMessageAnnotationRenderPart(
+    event.userMessageRenderDocument,
+  );
+  if (renderPart?.type !== "automation") {
     return null;
   }
+  const { part } = renderPart;
   const workflowTitle =
     part.workflowName.trim() ||
     t(($) => {
@@ -7904,7 +7844,7 @@ function WorkflowUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          <MessageAnnotation part={part} />
+          <MessageAnnotation renderPart={renderPart} />
           {linked && body ? (
             <Link
               pathname={ROUTES.workflowDetailAutomations}
@@ -7939,10 +7879,13 @@ function GoalUserMessage({
 }: {
   event: EnrichedChatEvent & ChatInputEvent;
 }) {
-  const part = eventNonContentPart(event);
-  if (part?.type !== "goal") {
+  const renderPart = userMessageAnnotationRenderPart(
+    event.userMessageRenderDocument,
+  );
+  if (renderPart?.type !== "goal") {
     return null;
   }
+  const { part } = renderPart;
   const goalBrief = part.goalBrief.trim();
   return (
     <div
@@ -7953,7 +7896,7 @@ function GoalUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
-          <MessageAnnotation part={part} />
+          <MessageAnnotation renderPart={renderPart} />
           {goalBrief ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
               <div className="px-4 py-3 whitespace-pre-wrap">{goalBrief}</div>
@@ -7966,11 +7909,11 @@ function GoalUserMessage({
 }
 
 function resolvePagedUserMessageRendering({
-  userMessage,
+  renderDocument,
 }: {
-  userMessage: UserMessageDocument | undefined;
+  renderDocument: UserMessageRenderDocument | undefined;
 }) {
-  const canonicalUserMessage = userMessage;
+  const canonicalUserMessage = renderDocument?.document;
   const userMessageAttachments = canonicalUserMessage
     ? userMessageFileAttachments(canonicalUserMessage)
     : undefined;
@@ -7985,20 +7928,10 @@ function resolvePagedUserMessageRendering({
     : [];
 
   return {
-    userMessageAttachments,
     canonicalUserMessage,
     clipboardAttachments,
     copyText,
   };
-}
-
-function visibleSourceAnnotationPart({
-  userMessage,
-}: {
-  userMessage: UserMessageDocument | undefined;
-}) {
-  const part = userMessageNonContentPart(userMessage);
-  return part?.type === "source" ? part : undefined;
 }
 
 function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
@@ -8023,15 +7956,11 @@ function PagedUserMessage({
   thread: ChatPanelSignals;
 }) {
   const inputEvent = asInputChatEvent(event);
-  const userMessage = visibleUserMessage(inputEvent);
-  const {
-    userMessageAttachments,
-    canonicalUserMessage,
-    clipboardAttachments,
-    copyText,
-  } = resolvePagedUserMessageRendering({
-    userMessage,
-  });
+  const renderDocument = event.userMessageRenderDocument;
+  const { canonicalUserMessage, clipboardAttachments, copyText } =
+    resolvePagedUserMessageRendering({
+      renderDocument,
+    });
   const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -8043,10 +7972,9 @@ function PagedUserMessage({
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;
   const copyEvent = useSet(thread.copyEvent$);
-  const findArtifact = thread.artifactSignalsForUrl;
-  const allAttachments = resolveAttachments(event, findArtifact);
+  const allAttachments = userMessageRenderAttachments(renderDocument);
   const canCopy =
-    userMessage !== undefined ||
+    canonicalUserMessage !== undefined ||
     copyText.trim().length > 0 ||
     clipboardAttachments.length > 0;
 
@@ -8060,7 +7988,9 @@ function PagedUserMessage({
         {
           text: copyText,
           attachments: clipboardAttachments,
-          ...(userMessage ? { userMessage } : {}),
+          ...(canonicalUserMessage
+            ? { userMessage: canonicalUserMessage }
+            : {}),
         },
         pageSignal,
       ),
@@ -8080,13 +8010,12 @@ function PagedUserMessage({
     return <GoalUserMessage event={event} />;
   }
 
-  const nonContentPart = userMessageNonContentPart(userMessage);
-  const morningBriefAnnotationPart =
-    nonContentPart?.type === "morning_brief" ? nonContentPart : undefined;
-  const sourceAnnotationPart = visibleSourceAnnotationPart({
-    userMessage,
-  });
-  const annotationPart = morningBriefAnnotationPart ?? sourceAnnotationPart;
+  const nonContentRenderPart = userMessageAnnotationRenderPart(renderDocument);
+  const annotationPart =
+    nonContentRenderPart?.type === "morning_brief" ||
+    nonContentRenderPart?.type === "source"
+      ? nonContentRenderPart
+      : undefined;
   return (
     <div
       id={inputPromptRunAnchor(inputEvent)}
@@ -8098,18 +8027,13 @@ function PagedUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           {annotationPart ? (
-            <MessageAnnotation
-              part={annotationPart}
-              agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
-            />
+            <MessageAnnotation renderPart={annotationPart} />
           ) : null}
-          {canonicalUserMessage ? (
+          {renderDocument ? (
             <UserMessageContent
-              document={canonicalUserMessage}
+              document={renderDocument}
               attachments={allAttachments}
-              referenceAttachments={userMessageAttachments ?? []}
               onImageClick={openLightbox}
-              agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
             />
           ) : (
             <>
@@ -8122,7 +8046,7 @@ function PagedUserMessage({
                   <div className="px-4 py-3">
                     <BodyContentBlocks
                       blocks={bodyBlocks}
-                      mermaidScope={thread.lifecycleId}
+                      mermaidScope={thread.threadId}
                       openLightbox={openLightbox}
                       hardBreaks
                       escapeMarkdownHtml
@@ -8285,7 +8209,7 @@ function PagedAssistantEventItem({
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}
-            mermaidScope={thread.lifecycleId}
+            mermaidScope={thread.threadId}
             openLightbox={openLightbox}
             hardBreaks={false}
           />

@@ -14,6 +14,7 @@ import type {
   ArtifactRefInput,
   ThreadSidebarTarget,
 } from "./thread-sidebar.ts";
+import { createObjectUrlResource } from "../object-url-resource.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -137,7 +138,10 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
   };
 }
 
-function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
+function materializeArtifactRef(
+  input: ArtifactRefInput,
+  ownerSignal: AbortSignal,
+): ArtifactRef {
   if (typeof input === "string") {
     return artifactRefFromUrl(input);
   }
@@ -155,14 +159,16 @@ function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
         : { shareAvailable: input.shareAvailable }),
     };
   }
+  const resource = createObjectUrlResource(input.file, ownerSignal);
   return {
-    url: input.url,
+    url: resource.url,
     kind: classifyChatAttachment({
       contentType: input.file.type,
       filename: input.file.name,
-      url: input.url,
+      url: resource.url,
     }),
     filename: input.file.name,
+    releaseObjectUrl: resource.release,
     ...(input.shareAvailable === undefined
       ? {}
       : { shareAvailable: input.shareAvailable }),
@@ -175,13 +181,23 @@ function materializeArtifactRef(input: ArtifactRefInput): ArtifactRef {
  */
 export const openThreadArtifactSplitView$ = command(
   ({ get, set }, input: ArtifactRefInput) => {
-    const thread = get(currentLeftThread$) ?? get(currentRightThread$);
+    const leftThread = get(currentLeftThread$);
+    const rightThread = get(currentRightThread$);
+    const thread =
+      leftThread && !leftThread.signal.aborted
+        ? leftThread
+        : rightThread && !rightThread.signal.aborted
+          ? rightThread
+          : null;
     if (!thread) {
       return;
     }
     set(openOnThread$, thread, {
       type: "artifact",
-      source: { kind: "attachment", ref: materializeArtifactRef(input) },
+      source: {
+        kind: "attachment",
+        ref: materializeArtifactRef(input, thread.signal),
+      },
     });
   },
 );
@@ -200,11 +216,17 @@ export const openArtifactInOpenSidebar$ = command(
     ) {
       return false;
     }
+    if (active.thread.signal.aborted) {
+      return false;
+    }
     // The owning thread already holds the page's only utility sidebar, so this
     // swaps its content without closing and reopening the pane.
     set(active.thread.sidebar.open$, {
       type: "artifact",
-      source: { kind: "attachment", ref: materializeArtifactRef(input) },
+      source: {
+        kind: "attachment",
+        ref: materializeArtifactRef(input, active.thread.signal),
+      },
     });
     return true;
   },

@@ -39,6 +39,7 @@ export type ArtifactRef = {
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
   readonly shareAvailable?: boolean;
+  readonly releaseObjectUrl?: () => void;
 };
 
 export type ArtifactFileRef = {
@@ -107,6 +108,14 @@ export interface ThreadSidebarSignals {
   readonly setupArtifactsSession$: Command<Promise<void>, [AbortSignal]>;
 }
 
+function attachmentObjectUrlRelease(
+  target: ThreadSidebarTarget | null,
+): (() => void) | undefined {
+  return target?.type === "artifact" && target.source.kind === "attachment"
+    ? target.source.ref.releaseObjectUrl
+    : undefined;
+}
+
 export function createThreadSidebarSignals(
   threadId: string,
 ): ThreadSidebarSignals {
@@ -135,6 +144,8 @@ export function createThreadSidebarSignals(
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
+    const currentObjectUrlRelease = attachmentObjectUrlRelease(current);
+    const nextObjectUrlRelease = attachmentObjectUrlRelease(target);
     if (current === null) {
       set(internalAnimateEntry$, get(internalEntryAnimationsEnabled$));
     }
@@ -145,16 +156,24 @@ export function createThreadSidebarSignals(
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
     set(internalTarget$, target);
+    if (
+      currentObjectUrlRelease &&
+      currentObjectUrlRelease !== nextObjectUrlRelease
+    ) {
+      currentObjectUrlRelease();
+    }
   });
 
-  const close$ = command(({ set }) => {
+  const close$ = command(({ get, set }) => {
     // Abort session resources (realtime subscription, background refresh)
     // while keeping the cached catalog pages for the next open.
     set(resetSession$);
+    const objectUrlRelease = attachmentObjectUrlRelease(get(internalTarget$));
     set(internalTarget$, null);
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
+    objectUrlRelease?.();
   });
 
   const claimAutoOpenCandidate$ = command(

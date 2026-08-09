@@ -5,6 +5,7 @@ import type {
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { currentChatThreadId$ } from "../agent-chat.ts";
+import { activeRoute$ } from "../active-route.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { logger } from "../log.ts";
 import {
@@ -204,6 +205,18 @@ const setupPaneThread$ = command(
     parentSignal: AbortSignal,
   ): Promise<void> => {
     const signal = set(spec.resetSetupSignal$, parentSignal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        // A non-chat page must never inherit this aborted panel on re-entry.
+        // Chat-to-chat setup keeps the reference so the outer thread section
+        // can preserve its established DOM identity until replacement.
+        if (get(activeRoute$) !== "chat") {
+          set(spec.setPaneThread$, null);
+        }
+      },
+      { once: true },
+    );
 
     L.debug("setupPaneThread$ start", { threadId });
     await set(waitForThreadMetaResolution$, threadId, signal);

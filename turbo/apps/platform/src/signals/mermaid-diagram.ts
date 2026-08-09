@@ -4,7 +4,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-page/chat-thread-pane-state.ts";
-import { pageLifecycleId$, pageSignal$ } from "./page-signal.ts";
+import { pageSignal$ } from "./page-signal.ts";
 
 export type MermaidDiagramResult =
   | { readonly status: "rendering" }
@@ -24,8 +24,8 @@ export const mermaidDiagramResultByKey$ = computed((get) => {
 });
 
 /**
- * Diagrams are identified by their panel lifetime, source, and theme. Identical
- * diagrams within one panel share a result, while a panel or theme switch
+ * Diagrams are identified by their thread scope, source, and theme. Identical
+ * diagrams within one scope share a result, while a thread or theme switch
  * renders a new one.
  */
 export function mermaidDiagramKey(
@@ -45,9 +45,30 @@ const setMermaidDiagramResult$ = command(
 );
 
 // Rendered entries are refcounted by mounted canvases and dropped once the last
-// one detaches. Their object URLs belong to the containing chat panel instead:
-// a sidebar or lightbox can keep using the same URL after the message unmounts.
+// one detaches. Their object URLs belong to the containing chat panel, but a
+// same-thread query navigation can replace that panel while retaining the
+// mounted canvas. Defer revocation until both the owner has ended and the last
+// canvas has detached so the semantic thread key cannot retain a revoked URL.
 const internalMermaidDiagramRefCountByKey$ = state<Record<string, number>>({});
+const internalPendingMermaidObjectUrlRevocationsByKey$ = state<
+  Record<string, readonly string[]>
+>({});
+
+const revokeMermaidObjectUrlWhenUnused$ = command(
+  ({ get, set }, key: string, url: string) => {
+    const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
+    if (refCount === 0) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    set(internalPendingMermaidObjectUrlRevocationsByKey$, (current) => {
+      return {
+        ...current,
+        [key]: [...(current[key] ?? []), url],
+      };
+    });
+  },
+);
 
 const retainMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
@@ -82,6 +103,14 @@ const releaseMermaidDiagramResult$ = command(({ get, set }, key: string) => {
   }
 
   set(internalMermaidDiagramRefCountByKey$, (current) => {
+    return withoutKey(current, key);
+  });
+  for (const url of get(internalPendingMermaidObjectUrlRevocationsByKey$)[
+    key
+  ] ?? []) {
+    URL.revokeObjectURL(url);
+  }
+  set(internalPendingMermaidObjectUrlRevocationsByKey$, (current) => {
     return withoutKey(current, key);
   });
   set(internalMermaidDiagramResultByKey$, (current) => {
@@ -187,7 +216,8 @@ function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
 
 /**
  * Keep the rendered SVG as a browser-native file. The containing chat panel or
- * page owns its object URL, while preview surfaces reuse it with File metadata.
+ * page owns the inline object URL, while preview surfaces materialize their own
+ * URLs from the File under their respective consumer lifetimes.
  */
 function svgFile(markup: string): File {
   return new File([markup], "diagram.svg", { type: "image/svg+xml" });
@@ -211,14 +241,9 @@ const renderMermaidDiagram$ = command(
       get(currentLeftThread$),
       get(currentRightThread$),
     ].find((thread) => {
-      return thread?.lifecycleId === scope;
+      return thread?.threadId === scope;
     })?.signal;
-    const pageLifecycleId = get(pageLifecycleId$);
-    // Resolve the owner before rendering so a panel or page replacement cannot
-    // make a completed render fall back to the source element's shorter life.
-    const objectUrlSignal =
-      panelSignal ??
-      (scope !== "" && pageLifecycleId === scope ? get(pageSignal$) : signal);
+    const objectUrlSignal = panelSignal ?? get(pageSignal$);
 
     set(retainMermaidDiagramResult$, key);
     signal.addEventListener(
@@ -268,7 +293,7 @@ const renderMermaidDiagram$ = command(
     objectUrlSignal.addEventListener(
       "abort",
       () => {
-        URL.revokeObjectURL(url);
+        set(revokeMermaidObjectUrlWhenUnused$, key, url);
       },
       { once: true },
     );

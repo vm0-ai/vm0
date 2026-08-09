@@ -1,10 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { agents$ } from "../agent.ts";
-import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
-} from "./card-signal-map.ts";
+import { getOrCreateCardSignals } from "./card-signal-map.ts";
 
 /**
  * Reactive agent data backing one or more structured agent references in a
@@ -18,7 +15,6 @@ export interface AgentReferenceSignals {
 
 export interface AgentReferenceSignalsRegistry {
   register(agentId: string): AgentReferenceSignals;
-  resolve(agentId: string): AgentReferenceSignals;
 }
 
 function createAgentReferenceSignals(agentId: string): AgentReferenceSignals {
@@ -46,9 +42,6 @@ export function createAgentReferenceSignalsRegistry(): AgentReferenceSignalsRegi
       return getOrCreateCardSignals(signalsByAgentId, agentId, () => {
         return createAgentReferenceSignals(agentId);
       });
-    },
-    resolve(agentId) {
-      return registeredCardSignals(signalsByAgentId, agentId);
     },
   };
 }

@@ -491,9 +491,11 @@ describe("thread-owned utility sidebar", () => {
     const sidebarImage = await waitFor(() => {
       return within(sidebar).getByTestId("artifact-sidebar-body-image");
     });
-    expect(sidebarImage).toHaveAttribute("src", url);
+    const sidebarUrl = sidebarImage.getAttribute("src") ?? "";
+    expect(sidebarUrl).toContain("blob:mock-download-");
+    expect(sidebarUrl).not.toBe(url);
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
-    expect(objectUrls.revokedUrls).not.toContain(url);
+    expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
   });
 
   it("connects the agent and syncs a catalog artifact to Google Drive", async () => {

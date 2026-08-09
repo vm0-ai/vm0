@@ -1,8 +1,17 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { ILLUSTRATION_TEMPLATE_ITEMS, VIDEO_TEMPLATE_ITEMS } from "@vm0/core";
+import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { logsListContract } from "@vm0/api-contracts/contracts/logs";
+import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
 
 import {
   detachedSetupPage,
@@ -10,8 +19,19 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
+
+function linkByAriaLabel(label: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+  if (!link) {
+    throw new Error(`Expected link with aria-label: ${label}`);
+  }
+  return link;
+}
 
 describe("user messages", () => {
   it("renders templates inline in message and feedback-note order", async () => {
@@ -545,13 +565,7 @@ describe("user messages", () => {
     });
 
     const sourceLink = await waitFor(() => {
-      const found = queryAllByRoleFast("link").find((element) => {
-        return element.getAttribute("aria-label") === "Open chat Source thread";
-      });
-      if (!found) {
-        throw new Error("Expected the agent source chat link");
-      }
-      return found;
+      return linkByAriaLabel("Open chat Source thread");
     });
     expect(sourceLink).toHaveAttribute(
       "href",
@@ -570,6 +584,230 @@ describe("user messages", () => {
       "data-role",
       "user",
     );
+  });
+
+  it("restores cached agent source annotations after browser back from agents", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000752";
+    const sourceThreadId = "b0000000-0000-4000-a000-000000000753";
+    const sourceRunId = "d0000000-0000-4000-a000-000000000753";
+    const sourceAgentId = "a1000000-0000-4000-a000-000000000011";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: sourceAgentId,
+        displayName: "Source agent",
+        description: null,
+        sound: null,
+        avatarUrl: "https://example.com/source-agent-avatar.png",
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsListContract.list, ({ respond }) => {
+      return respond(200, {
+        data: [],
+        pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delegated work",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000752",
+          role: "user",
+          content: "Delegated prompt",
+          runId: "d0000000-0000-4000-a000-000000000752",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Delegated prompt" },
+              {
+                type: "source",
+                kind: "agent",
+                runId: sourceRunId,
+                threadId: sourceThreadId,
+                agentId: sourceAgentId,
+                titleSnapshot: "Source thread",
+                href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
+              },
+            ],
+          },
+          createdAt: "2026-08-04T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+
+    const agentsLink = await waitFor(() => {
+      const link = screen.getByText("Agents").closest("a");
+      if (!link) {
+        throw new Error("Expected the Agents navigation link");
+      }
+      return link;
+    });
+    await user.click(agentsLink);
+    await screen.findByRole("heading", { name: "Agents" });
+
+    act(() => {
+      window.history.back();
+    });
+
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+    expect(
+      screen.queryByText("Oops! Something went sideways"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps structured message cards while opening a chat sidebar through navigation", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000754";
+    const sidebarThreadId = "b0000000-0000-4000-a000-000000000755";
+    const sourceThreadId = "b0000000-0000-4000-a000-000000000756";
+    const sourceRunId = "d0000000-0000-4000-a000-000000000756";
+    const sourceAgentId = "a1000000-0000-4000-a000-000000000012";
+    const createdAt = "2026-08-04T10:00:00Z";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: sourceAgentId,
+        displayName: "Source agent",
+        description: null,
+        sound: null,
+        avatarUrl: "https://example.com/source-agent-avatar.png",
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    context.mocks.data.composesList([]);
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { code: "BROWSER_NOT_FOUND", message: "Browser not found" },
+      });
+    });
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delegated work",
+      chatEvents: [],
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: "Delegated work",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt,
+        updatedAt: createdAt,
+      },
+      {
+        id: sidebarThreadId,
+        title: "Sidebar chat",
+        agent: {
+          id: "c0000000-0000-4000-a000-000000000001",
+          avatarUrl: null,
+        },
+        createdAt,
+        updatedAt: createdAt,
+      },
+    ]);
+    const sourceEvents = normalizeMockChatEvents([
+      {
+        id: "00000000-0000-4000-8000-000000000754",
+        threadId,
+        role: "user",
+        content: "Delegated prompt",
+        runId: "d0000000-0000-4000-a000-000000000754",
+        userMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Delegated prompt" },
+            {
+              type: "source",
+              kind: "agent",
+              runId: sourceRunId,
+              threadId: sourceThreadId,
+              agentId: sourceAgentId,
+              titleSnapshot: "Source thread",
+              href: `/chats/${sourceThreadId}#run-${sourceRunId}`,
+            },
+            {
+              type: "file",
+              fileId: "file-source-context",
+              filenameSnapshot: "source-context.bin",
+              contentType: "application/octet-stream",
+            },
+          ],
+        },
+        createdAt,
+      },
+    ]);
+    context.mocks.api(
+      chatThreadEventsContract.list,
+      ({ params, query, respond }) => {
+        if (
+          params.threadId !== threadId ||
+          query.beforeSeqId !== undefined ||
+          query.sinceSeqId !== undefined
+        ) {
+          return respond(200, { events: [] });
+        }
+        return respond(200, { events: sourceEvents });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+    expect(screen.getAllByText("source-context.bin").length).toBeGreaterThan(0);
+
+    const sidebarThreadLink = await waitFor(() => {
+      const link = screen.getByText("Sidebar chat").closest("a");
+      if (!link) {
+        throw new Error("Expected the sidebar thread link");
+      }
+      return link;
+    });
+    fireEvent.click(sidebarThreadLink, { altKey: true });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
+    });
+    await waitFor(() => {
+      return linkByAriaLabel("Open chat Source thread");
+    });
+    expect(screen.getAllByText("source-context.bin").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText("Oops! Something went sideways"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders Morning Brief metadata outside the message body", async () => {
