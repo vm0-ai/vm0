@@ -2708,6 +2708,28 @@ describe("CHAT-01 chat search", () => {
     );
   }, 60_000);
 
+  it("returns literal punctuation match ranges from the chat search route", async () => {
+    const owner = bdd.user();
+    await setChatSearchIndex(owner, false);
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Literal search agent",
+    });
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "alpha+beta+gamma",
+    });
+
+    const result = await chat.searchChat(owner, "+");
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.matchedMessage.content).toBe("alpha+beta+gamma");
+    expect(result.results[0]?.matchedRanges).toStrictEqual([
+      { start: 5, end: 6 },
+      { start: 10, end: 11 },
+    ]);
+  });
+
   it("associates batched context windows across matches and threads", async () => {
     const owner = bdd.user();
     await setChatSearchIndex(owner, false);
@@ -2916,7 +2938,7 @@ describe("CHAT-01 chat search index", () => {
 
     const threadId = await sendNoCreditMessage(owner, {
       agentId: agent.agentId,
-      prompt: "今天天气很好，vercel 部署完成",
+      prompt: "今天天气很好，今天天气，vercel 部署完成",
     });
     await sendNoCreditMessage(peer, {
       agentId: peerAgent.agentId,
@@ -2942,9 +2964,14 @@ describe("CHAT-01 chat search index", () => {
       expect(found.results).toHaveLength(1);
       expect(found.results[0]?.chatThreadId).toBe(threadId);
       expect(found.results[0]?.matchedMessage.content).toBe(
-        "今天天气很好，vercel 部署完成",
+        "今天天气很好，今天天气，vercel 部署完成",
       );
     }
+    const repeatedCjk = await chat.searchChat(owner, "今天天气");
+    expect(repeatedCjk.results[0]?.matchedRanges).toStrictEqual([
+      { start: 0, end: 4 },
+      { start: 7, end: 11 },
+    ]);
 
     // Unindexable keywords stay on the index path instead of falling back to
     // ILIKE, so neither a single CJK character nor punctuation can match.
@@ -2959,7 +2986,7 @@ describe("CHAT-01 chat search index", () => {
     const wholeWord = await chat.searchChat(owner, "vercel");
     expect(wholeWord.results).toHaveLength(1);
     expect(wholeWord.results[0]?.matchedRanges).toStrictEqual([
-      { start: 7, end: 13 },
+      { start: 12, end: 18 },
     ]);
 
     // Re-running the projector is idempotent for already-indexed threads.
