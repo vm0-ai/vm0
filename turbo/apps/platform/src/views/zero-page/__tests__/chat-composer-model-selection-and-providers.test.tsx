@@ -153,27 +153,54 @@ describe("chat composer models", () => {
     expect(preferenceRequestCount).toBe(1);
   });
 
-  it("keeps the default model cached when returning to agent chat", async () => {
-    let preferenceRequestCount = 0;
+  it("shows the cached default model immediately when returning from agents", async () => {
+    const policy = buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000205",
+      model: "kimi-k2.7-code",
+      modelLabel: "Kimi K2.7 Code",
+      isDefault: true,
+      defaultProviderType: "moonshot-api-key",
+      credentialScope: "org",
+      modelProviderId: MOONSHOT_PROVIDER_ID,
+    });
+    const pendingModelRequests = context.mocks.deferred<void>();
+    let blockModelRequests = false;
 
     mockOrgModelRoutes("kimi-k2.7-code");
-    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
-      preferenceRequestCount += 1;
-      return respond(200, { selectedModel: null, updatedAt: null });
-    });
+    context.mocks.api(
+      zeroModelPoliciesMainContract.list,
+      async ({ respond, withSignal }) => {
+        if (blockModelRequests) {
+          await withSignal(pendingModelRequests.promise);
+        }
+        return respond(200, {
+          policies: [policy],
+          workspaceDefaultModel: policy.model,
+          workspaceDefaultPolicyId: policy.id,
+        });
+      },
+    );
+    context.mocks.api(
+      zeroUserModelPreferenceContract.get,
+      async ({ respond, withSignal }) => {
+        if (blockModelRequests) {
+          await withSignal(pendingModelRequests.promise);
+        }
+        return respond(200, { selectedModel: null, updatedAt: null });
+      },
+    );
     mockAgent();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     await expectComposerModel("Kimi K2.7 Code");
-    expect(preferenceRequestCount).toBe(1);
 
     act(() => {
-      context.store.set(detachedNavigateTo$, ROUTES.agentIdeas, {
-        pathParams: { agentId: AGENT_ID },
-      });
+      context.store.set(detachedNavigateTo$, ROUTES.agents);
     });
-    await screen.findByRole("heading", { name: "Ideas & Use Cases" });
+    await screen.findByRole("heading", { name: "Agents" });
+
+    blockModelRequests = true;
 
     act(() => {
       context.store.set(detachedNavigateTo$, ROUTES.agentChat, {
@@ -181,8 +208,10 @@ describe("chat composer models", () => {
       });
     });
 
-    await expectComposerModel("Kimi K2.7 Code");
-    expect(preferenceRequestCount).toBe(1);
+    await findComposerEditor();
+    expect(
+      screen.getByRole("combobox", { name: "Kimi K2.7 Code" }),
+    ).toBeInTheDocument();
   });
 
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
