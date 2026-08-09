@@ -17,7 +17,6 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -1119,37 +1118,6 @@ async function setComputerUseHostAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
-type PreviousApiChatSlackContextAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "set-chat-slack-context-as-previous-api" }
->;
-
-async function setChatSlackContextAsPreviousApi(
-  db: Db,
-  body: PreviousApiChatSlackContextAction,
-  signal: AbortSignal,
-) {
-  // The API version immediately before the Slack launch snapshot wrote no
-  // bot_user_id and no message_assets. No current production route can
-  // reproduce that mixed-version writer shape.
-  const [updated] = await db
-    .update(chatSlackContext)
-    .set({ botUserId: null, messageAssets: null })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.id, body.event_id),
-        eq(chatSlackContext.id, chatEvents.contextId),
-      ),
-    )
-    .returning({ id: chatSlackContext.id });
-  signal.throwIfAborted();
-  if (!updated) {
-    throw new Error("Expected a Slack context for previous API downgrade");
-  }
-  return { status: 200 as const, body: { ok: true as const } };
-}
-
 type PreviousApiRunnerJobContextProfileAction = Extract<
   TestRuntimeStateActionBody,
   { action: "set-runner-job-context-profile-as-previous-api" }
@@ -1230,7 +1198,6 @@ type CompatibilityFixtureAction =
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
-  | PreviousApiChatSlackContextAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
@@ -1319,7 +1286,6 @@ function isCompatibilityFixtureAction(
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
-    "set-chat-slack-context-as-previous-api",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
@@ -1346,9 +1312,6 @@ async function compatibilityFixtureActionResponse(
     }
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);
-    }
-    case "set-chat-slack-context-as-previous-api": {
-      return await setChatSlackContextAsPreviousApi(db, body, signal);
     }
     case "set-browser-tab-snapshot-as-previous-api": {
       return await setBrowserTabSnapshotAsPreviousApi(db, body, signal);

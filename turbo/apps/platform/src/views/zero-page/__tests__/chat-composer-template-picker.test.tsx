@@ -1145,23 +1145,58 @@ describe("chat composer templates", () => {
     await appendAndSend(user, "Introduce our new product");
 
     await waitFor(() => {
-      const avatarOptions = {
-        titleSnapshot: selectedAvatar.name,
-        previewUrl: selectedAvatar.coverUrl,
-        voiceId: selectedVoice.id,
-        aspectRatio: "landscape" as const,
-      };
-      // Nested options carry the selection; the flat fields are mirrored for
-      // readers that predate avatarOptions.
       expect(submittedTemplate).toStrictEqual({
         type: "video",
         selection: {
           stylePresetId: avatarTemplateStylePresetId(selectedAvatar.id),
-          avatarOptions,
-          ...avatarOptions,
+          avatarOptions: {
+            titleSnapshot: selectedAvatar.name,
+            previewUrl: selectedAvatar.coverUrl,
+            voiceId: selectedVoice.id,
+            aspectRatio: "landscape" as const,
+          },
         },
       });
     });
+  });
+
+  it("keeps the chosen voice selected when the avatar picker reopens", async () => {
+    const user = userEvent.setup({ delay: null });
+    const selectedAvatar = createSelectedAvatar();
+    const selectedVoice = createSelectedVoice();
+    const alternateVoice = createAlternateVoice();
+    mockAvatarCatalog({ firstPage: [selectedAvatar] });
+    mockVoiceCatalog();
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+
+    const dialog = await openAvatarPicker(user);
+    await user.click(
+      await within(dialog).findByLabelText("Select template Ada"),
+    );
+    await within(dialog).findByText("Choose a voice for Ada");
+    await user.click(
+      await within(dialog).findByLabelText(
+        `Select voice ${selectedVoice.name}`,
+      ),
+    );
+    await expectInlineTemplateInComposer("Ada");
+
+    // Reopening from the inline chip hands the stored template back to the
+    // picker, so the voice it carries must still read as the chosen one.
+    await user.click(await screen.findByLabelText("Preview template Ada"));
+    const reopened = await screen.findByRole("dialog");
+    await user.click(
+      await within(reopened).findByLabelText("Select template Ada"),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(reopened).getByLabelText(`Select voice ${selectedVoice.name}`),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+    expect(
+      within(reopened).getByLabelText(`Select voice ${alternateVoice.name}`),
+    ).toHaveAttribute("aria-pressed", "false");
   });
 
   it("disables send while a template draft attachment is uploading", async () => {

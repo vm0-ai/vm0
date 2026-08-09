@@ -41,15 +41,17 @@ type SlackLaunchContextRow = Pick<
   | "channelType"
   | "threadTs"
   | "routeThreadTs"
-> & { readonly installationBotUserId: string };
+>;
 
 function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   if (
     !row ||
     row.channelId === null ||
+    row.botUserId === null ||
     row.conversationContext === null ||
     row.messageText === null ||
     row.messageFiles === null ||
+    row.messageAssets === null ||
     row.mentionDisplayNames === null ||
     row.channelType === null ||
     row.threadTs === null
@@ -59,26 +61,11 @@ function requiredSlackLaunchContext(row: SlackLaunchContextRow | undefined) {
   return {
     ...row,
     channelId: row.channelId,
-    // Rollout fallback for context rows the previous API wrote without the
-    // launch snapshot: bot_user_id and message_assets are null there. The bot
-    // user ID falls back to the workspace installation; the assets degrade to
-    // the raw Slack file blocks those runs rendered before canonical Slack
-    // inputs existed.
-    //
-    // Surface: persisted Slack launch context read by this API. This loader is
-    // only reached while admitting a queued message
-    // (internal-chat-run-callback.service.ts) or steering a live run
-    // (active-input-prompt.service.ts), so the window is bounded by how long a
-    // pre-cutover Slack input event can still sit in the thread queue or in an
-    // active run, not by the ~102 min DB/API skew — historical rows are never
-    // re-read. Remove both branches, the installationBotUserId projection, and
-    // the "previous API version" launch test once no such event can remain;
-    // follow-up: https://github.com/vm0-ai/vm0/issues/25830
-    botUserId: row.botUserId ?? row.installationBotUserId,
+    botUserId: row.botUserId,
     conversationContext: row.conversationContext,
     messageText: row.messageText,
     messageFiles: row.messageFiles,
-    messageAssets: row.messageAssets ?? [],
+    messageAssets: row.messageAssets,
     mentionDisplayNames: row.mentionDisplayNames,
     channelType: row.channelType,
     threadTs: row.threadTs,
@@ -96,7 +83,6 @@ async function loadSlackLaunchContext(
 ) {
   const [row] = await db
     .select({
-      installationBotUserId: slackOrgInstallations.botUserId,
       channelId: chatSlackContext.channelId,
       botUserId: chatSlackContext.botUserId,
       conversationContext: chatSlackContext.conversationContext,
