@@ -4473,7 +4473,7 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(sandboxOperationEventsForRun(retried.runId)).toContainEqual(
       expect.objectContaining({
         op_type: "chat_thread_session_binding_persisted",
-        binding_action: "reused",
+        binding_action: "adopted",
       }),
     );
     const retriedRun = await api.readRun(actor, retried.runId);
