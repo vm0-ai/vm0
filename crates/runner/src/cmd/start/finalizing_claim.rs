@@ -286,6 +286,9 @@ async fn wait_for_finalizing_resource(
 ) -> FinalizingWaitOutcome {
     let cancel = cancellation.token();
     loop {
+        if cancel.is_cancelled() {
+            return FinalizingWaitOutcome::Cancelled;
+        }
         let state = admission.predecessor.state();
         let missing_exact_reason = match state {
             ActiveRunReuseState::ExactSandboxPublished => Some("published_exact_unavailable"),
@@ -305,6 +308,13 @@ async fn wait_for_finalizing_resource(
             )
             .await
             .map(Box::new);
+            if cancel.is_cancelled() {
+                if let Some(reservation) = reserved_exact.take() {
+                    rollback_reserved_idle_for_spawn(*reservation, ctx).await;
+                    ctx.reuse_state_notify.notify_one();
+                }
+                return FinalizingWaitOutcome::Cancelled;
+            }
             if let Some(reservation) = reserved_exact.take() {
                 info!(
                     run_id = %run_id,
