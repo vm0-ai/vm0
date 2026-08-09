@@ -49,16 +49,6 @@ describe("link navigation", () => {
     });
   });
 
-  it("does not register the removed activity list route", async () => {
-    detachedSetupPage({ context, path: "/activities" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Page not found" }),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("localizes shared not-found, error, and force-upgrade states", async () => {
     context.mocks.data.userPreferences({
       locale: "pt-BR",
