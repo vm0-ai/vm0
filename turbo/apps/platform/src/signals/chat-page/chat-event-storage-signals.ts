@@ -364,7 +364,8 @@ function createSyncRemoteRowsCommand({
       sinceSeqId = cachedLastSeqId;
     }
 
-    for (;;) {
+    let shouldLoadNextPage = true;
+    while (shouldLoadNextPage) {
       const page = await set(listRowsAfter$, { threadId, sinceSeqId }, signal);
       signal.throwIfAborted();
       set(initialRemoteEventsResolved$, true);
@@ -389,9 +390,7 @@ function createSyncRemoteRowsCommand({
       if (lastRow !== undefined) {
         sinceSeqId = lastRow.seqId;
       }
-      if (page.rows.length < CHAT_EVENT_ROWS_PAGE_LIMIT) {
-        return;
-      }
+      shouldLoadNextPage = page.rows.length === CHAT_EVENT_ROWS_PAGE_LIMIT;
     }
   });
 }
