@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.411.2](https://github.com/vm0-ai/vm0/compare/api-v1.411.1...api-v1.411.2) (2026-08-09)
+
+
+### Refactoring
+
+* **db:** isolate custom connector insert columns ([#25953](https://github.com/vm0-ai/vm0/issues/25953)) ([c86b4c9](https://github.com/vm0-ai/vm0/commit/c86b4c98373aba9b3f5469f4d6ed93ef3e67af26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.182.2
+
 ## [1.411.1](https://github.com/vm0-ai/vm0/compare/api-v1.411.0...api-v1.411.1) (2026-08-09)
 
 
