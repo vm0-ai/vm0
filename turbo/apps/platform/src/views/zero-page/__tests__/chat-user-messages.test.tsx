@@ -9,6 +9,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pathname, setPathname, setSearch } from "../../../signals/location.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -480,11 +481,12 @@ describe("user messages", () => {
     ).toBeInstanceOf(HTMLElement);
   });
 
-  it("renders agent-run source annotations with avatar, link, and run anchor", async () => {
+  it("restores agent-run source annotations after browser Back from Activities", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000750";
     const sourceThreadId = "b0000000-0000-4000-a000-000000000751";
     const sourceRunId = "d0000000-0000-4000-a000-000000000751";
-    const targetRunId = "d0000000-0000-4000-a000-000000000750";
+    const targetRunId = "a0000000-0000-4000-a000-000000000001";
     const sourceAgentId = "a1000000-0000-4000-a000-000000000010";
     const sourceAgentAvatarUrl = "https://example.com/source-agent-avatar.png";
     context.mocks.data.team([
@@ -533,6 +535,13 @@ describe("user messages", () => {
           },
           createdAt: "2026-08-04T10:00:00Z",
         },
+        {
+          id: "00000000-0000-4000-8000-000000000752",
+          role: "assistant",
+          content: "Delegated response",
+          runId: targetRunId,
+          createdAt: "2026-08-04T10:00:01Z",
+        },
       ],
     });
 
@@ -567,6 +576,46 @@ describe("user messages", () => {
       "data-role",
       "user",
     );
+
+    const activityLink = await waitFor(() => {
+      const found = queryAllByRoleFast("link").find((element) => {
+        return element.getAttribute("aria-label") === "View run logs";
+      });
+      if (!found) {
+        throw new Error("Expected the run activity link");
+      }
+      return found;
+    });
+    expect(activityLink).toHaveAttribute("href", `/activities/${targetRunId}`);
+    await user.click(activityLink);
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/activities/${targetRunId}`);
+      expect(
+        screen.queryByLabelText("Open chat Source thread"),
+      ).not.toBeInTheDocument();
+    });
+
+    setPathname(`/chats/${threadId}`);
+    setSearch("");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    const restoredSourceLink = await screen.findByLabelText(
+      "Open chat Source thread",
+    );
+    expect(restoredSourceLink).toHaveAttribute(
+      "href",
+      `/chats/${sourceThreadId}#run-${sourceRunId}`,
+    );
+    await waitFor(() => {
+      expect(restoredSourceLink.querySelector("img")).toHaveAttribute(
+        "src",
+        sourceAgentAvatarUrl,
+      );
+    });
+    expect(
+      screen.queryByText("Oops! Something went sideways"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders Morning Brief metadata outside the message body", async () => {

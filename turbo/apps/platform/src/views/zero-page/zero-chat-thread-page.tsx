@@ -2630,11 +2630,14 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && <ChatThread isMain thread={leftThread} />}
+      {/* The same thread ID gets a new signal owner after route re-entry. */}
+      {leftThread && (
+        <ChatThread key={leftThread.lifecycleId} isMain thread={leftThread} />
+      )}
       {rightThread && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread thread={rightThread} />
+          <ChatThread key={rightThread.lifecycleId} thread={rightThread} />
         </>
       )}
     </div>
