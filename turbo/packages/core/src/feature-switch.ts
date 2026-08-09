@@ -300,12 +300,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatNextRunModelNotice]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a composer notice when the selected model differs from the running chat model.",
-    enabled: true,
-  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
