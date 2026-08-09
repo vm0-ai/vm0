@@ -1565,7 +1565,7 @@ def websocket_message(flow: http.HTTPFlow) -> None:
     websocket_retention.schedule_message_trim(flow)
     if not response_streaming.is_model_websocket_usage_enabled(flow):
         return
-    uses_openai_responses = response_streaming.uses_openai_responses_usage_protocol(flow)
+    uses_openai_responses = response_streaming.model_usage_protocol(flow) == "openai_responses"
     if getattr(message, "from_client", False):
         if uses_openai_responses:
             body = message.content.encode() if isinstance(message.content, str) else message.content
@@ -1783,10 +1783,18 @@ def _finish_response_handling(
         and stream_buf
         and response_streaming.uses_model_json_fallback(flow)
     ):
-        if response_streaming.uses_openai_responses_usage_protocol(flow):
+        model_protocol = response_streaming.model_usage_protocol(flow)
+        if model_protocol == "openai_responses":
             json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
                 bytes(stream_buf),
                 flow.response.headers if flow.response else None,
+            )
+        elif model_protocol == "openai_chat_completions":
+            json_usage, json_error = (
+                usage.extract_openai_chat_completions_usage_with_error_from_json(
+                    bytes(stream_buf),
+                    flow.response.headers if flow.response else None,
+                )
             )
         else:
             json_usage, json_error = usage.extract_anthropic_messages_usage_with_error_from_json(

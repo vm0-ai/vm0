@@ -7,29 +7,49 @@ byte chunks, and call :meth:`JsonSelectiveExtractor.finish` once to finalize the
 result.
 
 Paths are tuples of object keys. For example, ``("usage", "input_tokens")``
-matches ``{"usage": {"input_tokens": 1}}``. Wildcards are supported only by
-``wildcard_array_count_paths`` and each wildcard pattern must contain exactly one
-``"*"`` segment. For example, ``("includes", "*")`` records the array lengths
-for keys such as ``includes.users`` and ``includes.tweets``.
+matches ``{"usage": {"input_tokens": 1}}``. ``FIRST_ARRAY_ELEMENT`` selects
+only index zero of an array. Wildcards are supported only by
+``wildcard_array_count_paths`` and each wildcard pattern must contain exactly
+one ``"*"`` segment. For example, ``("includes", "*")`` records the array
+lengths for keys such as ``includes.users`` and ``includes.tweets``.
 """
 
 import json
 import json.decoder
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Literal, cast
+from enum import Enum, auto
+from typing import Literal, TypeVar, cast
 
-Path = tuple[str, ...]
+
+class _PathMarker(Enum):
+    UNKNOWN_KEY = auto()
+    FIRST_ARRAY_ELEMENT = auto()
+    OTHER_ARRAY_ELEMENT = auto()
+
+
+FIRST_ARRAY_ELEMENT = _PathMarker.FIRST_ARRAY_ELEMENT
+PathSegment = str | _PathMarker
+Path = tuple[PathSegment, ...]
 WildcardPath = tuple[str, ...]
+_ScalarPath = TypeVar("_ScalarPath", bound=Path)
 ScalarKind = Literal["string", "int"]
 ScalarOverflowPolicy = Literal["error", "discard"]
 _JsonStringScanner = Callable[[str, int, bool], tuple[str, int]]
 # `scanstring` is the stdlib JSON string scanner, but typeshed does not expose it.
 _SCAN_JSON_STRING = cast(_JsonStringScanner, vars(json.decoder)["scanstring"])
-_UNKNOWN_KEY = "\0__vm0_json_unknown_key__"
-_ARRAY_ELEMENT = "\0__vm0_json_array_element__"
-_INTERNAL_PATH_MARKERS = frozenset((_UNKNOWN_KEY, _ARRAY_ELEMENT))
+_UNKNOWN_KEY = _PathMarker.UNKNOWN_KEY
+_OTHER_ARRAY_ELEMENT = _PathMarker.OTHER_ARRAY_ELEMENT
+_INTERNAL_PATH_MARKERS = frozenset(
+    (
+        _UNKNOWN_KEY,
+        FIRST_ARRAY_ELEMENT,
+        _OTHER_ARRAY_ELEMENT,
+        "\0__vm0_json_unknown_key__",
+        "\0__vm0_json_array_element__",
+    )
+)
 _JSON_CONTROL_CHAR_MAX = 0x20
 # These are the only bytes that can change discarded string state. Non-ASCII
 # bytes stay on the bytewise path so UTF-8 validation remains unchanged.
@@ -122,7 +142,8 @@ class JsonExtractionResult:
     ``complete`` is true only when the JSON document parsed successfully.
     ``values`` contains selected scalar values, ``array_counts`` contains exact
     array path lengths, ``wildcard_array_counts`` contains per-wildcard-key array
-    lengths, and ``object_present`` contains observed object paths.
+    lengths, ``object_present`` contains observed object paths, and
+    ``value_present`` contains paths where any JSON value appeared.
 
     When ``complete`` is false, all observation containers are empty and
     ``error`` describes the parse or bound failure. This prevents callers from
@@ -134,6 +155,7 @@ class JsonExtractionResult:
     array_counts: dict[Path, int] = field(default_factory=dict)
     wildcard_array_counts: dict[WildcardPath, dict[str, int]] = field(default_factory=dict)
     object_present: set[Path] = field(default_factory=set)
+    value_present: set[Path] = field(default_factory=set)
     error: str | None = None
 
 
@@ -143,7 +165,7 @@ class _Frame:
     path: Path
     state: str
     collect_keys: bool | None = None
-    pending_key: str | None = None
+    pending_key: PathSegment | None = None
     count_path: Path | None = None
     wildcard_counts: list[tuple[WildcardPath, str]] = field(default_factory=list)
 
@@ -190,13 +212,14 @@ class _ScalarConsistency:
 class JsonSelectiveExtractor:
     """Streaming, bounded JSON extractor for a fixed observation set.
 
-    The extractor observes four kinds of data while parsing:
+    The extractor observes five kinds of data while parsing:
 
     - ``scalar_fields`` captures selected string or integer values.
     - ``array_count_paths`` counts arrays at exact paths.
     - ``wildcard_array_count_paths`` counts arrays at wildcard paths with one
       ``"*"`` segment, recording counts by the concrete wildcard key.
     - ``object_presence_paths`` records exact paths where JSON objects appear.
+    - ``value_presence_paths`` records exact paths where any JSON value appears.
 
     Oversized selected scalars fail extraction by default. Selected strings with
     ``overflow_policy="discard"`` instead drop that observation and continue
@@ -208,11 +231,12 @@ class JsonSelectiveExtractor:
     def __init__(
         self,
         *,
-        scalar_fields: dict[Path, ScalarField] | None = None,
-        array_count_paths: set[Path] | None = None,
-        wildcard_array_count_paths: set[WildcardPath] | None = None,
-        object_presence_paths: set[Path] | None = None,
-        scalar_consistency_paths: set[Path] | None = None,
+        scalar_fields: Mapping[_ScalarPath, ScalarField] | None = None,
+        array_count_paths: Iterable[Path] | None = None,
+        wildcard_array_count_paths: Iterable[WildcardPath] | None = None,
+        object_presence_paths: Iterable[Path] | None = None,
+        value_presence_paths: Iterable[Path] | None = None,
+        scalar_consistency_paths: Iterable[Path] | None = None,
         max_depth: int = _DEFAULT_MAX_DEPTH,
         max_key_bytes: int = 1024,
         max_number_bytes: int = 128,
@@ -232,15 +256,23 @@ class JsonSelectiveExtractor:
         ``scalar_consistency_paths`` tracks whether every occurrence of a
         selected scalar path has the expected kind and the same value.
         """
-        self.scalar_fields = dict(scalar_fields) if scalar_fields is not None else {}
-        self.array_count_paths = set(array_count_paths) if array_count_paths is not None else set()
-        self.wildcard_array_count_paths = (
+        self.scalar_fields: dict[Path, ScalarField] = {}
+        if scalar_fields is not None:
+            for path, field_config in scalar_fields.items():
+                self.scalar_fields[path] = field_config
+        self.array_count_paths: set[Path] = (
+            set(array_count_paths) if array_count_paths is not None else set()
+        )
+        self.wildcard_array_count_paths: set[WildcardPath] = (
             set(wildcard_array_count_paths) if wildcard_array_count_paths is not None else set()
         )
-        self.object_presence_paths = (
+        self.object_presence_paths: set[Path] = (
             set(object_presence_paths) if object_presence_paths is not None else set()
         )
-        self._scalar_consistency_paths = (
+        self.value_presence_paths: set[Path] = (
+            set(value_presence_paths) if value_presence_paths is not None else set()
+        )
+        self._scalar_consistency_paths: set[Path] = (
             set(scalar_consistency_paths) if scalar_consistency_paths is not None else set()
         )
         self.max_depth = max_depth
@@ -253,6 +285,7 @@ class JsonSelectiveExtractor:
             self.array_count_paths,
             self.wildcard_array_count_paths,
             self.object_presence_paths,
+            self.value_presence_paths,
             self._scalar_consistency_paths,
             max_depth=self.max_depth,
             max_key_bytes=self.max_key_bytes,
@@ -265,6 +298,7 @@ class JsonSelectiveExtractor:
             | self.array_count_paths
             | self.wildcard_array_count_paths
             | self.object_presence_paths
+            | self.value_presence_paths
         )
         self._exact_key_collection_paths = {
             path for path in key_collection_paths if "*" not in path
@@ -273,13 +307,17 @@ class JsonSelectiveExtractor:
             self._exact_key_collection_paths
         )
         self._clearable_exact_observation_paths = _build_observation_clear_paths(
-            set(self.scalar_fields) | self.array_count_paths | self.object_presence_paths
+            set(self.scalar_fields)
+            | self.array_count_paths
+            | self.object_presence_paths
+            | self.value_presence_paths
         )
 
         self.values: dict[Path, object] = {}
         self.array_counts: dict[Path, int] = {}
         self.wildcard_array_counts: dict[WildcardPath, dict[str, int]] = {}
         self.object_present: set[Path] = set()
+        self.value_present: set[Path] = set()
         self._scalar_consistency: dict[Path, _ScalarConsistency] = {}
 
         self._stack: list[_Frame] = []
@@ -389,6 +427,7 @@ class JsonSelectiveExtractor:
             if complete
             else {},
             object_present=set(self.object_present) if complete else set(),
+            value_present=set(self.value_present) if complete else set(),
             error=self._error,
         )
 
@@ -478,8 +517,10 @@ class JsonSelectiveExtractor:
             if not _is_json_value_start(b):
                 self._error = "expected json value"
                 return i + 1
+            is_first_element = frame.state == "value_or_end"
             self._count_array_element(frame)
-            return self._start_value((*frame.path, _ARRAY_ELEMENT), chunk, i, from_array=True)
+            element_path = FIRST_ARRAY_ELEMENT if is_first_element else _OTHER_ARRAY_ELEMENT
+            return self._start_value((*frame.path, element_path), chunk, i, from_array=True)
 
         if frame.state == "comma_or_end":
             if b == ord(","):
@@ -494,6 +535,8 @@ class JsonSelectiveExtractor:
         return i + 1
 
     def _start_value(self, path: Path, chunk: bytes, i: int, *, from_array: bool = False) -> int:
+        if path in self.value_presence_paths:
+            self.value_present.add(path)
         if path in self._scalar_consistency_paths:
             consistency = self._scalar_consistency.setdefault(path, _ScalarConsistency())
             consistency.occurrences += 1
@@ -582,6 +625,8 @@ class JsonSelectiveExtractor:
                 continue
             wildcard_index = pattern.index("*")
             key = path[wildcard_index]
+            if not isinstance(key, str):
+                continue
             counts = self.wildcard_array_counts.setdefault(pattern, {})
             if key not in counts and len(counts) >= self.max_wildcard_keys:
                 self._error = "max wildcard keys exceeded"
@@ -606,6 +651,8 @@ class JsonSelectiveExtractor:
                 del self.array_counts[observed_path]
             for observed_path in _find_paths_with_prefix(self.object_present, path) or ():
                 self.object_present.remove(observed_path)
+            for observed_path in _find_paths_with_prefix(self.value_present, path) or ():
+                self.value_present.remove(observed_path)
 
         if can_clear_wildcard:
             for pattern, counts in list(self.wildcard_array_counts.items()):
@@ -632,7 +679,9 @@ class JsonSelectiveExtractor:
         if len(path) <= wildcard_index:
             counts.clear()
             return
-        counts.pop(path[wildcard_index], None)
+        key = path[wildcard_index]
+        if isinstance(key, str):
+            counts.pop(key, None)
 
     def _count_array_element(self, frame: _Frame) -> None:
         if frame.count_path is not None:
@@ -1049,6 +1098,7 @@ def _validate_extractor_config(
     array_count_paths: set[Path],
     wildcard_array_count_paths: set[WildcardPath],
     object_presence_paths: set[Path],
+    value_presence_paths: set[Path],
     scalar_consistency_paths: set[Path],
     *,
     max_depth: int,
@@ -1074,12 +1124,13 @@ def _validate_extractor_config(
     _validate_exact_paths("scalar field paths", set(scalar_fields))
     _validate_exact_paths("array count paths", array_count_paths)
     _validate_exact_paths("object presence paths", object_presence_paths)
+    _validate_exact_paths("value presence paths", value_presence_paths)
     _validate_exact_paths("scalar consistency paths", scalar_consistency_paths)
     if not scalar_consistency_paths <= set(scalar_fields):
         raise ValueError("scalar consistency paths must reference scalar fields")
 
     for path in wildcard_array_count_paths:
-        _validate_path("wildcard array count paths", path)
+        _validate_wildcard_path(path)
         if path.count("*") != 1:
             raise ValueError("wildcard array count paths must contain exactly one '*'")
 
@@ -1092,8 +1143,15 @@ def _validate_exact_paths(name: str, paths: set[Path]) -> None:
 
 
 def _validate_path(name: str, path: Path) -> None:
+    if not isinstance(path, tuple) or any(
+        not isinstance(segment, str) and segment is not FIRST_ARRAY_ELEMENT for segment in path
+    ):
+        raise TypeError(f"{name} must be tuple[str | FIRST_ARRAY_ELEMENT, ...]")
+
+
+def _validate_wildcard_path(path: WildcardPath) -> None:
     if not isinstance(path, tuple) or any(not isinstance(segment, str) for segment in path):
-        raise TypeError(f"{name} must be tuple[str, ...]")
+        raise TypeError("wildcard array count paths must be tuple[str, ...]")
 
 
 def _is_utf8_continuation(b: int) -> bool:

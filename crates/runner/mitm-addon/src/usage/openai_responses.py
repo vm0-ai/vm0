@@ -23,7 +23,7 @@ model-provider usage billing:
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, TypeGuard
+from typing import Literal
 
 from mitmproxy import http
 
@@ -43,6 +43,8 @@ from .model_tokens import (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
 )
+from .openai_tokens import is_usage_quantity as _is_usage_quantity
+from .openai_tokens import partition_input_tokens as _partition_input_tokens
 from .sse import SseUsageScanner
 
 # Terminal Responses events whose Response object may carry usage. WebSocket
@@ -246,10 +248,6 @@ def _is_known_non_usage_event(value: object) -> bool:
     return isinstance(value, str) and value in _RESPONSES_KNOWN_NON_USAGE_EVENTS
 
 
-def _is_usage_quantity(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
 def _store_quantity(target: dict, category: str, value: object) -> None:
     """Store usage quantities using positive-wins, zero-does-not-clobber semantics.
 
@@ -271,31 +269,6 @@ def _has_positive_usage_quantity(values: dict) -> bool:
 
 def _has_usage_quantity(values: dict) -> bool:
     return any(_is_usage_quantity(values.get(category)) for category in MODEL_USAGE_CATEGORIES)
-
-
-def _partition_input_tokens(
-    input_tokens: object,
-    cached_tokens: object,
-    cache_write_tokens: object,
-) -> tuple[int | None, int | None, int | None]:
-    # OpenAI reports cache reads and writes as details of ``input_tokens``. The
-    # usage-event ledger prices all three categories independently, so partition
-    # the upstream total before reporting to avoid charging any token twice.
-    if not _is_usage_quantity(input_tokens):
-        return None, None, None
-
-    remaining_input_tokens = input_tokens
-    cached_input_tokens = None
-    if _is_usage_quantity(cached_tokens):
-        cached_input_tokens = min(cached_tokens, remaining_input_tokens)
-        remaining_input_tokens -= cached_input_tokens
-
-    cache_creation_tokens = None
-    if _is_usage_quantity(cache_write_tokens):
-        cache_creation_tokens = min(cache_write_tokens, remaining_input_tokens)
-        remaining_input_tokens -= cache_creation_tokens
-
-    return remaining_input_tokens, cached_input_tokens, cache_creation_tokens
 
 
 def _normalized_input_snapshot(values: dict) -> tuple[int, int | None, int | None] | None:
