@@ -3,7 +3,6 @@ import {
   runAgentLoopContinue,
   type AgentEvent,
   type AgentMessage,
-  type AgentTool,
   type ExecutionEnv,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
@@ -17,7 +16,7 @@ import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { vercelAIGatewayProvider } from "@earendil-works/pi-ai/providers/vercel-ai-gateway";
 import type { Api, Message, Model } from "@earendil-works/pi-ai";
 
-import { createPiExecutionTools } from "./tools";
+import { createPiExecutionTools, type PiAgentTool } from "./tools";
 import { executePiToolBatch } from "./tool-batch";
 import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
 
@@ -52,16 +51,12 @@ function sourceModel(
   });
 }
 
-function executionTools(env: ExecutionEnv): AgentTool[] {
-  return createPiExecutionTools(env).map((tool) => {
-    // pi-agent-core's heterogeneous native tool tuple is runtime-compatible
-    // with AgentTool[] after its schema validator narrows each call.
-    return tool as unknown as AgentTool;
-  });
+function executionTools(env: ExecutionEnv): PiAgentTool[] {
+  return [...createPiExecutionTools(env)];
 }
 
-function edgeHandoffTools(env: ExecutionEnv): AgentTool[] {
-  return executionTools(env).map((tool) => {
+function edgeHandoffTools(env: ExecutionEnv): PiAgentTool[] {
+  return executionTools(env).map((tool): PiAgentTool => {
     return {
       ...tool,
       execute() {
@@ -71,7 +66,7 @@ function edgeHandoffTools(env: ExecutionEnv): AgentTool[] {
           terminate: true,
         });
       },
-    } as unknown as AgentTool;
+    };
   });
 }
 

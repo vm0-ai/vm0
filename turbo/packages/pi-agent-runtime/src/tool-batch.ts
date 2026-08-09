@@ -6,13 +6,12 @@ import {
 import type {
   AgentEvent,
   AgentMessage,
-  AgentTool,
   AgentToolCall,
   AgentToolResult,
   ExecutionEnv,
 } from "@earendil-works/pi-agent-core";
 
-import { createPiExecutionTools } from "./tools";
+import { createPiExecutionTools, type PiAgentTool } from "./tools";
 
 type PiAgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
@@ -24,7 +23,7 @@ interface PiToolBatch {
 interface PreparedToolCall {
   readonly kind: "prepared";
   readonly toolCall: AgentToolCall;
-  readonly tool: AgentTool;
+  readonly tool: PiAgentTool;
   readonly args: unknown;
 }
 
@@ -70,7 +69,7 @@ function errorToolResult(message: string): AgentToolResult<unknown> {
 }
 
 function prepareToolCall(
-  tools: readonly AgentTool[],
+  tools: readonly PiAgentTool[],
   toolCall: AgentToolCall,
   signal: AbortSignal,
 ): ToolCallPreparation {
@@ -195,7 +194,7 @@ function toolResultMessage(finalized: FinalizedToolCall): ToolResultMessage {
 
 async function executeToolCalls(
   batch: PiToolBatch,
-  tools: readonly AgentTool[],
+  tools: readonly PiAgentTool[],
   signal: AbortSignal,
   onEvent: PiAgentEventSink,
 ): Promise<readonly ToolResultMessage[]> {
@@ -258,8 +257,6 @@ export async function executePiToolBatch(
   if (!batch) {
     return [];
   }
-  const tools = createPiExecutionTools(args.executionEnv).map((tool) => {
-    return tool as unknown as AgentTool;
-  });
+  const tools: PiAgentTool[] = [...createPiExecutionTools(args.executionEnv)];
   return await executeToolCalls(batch, tools, signal, args.onEvent);
 }
