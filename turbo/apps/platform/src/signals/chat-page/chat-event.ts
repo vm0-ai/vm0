@@ -9,6 +9,9 @@ import {
   chatThreadUnpinContract,
   chatThreadRenameContract,
   type ChatEventUsagePayload,
+  type FeedbackNotePart,
+  type UserMessageDocument,
+  type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -18,10 +21,111 @@ import { i18n } from "../../i18n/index.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
+import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
+import type { ArtifactSignals } from "./artifact-card-signals.ts";
+
+type UserMessagePartOfType<T extends UserMessagePart["type"]> = Extract<
+  UserMessagePart,
+  { type: T }
+>;
+type FeedbackNotePartOfType<T extends FeedbackNotePart["type"]> = Extract<
+  FeedbackNotePart,
+  { type: T }
+>;
+type UserMessageSourcePart = UserMessagePartOfType<"source">;
+type UserMessageAgentSourcePart = Extract<
+  UserMessageSourcePart,
+  { kind: "agent" }
+>;
+type UserMessageExternalSourcePart = Exclude<
+  UserMessageSourcePart,
+  UserMessageAgentSourcePart
+>;
+
+export type UserMessageFeedbackNoteRenderPart =
+  | {
+      readonly type: "text";
+      readonly part: FeedbackNotePartOfType<"text">;
+    }
+  | {
+      readonly type: "chat_thread";
+      readonly part: FeedbackNotePartOfType<"chat_thread">;
+    }
+  | {
+      readonly type: "agent";
+      readonly part: FeedbackNotePartOfType<"agent">;
+      readonly signals: AgentReferenceSignals;
+    }
+  | {
+      readonly type: "template";
+      readonly part: FeedbackNotePartOfType<"template">;
+    };
+
+export type UserMessageRenderPart =
+  | {
+      readonly type: "text";
+      readonly part: UserMessagePartOfType<"text">;
+    }
+  | {
+      readonly type: "chat_thread";
+      readonly part: UserMessagePartOfType<"chat_thread">;
+    }
+  | {
+      readonly type: "agent";
+      readonly part: UserMessagePartOfType<"agent">;
+      readonly signals: AgentReferenceSignals;
+    }
+  | {
+      readonly type: "template";
+      readonly part: UserMessagePartOfType<"template">;
+    }
+  | {
+      readonly type: "source";
+      readonly kind: "agent";
+      readonly part: UserMessageAgentSourcePart;
+      readonly signals: AgentReferenceSignals;
+    }
+  | {
+      readonly type: "source";
+      readonly kind: "external";
+      readonly part: UserMessageExternalSourcePart;
+    }
+  | {
+      readonly type: "automation";
+      readonly part: UserMessagePartOfType<"automation">;
+    }
+  | {
+      readonly type: "goal";
+      readonly part: UserMessagePartOfType<"goal">;
+    }
+  | {
+      readonly type: "morning_brief";
+      readonly part: UserMessagePartOfType<"morning_brief">;
+    }
+  | {
+      readonly type: "file";
+      readonly part: UserMessagePartOfType<"file">;
+      readonly signals: ArtifactSignals;
+    }
+  | {
+      readonly type: "feedback";
+      readonly part: UserMessagePartOfType<"feedback">;
+      readonly note: readonly UserMessageFeedbackNoteRenderPart[];
+    }
+  | {
+      readonly type: "model";
+      readonly part: UserMessagePartOfType<"model">;
+    };
+
+export interface UserMessageRenderDocument {
+  readonly document: UserMessageDocument;
+  readonly parts: readonly UserMessageRenderPart[];
+}
 
 export type EnrichedChatEvent = ChatEvent & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;
+  userMessageRenderDocument: UserMessageRenderDocument | undefined;
 };
 
 /** A group of consecutive events with the same role. */

@@ -16,7 +16,6 @@ import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
-import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type {
   createChatThreadScrollSignals,
@@ -75,9 +74,6 @@ export interface MessageListSignals {
   >;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
-  readonly agentReferenceSignalsForId: (
-    agentId: string,
-  ) => AgentReferenceSignals;
   readonly mailDraftCardSignalsById$: Computed<
     ReadonlyMap<string, MailDraftSignals>
   >;
@@ -188,9 +184,6 @@ export interface ChatPanelSignals {
   readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
-  readonly agentReferenceSignalsForId: (
-    agentId: string,
-  ) => AgentReferenceSignals;
   readonly mailDraftCardSignalsById$: Computed<
     ReadonlyMap<string, MailDraftSignals>
   >;
