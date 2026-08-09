@@ -387,7 +387,8 @@ def test_incomplete_context_retains_timing_until_complete_retry(
         with mitm_ctx(api_url=api_url):
             mitm_addon.responseheaders(incomplete_flow)
             _feed(incomplete_flow, _message_start(include_usage=False))
-        first_event_finished_at = datetime.now(UTC)
+            first_event_finished_at = datetime.now(UTC)
+            mitm_addon.response(incomplete_flow)
 
         assert admission_calls == []
         assert_current_pending(
@@ -421,7 +422,9 @@ def test_incomplete_context_retains_timing_until_complete_retry(
         "duration_ms": 0,
         "success": True,
     }
-    observed_at = datetime.fromisoformat(str(operation["ts"]))
+    observed_at_value = operation["ts"]
+    assert isinstance(observed_at_value, str)
+    observed_at = datetime.fromisoformat(observed_at_value)
     assert first_event_started_at <= observed_at <= first_event_finished_at
     assert_current_pending(
         pending_path,
