@@ -61,19 +61,21 @@ function tokenGroups(text: string): readonly ChatSearchTokenGroup[] {
   return groups;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
 function literalMatchRanges(
   text: string,
   value: string,
 ): ChatSearchMatchRange[] {
-  const pattern = new RegExp(escapeRegExp(value), "giu");
-  return Array.from(text.matchAll(pattern), (match) => {
-    const start = match.index;
-    return { start, end: start + match[0].length };
-  });
+  if (value.length === 0) {
+    return [];
+  }
+  const ranges: ChatSearchMatchRange[] = [];
+  let start = text.indexOf(value);
+  while (start !== -1) {
+    const end = start + value.length;
+    ranges.push({ start, end });
+    start = text.indexOf(value, end);
+  }
+  return ranges;
 }
 
 /**
