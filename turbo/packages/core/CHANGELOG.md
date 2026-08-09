@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.533.1](https://github.com/vm0-ai/vm0/compare/core-v8.533.0...core-v8.533.1) (2026-08-09)
+
+
+### Refactoring
+
+* **chat-search:** remove chat search index feature switch ([#25909](https://github.com/vm0-ai/vm0/issues/25909)) ([4ca2131](https://github.com/vm0-ai/vm0/commit/4ca213130629c0d060f377c4e093973ab0394e2d))
+* remove chatNextRunModelNotice feature switch ([#25907](https://github.com/vm0-ai/vm0/issues/25907)) ([9ba7b2b](https://github.com/vm0-ai/vm0/commit/9ba7b2bcfed524974d4c30bf193476a9b063cc58))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.299.1
+
 ## [8.533.0](https://github.com/vm0-ai/vm0/compare/core-v8.532.4...core-v8.533.0) (2026-08-09)
 
 

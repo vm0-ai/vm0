@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.6.0...guest-contracts-v0.6.1) (2026-08-09)
+
+
+### Refactoring
+
+* **pi:** replace handoff fallbacks with session polling ([#25906](https://github.com/vm0-ai/vm0/issues/25906)) ([66cbcad](https://github.com/vm0-ai/vm0/commit/66cbcada1c224b1c7541b6d7c90696d3733e53f8))
+
 ## [0.6.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.5.9...guest-contracts-v0.6.0) (2026-08-07)
 
 
