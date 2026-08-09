@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.161.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.4...runner-rs-v0.161.5) (2026-08-09)
+
+
+### Bug Fixes
+
+* **connectors:** align active-run auth variable semantics ([#25839](https://github.com/vm0-ai/vm0/issues/25839)) ([9bd1638](https://github.com/vm0-ai/vm0/commit/9bd1638358794f39aaa09445a0f14c9911f44536))
+* **runner:** skip reuse refresh for non-reusable runs ([#25867](https://github.com/vm0-ai/vm0/issues/25867)) ([c61b9c1](https://github.com/vm0-ai/vm0/commit/c61b9c1ddc6591278d771451799316626c5d6b86))
+
 ## [0.161.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.3...runner-rs-v0.161.4) (2026-08-08)
 
 ## [0.161.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.161.2...runner-rs-v0.161.3) (2026-08-08)
