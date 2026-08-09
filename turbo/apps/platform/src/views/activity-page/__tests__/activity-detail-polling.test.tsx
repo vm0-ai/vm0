@@ -2512,7 +2512,10 @@ describe("activity detail polling", () => {
       return respond(200, codexRunContext(runId));
     });
     context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
-      return respond(200, { sandboxReuseResult: "reused" });
+      return respond(200, {
+        sandboxReuseResult: "reused",
+        workspaceReuseResult: "sandboxReused",
+      });
     });
     const secondNetworkPageCursor =
       "time:asc:2026-03-10T15%3A00%3A02Z:cursor-network-2";
@@ -2620,10 +2623,16 @@ describe("activity detail polling", () => {
     click(getTabByText("Runner"));
 
     await waitFor(() => {
-      expect(screen.getByText("Reused")).toBeInTheDocument();
+      expect(screen.getByText("Sandbox reuse")).toBeInTheDocument();
     });
+    expect(screen.getAllByText("Reused")).toHaveLength(2);
     expect(
       screen.getByText("Sandbox was unparked from the idle pool."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Workspace remained available inside the reused sandbox.",
+      ),
     ).toBeInTheDocument();
 
     click(getTabByText("Network"));
@@ -2659,17 +2668,57 @@ describe("activity detail polling", () => {
     {
       runId: "a0000000-0000-4000-a000-000000000406",
       result: "noReuseKey",
+      workspaceResult: "cacheMiss",
+      startup: "Cold start",
       description: "No reuse key was available to match an idle sandbox.",
     },
     {
       runId: "a0000000-0000-4000-a000-000000000408",
       result: "noSessionId",
+      workspaceResult: undefined,
+      startup: "Unknown",
       description:
         "Legacy result: the exact reason the sandbox was not reused is unavailable.",
     },
+    {
+      runId: "a0000000-0000-4000-a000-000000000410",
+      result: "featureDisabled",
+      workspaceResult: undefined,
+      startup: "Unknown",
+      description: "Sandbox reuse is disabled for this run.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000411",
+      result: "poolMiss",
+      workspaceResult: "cacheMiss",
+      startup: "Cold start",
+      description: "No matching sandbox found in the idle pool.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000412",
+      result: "profileMismatch",
+      workspaceResult: "cacheMiss",
+      startup: "Cold start",
+      description: "Idle pool entry exists but its profile does not match.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000413",
+      result: "deviceLimitMismatch",
+      workspaceResult: "cacheMiss",
+      startup: "Cold start",
+      description:
+        "Idle pool entry exists but its device rate limiter state does not match.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000414",
+      result: "unparkFailed",
+      workspaceResult: "cacheMiss",
+      startup: "Cold start",
+      description: "Unpark attempt failed; a fresh sandbox was provisioned.",
+    },
   ] as const)(
     "shows the $result sandbox reuse reason",
-    async ({ runId, result, description }) => {
+    async ({ runId, result, workspaceResult, startup, description }) => {
       context.mocks.data.composesList([]);
       context.mocks.api(logsByIdContract.getById, ({ respond }) => {
         return respond(
@@ -2694,7 +2743,12 @@ describe("activity detail polling", () => {
         },
       );
       context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
-        return respond(200, { sandboxReuseResult: result });
+        return workspaceResult === undefined
+          ? respond(200, { sandboxReuseResult: result })
+          : respond(200, {
+              sandboxReuseResult: result,
+              workspaceReuseResult: workspaceResult,
+            });
       });
 
       detachedSetupPage({
@@ -2711,11 +2765,180 @@ describe("activity detail polling", () => {
       click(getTabByText("Runner"));
 
       await waitFor(() => {
-        expect(screen.getByText("Not reused")).toBeInTheDocument();
+        expect(screen.getByText(startup)).toBeInTheDocument();
       });
+      expect(screen.getAllByText("Not reused")).not.toHaveLength(0);
       expect(screen.getByText(description)).toBeInTheDocument();
+      if (workspaceResult === "cacheMiss") {
+        expect(
+          screen.getByText("No cached workspace matched the reuse key."),
+        ).toBeInTheDocument();
+      } else {
+        expect(screen.getByText("Unavailable")).toBeInTheDocument();
+      }
     },
   );
+
+  it.each([
+    {
+      runId: "a0000000-0000-4000-a000-000000000420",
+      result: "noReuseKey",
+      description: "No workspace reuse key was available.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000421",
+      result: "invalidWorkingDir",
+      description: "The requested working directory could not be reused.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000422",
+      result: "lockBusy",
+      description: "Another run was preparing the same workspace.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000423",
+      result: "invalidMetadata",
+      description: "Cached workspace metadata was invalid.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000424",
+      result: "diskPressure",
+      description:
+        "Workspace reuse was skipped because the runner was under disk pressure.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000425",
+      result: "notConfigured",
+      description: "Workspace reuse was not configured for this run.",
+    },
+    {
+      runId: "a0000000-0000-4000-a000-000000000426",
+      result: "sandboxPrepareFallback",
+      description:
+        "A cached workspace was found but could not be used after sandbox preparation.",
+    },
+  ] as const)(
+    "shows the $result workspace reuse reason",
+    async ({ runId, result, description }) => {
+      context.mocks.data.composesList([]);
+      context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+        return respond(
+          200,
+          makeLogDetail({
+            id: runId,
+            displayName: "Workspace Reuse Reason",
+            status: "completed",
+            error: null,
+            completedAt: "2026-03-10T15:00:18Z",
+          }),
+        );
+      });
+      context.mocks.api(
+        zeroRunAgentEventsContract.getAgentEvents,
+        ({ respond }) => {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        },
+      );
+      context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
+        return respond(200, {
+          sandboxReuseResult: "poolMiss",
+          workspaceReuseResult: result,
+        });
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/activities/${runId}`,
+        featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Workspace Reuse Reason" }),
+        ).toBeInTheDocument();
+      });
+      click(getTabByText("Runner"));
+
+      await waitFor(() => {
+        expect(screen.getByText(description)).toBeInTheDocument();
+      });
+      expect(screen.getByText("Cold start")).toBeInTheDocument();
+      expect(screen.getAllByText("Not reused")).toHaveLength(2);
+    },
+  );
+
+  it("refreshes runner outcomes when an active run becomes terminal", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000409";
+    let status: LogDetail["status"] = "running";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Runner Outcome Refresh",
+          status,
+          completedAt: status === "completed" ? "2026-03-10T15:00:18Z" : null,
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+    context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
+      if (status === "running") {
+        return respond(200, {
+          sandboxReuseResult: null,
+          workspaceReuseResult: null,
+        });
+      }
+      return respond(200, {
+        sandboxReuseResult: "poolMiss",
+        workspaceReuseResult: "reused",
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Runner Outcome Refresh" }),
+      ).toBeInTheDocument();
+    });
+    click(getTabByText("Runner"));
+    await waitFor(() => {
+      expect(screen.getAllByText("Provisioning")).toHaveLength(2);
+    });
+
+    const topic = `run:changed:${runId}`;
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    status = "completed";
+    context.mocks.ably.trigger(topic);
+
+    await waitFor(() => {
+      expect(screen.getByText("Workspace reuse")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Reused")).toBeInTheDocument();
+    expect(
+      screen.getByText("Workspace was restored from the runner cache."),
+    ).toBeInTheDocument();
+  });
 
   it("ignores stale network page responses after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000501";
@@ -3703,7 +3926,7 @@ describe("activity detail polling", () => {
     expect(backLink).toHaveAttribute("href", "/");
   });
 
-  it("shows empty network logs and unknown runner reuse for an older activity", async () => {
+  it("shows empty network logs and unavailable reuse details for an older activity", async () => {
     const runId = "a0000000-0000-4000-a000-000000000405";
 
     context.mocks.data.composesList([]);
@@ -3771,12 +3994,9 @@ describe("activity detail polling", () => {
     click(getTabByText("Runner"));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Unknown (older run, recorded before sandbox reuse tracking was added).",
-        ),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Unknown")).toBeInTheDocument();
     });
+    expect(screen.getAllByText("Unavailable")).toHaveLength(2);
 
     click(getTabByText("Network"));
 

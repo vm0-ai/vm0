@@ -47,7 +47,7 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_cache::PreparedFreshStorage;
 use crate::storage_plan::build_storage_plan;
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, FirewallEntry};
+use crate::types::{ExecutionContext, FirewallEntry, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
@@ -490,6 +490,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     )
     .await;
     let mut used_retry = false;
+    let mut used_workspace_fallback = false;
     let mut dns_replacement: Option<DnsReadinessReplacement> = None;
     let prepared = loop {
         let result = create_started_sandbox(
@@ -606,6 +607,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         }
 
         if cache_hit {
+            used_workspace_fallback = true;
             controls.session_history_restore_plan =
                 replace_local_sidecar_restore_plan_for_workspace_retry(
                     std::mem::take(&mut controls.session_history_restore_plan),
@@ -660,6 +662,11 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         None,
     );
 
+    let workspace_reuse_result = final_workspace_reuse_result(
+        workspace_image.as_ref().map(WorkspaceImageLease::result),
+        used_workspace_fallback,
+    );
+
     let mut outcome = execute_prepared_sandbox_run(
         prepared,
         context,
@@ -667,6 +674,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         RunStart {
             restore_guest_state: params.restore_guest_state,
             reuse_result,
+            workspace_reuse_result,
             prev_storage: workspace_image
                 .as_ref()
                 .and_then(WorkspaceImageLease::previous_storage),
@@ -676,6 +684,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     )
     .await;
     outcome.workspace_image = workspace_image;
+    outcome.workspace_reuse_result = Some(workspace_reuse_result);
     Ok(outcome)
 }
 
@@ -948,6 +957,29 @@ fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option
             Some(WORKSPACE_IMAGE_PREPARE_INVALID_METADATA)
         }
         WorkspaceCacheCheckoutResult::DiskPressure => Some(WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE),
+    }
+}
+
+fn final_workspace_reuse_result(
+    checkout_result: Option<WorkspaceCacheCheckoutResult>,
+    used_workspace_fallback: bool,
+) -> WorkspaceReuseResult {
+    if used_workspace_fallback {
+        return WorkspaceReuseResult::SandboxPrepareFallback;
+    }
+    match checkout_result {
+        Some(WorkspaceCacheCheckoutResult::Hit) => WorkspaceReuseResult::Reused,
+        Some(WorkspaceCacheCheckoutResult::Miss) => WorkspaceReuseResult::CacheMiss,
+        Some(WorkspaceCacheCheckoutResult::NoReuseKey) => WorkspaceReuseResult::NoReuseKey,
+        Some(WorkspaceCacheCheckoutResult::InvalidWorkingDir) => {
+            WorkspaceReuseResult::InvalidWorkingDir
+        }
+        Some(WorkspaceCacheCheckoutResult::LockBusy) => WorkspaceReuseResult::LockBusy,
+        Some(WorkspaceCacheCheckoutResult::InvalidMetadata) => {
+            WorkspaceReuseResult::InvalidMetadata
+        }
+        Some(WorkspaceCacheCheckoutResult::DiskPressure) => WorkspaceReuseResult::DiskPressure,
+        None => WorkspaceReuseResult::NotConfigured,
     }
 }
 
@@ -1295,6 +1327,7 @@ pub(super) async fn execute_reused_sandbox(
                 source_ip,
                 network_log_session: None,
                 workspace_image: None,
+                workspace_reuse_result: None,
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
             };
@@ -1320,6 +1353,7 @@ pub(super) async fn execute_reused_sandbox(
         RunStart {
             restore_guest_state: true,
             reuse_result: SandboxReuseResult::Reused,
+            workspace_reuse_result: WorkspaceReuseResult::SandboxReused,
             prev_storage: Some(prev_storage),
         },
         telemetry,
@@ -1365,6 +1399,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
     } = run;
     let cleanup_cancel = controls.cancel.clone();
     let reuse_result = start.reuse_result;
+    let workspace_reuse_result = start.workspace_reuse_result;
 
     let mut controls = controls;
     controls.prepared_guest_runtime = prepared_guest_runtime;
@@ -1456,6 +1491,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
         source_ip,
         network_log_session: Some(network_log_session),
         workspace_image: None,
+        workspace_reuse_result: Some(workspace_reuse_result),
         discovered_cli_agent_session_id,
         restored_session_identity,
     }
@@ -1668,6 +1704,47 @@ mod tests {
             ask: Vec::new(),
             unknown_policy: "ask".to_string(),
         }
+    }
+
+    #[test]
+    fn workspace_checkout_maps_to_final_reuse_result() {
+        for (checkout, expected) in [
+            (
+                Some(WorkspaceCacheCheckoutResult::Hit),
+                WorkspaceReuseResult::Reused,
+            ),
+            (
+                Some(WorkspaceCacheCheckoutResult::Miss),
+                WorkspaceReuseResult::CacheMiss,
+            ),
+            (
+                Some(WorkspaceCacheCheckoutResult::NoReuseKey),
+                WorkspaceReuseResult::NoReuseKey,
+            ),
+            (
+                Some(WorkspaceCacheCheckoutResult::InvalidWorkingDir),
+                WorkspaceReuseResult::InvalidWorkingDir,
+            ),
+            (
+                Some(WorkspaceCacheCheckoutResult::LockBusy),
+                WorkspaceReuseResult::LockBusy,
+            ),
+            (
+                Some(WorkspaceCacheCheckoutResult::InvalidMetadata),
+                WorkspaceReuseResult::InvalidMetadata,
+            ),
+            (
+                Some(WorkspaceCacheCheckoutResult::DiskPressure),
+                WorkspaceReuseResult::DiskPressure,
+            ),
+            (None, WorkspaceReuseResult::NotConfigured),
+        ] {
+            assert_eq!(final_workspace_reuse_result(checkout, false), expected);
+        }
+        assert_eq!(
+            final_workspace_reuse_result(Some(WorkspaceCacheCheckoutResult::Hit), true),
+            WorkspaceReuseResult::SandboxPrepareFallback,
+        );
     }
 
     #[test]

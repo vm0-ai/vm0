@@ -12,6 +12,7 @@ use crate::local_queue::JobRequest;
 pub(super) use crate::local_queue::JobResponse;
 pub(super) use crate::provider::{CompletionAuth, JobCandidate, JobProvider};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
+use crate::types::CompleteRequest;
 pub(super) use tokio_util::sync::CancellationToken;
 
 pub(super) trait LocalProviderTestExt {
@@ -34,6 +35,21 @@ impl LocalProviderTestExt for LocalProvider {
 
 pub(super) fn empty_cancel_tokens() -> RunCancellationRegistry {
     RunCancellationRegistry::new()
+}
+
+pub(super) fn complete_request(
+    run_id: RunId,
+    exit_code: i32,
+    error: Option<&str>,
+) -> CompleteRequest {
+    CompleteRequest {
+        run_id,
+        exit_code,
+        error: error.map(str::to_owned),
+        sandbox_id: None,
+        sandbox_reuse_result: None,
+        workspace_reuse_result: None,
+    }
 }
 
 pub(super) async fn insert_cancel_registration(

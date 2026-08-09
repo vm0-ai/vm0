@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use crate::ids::RunId;
 use crate::provider::{CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
-use crate::types::SandboxReuseResult;
+use crate::types::{CompleteRequest, SandboxReuseResult, WorkspaceReuseResult};
 
 use super::ownership::{OwnershipTransitions, RunSandbox};
 
@@ -126,6 +126,7 @@ pub(super) struct CompletionPayload {
     error: Option<String>,
     sandbox_id: SandboxId,
     reuse_result: SandboxReuseResult,
+    workspace_reuse_result: Option<WorkspaceReuseResult>,
     completion_auth: CompletionAuth,
 }
 
@@ -144,8 +145,17 @@ impl CompletionPayload {
             error,
             sandbox_id,
             reuse_result,
+            workspace_reuse_result: None,
             completion_auth,
         }
+    }
+
+    pub(super) fn with_workspace_reuse_result(
+        mut self,
+        workspace_reuse_result: Option<WorkspaceReuseResult>,
+    ) -> Self {
+        self.workspace_reuse_result = workspace_reuse_result;
+        self
     }
 }
 
@@ -195,17 +205,21 @@ impl CompletionReady {
             error,
             sandbox_id,
             reuse_result,
+            workspace_reuse_result,
             completion_auth,
         } = payload;
 
         let provider_completion_started = Instant::now();
         provider
             .complete(
-                run_id,
-                exit_code,
-                error.as_deref(),
-                Some(sandbox_id),
-                Some(reuse_result),
+                CompleteRequest {
+                    run_id,
+                    exit_code,
+                    error,
+                    sandbox_id: Some(sandbox_id),
+                    sandbox_reuse_result: Some(reuse_result),
+                    workspace_reuse_result,
+                },
                 completion_auth,
             )
             .await;
@@ -295,15 +309,7 @@ mod tests {
             None
         }
 
-        async fn complete(
-            &self,
-            _run_id: RunId,
-            _exit_code: i32,
-            _error: Option<&str>,
-            _sandbox_id: Option<SandboxId>,
-            _reuse_result: Option<SandboxReuseResult>,
-            _completion_auth: CompletionAuth,
-        ) {
+        async fn complete(&self, _request: CompleteRequest, _completion_auth: CompletionAuth) {
             self.budget_count_at_complete
                 .store(self.budget.allocated().2, Ordering::SeqCst);
             self.active_runs_at_complete.store(
@@ -327,17 +333,9 @@ mod tests {
             None
         }
 
-        async fn complete(
-            &self,
-            run_id: RunId,
-            _exit_code: i32,
-            _error: Option<&str>,
-            _sandbox_id: Option<SandboxId>,
-            _reuse_result: Option<SandboxReuseResult>,
-            completion_auth: CompletionAuth,
-        ) {
+        async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth) {
             self.auth_matches.store(
-                completion_auth.matches_sandbox_token_for_test(run_id, "completion-token"),
+                completion_auth.matches_sandbox_token_for_test(request.run_id, "completion-token"),
                 Ordering::SeqCst,
             );
         }

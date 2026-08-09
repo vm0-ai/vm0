@@ -11,6 +11,8 @@ import {
 import {
   sandboxReuseResultSchema,
   type SandboxReuseResult,
+  workspaceReuseResultSchema,
+  type WorkspaceReuseResult,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -429,11 +431,17 @@ export function zeroRunRunner(args: {
   readonly userId: string;
   readonly orgId: string;
 }): Computed<
-  Promise<{ readonly sandboxReuseResult: SandboxReuseResult | null } | null>
+  Promise<{
+    readonly sandboxReuseResult: SandboxReuseResult | null;
+    readonly workspaceReuseResult: WorkspaceReuseResult | null;
+  } | null>
 > {
   return computed(async (get) => {
     const [row] = await get(db$)
-      .select({ sandboxReuseResult: agentRuns.sandboxReuseResult })
+      .select({
+        sandboxReuseResult: agentRuns.sandboxReuseResult,
+        workspaceReuseResult: agentRuns.workspaceReuseResult,
+      })
       .from(agentRuns)
       .where(
         and(
@@ -448,10 +456,17 @@ export function zeroRunRunner(args: {
       return null;
     }
 
+    const sandboxResult = sandboxReuseResultSchema.safeParse(
+      row.sandboxReuseResult,
+    );
+    const workspaceResult = workspaceReuseResultSchema.safeParse(
+      row.workspaceReuseResult,
+    );
     return {
-      sandboxReuseResult: sandboxReuseResultSchema
-        .nullable()
-        .parse(row.sandboxReuseResult ?? null),
+      sandboxReuseResult: sandboxResult.success ? sandboxResult.data : null,
+      workspaceReuseResult: workspaceResult.success
+        ? workspaceResult.data
+        : null,
     };
   });
 }

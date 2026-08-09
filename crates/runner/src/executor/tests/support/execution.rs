@@ -77,6 +77,7 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_timeouts(
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
                 prev_storage: None,
             },
             &mut telemetry,
@@ -103,6 +104,7 @@ pub(in crate::executor::tests) fn spawn_run_in_sandbox_test_with_cancellation(
             RunStart {
                 restore_guest_state: false,
                 reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
                 prev_storage: None,
             },
             &mut telemetry,

@@ -74,6 +74,7 @@ interface SeedRunArgs {
   readonly completedAt?: Date | null;
   readonly continuedFromSessionId?: string | null;
   readonly sandboxReuseResult?: string | null;
+  readonly workspaceReuseResult?: string | null;
   readonly result?: Record<string, unknown> | null;
   readonly error?: string | null;
   readonly lastEventSequence?: number | null;
@@ -398,6 +399,7 @@ async function seedRun(
       completedAt: args.completedAt,
       continuedFromSessionId: args.continuedFromSessionId,
       sandboxReuseResult: args.sandboxReuseResult ?? null,
+      workspaceReuseResult: args.workspaceReuseResult ?? null,
       result: args.result ?? null,
       error: args.error ?? null,
       lastEventSequence: args.lastEventSequence ?? null,
@@ -1069,6 +1071,7 @@ async function mutateUsageInsightRunState(
               : parseOptionalDate(body.completed_at),
           continuedFromSessionId: body.continued_from_session_id,
           sandboxReuseResult: body.sandbox_reuse_result,
+          workspaceReuseResult: body.workspace_reuse_result,
           result: body.result,
           error: body.error,
           lastEventSequence: body.last_event_sequence,

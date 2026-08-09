@@ -803,6 +803,7 @@ async fn complete_execution(
                     &config.run_id,
                     &config.sandbox_id,
                     &config.sandbox_reuse_result,
+                    &config.workspace_reuse_result,
                     state.last_event_sequence,
                 )
                 .await;
@@ -862,6 +863,7 @@ async fn complete_execution(
                     &config.run_id,
                     &config.sandbox_id,
                     &config.sandbox_reuse_result,
+                    &config.workspace_reuse_result,
                     state.last_event_sequence,
                 )
                 .await;
@@ -929,6 +931,7 @@ async fn complete_execution(
             &config.run_id,
             &config.sandbox_id,
             &config.sandbox_reuse_result,
+            &config.workspace_reuse_result,
             state.last_event_sequence,
         )
         .await;
@@ -1202,6 +1205,7 @@ mod tests {
             guest_contracts::env::API_TOKEN_ENV,
             guest_contracts::env::SANDBOX_ID_ENV,
             guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            guest_contracts::env::WORKSPACE_REUSE_RESULT_ENV,
             guest_contracts::env::PROMPT_ENV,
             guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
             guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,

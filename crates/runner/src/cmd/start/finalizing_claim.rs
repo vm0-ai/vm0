@@ -27,7 +27,7 @@ use crate::ids::RunId;
 use crate::provider::ClaimedJob;
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::RunCancellationRegistration;
-use crate::types::SandboxReuseResult;
+use crate::types::{CompleteRequest, SandboxReuseResult};
 
 pub(super) struct FinalizingClaimRequest {
     pub(super) claimed: ClaimedJob,
@@ -395,11 +395,14 @@ async fn complete_claimed_without_sandbox(
     drop(pi_standby_source);
     ctx.provider
         .complete(
-            context.run_id,
-            failure.exit_code,
-            Some(&failure.error),
-            None,
-            reuse_result,
+            CompleteRequest {
+                run_id: context.run_id,
+                exit_code: failure.exit_code,
+                error: Some(failure.error),
+                sandbox_id: None,
+                sandbox_reuse_result: reuse_result,
+                workspace_reuse_result: None,
+            },
             completion_auth,
         )
         .await;

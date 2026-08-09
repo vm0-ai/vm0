@@ -10,7 +10,7 @@ use tracing::warn;
 
 use crate::guest_timezone::GuestTimezoneAssumption;
 use crate::telemetry::{JobTelemetry, RunnerStartupPath};
-use crate::types::{ExecutionContext, SandboxReuseResult};
+use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
@@ -333,11 +333,11 @@ pub(super) fn record_api_to_spawn(
     context: &ExecutionContext,
     telemetry: &mut JobTelemetry,
     sandbox_reuse_result: SandboxReuseResult,
-    reused_workspace: bool,
+    workspace_reuse_result: WorkspaceReuseResult,
 ) {
     let runner_startup_path = if sandbox_reuse_result == SandboxReuseResult::Reused {
         RunnerStartupPath::Sandbox
-    } else if reused_workspace {
+    } else if workspace_reuse_result == WorkspaceReuseResult::Reused {
         RunnerStartupPath::Workspace
     } else {
         RunnerStartupPath::Cold

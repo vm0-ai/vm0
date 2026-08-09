@@ -44,6 +44,7 @@ async fn codex_catalog_prefetch_waits_for_guest_state_restore() {
             RunStart {
                 restore_guest_state: true,
                 reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
                 prev_storage: None,
             },
             &mut telemetry,
@@ -144,6 +145,11 @@ async fn assert_codex_catalog_prefetch_skipped(
             RunStart {
                 restore_guest_state: false,
                 reuse_result,
+                workspace_reuse_result: if reuse_result == SandboxReuseResult::Reused {
+                    crate::types::WorkspaceReuseResult::SandboxReused
+                } else {
+                    crate::types::WorkspaceReuseResult::NotConfigured
+                },
                 prev_storage: None,
             },
             &mut telemetry,
