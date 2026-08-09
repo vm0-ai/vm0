@@ -1,6 +1,4 @@
 import { computed } from "ccstate";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatSearchContract,
   chatThreadByIdContract,
@@ -31,7 +29,6 @@ import {
   zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   zeroChatThreadEventRows,
   zeroChatThreadEventSnapshot,
@@ -338,18 +335,11 @@ const listChatThreadArtifactsInner$ = computed(async (get) => {
 const searchChatInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const query = get(queryOf(chatSearchContract.search));
-  const featureContext = await get(
-    userFeatureSwitchContext(auth.orgId, auth.userId),
-  );
   const result = await get(
     zeroChatSearch({
       userId: auth.userId,
       orgId: auth.orgId,
       keyword: query.keyword,
-      useSearchIndex: isFeatureEnabled(
-        FeatureSwitchKey.ChatSearchIndex,
-        featureContext,
-      ),
       agentId: query.agentId,
       since: query.since,
       limit: query.limit,

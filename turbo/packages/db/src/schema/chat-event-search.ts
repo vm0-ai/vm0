@@ -44,7 +44,7 @@ export const chatEventSearchDocs = pgTable(
     agentComposeId: uuid("agent_compose_id").notNull(),
     role: text("role").$type<"user" | "assistant">().notNull(),
     createdAt: timestamp("created_at").notNull(),
-    /** Raw searchable text, also used for fallback ILIKE matching. */
+    /** Raw searchable text mirrored from the event. */
     text: text("text").notNull(),
     /** CJK-bigram normalized form fed to to_tsvector('simple', ...). */
     textBigram: text("text_bigram").notNull(),
