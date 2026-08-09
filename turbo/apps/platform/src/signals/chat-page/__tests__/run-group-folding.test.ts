@@ -29,7 +29,6 @@ function userMessage(params: {
     createdAt: "2026-06-24T00:00:00.000Z",
     blocks: [],
     isQueued: false,
-    isOptimisticRun: false,
   };
 }
 
@@ -49,7 +48,6 @@ function assistantEvent(params: {
     createdAt: "2026-06-24T00:00:00.000Z",
     blocks: [],
     isQueued: false,
-    isOptimisticRun: false,
   };
 }
 
