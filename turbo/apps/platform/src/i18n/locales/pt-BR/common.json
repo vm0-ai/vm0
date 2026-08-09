@@ -110,7 +110,7 @@
         "title": "Nenhum log de rede"
       },
       "notFound": {
-        "back": "Voltar para a atividade",
+        "back": "Voltar para os chats",
         "description": "Este log não existe ou você não tem permissão para visualizá-lo no espaço de trabalho atual.",
         "title": "Log não encontrado"
       },
@@ -218,22 +218,6 @@
         "upload": "Enviar JSON"
       }
     },
-    "list": {
-      "description": "Logs e execuções dos seus agentes.",
-      "errors": {
-        "description": "Algo deu errado. Tente novamente mais tarde.",
-        "title": "Não foi possível carregar os dados de atividade"
-      },
-      "filters": {
-        "agent": "Filtro de agente",
-        "allAgents": "Todos os agentes",
-        "allSources": "Todas as origens",
-        "allStatuses": "Todos os status",
-        "source": "Filtro de origem",
-        "status": "Filtro de status"
-      },
-      "title": "Atividade"
-    },
     "network": {
       "actions": {
         "block": "BLOCK"
@@ -334,15 +318,6 @@
       "unknown": "desconhecido",
       "yes": "Sim"
     },
-    "pagination": {
-      "backTwo": "Voltar 2 páginas",
-      "forwardTwo": "Avançar 2 páginas",
-      "next": "Próxima página",
-      "page": "Página {{current}}",
-      "pageOf": "Página {{current}} de {{total}}",
-      "previous": "Página anterior",
-      "rowsPerPage": "Linhas por página"
-    },
     "sources": {
       "agent": "Agente",
       "agentphone": "AgentPhone",
@@ -366,34 +341,6 @@
       "queued": "Na fila",
       "running": "Em execução",
       "timeout": "Tempo esgotado"
-    },
-    "statusFilters": {
-      "cancelled": "Cancelado",
-      "completed": "Concluído",
-      "failed": "Falhou",
-      "pending": "Pendente",
-      "queued": "Na fila",
-      "running": "Em execução",
-      "timeout": "Tempo esgotado"
-    },
-    "table": {
-      "empty": {
-        "description": "Quando seus agentes começarem a trabalhar, as atividades aparecerão aqui.",
-        "title": "Tudo tranquilo por enquanto"
-      },
-      "filteredEmpty": {
-        "description": "Tente outros filtros para encontrar o que procura.",
-        "title": "Nenhum resultado para esses filtros"
-      },
-      "headers": {
-        "agent": "Agente",
-        "description": "Descrição",
-        "duration": "Duração",
-        "session": "Sessão",
-        "source": "Origem",
-        "startTime": "Hora de início",
-        "status": "Status"
-      }
     }
   },
   "appShell": {
@@ -485,7 +432,6 @@
         "overlay": "Sobreposição da barra lateral"
       },
       "navigation": {
-        "activity": "Logs de atividade",
         "agents": "Agentes",
         "artifacts": "Artefatos",
         "connectors": "Conectores",
@@ -497,7 +443,6 @@
         "works": "Onde {{agentName}} trabalha"
       },
       "rail": {
-        "activity": "Atividade",
         "new": "Novo",
         "workflows": "Fluxos de trabalho",
         "works": "Trabalha"

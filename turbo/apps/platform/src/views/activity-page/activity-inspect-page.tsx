@@ -32,7 +32,6 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
 import { ContextContent } from "../zero-page/components/context-content.tsx";
 import { NetworkContent } from "../zero-page/components/network-content.tsx";
-import { Link } from "../router/link.tsx";
 import { formatAppNumber } from "../../i18n/format.ts";
 
 type InspectTab = "steps" | "context" | "network";
@@ -84,15 +83,12 @@ function InspectBreadcrumb({ title }: { title: string }) {
   const { t } = useTranslation();
   return (
     <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-      <Link
-        pathname="/activities"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
-      >
+      <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5">
         <ChartLine size={14} strokeWidth={1.5} className="shrink-0" />
         {t(($) => {
           return $.activity.detail.activity;
         })}
-      </Link>
+      </span>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
         {title}

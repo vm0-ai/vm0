@@ -108,7 +108,7 @@
         "title": "Tidak ada log jaringan"
       },
       "notFound": {
-        "back": "Kembali ke aktivitas",
+        "back": "Kembali ke chat",
         "description": "Log ini tidak ada atau Anda tidak memiliki izin untuk melihatnya di ruang kerja saat ini.",
         "title": "Log tidak ditemukan"
       },
@@ -204,22 +204,6 @@
         "title": "Belum ada log yang dimuat",
         "upload": "Unggah JSON"
       }
-    },
-    "list": {
-      "description": "Log dan eksekusi dari agen Anda.",
-      "errors": {
-        "description": "Terjadi kesalahan. Silakan coba lagi nanti.",
-        "title": "Gagal memuat data aktivitas"
-      },
-      "filters": {
-        "agent": "Filter agen",
-        "allAgents": "Semua agen",
-        "allSources": "Semua sumber",
-        "allStatuses": "Semua status",
-        "source": "Filter sumber",
-        "status": "Filter status"
-      },
-      "title": "Aktivitas"
     },
     "network": {
       "actions": {
@@ -320,15 +304,6 @@
       "unknown": "tidak diketahui",
       "yes": "Ya"
     },
-    "pagination": {
-      "backTwo": "Mundur 2 halaman",
-      "forwardTwo": "Maju 2 halaman",
-      "next": "Halaman berikutnya",
-      "page": "Halaman {{current}}",
-      "pageOf": "Halaman {{current}} dari {{total}}",
-      "previous": "Halaman sebelumnya",
-      "rowsPerPage": "Baris per halaman"
-    },
     "sources": {
       "agent": "Agen",
       "agentphone": "AgentPhone",
@@ -352,34 +327,6 @@
       "queued": "Dalam antrean",
       "running": "Berjalan",
       "timeout": "Timeout"
-    },
-    "statusFilters": {
-      "cancelled": "Dibatalkan",
-      "completed": "Selesai",
-      "failed": "Gagal",
-      "pending": "Menunggu",
-      "queued": "Dalam antrean",
-      "running": "Berjalan",
-      "timeout": "Timeout"
-    },
-    "table": {
-      "empty": {
-        "description": "Saat agen Anda mulai bekerja, aktivitas mereka akan muncul di sini.",
-        "title": "Masih sepi untuk saat ini"
-      },
-      "filteredEmpty": {
-        "description": "Coba filter lain untuk menemukan yang Anda cari.",
-        "title": "Tidak ada yang cocok dengan filter tersebut"
-      },
-      "headers": {
-        "agent": "Agen",
-        "description": "Deskripsi",
-        "duration": "Durasi",
-        "session": "Sesi",
-        "source": "Sumber",
-        "startTime": "Waktu mulai",
-        "status": "Status"
-      }
     }
   },
   "appShell": {
@@ -471,7 +418,6 @@
         "overlay": "Overlay sidebar"
       },
       "navigation": {
-        "activity": "Log aktivitas",
         "agents": "Agen",
         "artifacts": "Artifact",
         "connectors": "Konektor",
@@ -483,7 +429,6 @@
         "works": "Tempat {{agentName}} bekerja"
       },
       "rail": {
-        "activity": "Aktivitas",
         "new": "Baru",
         "workflows": "Alur kerja",
         "works": "Bekerja"

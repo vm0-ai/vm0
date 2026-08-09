@@ -108,7 +108,7 @@
         "title": "No network logs"
       },
       "notFound": {
-        "back": "Back to activity",
+        "back": "Back to chats",
         "description": "This log doesn't exist or you don't have permission to view it in the current workspace.",
         "title": "Log not found"
       },
@@ -204,22 +204,6 @@
         "title": "No log loaded",
         "upload": "Upload JSON"
       }
-    },
-    "list": {
-      "description": "Logs and runs from your agents.",
-      "errors": {
-        "description": "Something went wrong. Please try again later.",
-        "title": "Failed to load activity data"
-      },
-      "filters": {
-        "agent": "Agent filter",
-        "allAgents": "All agents",
-        "allSources": "All sources",
-        "allStatuses": "All statuses",
-        "source": "Source filter",
-        "status": "Status filter"
-      },
-      "title": "Activity"
     },
     "network": {
       "actions": {
@@ -320,15 +304,6 @@
       "unknown": "unknown",
       "yes": "Yes"
     },
-    "pagination": {
-      "backTwo": "Back 2 pages",
-      "forwardTwo": "Forward 2 pages",
-      "next": "Next page",
-      "page": "Page {{current}}",
-      "pageOf": "Page {{current}} of {{total}}",
-      "previous": "Previous page",
-      "rowsPerPage": "Rows per page"
-    },
     "sources": {
       "agent": "Agent",
       "agentphone": "AgentPhone",
@@ -352,34 +327,6 @@
       "queued": "Queued",
       "running": "Running",
       "timeout": "Timeout"
-    },
-    "statusFilters": {
-      "cancelled": "Cancelled",
-      "completed": "Completed",
-      "failed": "Failed",
-      "pending": "Pending",
-      "queued": "Queued",
-      "running": "Running",
-      "timeout": "Timeout"
-    },
-    "table": {
-      "empty": {
-        "description": "When your agents start working, their activity will show up here.",
-        "title": "All quiet for now"
-      },
-      "filteredEmpty": {
-        "description": "Try different filters to find what you're looking for.",
-        "title": "Nothing matches those filters"
-      },
-      "headers": {
-        "agent": "Agent",
-        "description": "Description",
-        "duration": "Duration",
-        "session": "Session",
-        "source": "Source",
-        "startTime": "Start Time",
-        "status": "Status"
-      }
     }
   },
   "appShell": {
@@ -471,7 +418,6 @@
         "overlay": "Sidebar overlay"
       },
       "navigation": {
-        "activity": "Activity logs",
         "agents": "Agents",
         "artifacts": "Artifacts",
         "connectors": "Connectors",
@@ -483,7 +429,6 @@
         "works": "Where {{agentName}} works"
       },
       "rail": {
-        "activity": "Activity",
         "new": "New",
         "workflows": "Workflows",
         "works": "Works"

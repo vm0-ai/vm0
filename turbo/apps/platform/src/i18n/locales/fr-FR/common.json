@@ -110,7 +110,7 @@
         "title": "Aucun journal réseau"
       },
       "notFound": {
-        "back": "Retour à l'activité",
+        "back": "Retour aux discussions",
         "description": "Ce journal n'existe pas ou vous n'avez pas la permission de le voir dans l'espace de travail actuel.",
         "title": "Journal introuvable"
       },
@@ -218,22 +218,6 @@
         "upload": "Télécharger JSON"
       }
     },
-    "list": {
-      "description": "Journaux et exécutions de vos agents.",
-      "errors": {
-        "description": "Quelque chose a mal tourné. Veuillez réessayer plus tard.",
-        "title": "Échec du chargement des données d'activité"
-      },
-      "filters": {
-        "agent": "Filtre d'agent",
-        "allAgents": "Tous les agents",
-        "allSources": "Toutes les sources",
-        "allStatuses": "Tous les statuts",
-        "source": "Filtre de source",
-        "status": "Filtre de statut"
-      },
-      "title": "Activité"
-    },
     "network": {
       "actions": {
         "block": "BLOQUER"
@@ -334,15 +318,6 @@
       "unknown": "Inconnu",
       "yes": "Oui"
     },
-    "pagination": {
-      "backTwo": "Reculer de 2 pages",
-      "forwardTwo": "Avancer de 2 pages",
-      "next": "Page suivante",
-      "page": "Page {{current}}",
-      "pageOf": "Page {{current}} sur {{total}}",
-      "previous": "Page précédente",
-      "rowsPerPage": "Lignes par page"
-    },
     "sources": {
       "agent": "Agent",
       "agentphone": "AgentPhone",
@@ -366,34 +341,6 @@
       "queued": "En file d'attente",
       "running": "En cours d'exécution",
       "timeout": "Délai d'attente"
-    },
-    "statusFilters": {
-      "cancelled": "Annulé",
-      "completed": "Terminé",
-      "failed": "Échoué",
-      "pending": "En attente",
-      "queued": "En file d'attente",
-      "running": "En cours d'exécution",
-      "timeout": "Délai d'attente"
-    },
-    "table": {
-      "empty": {
-        "description": "Lorsque vos agents commencent à travailler, leur activité apparaîtra ici.",
-        "title": "Tout est calme pour le moment"
-      },
-      "filteredEmpty": {
-        "description": "Essayez différents filtres pour trouver ce que vous cherchez.",
-        "title": "Rien ne correspond à ces filtres"
-      },
-      "headers": {
-        "agent": "Agent",
-        "description": "Description",
-        "duration": "Durée",
-        "session": "Session",
-        "source": "Source",
-        "startTime": "Heure de début",
-        "status": "Statut"
-      }
     }
   },
   "appShell": {
@@ -485,7 +432,6 @@
         "overlay": "Superposition de la barre latérale"
       },
       "navigation": {
-        "activity": "Journaux d'activité",
         "agents": "Agents",
         "artifacts": "Artéfacts",
         "connectors": "Connecteurs",
@@ -497,7 +443,6 @@
         "works": "Où {{agentName}} travaille"
       },
       "rail": {
-        "activity": "Activité",
         "new": "Nouveau",
         "workflows": "Workflows",
         "works": "Travail"

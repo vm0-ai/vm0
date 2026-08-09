@@ -108,7 +108,7 @@
         "title": "कोई नेटवर्क लॉग नहीं"
       },
       "notFound": {
-        "back": "गतिविधि पर वापस जाएँ",
+        "back": "चैट पर वापस जाएँ",
         "description": "यह लॉग मौजूद नहीं है या आपके पास इसे वर्तमान वर्कस्पेस में देखने की अनुमति नहीं है।",
         "title": "लॉग नहीं मिला"
       },
@@ -204,22 +204,6 @@
         "title": "कोई लॉग लोड नहीं हुआ",
         "upload": "JSON अपलोड करें"
       }
-    },
-    "list": {
-      "description": "लॉग करता है और आपके एजेंटों से चलता है।",
-      "errors": {
-        "description": "कुछ गलत हो गया। कृपया बाद में पुन: प्रयास करें।",
-        "title": "गतिविधि डेटा लोड करने में विफल"
-      },
-      "filters": {
-        "agent": "एजेंट फ़िल्टर",
-        "allAgents": "सभी एजेंट",
-        "allSources": "सभी स्रोत",
-        "allStatuses": "सभी स्थितियाँ",
-        "source": "स्रोत फ़िल्टर",
-        "status": "स्थिति फ़िल्टर"
-      },
-      "title": "गतिविधि"
     },
     "network": {
       "actions": {
@@ -320,15 +304,6 @@
       "unknown": "अज्ञात",
       "yes": "हाँ"
     },
-    "pagination": {
-      "backTwo": "पीछे 2 पेज",
-      "forwardTwo": "2 पेज फॉरवर्ड करें",
-      "next": "अगला पृष्ठ",
-      "page": "पेज {{current}}",
-      "pageOf": "{{total}} का पृष्ठ {{current}}",
-      "previous": "पिछला पृष्ठ",
-      "rowsPerPage": "प्रति पृष्ठ पंक्तियाँ"
-    },
     "sources": {
       "agent": "एजेंट",
       "agentphone": "AgentPhone",
@@ -352,34 +327,6 @@
       "queued": "कतारबद्ध",
       "running": "चल रहा है",
       "timeout": "समयबाह्य"
-    },
-    "statusFilters": {
-      "cancelled": "रद्द कर दिया गया",
-      "completed": "पूरा हुआ",
-      "failed": "असफल",
-      "pending": "लंबित",
-      "queued": "कतारबद्ध",
-      "running": "चल रहा है",
-      "timeout": "समयबाह्य"
-    },
-    "table": {
-      "empty": {
-        "description": "जब आपके एजेंट काम करना शुरू करेंगे, तो उनकी गतिविधि यहां दिखाई देगी.",
-        "title": "फिलहाल सब शांत"
-      },
-      "filteredEmpty": {
-        "description": "आप जो खोज रहे हैं उसे ढूंढने के लिए अलग-अलग फ़िल्टर आज़माएं।",
-        "title": "उन फ़िल्टर से कुछ भी मेल नहीं खाता"
-      },
-      "headers": {
-        "agent": "एजेंट",
-        "description": "विवरण",
-        "duration": "अवधि",
-        "session": "सत्र",
-        "source": "स्रोत",
-        "startTime": "समय शुरू",
-        "status": "स्थिति"
-      }
     }
   },
   "appShell": {
@@ -471,7 +418,6 @@
         "overlay": "साइडबार ओवरले"
       },
       "navigation": {
-        "activity": "गतिविधि लॉग",
         "agents": "एजेंटों",
         "artifacts": "आर्टिफ़ैक्ट्स",
         "connectors": "कनेक्टर्स",
@@ -483,7 +429,6 @@
         "works": "जहां {{agentName}} काम करता है"
       },
       "rail": {
-        "activity": "गतिविधि",
         "new": "नया",
         "workflows": "वर्कफ़्लो",
         "works": "काम करता है"

@@ -21,46 +21,6 @@ interface StatusBadgeProps {
   zeroStyle?: boolean;
 }
 
-export function getStatusFilterLabel(status: LogStatus): string {
-  switch (status) {
-    case "queued": {
-      return i18n.t(($) => {
-        return $.activity.statusFilters.queued;
-      });
-    }
-    case "pending": {
-      return i18n.t(($) => {
-        return $.activity.statusFilters.pending;
-      });
-    }
-    case "running": {
-      return i18n.t(($) => {
-        return $.activity.statusFilters.running;
-      });
-    }
-    case "completed": {
-      return i18n.t(($) => {
-        return $.activity.statusFilters.completed;
-      });
-    }
-    case "failed": {
-      return i18n.t(($) => {
-        return $.activity.statusFilters.failed;
-      });
-    }
-    case "timeout": {
-      return i18n.t(($) => {
-        return $.activity.statusFilters.timeout;
-      });
-    }
-    case "cancelled": {
-      return i18n.t(($) => {
-        return $.activity.statusFilters.cancelled;
-      });
-    }
-  }
-}
-
 function getStatusLabel(status: LogStatus): string {
   switch (status) {
     case "queued": {

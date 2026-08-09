@@ -110,7 +110,7 @@
         "title": "No hay registros de red"
       },
       "notFound": {
-        "back": "Volver a la actividad",
+        "back": "Volver a los chats",
         "description": "Este registro no existe o no tienes permiso para verlo en el espacio de trabajo actual.",
         "title": "Registro no encontrado"
       },
@@ -218,22 +218,6 @@
         "upload": "Sube JSON"
       }
     },
-    "list": {
-      "description": "Registros y ejecuciones de tus agentes.",
-      "errors": {
-        "description": "Algo salió mal. Por favor, inténtalo de nuevo más tarde.",
-        "title": "No se han cargado los datos de actividad"
-      },
-      "filters": {
-        "agent": "Filtro de agentes",
-        "allAgents": "Todos los agentes",
-        "allSources": "Todas las fuentes",
-        "allStatuses": "Todos los estados",
-        "source": "Filtro de fuente",
-        "status": "Filtro de estado"
-      },
-      "title": "Actividad"
-    },
     "network": {
       "actions": {
         "block": "BLOQUEAR"
@@ -334,15 +318,6 @@
       "unknown": "Desconocido",
       "yes": "Sí"
     },
-    "pagination": {
-      "backTwo": "Retroceder 2 páginas",
-      "forwardTwo": "Avanzar 2 páginas",
-      "next": "Página siguiente",
-      "page": "Página {{current}}",
-      "pageOf": "Página {{current}} de {{total}}",
-      "previous": "Página anterior",
-      "rowsPerPage": "Filas por página"
-    },
     "sources": {
       "agent": "Agente",
       "agentphone": "AgentPhone",
@@ -366,34 +341,6 @@
       "queued": "En cola",
       "running": "En ejecución",
       "timeout": "Tiempo de espera agotado"
-    },
-    "statusFilters": {
-      "cancelled": "Cancelado",
-      "completed": "Completado",
-      "failed": "Fallido",
-      "pending": "Pendiente",
-      "queued": "En cola",
-      "running": "En ejecución",
-      "timeout": "Tiempo de espera agotado"
-    },
-    "table": {
-      "empty": {
-        "description": "Cuando tus agentes empiecen a trabajar, su actividad aparecerá aquí.",
-        "title": "Todo en silencio por ahora"
-      },
-      "filteredEmpty": {
-        "description": "Prueba diferentes filtros para encontrar lo que buscas.",
-        "title": "Nada coincide con esos filtros"
-      },
-      "headers": {
-        "agent": "Agente",
-        "description": "Descripción",
-        "duration": "Duración",
-        "session": "Sesión",
-        "source": "Fuente",
-        "startTime": "Hora de inicio",
-        "status": "Estado"
-      }
     }
   },
   "appShell": {
@@ -485,7 +432,6 @@
         "overlay": "Superposición de barra lateral"
       },
       "navigation": {
-        "activity": "Registros de actividad",
         "agents": "Agentes",
         "artifacts": "Artefactos",
         "connectors": "Conectores",
@@ -497,7 +443,6 @@
         "works": "Dónde trabaja {{agentName}}"
       },
       "rail": {
-        "activity": "Actividad",
         "new": "Nuevo",
         "workflows": "Flujos de trabajo",
         "works": "Integraciones"
