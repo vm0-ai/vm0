@@ -235,6 +235,23 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
 });
 
 describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
+  it("keeps limited-free plan concurrency visible when the runtime cap is disabled", async () => {
+    const actor = bdd.user();
+    await bdd.bootstrapLimitedFreeOnboarding(actor, {
+      displayName: "BDD limited-free agent",
+    });
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+
+    const queue = await api.readRunQueue(actor);
+
+    expect(queue.body.concurrency).toMatchObject({
+      tier: "limited-free-1",
+      limit: 1,
+      active: 0,
+      available: 1,
+    });
+  });
+
   it("groups active concurrency by workspace member", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });

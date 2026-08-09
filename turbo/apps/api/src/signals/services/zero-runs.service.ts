@@ -99,11 +99,14 @@ function effectiveConcurrencyLimit(
   baseLimit: number,
   paidSlots: number,
 ): number {
-  const limit = totalConcurrencyLimit({
-    baseLimit: cappedBaseConcurrencyLimit(baseLimit),
+  const cappedBaseLimit = cappedBaseConcurrencyLimit(baseLimit);
+  const displayedBaseLimit = Number.isFinite(cappedBaseLimit)
+    ? cappedBaseLimit
+    : baseLimit;
+  return totalConcurrencyLimit({
+    baseLimit: displayedBaseLimit,
     paidSlots,
   });
-  return Number.isFinite(limit) ? limit : 0;
 }
 
 async function activeMemberUsage(
