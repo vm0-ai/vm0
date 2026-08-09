@@ -41,6 +41,7 @@ import {
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
+  withChatThreadSnapshotScopeWritesPausedFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import {
@@ -3540,7 +3541,7 @@ describe("CHAT-01 catch-up cron metrics", () => {
     const firstAgent = await bdd.createAgent(firstOwner, {
       displayName: "Compaction progress agent",
     });
-    const firstThread = await chat.createThread(firstOwner, {
+    await chat.createThread(firstOwner, {
       agentId: firstAgent.agentId,
       title: "First compaction progress thread",
       eventId: randomUUID(),
@@ -3549,91 +3550,69 @@ describe("CHAT-01 catch-up cron metrics", () => {
     const secondAgent = await bdd.createAgent(secondOwner, {
       displayName: "Second compaction progress agent",
     });
-    const secondThread = await chat.createThread(secondOwner, {
+    await chat.createThread(secondOwner, {
       agentId: secondAgent.agentId,
       title: "Second compaction progress thread",
       eventId: randomUUID(),
     });
 
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
-    // Two new scopes with a one-scope batch guarantee that the first pass
-    // leaves at least one real candidate behind.
-    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
-    const pass = await compactChatThreadSnapshots();
+    // The gauges intentionally cover the shared database. Pause scope writers
+    // while this test proves a bounded pass followed by a complete drain, so
+    // another Vitest worker cannot add fresh backlog between the pass and its
+    // post-pass measurement.
+    await withChatThreadSnapshotScopeWritesPausedFixture({
+      signal: context.signal,
+      run: async () => {
+        mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+        // Two new scopes with a one-scope batch guarantee that the first pass
+        // leaves at least one real candidate behind.
+        mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
+        const pass = await compactChatThreadSnapshots();
 
-    const event = latestCronPassFields(
-      context,
-      "compact-chat-thread-snapshots",
-    );
-    expect(event.ok).toBeTruthy();
-    expect(event.passScopes).toBe(pass.scopes);
-    expect(event.passEventsApplied).toBe(pass.eventsApplied);
-    expect(event.passEventsPruned).toBe(pass.eventsPruned);
-    expect(event.passRemovedDeletedAgentThreads).toBe(
-      pass.removedDeletedAgentThreads,
-    );
-    expect(pass.scopes).toBe(1);
+        const event = latestCronPassFields(
+          context,
+          "compact-chat-thread-snapshots",
+        );
+        expect(event.ok).toBeTruthy();
+        expect(event.passScopes).toBe(pass.scopes);
+        expect(event.passEventsApplied).toBe(pass.eventsApplied);
+        expect(event.passEventsPruned).toBe(pass.eventsPruned);
+        expect(event.passRemovedDeletedAgentThreads).toBe(
+          pass.removedDeletedAgentThreads,
+        );
+        expect(pass.scopes).toBe(1);
 
-    const targetScopes = cronPassCount(event, "targetScopes");
-    const snapshotScopes = cronPassCount(event, "snapshotScopes");
-    expect(snapshotScopes).toBeLessThanOrEqual(targetScopes);
-    expect(cronPassCount(event, "pendingScopes")).toBeGreaterThanOrEqual(1);
-    expect(snapshotScopes).toBeGreaterThanOrEqual(1);
-    expect(cronPassCount(event, "staleScopes")).toBeLessThanOrEqual(
-      snapshotScopes,
-    );
-    // Table scale for the retention work that lands later. Every scope keeps
-    // its marker event forever, so rows stay above zero while the prunable
-    // count is what has to stay near zero.
-    expect(cronPassCount(event, "threadEventRows")).toBeGreaterThanOrEqual(1);
-    expect(cronPassCount(event, "threadEventBytes")).toBeGreaterThan(0);
-    cronPassCount(event, "prunableThreadEvents");
+        const targetScopes = cronPassCount(event, "targetScopes");
+        const snapshotScopes = cronPassCount(event, "snapshotScopes");
+        expect(snapshotScopes).toBeLessThanOrEqual(targetScopes);
+        expect(cronPassCount(event, "pendingScopes")).toBeGreaterThanOrEqual(1);
+        expect(snapshotScopes).toBeGreaterThanOrEqual(1);
+        expect(cronPassCount(event, "staleScopes")).toBeLessThanOrEqual(
+          snapshotScopes,
+        );
+        // Table scale for the retention work that lands later. Every scope
+        // keeps its marker event forever, so rows stay above zero while the
+        // prunable count is what has to stay near zero.
+        expect(cronPassCount(event, "threadEventRows")).toBeGreaterThanOrEqual(
+          1,
+        );
+        expect(cronPassCount(event, "threadEventBytes")).toBeGreaterThan(0);
+        cronPassCount(event, "prunableThreadEvents");
 
-    const firstBoundedSnapshot = await chat.getThreadSnapshot(firstOwner);
-    const secondBoundedSnapshot = await chat.getThreadSnapshot(secondOwner);
-    const boundedFixtureSnapshots = [
-      firstBoundedSnapshot.chatThreads.some((thread) => {
-        return thread.id === firstThread.id;
-      }),
-      secondBoundedSnapshot.chatThreads.some((thread) => {
-        return thread.id === secondThread.id;
-      }),
-    ];
-    expect(boundedFixtureSnapshots.filter(Boolean).length).toBeLessThan(2);
-
-    // A large follow-up pass drains both fixture scopes selected by the same
-    // candidate predicate. Other test files share the database and can create
-    // a new global candidate between this pass and its progress query, so
-    // fixture snapshots prove the drain while global gauges assert invariants.
-    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "10000");
-    await compactChatThreadSnapshots();
-    const drained = latestCronPassFields(
-      context,
-      "compact-chat-thread-snapshots",
-    );
-    const firstDrainedSnapshot = await chat.getThreadSnapshot(firstOwner);
-    const secondDrainedSnapshot = await chat.getThreadSnapshot(secondOwner);
-    expect(
-      firstDrainedSnapshot.chatThreads.map((thread) => {
-        return thread.id;
-      }),
-    ).toContain(firstThread.id);
-    expect(
-      secondDrainedSnapshot.chatThreads.map((thread) => {
-        return thread.id;
-      }),
-    ).toContain(secondThread.id);
-
-    const drainedTargetScopes = cronPassCount(drained, "targetScopes");
-    const drainedSnapshotScopes = cronPassCount(drained, "snapshotScopes");
-    const drainedPendingScopes = cronPassCount(drained, "pendingScopes");
-    expect(drainedSnapshotScopes).toBeLessThanOrEqual(drainedTargetScopes);
-    expect(drainedPendingScopes).toBeLessThanOrEqual(drainedTargetScopes);
-    expect(drainedTargetScopes - drainedSnapshotScopes).toBeLessThanOrEqual(
-      drainedPendingScopes,
-    );
-    expect(cronPassCount(drained, "staleScopes")).toBeLessThanOrEqual(
-      drainedPendingScopes,
-    );
+        // A large follow-up pass drains the same candidate predicate. The
+        // newest absolute event must then show full snapshot coverage and no
+        // backlog.
+        mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "10000");
+        await compactChatThreadSnapshots();
+        const drained = latestCronPassFields(
+          context,
+          "compact-chat-thread-snapshots",
+        );
+        expect(cronPassCount(drained, "pendingScopes")).toBe(0);
+        expect(cronPassCount(drained, "snapshotScopes")).toBe(
+          cronPassCount(drained, "targetScopes"),
+        );
+      },
+    });
   }, 90_000);
 });

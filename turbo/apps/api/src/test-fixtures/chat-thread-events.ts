@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import {
+  chatThreadEventSequences,
+  chatThreadEvents,
+} from "@vm0/db/schema/chat-thread-event";
 import { count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { appendChatThreadEvent } from "../signals/services/zero-chat-thread-event.service";
-import { createDeferredPromise } from "../signals/utils";
+import { createDeferredPromise, settleIncludingAbort } from "../signals/utils";
 
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
@@ -23,6 +27,37 @@ interface ChatThreadEventFixtureArgs {
 interface PersistedChatThreadEventFixture {
   readonly id: string;
   readonly seqId: number;
+}
+
+/**
+ * Quiesces writes that can add or advance snapshot-compaction scopes while a
+ * route test observes the global post-pass backlog. The compactor only reads
+ * these tables, so its snapshot rebuild and pruning remain unblocked.
+ */
+export async function withChatThreadSnapshotScopeWritesPausedFixture<T>(args: {
+  readonly signal: AbortSignal;
+  readonly run: () => Promise<T>;
+}): Promise<T> {
+  const started = createDeferredPromise<void>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    await tx.execute(
+      sql`LOCK TABLE ${chatThreads}, ${chatThreadEventSequences} IN SHARE MODE`,
+    );
+    started.resolve(undefined);
+    await released.promise;
+  });
+  await started.promise;
+
+  const result = await settleIncludingAbort(args.run());
+  if (!released.settled()) {
+    released.resolve(undefined);
+  }
+  await done;
+  if (!result.ok) {
+    throw result.error;
+  }
+  return result.value;
 }
 
 async function transitiveBlockedWaiterCount(
