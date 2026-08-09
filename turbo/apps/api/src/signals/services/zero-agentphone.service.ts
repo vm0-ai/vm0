@@ -836,13 +836,13 @@ function formatAgentPhoneRecentHistoryContext(
 
   const total = chronological.length;
   const formatted = chronological.map((message, index) => {
-    const sender = message.fromNumber ?? message.direction ?? "unknown";
+    const senderParts = message.fromNumber ? [`id: ${message.fromNumber}`] : [];
     return [
       "---",
       "",
       `- RELATIVE_INDEX: ${index - total}`,
       message.messageId ? `- MSG_ID: ${message.messageId}` : null,
-      `- SENDER: {id: ${sender}}`,
+      `- SENDER: {${senderParts.join(", ")}}`,
       message.direction ? `- DIRECTION: ${message.direction}` : null,
       message.channel ? `- CHANNEL: ${message.channel}` : null,
       message.at ? `- AT: ${message.at}` : null,

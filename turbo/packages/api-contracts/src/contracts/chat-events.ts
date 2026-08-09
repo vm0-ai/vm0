@@ -358,6 +358,13 @@ export function foldRunnableChatQueueEvents<TEvent extends ChatQueueFoldInput>(
   return foldPendingChatQueueEvents(events);
 }
 
+/** Narrow a fold input to the persisted shape that always carries `seq_id`. */
+function hasChatEventSeqId<TEvent extends ChatEventFoldInput>(
+  event: TEvent,
+): event is TEvent & { readonly seqId: number } {
+  return event.seqId !== undefined;
+}
+
 export function foldActiveChatGoalObjective(
   events: readonly ChatEventFoldInput[],
 ): string | null {
@@ -366,11 +373,9 @@ export function foldActiveChatGoalObjective(
   const goalMarkers = events.filter((event) => {
     return isChatGoalMarkerEventType(event.eventType);
   });
-  const orderedEvents = goalMarkers.every((event) => {
-    return event.seqId !== undefined;
-  })
+  const orderedEvents = goalMarkers.every(hasChatEventSeqId)
     ? [...goalMarkers].sort((left, right) => {
-        return (left.seqId ?? 0) - (right.seqId ?? 0);
+        return left.seqId - right.seqId;
       })
     : goalMarkers;
 
