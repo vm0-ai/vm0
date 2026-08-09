@@ -90,7 +90,7 @@ describe("global focus colors", () => {
 describe("global Lucide defaults", () => {
   it("preserves explicit stroke widths while normalizing Lucide's default", () => {
     const selector =
-      'svg[class*="lucide"][stroke-width="2"]:not([data-explicit-stroke-width])';
+      'svg[class*="lucide"][stroke-width="2"]:not([data-stroke])';
 
     expect(readRuleBody(globalCss, selector)).toMatch(
       /stroke-width:\s*var\(--icon-stroke-width\);/,
