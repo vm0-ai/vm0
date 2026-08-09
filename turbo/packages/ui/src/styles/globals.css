@@ -453,8 +453,10 @@
       sans-serif;
   }
 
-  /* Global icon stroke width for Lucide Icons */
-  svg[class*="lucide"] {
+  /* Lucide emits stroke-width="2" when no override is supplied. Normalize
+   * that default while preserving explicit strokeWidth props; intentional
+   * 2px call sites opt out with data-explicit-stroke-width. */
+  svg[class*="lucide"][stroke-width="2"]:not([data-explicit-stroke-width]) {
     stroke-width: var(--icon-stroke-width);
   }
 }
