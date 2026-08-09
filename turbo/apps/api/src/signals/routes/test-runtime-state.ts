@@ -20,7 +20,6 @@ import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -1423,17 +1422,6 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "replace-custom-connector-prefixes": {
-        await db
-          .update(orgCustomConnectors)
-          .set({
-            prefixes: body.prefixes,
-            prefixTemplates: body.prefixes,
-          })
-          .where(eq(orgCustomConnectors.id, body.connector_id));
-        signal.throwIfAborted();
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "hold-org-admission-lock": {

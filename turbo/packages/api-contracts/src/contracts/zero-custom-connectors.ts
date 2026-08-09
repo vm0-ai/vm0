@@ -127,8 +127,7 @@ export const customConnectorResponseSchema = z.object({
     .nullable()
     .optional(),
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
-  revision: z.number().int().positive().optional(),
-  storageVersion: z.number().int().positive().optional(),
+  storageVersion: z.number().int().positive(),
   connected: z.boolean(),
   missingRequiredFields: z.array(z.string()),
   configuredFieldKeys: z.array(z.string()),

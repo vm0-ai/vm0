@@ -2,7 +2,6 @@ import { runnerRealtimeTokenContract } from "../contracts/realtime";
 import {
   runnersActiveInputsContract,
   runnersConnectorRuntimeSyncContract,
-  runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
   runnersJobClaimContract,
@@ -52,11 +51,6 @@ export const rustRouteBindings = [
     route: runnersActiveInputsContract.claim,
     rustModulePath: ["runners", "runs", "by_run_id", "active_inputs", "claim"],
     rustConstName: "CLAIM",
-  },
-  {
-    route: runnersNetworkPolicyRefreshContract.refresh,
-    rustModulePath: ["runners", "runs", "by_run_id", "network_policy_refresh"],
-    rustConstName: "REFRESH",
   },
   {
     route: runnersConnectorRuntimeSyncContract.sync,

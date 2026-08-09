@@ -514,7 +514,7 @@ const matchedFirewallAuthContextSchema = z
     apiId: z.string().min(1),
     connectorSlug: connectorSlugSchema.optional(),
     customConnectorId: z.uuid().optional(),
-    routingVariables: z.record(z.string(), z.string()).optional(),
+    routingVariables: z.record(z.string(), z.string()),
   })
   .refine(
     (context) => {
@@ -551,8 +551,8 @@ export const webhookFirewallAuthContract = c.router({
       // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
-      // Stable matched-firewall identity plus run-pinned routing inputs.
-      // Older addons omit builtin context and routingVariables.
+      // Stable matched-firewall identity plus exact routing inputs.
+      // Inline and model-provider firewalls do not identify a connector.
       matchedFirewall: matchedFirewallAuthContextSchema.optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound
       // auth cache lifetime by the current credit authorization lease.

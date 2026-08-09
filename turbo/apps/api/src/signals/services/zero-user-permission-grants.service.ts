@@ -40,7 +40,7 @@ import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   publishConnectorPermissionUpdatedSafely,
-  publishNetworkPolicyRefreshToRunnerGroupSafely,
+  publishConnectorRuntimeSyncToRunnerGroupSafely,
 } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import {
@@ -855,10 +855,10 @@ async function publishActiveNetworkPolicyRefreshes(
       if (!run.runnerGroup) {
         return [];
       }
-      return publishNetworkPolicyRefreshToRunnerGroupSafely(
+      return publishConnectorRuntimeSyncToRunnerGroupSafely(
         run.runnerGroup,
         run.runId,
-        connectorSlug,
+        { kind: "builtin", connectorSlug },
       );
     }),
   );

@@ -26,7 +26,7 @@ use super::api_direct_candidates::{
     DirectCandidateInbox, DirectCandidateInsertOutcome, DirectCandidatePruneSnapshot,
     DirectJobCandidate,
 };
-use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use super::connector_runtime_sync::ConnectorRuntimeSyncHandle;
 use super::{RunnerPreferenceContext, parse_runner_preference};
 use crate::active_input::ActiveInputNotifications;
 use crate::duration::duration_ms;
@@ -436,7 +436,7 @@ pub(super) struct AblySupervisorConfig {
     pub(super) poll_wakeups: Arc<PollWakeups>,
     pub(super) direct_candidates: Arc<DirectCandidateInbox>,
     pub(super) cancel_tokens: RunCancellationRegistry,
-    pub(super) network_policy_refresh: NetworkPolicyRefreshHandle,
+    pub(super) connector_runtime_sync: ConnectorRuntimeSyncHandle,
     pub(super) active_input_notifications: ActiveInputNotifications,
     pub(super) pi_standby_notifications: PiStandbyNotifications,
     pub(super) provider_cancel: CancellationToken,
@@ -449,7 +449,7 @@ struct SupervisorTaskConfig {
     poll_wakeups: Arc<PollWakeups>,
     direct_candidates: Arc<DirectCandidateInbox>,
     cancel_tokens: RunCancellationRegistry,
-    network_policy_refresh: NetworkPolicyRefreshHandle,
+    connector_runtime_sync: ConnectorRuntimeSyncHandle,
     active_input_notifications: ActiveInputNotifications,
     pi_standby_notifications: PiStandbyNotifications,
     provider_cancel: CancellationToken,
@@ -467,7 +467,7 @@ impl AblySupervisor {
             poll_wakeups: config.poll_wakeups,
             direct_candidates: config.direct_candidates,
             cancel_tokens: config.cancel_tokens,
-            network_policy_refresh: config.network_policy_refresh,
+            connector_runtime_sync: config.connector_runtime_sync,
             active_input_notifications: config.active_input_notifications,
             pi_standby_notifications: config.pi_standby_notifications,
             provider_cancel: config.provider_cancel,
@@ -556,13 +556,13 @@ async fn run_supervisor(config: SupervisorTaskConfig) {
                             config.active_input_notifications.notify(run_id);
                             continue;
                         }
-                        handle_ably_message_with_network_policy_refresh(
+                        handle_ably_message_with_connector_runtime_sync(
                             &msg,
                             &config.profiles,
                             &config.poll_wakeups,
                             &config.direct_candidates,
                             &config.cancel_tokens,
-                            Some(&config.network_policy_refresh),
+                            Some(&config.connector_runtime_sync),
                             Some(&config.shutdown),
                         )
                         .await;
@@ -637,7 +637,7 @@ async fn handle_ably_message(
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &RunCancellationRegistry,
 ) {
-    handle_ably_message_with_network_policy_refresh(
+    handle_ably_message_with_connector_runtime_sync(
         msg,
         profiles,
         poll_wakeups,
@@ -649,14 +649,14 @@ async fn handle_ably_message(
     .await;
 }
 
-async fn handle_ably_message_with_network_policy_refresh(
+async fn handle_ably_message_with_connector_runtime_sync(
     msg: &ably_subscriber::Message,
     profiles: &[String],
     poll_wakeups: &PollWakeups,
     direct_candidates: &DirectCandidateInbox,
     cancel_tokens: &RunCancellationRegistry,
-    network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
-    network_policy_refresh_cancel: Option<&CancellationToken>,
+    connector_runtime_sync: Option<&ConnectorRuntimeSyncHandle>,
+    connector_runtime_sync_cancel: Option<&CancellationToken>,
 ) {
     let notification_received_at = StdInstant::now();
 
@@ -678,32 +678,12 @@ async fn handle_ably_message_with_network_policy_refresh(
         return;
     }
 
-    if let Some(notification) = parse_network_policy_refresh_notification(msg) {
-        let Some(network_policy_refresh) = network_policy_refresh else {
-            return;
-        };
-        if let Some(cancel) = network_policy_refresh_cancel {
-            network_policy_refresh
-                .notify_network_policy_refresh_until_cancelled(
-                    notification.run_id,
-                    notification.connector_slug,
-                    cancel,
-                )
-                .await;
-        } else {
-            network_policy_refresh
-                .notify_network_policy_refresh(notification.run_id, notification.connector_slug)
-                .await;
-        }
-        return;
-    }
-
     if let Some(notification) = parse_connector_runtime_sync_notification(msg) {
-        let Some(network_policy_refresh) = network_policy_refresh else {
+        let Some(connector_runtime_sync) = connector_runtime_sync else {
             return;
         };
-        if let Some(cancel) = network_policy_refresh_cancel {
-            network_policy_refresh
+        if let Some(cancel) = connector_runtime_sync_cancel {
+            connector_runtime_sync
                 .notify_connector_runtime_sync_until_cancelled(
                     notification.run_id,
                     notification.target,
@@ -711,7 +691,7 @@ async fn handle_ably_message_with_network_policy_refresh(
                 )
                 .await;
         } else {
-            network_policy_refresh
+            connector_runtime_sync
                 .notify_connector_runtime_sync(notification.run_id, notification.target)
                 .await;
         }
@@ -782,11 +762,6 @@ struct JobNotification<'a> {
     history_generation_run_id: Option<RunId>,
     pi_execution_mode: Option<PiExecutionMode>,
     runner_preference_context: Option<RunnerPreferenceContext>,
-}
-
-struct NetworkPolicyRefreshNotification {
-    run_id: RunId,
-    connector_slug: String,
 }
 
 struct ConnectorRuntimeSyncNotification {
@@ -926,44 +901,6 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNot
         None => CancelNotificationMode::Hard,
     };
     Some(CancelNotification { run_id, mode })
-}
-
-fn parse_network_policy_refresh_notification(
-    msg: &ably_subscriber::Message,
-) -> Option<NetworkPolicyRefreshNotification> {
-    if msg.name.as_deref() != Some("network-policy-refresh") {
-        return None;
-    }
-    let run_id_raw = msg.data.get("runId").and_then(|v| v.as_str());
-    let run_id = match run_id_raw {
-        Some(value) => match value.parse() {
-            Ok(run_id) => run_id,
-            Err(error) => {
-                warn!(value, error = %error, "ably: invalid network-policy-refresh runId");
-                return None;
-            }
-        },
-        None => {
-            warn!("ably: network-policy-refresh message missing runId");
-            return None;
-        }
-    };
-    let connector_slug = match msg.data.get("connectorSlug") {
-        Some(serde_json::Value::String(value)) if !value.is_empty() => value,
-        Some(_) => {
-            warn!("ably: network-policy-refresh message has invalid connectorSlug");
-            return None;
-        }
-        None => {
-            warn!("ably: network-policy-refresh message missing connectorSlug");
-            return None;
-        }
-    };
-
-    Some(NetworkPolicyRefreshNotification {
-        run_id,
-        connector_slug: connector_slug.to_string(),
-    })
 }
 
 fn parse_connector_runtime_sync_notification(
@@ -1257,55 +1194,6 @@ mod tests {
 
     fn default_profiles() -> Vec<String> {
         vec![crate::profile::DEFAULT_PROFILE.to_string()]
-    }
-
-    fn malformed_network_policy_refresh_messages(
-        unrelated_name: &'static str,
-    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 6] {
-        [
-            (
-                "invalid runId",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "not-a-uuid",
-                    "connectorSlug": "github"
-                }),
-            ),
-            (
-                "missing runId",
-                Some("network-policy-refresh"),
-                serde_json::json!({ "connectorSlug": "github" }),
-            ),
-            (
-                "missing connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
-            ),
-            (
-                "empty connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": ""
-                }),
-            ),
-            (
-                "invalid connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": 1
-                }),
-            ),
-            (
-                "unrelated message name",
-                Some(unrelated_name),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "github"
-                }),
-            ),
-        ]
     }
 
     #[tokio::test(start_paused = true)]
@@ -2385,39 +2273,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_network_policy_refresh_notification_does_not_mutate_handler_state() {
-        for (case, name, data) in
-            malformed_network_policy_refresh_messages("network-policy-refresh-v2")
-        {
-            let sentinel_run_id: RunId = "00000000-0000-0000-0000-000000000099".parse().unwrap();
-            let tokens = RunCancellationRegistry::new();
-            let sentinel_registration = tokens.register(sentinel_run_id).await.unwrap();
-            let sentinel_token = sentinel_registration.token();
-            let wakeups = PollWakeups::new(true);
-            let direct_candidates = direct_candidate_inbox();
-            let profiles = default_profiles();
-            let _ = wakeups
-                .wait_for_poll_due(
-                    &CancellationToken::new(),
-                    Duration::from_secs(30),
-                    Duration::from_secs(5),
-                )
-                .await;
-            let msg = make_message(name, data);
-
-            handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
-
-            let snapshot = wakeups.snapshot().await;
-            assert_no_direct_candidate(&direct_candidates).await;
-            assert!(!snapshot.poll_now, "{case}");
-            assert!(snapshot.deferred_poll_at.is_none(), "{case}");
-            assert!(!sentinel_token.is_cancelled(), "{case}");
-
-            assert!(tokens.contains(sentinel_run_id).await, "{case}");
-        }
-    }
-
-    #[tokio::test]
     async fn supervisor_shutdown_awaits_task_termination() {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let supervisor = AblySupervisor::spawn_test_task(|shutdown| async move {
@@ -2453,39 +2308,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_ignores_additional_fields() {
-        let msg = make_message(
-            Some("network-policy-refresh"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000003",
-                "connectorSlug": "github",
-                "additionalField": true
-            }),
-        );
-
-        let notification = parse_network_policy_refresh_notification(&msg).unwrap();
-
-        assert_eq!(
-            notification.run_id.to_string(),
-            "00000000-0000-0000-0000-000000000003"
-        );
-        assert_eq!(notification.connector_slug, "github");
-    }
-
-    #[test]
-    fn parse_network_policy_refresh_notification_rejects_malformed_messages() {
-        for (case, name, data) in malformed_network_policy_refresh_messages("other") {
-            let msg = make_message(name, data);
-
-            assert!(
-                parse_network_policy_refresh_notification(&msg).is_none(),
-                "{case}"
-            );
-        }
-    }
-
-    #[test]
-    fn parse_connector_runtime_sync_notification_reads_tagged_target() {
+    fn parse_connector_runtime_sync_notification_reads_target() {
         let msg = make_message(
             Some("connector-runtime-sync"),
             serde_json::json!({
@@ -2498,7 +2321,7 @@ mod tests {
         );
 
         let notification = parse_connector_runtime_sync_notification(&msg)
-            .expect("tagged connector runtime notification should parse");
+            .expect("connector runtime notification should parse");
 
         assert_eq!(
             notification.run_id.to_string(),

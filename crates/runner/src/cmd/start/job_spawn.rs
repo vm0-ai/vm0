@@ -205,8 +205,8 @@ impl ExecutorInvocation {
                 }
             }
             Err(e) => {
-                if let Some(refresh) = exec_config_for_panic.network_policy_refresh.as_ref() {
-                    refresh.unregister_run(run_id).await;
+                if let Some(runtime_sync) = exec_config_for_panic.connector_runtime_sync.as_ref() {
+                    runtime_sync.unregister_run(run_id).await;
                 }
                 // Panic lost the in-flight telemetry buffer; substitute an
                 // empty collector so the post-complete flush path stays

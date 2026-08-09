@@ -372,13 +372,11 @@ interface LockedCustomConnectorRow {
   readonly authMode: OrgCustomConnectorAuthMode;
   readonly oauthProviderAdapter: string | null;
   readonly permissionBundleRef: string | null;
-  readonly revision: number;
 }
 
 interface LockedCustomConnectorValidation {
   readonly missingIds: readonly string[];
   readonly unconfiguredIds: readonly string[];
-  readonly revisions: ReadonlyMap<string, number>;
   readonly permissionBundleRefs: ReadonlyMap<string, string | null>;
 }
 
@@ -440,7 +438,6 @@ async function lockCustomConnectorsForReplace(
     return {
       missingIds: [],
       unconfiguredIds: [],
-      revisions: new Map(),
       permissionBundleRefs: new Map(),
     };
   }
@@ -461,7 +458,6 @@ async function lockCustomConnectorsForReplace(
         authMode: orgCustomConnectors.authMode,
         oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
         permissionBundleRef: orgCustomConnectors.permissionBundleRef,
-        revision: orgCustomConnectors.revision,
       })
       .from(orgCustomConnectors)
       .leftJoin(
@@ -500,7 +496,6 @@ async function lockCustomConnectorsForReplace(
     return {
       missingIds,
       unconfiguredIds: [],
-      revisions: new Map(),
       permissionBundleRefs: new Map(),
     };
   }
@@ -532,11 +527,6 @@ async function lockCustomConnectorsForReplace(
   return {
     missingIds: [],
     unconfiguredIds,
-    revisions: new Map(
-      lockedRows.map((row) => {
-        return [row.id, row.revision] as const;
-      }),
-    ),
     permissionBundleRefs: new Map(
       lockedRows.map((row) => {
         return [
@@ -807,7 +797,6 @@ async function persistUserCustomConnectorUpdate(
     readonly agentId: string;
     readonly enabledIds: readonly string[];
     readonly operation: UserCustomConnectorUpdateOperation;
-    readonly connectorRevisions: ReadonlyMap<string, number>;
     readonly permissionNamesByConnectorId: ReadonlyMap<
       string,
       readonly string[]
@@ -842,8 +831,6 @@ async function persistUserCustomConnectorUpdate(
             userId: args.userId,
             agentId: args.agentId,
             customConnectorId,
-            connectorRevision:
-              args.connectorRevisions.get(customConnectorId) ?? 1,
             permissionNames: [
               ...(args.permissionNamesByConnectorId.get(customConnectorId) ??
                 []),
@@ -859,7 +846,6 @@ async function persistUserCustomConnectorUpdate(
           userCustomConnectors.customConnectorId,
         ],
         set: {
-          connectorRevision: sql`excluded.connector_revision`,
           permissionNames: sql`excluded.permission_names`,
         },
       });
@@ -944,7 +930,6 @@ async function persistUserCustomConnectorTransaction(args: {
         ...args.request,
         enabledIds: args.enabledIds,
         operation: args.operation,
-        connectorRevisions: new Map(),
         permissionNamesByConnectorId: new Map(),
       }),
       previousIds,
@@ -988,7 +973,6 @@ async function persistUserCustomConnectorTransaction(args: {
       ...args.request,
       enabledIds: args.enabledIds,
       operation: args.operation,
-      connectorRevisions: validation.revisions,
       permissionNamesByConnectorId:
         permissionSelection.permissionNamesByConnectorId,
     }),

@@ -44,6 +44,8 @@ def _single_firewall_vm(
     }
     if network_policy is not None:
         vm_info["networkPolicies"] = {firewall_name: network_policy}
+    if custom_connector_id is not None:
+        vm_info["connectorRoutingVariables"] = {f"custom:{custom_connector_id}": {}}
     if include_encrypted_secrets:
         vm_info["encryptedSecrets"] = "iv:tag:data"
     if vm_fields is not None:

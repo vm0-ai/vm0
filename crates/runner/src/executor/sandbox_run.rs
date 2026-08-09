@@ -1,6 +1,5 @@
 //! Sandbox preparation, reuse, and post-run cleanup glue.
 
-use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
@@ -41,13 +40,13 @@ use crate::dns::{DnsReadinessLogObservation, inspect_readiness_log_segment};
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
-use crate::provider::NetworkPolicyRefreshRegistration;
+use crate::provider::ConnectorRuntimeSyncRegistration;
 use crate::proxy;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_cache::PreparedFreshStorage;
 use crate::storage_plan::build_storage_plan;
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, FirewallEntry, WorkspaceReuseResult};
+use crate::types::{ExecutionContext, WorkspaceReuseResult};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
@@ -1544,7 +1543,7 @@ pub(super) async fn register_proxy(
         proxy_log_path: &proxy_log_path,
         firewalls: context.firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
-        connector_runtime_targets: context.connector_runtime_targets.as_deref(),
+        connector_runtime_targets: Some(&context.connector_runtime_targets),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),
@@ -1562,40 +1561,18 @@ pub(super) async fn register_proxy(
         .network_log_manager
         .register_source_ip(source_ip, network_log_path)
         .await;
-    if let Some(refresh) = config.network_policy_refresh.as_ref() {
-        let connector_slugs = active_connector_slugs(context);
-        refresh
-            .register_run(NetworkPolicyRefreshRegistration {
+    if let Some(runtime_sync) = config.connector_runtime_sync.as_ref() {
+        runtime_sync
+            .register_run(ConnectorRuntimeSyncRegistration {
                 run_id: context.run_id,
                 source_ip,
                 registry: config.registry.clone(),
-                connector_slugs,
-                targets: context.connector_runtime_targets.as_deref(),
+                targets: &context.connector_runtime_targets,
                 refreshes: context.network_policy_refreshes.as_ref(),
             })
             .await;
     }
     Ok(network_log_session)
-}
-
-fn active_connector_slugs(context: &ExecutionContext) -> HashSet<String> {
-    let Some(network_policies) = context.network_policies.as_ref() else {
-        return HashSet::new();
-    };
-    context
-        .firewalls
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|entry| {
-            let FirewallEntry::Builtin { name, .. } = entry else {
-                return None;
-            };
-            (!name.starts_with("model-provider:") && network_policies.contains_key(name.as_str()))
-                .then_some(name)
-        })
-        .map(|name| name.to_string())
-        .collect()
 }
 
 pub(super) fn log_proxy_register_success(
@@ -1659,8 +1636,8 @@ pub(super) async fn unregister_proxy_registry(
         .unregister_vm(source_ip)
         .await
         .map_err(|e| RunnerError::Internal(format!("unregister VM from proxy registry: {e}")));
-    if let Some(refresh) = config.network_policy_refresh.as_ref() {
-        refresh.unregister_run(run_id).await;
+    if let Some(runtime_sync) = config.connector_runtime_sync.as_ref() {
+        runtime_sync.unregister_run(run_id).await;
     }
     result
 }
@@ -1687,69 +1664,4 @@ pub(super) async fn post_job_cleanup(
     )
     .await;
     unregister_proxy_registry(config, source_ip, context.run_id).await
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use super::*;
-    use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallPermission, NetworkPolicy};
-
-    fn network_policy() -> NetworkPolicy {
-        NetworkPolicy {
-            allow: Vec::new(),
-            deny: Vec::new(),
-            ask: Vec::new(),
-            unknown_policy: "ask".to_string(),
-        }
-    }
-
-    #[test]
-    fn active_connector_slugs_only_include_builtin_connectors_with_network_policy() {
-        let mut context =
-            crate::test_fixtures::execution_context::execution_context_for_test(RunId::nil());
-        context.firewalls = Some(vec![
-            FirewallEntry::Builtin {
-                name: "github".to_string(),
-                base_url_vars: None,
-            },
-            FirewallEntry::Inline {
-                firewall: Firewall {
-                    name: "custom-crm".to_string(),
-                    apis: vec![FirewallApi {
-                        id: "custom-crm-api".to_string(),
-                        base: "https://crm.example.com".to_string(),
-                        auth: FirewallAuth {
-                            headers: HashMap::new(),
-                            base: None,
-                            query: None,
-                            aws_sigv4: None,
-                        },
-                        host_policy: None,
-                        permissions: Some(vec![FirewallPermission {
-                            name: "records.read".to_string(),
-                            description: None,
-                            rules: vec!["GET /records".to_string()],
-                        }]),
-                    }],
-                },
-                custom_connector_id: None,
-            },
-            FirewallEntry::Builtin {
-                name: "model-provider:openai".to_string(),
-                base_url_vars: None,
-            },
-        ]);
-        context.network_policies = Some(HashMap::from([
-            ("github".to_string(), network_policy()),
-            ("custom-crm".to_string(), network_policy()),
-            ("model-provider:openai".to_string(), network_policy()),
-            ("not-active".to_string(), network_policy()),
-        ]));
-
-        let slugs = active_connector_slugs(&context);
-
-        assert_eq!(slugs, HashSet::from(["github".to_string()]));
-    }
 }

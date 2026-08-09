@@ -129,8 +129,7 @@ pub struct ExecutionContext {
     pub network_policies: Option<std::collections::HashMap<String, NetworkPolicy>>,
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
-    #[serde(default)]
-    pub connector_runtime_targets: Option<Vec<ConnectorRuntimeTargetRegistration>>,
+    pub connector_runtime_targets: Vec<ConnectorRuntimeTargetRegistration>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -1244,20 +1243,6 @@ pub struct NetworkPolicyRefresh {
     pub next_refresh_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkPolicyRefreshResponse {
-    pub connector_slug: String,
-    pub network_policy: NetworkPolicy,
-    pub next_refresh_at: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkPolicyRefreshBatchResponse {
-    pub refreshes: Vec<NetworkPolicyRefreshResponse>,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ConnectorRuntimeTarget {
@@ -1327,13 +1312,6 @@ impl ConnectorRuntimeTarget {
             Self::Custom {
                 custom_connector_id,
             } => format!("custom:{custom_connector_id}"),
-        }
-    }
-
-    pub(crate) fn builtin_connector_slug(&self) -> Option<&str> {
-        match self {
-            Self::Builtin { connector_slug } => Some(connector_slug),
-            Self::Custom { .. } => None,
         }
     }
 }
@@ -1859,6 +1837,7 @@ mod tests {
                 "model": "deepseek-v4-flash",
                 "apiKeyEnv": "OPENAI_API_KEY"
             },
+            "connectorRuntimeTargets": [],
             "runSkillSnapshot": {
                 "schemaVersion": 1,
                 "policyVersion": 1,
@@ -1900,6 +1879,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": [],
             "firewalls": [{
                 "name": "github",
                 "apis": [{
@@ -1924,6 +1904,7 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": [],
             "firewalls": [{
                 "kind": "unknown",
                 "name": "github",
@@ -2256,7 +2237,8 @@ mod tests {
             "prompt": "hello",
             "sandboxToken": "tok",
             "cliAgentType": "claude_code",
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert!(ctx.cli_agent_session_id().is_none());
@@ -2273,7 +2255,8 @@ mod tests {
                 "sessionId": "sess-abc-123",
                 "sessionHistory": "{}"
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-abc-123"));
@@ -2305,7 +2288,8 @@ mod tests {
                     "encodedSize": 42
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2337,7 +2321,8 @@ mod tests {
                     "downloadSource": "configured_public_endpoint"
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2373,7 +2358,8 @@ mod tests {
                     "downloadSource": "future_edge_cache"
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2403,7 +2389,8 @@ mod tests {
                     "encodedSize": 18
                 }
             },
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         let session = ctx.resume_session.as_ref().unwrap();
@@ -2425,7 +2412,8 @@ mod tests {
             "sandboxToken": "tok",
             "storageManifest": storage_manifest,
             "cliAgentType": "claude_code",
-            "billableFirewalls": []
+            "billableFirewalls": [],
+            "connectorRuntimeTargets": []
         })
     }
 
