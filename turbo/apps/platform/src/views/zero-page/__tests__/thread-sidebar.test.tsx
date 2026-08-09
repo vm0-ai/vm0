@@ -21,6 +21,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -847,6 +848,14 @@ describe("thread-owned utility sidebar", () => {
       zeroBrowserContract.resizeByThread,
       ({ body, respond }) => {
         resizeAspectRatios.push(body.aspectRatio);
+        if (resizeAspectRatios.length === 2) {
+          return respond(404, {
+            error: {
+              code: "BROWSER_NOT_FOUND",
+              message: "Managed browser not found",
+            },
+          });
+        }
         browser = {
           ...browser,
           screen: { width: 1440, height: 1800, resizable: true },
@@ -937,6 +946,14 @@ describe("thread-owned utility sidebar", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Fit browser to window")).toBeVisible();
     });
+    const toastError = vi.spyOn(toast, "error");
+    click(screen.getByLabelText("Fit browser to window"));
+    await waitFor(() => {
+      expect(resizeAspectRatios).toStrictEqual([0.8, 1]);
+    });
+    expect(toastError).not.toHaveBeenCalledWith("Managed browser not found");
+    toastError.mockRestore();
+
     viewportWidth = 720;
     window.dispatchEvent(new Event("resize"));
     await waitFor(() => {

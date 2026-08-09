@@ -265,7 +265,7 @@ function createFitWindowSignals(
               body: { aspectRatio },
               fetchOptions: { signal },
             }),
-            [200],
+            [200, 404],
             signal,
           ),
           () => {
@@ -274,7 +274,7 @@ function createFitWindowSignals(
         ),
         signal,
       );
-      if (fitted.ok) {
+      if (fitted.ok && fitted.value.status === 200) {
         set(sessionOverride$, fitted.value.body.browser);
         set(
           browserFitDom.syncFitActionForScreen$,
