@@ -9,6 +9,8 @@ import { resolvePiAgentModel, runPiAgentPrompt } from "./agent-loop";
 const CODEX_ACCOUNT_ID_CLAIM_PATH = "https://api.openai.com/auth";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const CODEX_PLACEHOLDER_ACCOUNT_ID = "ws_VM0_PLACEHOLDER_DO_NOT_TRUST";
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com/";
+const DEEPSEEK_RESPONSES_URL = "https://api.deepseek.com/responses";
 const server = setupServer();
 
 beforeAll(() => {
@@ -37,7 +39,7 @@ function codexJwt(accountId: string): string {
   return `${header}.${payload}.signature`;
 }
 
-function codexTextSse(text: string): string {
+function responsesTextSse(text: string): string {
   const events = [
     {
       type: "response.created",
@@ -154,7 +156,7 @@ describe("Pi Codex subscription provider", () => {
       http.post(`${CODEX_BASE_URL}/codex/responses`, ({ request }) => {
         requestUrl = request.url;
         requestHeaders = new Headers(request.headers);
-        return sseResponse(codexTextSse("edge answer"));
+        return sseResponse(responsesTextSse("edge answer"));
       }),
     );
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
@@ -206,7 +208,7 @@ describe("Pi Codex subscription provider", () => {
     server.use(
       http.post(`${CODEX_BASE_URL}/codex/responses`, ({ request }) => {
         requestHeaders = new Headers(request.headers);
-        return sseResponse(codexTextSse("sandbox answer"));
+        return sseResponse(responsesTextSse("sandbox answer"));
       }),
     );
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
@@ -237,6 +239,83 @@ describe("Pi Codex subscription provider", () => {
         chatgpt_account_id?: unknown;
       };
       expect(auth.chatgpt_account_id).toBe(CODEX_PLACEHOLDER_ACCOUNT_ID);
+    } finally {
+      await env.cleanup();
+    }
+  });
+});
+
+describe("Pi DeepSeek provider", () => {
+  it("resolves DeepSeek models through the Responses API", () => {
+    const model = resolvePiAgentModel({
+      provider: "deepseek",
+      baseUrl: DEEPSEEK_BASE_URL,
+      apiKey: "unused-for-resolution",
+      model: "deepseek-v4-flash",
+    });
+    expect(model).not.toBeNull();
+    expect(model?.api).toBe("openai-responses");
+    expect(model?.provider).toBe("deepseek");
+    expect(model?.baseUrl).toBe(DEEPSEEK_BASE_URL);
+  });
+
+  it("streams through the native Responses endpoint with the DeepSeek key", async () => {
+    const apiKey = "sk-deepseek-pi-responses";
+    let requestBody: unknown;
+    let requestHeaders: Headers | undefined;
+    server.use(
+      http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
+        requestBody = await request.json();
+        requestHeaders = new Headers(request.headers);
+        return sseResponse(responsesTextSse("deepseek answer"));
+      }),
+    );
+    const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
+    try {
+      const messages = await runPiAgentPrompt(
+        {
+          model: {
+            provider: "deepseek",
+            baseUrl: DEEPSEEK_BASE_URL,
+            apiKey,
+            model: "deepseek-v4-flash",
+          },
+          systemPrompt: "You are a test Pi agent.",
+          prompt: "say hello",
+          executionEnv: env,
+          onEvent() {},
+        },
+        new AbortController().signal,
+      );
+      expect(requestHeaders?.get("authorization")).toBe(`Bearer ${apiKey}`);
+      expect(requestHeaders?.get("chatgpt-account-id")).toBeNull();
+      expect(requestBody).toMatchObject({
+        model: "deepseek-v4-flash",
+        input: [
+          { role: "developer", content: "You are a test Pi agent." },
+          {
+            role: "user",
+            content: [{ type: "input_text", text: "say hello" }],
+          },
+        ],
+        stream: true,
+        store: false,
+      });
+      const text = messages
+        .filter((message) => {
+          return message.role === "assistant";
+        })
+        .flatMap((message) => {
+          return message.content
+            .filter((block) => {
+              return block.type === "text";
+            })
+            .map((block) => {
+              return (block as { text: string }).text;
+            });
+        })
+        .join("");
+      expect(text).toContain("deepseek answer");
     } finally {
       await env.cleanup();
     }

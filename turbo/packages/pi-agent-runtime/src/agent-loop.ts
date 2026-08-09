@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { streamSimple as streamSimpleCodex } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
+import { streamSimple as streamSimpleResponses } from "@earendil-works/pi-ai/api/openai-responses";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { moonshotaiProvider } from "@earendil-works/pi-ai/providers/moonshotai";
@@ -21,9 +22,9 @@ import { createPiExecutionTools } from "./tools";
 import { executePiToolBatch } from "./tool-batch";
 import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
 
-type PiOpenAICompletionsProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
+type PiCatalogProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
 
-function providerModels(provider: PiOpenAICompletionsProvider) {
+function providerModels(provider: PiCatalogProvider) {
   switch (provider) {
     case "deepseek": {
       return deepseekProvider().getModels();
@@ -44,7 +45,7 @@ function providerModels(provider: PiOpenAICompletionsProvider) {
 }
 
 function sourceModel(
-  provider: PiOpenAICompletionsProvider,
+  provider: PiCatalogProvider,
   model: string,
 ): Model<Api> | undefined {
   return providerModels(provider).find((candidate) => {
@@ -144,13 +145,22 @@ const piAgentStream: StreamFn = (model, context, options) => {
       { ...options, apiKey: jwtApiKey, transport: "sse" },
     );
   }
+  if (model.api === "openai-responses") {
+    return streamSimpleResponses(
+      model as Model<"openai-responses">,
+      context,
+      options,
+    );
+  }
   return streamSimple(model as Model<"openai-completions">, context, options);
 };
 
 /** Resolve model metadata from Pi's native provider catalog. */
 export function resolvePiAgentModel(
   config: PiAgentModelConfig,
-): Model<"openai-completions" | "openai-codex-responses"> | null {
+): Model<
+  "openai-completions" | "openai-responses" | "openai-codex-responses"
+> | null {
   if (config.provider === "codex") {
     const source = openaiCodexProvider()
       .getModels()
@@ -173,7 +183,6 @@ export function resolvePiAgentModel(
   const base = {
     id: source.id,
     name: source.name,
-    api: "openai-completions" as const,
     provider: config.provider,
     baseUrl: config.baseUrl,
     reasoning: source.reasoning,
@@ -184,9 +193,13 @@ export function resolvePiAgentModel(
     maxTokens: source.maxTokens,
     headers: source.headers,
   };
+  if (config.provider === "deepseek") {
+    return { ...base, api: "openai-responses" };
+  }
+  const completionsModel = { ...base, api: "openai-completions" as const };
   return source.api === "openai-completions"
-    ? { ...base, compat: source.compat }
-    : base;
+    ? { ...completionsModel, compat: source.compat }
+    : completionsModel;
 }
 
 export function isPiAgentModelSupported(config: PiAgentModelConfig): boolean {

@@ -953,16 +953,13 @@ describe("deepseek Responses provider", () => {
     });
   });
 
-  it("also covers the Pi standby chat-completions path, still scoped", () => {
+  it("keeps Pi credential injection on the Responses endpoint", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS.deepseek;
     expect(
       config.apis.map((api) => {
         return api.base;
       }),
-    ).toEqual([
-      "https://api.deepseek.com/responses",
-      "https://api.deepseek.com/chat/completions",
-    ]);
+    ).toEqual(["https://api.deepseek.com/responses"]);
     for (const api of config.apis) {
       expect(api.auth.headers).toEqual({
         Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}",
