@@ -14,7 +14,6 @@ import type {
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { optimisticChatThreadCreateUnsettled } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { triggerAblyEvent, triggerAblyReconnect } from "../../../mocks/ably.ts";
 import {
   click,
@@ -40,6 +39,7 @@ const CANCELLATION_RECOVERY_COPY =
 const NEXT_RUN_MODEL_COPY = "Next run will use Claude Opus 4.8";
 const NEXT_RUN_SONNET_MODEL_COPY = "Next run will use Claude Sonnet 4.6";
 const MODEL_CHANGED_COPY = "Model changed to Claude Sonnet 4.6";
+const RECONCILED_THREAD_TITLE = "Reconciled thread";
 
 afterEach(async () => {
   await i18n.changeLanguage("en-US");
@@ -548,7 +548,7 @@ describe("chat run queue", () => {
             kind: "created",
             chatThreadId: settledThreadId,
             agentId: AGENT_ID,
-            title: null,
+            title: RECONCILED_THREAD_TITLE,
             selectedModel: "gpt-5.5",
             serviceTier: null,
             computerUseHostId: null,
@@ -561,9 +561,7 @@ describe("chat run queue", () => {
     });
     triggerAblyEvent("threadListChanged");
     await waitFor(() => {
-      expect(
-        context.store.get(optimisticChatThreadCreateUnsettled(settledThreadId)),
-      ).toBeFalsy();
+      expect(document.title).toBe(`${RECONCILED_THREAD_TITLE} | VM0`);
     });
 
     lifecycle.completeRun("First answer");
