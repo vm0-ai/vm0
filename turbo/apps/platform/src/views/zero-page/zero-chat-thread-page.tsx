@@ -3485,7 +3485,7 @@ function RunSectionDivider({
       >
         {label}
       </p>
-      <div className="h-px flex-1 bg-border/40" />
+      <div role="separator" className="h-px flex-1 bg-border/40" />
     </div>
   );
 }

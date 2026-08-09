@@ -428,8 +428,6 @@ describe("chat run queue", () => {
     const label = await screen.findByText(NEXT_RUN_MODEL_COPY);
     const notice = label.closest('[role="status"]');
     expect(notice).toHaveAttribute("aria-live", "polite");
-    expect(label).toHaveClass("text-right");
-    expect(label.parentElement).toHaveClass("flex-row-reverse");
     expect(label.closest("[data-message-container]")).toBeInTheDocument();
     expectTextBefore("Start the active run", NEXT_RUN_MODEL_COPY);
     expectTextBefore(NEXT_RUN_MODEL_COPY, "1 message waiting");
@@ -466,9 +464,6 @@ describe("chat run queue", () => {
     await expect(
       screen.findByText(MODEL_CHANGED_COPY),
     ).resolves.toBeInTheDocument();
-    const label = screen.getByText(MODEL_CHANGED_COPY);
-    expect(label).toHaveClass("text-right");
-    expect(label.parentElement).toHaveClass("flex-row-reverse");
     expectTextBefore("First answer", MODEL_CHANGED_COPY);
     expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
   });

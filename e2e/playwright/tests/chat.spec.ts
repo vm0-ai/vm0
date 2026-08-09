@@ -5,6 +5,7 @@ import { deriveAppUrl } from "../playwright.config";
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 const composerConnectorSlugs = ["github", "slack", "asana"] as const;
 const responsiveFollowupThreadId = "b0000000-0000-4000-a000-000000000734";
+const modelChangeThreadId = "b0000000-0000-4000-a000-000000000735";
 const responsiveFollowupPrompts = [
   "Draft launch copy",
   "Create a detailed presentation outline with speaker notes",
@@ -150,6 +151,118 @@ async function enableResponsiveFollowupCards(page: Page): Promise<void> {
   });
 }
 
+async function enableModelChangeNotices(page: Page): Promise<void> {
+  await page.route("**/api/zero/feature-switches", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
+      throw new Error("Feature switches returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        effectiveSwitches: {
+          ...body.effectiveSwitches,
+          chatEventSnapshotRead: false,
+          chatNextRunModelNotice: true,
+        },
+      },
+    });
+  });
+}
+
+interface MockChatThreadOptions {
+  readonly agentId: string;
+  readonly createdAt: string;
+  readonly events: readonly Readonly<Record<string, unknown>>[];
+  readonly selectedModel: string | null;
+  readonly threadId: string;
+  readonly title: string;
+}
+
+async function mockChatThread(
+  page: Page,
+  options: MockChatThreadOptions,
+): Promise<void> {
+  await page.route("**/api/zero/chat-threads/snapshot", async (route) => {
+    await route.fulfill({
+      json: {
+        chatThreads: [
+          {
+            id: options.threadId,
+            agentId: options.agentId,
+            title: options.title,
+            sortAt: options.createdAt,
+            createdAt: options.createdAt,
+            updatedAt: options.createdAt,
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: options.selectedModel,
+            serviceTier: null,
+            computerUseHostId: null,
+            cloudBrowserEnabled: false,
+          },
+        ],
+        latestEventId: null,
+        latestSeqId: null,
+      },
+    });
+  });
+  await page.route(
+    new RegExp(`/api/zero/chat-threads/${options.threadId}/events(?:\\?.*)?$`),
+    async (route) => {
+      const requestUrl = new URL(route.request().url());
+      const isIncremental =
+        requestUrl.searchParams.has("sinceSeqId") ||
+        requestUrl.searchParams.has("beforeSeqId");
+      await route.fulfill({
+        json: { events: isIncremental ? [] : options.events },
+      });
+    },
+  );
+  await page.route(
+    new RegExp(`/api/zero/chat-threads/${options.threadId}/draft(?:\\?.*)?$`),
+    async (route) => {
+      await route.fulfill({
+        json: { draftUserMessage: null, draftAttachments: null },
+      });
+    },
+  );
+  await page.route(
+    new RegExp(
+      `/api/zero/chat-threads/${options.threadId}/mark-read(?:\\?.*)?$`,
+    ),
+    async (route) => {
+      await route.fulfill({
+        json: { lastReadAt: options.createdAt, unreads: [] },
+      });
+    },
+  );
+  await page.route(
+    new RegExp(
+      `/api/zero/chat-threads/${options.threadId}/event-snapshot(?:\\?.*)?$`,
+    ),
+    async (route) => {
+      await route.fulfill({
+        status: 404,
+        json: { error: { code: "NOT_FOUND", message: "Not found" } },
+      });
+    },
+  );
+  await page.route(
+    new RegExp(`/api/zero/chat-threads/${options.threadId}(?:\\?.*)?$`),
+    async (route) => {
+      await route.fulfill({
+        json: {
+          lastReadAt: options.createdAt,
+          cancellationRecoveryPending: false,
+        },
+      });
+    },
+  );
+}
+
 async function mockResponsiveFollowupThread(
   page: Page,
   agentId: string,
@@ -192,81 +305,149 @@ async function mockResponsiveFollowupThread(
     },
   ];
 
-  await page.route("**/api/zero/chat-threads/snapshot", async (route) => {
-    await route.fulfill({
-      json: {
-        chatThreads: [
-          {
-            id: responsiveFollowupThreadId,
-            agentId,
-            title: "Responsive follow-ups",
-            sortAt: createdAt,
-            createdAt,
-            updatedAt: createdAt,
-            pinnedAt: null,
-            renamedAt: null,
-            selectedModel: null,
-            serviceTier: null,
-            computerUseHostId: null,
-            cloudBrowserEnabled: false,
-          },
-        ],
-        latestEventId: null,
-        latestSeqId: null,
-      },
-    });
+  await mockChatThread(page, {
+    agentId,
+    createdAt,
+    events,
+    selectedModel: null,
+    threadId: responsiveFollowupThreadId,
+    title: "Responsive follow-ups",
   });
-  await page.route(
-    new RegExp(
-      `/api/zero/chat-threads/${responsiveFollowupThreadId}/events(?:\\?.*)?$`,
-    ),
-    async (route) => {
-      const requestUrl = new URL(route.request().url());
-      const isIncremental =
-        requestUrl.searchParams.has("sinceSeqId") ||
-        requestUrl.searchParams.has("beforeSeqId");
-      await route.fulfill({ json: { events: isIncremental ? [] : events } });
+}
+
+async function mockModelChangeThread(
+  page: Page,
+  agentId: string,
+): Promise<void> {
+  const createdAt = "2026-08-06T09:02:01Z";
+  const events = [
+    {
+      id: "msg-model-before-user",
+      threadId: modelChangeThreadId,
+      eventType: "input.prompt",
+      content: null,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "First prompt" },
+          { type: "model", selectedModel: "gpt-5.5" },
+        ],
+      },
+      runId: "run-model-before",
+      seqId: 1,
+      createdAt: "2026-08-06T09:00:00Z",
     },
-  );
-  await page.route(
-    new RegExp(
-      `/api/zero/chat-threads/${responsiveFollowupThreadId}/draft(?:\\?.*)?$`,
-    ),
-    async (route) => {
-      await route.fulfill({
-        json: { draftUserMessage: null, draftAttachments: null },
-      });
+    {
+      id: "msg-model-before-assistant",
+      threadId: modelChangeThreadId,
+      eventType: "output.message",
+      content: "First answer",
+      runId: "run-model-before",
+      seqId: 2,
+      createdAt: "2026-08-06T09:00:01Z",
     },
-  );
-  await page.route(
-    new RegExp(
-      `/api/zero/chat-threads/${responsiveFollowupThreadId}/mark-read(?:\\?.*)?$`,
-    ),
-    async (route) => {
-      await route.fulfill({ json: { lastReadAt: createdAt, unreads: [] } });
+    {
+      id: "msg-model-before-completed",
+      threadId: modelChangeThreadId,
+      eventType: "run.completed",
+      content: null,
+      runId: "run-model-before",
+      runLifecycleEvent: "completed",
+      seqId: 3,
+      createdAt: "2026-08-06T09:00:02Z",
     },
-  );
-  await page.route(
-    new RegExp(
-      `/api/zero/chat-threads/${responsiveFollowupThreadId}/event-snapshot(?:\\?.*)?$`,
-    ),
-    async (route) => {
-      await route.fulfill({
-        status: 404,
-        json: { error: { code: "NOT_FOUND", message: "Not found" } },
-      });
+    {
+      id: "msg-model-current-user",
+      threadId: modelChangeThreadId,
+      eventType: "input.prompt",
+      content: null,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Second prompt" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
+      runId: "run-model-current",
+      seqId: 4,
+      createdAt: "2026-08-06T09:01:00Z",
     },
-  );
-  await page.route(
-    new RegExp(
-      `/api/zero/chat-threads/${responsiveFollowupThreadId}(?:\\?.*)?$`,
-    ),
-    async (route) => {
-      await route.fulfill({
-        json: { lastReadAt: createdAt, cancellationRecoveryPending: false },
-      });
+    {
+      id: "msg-model-current-assistant",
+      threadId: modelChangeThreadId,
+      eventType: "output.message",
+      content: "Second answer",
+      runId: "run-model-current",
+      seqId: 5,
+      createdAt: "2026-08-06T09:01:01Z",
     },
+    {
+      id: "msg-model-current-completed",
+      threadId: modelChangeThreadId,
+      eventType: "run.completed",
+      content: null,
+      runId: "run-model-current",
+      runLifecycleEvent: "completed",
+      seqId: 6,
+      createdAt: "2026-08-06T09:01:02Z",
+    },
+    {
+      id: "msg-model-active-user",
+      threadId: modelChangeThreadId,
+      eventType: "input.prompt",
+      content: null,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Active prompt" },
+          { type: "model", selectedModel: "claude-sonnet-4-6" },
+        ],
+      },
+      runId: "run-model-active",
+      seqId: 7,
+      createdAt: "2026-08-06T09:02:00Z",
+    },
+    {
+      id: "msg-model-active-thinking",
+      threadId: modelChangeThreadId,
+      eventType: "output.thinking",
+      content: null,
+      thinking: "Still working",
+      runId: "run-model-active",
+      seqId: 8,
+      createdAt,
+    },
+  ];
+  await mockChatThread(page, {
+    agentId,
+    createdAt,
+    events,
+    selectedModel: "claude-opus-4-8",
+    threadId: modelChangeThreadId,
+    title: "Model change layout",
+  });
+}
+
+async function expectRightAlignedDivider(label: Locator): Promise<void> {
+  await expect(label).toBeVisible();
+  const row = label.locator("..");
+  const divider = row.getByRole("separator");
+  await expect(divider).toBeVisible();
+  const [labelBox, dividerBox, rowBox] = await Promise.all([
+    label.boundingBox(),
+    divider.boundingBox(),
+    row.boundingBox(),
+  ]);
+  if (!labelBox || !dividerBox || !rowBox) {
+    throw new Error("Model change divider geometry unavailable");
+  }
+  const tolerance = 1;
+  expect(dividerBox.x + dividerBox.width).toBeLessThanOrEqual(
+    labelBox.x + tolerance,
   );
+  expect(
+    Math.abs(labelBox.x + labelBox.width - (rowBox.x + rowBox.width)),
+  ).toBeLessThan(tolerance);
 }
 
 async function expectInside(inner: Locator, outer: Locator): Promise<void> {
@@ -387,6 +568,30 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   await waitForAgentDraftClear(page, async () => {
     await clearComposerEditor(editor);
   });
+});
+
+test("model change labels follow the divider at the right edge", async ({
+  page,
+}) => {
+  await enableModelChangeNotices(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+  const agentId = new URL(page.url()).pathname.match(
+    /^\/agents\/([^/]+)\/chat\/?$/,
+  )?.[1];
+  if (!agentId) {
+    throw new Error("Could not resolve the active agent from the chat URL");
+  }
+  await mockModelChangeThread(page, agentId);
+  await page.goto(new URL(`/chats/${modelChangeThreadId}`, appUrl).href);
+
+  await expectRightAlignedDivider(
+    page.getByText("Model changed to Claude Sonnet 4.6", { exact: true }),
+  );
+  await expectRightAlignedDivider(
+    page.getByText("Next run will use Claude Opus 4.8", { exact: true }),
+  );
 });
 
 // The card rail only renders on coarse-pointer text-entry devices, so this
