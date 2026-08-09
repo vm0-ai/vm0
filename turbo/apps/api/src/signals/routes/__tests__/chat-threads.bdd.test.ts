@@ -3540,7 +3540,7 @@ describe("CHAT-01 catch-up cron metrics", () => {
     const firstAgent = await bdd.createAgent(firstOwner, {
       displayName: "Compaction progress agent",
     });
-    await chat.createThread(firstOwner, {
+    const firstThread = await chat.createThread(firstOwner, {
       agentId: firstAgent.agentId,
       title: "First compaction progress thread",
       eventId: randomUUID(),
@@ -3549,7 +3549,7 @@ describe("CHAT-01 catch-up cron metrics", () => {
     const secondAgent = await bdd.createAgent(secondOwner, {
       displayName: "Second compaction progress agent",
     });
-    await chat.createThread(secondOwner, {
+    const secondThread = await chat.createThread(secondOwner, {
       agentId: secondAgent.agentId,
       title: "Second compaction progress thread",
       eventId: randomUUID(),
@@ -3572,6 +3572,7 @@ describe("CHAT-01 catch-up cron metrics", () => {
     expect(event.passRemovedDeletedAgentThreads).toBe(
       pass.removedDeletedAgentThreads,
     );
+    expect(pass.scopes).toBe(1);
 
     const targetScopes = cronPassCount(event, "targetScopes");
     const snapshotScopes = cronPassCount(event, "snapshotScopes");
@@ -3588,17 +3589,51 @@ describe("CHAT-01 catch-up cron metrics", () => {
     expect(cronPassCount(event, "threadEventBytes")).toBeGreaterThan(0);
     cronPassCount(event, "prunableThreadEvents");
 
-    // A large follow-up pass drains the same candidate predicate. The newest
-    // absolute event must then show full snapshot coverage and no backlog.
+    const firstBoundedSnapshot = await chat.getThreadSnapshot(firstOwner);
+    const secondBoundedSnapshot = await chat.getThreadSnapshot(secondOwner);
+    const boundedFixtureSnapshots = [
+      firstBoundedSnapshot.chatThreads.some((thread) => {
+        return thread.id === firstThread.id;
+      }),
+      secondBoundedSnapshot.chatThreads.some((thread) => {
+        return thread.id === secondThread.id;
+      }),
+    ];
+    expect(boundedFixtureSnapshots.filter(Boolean).length).toBeLessThan(2);
+
+    // A large follow-up pass drains both fixture scopes selected by the same
+    // candidate predicate. Other test files share the database and can create
+    // a new global candidate between this pass and its progress query, so
+    // fixture snapshots prove the drain while global gauges assert invariants.
     mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "10000");
     await compactChatThreadSnapshots();
     const drained = latestCronPassFields(
       context,
       "compact-chat-thread-snapshots",
     );
-    expect(cronPassCount(drained, "pendingScopes")).toBe(0);
-    expect(cronPassCount(drained, "snapshotScopes")).toBe(
-      cronPassCount(drained, "targetScopes"),
+    const firstDrainedSnapshot = await chat.getThreadSnapshot(firstOwner);
+    const secondDrainedSnapshot = await chat.getThreadSnapshot(secondOwner);
+    expect(
+      firstDrainedSnapshot.chatThreads.map((thread) => {
+        return thread.id;
+      }),
+    ).toContain(firstThread.id);
+    expect(
+      secondDrainedSnapshot.chatThreads.map((thread) => {
+        return thread.id;
+      }),
+    ).toContain(secondThread.id);
+
+    const drainedTargetScopes = cronPassCount(drained, "targetScopes");
+    const drainedSnapshotScopes = cronPassCount(drained, "snapshotScopes");
+    const drainedPendingScopes = cronPassCount(drained, "pendingScopes");
+    expect(drainedSnapshotScopes).toBeLessThanOrEqual(drainedTargetScopes);
+    expect(drainedPendingScopes).toBeLessThanOrEqual(drainedTargetScopes);
+    expect(drainedTargetScopes - drainedSnapshotScopes).toBeLessThanOrEqual(
+      drainedPendingScopes,
+    );
+    expect(cronPassCount(drained, "staleScopes")).toBeLessThanOrEqual(
+      drainedPendingScopes,
     );
   }, 90_000);
 });
