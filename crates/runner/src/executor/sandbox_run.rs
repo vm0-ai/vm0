@@ -1501,12 +1501,6 @@ pub(super) async fn register_proxy(
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
-    let connector_runtime_targets = context.connector_runtime_targets.as_ref().map(|targets| {
-        targets
-            .iter()
-            .map(crate::types::ConnectorRuntimeTargetRegistration::target)
-            .collect::<Vec<_>>()
-    });
     let registration = proxy::VmRegistration {
         run_id: &run_id_str,
         cli_agent_type,
@@ -1515,7 +1509,7 @@ pub(super) async fn register_proxy(
         proxy_log_path: &proxy_log_path,
         firewalls: context.firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
-        connector_runtime_targets: connector_runtime_targets.as_deref(),
+        connector_runtime_targets: context.connector_runtime_targets.as_deref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),

@@ -171,6 +171,7 @@ def _build_firewall_auth_context(
     api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
     run_id = flow_metadata.run_id(flow.metadata)
     custom_connector_id = api_entry.get("customConnectorId")
+    connector_routing_variables = vm_info.get("connectorRoutingVariables", {})
     matched_firewall: dict | None = None
     if isinstance(custom_connector_id, str):
         matched_firewall = {
@@ -178,6 +179,18 @@ def _build_firewall_auth_context(
             "apiId": api_id,
             "customConnectorId": custom_connector_id,
         }
+        routing_variables = connector_routing_variables.get(f"custom:{custom_connector_id}")
+        if isinstance(routing_variables, dict):
+            matched_firewall["routingVariables"] = routing_variables
+    else:
+        routing_variables = connector_routing_variables.get(f"builtin:{allow.name}")
+        if isinstance(routing_variables, dict):
+            matched_firewall = {
+                "name": allow.name,
+                "apiId": api_id,
+                "connectorSlug": allow.name,
+                "routingVariables": routing_variables,
+            }
     auth_request = FirewallAuthRequest(
         sandbox_token=vm_info.get("sandboxToken", ""),
         encrypted_secrets=vm_info.get("encryptedSecrets") or "",

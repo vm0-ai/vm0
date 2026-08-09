@@ -951,9 +951,20 @@ impl NetworkPolicyRefreshCore {
                     },
                     state,
                 ) => {
+                    let Some(routing_variables) = self
+                        .custom_base_url_vars_for_publication(
+                            run_id,
+                            target,
+                            candidate_base_url_vars.as_ref(),
+                        )
+                        .await
+                    else {
+                        continue;
+                    };
                     let registry_state = match custom_connector_runtime_registry_state(
                         custom_connector_id,
                         state,
+                        routing_variables,
                     ) {
                         Ok(state) => state,
                         Err(error) => {
@@ -1242,6 +1253,26 @@ impl NetworkPolicyRefreshCore {
         )
     }
 
+    async fn custom_base_url_vars_for_publication(
+        &self,
+        run_id: RunId,
+        target: &ConnectorRefreshTarget,
+        candidate: Option<&HashMap<String, String>>,
+    ) -> Option<Option<HashMap<String, String>>> {
+        let active_runs = self.inner.active_runs.lock().await;
+        let active = active_runs.get(&run_id)?;
+        let connector = active.connectors.get(&target.target)?;
+        if connector.generation != target.generation {
+            return None;
+        }
+        Some(
+            connector
+                .pinned_base_url_vars
+                .clone()
+                .or_else(|| candidate.cloned()),
+        )
+    }
+
     async fn complete_successful_refresh(
         &self,
         run_id: RunId,
@@ -1511,6 +1542,7 @@ fn connector_runtime_unresolved_reason_is_valid(
 fn custom_connector_runtime_registry_state(
     custom_connector_id: &str,
     state: &ConnectorRuntimeSyncState,
+    routing_variables: Option<HashMap<String, String>>,
 ) -> Result<CustomConnectorRuntimeRegistryState, &'static str> {
     match state {
         ConnectorRuntimeSyncState::Absent { .. } => Ok(CustomConnectorRuntimeRegistryState::Absent),
@@ -1534,7 +1566,8 @@ fn custom_connector_runtime_registry_state(
                 .map_err(|_| "custom available result has an invalid inline firewall")?;
             Ok(CustomConnectorRuntimeRegistryState::Available {
                 firewall: firewall.clone(),
-                network_policy: network_policy.clone(),
+                network_policy: Box::new(network_policy.clone()),
+                routing_variables,
             })
         }
         ConnectorRuntimeSyncState::Available { network_policy, .. } => {
@@ -3007,6 +3040,13 @@ mod tests {
             Some(base_url_vars.clone())
         );
         let registry_after_available = tokio::fs::read(&registry_path).await.unwrap();
+        let registry_json: serde_json::Value =
+            serde_json::from_slice(&registry_after_available).unwrap();
+        assert_eq!(
+            registry_json["vms"]["10.200.0.2"]["connectorRoutingVariables"]
+                [format!("custom:{custom_connector_id}")],
+            json!(base_url_vars)
+        );
 
         first_sync.delete_async().await;
         let unresolved_sync = server.mock(|when, then| {

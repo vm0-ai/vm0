@@ -9300,6 +9300,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
             kind: "variable",
             required: true,
           },
+          {
+            key: "scope",
+            label: "Scope",
+            kind: "variable",
+            required: true,
+          },
         ],
         headerInjections: [
           {
@@ -9312,11 +9318,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
             name: "tenant",
             valueTemplate: "{{variables.subdomain}}",
           },
+          {
+            name: "scope",
+            valueTemplate: "{{variables.scope}}",
+          },
         ],
       },
       values: [
         { key: "api_key", kind: "secret", value: "runtime-proposal-secret" },
         { key: "subdomain", kind: "variable", value: "münich" },
+        { key: "scope", kind: "variable", value: "initial-scope" },
       ],
       agentId,
     });
@@ -9352,32 +9363,48 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const internalName = `custom_connector_${idPart}`;
     const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
     const variableKey = `CUSTOM_${idPart}_V_SUBDOMAIN`;
+    const scopeVariableKey = `CUSTOM_${idPart}_V_SCOPE`;
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
-    expect(customApis[0]?.base).toBe(`https://xn--mnich-kva.${rand}.test/v1/`);
+    const customApi = customApis[0];
+    if (!customApi) {
+      throw new Error("Expected the proposed custom connector firewall API");
+    }
+    expect(customApi.base).toBe(`https://xn--mnich-kva.${rand}.test/v1/`);
     const pinnedTarget = {
       kind: "custom" as const,
       customConnectorId: saved.connector.id,
       baseUrlVars: { subdomain: "münich" },
     };
     expect(claim.connectorRuntimeTargets).toContainEqual(pinnedTarget);
-    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+    expect(customApi.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
-    expect(customApis[0]?.auth?.query?.tenant).toBe(
+    expect(customApi.auth?.query?.tenant).toBe(
       `\${{ secrets.${variableKey} }}`,
     );
+    expect(customApi.auth?.query?.scope).toBe(
+      `\${{ secrets.${scopeVariableKey} }}`,
+    );
 
+    const authBody = {
+      encryptedSecrets: fw.encryptedSecretsBody({}),
+      authHeaders: {
+        Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+      },
+      authQuery: {
+        tenant: `\${{ secrets.${variableKey} }}`,
+        scope: `\${{ secrets.${scopeVariableKey} }}`,
+      },
+      matchedFirewall: {
+        name: internalName,
+        apiId: `${internalName}:0`,
+        customConnectorId: saved.connector.id,
+        routingVariables: { subdomain: "münich" },
+      },
+    };
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({}),
-        authHeaders: {
-          Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-        },
-        authQuery: {
-          tenant: `\${{ secrets.${variableKey} }}`,
-        },
-      },
+      authBody,
       [200],
     );
     if (resolved.status !== 200) {
@@ -9386,11 +9413,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer runtime-proposal-secret",
     });
-    expect(resolved.body.query).toStrictEqual({ tenant: "münich" });
+    expect(resolved.body.query).toStrictEqual({
+      tenant: "münich",
+      scope: "initial-scope",
+    });
 
     context.mocks.ably.publish.mockClear();
     await connectors.setCustomConnectorValues(actor, saved.connector.id, [
       { key: "subdomain", kind: "variable", value: "later-run" },
+      { key: "scope", kind: "variable", value: "later-scope" },
     ]);
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       "connector-runtime-sync",
@@ -9404,6 +9435,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(pinnedRuntime.firewall.firewall.apis[0]?.base).toBe(
       `https://xn--mnich-kva.${rand}.test/v1/`,
     );
+    const updatedAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      authBody,
+      [200],
+    );
+    if (updatedAuth.status !== 200) {
+      throw new Error("Expected the updated custom firewall auth to resolve");
+    }
+    expect(updatedAuth.body.query).toStrictEqual({
+      tenant: "münich",
+      scope: "later-scope",
+    });
 
     const laterRun = await api.createRun(actor, {
       agentId,
