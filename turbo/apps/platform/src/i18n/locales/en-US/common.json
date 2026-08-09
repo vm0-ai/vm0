@@ -156,6 +156,7 @@
       "emptyOutput": "(empty output)",
       "files_one": "{{formattedCount}} file",
       "files_other": "{{formattedCount}} files",
+      "handoffApiToSandbox": "Handoff · API Server → Sandbox",
       "initialize": "Initialize",
       "inputTokens": "in: {{formattedCount}}",
       "models_one": "{{formattedCount}} model",

@@ -16,9 +16,10 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { vercelAIGatewayProvider } from "@earendil-works/pi-ai/providers/vercel-ai-gateway";
 import type { Api, Message, Model } from "@earendil-works/pi-ai";
+import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 
 import { createPiExecutionTools } from "./tools";
-import { executePiUnresolvedToolBatch } from "./recovery";
+import { executePiHandoffToolBatch } from "./handoff";
 import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
 
 type PiOpenAICompletionsProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
@@ -85,25 +86,22 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/, "");
 }
 
-function codexAccountIdFromJwt(apiKey: string): string | null {
-  try {
-    const parts = apiKey.split(".");
-    const payloadPart = parts[1];
-    if (parts.length !== 3 || payloadPart === undefined) {
-      return null;
-    }
-    const payload = JSON.parse(
-      Buffer.from(payloadPart, "base64url").toString("utf8"),
-    ) as Record<string, unknown>;
-    const auth = payload[CODEX_ACCOUNT_ID_CLAIM_PATH] as
-      | { chatgpt_account_id?: unknown }
-      | undefined;
-    return typeof auth?.chatgpt_account_id === "string"
-      ? auth.chatgpt_account_id
-      : null;
-  } catch {
-    return null;
+function requireCodexAccountId(apiKey: string): string {
+  const parts = apiKey.split(".");
+  const payloadPart = parts[1];
+  if (parts.length !== 3 || payloadPart === undefined) {
+    throw new Error("Codex access token is not a JWT");
   }
+  const payload = JSON.parse(
+    Buffer.from(payloadPart, "base64url").toString("utf8"),
+  ) as Record<string, unknown>;
+  const auth = payload[CODEX_ACCOUNT_ID_CLAIM_PATH] as
+    | { chatgpt_account_id?: unknown }
+    | undefined;
+  if (typeof auth?.chatgpt_account_id !== "string") {
+    throw new Error("Codex access token is missing its account id");
+  }
+  return auth.chatgpt_account_id;
 }
 
 function codexJwtShape(accountId: string): string {
@@ -119,10 +117,14 @@ function codexJwtShape(accountId: string): string {
 const piAgentStream: StreamFn = (model, context, options) => {
   if (model.api === "openai-codex-responses") {
     const apiKey = options?.apiKey;
+    if (apiKey === undefined) {
+      throw new Error("Codex access token is required");
+    }
     const jwtApiKey =
-      apiKey !== undefined && codexAccountIdFromJwt(apiKey) !== null
-        ? apiKey
-        : codexJwtShape(CODEX_PLACEHOLDER_ACCOUNT_ID);
+      apiKey === MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN
+        ? codexJwtShape(CODEX_PLACEHOLDER_ACCOUNT_ID)
+        : apiKey;
+    requireCodexAccountId(jwtApiKey);
     return streamSimpleCodex(
       model as Model<"openai-codex-responses">,
       context,
@@ -204,7 +206,7 @@ export async function runPiAgentPrompt(
     content: [{ type: "text", text: args.prompt }],
     timestamp: Date.now(),
   };
-  return await runAgentLoop(
+  const messages = await runAgentLoop(
     [userMessage],
     {
       systemPrompt: args.systemPrompt,
@@ -223,11 +225,13 @@ export async function runPiAgentPrompt(
     signal,
     piAgentStream,
   );
+  signal.throwIfAborted();
+  return messages;
 }
 
 /**
- * Resume a handed-off Pi turn by executing the latest unresolved assistant
- * tool batch in the Sandbox, then continuing the native model loop.
+ * Resume a handed-off Pi turn by executing the exact assistant tool batch at
+ * the durable boundary in the Sandbox, then continuing the native model loop.
  */
 export async function runPiAgentResume(
   args: {
@@ -246,7 +250,7 @@ export async function runPiAgentResume(
     );
   }
   const messages = [...args.messages];
-  const toolResults = await executePiUnresolvedToolBatch(
+  const toolResults = await executePiHandoffToolBatch(
     {
       messages,
       executionEnv: args.executionEnv,
@@ -254,11 +258,7 @@ export async function runPiAgentResume(
     },
     signal,
   );
-  if (toolResults.length === 0) {
-    throw new Error(
-      "Pi transcript has no unresolved assistant tool-call batch",
-    );
-  }
+  signal.throwIfAborted();
   messages.push(...toolResults);
   const continued = await runAgentLoopContinue(
     {
@@ -278,5 +278,6 @@ export async function runPiAgentResume(
     signal,
     piAgentStream,
   );
+  signal.throwIfAborted();
   return [...toolResults, ...continued];
 }

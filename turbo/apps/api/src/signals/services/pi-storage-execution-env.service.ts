@@ -421,6 +421,7 @@ async function loadStorageVersions(
   get: <T>(computedValue: Computed<T>) => T,
   db: Db,
   identities: readonly StorageVersionIdentity[],
+  signal: AbortSignal,
 ): Promise<ReadonlyMap<string, LoadedStorageVersion>> {
   const unique = new Map<string, StorageVersionIdentity>();
   for (const identity of identities) {
@@ -445,6 +446,7 @@ async function loadStorageVersions(
     })
     .from(storageVersions)
     .where(inArray(storageVersions.id, versionIds));
+  signal.throwIfAborted();
   const rowByKey = new Map(
     rows.map((row) => {
       return [versionKey(row), row];
@@ -468,6 +470,7 @@ async function loadStorageVersions(
         const archive = await get(
           downloadS3Buffer(bucket, `${row.s3Key}/archive.tar.gz`),
         );
+        signal.throwIfAborted();
         return [
           key,
           {
@@ -480,6 +483,7 @@ async function loadStorageVersions(
       },
     ),
   );
+  signal.throwIfAborted();
   return new Map(loaded);
 }
 
@@ -525,6 +529,7 @@ export async function loadPiLaunchStorageResources(
     readonly snapshot: RunSkillSnapshot;
     readonly persistedStorageMounts: readonly PersistedStorageMount[];
   },
+  signal: AbortSignal,
 ): Promise<PiLaunchStorageResources> {
   const instructionMount = instructionsMount(args.persistedStorageMounts);
   const durableMemoryMount = memoryMount(args.persistedStorageMounts);
@@ -545,7 +550,8 @@ export async function loadPiLaunchStorageResources(
       versionId: durableMemoryMount.version,
     });
   }
-  const versions = await loadStorageVersions(get, db, identities);
+  const versions = await loadStorageVersions(get, db, identities, signal);
+  signal.throwIfAborted();
   const files: StorageFile[] = [];
   for (const entry of args.snapshot.entries) {
     const version = versions.get(
@@ -568,20 +574,35 @@ export async function loadPiLaunchStorageResources(
   }
 
   let agentInstructions: string | null = null;
-  if (
-    instructionMount?.version &&
-    instructionMount.instructionsTargetFilename
-  ) {
+  if (instructionMount) {
+    if (
+      instructionMount.version === undefined ||
+      instructionMount.instructionsTargetFilename === undefined
+    ) {
+      throw new Error(
+        "Pi Agent instructions mount is missing its exact file identity",
+      );
+    }
     const version = versions.get(
       versionKey({
         storageId: instructionMount.storageId,
         versionId: instructionMount.version,
       }),
     );
-    const instructionFile = version?.files.find((file) => {
+    if (!version) {
+      throw new Error(
+        `Pi Agent instructions Storage version not loaded: ${instructionMount.storageId}@${instructionMount.version}`,
+      );
+    }
+    const instructionFile = version.files.find((file) => {
       return file.path === instructionMount.instructionsTargetFilename;
     });
-    agentInstructions = instructionFile?.content.toString("utf8") ?? null;
+    if (!instructionFile) {
+      throw new Error(
+        `Pi Agent instructions file not found: ${instructionMount.instructionsTargetFilename}`,
+      );
+    }
+    agentInstructions = instructionFile.content.toString("utf8");
   }
 
   let memory: PiLaunchStorageResources["memory"] = null;

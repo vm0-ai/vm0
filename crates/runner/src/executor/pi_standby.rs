@@ -34,7 +34,12 @@ impl PiStandbyForwarder {
                 biased;
                 () = task_stop.cancelled() => return,
                 () = job_cancel.cancelled() => return,
-                signal = source.wait() => signal,
+                signal = source.wait() => {
+                    let Some(signal) = signal else {
+                        return;
+                    };
+                    signal
+                },
             };
             let payload = match signal {
                 PiStandbySignal::Handoff => br#"{"type":"pi-handoff"}"#.as_slice(),

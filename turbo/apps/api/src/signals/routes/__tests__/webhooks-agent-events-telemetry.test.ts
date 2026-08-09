@@ -18,9 +18,19 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
+function zeroUsage() {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+}
 
 describe("POST /api/webhooks/agent/events telemetry", () => {
-  it("redacts legacy Pi transcript payloads before Axiom ingest", async () => {
+  it("ingests native Pi transcript payloads into Axiom", async () => {
     const actor = bdd.user();
     chatCallbacks.acceptChatObjectStorage();
     chatCallbacks.disableVapid();
@@ -31,14 +41,14 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
     await runs.grantProEntitlement(actor);
     await runs.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
-      displayName: "Legacy Pi telemetry guard",
+      displayName: "Pi telemetry agent",
       visibility: "private",
     });
     const sent = await chat.requestSendEvent(
       actor,
       {
         agentId: agent.agentId,
-        prompt: "verify legacy Pi telemetry redaction",
+        prompt: "verify native Pi telemetry",
         clientEventId: randomUUID(),
       },
       [201],
@@ -63,20 +73,27 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
       ),
     );
 
-    const secretTranscript = "private legacy Pi transcript";
+    const secretTranscript = "private native Pi transcript";
     const response = await webhooks.requestAgentEvents(
       {
         runId,
         events: [
           {
             type: "pi.message.completed",
+            source: "sandbox",
             sequenceNumber: 1,
-            messageId: "pi-legacy-message",
+            messageId: "pi-native-message",
             expectedVersion: 1,
             expectedLastOrdinal: 0,
             message: {
               role: "assistant",
               content: [{ type: "text", text: secretTranscript }],
+              api: "openai-completions",
+              provider: "deepseek",
+              model: "deepseek-chat",
+              usage: zeroUsage(),
+              stopReason: "stop",
+              timestamp: 1,
             },
           },
         ],
@@ -100,16 +117,25 @@ describe("POST /api/webhooks/agent/events telemetry", () => {
           eventType: "pi.message.completed",
           eventData: {
             type: "pi.message.completed",
+            source: "sandbox",
             sequenceNumber: 1,
-            messageId: "pi-legacy-message",
+            messageId: "pi-native-message",
             expectedVersion: 1,
             expectedLastOrdinal: 0,
-            role: "assistant",
-            payloadBytes: expect.any(Number),
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: secretTranscript }],
+              api: "openai-completions",
+              provider: "deepseek",
+              model: "deepseek-chat",
+              usage: zeroUsage(),
+              stopReason: "stop",
+              timestamp: 1,
+            },
           },
         },
       ],
     ]);
-    expect(JSON.stringify(ingestedBodies)).not.toContain(secretTranscript);
+    expect(JSON.stringify(ingestedBodies)).toContain(secretTranscript);
   });
 });

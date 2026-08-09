@@ -150,7 +150,7 @@ export function resolvePiEdgeModelConfig(
     provider.environment.OPENAI_MODEL ??
     provider.environment.ANTHROPIC_MODEL ??
     provider.selectedModel;
-  const apiKey = provider.piEdgeApiKey ?? Object.values(provider.secrets).at(0);
+  const apiKey = provider.piEdgeApiKey;
   if (!baseUrl || !model || !apiKey || apiKey.trim().length === 0) {
     return null;
   }

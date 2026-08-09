@@ -16,10 +16,10 @@ import { createPiExecutionTools } from "./tools";
 
 type PiAgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
-interface PiUnresolvedToolBatch {
+interface PiHandoffToolBatch {
   readonly assistantIndex: number;
   readonly assistant: AssistantMessage;
-  readonly pendingToolCalls: readonly AgentToolCall[];
+  readonly toolCalls: readonly AgentToolCall[];
 }
 
 interface PreparedToolCall {
@@ -50,48 +50,25 @@ function isAssistantMessage(
   return message.role === "assistant";
 }
 
-function completedToolCallIds(
+/** Read the exact assistant tool batch at the durable handoff boundary. */
+export function piHandoffToolBatch(
   messages: readonly AgentMessage[],
-  afterIndex: number,
-): ReadonlySet<string> {
-  const completed = new Set<string>();
-  for (let index = afterIndex + 1; index < messages.length; index += 1) {
-    const message = messages[index];
-    if (message?.role === "toolResult") {
-      completed.add(message.toolCallId);
-    }
+): PiHandoffToolBatch {
+  const assistantIndex = messages.length - 1;
+  const message = messages[assistantIndex];
+  if (!message || !isAssistantMessage(message)) {
+    throw new Error("Pi handoff boundary is not an assistant message");
   }
-  return completed;
-}
-
-/** Locate the newest assistant tool batch with at least one missing ToolResult. */
-export function findPiUnresolvedToolBatch(
-  messages: readonly AgentMessage[],
-): PiUnresolvedToolBatch | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!message || !isAssistantMessage(message)) {
-      continue;
-    }
-    const toolCalls = message.content.filter((block) => {
-      return block.type === "toolCall";
-    });
-    if (toolCalls.length === 0) {
-      continue;
-    }
-    const completed = completedToolCallIds(messages, index);
-    const pendingToolCalls = toolCalls.filter((toolCall) => {
-      return !completed.has(toolCall.id);
-    });
-    if (pendingToolCalls.length > 0) {
-      return {
-        assistantIndex: index,
-        assistant: message,
-        pendingToolCalls,
-      };
-    }
+  if (message.stopReason !== "toolUse") {
+    throw new Error("Pi handoff assistant did not stop for tool use");
   }
-  return null;
+  const toolCalls = message.content.filter((block) => {
+    return block.type === "toolCall";
+  });
+  if (toolCalls.length === 0) {
+    throw new Error("Pi handoff assistant contains no tool calls");
+  }
+  return { assistantIndex, assistant: message, toolCalls };
 }
 
 function errorToolResult(message: string): AgentToolResult<unknown> {
@@ -106,6 +83,7 @@ function prepareToolCall(
   toolCall: AgentToolCall,
   signal: AbortSignal,
 ): ToolCallPreparation {
+  signal.throwIfAborted();
   const tool = tools.find((candidate) => {
     return candidate.name === toolCall.name;
   });
@@ -128,16 +106,10 @@ function prepareToolCall(
             arguments: preparedArguments as AgentToolCall["arguments"],
           };
     const args = validateToolArguments(tool, preparedToolCall);
-    if (signal.aborted) {
-      return {
-        kind: "immediate",
-        toolCall,
-        result: errorToolResult("Operation aborted"),
-        isError: true,
-      };
-    }
+    signal.throwIfAborted();
     return { kind: "prepared", toolCall, tool, args };
   } catch (error) {
+    signal.throwIfAborted();
     return {
       kind: "immediate",
       toolCall,
@@ -178,12 +150,16 @@ async function executePreparedToolCall(
         );
       },
     );
+    signal.throwIfAborted();
     acceptingUpdates = false;
     await Promise.all(updateEvents);
+    signal.throwIfAborted();
     return { toolCall: prepared.toolCall, result, isError: false };
   } catch (error) {
+    signal.throwIfAborted();
     acceptingUpdates = false;
     await Promise.all(updateEvents);
+    signal.throwIfAborted();
     return {
       toolCall: prepared.toolCall,
       result: errorToolResult(
@@ -199,6 +175,7 @@ async function executePreparedToolCall(
 async function emitToolExecutionEnd(
   finalized: FinalizedToolCall,
   onEvent: PiAgentEventSink,
+  signal: AbortSignal,
 ): Promise<void> {
   await onEvent({
     type: "tool_execution_end",
@@ -207,6 +184,7 @@ async function emitToolExecutionEnd(
     result: finalized.result,
     isError: finalized.isError,
   });
+  signal.throwIfAborted();
 }
 
 function toolResultMessage(finalized: FinalizedToolCall): ToolResultMessage {
@@ -226,7 +204,7 @@ function toolResultMessage(finalized: FinalizedToolCall): ToolResultMessage {
 }
 
 async function executePendingToolCalls(
-  batch: PiUnresolvedToolBatch,
+  batch: PiHandoffToolBatch,
   tools: readonly AgentTool[],
   signal: AbortSignal,
   onEvent: PiAgentEventSink,
@@ -234,17 +212,20 @@ async function executePendingToolCalls(
   const finalizedCalls: Array<
     FinalizedToolCall | (() => Promise<FinalizedToolCall>)
   > = [];
-  for (const toolCall of batch.pendingToolCalls) {
+  for (const toolCall of batch.toolCalls) {
+    signal.throwIfAborted();
     await onEvent({
       type: "tool_execution_start",
       toolCallId: toolCall.id,
       toolName: toolCall.name,
       args: toolCall.arguments,
     });
+    signal.throwIfAborted();
     const preparation = prepareToolCall(tools, toolCall, signal);
     if (preparation.kind === "immediate") {
       const finalized: FinalizedToolCall = preparation;
-      await emitToolExecutionEnd(finalized, onEvent);
+      await emitToolExecutionEnd(finalized, onEvent, signal);
+      signal.throwIfAborted();
       finalizedCalls.push(finalized);
     } else {
       finalizedCalls.push(async () => {
@@ -253,13 +234,13 @@ async function executePendingToolCalls(
           signal,
           onEvent,
         );
-        await emitToolExecutionEnd(finalized, onEvent);
+        signal.throwIfAborted();
+        await emitToolExecutionEnd(finalized, onEvent, signal);
+        signal.throwIfAborted();
         return finalized;
       });
     }
-    if (signal.aborted) {
-      break;
-    }
+    signal.throwIfAborted();
   }
 
   const ordered = await Promise.all(
@@ -267,21 +248,24 @@ async function executePendingToolCalls(
       return typeof entry === "function" ? entry() : Promise.resolve(entry);
     }),
   );
+  signal.throwIfAborted();
   const messages: ToolResultMessage[] = [];
   for (const finalized of ordered) {
     const message = toolResultMessage(finalized);
     await onEvent({ type: "message_start", message });
+    signal.throwIfAborted();
     await onEvent({ type: "message_end", message });
+    signal.throwIfAborted();
     messages.push(message);
   }
   return messages;
 }
 
 /**
- * Execute only the missing calls from the latest unresolved assistant batch.
- * Tool selection and ExecutionEnv adapters are shared with the ordinary Pi loop.
+ * Execute every call from the exact durable handoff boundary. Any transcript
+ * content after that assistant message is an invariant violation upstream.
  */
-export async function executePiUnresolvedToolBatch(
+export async function executePiHandoffToolBatch(
   args: {
     readonly messages: readonly AgentMessage[];
     readonly executionEnv: ExecutionEnv;
@@ -289,12 +273,16 @@ export async function executePiUnresolvedToolBatch(
   },
   signal: AbortSignal,
 ): Promise<readonly ToolResultMessage[]> {
-  const batch = findPiUnresolvedToolBatch(args.messages);
-  if (!batch) {
-    return [];
-  }
+  const batch = piHandoffToolBatch(args.messages);
   const tools = createPiExecutionTools(args.executionEnv).map((tool) => {
     return tool as unknown as AgentTool;
   });
-  return await executePendingToolCalls(batch, tools, signal, args.onEvent);
+  const messages = await executePendingToolCalls(
+    batch,
+    tools,
+    signal,
+    args.onEvent,
+  );
+  signal.throwIfAborted();
+  return messages;
 }

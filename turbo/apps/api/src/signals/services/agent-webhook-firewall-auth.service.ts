@@ -2505,12 +2505,15 @@ async function refreshAccessTokenForSource(
  * the Sandbox firewall. This deliberately shares the firewall's locked refresh
  * path so token expiry, refresh rotation, and reconnect state have one owner.
  */
-export async function resolveLiveCodexModelProviderAccessToken(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly sourceUserId: string;
-  readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<string | undefined> {
+export async function resolveLiveCodexModelProviderAccessToken(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly sourceUserId: string;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<string> {
   const result = await refreshAccessTokenForSource({
     db: args.db,
     accessSourceKey: "codex-oauth-token",
@@ -2526,7 +2529,15 @@ export async function resolveLiveCodexModelProviderAccessToken(args: {
     connectorAccessBySlug: new Map<string, ConnectorAccessState>(),
     featureSwitchContext: args.featureSwitchContext,
   });
-  return result.ok ? result.secrets.CHATGPT_ACCESS_TOKEN : undefined;
+  signal.throwIfAborted();
+  if (!result.ok) {
+    throw new Error(`Codex access token resolution failed: ${result.reason}`);
+  }
+  const accessToken = result.secrets.CHATGPT_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error("Codex access token resolution returned no access token");
+  }
+  return accessToken;
 }
 
 function buildMetadataByAccessSource(

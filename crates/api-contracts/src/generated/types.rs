@@ -129,6 +129,26 @@ pub mod webhooks {
                 pub created_at: String,
             }
 
+            /// Durable control-plane boundary transferring a Pi run to its sandbox.
+            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct ResponseHandoff {
+                /// Run whose execution ownership is being transferred.
+                pub run_id: String,
+                /// Environment that committed the handoff.
+                pub from: String,
+                /// Environment that should resume the run.
+                pub to: String,
+                /// Transcript version containing the boundary.
+                pub transcript_version: i64,
+                /// Last transcript ordinal committed by the API.
+                pub after_ordinal: i64,
+                /// Assistant message that triggered the handoff.
+                pub message_id: String,
+                /// Timestamp when the handoff was committed.
+                pub requested_at: String,
+            }
+
             /// Versioned transcript returned to a standby Pi agent.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -139,6 +159,8 @@ pub mod webhooks {
                 pub last_ordinal: u64,
                 /// Canonical ordered Pi messages.
                 pub messages: Vec<ResponseMessage>,
+                /// Durable API-to-sandbox ownership boundary, or null before handoff.
+                pub handoff: Option<ResponseHandoff>,
             }
         }
 

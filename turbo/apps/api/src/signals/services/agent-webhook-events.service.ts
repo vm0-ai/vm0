@@ -23,6 +23,7 @@ import {
   type MaterializedChatProjection,
 } from "./agent-event-consumer-run-output.service";
 import {
+  PI_MESSAGE_COMPLETED_EVENT_TYPE,
   PiTranscriptConflictError,
   PiTranscriptRejectedError,
 } from "./pi-transcript.service";
@@ -83,9 +84,17 @@ function immutableEventPayload(
   auth: SandboxAuth,
   body: AgentEventsBody,
 ): EventConsumerPayload {
+  const events = body.events.map((event): AgentEvent => {
+    if (event.type !== PI_MESSAGE_COMPLETED_EVENT_TYPE) {
+      return event;
+    }
+    // Source comes from the authenticated transport boundary, not the guest
+    // payload. This also accepts draining runners that predate source metadata.
+    return { ...event, source: "sandbox" };
+  });
   return Object.freeze({
     runId: body.runId,
-    events: Object.freeze([...body.events]),
+    events: Object.freeze(events),
     context: Object.freeze({
       userId: auth.userId,
       orgId: auth.orgId,
@@ -134,13 +143,25 @@ export const dispatchOptionalAgentEventConsumers$ = command(
   ): Promise<void> => {
     const startedAt = now();
     const { payload } = accepted;
-    const axiomTrace = tapError(ingestAxiomEvents(payload, signal), (error) => {
-      L.error("Optional Axiom trace delivery failed", {
-        runId: payload.runId,
-        ...eventRange(payload.events),
-        error,
-      });
+    const optionalAxiomEvents = payload.events.filter((event) => {
+      return event.type !== PI_MESSAGE_COMPLETED_EVENT_TYPE;
     });
+    const axiomTrace =
+      optionalAxiomEvents.length === 0
+        ? undefined
+        : tapError(
+            ingestAxiomEvents(
+              { ...payload, events: optionalAxiomEvents },
+              signal,
+            ),
+            (error) => {
+              L.error("Optional Axiom trace delivery failed", {
+                runId: payload.runId,
+                ...eventRange(optionalAxiomEvents),
+                error,
+              });
+            },
+          );
 
     if (accepted.chatProjection) {
       await tapError(
@@ -162,6 +183,7 @@ export const dispatchOptionalAgentEventConsumers$ = command(
 
     for (const consumer of OPTIONAL_EVENT_CONSUMERS) {
       await set(runOptionalEventConsumer$, { consumer, payload }, signal);
+      signal.throwIfAborted();
     }
 
     const range = eventRange(payload.events);
@@ -171,8 +193,10 @@ export const dispatchOptionalAgentEventConsumers$ = command(
       range,
     );
     signal.throwIfAborted();
-    await axiomTrace;
-    signal.throwIfAborted();
+    if (axiomTrace !== undefined) {
+      await axiomTrace;
+      signal.throwIfAborted();
+    }
     L.debug(
       `Optional events ${range.firstSequence}-${range.lastSequence} dispatched for run ${payload.runId} (${now() - startedAt}ms)`,
     );
@@ -228,6 +252,14 @@ export const receiveAgentEvents$ = command(
           "Agent event delivery is temporarily unavailable",
         ),
       };
+    }
+
+    const piEvents = payload.events.filter((event) => {
+      return event.type === PI_MESSAGE_COMPLETED_EVENT_TYPE;
+    });
+    if (piEvents.length > 0) {
+      await ingestAxiomEvents({ ...payload, events: piEvents }, signal);
+      signal.throwIfAborted();
     }
 
     L.debug(

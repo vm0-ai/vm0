@@ -87,6 +87,10 @@ const piMessageSchema: z.ZodType<Message> = z.discriminatedUnion("role", [
     .passthrough(),
 ]);
 
+export function isPiAgentMessage(message: unknown): message is Message {
+  return piMessageSchema.safeParse(message).success;
+}
+
 /** Validate persisted transcript payloads before replaying them into Pi. */
 export function parsePiAgentMessages(messages: readonly unknown[]): Message[] {
   return messages.map((message) => {

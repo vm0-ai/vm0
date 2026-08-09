@@ -435,6 +435,13 @@
       "when": 1786243854133,
       "tag": "0869_sad_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 870,
+      "version": "7",
+      "when": 1786255147688,
+      "tag": "0870_naive_landau",
+      "breakpoints": true
     }
   ]
 }

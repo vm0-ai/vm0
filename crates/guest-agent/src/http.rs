@@ -480,6 +480,8 @@ impl HttpClient {
     pub async fn get_pi_transcript(
         &self,
         run_id: &str,
+        version: Option<i64>,
+        after_ordinal: Option<u64>,
         max_attempts: u32,
     ) -> Result<PiTranscriptResponse, AgentError> {
         let client = self.inner()?;
@@ -487,9 +489,16 @@ impl HttpClient {
         let url = self.pi_transcript_url()?;
         let mut transcript_url = Url::parse(url)
             .map_err(|error| AgentError::Http(format!("invalid Pi transcript URL: {error}")))?;
-        transcript_url
-            .query_pairs_mut()
-            .append_pair("runId", run_id);
+        {
+            let mut query = transcript_url.query_pairs_mut();
+            query.append_pair("runId", run_id);
+            if let Some(version) = version {
+                query.append_pair("version", &version.to_string());
+            }
+            if let Some(after_ordinal) = after_ordinal {
+                query.append_pair("afterOrdinal", &after_ordinal.to_string());
+            }
+        }
         let response = send_with_retry(
             "GET Pi transcript",
             max_attempts,
@@ -525,10 +534,16 @@ impl HttpClient {
         )
         .await?;
 
-        response
-            .json::<PiTranscriptResponse>()
+        let value = response
+            .json::<Value>()
             .await
-            .map_err(|error| AgentError::Http(format_reqwest_error(error)))
+            .map_err(|error| AgentError::Http(format_reqwest_error(error)))?;
+        if value.get("handoff").is_none() {
+            return Err(AgentError::Http(
+                "Pi transcript response is missing required handoff state".to_string(),
+            ));
+        }
+        serde_json::from_value(value).map_err(|error| AgentError::Http(error.to_string()))
     }
 
     pub(crate) async fn post_json_bytes(

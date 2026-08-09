@@ -100,15 +100,15 @@ export async function encryptQueuedRunnerJobPayload(
 export async function decryptQueuedRunnerJobPayload(
   encryptedParams: string | null,
   ctx: FeatureSwitchContext = {},
-): Promise<CompatibleQueuedRunnerJobPayload | null> {
+): Promise<CompatibleQueuedRunnerJobPayload> {
   if (!encryptedParams) {
-    return null;
+    throw new Error("Queued runner job is missing its encrypted payload");
   }
 
   const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
   const rawPayload = decrypted?.[QUEUED_RUNNER_JOB_PAYLOAD_KEY];
   if (!rawPayload) {
-    return null;
+    throw new Error("Queued runner job payload could not be decrypted");
   }
 
   const parsedJson: unknown = JSON.parse(rawPayload);

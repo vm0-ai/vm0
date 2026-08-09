@@ -558,10 +558,21 @@ const piTranscriptMessageSchema = z.object({
   createdAt: z.string(),
 });
 
+const piRunHandoffSchema = z.object({
+  runId: z.string(),
+  from: z.literal("api"),
+  to: z.literal("sandbox"),
+  transcriptVersion: z.number().int().positive(),
+  afterOrdinal: z.number().int().positive(),
+  messageId: z.string(),
+  requestedAt: z.string(),
+});
+
 export const piTranscriptResponseSchema = z.object({
   version: z.number().int().positive(),
   lastOrdinal: z.number().int().nonnegative(),
   messages: z.array(piTranscriptMessageSchema),
+  handoff: piRunHandoffSchema.nullable(),
 });
 
 /**
@@ -576,6 +587,8 @@ export const webhookPiTranscriptContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       runId: z.string().min(1, "runId is required"),
+      version: z.coerce.number().int().positive().optional(),
+      afterOrdinal: z.coerce.number().int().nonnegative().optional(),
     }),
     responses: {
       200: piTranscriptResponseSchema,
@@ -616,7 +629,7 @@ export const webhookCompleteContract = c.router({
     responses: {
       200: z.object({
         success: z.boolean(),
-        status: z.enum(["completed", "failed", "released"]),
+        status: z.enum(["completed", "failed", "cancelled"]),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

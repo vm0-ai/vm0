@@ -664,10 +664,16 @@ impl JobProvider for ApiProvider {
                     ctx.pi_model_config.is_some(),
                     ctx.run_skill_snapshot.is_some(),
                 ];
-                let pi_execution_context_valid = if pi_execution_mode.is_some() {
-                    pi_resource_presence.iter().all(|present| *present)
-                } else {
-                    pi_resource_presence.iter().all(|present| !present)
+                let pi_execution_context_valid = match pi_execution_mode {
+                    Some(PiExecutionMode::Standby) => {
+                        discovery_pi_execution_mode == pi_execution_mode
+                            && pi_resource_presence.iter().all(|present| *present)
+                    }
+                    Some(PiExecutionMode::ColdStart) => false,
+                    None => {
+                        discovery_pi_execution_mode.is_none()
+                            && pi_resource_presence.iter().all(|present| !present)
+                    }
                 };
                 if !pi_execution_context_valid {
                     self.record_claim_failure(
@@ -683,18 +689,8 @@ impl JobProvider for ApiProvider {
                     .await;
                     return None;
                 }
-                let pi_standby_source = pi_execution_mode.map(|mode| {
-                    let source = self.pi_standby_notifications.subscribe(run_id);
-                    if mode == PiExecutionMode::ColdStart {
-                        // A standby failure/TTL requeues the exact context on
-                        // its real profile. Cold-started Pi must resume immediately
-                        // because the original Ably handoff may predate this
-                        // replacement subscription.
-                        self.pi_standby_notifications
-                            .notify(run_id, crate::pi_standby::PiStandbySignal::Handoff);
-                    }
-                    source
-                });
+                let pi_standby_source = (pi_execution_mode == Some(PiExecutionMode::Standby))
+                    .then(|| self.pi_standby_notifications.subscribe(run_id));
                 let active_input_source = (pi_execution_mode.is_none()
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
                 .then(|| {
@@ -4332,7 +4328,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cold_start_claim_mode_overrides_stale_standby_discovery() {
+    async fn claim_rejects_pi_mode_that_differs_from_discovery() {
         let server = MockServer::start_async().await;
         let run_id = RunId::nil();
         let claim_path = format!("/api/runners/jobs/{run_id}/claim");
@@ -4340,7 +4336,7 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(POST).path(claim_path.as_str());
                 then.status(200)
-                    .json_body(pi_claim_response(run_id, Some("cold-start")));
+                    .json_body(pi_claim_response(run_id, Some("standby")));
             })
             .await;
         let provider = api_provider_for_test(
@@ -4349,23 +4345,8 @@ mod tests {
             Arc::new(PollWakeups::new(false)),
         );
 
-        let candidate = JobCandidate::new(run_id, "vm0/large".to_string())
-            .with_pi_execution_mode(Some(PiExecutionMode::Standby));
-        let claimed = provider
-            .claim(candidate)
-            .await
-            .expect("cold Pi claim should succeed");
-        let (_, _, _, pi_standby_source) = claimed.into_run_parts();
-        let signal = tokio::time::timeout(
-            Duration::from_millis(100),
-            pi_standby_source
-                .expect("Pi context should install standby control")
-                .wait(),
-        )
-        .await
-        .expect("cold Pi claim should not wait for another Ably handoff");
-
-        assert_eq!(signal, crate::pi_standby::PiStandbySignal::Handoff);
+        let candidate = JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string());
+        assert!(provider.claim(candidate).await.is_none());
         claim_mock.assert_calls_async(1).await;
     }
 
@@ -4388,10 +4369,10 @@ mod tests {
         );
 
         let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
+            .claim(
+                JobCandidate::new(run_id, crate::profile::DEFAULT_PROFILE.to_string())
+                    .with_pi_execution_mode(Some(PiExecutionMode::Standby)),
+            )
             .await
             .expect("standby claim should succeed");
         let (_, _, _, pi_standby_source) = claimed.into_run_parts();
@@ -4405,7 +4386,10 @@ mod tests {
             .pi_standby_notifications
             .notify(run_id, crate::pi_standby::PiStandbySignal::Handoff);
 
-        assert_eq!(wait.await, crate::pi_standby::PiStandbySignal::Handoff);
+        assert_eq!(
+            wait.await,
+            Some(crate::pi_standby::PiStandbySignal::Handoff)
+        );
         claim_mock.assert_calls_async(1).await;
     }
 

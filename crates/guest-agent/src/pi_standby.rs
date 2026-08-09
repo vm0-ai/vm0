@@ -72,7 +72,7 @@
 //! top-level execution skips checkpoint and `/complete`. API-driven release
 //! exits successfully; TTL release uses
 //! [`guest_contracts::pi_standby::TTL_RELEASE_EXIT_CODE`] so the runner can
-//! requeue the retained execution context on the cold-start profile.
+//! report the expiry to the API, which cancels the active run.
 
 use tokio::sync::mpsc;
 

@@ -3,6 +3,7 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import { MODEL_PROVIDER_ENV_PLACEHOLDERS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
 
 import { resolvePiAgentModel, runPiAgentPrompt } from "./agent-loop";
 
@@ -146,7 +147,7 @@ describe("Pi Codex subscription provider", () => {
     expect(model?.provider).toBe("openai");
   });
 
-  it("streams a Codex subscription turn with the real ChatGPT JWT", async () => {
+  it("streams a Codex subscription turn with the real ChatGPT JWT", async (context) => {
     const accessToken = codexJwt("ws_acct_pi_edge_real");
     let requestUrl: string | undefined;
     let requestHeaders: Headers | undefined;
@@ -172,7 +173,7 @@ describe("Pi Codex subscription provider", () => {
           executionEnv: env,
           onEvent() {},
         },
-        new AbortController().signal,
+        context.signal,
       );
       expect(requestUrl).toBe(`${CODEX_BASE_URL}/codex/responses`);
       expect(requestHeaders?.get("authorization")).toBe(
@@ -201,7 +202,7 @@ describe("Pi Codex subscription provider", () => {
     }
   });
 
-  it("synthesizes a JWT-shaped key for the sandbox placeholder", async () => {
+  it("uses a JWT-shaped transport key for the exact sandbox placeholder", async (context) => {
     let requestHeaders: Headers | undefined;
     server.use(
       http.post(`${CODEX_BASE_URL}/codex/responses`, ({ request }) => {
@@ -216,7 +217,7 @@ describe("Pi Codex subscription provider", () => {
           model: {
             provider: "codex",
             baseUrl: CODEX_BASE_URL,
-            apiKey: "chatgpt-token-CoffeeSafeLocal-not-a-jwt",
+            apiKey: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
             model: "gpt-5.5",
           },
           systemPrompt: "You are a test Pi agent.",
@@ -224,7 +225,7 @@ describe("Pi Codex subscription provider", () => {
           executionEnv: env,
           onEvent() {},
         },
-        new AbortController().signal,
+        context.signal,
       );
       const authorization = requestHeaders?.get("authorization");
       expect(authorization).toBeDefined();

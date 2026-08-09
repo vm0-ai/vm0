@@ -92,6 +92,21 @@ export const rustTypeBindings = [
     },
     declarations: [
       {
+        rustTypeName: "ResponseHandoff",
+        rustDoc: [
+          "Durable control-plane boundary transferring a Pi run to its sandbox.",
+        ],
+        fields: {
+          runId: ["Run whose execution ownership is being transferred."],
+          from: ["Environment that committed the handoff."],
+          to: ["Environment that should resume the run."],
+          transcriptVersion: ["Transcript version containing the boundary."],
+          afterOrdinal: ["Last transcript ordinal committed by the API."],
+          messageId: ["Assistant message that triggered the handoff."],
+          requestedAt: ["Timestamp when the handoff was committed."],
+        },
+      },
+      {
         rustTypeName: "ResponseMessage",
         rustDoc: ["One persisted Pi message in canonical transcript order."],
         fields: {
@@ -113,6 +128,9 @@ export const rustTypeBindings = [
           version: ["CAS version shared by all messages in this transcript."],
           lastOrdinal: ["Highest persisted transcript ordinal."],
           messages: ["Canonical ordered Pi messages."],
+          handoff: [
+            "Durable API-to-sandbox ownership boundary, or null before handoff.",
+          ],
         },
       },
     ],

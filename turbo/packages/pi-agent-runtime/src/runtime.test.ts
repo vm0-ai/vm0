@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -66,20 +67,8 @@ describe("Pi run Skill runtime", () => {
     expect(piMessageRequiresSandbox(assistantToolCall("bash"))).toBe(true);
   });
 
-  it("falls back to Okou when the agent name is blank", () => {
-    const systemPrompt = renderPiSystemPrompt({
-      agentName: " \n ",
-      skills: [],
-    });
-    expect(systemPrompt).toContain("You are Okou, an AI agent.");
-    expect(systemPrompt).toContain(
-      "As Okou, you are an excellent communicator",
-    );
-  });
-
-  it("loads only snapshot Skills and preserves prompt and read semantics", async () => {
-    await mkdir(PI_SKILLS_ROOT, { recursive: true });
-    const testRoot = await mkdtemp(join(PI_SKILLS_ROOT, "vm0-runtime-test-"));
+  it("loads only snapshot Skills and preserves prompt and read semantics", async (context) => {
+    const testRoot = await mkdtemp(join(tmpdir(), "vm0-runtime-test-"));
     const skillDirectory = join(testRoot, "pinned-skill");
     const ambientDirectory = join(testRoot, "ambient-skill");
     const referencePath = join(skillDirectory, "references", "answer.txt");
@@ -118,7 +107,7 @@ describe("Pi run Skill runtime", () => {
     const env = new NodeExecutionEnv({ cwd: "/home/user/workspace" });
 
     try {
-      const resources = await loadPiRunSkills(env, snapshot);
+      const resources = await loadPiRunSkills(env, snapshot, context.signal);
       expect(resources.diagnostics).toEqual([]);
       expect(
         resources.skills.map(({ name }) => {

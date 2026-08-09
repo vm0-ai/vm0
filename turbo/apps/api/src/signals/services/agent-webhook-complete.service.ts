@@ -10,25 +10,16 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { piThreadMessages } from "@vm0/db/schema/pi-thread-message";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  parsePiAgentMessages,
-  piMessageRequiresSandbox,
-} from "@vm0/pi-agent-runtime";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
-import {
-  nullableDriverValueDecoder,
-  pgTextDecoder,
-} from "../../lib/db-structured-result";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   publishChatThreadDetailChangedSafely,
   publishPiHandoffToRunnerGroupSafely,
-  publishRunnerJobNotification,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { tapError } from "../utils";
@@ -39,9 +30,12 @@ import {
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
-import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import {
+  cancelRun$,
+  dispatchCancelSideEffects$,
+} from "./zero-run-cancel.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 
 type WebhookCompleteBody = z.infer<
@@ -83,7 +77,7 @@ interface CompletionResponse {
   readonly body:
     | {
         readonly success: true;
-        readonly status: TerminalStatus | "released";
+        readonly status: TerminalStatus | "cancelled";
       }
     | {
         readonly error: {
@@ -137,6 +131,7 @@ async function persistLastEventSequence(
   runId: string,
   userId: string,
   lastEventSequence: number,
+  signal: AbortSignal,
 ): Promise<void> {
   await db
     .update(agentRuns)
@@ -144,6 +139,7 @@ async function persistLastEventSequence(
       lastEventSequence: sql`greatest(coalesce(${agentRuns.lastEventSequence}, -1), ${lastEventSequence})`,
     })
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
+  signal.throwIfAborted();
 }
 
 async function transitionRunStatus(
@@ -158,6 +154,7 @@ async function transitionRunStatus(
     readonly sandboxReuseResult?: WebhookCompleteBody["sandboxReuseResult"];
   },
   allowedFromStatuses: readonly RunStatus[],
+  signal: AbortSignal,
 ): Promise<boolean> {
   const [updated] = await db
     .update(agentRuns)
@@ -169,20 +166,22 @@ async function transitionRunStatus(
       ),
     )
     .returning({ id: agentRuns.id });
+  signal.throwIfAborted();
   if (!updated) {
     return false;
   }
-  // Pi jobs can stay in the queue after a standby claim or while cold-start
-  // handoff data is still being persisted. Nothing consumes them once the run
-  // settles. Ordinary rows are already removed by the normal claim/expiry
-  // lifecycle, and deleting those rows here would change stale-claim errors.
-  await db.delete(runnerJobQueue).where(
-    and(
-      eq(runnerJobQueue.runId, runId),
-      sql`${runnerJobQueue.executionContext}->>'piExecutionMode'
-          IN ('standby', 'cold-start')`,
-    ),
-  );
+  // Pi standby jobs stay in the runner queue after being claimed so the
+  // durable handoff can wake the prewarmed sandbox. Nothing consumes them once
+  // the run settles; ordinary rows follow the normal claim/expiry lifecycle.
+  await db
+    .delete(runnerJobQueue)
+    .where(
+      and(
+        eq(runnerJobQueue.runId, runId),
+        sql`${runnerJobQueue.executionContext}->>'piExecutionMode' = 'standby'`,
+      ),
+    );
+  signal.throwIfAborted();
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "run_terminal_transition_committed",
@@ -193,267 +192,16 @@ async function transitionRunStatus(
   return true;
 }
 
-async function hasPersistedPiSandboxHandoff(
-  db: Pick<Db, "select">,
-  runId: string,
-): Promise<boolean> {
-  const messages = await db
-    .select({ payload: piThreadMessages.payload })
-    .from(piThreadMessages)
-    .where(eq(piThreadMessages.runId, runId));
-  return parsePiAgentMessages(
-    messages.map(({ payload }) => {
-      return payload;
-    }),
-  ).some(piMessageRequiresSandbox);
-}
-
-function resetRunForPiColdStart() {
-  return {
-    status: "pending" as const,
-    startedAt: null,
-    lastHeartbeatAt: null,
-    runnerId: null,
-    runnerHeartbeatGeneration: null,
-    cancellationRecoveryCompleted: null,
-  };
-}
-
-async function tryReleasePiStandbyForColdStart(
-  db: Db,
-  input: CompleteAgentRunInput,
+export async function dispatchPiSandboxHandoff(
+  input: {
+    readonly runId: string;
+    readonly runnerGroup: string;
+  },
   signal: AbortSignal,
-): Promise<boolean> {
-  const requeued = await db.transaction(async (tx) => {
-    const [run] = await tx
-      .select({
-        id: agentRuns.id,
-        status: agentRuns.status,
-        userId: agentRuns.userId,
-      })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, input.body.runId),
-          eq(agentRuns.userId, input.auth.userId),
-        ),
-      )
-      .for("update");
-    signal.throwIfAborted();
-    if (!run || run.status !== "running") {
-      return null;
-    }
-
-    const [job] = await tx
-      .select({
-        profile: runnerJobQueue.profile,
-        runnerGroup: runnerJobQueue.runnerGroup,
-        piExecutionMode:
-          sql`${runnerJobQueue.executionContext}->>'piExecutionMode'`.mapWith(
-            nullableDriverValueDecoder(pgTextDecoder),
-          ),
-      })
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, input.body.runId))
-      .for("update");
-    signal.throwIfAborted();
-    if (!job || job.piExecutionMode !== "standby") {
-      return null;
-    }
-
-    const coldStartReady = await hasPersistedPiSandboxHandoff(
-      tx,
-      input.body.runId,
-    );
-    const timestamps = runnerJobQueueTimestamps();
-    await tx
-      .update(runnerJobQueue)
-      .set({
-        executionContext: sql`jsonb_set(
-          ${runnerJobQueue.executionContext},
-          '{piExecutionMode}',
-          to_jsonb(${"cold-start"}::text),
-          true
-        )`,
-        createdAt: timestamps.createdAt,
-        expiresAt: timestamps.expiresAt,
-      })
-      .where(eq(runnerJobQueue.runId, input.body.runId));
-    if (coldStartReady) {
-      await tx
-        .update(agentRuns)
-        .set(resetRunForPiColdStart())
-        .where(
-          and(
-            eq(agentRuns.id, input.body.runId),
-            eq(agentRuns.status, "running"),
-          ),
-        );
-    }
-    signal.throwIfAborted();
-    return {
-      coldStartReady,
-      profile: job.profile,
-      runnerGroup: job.runnerGroup,
-      userId: run.userId,
-    };
-  });
+): Promise<void> {
+  await publishPiHandoffToRunnerGroupSafely(input.runnerGroup, input.runId);
   signal.throwIfAborted();
-  if (!requeued) {
-    return false;
-  }
-
-  recordSandboxOperation({
-    sandboxType: "runner",
-    actionType: `${
-      input.body.exitCode === PI_STANDBY_TTL_RELEASE_EXIT_CODE
-        ? "pi_standby_ttl"
-        : "pi_standby_failure"
-    }_${requeued.coldStartReady ? "cold_start_fallback" : "cold_start_deferred"}`,
-    durationMs: 0,
-    success: true,
-    runId: input.body.runId,
-  });
-  if (requeued.coldStartReady) {
-    await publishRunChangedForUserSafely(requeued.userId, input.body.runId, {
-      status: "pending",
-    });
-    signal.throwIfAborted();
-    await publishRunnerJobNotification({
-      group: requeued.runnerGroup,
-      runId: input.body.runId,
-      profile: requeued.profile,
-      piExecutionMode: "cold-start",
-      runnerPreference: {
-        kind: "noPreference",
-        reason: "noReuseKey",
-      },
-    });
-    signal.throwIfAborted();
-  }
-  return true;
 }
-
-const activatePiColdStartForHandoff$ = command(
-  async (
-    { set },
-    input: { readonly runId: string; readonly userId: string },
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    const db = set(writeDb$);
-    const activation = await db.transaction(async (tx) => {
-      const [run] = await tx
-        .select({ status: agentRuns.status, userId: agentRuns.userId })
-        .from(agentRuns)
-        .where(
-          and(
-            eq(agentRuns.id, input.runId),
-            eq(agentRuns.userId, input.userId),
-          ),
-        )
-        .for("update");
-      signal.throwIfAborted();
-      if (!run || (run.status !== "running" && run.status !== "pending")) {
-        return null;
-      }
-      const [job] = await tx
-        .select({
-          profile: runnerJobQueue.profile,
-          runnerGroup: runnerJobQueue.runnerGroup,
-          piExecutionMode:
-            sql`${runnerJobQueue.executionContext}->>'piExecutionMode'`.mapWith(
-              nullableDriverValueDecoder(pgTextDecoder),
-            ),
-        })
-        .from(runnerJobQueue)
-        .where(eq(runnerJobQueue.runId, input.runId))
-        .for("update");
-      signal.throwIfAborted();
-      if (!job || job.piExecutionMode !== "cold-start") {
-        return null;
-      }
-      if (run.status === "pending") {
-        return {
-          notify: false,
-          profile: job.profile,
-          runnerGroup: job.runnerGroup,
-          userId: run.userId,
-        };
-      }
-      const timestamps = runnerJobQueueTimestamps();
-      await tx
-        .update(runnerJobQueue)
-        .set({
-          createdAt: timestamps.createdAt,
-          expiresAt: timestamps.expiresAt,
-        })
-        .where(eq(runnerJobQueue.runId, input.runId));
-      await tx
-        .update(agentRuns)
-        .set(resetRunForPiColdStart())
-        .where(
-          and(eq(agentRuns.id, input.runId), eq(agentRuns.status, "running")),
-        );
-      signal.throwIfAborted();
-      return {
-        notify: true,
-        profile: job.profile,
-        runnerGroup: job.runnerGroup,
-        userId: run.userId,
-      };
-    });
-    signal.throwIfAborted();
-    if (!activation) {
-      return false;
-    }
-    if (activation.notify) {
-      recordSandboxOperation({
-        sandboxType: "runner",
-        actionType: "pi_cold_start_handoff_activated",
-        durationMs: 0,
-        success: true,
-        runId: input.runId,
-      });
-      await publishRunChangedForUserSafely(activation.userId, input.runId, {
-        status: "pending",
-      });
-      signal.throwIfAborted();
-      await publishRunnerJobNotification({
-        group: activation.runnerGroup,
-        runId: input.runId,
-        profile: activation.profile,
-        piExecutionMode: "cold-start",
-        runnerPreference: {
-          kind: "noPreference",
-          reason: "noReuseKey",
-        },
-      });
-      signal.throwIfAborted();
-    }
-    return true;
-  },
-);
-
-export const dispatchPiSandboxHandoff$ = command(
-  async (
-    { set },
-    input: {
-      readonly runId: string;
-      readonly userId: string;
-      readonly runnerGroup: string;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const coldStartActive = await set(
-      activatePiColdStartForHandoff$,
-      { runId: input.runId, userId: input.userId },
-      signal,
-    );
-    if (!coldStartActive) {
-      await publishPiHandoffToRunnerGroupSafely(input.runnerGroup, input.runId);
-    }
-  },
-);
 
 function successResponse(
   runId: string,
@@ -502,7 +250,14 @@ async function handleLostTerminalTransition(
   signal.throwIfAborted();
 
   if (currentRun?.status === "cancelled") {
-    return await handleCancelledCompletion(db, input, currentRun, signal);
+    const response = await handleCancelledCompletion(
+      db,
+      input,
+      currentRun,
+      signal,
+    );
+    signal.throwIfAborted();
+    return response;
   }
 
   return {
@@ -573,11 +328,14 @@ async function handleMissingCheckpoint(
       sandboxReuseResult: input.body.sandboxReuseResult,
     },
     ["pending", "running", "timeout"],
+    signal,
   );
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await handleLostTerminalTransition(db, input, signal);
+    const response = await handleLostTerminalTransition(db, input, signal);
+    signal.throwIfAborted();
+    return response;
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -610,19 +368,29 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   if (!checkpoint) {
-    const allowCheckpointlessSuccess =
-      input.allowCheckpointlessSuccess ||
-      (await hasAcknowledgedTerminalPiMessage(db, input, signal));
+    let allowCheckpointlessSuccess = input.allowCheckpointlessSuccess === true;
+    if (!allowCheckpointlessSuccess) {
+      allowCheckpointlessSuccess = await hasAcknowledgedTerminalPiMessage(
+        db,
+        input,
+        signal,
+      );
+      signal.throwIfAborted();
+    }
     if (allowCheckpointlessSuccess) {
-      return await persistSuccessfulCompletion(
+      const response = await persistSuccessfulCompletion(
         db,
         input,
         run,
         undefined,
         signal,
       );
+      signal.throwIfAborted();
+      return response;
     }
-    return await handleMissingCheckpoint(db, input, run, signal);
+    const response = await handleMissingCheckpoint(db, input, run, signal);
+    signal.throwIfAborted();
+    return response;
   }
 
   const [session] = await db
@@ -633,7 +401,15 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   const result = buildRunResult(checkpoint, session?.id);
-  return await persistSuccessfulCompletion(db, input, run, result, signal);
+  const response = await persistSuccessfulCompletion(
+    db,
+    input,
+    run,
+    result,
+    signal,
+  );
+  signal.throwIfAborted();
+  return response;
 }
 
 async function hasAcknowledgedTerminalPiMessage(
@@ -689,11 +465,14 @@ async function persistSuccessfulCompletion(
       sandboxReuseResult: input.body.sandboxReuseResult,
     },
     ["pending", "running", "timeout"],
+    signal,
   );
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await handleLostTerminalTransition(db, input, signal);
+    const response = await handleLostTerminalTransition(db, input, signal);
+    signal.throwIfAborted();
+    return response;
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -724,11 +503,14 @@ async function handleFailedCompletion(
       sandboxReuseResult: input.body.sandboxReuseResult,
     },
     ["pending", "running", "timeout"],
+    signal,
   );
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await handleLostTerminalTransition(db, input, signal);
+    const response = await handleLostTerminalTransition(db, input, signal);
+    signal.throwIfAborted();
+    return response;
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -895,18 +677,9 @@ export const completeAgentRun$ = command(
         input.body.runId,
         input.auth.userId,
         input.body.lastEventSequence,
+        signal,
       );
       signal.throwIfAborted();
-    }
-
-    if (
-      input.body.exitCode !== 0 &&
-      (await tryReleasePiStandbyForColdStart(db, input, signal))
-    ) {
-      return {
-        status: 200,
-        body: { success: true, status: "released" },
-      };
     }
 
     if (run.status === "completed" || run.status === "failed") {
@@ -924,13 +697,49 @@ export const completeAgentRun$ = command(
     }
 
     if (run.status === "cancelled") {
-      return await handleCancelledCompletion(db, input, run, signal);
+      const response = await handleCancelledCompletion(db, input, run, signal);
+      signal.throwIfAborted();
+      return response;
+    }
+
+    if (input.body.exitCode === PI_STANDBY_TTL_RELEASE_EXIT_CODE) {
+      const cancelled = await set(
+        cancelRun$,
+        {
+          runId: input.body.runId,
+          userId: input.auth.userId,
+          orgId: input.auth.orgId,
+          runnerCancellationMode: "cooperative",
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!("runId" in cancelled)) {
+        throw new Error("Pi standby TTL could not cancel its active run");
+      }
+      await set(dispatchCancelSideEffects$, cancelled, signal);
+      signal.throwIfAborted();
+      recordSandboxOperation({
+        sandboxType: "runner",
+        actionType: "pi_standby_ttl_cancelled",
+        durationMs: 0,
+        success: true,
+        runId: input.body.runId,
+      });
+      return {
+        status: 200,
+        body: { success: true, status: "cancelled" },
+      };
     }
 
     if (input.body.exitCode === 0) {
-      return await handleSuccessfulCompletion(db, input, run, signal);
+      const response = await handleSuccessfulCompletion(db, input, run, signal);
+      signal.throwIfAborted();
+      return response;
     }
 
-    return await handleFailedCompletion(db, input, run, signal);
+    const response = await handleFailedCompletion(db, input, run, signal);
+    signal.throwIfAborted();
+    return response;
   },
 );

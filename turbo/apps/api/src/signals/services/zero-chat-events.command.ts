@@ -27,7 +27,10 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadMessageCreatedSafely,
+  publishChatThreadRunCreatedSafely,
   publishThreadListChanged,
+  publishThreadListChangedSafely,
   publishUserSignal,
 } from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
@@ -2408,16 +2411,13 @@ function scheduleAssociatedUserMessage(params: {
         clearDraft: true,
       });
       if (inserted) {
-        await publishUserSignal(
-          [params.userId],
-          `chatThreadMessageCreated:${params.threadId}`,
+        await publishChatThreadMessageCreatedSafely(
+          params.userId,
+          params.threadId,
         );
-        await publishThreadListChanged(params.userId);
+        await publishThreadListChangedSafely(params.userId);
       }
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadRunCreated:${params.threadId}`,
-      );
+      await publishChatThreadRunCreatedSafely(params.userId, params.threadId);
       if (params.appendInitialThinking) {
         await bestEffort(
           generateAndPersistInitialThinkingMessage({
@@ -2519,11 +2519,11 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
           });
         });
       }
-      await publishChatEventCreated(params.userId, params.threadId);
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadRunCreated:${params.threadId}`,
+      await publishChatThreadMessageCreatedSafely(
+        params.userId,
+        params.threadId,
       );
+      await publishChatThreadRunCreatedSafely(params.userId, params.threadId);
       if (params.appendInitialThinking) {
         await bestEffort(
           generateAndPersistInitialThinkingMessage({

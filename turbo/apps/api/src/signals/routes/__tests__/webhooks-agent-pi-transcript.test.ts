@@ -37,6 +37,16 @@ const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 
 const PI_EVENT_TYPE = "pi.message.completed";
+function zeroUsage() {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+}
 
 async function entitledChatActor(): Promise<{
   readonly actor: ApiTestUser;
@@ -83,22 +93,39 @@ function assistantMessage(text: string): Record<string, unknown> {
     role: "assistant",
     content: [
       { type: "text", text },
-      { type: "tool_call", id: "tool-1", name: "bash", arguments: {} },
+      { type: "toolCall", id: "tool-1", name: "bash", arguments: {} },
     ],
+    api: "openai-completions",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    usage: zeroUsage(),
+    stopReason: "toolUse",
+    timestamp: 1,
   };
 }
 
 function toolCallOnlyMessage(): Record<string, unknown> {
   return {
     role: "assistant",
-    content: [{ type: "tool_call", id: "tool-1", name: "bash", arguments: {} }],
+    content: [{ type: "toolCall", id: "tool-1", name: "bash", arguments: {} }],
+    api: "openai-completions",
+    provider: "deepseek",
+    model: "deepseek-chat",
+    usage: zeroUsage(),
+    stopReason: "toolUse",
+    timestamp: 1,
   };
 }
 
 function toolResultMessage(): Record<string, unknown> {
   return {
     role: "toolResult",
-    content: [{ type: "tool_result", toolCallId: "tool-1", output: "ok" }],
+    toolCallId: "tool-1",
+    toolName: "bash",
+    content: [{ type: "text", text: "ok" }],
+    details: {},
+    isError: false,
+    timestamp: 2,
   };
 }
 
@@ -107,10 +134,12 @@ function piEvent(args: {
   readonly messageId: string;
   readonly expectedLastOrdinal: number;
   readonly expectedVersion?: number;
+  readonly source?: "sandbox";
   readonly message?: Record<string, unknown>;
 }): { type: string; sequenceNumber: number } & Record<string, unknown> {
   return {
     type: PI_EVENT_TYPE,
+    ...(args.source === undefined ? {} : { source: args.source }),
     sequenceNumber: args.sequenceNumber,
     messageId: args.messageId,
     expectedVersion: args.expectedVersion ?? 1,
@@ -152,6 +181,7 @@ async function readTranscript(
   runId: string,
   statuses: readonly (200 | 401 | 404)[],
   tokenRunId?: string,
+  cursor?: { readonly version: number; readonly afterOrdinal: number },
 ) {
   return await accept(
     transcriptClient().read({
@@ -159,14 +189,17 @@ async function readTranscript(
         runId,
         ...(tokenRunId === undefined ? {} : { tokenRunId }),
       }),
-      query: { runId },
+      query: { runId, ...cursor },
     }),
     statuses,
   );
 }
 
-async function readTranscriptOk(runId: string) {
-  const response = await readTranscript(runId, [200]);
+async function readTranscriptOk(
+  runId: string,
+  cursor?: { readonly version: number; readonly afterOrdinal: number },
+) {
+  const response = await readTranscript(runId, [200], undefined, cursor);
   if (response.status !== 200) {
     throw new Error("Expected the pi transcript read to succeed");
   }
@@ -207,6 +240,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
           message: assistantMessage("first reply"),
         }),
         piEvent({
+          source: "sandbox",
           sequenceNumber: 2,
           messageId: "pi-m2",
           expectedLastOrdinal: 1,
@@ -220,6 +254,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     const transcript = await readTranscriptOk(runId);
     expect(transcript.version).toBe(1);
     expect(transcript.lastOrdinal).toBe(2);
+    expect(transcript.handoff).toBeNull();
     expect(transcript.messages).toHaveLength(2);
     expect(transcript.messages[0]).toMatchObject({
       ordinal: 1,
@@ -262,6 +297,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
           message: toolCallOnlyMessage(),
         }),
         piEvent({
+          source: "sandbox",
           sequenceNumber: 2,
           messageId: "pi-m2",
           expectedLastOrdinal: 1,
@@ -284,6 +320,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     const { runId, threadId } = await chatRun(actor, agentId);
     const batch = [
       piEvent({
+        source: "sandbox",
         sequenceNumber: 1,
         messageId: "pi-m1",
         expectedLastOrdinal: 0,
@@ -314,6 +351,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       runId,
       [
         piEvent({
+          source: "sandbox",
           sequenceNumber: 1,
           messageId: "pi-m1",
           expectedLastOrdinal: 0,
@@ -328,6 +366,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       runId,
       [
         piEvent({
+          source: "sandbox",
           sequenceNumber: 2,
           messageId: "pi-m2",
           expectedLastOrdinal: 0,
@@ -356,6 +395,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       runId,
       [
         piEvent({
+          source: "sandbox",
           sequenceNumber: 1,
           messageId: "pi-m1",
           expectedLastOrdinal: 0,
@@ -367,6 +407,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       runId,
       [
         piEvent({
+          source: "sandbox",
           sequenceNumber: 1,
           messageId: "pi-m1",
           expectedLastOrdinal: 0,
@@ -387,6 +428,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       [
         {
           type: PI_EVENT_TYPE,
+          source: "sandbox",
           sequenceNumber: 1,
           expectedVersion: 1,
           expectedLastOrdinal: 0,
@@ -421,6 +463,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
       run.runId,
       [
         piEvent({
+          source: "sandbox",
           sequenceNumber: 1,
           messageId: "pi-m1",
           expectedLastOrdinal: 0,
@@ -432,7 +475,7 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     await readTranscript(run.runId, [404]);
   });
 
-  it("keeps the canonical payload out of Axiom telemetry", async () => {
+  it("keeps the native Pi payload in Axiom telemetry", async () => {
     const { actor, agentId } = await entitledChatActor();
     const { runId } = await chatRun(actor, agentId);
     mockEnv("AXIOM_TOKEN_SESSIONS", "axiom-bdd-token");
@@ -472,17 +515,79 @@ describe("POST /api/webhooks/agent/events with pi.message.completed", () => {
     });
     expect(piIngest).toHaveLength(1);
     const eventData = piIngest[0]?.eventData as Record<string, unknown>;
-    expect(eventData.message).toBeUndefined();
     expect(eventData).toMatchObject({
+      type: PI_EVENT_TYPE,
+      source: "sandbox",
+      sequenceNumber: 1,
       messageId: "pi-m1",
-      role: "assistant",
+      expectedVersion: 1,
+      expectedLastOrdinal: 0,
+      message: assistantMessage("secret transcript"),
     });
-    expect(typeof eventData.payloadBytes).toBe("number");
-    expect(JSON.stringify(ingested)).not.toContain("secret transcript");
+    expect(JSON.stringify(ingested)).toContain("secret transcript");
   });
 });
 
 describe("GET /api/webhooks/agent/pi-transcript", () => {
+  it("returns incremental native messages with separate handoff state", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const { runId } = await chatRun(actor, agentId);
+
+    await sendEvents(
+      runId,
+      [
+        piEvent({
+          sequenceNumber: 1,
+          messageId: "pi-first-message",
+          expectedLastOrdinal: 0,
+          source: "sandbox",
+          message: toolCallOnlyMessage(),
+        }),
+      ],
+      [200],
+    );
+
+    const full = await readTranscriptOk(runId);
+    expect(full.messages).toHaveLength(1);
+    expect(full.messages[0]).toMatchObject({
+      ordinal: 1,
+      role: "assistant",
+      payload: toolCallOnlyMessage(),
+    });
+    expect(full.messages[0]?.payload).not.toHaveProperty("handoff");
+    expect(full.handoff).toBeNull();
+
+    const unchanged = await readTranscriptOk(runId, {
+      version: 1,
+      afterOrdinal: 1,
+    });
+    expect(unchanged.messages).toHaveLength(0);
+    expect(unchanged.handoff).toBeNull();
+
+    await sendEvents(
+      runId,
+      [
+        piEvent({
+          sequenceNumber: 2,
+          messageId: "pi-tool-result",
+          expectedLastOrdinal: 1,
+          source: "sandbox",
+          message: toolResultMessage(),
+        }),
+      ],
+      [200],
+    );
+    const delta = await readTranscriptOk(runId, {
+      version: 1,
+      afterOrdinal: 1,
+    });
+    expect(delta.lastOrdinal).toBe(2);
+    expect(delta.messages).toMatchObject([
+      { ordinal: 2, messageId: "pi-tool-result", role: "toolResult" },
+    ]);
+    expect(delta.handoff).toBeNull();
+  });
+
   it("scopes reads to the run's own thread", async () => {
     const first = await entitledChatActor();
     const firstRun = await chatRun(first.actor, first.agentId);
@@ -493,6 +598,7 @@ describe("GET /api/webhooks/agent/pi-transcript", () => {
       firstRun.runId,
       [
         piEvent({
+          source: "sandbox",
           sequenceNumber: 1,
           messageId: "pi-m1",
           expectedLastOrdinal: 0,

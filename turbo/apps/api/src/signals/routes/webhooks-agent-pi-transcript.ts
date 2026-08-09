@@ -27,7 +27,16 @@ const piTranscriptRead$ = command(async ({ get }, signal: AbortSignal) => {
   if (!thread) {
     return notFound("Run has no chat thread");
   }
-  const transcript = await readPiTranscript(db, thread.chatThreadId);
+  const transcript = await readPiTranscript(
+    db,
+    thread.chatThreadId,
+    {
+      runId: query.runId,
+      version: query.version,
+      afterOrdinal: query.afterOrdinal,
+    },
+    signal,
+  );
   signal.throwIfAborted();
   return { status: 200 as const, body: transcript };
 });

@@ -51,11 +51,12 @@ enum PiOutputFrame {
     TranscriptRead {
         #[serde(rename = "requestId")]
         request_id: String,
+        version: Option<i64>,
+        #[serde(rename = "afterOrdinal")]
+        after_ordinal: Option<u64>,
     },
     #[serde(rename = "pi-message")]
     Message { event: Value },
-    #[serde(rename = "pi-transcript-conflict")]
-    TranscriptConflict,
     #[serde(rename = "pi-complete")]
     Complete {
         #[serde(rename = "exitCode")]
@@ -85,7 +86,6 @@ enum PiProtocolOutcome {
 
 struct PiProtocolState {
     ready: bool,
-    awaiting_conflict_marker: bool,
     last_acknowledged_sequence: Option<u32>,
     expected_system_prompt_digest: String,
     expected_skill_snapshot_digest: String,
@@ -221,7 +221,6 @@ pub(super) async fn execute_pi_standby(
     let expected_skill_snapshot_digest = skill_snapshot_digest(&config.run_skill_snapshot)?;
     let mut state = PiProtocolState {
         ready: false,
-        awaiting_conflict_marker: false,
         last_acknowledged_sequence: None,
         expected_system_prompt_digest,
         expected_skill_snapshot_digest,
@@ -413,10 +412,19 @@ async fn handle_frame(
             state.ready = true;
             log_info!(LOG_TAG, "Pi standby ready");
         }
-        PiOutputFrame::TranscriptRead { request_id } => {
+        PiOutputFrame::TranscriptRead {
+            request_id,
+            version,
+            after_ordinal,
+        } => {
             require_ready(state)?;
             let transcript = http
-                .get_pi_transcript(&config.run_id, constants::HTTP_MAX_ATTEMPTS)
+                .get_pi_transcript(
+                    &config.run_id,
+                    version,
+                    after_ordinal,
+                    constants::HTTP_MAX_ATTEMPTS,
+                )
                 .await?;
             send_frame(
                 frame_tx,
@@ -446,13 +454,9 @@ async fn handle_frame(
                         ));
                     }
                     state.last_acknowledged_sequence = Some(sequence);
-                    state.awaiting_conflict_marker = false;
                     (200, None)
                 }
-                Err(AgentError::HttpStatus { status, message }) => {
-                    state.awaiting_conflict_marker = status == 409;
-                    (status, Some(message))
-                }
+                Err(AgentError::HttpStatus { status, message }) => (status, Some(message)),
                 Err(error) => return Err(error),
             };
             let mut ack = json!({
@@ -465,14 +469,6 @@ async fn handle_frame(
             }
             send_frame(frame_tx, ack).await?;
         }
-        PiOutputFrame::TranscriptConflict => {
-            if !state.awaiting_conflict_marker {
-                return Err(protocol_error(
-                    "Pi standby emitted a conflict marker without a 409 acknowledgement",
-                ));
-            }
-            state.awaiting_conflict_marker = false;
-        }
         PiOutputFrame::Complete {
             exit_code,
             error,
@@ -481,11 +477,6 @@ async fn handle_frame(
             skill_snapshot_digest,
         } => {
             require_ready(state)?;
-            if state.awaiting_conflict_marker {
-                return Err(protocol_error(
-                    "Pi standby completed before replaying a transcript conflict",
-                ));
-            }
             if system_prompt_digest != state.expected_system_prompt_digest
                 || skill_snapshot_digest != state.expected_skill_snapshot_digest
             {

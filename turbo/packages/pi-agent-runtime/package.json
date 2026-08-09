@@ -11,6 +11,10 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./src/node.ts"
+    },
+    "./transcript": {
+      "types": "./dist/transcript.d.ts",
+      "import": "./src/transcript.ts"
     }
   },
   "scripts": {

@@ -14,5 +14,3 @@ export const createPiNodeExecutionEnv: (options: {
 }) => ExecutionEnv = (options) => {
   return new NodeExecutionEnv({ ...options });
 };
-
-export * from "./index";

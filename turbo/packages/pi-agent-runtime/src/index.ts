@@ -16,7 +16,6 @@ import {
 import {
   formatPiUserPrompt as formatPiUserPromptImpl,
   loadPiRunSkills as loadPiRunSkillsImpl,
-  PI_BASE_SYSTEM_PROMPT as PI_BASE_SYSTEM_PROMPT_IMPL,
   renderPiSystemPrompt as renderPiSystemPromptImpl,
 } from "./runtime";
 import { createPiNoopExecutionEnv as createPiNoopExecutionEnvImpl } from "./noop";
@@ -56,7 +55,7 @@ export const createPiNoopExecutionEnv: () => ExecutionEnv =
  * `branchSummary`, `compactionSummary`). Those are produced by
  * pi-agent-core's session layer, which this package never instantiates: it
  * drives `runAgentLoop`/`runAgentLoopContinue` directly, and the only other
- * emitter is `executePiUnresolvedToolBatch`, which emits tool results. The
+ * emitter is `executePiHandoffToolBatch`, which emits tool results. The
  * `null` branch is therefore unreachable rather than tolerant, and exists so
  * the published surface can be typed without referencing native types.
  */
@@ -93,9 +92,6 @@ export const ExecutionError: ExecutionErrorConstructor = NativeExecutionError;
 
 export const FileError: FileErrorConstructor = NativeFileError;
 
-/** Default base prompt used when no user-facing agent identity is available. */
-export const PI_BASE_SYSTEM_PROMPT: string = PI_BASE_SYSTEM_PROMPT_IMPL;
-
 /** Apply Pi's native explicit Skill invocation wrapper when requested. */
 export const formatPiUserPrompt: (
   prompt: string,
@@ -106,6 +102,7 @@ export const formatPiUserPrompt: (
 export const loadPiRunSkills: (
   env: ExecutionEnv,
   snapshot: RunSkillSnapshot,
+  signal: AbortSignal,
 ) => Promise<PiRunSkills> = loadPiRunSkillsImpl;
 
 /** Render the system prompt shared by both Pi runtimes. */

@@ -35,7 +35,9 @@ const receiveEvents$ = command(async ({ get, set }, signal: AbortSignal) => {
       return { response: unauthorizedRunMismatch };
     }
 
-    return await set(receiveAgentEvents$, { auth, body }, routeSignal);
+    const result = await set(receiveAgentEvents$, { auth, body }, routeSignal);
+    routeSignal.throwIfAborted();
+    return result;
   })();
 
   const deadlineResult = await settleIncludingAbort(

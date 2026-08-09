@@ -1893,7 +1893,6 @@ function providerEnvironmentFromSecretMap(
     );
   }
 
-  const fallbackSecret = Object.entries(providerSecrets)[0];
   const model = resolveModelProviderModel({
     type,
     selectedModel,
@@ -1903,14 +1902,9 @@ function providerEnvironmentFromSecretMap(
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(envBindings)) {
     if (value === "$secret") {
-      if (fallbackSecret) {
-        const [secretName, secretValue] = fallbackSecret;
-        environment[key] = modelProviderEnvironmentSecretValue(
-          type,
-          secretName,
-          secretValue,
-        );
-      }
+      throw new Error(
+        `Multi-secret provider ${type} must use an explicit $secrets.<name> binding`,
+      );
     } else if (value === "$model") {
       if (model) {
         environment[key] = model;
@@ -1944,6 +1938,7 @@ async function multiAuthModelProviderEnvironment(
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly resolvePiEdgeCredentials: boolean;
   },
+  signal: AbortSignal,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.authMethod) {
     return null;
@@ -1970,6 +1965,7 @@ async function multiAuthModelProviderEnvironment(
         eq(secretsTable.type, "model-provider"),
       ),
     );
+  signal.throwIfAborted();
   const storedSecrets: Record<string, string> = {};
   if (hasFirewallAuth) {
     for (const row of secretRows) {
@@ -1984,6 +1980,7 @@ async function multiAuthModelProviderEnvironment(
         row.encryptedValue,
         args.featureSwitchContext,
       );
+      signal.throwIfAborted();
     }
   }
 
@@ -2001,7 +1998,8 @@ async function multiAuthModelProviderEnvironment(
     }
   }
 
-  const piEdgeApiKey = await resolveMultiAuthPiEdgeApiKey(db, args);
+  const piEdgeApiKey = await resolveMultiAuthPiEdgeApiKey(db, args, signal);
+  signal.throwIfAborted();
 
   const selectedModelEnvBindings = getModelProviderEnvBindings(args.type);
   const selectedModel = resolveModelProviderModel({
@@ -2050,16 +2048,22 @@ async function resolveMultiAuthPiEdgeApiKey(
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly resolvePiEdgeCredentials: boolean;
   },
+  signal: AbortSignal,
 ): Promise<string | undefined> {
   if (!args.resolvePiEdgeCredentials || args.type !== "codex-oauth-token") {
     return undefined;
   }
-  return await resolveLiveCodexModelProviderAccessToken({
-    db,
-    orgId: args.orgId,
-    sourceUserId: args.userId,
-    featureSwitchContext: args.featureSwitchContext,
-  });
+  const accessToken = await resolveLiveCodexModelProviderAccessToken(
+    {
+      db,
+      orgId: args.orgId,
+      sourceUserId: args.userId,
+      featureSwitchContext: args.featureSwitchContext,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return accessToken;
 }
 
 async function vm0ModelProviderEnvironment(
@@ -2092,6 +2096,7 @@ async function vm0ModelProviderEnvironment(
       apiModel,
     ),
     secrets: { [secretName]: apiKey },
+    piEdgeApiKey: apiKey,
     selectedModel,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
   };
@@ -2233,6 +2238,7 @@ async function resolveCandidatePiEdgeApiKey(
   args: ResolveModelProviderEnvironmentArgs,
   type: ModelProviderType,
   encryptedValue: string,
+  signal: AbortSignal,
   decryptedValue?: string,
 ): Promise<string | undefined> {
   if (!args.resolvePiEdgeCredentials || !isPiEdgeCompatibleProviderType(type)) {
@@ -2241,13 +2247,18 @@ async function resolveCandidatePiEdgeApiKey(
   const apiKey =
     decryptedValue ??
     (await decryptStoredSecretValue(encryptedValue, args.featureSwitchContext));
-  return hasUsableModelProviderSecretValue(apiKey) ? apiKey : undefined;
+  signal.throwIfAborted();
+  if (!hasUsableModelProviderSecretValue(apiKey)) {
+    throw new Error(`PiLoop model provider ${type} has no usable API key`);
+  }
+  return apiKey;
 }
 
 async function resolveCandidateModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
   row: ResolvableModelProviderEnvironmentRow,
+  signal: AbortSignal,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (row.type === "vm0") {
     const selectedModel =
@@ -2255,6 +2266,7 @@ async function resolveCandidateModelProviderEnvironment(
       row.selectedModel ??
       MODEL_PROVIDER_TYPES.vm0.defaultModel;
     const provider = await vm0ModelProviderEnvironment(db, selectedModel);
+    signal.throwIfAborted();
     return provider?.concreteType &&
       getFrameworkForType(provider.concreteType) === args.framework
       ? provider
@@ -2266,16 +2278,22 @@ async function resolveCandidateModelProviderEnvironment(
   }
 
   if (hasAuthMethods(row.type)) {
-    return await multiAuthModelProviderEnvironment(db, {
-      id: row.id,
-      orgId: args.orgId,
-      userId: row.userId,
-      type: row.type,
-      authMethod: row.authMethod,
-      selectedModel: args.selectedModelOverride ?? row.selectedModel,
-      featureSwitchContext: args.featureSwitchContext,
-      resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
-    });
+    const provider = await multiAuthModelProviderEnvironment(
+      db,
+      {
+        id: row.id,
+        orgId: args.orgId,
+        userId: row.userId,
+        type: row.type,
+        authMethod: row.authMethod,
+        selectedModel: args.selectedModelOverride ?? row.selectedModel,
+        featureSwitchContext: args.featureSwitchContext,
+        resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return provider;
   }
 
   const config = MODEL_PROVIDER_TYPES[row.type];
@@ -2287,7 +2305,9 @@ async function resolveCandidateModelProviderEnvironment(
       args,
       row.type,
       row.encryptedValue,
+      signal,
     );
+    signal.throwIfAborted();
     return modelProviderEnvironment({
       id: row.id,
       type: row.type,
@@ -2302,6 +2322,7 @@ async function resolveCandidateModelProviderEnvironment(
     row.encryptedValue,
     args.featureSwitchContext,
   );
+  signal.throwIfAborted();
   if (!hasUsableModelProviderSecretValue(secretValue)) {
     return null;
   }
@@ -2309,8 +2330,10 @@ async function resolveCandidateModelProviderEnvironment(
     args,
     row.type,
     row.encryptedValue,
+    signal,
     secretValue,
   );
+  signal.throwIfAborted();
   return modelProviderEnvironment({
     id: row.id,
     type: row.type,
@@ -2325,12 +2348,14 @@ async function resolveCandidateModelProviderEnvironment(
 async function resolveModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
+  signal: AbortSignal,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (args.modelProviderType === "vm0") {
     const provider = await vm0ModelProviderEnvironment(
       db,
       args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
     );
+    signal.throwIfAborted();
     return provider?.concreteType &&
       getFrameworkForType(provider.concreteType) === args.framework
       ? provider
@@ -2338,6 +2363,7 @@ async function resolveModelProviderEnvironment(
   }
 
   const customGateway = await customGatewayModelProviderEnvironment(db, args);
+  signal.throwIfAborted();
   if (customGateway) {
     return customGateway;
   }
@@ -2363,6 +2389,7 @@ async function resolveModelProviderEnvironment(
         ),
       ),
     );
+  signal.throwIfAborted();
 
   const sortedRows = rows.sort((left, right) => {
     const leftUser = left.userId === args.userId ? 1 : 0;
@@ -2383,7 +2410,9 @@ async function resolveModelProviderEnvironment(
       db,
       args,
       row,
+      signal,
     );
+    signal.throwIfAborted();
     if (provider) {
       return provider;
     }
@@ -6120,7 +6149,11 @@ function storedExecutionContextWithPiResources(
   };
 }
 
-async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
+async function resolvePiAgentName(
+  db: Db,
+  composeId: string,
+  signal: AbortSignal,
+): Promise<string> {
   const [agent] = await db
     .select({
       displayName: zeroAgents.displayName,
@@ -6129,6 +6162,7 @@ async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
     .from(zeroAgents)
     .where(eq(zeroAgents.id, composeId))
     .limit(1);
+  signal.throwIfAborted();
 
   if (agent?.displayName?.trim()) {
     return agent.displayName;
@@ -6136,20 +6170,23 @@ async function resolvePiAgentName(db: Db, composeId: string): Promise<string> {
   if (agent?.name.trim()) {
     return agent.name;
   }
-  return "Okou";
+  throw new Error(`Pi agent ${composeId} is missing a name`);
 }
 
-async function preparePiLaunchResources(args: {
-  readonly get: <T>(computedValue: Computed<T>) => T;
-  readonly db: Db;
-  readonly runId: string;
-  readonly body: CreateRunBody;
-  readonly composeId: string;
-  readonly piEdge: PiEdgeModelConfig | undefined;
-  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-  readonly additionalVolumeSources: AdditionalVolumeSources;
-  readonly persistedStorageMounts: readonly PersistedStorageMount[];
-}): Promise<PreparedPiLaunchResources | undefined> {
+async function preparePiLaunchResources(
+  args: {
+    readonly get: <T>(computedValue: Computed<T>) => T;
+    readonly db: Db;
+    readonly runId: string;
+    readonly body: CreateRunBody;
+    readonly composeId: string;
+    readonly piEdge: PiEdgeModelConfig | undefined;
+    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+    readonly additionalVolumeSources: AdditionalVolumeSources;
+    readonly persistedStorageMounts: readonly PersistedStorageMount[];
+  },
+  signal: AbortSignal,
+): Promise<PreparedPiLaunchResources | undefined> {
   if (args.piEdge === undefined) {
     return undefined;
   }
@@ -6159,13 +6196,20 @@ async function preparePiLaunchResources(args: {
     persistedStorageMounts: args.persistedStorageMounts,
   });
   const [resources, agentName] = await Promise.all([
-    loadPiLaunchStorageResources(args.get, args.db, {
-      snapshot,
-      persistedStorageMounts: args.persistedStorageMounts,
-    }),
-    resolvePiAgentName(args.db, args.composeId),
+    loadPiLaunchStorageResources(
+      args.get,
+      args.db,
+      {
+        snapshot,
+        persistedStorageMounts: args.persistedStorageMounts,
+      },
+      signal,
+    ),
+    resolvePiAgentName(args.db, args.composeId, signal),
   ]);
-  const skills = await loadPiRunSkills(resources.env, snapshot);
+  signal.throwIfAborted();
+  const skills = await loadPiRunSkills(resources.env, snapshot, signal);
+  signal.throwIfAborted();
   if (skills.diagnostics.length > 0) {
     L.warn("Pi run Skill catalog contains diagnostics", {
       runId: args.runId,
@@ -6243,6 +6287,7 @@ function piEdgeUsageConfig(
 function buildRunnerJobPayload(
   db: Db,
   args: BuildRunnerJobPayloadInput,
+  signal: AbortSignal,
 ): Computed<Promise<PreparedRunnerLaunch>> {
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group = preparedRunnerGroup(args.resolved.content);
@@ -6255,7 +6300,7 @@ function buildRunnerJobPayload(
       "api_dispatch_prepare_storage_manifest",
       "nested",
       async () => {
-        return await get(
+        const storage = await get(
           prepareAgentRunStorage({
             db,
             content: args.resolved.content,
@@ -6273,6 +6318,8 @@ function buildRunnerJobPayload(
             stats: storageManifestStats,
           }),
         );
+        signal.throwIfAborted();
+        return storage;
       },
       () => {
         return storageManifestStats?.overallDimensions();
@@ -6283,28 +6330,35 @@ function buildRunnerJobPayload(
       "api_dispatch_build_stored_execution_context",
       "nested",
       async () => {
-        return await buildStoredExecutionContextDraft({
+        const context = await buildStoredExecutionContextDraft({
           ...args,
           body,
           runId: args.run.id,
         });
+        signal.throwIfAborted();
+        return context;
       },
     );
     const builtContext = await resolveBuiltStoredExecutionContext(
       preparedStoragePromise,
       builtContextDraftPromise,
     );
-    const piResources = await preparePiLaunchResources({
-      get,
-      db,
-      runId: args.run.id,
-      body,
-      composeId: args.resolved.composeId,
-      piEdge: args.piEdge,
-      additionalVolumes: args.additionalVolumes,
-      additionalVolumeSources: args.additionalVolumeSources,
-      persistedStorageMounts: builtContext.persistedStorageMounts,
-    });
+    signal.throwIfAborted();
+    const piResources = await preparePiLaunchResources(
+      {
+        get,
+        db,
+        runId: args.run.id,
+        body,
+        composeId: args.resolved.composeId,
+        piEdge: args.piEdge,
+        additionalVolumes: args.additionalVolumes,
+        additionalVolumeSources: args.additionalVolumeSources,
+        persistedStorageMounts: builtContext.persistedStorageMounts,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     const storedContext = storedExecutionContextWithPiResources(
       builtContext.context,
       piResources,
@@ -7333,35 +7387,41 @@ function buildAtomicLaunchPayload(
     readonly run: Pick<RunRecord, "id" | "sessionId" | "shouldCreateSession">;
     readonly timing: ApiDispatchTimingCollector;
   },
+  signal: AbortSignal,
 ): Computed<Promise<PreparedRunnerLaunch>> {
-  return buildRunnerJobPayload(db, {
-    run: args.run,
-    userId: args.createArgs.userId,
-    orgId: args.createArgs.orgId,
-    resolved: args.context.resolved,
-    body: args.context.body,
-    artifacts: args.context.artifacts,
-    framework: args.context.framework,
-    piEdge: args.context.piEdge,
-    modelProvider: args.context.modelProvider,
-    connectorContext: args.context.connectorContext,
-    customConnectorContext: args.context.customConnectorContext,
-    permissionManifest: args.context.permissionManifest,
-    billableFirewalls: args.context.billableFirewalls,
-    modelUsageProvider: args.context.modelUsageProvider,
-    apiStartTime: args.createArgs.apiStartTime,
-    additionalVolumes: args.context.additionalVolumes,
-    additionalVolumeSources: args.context.additionalVolumeSources,
-    includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
-    zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
-    zeroTokenCloudBrowserEnabled: args.createArgs.zeroTokenCloudBrowserEnabled,
-    imageRecognitionAvailable: args.context.imageRecognitionAvailable,
-    chatThreadId: args.createArgs.chatThreadId,
-    extraEnvironment: args.createArgs.extraEnvironment,
-    userTimezone: args.context.userTimezone,
-    featureSwitchContext: args.context.featureSwitchContext,
-    timing: args.timing,
-  });
+  return buildRunnerJobPayload(
+    db,
+    {
+      run: args.run,
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      resolved: args.context.resolved,
+      body: args.context.body,
+      artifacts: args.context.artifacts,
+      framework: args.context.framework,
+      piEdge: args.context.piEdge,
+      modelProvider: args.context.modelProvider,
+      connectorContext: args.context.connectorContext,
+      customConnectorContext: args.context.customConnectorContext,
+      permissionManifest: args.context.permissionManifest,
+      billableFirewalls: args.context.billableFirewalls,
+      modelUsageProvider: args.context.modelUsageProvider,
+      apiStartTime: args.createArgs.apiStartTime,
+      additionalVolumes: args.context.additionalVolumes,
+      additionalVolumeSources: args.context.additionalVolumeSources,
+      includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,
+      zeroTokenComputerUseHostId: args.createArgs.zeroTokenComputerUseHostId,
+      zeroTokenCloudBrowserEnabled:
+        args.createArgs.zeroTokenCloudBrowserEnabled,
+      imageRecognitionAvailable: args.context.imageRecognitionAvailable,
+      chatThreadId: args.createArgs.chatThreadId,
+      extraEnvironment: args.createArgs.extraEnvironment,
+      userTimezone: args.context.userTimezone,
+      featureSwitchContext: args.context.featureSwitchContext,
+      timing: args.timing,
+    },
+    signal,
+  );
 }
 
 function createdRunResponse(
@@ -7438,7 +7498,11 @@ function resolvePreparedPiEdgeModelConfig(args: {
   if (!isPiEdgeEnabledForRun(args.createArgs, args.featureSwitchContext)) {
     return undefined;
   }
-  return resolvePiEdgeModelConfig(args.modelProvider) ?? undefined;
+  const piEdge = resolvePiEdgeModelConfig(args.modelProvider);
+  if (!piEdge) {
+    throw new Error("PiLoop requires an API-edge-compatible model provider");
+  }
+  return piEdge;
 }
 
 async function resolveRunModelProvider(
@@ -7461,20 +7525,24 @@ async function resolveRunModelProvider(
   const shouldResolveModelProvider =
     hasProviderOverride || !hasFrameworkKey || args.modelProviderType === "vm0";
   const modelProvider = shouldResolveModelProvider
-    ? await resolveModelProviderEnvironment(db, {
-        orgId: args.orgId,
-        userId: args.userId,
-        framework: options.framework,
-        modelProviderId: args.modelProviderId,
-        modelProviderCredentialScope: args.modelProviderCredentialScope,
-        modelProviderType: args.modelProviderType,
-        selectedModelOverride: args.selectedModelOverride,
-        featureSwitchContext: options.featureSwitchContext,
-        resolvePiEdgeCredentials: isPiEdgeEnabledForRun(
-          args,
-          options.featureSwitchContext,
-        ),
-      })
+    ? await resolveModelProviderEnvironment(
+        db,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          framework: options.framework,
+          modelProviderId: args.modelProviderId,
+          modelProviderCredentialScope: args.modelProviderCredentialScope,
+          modelProviderType: args.modelProviderType,
+          selectedModelOverride: args.selectedModelOverride,
+          featureSwitchContext: options.featureSwitchContext,
+          resolvePiEdgeCredentials: isPiEdgeEnabledForRun(
+            args,
+            options.featureSwitchContext,
+          ),
+        },
+        signal,
+      )
     : null;
   signal.throwIfAborted();
 
@@ -8623,21 +8691,7 @@ async function completeQueuePayloadLaunch(
   signal.throwIfAborted();
 
   if (!encryptedQueuedParams.ok) {
-    const retried = await args.commitLaunch(undefined);
-    const finalizedRetry = await finalizeAtomicLaunchCommit(
-      {
-        input: args.input,
-        identity: args.identity,
-        launch: args.launch,
-        committed: retried,
-      },
-      signal,
-    );
-    if (!isQueuePayloadRequiredResult(finalizedRetry)) {
-      return finalizedRetry;
-    }
-    signal.throwIfAborted();
-    return await commitFailedLaunch({
+    const failed = await commitFailedLaunch({
       db: args.input.db,
       createArgs: args.input.args,
       context: args.input.context,
@@ -8646,6 +8700,8 @@ async function completeQueuePayloadLaunch(
       error: encryptedQueuedParams.error,
       timing: args.input.timing,
     });
+    signal.throwIfAborted();
+    return failed;
   }
 
   const committed = await args.commitLaunch(encryptedQueuedParams.value);
@@ -8699,16 +8755,20 @@ function createAtomicLaunchRun(
         "top_level",
         async () => {
           return await get(
-            buildAtomicLaunchPayload(input.db, {
-              createArgs: input.args,
-              context: input.context,
-              run: {
-                id: identity.runId,
-                sessionId: identity.sessionId,
-                shouldCreateSession: identity.shouldCreateSession,
+            buildAtomicLaunchPayload(
+              input.db,
+              {
+                createArgs: input.args,
+                context: input.context,
+                run: {
+                  id: identity.runId,
+                  sessionId: identity.sessionId,
+                  shouldCreateSession: identity.shouldCreateSession,
+                },
+                timing: input.timing,
               },
-              timing: input.timing,
-            }),
+              signal,
+            ),
           );
         },
       ),

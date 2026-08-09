@@ -123,6 +123,8 @@ async fn pi_transcript_read_keeps_sandbox_auth_inside_guest_http_client()
         when.method(GET)
             .path("/api/webhooks/agent/pi-transcript")
             .query_param("runId", TEST_RUN_ID)
+            .query_param("version", "1")
+            .query_param("afterOrdinal", "7")
             .header("Authorization", "Bearer test-token-abc123")
             .header("x-vercel-protection-bypass", "test-bypass-value")
             .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
@@ -138,18 +140,28 @@ async fn pi_transcript_read_keeps_sandbox_auth_inside_guest_http_client()
                 "role": "assistant",
                 "payload": { "role": "assistant", "content": [] },
                 "createdAt": "2026-08-07T00:00:00.000Z"
-            }]
+            }],
+            "handoff": {
+                "runId": TEST_RUN_ID,
+                "from": "api",
+                "to": "sandbox",
+                "transcriptVersion": 1,
+                "afterOrdinal": 2,
+                "messageId": "origin-run/1",
+                "requestedAt": "2026-08-07T00:00:01.000Z"
+            }
         }));
     });
 
     let transcript = guest_agent::http::HttpClient::for_config(&config)?
-        .get_pi_transcript(TEST_RUN_ID, 1)
+        .get_pi_transcript(TEST_RUN_ID, Some(1), Some(7), 1)
         .await?;
 
     mock.assert_calls_async(1).await;
     assert_eq!(transcript.version, 1);
     assert_eq!(transcript.last_ordinal, 2);
     assert_eq!(transcript.messages[0].payload["role"], "assistant");
+    assert_eq!(transcript.handoff.unwrap().to, "sandbox");
     Ok(())
 }
 

@@ -328,14 +328,34 @@ async function lockRunOutputProjection(
   await tx.execute(
     sql`SELECT set_config('lock_timeout', ${RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT}, true)`,
   );
+  signal.throwIfAborted();
   await tx.execute(
     sql`SELECT set_config('statement_timeout', ${RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
   );
+  signal.throwIfAborted();
   const lockKey = `run_output_projection:${runId}`;
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
   );
   signal.throwIfAborted();
+}
+
+async function projectPiPayloadInTransaction(
+  tx: Tx,
+  payload: EventConsumerPayload,
+  thread: MaterializedChatProjection["thread"] | null,
+  modelUsage: PiEdgeModelUsage | undefined,
+  signal: AbortSignal,
+): Promise<InsertAssistantEventsInput["items"]> {
+  const items = await projectPiEventsInTransaction(
+    tx,
+    { runId: payload.runId, thread, events: payload.events },
+    signal,
+  );
+  signal.throwIfAborted();
+  await insertPiEdgeModelUsageInTransaction(tx, payload, modelUsage, signal);
+  signal.throwIfAborted();
+  return items;
 }
 
 async function materializeRunOutputEvents(
@@ -348,24 +368,21 @@ async function materializeRunOutputEvents(
   const latestResult = latestCandidate(payload.events, resultText);
   const latestOutput = latestCandidate(payload.events, callbackOutputText);
 
-  return await writeDb.transaction(async (tx) => {
+  const projection = await writeDb.transaction(async (tx) => {
     await lockRunOutputProjection(tx, payload.runId, signal);
+    signal.throwIfAborted();
 
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
 
-    const piAssistantItems = await projectPiEventsInTransaction(
-      tx,
-      { runId: payload.runId, thread, events: payload.events },
-      signal,
-    );
-
-    await insertPiEdgeModelUsageInTransaction(
+    const piAssistantItems = await projectPiPayloadInTransaction(
       tx,
       payload,
+      thread,
       piEdgeModelUsage,
       signal,
     );
+    signal.throwIfAborted();
 
     let insertedRowCount = 0;
     let shouldAttemptFirstAssistantEventClaim = false;
@@ -380,6 +397,7 @@ async function materializeRunOutputEvents(
         },
         signal,
       );
+      signal.throwIfAborted();
       insertedRowCount = insertion.insertedRowCount;
       shouldAttemptFirstAssistantEventClaim =
         insertion.shouldAttemptFirstAssistantEventClaim;
@@ -472,6 +490,8 @@ async function materializeRunOutputEvents(
             },
     };
   });
+  signal.throwIfAborted();
+  return projection;
 }
 
 export const materializeRunOutputEvents$ = command(
@@ -481,12 +501,14 @@ export const materializeRunOutputEvents$ = command(
     signal: AbortSignal,
     piEdgeModelUsage?: PiEdgeModelUsage,
   ): Promise<MaterializedChatProjection | null> => {
-    return await materializeRunOutputEvents(
+    const projection = await materializeRunOutputEvents(
       set(writeDb$),
       payload,
       signal,
       piEdgeModelUsage,
     );
+    signal.throwIfAborted();
+    return projection;
   },
 );
 
