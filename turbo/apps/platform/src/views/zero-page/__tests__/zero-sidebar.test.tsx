@@ -1427,11 +1427,15 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("does not reload agents when opening the conversation picker", async () => {
+  it("shows cached agents when opening the conversation picker", async () => {
     const team = prepareAgentTeam();
-    let teamRequests = 0;
-    context.mocks.api(zeroTeamContract.list, ({ respond }) => {
-      teamRequests += 1;
+    const releaseRefresh = context.mocks.deferred<void>();
+    let initialTeamServed = false;
+    context.mocks.api(zeroTeamContract.list, async ({ respond }) => {
+      if (initialTeamServed) {
+        await releaseRefresh.promise;
+      }
+      initialTeamServed = true;
       return respond(200, team);
     });
 
@@ -1444,14 +1448,13 @@ describe("zero sidebar", () => {
       expect(pinnedAgentLink(currentSidebar, "Zero")).toBeInTheDocument();
       return currentSidebar;
     });
-    const requestsBeforeOpen = teamRequests;
-    expect(requestsBeforeOpen).toBeGreaterThan(0);
 
     click(within(sidebar).getByLabelText("Open a conversation"));
 
     const dialog = await screen.findByRole("dialog", { name: "Talk to" });
-    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
-    expect(teamRequests).toBe(requestsBeforeOpen);
+    await expect(
+      within(dialog).findByText("Research Agent"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("pins an agent from the conversation picker and opens that agent chat", async () => {
