@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.1...runner-rs-v0.162.2) (2026-08-09)
+
+
+### Bug Fixes
+
+* **mitm-addon:** track chat completions usage ([#25946](https://github.com/vm0-ai/vm0/issues/25946)) ([b933ace](https://github.com/vm0-ai/vm0/commit/b933acebbde6a7707e07db17af50cac114a37a27))
+
 ## [0.162.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.0...runner-rs-v0.162.1) (2026-08-09)
 
 
