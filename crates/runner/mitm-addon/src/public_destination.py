@@ -26,69 +26,45 @@ evidence. ``auth_base_forwarder.py`` validates every resolved address before
 connecting. A hostname classification is therefore a deferral, never proof
 that its eventual address is public.
 
-The same range policy is implemented in ``firewall-types.ts`` for connector
-base validation. Range changes must update both implementations and the
-boundary matrices in ``test_public_destination.py`` and
-``firewall-expander.test.ts`` together.
+The range policy is owned by ``public-destination-policy.ts`` for connector
+base validation and generated into ``generated/public_destination_policy.py``
+for this runtime. Both runtimes validate canonical membership through the same
+shared boundary contract.
 """
 
 import ipaddress
 from dataclasses import dataclass
 from typing import Literal
 
+from generated.public_destination_policy import (
+    IPV4_NON_PUBLIC_RANGES,
+    IPV6_AMT_SECOND,
+    IPV6_AS112_SECOND,
+    IPV6_AS112_THIRD,
+    IPV6_DOCUMENTATION_SECOND,
+    IPV6_DRONE_REMOTE_ID_SECOND_MAX,
+    IPV6_DRONE_REMOTE_ID_SECOND_MIN,
+    IPV6_EXPANDED_DOCUMENTATION_FIRST,
+    IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX,
+    IPV6_GLOBAL_UNICAST_FIRST_MAX,
+    IPV6_GLOBAL_UNICAST_FIRST_MIN,
+    IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST,
+    IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX,
+    IPV6_ORCHID_SECOND_MAX,
+    IPV6_ORCHID_SECOND_MIN,
+    IPV6_SIX_TO_FOUR_FIRST,
+    IPV6_SPECIAL_EXACT_LAST_MAX,
+    IPV6_SPECIAL_EXACT_LAST_MIN,
+    IPV6_SPECIAL_EXACT_SECOND,
+)
 from host_normalization import (
     normalize_idna_hostname,
     translate_idna_dot_separators,
 )
 from url_utils import normalize_trusted_hostname
 
-# Native IPv4 addresses that are not public unicast, coalesced from the IANA
-# special-purpose registry and non-unicast space. The public 192.0.0.9 and
-# 192.0.0.10 exceptions remain outside the blocked subranges.
-_IPV4_NON_PUBLIC_RANGES = (
-    (0x00000000, 0x00FFFFFF),
-    (0x0A000000, 0x0AFFFFFF),
-    (0x64400000, 0x647FFFFF),
-    (0x7F000000, 0x7FFFFFFF),
-    (0xA9FE0000, 0xA9FEFFFF),
-    (0xAC100000, 0xAC1FFFFF),
-    (0xC0000000, 0xC0000008),
-    (0xC000000B, 0xC00000FF),
-    (0xC0000200, 0xC00002FF),
-    (0xC0586300, 0xC05863FF),
-    (0xC0A80000, 0xC0A8FFFF),
-    (0xC6120000, 0xC613FFFF),
-    (0xC6336400, 0xC63364FF),
-    (0xCB007100, 0xCB0071FF),
-    (0xE0000000, 0xFFFFFFFF),
-)
 _IPV4_HEX_PREFIX = "0x"
 _IPV4_LITERAL_MAX_COMPONENTS = 4
-# Native IPv6 public unicast is limited to 2000::/3. Special-purpose allocations
-# inside that block are handled by the exception and exclusion constants below.
-_IPV6_GLOBAL_UNICAST_FIRST_MIN = 0x2000
-_IPV6_GLOBAL_UNICAST_FIRST_MAX = 0x3FFF
-_IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST = 0x2001
-_IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX = 0x01FF
-_IPV6_DOCUMENTATION_SECOND = 0x0DB8
-_IPV6_6TO4_FIRST = 0x2002
-# These are the globally reachable allocations nested inside the otherwise
-# non-global 2001::/23 IETF Protocol Assignments block:
-# - exact PCP, TURN, and DNS-SD anycast addresses 2001:1::1, 2001:1::2, and 2001:1::3;
-# - 2001:3::/32 (AMT) and 2001:4:112::/48 (AS112-v6);
-# - 2001:20::/28 (ORCHIDv2) and 2001:30::/28 (Drone Remote ID).
-_IPV6_SPECIAL_EXACT_SECOND = 0x0001
-_IPV6_SPECIAL_EXACT_LAST_MIN = 0x0001
-_IPV6_SPECIAL_EXACT_LAST_MAX = 0x0003
-_IPV6_AMT_SECOND = 0x0003
-_IPV6_AS112_SECOND = 0x0004
-_IPV6_AS112_THIRD = 0x0112
-_IPV6_ORCHID_SECOND_MIN = 0x0020
-_IPV6_ORCHID_SECOND_MAX = 0x002F
-_IPV6_DRONE_REMOTE_ID_SECOND_MIN = 0x0030
-_IPV6_DRONE_REMOTE_ID_SECOND_MAX = 0x003F
-_IPV6_EXPANDED_DOCUMENTATION_FIRST = 0x3FFF
-_IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX = 0x0FFF
 
 # Reasons produced when a concrete runtime destination cannot be approved:
 # `missing_destination` means no usable destination evidence was supplied;
@@ -316,7 +292,7 @@ def _ip_address_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> 
 
 def _ipv4_literal_is_public(ip: ipaddress.IPv4Address) -> bool:
     value = int(ip)
-    return not any(start <= value <= end for start, end in _IPV4_NON_PUBLIC_RANGES)
+    return not any(start <= value <= end for start, end in IPV4_NON_PUBLIC_RANGES)
 
 
 def _looks_like_ipv4_number_component(value: str) -> bool:
@@ -346,39 +322,39 @@ def _ipv6_word(ip: ipaddress.IPv6Address, index: int) -> int:
 def _ipv6_special_registry_exception(ip: ipaddress.IPv6Address) -> bool:
     second = _ipv6_word(ip, 1)
     if (
-        second == _IPV6_SPECIAL_EXACT_SECOND
+        second == IPV6_SPECIAL_EXACT_SECOND
         and _ipv6_word(ip, 2) == 0
         and _ipv6_word(ip, 3) == 0
         and _ipv6_word(ip, 4) == 0
         and _ipv6_word(ip, 5) == 0
         and _ipv6_word(ip, 6) == 0
-        and _IPV6_SPECIAL_EXACT_LAST_MIN <= _ipv6_word(ip, 7) <= _IPV6_SPECIAL_EXACT_LAST_MAX
+        and IPV6_SPECIAL_EXACT_LAST_MIN <= _ipv6_word(ip, 7) <= IPV6_SPECIAL_EXACT_LAST_MAX
     ):
         return True
-    if second == _IPV6_AMT_SECOND:
+    if second == IPV6_AMT_SECOND:
         return True
-    if second == _IPV6_AS112_SECOND and _ipv6_word(ip, 2) == _IPV6_AS112_THIRD:
+    if second == IPV6_AS112_SECOND and _ipv6_word(ip, 2) == IPV6_AS112_THIRD:
         return True
-    if _IPV6_ORCHID_SECOND_MIN <= second <= _IPV6_ORCHID_SECOND_MAX:
+    if IPV6_ORCHID_SECOND_MIN <= second <= IPV6_ORCHID_SECOND_MAX:
         return True
-    return _IPV6_DRONE_REMOTE_ID_SECOND_MIN <= second <= _IPV6_DRONE_REMOTE_ID_SECOND_MAX
+    return IPV6_DRONE_REMOTE_ID_SECOND_MIN <= second <= IPV6_DRONE_REMOTE_ID_SECOND_MAX
 
 
 def _ipv6_literal_is_public_unicast(ip: ipaddress.IPv6Address) -> bool:
     first = _ipv6_word(ip, 0)
     second = _ipv6_word(ip, 1)
-    if first < _IPV6_GLOBAL_UNICAST_FIRST_MIN or first > _IPV6_GLOBAL_UNICAST_FIRST_MAX:
+    if first < IPV6_GLOBAL_UNICAST_FIRST_MIN or first > IPV6_GLOBAL_UNICAST_FIRST_MAX:
         return False
     if (
-        first == _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST
-        and second <= _IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX
+        first == IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST
+        and second <= IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX
     ):
         return _ipv6_special_registry_exception(ip)
-    if first == _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST and second == _IPV6_DOCUMENTATION_SECOND:
+    if first == IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST and second == IPV6_DOCUMENTATION_SECOND:
         return False
     if (
-        first == _IPV6_EXPANDED_DOCUMENTATION_FIRST
-        and second <= _IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX
+        first == IPV6_EXPANDED_DOCUMENTATION_FIRST
+        and second <= IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX
     ):
         return False
-    return first != _IPV6_6TO4_FIRST
+    return first != IPV6_SIX_TO_FOUR_FIRST
