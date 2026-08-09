@@ -24,7 +24,11 @@ import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { withCronPassLog, type CronPassFields } from "./cron-pass-log.service";
+import {
+  withCronPassLog,
+  type CronPassFields,
+  type CronPassResult,
+} from "./cron-pass-log.service";
 
 interface SnapshotCompactionStats {
   readonly scopes: number;
@@ -64,10 +68,16 @@ const snapshotBatchRowSchema = z.object({
 });
 
 const prunedEventsRowSchema = z.object({ count: z.int() });
+const snapshotProgressRowSchema = z.object({
+  targetScopes: z.int(),
+  snapshotScopes: z.int(),
+  pendingScopes: z.int(),
+  staleScopes: z.int(),
+});
 
 const COMPACT_CRON = "compact-chat-thread-snapshots";
 
-function allScopesCte(staleCutoff: Date): SQL {
+function allScopesCte(): SQL {
   return sql`
     all_scopes AS (
       SELECT ${chatThreads.userId} AS user_id, ${agentComposes.orgId} AS org_id
@@ -84,9 +94,37 @@ function allScopesCte(staleCutoff: Date): SQL {
 
       SELECT ${chatThreadSnapshots.userId} AS user_id, ${chatThreadSnapshots.orgId} AS org_id
       FROM ${chatThreadSnapshots}
-      WHERE ${lt(chatThreadSnapshots.updatedAt, staleCutoff)}
     )
   `;
+}
+
+function scopeSnapshotLatestEventJoin(): SQL {
+  return sql`
+    all_scopes scope
+    LEFT JOIN ${chatThreadSnapshots} ${snapshot}
+      ON ${and(
+        eq(snapshot.userId, sql`scope.user_id`),
+        eq(snapshot.orgId, sql`scope.org_id`),
+      )}
+    LEFT JOIN LATERAL (
+      SELECT event.id, event.seq_id
+      FROM ${chatThreadEvents} ${event}
+      WHERE ${and(
+        eq(event.userId, sql`scope.user_id`),
+        eq(event.orgId, sql`scope.org_id`),
+      )}
+      ORDER BY ${desc(event.seqId)}
+      LIMIT 1
+    ) latest_event ON true
+  `;
+}
+
+function pendingSnapshotScopeCondition(staleCutoff: Date): SQL {
+  return sql`${or(
+    isNull(snapshot.userId),
+    sql`${snapshot.latestEventSeqId} IS DISTINCT FROM latest_event.seq_id`,
+    lt(snapshot.updatedAt, staleCutoff),
+  )}`;
 }
 
 function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
@@ -95,27 +133,8 @@ function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
       SELECT
         scope.user_id,
         scope.org_id
-      FROM all_scopes scope
-      LEFT JOIN ${chatThreadSnapshots} ${snapshot}
-        ON ${and(
-          eq(snapshot.userId, sql`scope.user_id`),
-          eq(snapshot.orgId, sql`scope.org_id`),
-        )}
-      LEFT JOIN LATERAL (
-        SELECT event.id, event.seq_id
-        FROM ${chatThreadEvents} ${event}
-        WHERE ${and(
-          eq(event.userId, sql`scope.user_id`),
-          eq(event.orgId, sql`scope.org_id`),
-        )}
-        ORDER BY ${desc(event.seqId)}
-        LIMIT 1
-      ) latest_event ON true
-      WHERE ${or(
-        isNull(snapshot.userId),
-        sql`${snapshot.latestEventSeqId} IS DISTINCT FROM latest_event.seq_id`,
-        lt(snapshot.updatedAt, staleCutoff),
-      )}
+      FROM ${scopeSnapshotLatestEventJoin()}
+      WHERE ${pendingSnapshotScopeCondition(staleCutoff)}
       ORDER BY
         ${asc(snapshot.updatedAt)} NULLS FIRST,
         latest_event.seq_id ASC NULLS FIRST,
@@ -259,7 +278,7 @@ function compactChatThreadSnapshotBatchSql(
   },
 ): SQL {
   return sql`
-    WITH ${allScopesCte(args.staleCutoff)},
+    WITH ${allScopesCte()},
     ${candidateScopesCte(args.staleCutoff, args.batchSize)},
     ${rebuiltCte(db)},
     ${upsertedCte(args.updatedAt)}
@@ -330,8 +349,9 @@ function chatThreadEventRetentionCutoff(): Date {
 }
 
 /**
- * Absolute compaction progress: how many scopes carry a snapshot and how many
- * are past the staleness target the compactor is supposed to hold.
+ * Absolute compaction progress over the same scope universe and pending
+ * predicate as the bounded pass. `pendingScopes` includes every missing,
+ * marker-lagging, or stale snapshot still left after the pass.
  */
 async function chatThreadSnapshotProgress(
   db: SnapshotRootDb,
@@ -339,16 +359,23 @@ async function chatThreadSnapshotProgress(
   const staleCutoff = new Date(
     nowDate().getTime() - CHAT_THREAD_SNAPSHOT_STALE_MS,
   );
-  const rows = await db
-    .select({
-      snapshotScopes: count(),
-      staleScopes: sql`count(*) FILTER (
-        WHERE ${lt(chatThreadSnapshots.updatedAt, staleCutoff)}
-      )`
-        .mapWith(pgInt8ToSafeIntegerDecoder)
-        .as("staleScopes"),
-    })
-    .from(chatThreadSnapshots);
+  const rows = await executeRawRows(
+    db,
+    sql`
+      WITH ${allScopesCte()}
+      SELECT
+        ${count()}::int AS "targetScopes",
+        ${count(snapshot.userId)}::int AS "snapshotScopes",
+        count(*) FILTER (
+          WHERE ${pendingSnapshotScopeCondition(staleCutoff)}
+        )::int AS "pendingScopes",
+        count(*) FILTER (
+          WHERE ${lt(snapshot.updatedAt, staleCutoff)}
+        )::int AS "staleScopes"
+      FROM ${scopeSnapshotLatestEventJoin()}
+    `,
+    snapshotProgressRowSchema,
+  );
   const progress = rows[0];
   if (progress === undefined) {
     throw new Error("chat thread snapshot progress query returned no row");
@@ -387,10 +414,14 @@ async function chatThreadEventScale(
     `,
     prunedEventsRowSchema,
   );
+  const prunable = prunableRows[0];
+  if (prunable === undefined) {
+    throw new Error("prunable thread event query returned no row");
+  }
 
   return {
     ...scale,
-    prunableThreadEvents: prunableRows[0]?.count ?? 0,
+    prunableThreadEvents: prunable.count,
   };
 }
 
@@ -429,26 +460,37 @@ async function compactChatThreadSnapshotsForAllScopes(
   };
 }
 
+const compactChatThreadSnapshotsPass$ = command(
+  async (
+    { set },
+    signal: AbortSignal,
+  ): Promise<CronPassResult<SnapshotCompactionStats>> => {
+    const db = set(writeDb$);
+    const stats = await compactChatThreadSnapshotsForAllScopes(db, signal);
+    const progress = await chatThreadSnapshotProgress(db);
+    signal.throwIfAborted();
+    const scale = await chatThreadEventScale(db);
+    signal.throwIfAborted();
+    return {
+      result: stats,
+      fields: {
+        ...progress,
+        ...scale,
+        passScopes: stats.scopes,
+        passEventsApplied: stats.eventsApplied,
+        passEventsPruned: stats.eventsPruned,
+        passRemovedDeletedAgentThreads: stats.removedDeletedAgentThreads,
+      },
+    };
+  },
+);
+
 export const compactChatThreadSnapshots$ = command(
   async ({ set }, signal: AbortSignal): Promise<SnapshotCompactionStats> => {
-    const db = set(writeDb$);
-    return await withCronPassLog(COMPACT_CRON, async () => {
-      const stats = await compactChatThreadSnapshotsForAllScopes(db, signal);
-      const progress = await chatThreadSnapshotProgress(db);
-      signal.throwIfAborted();
-      const scale = await chatThreadEventScale(db);
-      signal.throwIfAborted();
-      return {
-        result: stats,
-        fields: {
-          ...progress,
-          ...scale,
-          passScopes: stats.scopes,
-          passEventsApplied: stats.eventsApplied,
-          passEventsPruned: stats.eventsPruned,
-          passRemovedDeletedAgentThreads: stats.removedDeletedAgentThreads,
-        },
-      };
-    });
+    return await withCronPassLog(
+      COMPACT_CRON,
+      set(compactChatThreadSnapshotsPass$, signal),
+      signal,
+    );
   },
 );

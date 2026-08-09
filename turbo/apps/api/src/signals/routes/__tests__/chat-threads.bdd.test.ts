@@ -3484,18 +3484,30 @@ describe("CHAT-01 catch-up cron metrics", () => {
     expect(laggingThreads).toBeLessThanOrEqual(targetThreads);
   }, 60_000);
 
-  it("reports absolute thread event compaction progress and table scale", async () => {
-    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
-    const agent = await bdd.createAgent(owner, {
+  it("reports bounded compaction backlog and table scale", async () => {
+    const firstOwner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const firstAgent = await bdd.createAgent(firstOwner, {
       displayName: "Compaction progress agent",
     });
-    await chat.createThread(owner, {
-      agentId: agent.agentId,
-      title: "Compaction progress thread",
+    await chat.createThread(firstOwner, {
+      agentId: firstAgent.agentId,
+      title: "First compaction progress thread",
+      eventId: randomUUID(),
+    });
+    const secondOwner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const secondAgent = await bdd.createAgent(secondOwner, {
+      displayName: "Second compaction progress agent",
+    });
+    await chat.createThread(secondOwner, {
+      agentId: secondAgent.agentId,
+      title: "Second compaction progress thread",
       eventId: randomUUID(),
     });
 
     mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
+    // Two new scopes with a one-scope batch guarantee that the first pass
+    // leaves at least one real candidate behind.
+    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
     const pass = await compactChatThreadSnapshots();
 
     const event = latestCronPassFields(
@@ -3510,7 +3522,10 @@ describe("CHAT-01 catch-up cron metrics", () => {
       pass.removedDeletedAgentThreads,
     );
 
+    const targetScopes = cronPassCount(event, "targetScopes");
     const snapshotScopes = cronPassCount(event, "snapshotScopes");
+    expect(snapshotScopes).toBeLessThanOrEqual(targetScopes);
+    expect(cronPassCount(event, "pendingScopes")).toBeGreaterThanOrEqual(1);
     expect(snapshotScopes).toBeGreaterThanOrEqual(1);
     expect(cronPassCount(event, "staleScopes")).toBeLessThanOrEqual(
       snapshotScopes,
@@ -3521,5 +3536,18 @@ describe("CHAT-01 catch-up cron metrics", () => {
     expect(cronPassCount(event, "threadEventRows")).toBeGreaterThanOrEqual(1);
     expect(cronPassCount(event, "threadEventBytes")).toBeGreaterThan(0);
     cronPassCount(event, "prunableThreadEvents");
-  }, 60_000);
+
+    // A large follow-up pass drains the same candidate predicate. The newest
+    // absolute event must then show full snapshot coverage and no backlog.
+    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "10000");
+    await compactChatThreadSnapshots();
+    const drained = latestCronPassFields(
+      context,
+      "compact-chat-thread-snapshots",
+    );
+    expect(cronPassCount(drained, "pendingScopes")).toBe(0);
+    expect(cronPassCount(drained, "snapshotScopes")).toBe(
+      cronPassCount(drained, "targetScopes"),
+    );
+  }, 90_000);
 });

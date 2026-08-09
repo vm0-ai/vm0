@@ -10,6 +10,11 @@ export type CronPassFields = Readonly<
   Record<string, number | boolean | Readonly<Record<string, number>>>
 >;
 
+export interface CronPassResult<T> {
+  readonly result: T;
+  readonly fields: CronPassFields;
+}
+
 /**
  * Emits one `cron_pass` event per catch-up cron pass. The metric dashboard
  * reads only the newest event of each cron, so `fields` must describe absolute
@@ -20,13 +25,11 @@ export type CronPassFields = Readonly<
  */
 export async function withCronPassLog<T>(
   cron: string,
-  pass: () => Promise<{
-    readonly result: T;
-    readonly fields: CronPassFields;
-  }>,
+  pass: Promise<CronPassResult<T>>,
+  signal: AbortSignal,
 ): Promise<T> {
   const startedAt = now();
-  const settled = await settle(pass());
+  const settled = await settle(pass, signal);
   if (!settled.ok) {
     L.warn("cron pass", {
       type: "cron_pass",

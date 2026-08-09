@@ -21,7 +21,11 @@ import { chatSearchIndexText } from "../../lib/chat-search-bigram";
 import { optionalEnv } from "../../lib/env";
 import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { writeDb$, type Db } from "../external/db";
-import { withCronPassLog, type CronPassFields } from "./cron-pass-log.service";
+import {
+  withCronPassLog,
+  type CronPassFields,
+  type CronPassResult,
+} from "./cron-pass-log.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -241,60 +245,71 @@ async function chatEventSearchProgress(db: Db): Promise<CronPassFields> {
  * from watermark 0. Ticks are idempotent (docs upsert by event id, watermark
  * only moves forward), so overlapping runs are safe.
  */
+const projectChatEventSearchPass$ = command(
+  async (
+    { set },
+    signal: AbortSignal,
+  ): Promise<CronPassResult<ChatEventSearchProjectionStats>> => {
+    const db = set(writeDb$);
+    const laggingThreads = await db
+      .select({
+        chatThreadId: chatThreads.id,
+        userId: chatThreads.userId,
+        orgId: agentComposes.orgId,
+        agentComposeId: chatThreads.agentComposeId,
+        lastChatEventSeqId: chatThreads.lastChatEventSeqId,
+        indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
+      })
+      .from(chatThreads)
+      .innerJoin(
+        agentComposes,
+        eq(chatThreads.agentComposeId, agentComposes.id),
+      )
+      .leftJoin(
+        chatEventSearchWatermarks,
+        eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
+      )
+      .where(laggingThreadCondition())
+      .orderBy(asc(chatThreads.id))
+      .limit(chatEventSearchThreadBatchSize());
+    signal.throwIfAborted();
+
+    let indexedEvents = 0;
+    let deletedDocs = 0;
+    for (const thread of laggingThreads) {
+      const stats = await projectThread(db, thread);
+      signal.throwIfAborted();
+      indexedEvents += stats.indexedEvents;
+      deletedDocs += stats.deletedDocs;
+    }
+    const result = {
+      threads: laggingThreads.length,
+      indexedEvents,
+      deletedDocs,
+    };
+    const progress = await chatEventSearchProgress(db);
+    signal.throwIfAborted();
+    return {
+      result,
+      fields: {
+        ...progress,
+        passThreads: result.threads,
+        passIndexedEvents: indexedEvents,
+        passDeletedDocs: deletedDocs,
+      },
+    };
+  },
+);
+
 export const projectChatEventSearch$ = command(
   async (
     { set },
     signal: AbortSignal,
   ): Promise<ChatEventSearchProjectionStats> => {
-    const db = set(writeDb$);
-    return await withCronPassLog(SEARCH_PROJECTION_CRON, async () => {
-      const laggingThreads = await db
-        .select({
-          chatThreadId: chatThreads.id,
-          userId: chatThreads.userId,
-          orgId: agentComposes.orgId,
-          agentComposeId: chatThreads.agentComposeId,
-          lastChatEventSeqId: chatThreads.lastChatEventSeqId,
-          indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
-        })
-        .from(chatThreads)
-        .innerJoin(
-          agentComposes,
-          eq(chatThreads.agentComposeId, agentComposes.id),
-        )
-        .leftJoin(
-          chatEventSearchWatermarks,
-          eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-        )
-        .where(laggingThreadCondition())
-        .orderBy(asc(chatThreads.id))
-        .limit(chatEventSearchThreadBatchSize());
-      signal.throwIfAborted();
-
-      let indexedEvents = 0;
-      let deletedDocs = 0;
-      for (const thread of laggingThreads) {
-        const stats = await projectThread(db, thread);
-        signal.throwIfAborted();
-        indexedEvents += stats.indexedEvents;
-        deletedDocs += stats.deletedDocs;
-      }
-      const result = {
-        threads: laggingThreads.length,
-        indexedEvents,
-        deletedDocs,
-      };
-      const progress = await chatEventSearchProgress(db);
-      signal.throwIfAborted();
-      return {
-        result,
-        fields: {
-          ...progress,
-          passThreads: result.threads,
-          passIndexedEvents: indexedEvents,
-          passDeletedDocs: deletedDocs,
-        },
-      };
-    });
+    return await withCronPassLog(
+      SEARCH_PROJECTION_CRON,
+      set(projectChatEventSearchPass$, signal),
+      signal,
+    );
   },
 );

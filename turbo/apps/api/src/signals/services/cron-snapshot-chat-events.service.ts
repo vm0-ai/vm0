@@ -37,7 +37,11 @@ import {
   type S3Object,
 } from "../external/s3";
 import { settle } from "../utils";
-import { withCronPassLog, type CronPassFields } from "./cron-pass-log.service";
+import {
+  withCronPassLog,
+  type CronPassFields,
+  type CronPassResult,
+} from "./cron-pass-log.service";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
@@ -689,81 +693,83 @@ async function chatEventScale(db: Db): Promise<CronPassFields> {
  * guarded by the expected parent, and a lost race only leaves an orphaned
  * object behind.
  */
-export const snapshotChatEvents$ = command(
+const snapshotChatEventsPass$ = command(
   async (
     { get, set },
     signal: AbortSignal,
-  ): Promise<ChatEventSnapshotStats> => {
+  ): Promise<CronPassResult<ChatEventSnapshotStats>> => {
     const db = set(writeDb$);
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    return await withCronPassLog(SNAPSHOT_CRON, async () => {
-      const candidates = await db
-        .select({
-          chatThreadId: chatThreads.id,
-          indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
-          headId: chatEventSnapshots.id,
-          headLastSeqId: chatEventSnapshots.lastSeqId,
-          headObjectKey: chatEventSnapshots.objectKey,
-          headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-        })
-        .from(chatThreads)
-        .innerJoin(
-          chatEventSearchWatermarks,
-          eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
-        )
-        .leftJoin(
-          chatEventSnapshots,
-          and(
-            eq(chatEventSnapshots.chatThreadId, chatThreads.id),
-            eq(chatEventSnapshots.isHead, true),
-          ),
-        )
-        .where(pendingThreadCondition())
-        .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
-        .limit(chatEventSnapshotThreadBatchSize());
-      signal.throwIfAborted();
+    const candidates = await db
+      .select({
+        chatThreadId: chatThreads.id,
+        indexedSeqId: chatEventSearchWatermarks.indexedSeqId,
+        headId: chatEventSnapshots.id,
+        headLastSeqId: chatEventSnapshots.lastSeqId,
+        headObjectKey: chatEventSnapshots.objectKey,
+        headArchiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+      })
+      .from(chatThreads)
+      .innerJoin(
+        chatEventSearchWatermarks,
+        eq(chatEventSearchWatermarks.chatThreadId, chatThreads.id),
+      )
+      .leftJoin(
+        chatEventSnapshots,
+        and(
+          eq(chatEventSnapshots.chatThreadId, chatThreads.id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .where(pendingThreadCondition())
+      .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
+      .limit(chatEventSnapshotThreadBatchSize());
+    signal.throwIfAborted();
 
-      let snapshots = 0;
-      let archivedEvents = 0;
-      for (const candidate of candidates) {
-        const archived = await archiveThread(
-          get,
-          db,
-          bucket,
-          candidate,
-          signal,
-        );
-        signal.throwIfAborted();
-        if (archived !== null) {
-          snapshots += 1;
-          archivedEvents += archived;
-        }
+    let snapshots = 0;
+    let archivedEvents = 0;
+    for (const candidate of candidates) {
+      const archived = await archiveThread(get, db, bucket, candidate, signal);
+      signal.throwIfAborted();
+      if (archived !== null) {
+        snapshots += 1;
+        archivedEvents += archived;
       }
-      const r2Gc = await collectR2SnapshotGarbage(get, db, bucket, signal);
-      signal.throwIfAborted();
-      const progress = await chatEventSnapshotProgress(db);
-      signal.throwIfAborted();
-      const scale = await chatEventScale(db);
-      signal.throwIfAborted();
-      return {
-        result: {
-          snapshots,
-          archivedEvents,
-          r2ObjectsScanned: r2Gc.scanned,
-          r2ObjectsMeasured: r2Gc.measured,
-          r2ObjectsDeleted: r2Gc.deleted,
-          r2BytesMeasured: r2Gc.bytesMeasured,
-          r2BytesDeleted: r2Gc.bytesDeleted,
-          r2GcShardsScanned: r2Gc.shardsScanned,
-          r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
-        },
-        fields: {
-          ...progress,
-          ...scale,
-          passSnapshots: snapshots,
-          passArchivedEvents: archivedEvents,
-        },
-      };
-    });
+    }
+    const r2Gc = await collectR2SnapshotGarbage(get, db, bucket, signal);
+    signal.throwIfAborted();
+    const progress = await chatEventSnapshotProgress(db);
+    signal.throwIfAborted();
+    const scale = await chatEventScale(db);
+    signal.throwIfAborted();
+    return {
+      result: {
+        snapshots,
+        archivedEvents,
+        r2ObjectsScanned: r2Gc.scanned,
+        r2ObjectsMeasured: r2Gc.measured,
+        r2ObjectsDeleted: r2Gc.deleted,
+        r2BytesMeasured: r2Gc.bytesMeasured,
+        r2BytesDeleted: r2Gc.bytesDeleted,
+        r2GcShardsScanned: r2Gc.shardsScanned,
+        r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
+      },
+      fields: {
+        ...progress,
+        ...scale,
+        passSnapshots: snapshots,
+        passArchivedEvents: archivedEvents,
+      },
+    };
+  },
+);
+
+export const snapshotChatEvents$ = command(
+  async ({ set }, signal: AbortSignal): Promise<ChatEventSnapshotStats> => {
+    return await withCronPassLog(
+      SNAPSHOT_CRON,
+      set(snapshotChatEventsPass$, signal),
+      signal,
+    );
   },
 );
