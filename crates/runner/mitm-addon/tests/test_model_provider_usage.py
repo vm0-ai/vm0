@@ -159,6 +159,42 @@ class TestReportModelProviderUsage:
             "tokens.cache_creation": 2_001,
         }
 
+    def test_output_without_input_skips_unclassifiable_terminal_billing(
+        self,
+        tmp_path,
+        real_flow,
+        usage_webhook_api,
+    ):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {"tokens.output": 12}
+        proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
+        flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = str(proxy_log)
+
+        with usage_webhook_api() as webhook:
+            accepted = usage.report_model_provider_usage(flow, "run-abc-123")
+            observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+
+        assert accepted is False
+        assert observed is True
+        assert webhook.usage_events() == []
+        observations = webhook.model_usage_observation_events()
+        assert compact_observation_quantities(observations) == {"tokens.output": 12}
+        assert [observation["model"] for observation in observations] == ["gpt-5.5"]
+        [entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log)
+            if entry.get("type") == "usage_underbilling"
+        ]
+        assert entry["reason"] == "model_long_context_tier_unresolved"
+        assert entry["underbilling_class"] == "risk"
+        assert entry["run_id"] == "run-abc-123"
+        assert entry["provider"] == "gpt-5.5"
+
     def test_aggregate_buffer_keeps_base_and_long_context_items_separate(
         self,
         real_flow,
