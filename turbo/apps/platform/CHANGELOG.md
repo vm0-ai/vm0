@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.713.1](https://github.com/vm0-ai/vm0/compare/app-v0.713.0...app-v0.713.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **platform:** unify foreground auth recovery ([#25899](https://github.com/vm0-ai/vm0/issues/25899)) ([11cc612](https://github.com/vm0-ai/vm0/commit/11cc6121df522e77bbf196ebf3304686974b173c))
+
+
+### Refactoring
+
+* **platform:** remove activities list page ([#25926](https://github.com/vm0-ai/vm0/issues/25926)) ([3c74148](https://github.com/vm0-ai/vm0/commit/3c741482ff85826d17da0b84e62522b311e0825c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.533.3
+
 ## [0.713.0](https://github.com/vm0-ai/vm0/compare/app-v0.712.3...app-v0.713.0) (2026-08-09)
 
 

@@ -1,6 +1,6 @@
 [package]
 name = "vsock-test"
-version = "0.9.195"
+version = "0.9.196"
 edition.workspace = true
 
 [dependencies]

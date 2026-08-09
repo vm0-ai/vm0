@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.410.1](https://github.com/vm0-ai/vm0/compare/api-v1.410.0...api-v1.410.1) (2026-08-09)
+
+
+### Refactoring
+
+* **api:** remove catch-up cron pass metrics ([#25931](https://github.com/vm0-ai/vm0/issues/25931)) ([375f5b4](https://github.com/vm0-ai/vm0/commit/375f5b404e5cef1b6636ab3f18451931da0c29a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.533.3
+    * @vm0/db bumped to 1.181.9
+
 ## [1.410.0](https://github.com/vm0-ai/vm0/compare/api-v1.409.1...api-v1.410.0) (2026-08-09)
 
 

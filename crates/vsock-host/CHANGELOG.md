@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.77](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.76...vsock-host-v0.17.77) (2026-08-09)
+
+
+### Performance Improvements
+
+* **vsock-host:** shrink chunked write test fixtures ([#25929](https://github.com/vm0-ai/vm0/issues/25929)) ([ed1c3d4](https://github.com/vm0-ai/vm0/commit/ed1c3d49ad2a1470c078e162870e7b57ce178bd8))
+
 ## [0.17.76](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.75...vsock-host-v0.17.76) (2026-08-08)
 
 
