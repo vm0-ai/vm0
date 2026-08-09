@@ -27,10 +27,10 @@
     "@modelcontextprotocol/server-filesystem": "2026.1.14",
     "@sentry/electron": "^7.13.0",
     "@sentry/react": "^10.50.0",
-    "@tabler/icons-react": "3.44.0",
     "@vm0/api-contracts": "workspace:*",
     "ccstate": "^5.4.0",
     "ccstate-react": "^5.4.0",
+    "lucide-react": "1.30.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "update-electron-app": "3.2.0"

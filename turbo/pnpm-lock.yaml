@@ -411,9 +411,6 @@ importers:
       '@sentry/react':
         specifier: ^10.50.0
         version: 10.50.0(react@19.2.6)
-      '@tabler/icons-react':
-        specifier: 3.44.0
-        version: 3.44.0(react@19.2.6)
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
@@ -423,6 +420,9 @@ importers:
       ccstate-react:
         specifier: ^5.4.0
         version: 5.4.0(@types/react@19.2.14)(react@19.2.6)
+      lucide-react:
+        specifier: 1.30.0
+        version: 1.30.0(react@19.2.6)
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -4853,14 +4853,6 @@ packages:
         optional: true
       zod:
         optional: true
-
-  '@tabler/icons-react@3.44.0':
-    resolution: {integrity: sha512-8+rvzBbVm/1Z3sG3x7GUNAaxIKxwgz8xaMhRs23nrCnMTKRFAhEC+82zAIFeAA0seXdrAGX5HFCkaLpGK2rVHg==}
-    peerDependencies:
-      react: '>= 16'
-
-  '@tabler/icons@3.44.0':
-    resolution: {integrity: sha512-Wn0AOZG9sg0L+bjfMqq4eNhC6pQjIrk94LvvWYNYkY8KH8wC3YILRzQlrnVJc4FUeMxH/AK97QsYCX35H3LndA==}
 
   '@tailwindcss/node@4.2.2':
     resolution: {integrity: sha512-pXS+wJ2gZpVXqFaUEjojq7jzMpTGf8rU6ipJz5ovJV6PUGmlJ+jvIwGrzdHdQ80Sg+wmQxUFuoW1UAAwHNEdFA==}
@@ -15318,13 +15310,6 @@ snapshots:
     optionalDependencies:
       typescript: 6.0.3
       zod: 4.3.6
-
-  '@tabler/icons-react@3.44.0(react@19.2.6)':
-    dependencies:
-      '@tabler/icons': 3.44.0
-      react: 19.2.6
-
-  '@tabler/icons@3.44.0': {}
 
   '@tailwindcss/node@4.2.2':
     dependencies:
