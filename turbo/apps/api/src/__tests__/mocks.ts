@@ -553,14 +553,6 @@ vi.mock("@aws-sdk/client-s3", () => {
     }
   }
 
-  class GetBucketCorsCommand {
-    readonly input: unknown;
-
-    constructor(input: unknown) {
-      this.input = input;
-    }
-  }
-
   class GetObjectCommand {
     readonly input: unknown;
 
@@ -601,14 +593,6 @@ vi.mock("@aws-sdk/client-s3", () => {
     }
   }
 
-  class PutBucketCorsCommand {
-    readonly input: unknown;
-
-    constructor(input: unknown) {
-      this.input = input;
-    }
-  }
-
   class PutObjectCommand {
     readonly input: unknown;
 
@@ -641,12 +625,10 @@ vi.mock("@aws-sdk/client-s3", () => {
     CopyObjectCommand,
     CreateMultipartUploadCommand,
     DeleteObjectsCommand,
-    GetBucketCorsCommand,
     GetObjectCommand,
     HeadObjectCommand,
     ListObjectsV2Command,
     ListPartsCommand,
-    PutBucketCorsCommand,
     PutObjectCommand,
     S3Client,
     UploadPartCommand,

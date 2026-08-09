@@ -90,7 +90,6 @@ const cronProjectChatEventSearchResponseSchema = z.object({
 
 const cronSnapshotChatEventsResponseSchema = z.object({
   success: z.literal(true),
-  corsChanged: z.boolean(),
   snapshots: z.number(),
   archivedEvents: z.number(),
   r2ObjectsScanned: z.number().int().nonnegative(),
