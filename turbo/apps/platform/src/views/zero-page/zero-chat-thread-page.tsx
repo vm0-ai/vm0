@@ -3843,10 +3843,8 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
           standalonePwa && "overscroll-contain",
         )}
       >
-        {/* A query-only chat route can replace the panel for the same thread.
-            Reset hook-owned resolved values with their actual computed owner. */}
         <ChatThreadEventsMain
-          key={thread.visibleRenderedChatGroups$.id}
+          key={`messages:${thread.threadId}`}
           thread={thread}
         />
       </div>
