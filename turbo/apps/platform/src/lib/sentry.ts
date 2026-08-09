@@ -64,9 +64,8 @@ export function initSentry(): void {
       "ResizeObserver loop",
       // Clerk SDK - session cleared by Mobile Safari ITP (third-party noise)
       "Unable to authenticate the request",
-      // 401 responses thrown by accept() — fetch$/zeroClient$ already route
-      // these to clerk.redirectToSignIn(), so the ApiError rejection is an
-      // expected side effect of the in-flight redirect, not a real failure.
+      // 401 responses thrown by accept() — fetch$/zeroClient$ already run
+      // shared auth recovery, so the ApiError rejection is not actionable.
       "Not authenticated",
       "Authentication required",
       // 404 for stale agent references (deleted agents, cross-org bookmarks,

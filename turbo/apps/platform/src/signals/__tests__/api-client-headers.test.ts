@@ -327,7 +327,7 @@ describe("api client headers", () => {
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
-  it("redirects when auth recovery confirms the session is signed out", async () => {
+  it("keeps a confirmed signed-out recovery silent", async () => {
     mockSignedInUser();
     mockClerkSessionSignedOut(true);
     let requests = 0;
@@ -350,7 +350,7 @@ describe("api client headers", () => {
 
     expect(response.status).toBe(401);
     expect(requests).toBe(1);
-    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledWith();
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
 
   it("forwards the captured omby preview bypass to vm6 API requests", async () => {

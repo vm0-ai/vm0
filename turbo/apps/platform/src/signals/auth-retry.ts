@@ -15,7 +15,7 @@ import {
   withCleanup,
 } from "./utils";
 
-type ClerkLike = Pick<Clerk, "session" | "addListener" | "redirectToSignIn">;
+type ClerkLike = Pick<Clerk, "session" | "addListener">;
 
 export interface AuthRecovery {
   readonly getToken: (signal?: AbortSignal) => Promise<string | null>;
@@ -162,34 +162,22 @@ function waitForSettledClerkSession(
   return deferred.promise;
 }
 
-type AuthRefreshAttempt =
-  | { readonly status: "active"; readonly token: string | null }
-  | { readonly status: "signed-out" };
-
-async function runAuthRefresh(
+function runAuthRefresh(
   clerk: ClerkLike,
   signal: AbortSignal,
 ): Promise<string | null> {
-  const result = await retryAuthRecoveryOperation(() => {
+  return retryAuthRecoveryOperation(() => {
     return refreshClerkSession(clerk, signal);
   }, signal);
-
-  if (result.status === "signed-out") {
-    if (document.visibilityState === "visible") {
-      await clerk.redirectToSignIn();
-    }
-    return null;
-  }
-  return result.token;
 }
 
 async function refreshClerkSession(
   clerk: ClerkLike,
   signal: AbortSignal,
-): Promise<AuthRefreshAttempt> {
+): Promise<string | null> {
   const session = await waitForSettledClerkSession(clerk, signal);
   if (session === null) {
-    return { status: "signed-out" };
+    return null;
   }
 
   await session.touch({ intent: "focus" });
@@ -198,12 +186,12 @@ async function refreshClerkSession(
   // Clerk may replace or clear the session while touch is in flight.
   const refreshedSession = await waitForSettledClerkSession(clerk, signal);
   if (refreshedSession === null) {
-    return { status: "signed-out" };
+    return null;
   }
 
   const token = await refreshedSession.getToken({ skipCache: true });
   signal.throwIfAborted();
-  return { status: "active", token };
+  return token;
 }
 
 async function readCachedToken(clerk: ClerkLike): Promise<string | null> {

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearMockedAuth,
+  mockClerkSessionSignedOut,
   mockOrganization,
   mockedClerk,
   mockUser,
@@ -17,7 +18,7 @@ import {
   setAblyMessageLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
-import { setupClerk$ } from "../auth.ts";
+import { authRecovery$, setupClerk$ } from "../auth.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
@@ -305,6 +306,49 @@ describe("realtime signals", () => {
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("keeps signed-out foreground recovery silent and skips catch-up", async () => {
+    mockSignedInUser();
+    const topic = "test:signed-out-visibility";
+    const subscriber = new AbortController();
+    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const authRecovery = await context.store.get(authRecovery$);
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    context.mocks.ably.trigger(topic);
+    await waitFor(() => {
+      expect(runs).toBe(1);
+    });
+
+    mockClerkSessionSignedOut(true);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await expect(authRecovery.refreshAuth(context.signal)).resolves.toBeNull();
+
+    expect(runs).toBe(1);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+    toastError.mockRestore();
   });
 
   it("shares an in-flight foreground recovery with a concurrent 401", async () => {
