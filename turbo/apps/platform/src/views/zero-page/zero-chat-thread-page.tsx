@@ -125,6 +125,7 @@ import {
 } from "../../signals/external/feature-switch.ts";
 import {
   videoTemplateSpec,
+  videoTemplateSpecText,
   type VideoTemplateSpec,
 } from "../../signals/zero-page/video-template-spec.ts";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
@@ -7283,10 +7284,11 @@ const STRUCTURED_REFERENCE_CHIP_CLASS =
 // File chips carry their own border, so they need more breathing room from the
 // surrounding sentence than a borderless inline mention does.
 const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
-const STRUCTURED_INLINE_REFERENCE_CLASS =
-  "relative -top-px mx-0.5 inline-flex h-7 max-w-[240px] items-center " +
+const STRUCTURED_INLINE_REFERENCE_BASE_CLASS =
+  "relative -top-px mx-0.5 inline-flex h-7 items-center " +
   "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
   "font-medium text-orange-600 dark:bg-orange-400/15 dark:text-orange-300";
+const STRUCTURED_INLINE_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-[240px]`;
 const STRUCTURED_INLINE_LINK_REFERENCE_CLASS =
   `${STRUCTURED_INLINE_REFERENCE_CLASS} transition-colors ` +
   "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 " +
@@ -7294,22 +7296,15 @@ const STRUCTURED_INLINE_LINK_REFERENCE_CLASS =
   "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
 
 /**
- * Read-only echo of the parameters a sent video used. Like the composer chip,
- * it drops the model name and the trailing parameters on narrow viewports so
- * the template title keeps the room it needs.
+ * Read-only echo of the parameters a sent video used. Narrow viewports hide
+ * the spec entirely — the chip's hover title still carries it — so the
+ * template title keeps the room it needs; wide viewports show every
+ * parameter in full.
  */
 function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
   return (
-    <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
-      <span className="hidden sm:inline">{`${spec.model} · `}</span>
-      {spec.core.join(" · ")}
-      <span className="hidden sm:inline">
-        {spec.rest
-          .map((segment) => {
-            return ` · ${segment}`;
-          })
-          .join("")}
-      </span>
+    <span className="hidden shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70 sm:inline">
+      {videoTemplateSpecText(spec)}
     </span>
   );
 }
@@ -7326,11 +7321,20 @@ function UserMessageTemplateReference({
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
   const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
+  const label = `${typeLabel ?? part.template.type} · ${part.titleSnapshot}`;
   return (
     <span
       data-structured-template-reference=""
-      className={STRUCTURED_INLINE_REFERENCE_CLASS}
-      title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
+      // The spec is as wide as the chip's old fixed cap on its own, so a
+      // spec-bearing chip trades the cap for the full message width.
+      className={
+        spec === null
+          ? STRUCTURED_INLINE_REFERENCE_CLASS
+          : `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-full`
+      }
+      title={
+        spec === null ? label : `${label} · ${videoTemplateSpecText(spec)}`
+      }
     >
       <IconColorSwatch size={13} stroke={1.7} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>

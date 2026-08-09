@@ -139,8 +139,11 @@ describe("user messages", () => {
       },
     });
 
+    // The hover title repeats the spec because narrow viewports hide the
+    // inline echo.
     const reference = await screen.findByTitle(
-      `Video \u00b7 ${templateItem.title}`,
+      `Video \u00b7 ${templateItem.title} \u00b7 ` +
+        "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
     );
     // Every parameter is echoed, not only the one the user changed.
     expect(reference).toHaveTextContent(
