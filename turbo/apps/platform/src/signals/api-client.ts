@@ -10,17 +10,13 @@ import type {
   InitClientArgs,
   InitClientReturn,
 } from "@vm0/api-contracts/contracts/trpc-contract";
-import { clerk$ } from "./auth.ts";
+import { authRecovery$ } from "./auth.ts";
 import {
   resolveApiBase,
   resolveApiBaseForTarget,
   resolveOAuthApiBase,
 } from "./api-base.ts";
 import { createAuthedContractClient } from "./api-client-base.ts";
-import {
-  foregroundAuthRecovery$,
-  unauthorizedRedirectSuppressionUntil$,
-} from "./auth-retry.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
 /**
@@ -76,17 +72,11 @@ export const zeroClient$ = computed((get) => {
   return <T extends AppRouter>(contract: T, options?: ZeroClientOptions) => {
     return createAuthedContractClient(contract, {
       baseUrl: resolveApiBase(),
-      getClerk: () => {
-        return get(clerk$);
+      getAuthRecovery: () => {
+        return get(authRecovery$);
       },
       getRootSignal: () => {
         return get(rootSignal$);
-      },
-      getForegroundAuthRecovery: () => {
-        return get(foregroundAuthRecovery$);
-      },
-      getUnauthorizedRedirectSuppressionUntil: () => {
-        return get(unauthorizedRedirectSuppressionUntil$);
       },
       resolvePath: (path) => {
         if (options?.apiBase === "api") {

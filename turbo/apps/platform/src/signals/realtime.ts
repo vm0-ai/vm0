@@ -5,7 +5,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
-import { subscribeForegroundCatchUp$ } from "./auth-retry.ts";
+import {
+  requestForegroundCatchUp$,
+  subscribeForegroundCatchUp$,
+} from "./auth-retry.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import {
   createDeferredPromise,
@@ -497,9 +500,14 @@ export const setupRealtime$ = command(
       rejectPendingSubscriptions(error);
     });
 
+    await deferred.promise;
+    signal.throwIfAborted();
+
+    // Register after the initial connection so only reconnects request a
+    // foreground catch-up.
     ably.connection.on("connected", () => {
-      L.debug("reconnected, poking subscribers");
-      subscriberPokeTarget.dispatchEvent(new Event(SUBSCRIBER_POKE_EVENT));
+      L.debug("reconnected, requesting foreground catch-up");
+      set(requestForegroundCatchUp$);
     });
 
     set(
@@ -510,9 +518,6 @@ export const setupRealtime$ = command(
       },
       signal,
     );
-
-    await deferred.promise;
-    signal.throwIfAborted();
 
     const channelName = `user:${ably.auth.clientId}`;
     const channel = ably.channels.get(channelName);

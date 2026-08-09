@@ -1,14 +1,6 @@
 import { computed } from "ccstate";
 import { addCapturedPreviewBypassHeader } from "../lib/preview-bypass-cookie.ts";
-import { clerk$ } from "./auth.ts";
-import {
-  authRecoverySignal,
-  fetchFreshToken,
-  foregroundAuthRecovery$,
-  handleUnauthorizedRedirect,
-  retryAuthRecoveryOperation,
-  unauthorizedRedirectSuppressionUntil$,
-} from "./auth-retry.ts";
+import { authRecovery$ } from "./auth.ts";
 import { resolveApiBase, resolveOAuthApiBase } from "./api-base.ts";
 import { addClientHeaders } from "./client-headers.ts";
 import { reportForceUpgradeResponse } from "./force-upgrade.ts";
@@ -105,8 +97,10 @@ function rewriteRequestUrl(
 
 export const fetch$ = computed((get) => {
   return async (url: string | URL | Request, options?: RequestInit) => {
-    const clerk = await get(clerk$);
-    const initialToken = (await clerk.session?.getToken()) ?? null;
+    const authRecovery = await get(authRecovery$);
+    const requestSignal =
+      options?.signal ?? (url instanceof Request ? url.signal : undefined);
+    const initialToken = await authRecovery.getToken(requestSignal);
 
     const performFetch = async (
       token: string | null,
@@ -177,25 +171,13 @@ export const fetch$ = computed((get) => {
     let response = await performFetch(initialToken);
 
     if (response.status === 401) {
-      const recoverySignal = authRecoverySignal(
-        get(rootSignal$),
-        options?.signal ?? (url instanceof Request ? url.signal : undefined),
-      );
-      const refreshResult = await fetchFreshToken(
-        clerk,
-        recoverySignal,
-        get(foregroundAuthRecovery$),
-      );
-      if (refreshResult.status === "refreshed") {
-        response = await retryAuthRecoveryOperation(async () => {
-          return await performFetch(refreshResult.token, recoverySignal);
-        }, recoverySignal);
-      }
-      if (response.status === 401) {
-        handleUnauthorizedRedirect(
-          clerk,
-          get(unauthorizedRedirectSuppressionUntil$),
-        );
+      const rootSignal = get(rootSignal$);
+      const recoverySignal = requestSignal
+        ? AbortSignal.any([rootSignal, requestSignal])
+        : rootSignal;
+      const freshToken = await authRecovery.refreshAuth(requestSignal);
+      if (freshToken) {
+        response = await performFetch(freshToken, recoverySignal);
       }
     }
 
