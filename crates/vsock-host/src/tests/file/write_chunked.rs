@@ -65,7 +65,7 @@ impl ChunkedWriteFixture {
 
     fn spawn_write(&mut self, content: Vec<u8>, sudo: bool) -> JoinHandle<io::Result<()>> {
         self.sudo = sudo;
-        spawn_write_file(Arc::clone(&self.host), self.target_path, content, sudo)
+        spawn_write_file_with_small_chunks(Arc::clone(&self.host), self.target_path, content, sudo)
     }
 
     async fn expect_chunk(&mut self) -> WriteFileFrame {
@@ -156,7 +156,7 @@ async fn write_private_file_with_small_chunks(
     .await
 }
 
-fn spawn_write_file(
+fn spawn_write_file_with_small_chunks(
     host: Arc<VsockHost>,
     path: &'static str,
     content: Vec<u8>,
@@ -165,7 +165,7 @@ fn spawn_write_file(
     tokio::spawn(async move { write_file_with_small_chunks(&host, path, &content, sudo).await })
 }
 
-fn spawn_write_private_file(
+fn spawn_write_private_file_with_small_chunks(
     host: Arc<VsockHost>,
     path: &'static str,
     content: Vec<u8>,
@@ -590,7 +590,11 @@ async fn write_private_file_chunked_writes_final_path_without_rename() {
     let host = Arc::new(host);
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let content = vec![0xCD; chunk_limit + 100];
-    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-big.env", content);
+    let write_task = spawn_write_private_file_with_small_chunks(
+        Arc::clone(&host),
+        "/tmp/private-big.env",
+        content,
+    );
 
     let first = expect_write_file(&mut guest).await;
     assert_eq!(first.path, "/tmp/private-big.env");
@@ -828,7 +832,11 @@ async fn write_private_file_chunked_guest_failure_releases_tracker() {
     let host = Arc::new(host);
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let content = vec![0xCD; chunk_limit + 100];
-    let write_task = spawn_write_private_file(Arc::clone(&host), "/tmp/private-fail.env", content);
+    let write_task = spawn_write_private_file_with_small_chunks(
+        Arc::clone(&host),
+        "/tmp/private-fail.env",
+        content,
+    );
 
     let first = expect_write_file(&mut guest).await;
     assert_eq!(first.path, "/tmp/private-fail.env");
@@ -901,7 +909,7 @@ async fn write_private_file_chunked_cancelled_before_first_frame_write_releases_
         NormalOperationReadiness::Idle
     );
 
-    let successor = spawn_write_file(
+    let successor = super::support::spawn_write_file(
         Arc::clone(&host),
         "/tmp/private-blocked.env",
         b"replacement".to_vec(),
@@ -957,8 +965,11 @@ async fn write_private_file_chunked_unexpected_response_keeps_tracker_fail_close
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let content = ChunkedWriteFixture::two_chunk_content();
-    let write_task =
-        spawn_write_private_file(Arc::clone(&host), "/tmp/private-unexpected.env", content);
+    let write_task = spawn_write_private_file_with_small_chunks(
+        Arc::clone(&host),
+        "/tmp/private-unexpected.env",
+        content,
+    );
 
     let first = expect_write_file(&mut guest).await;
     assert_eq!(first.path, "/tmp/private-unexpected.env");
@@ -1039,13 +1050,13 @@ async fn write_file_chunked_concurrent_writes_to_same_target_use_distinct_temp_p
     let host = Arc::new(host);
     let target_path = "/tmp/shared.bin";
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
-    let write_a = spawn_write_file(
+    let write_a = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![0xAA; chunk_limit + 1],
         false,
     );
-    let write_b = spawn_write_file(
+    let write_b = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![0xBB; chunk_limit + 1],
@@ -1134,13 +1145,13 @@ async fn write_file_chunked_concurrent_failure_cleans_only_failed_temp_path() {
     let chunk_limit = ChunkedWriteFixture::chunk_limit();
     let success_marker = 0xAA;
     let failure_marker = 0xBB;
-    let successful_write = spawn_write_file(
+    let successful_write = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![success_marker; chunk_limit + 1],
         false,
     );
-    let failing_write = spawn_write_file(
+    let failing_write = spawn_write_file_with_small_chunks(
         Arc::clone(&host),
         target_path,
         vec![failure_marker; chunk_limit + 1],
