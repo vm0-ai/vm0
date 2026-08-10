@@ -99,6 +99,10 @@ fn active_input_rejects_invalid_payloads() {
         ("bad-json", br#"{"type":"active-input""#.as_slice()),
         ("bad-type", br#"{"type":"other","text":"hello"}"#.as_slice()),
         ("empty", br#"{"type":"active-input","text":""}"#.as_slice()),
+        (
+            "null-delivery-id",
+            br#"{"type":"active-input","deliveryId":null,"text":"hello"}"#.as_slice(),
+        ),
     ] {
         assert!(
             matches!(

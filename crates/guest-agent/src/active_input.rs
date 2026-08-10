@@ -5,7 +5,7 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
@@ -299,9 +299,20 @@ struct ActiveInputPayload {
     #[serde(rename = "type")]
     payload_type: String,
     // Optional until #26060 switches every Runner sender to identified delivery.
-    #[serde(rename = "deliveryId")]
+    #[serde(
+        default,
+        rename = "deliveryId",
+        deserialize_with = "deserialize_delivery_id"
+    )]
     delivery_id: Option<String>,
     text: String,
+}
+
+fn deserialize_delivery_id<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(Some)
 }
 
 /// Derives the deterministic Claude user-frame UUID for the run's initial prompt.
