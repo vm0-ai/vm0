@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   cronAggregateModelStatsContract,
-  cronAggregateUsageContract,
   cronBrowserReconcileContract,
   cronCompactChatThreadSnapshotsContract,
   cronCompactUsageEventsContract,
@@ -88,10 +87,6 @@ const expectedVercelCrons = [
   {
     path: cronRenewGoogleWorkspaceEventSubscriptionsContract.renew.path,
     schedule: "0 */12 * * *",
-  },
-  {
-    path: cronAggregateUsageContract.aggregate.path,
-    schedule: "5 0 * * *",
   },
   {
     path: cronCompactChatThreadSnapshotsContract.compact.path,

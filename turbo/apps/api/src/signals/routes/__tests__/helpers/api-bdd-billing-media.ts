@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
-import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
 import {
@@ -48,7 +47,6 @@ import { modelStatsContract, modelStatsRoutes } from "../../model-stats";
 import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { usageRoutes } from "../../usage";
 import { zeroAttributionRoutes } from "../../zero-attribution";
 import { zeroBankingRoutes } from "../../zero-banking";
 import { zeroBillingAutoRechargeRoutes } from "../../zero-billing-auto-recharge";
@@ -487,14 +485,6 @@ export function createBillingMediaApi(context: TestContext) {
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
-      );
-    },
-
-    async readUsage(actor: ApiTestUser) {
-      const client = setupApp({ context, routes: usageRoutes })(usageContract);
-      return await accept(
-        client.get({ headers: authenticate(actor), query: {} }),
-        [200],
       );
     },
 

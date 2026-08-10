@@ -2,7 +2,6 @@ import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
-import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "./routes/cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "./routes/cron-snapshot-chat-events";
@@ -39,7 +38,6 @@ import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
-import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
 import { webhooksAgentCheckpointsRoutes } from "./routes/webhooks-agent-checkpoints";
 import { webhooksAgentCompleteRoutes } from "./routes/webhooks-agent-complete";
@@ -203,7 +201,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
-  ...usageRoutes,
   ...userExportRoutes,
   ...webhooksClerkRoutes,
   ...webhooksBuiltInGenerationRoutes,
@@ -225,7 +222,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentPiTranscriptRoutes,
   ...webhooksAgentStorageRoutes,
   ...connectorsSlugCallbackRoutes,
-  ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...cronSnapshotChatEventsRoutes,

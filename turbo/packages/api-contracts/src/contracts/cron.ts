@@ -63,11 +63,6 @@ export const cronCleanupSandboxesContract = c.router({
 
 export type CronCleanupSandboxesContract = typeof cronCleanupSandboxesContract;
 
-const cronAggregateUsageResponseSchema = z.object({
-  date: z.string(),
-  aggregated: z.number(),
-});
-
 const cronProcessUsageEventsResponseSchema = z.object({
   success: z.literal(true),
   processed: z.number(),
@@ -238,19 +233,6 @@ const cronAggregateModelStatsResponseSchema = z.object({
   processedObservations: z.number().int().nonnegative(),
   updatedStats: z.number().int().nonnegative(),
   deletedObservations: z.number().int().nonnegative(),
-});
-
-export const cronAggregateUsageContract = c.router({
-  aggregate: {
-    method: "GET",
-    path: "/api/cron/aggregate-usage",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronAggregateUsageResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Aggregate daily usage cache",
-  },
 });
 
 export const cronProcessUsageEventsContract = c.router({
@@ -555,7 +537,6 @@ export const cronRefreshStoragePresignedUrlsContract = c.router({
   },
 });
 
-export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
@@ -590,7 +571,6 @@ export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
 export {
   cleanupResultSchema,
   cleanupResponseSchema,
-  cronAggregateUsageResponseSchema,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,

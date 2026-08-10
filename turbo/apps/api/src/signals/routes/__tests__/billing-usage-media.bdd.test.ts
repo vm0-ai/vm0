@@ -77,7 +77,7 @@ function pcmFormData(): FormData {
 
 describe("BILL-01: billing status and Stripe-backed actions through public API", () => {
   it("chains status, checkout, portal, invoices, redeem, and admin errors without hidden DB state", async () => {
-    const { api, admin } = testActors();
+    const { api, admin, member } = testActors();
     await completeVisibleOnboarding(admin);
 
     const initialStatus = await api.readBillingStatus(admin);
@@ -461,15 +461,9 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
 });
 
 describe("BILL-02: usage, attribution, and model stats reads", () => {
-  it("chains empty scoped usage, rankings, and attribution through visible APIs", async () => {
-    const { api, admin, member } = testActors();
+  it("chains empty usage records, rankings, and attribution through visible APIs", async () => {
+    const { api, admin } = testActors();
     await completeVisibleOnboarding(admin);
-
-    const personalUsage = await api.readUsage(admin);
-    expect(personalUsage.body.summary).toStrictEqual({
-      total_runs: 0,
-      total_run_time_ms: 0,
-    });
 
     const usageMembers = await api.readUsageMembers(admin);
     expect(usageMembers.body.members).toStrictEqual([]);

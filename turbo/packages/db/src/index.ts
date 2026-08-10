@@ -42,7 +42,6 @@ import * as usageEventHourlyRollupSchema from "./schema/usage-event-hourly-rollu
 import * as usagePackCreditGrantSchema from "./schema/usage-pack-credit-grant";
 import * as usagePackSubscriptionSchema from "./schema/usage-pack-subscription";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
-import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubChatThreadRouteSchema from "./schema/github-chat-thread-route";
@@ -186,7 +185,6 @@ export const schema = {
   ...usagePackCreditGrantSchema,
   ...usagePackSubscriptionSchema,
   ...runBuiltInAdmissionSchema,
-  ...usageDailySchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
   ...githubChatThreadRouteSchema,
