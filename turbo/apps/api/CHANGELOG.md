@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.411.5](https://github.com/vm0-ai/vm0/compare/api-v1.411.4...api-v1.411.5) (2026-08-10)
+
+
+### Bug Fixes
+
+* **connectors:** align custom run admission ([#25962](https://github.com/vm0-ai/vm0/issues/25962)) ([86148aa](https://github.com/vm0-ai/vm0/commit/86148aa2804edece8e05fc2888076bc678422ab2))
+
 ## [1.411.4](https://github.com/vm0-ai/vm0/compare/api-v1.411.3...api-v1.411.4) (2026-08-10)
 
 

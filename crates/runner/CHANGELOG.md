@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.2...runner-rs-v0.162.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** publish finalizing sandbox before completion ([#25961](https://github.com/vm0-ai/vm0/issues/25961)) ([5dd0213](https://github.com/vm0-ai/vm0/commit/5dd021336942d5407b241b8d449ae884636925ed))
+
 ## [0.162.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.1...runner-rs-v0.162.2) (2026-08-09)
 
 
