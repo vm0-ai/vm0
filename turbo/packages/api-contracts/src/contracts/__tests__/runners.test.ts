@@ -408,9 +408,37 @@ describe("connector runtime synchronization contract", () => {
       connectorRuntimeSyncResultSchema.safeParse({
         target: customTarget,
         state: "unresolved",
+        reason: "permission-bundle-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
         reason: "runtime-configuration-unavailable",
       }).success,
     ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "permission-bundle-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "runtime-configuration-unavailable",
+      }).success,
+    ).toBe(false);
     expect(
       connectorRuntimeSyncResultSchema.safeParse({
         target: builtinTarget,

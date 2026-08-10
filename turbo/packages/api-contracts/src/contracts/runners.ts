@@ -241,12 +241,14 @@ const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
   .min(1)
   .max(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX);
 
-export const connectorRuntimeCustomUnavailableReasonSchema = z.enum([
-  "connector-unavailable",
-  "grant-unavailable",
+export const connectorRuntimeCustomUnresolvedReasonSchema = z.enum([
   "permission-bundle-unavailable",
   "runtime-configuration-unavailable",
 ]);
+
+export const connectorRuntimeCustomAbsentReasonSchema = z.literal(
+  "connector-unavailable",
+);
 
 const connectorRuntimeResultBaseSchema = z.object({
   nextSyncAt: z.string().datetime({ offset: true }).optional(),
@@ -288,14 +290,14 @@ export const connectorRuntimeCustomUnresolvedResultSchema =
   connectorRuntimeResultBaseSchema.extend({
     target: connectorRuntimeCustomTargetSchema,
     state: z.literal("unresolved"),
-    reason: connectorRuntimeCustomUnavailableReasonSchema,
+    reason: connectorRuntimeCustomUnresolvedReasonSchema,
   });
 
 export const connectorRuntimeCustomAbsentResultSchema =
   connectorRuntimeResultBaseSchema.extend({
     target: connectorRuntimeCustomTargetSchema,
     state: z.literal("absent"),
-    reason: connectorRuntimeCustomUnavailableReasonSchema,
+    reason: connectorRuntimeCustomAbsentReasonSchema,
   });
 
 export const connectorRuntimeSyncResultSchema = z.union([
@@ -1249,8 +1251,11 @@ export type ConnectorRuntimeTarget = z.infer<
 export type ConnectorRuntimeTargetRegistration = z.infer<
   typeof connectorRuntimeTargetRegistrationSchema
 >;
-export type ConnectorRuntimeCustomUnavailableReason = z.infer<
-  typeof connectorRuntimeCustomUnavailableReasonSchema
+export type ConnectorRuntimeCustomUnresolvedReason = z.infer<
+  typeof connectorRuntimeCustomUnresolvedReasonSchema
+>;
+export type ConnectorRuntimeCustomAbsentReason = z.infer<
+  typeof connectorRuntimeCustomAbsentReasonSchema
 >;
 export type ConnectorRuntimeSyncResult = z.infer<
   typeof connectorRuntimeSyncResultSchema

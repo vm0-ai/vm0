@@ -1443,8 +1443,6 @@ pub enum ConnectorRuntimeSyncState {
 pub enum ConnectorRuntimeUnresolvedReason {
     #[serde(rename = "connector-unavailable")]
     Connector,
-    #[serde(rename = "grant-unavailable")]
-    Grant,
     #[serde(rename = "permission-bundle-unavailable")]
     PermissionBundle,
     #[serde(rename = "runtime-configuration-unavailable")]
@@ -1455,12 +1453,6 @@ pub enum ConnectorRuntimeUnresolvedReason {
 pub enum ConnectorRuntimeCustomAbsentReason {
     #[serde(rename = "connector-unavailable")]
     Connector,
-    #[serde(rename = "grant-unavailable")]
-    Grant,
-    #[serde(rename = "permission-bundle-unavailable")]
-    PermissionBundle,
-    #[serde(rename = "runtime-configuration-unavailable")]
-    RuntimeConfiguration,
 }
 
 #[derive(Clone, Debug, Deserialize)]
