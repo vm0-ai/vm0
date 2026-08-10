@@ -2,6 +2,7 @@ import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
 import {
+  usagePackAllocationChanges,
   usagePackAllocations,
   usagePackInvoiceFulfillments,
   usagePackSubscriptions,
@@ -25,6 +26,7 @@ const usagePackUsdSchema = z.union([
   z.literal(100),
   z.literal(200),
 ]);
+type UsagePackUsd = z.infer<typeof usagePackUsdSchema>;
 
 const seedAllocationSchema = z
   .object({
@@ -83,6 +85,7 @@ const readStateSchema = z.object({
     .nullable(),
   allocations: z.array(
     z.object({
+      id: z.string().uuid(),
       userId: z.string().nullable(),
       invitationId: z.string().nullable(),
       usagePackUsd: usagePackUsdSchema,
@@ -90,6 +93,28 @@ const readStateSchema = z.object({
       status: z.string(),
       currentPeriodStart: nullableDateSchema,
       currentPeriodEnd: nullableDateSchema,
+    }),
+  ),
+  changes: z.array(
+    z.object({
+      id: z.string().uuid(),
+      userId: z.string(),
+      kind: z.enum(["upgrade", "downgrade", "removal"]),
+      status: z.enum([
+        "previewed",
+        "applying",
+        "pending_payment",
+        "scheduled",
+        "applied",
+        "completed",
+        "failed",
+      ]),
+      sourceUsagePackUsd: usagePackUsdSchema,
+      targetUsagePackUsd: usagePackUsdSchema.nullable(),
+      immediateAmountCents: z.number().int().nonnegative().nullable(),
+      nextRecurringAmountCents: z.number().int().nonnegative().nullable(),
+      effectiveAt: nullableDateSchema,
+      stripeInvoiceId: z.string().nullable(),
     }),
   ),
   grants: z.array(
@@ -101,6 +126,12 @@ const readStateSchema = z.object({
     }),
   ),
   fulfillmentInvoiceIds: z.array(z.string()),
+  remainingCredits: z.array(
+    z.object({
+      userId: z.string(),
+      amount: z.number().int().nonnegative(),
+    }),
+  ),
   org: z
     .object({
       tier: z.string(),
@@ -199,6 +230,54 @@ function isoDate(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
+interface UsagePackRelatedStateRows {
+  readonly allocations: (typeof usagePackAllocations.$inferSelect)[];
+  readonly fulfillments: { readonly invoiceId: string }[];
+  readonly changes: (typeof usagePackAllocationChanges.$inferSelect)[];
+}
+
+async function readUsagePackRelatedStateRows(
+  db: Db,
+  usagePackSubscriptionId: string | undefined,
+): Promise<UsagePackRelatedStateRows> {
+  if (!usagePackSubscriptionId) {
+    return { allocations: [], fulfillments: [], changes: [] };
+  }
+  const [allocations, fulfillments, changes] = await Promise.all([
+    db
+      .select()
+      .from(usagePackAllocations)
+      .where(
+        eq(
+          usagePackAllocations.usagePackSubscriptionId,
+          usagePackSubscriptionId,
+        ),
+      )
+      .orderBy(asc(usagePackAllocations.id)),
+    db
+      .select({ invoiceId: usagePackInvoiceFulfillments.stripeInvoiceId })
+      .from(usagePackInvoiceFulfillments)
+      .where(
+        eq(
+          usagePackInvoiceFulfillments.usagePackSubscriptionId,
+          usagePackSubscriptionId,
+        ),
+      )
+      .orderBy(asc(usagePackInvoiceFulfillments.stripeInvoiceId)),
+    db
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(
+        eq(
+          usagePackAllocationChanges.usagePackSubscriptionId,
+          usagePackSubscriptionId,
+        ),
+      )
+      .orderBy(asc(usagePackAllocationChanges.createdAt)),
+  ]);
+  return { allocations, fulfillments, changes };
+}
+
 async function readUsagePackState(
   db: Db,
   orgId: string,
@@ -225,27 +304,8 @@ async function readUsagePackState(
         )
         .limit(1)
     : [];
-  const allocations = subscription
-    ? await db
-        .select()
-        .from(usagePackAllocations)
-        .where(
-          eq(usagePackAllocations.usagePackSubscriptionId, subscription.id),
-        )
-        .orderBy(asc(usagePackAllocations.id))
-    : [];
-  const fulfillments = subscription
-    ? await db
-        .select({ invoiceId: usagePackInvoiceFulfillments.stripeInvoiceId })
-        .from(usagePackInvoiceFulfillments)
-        .where(
-          eq(
-            usagePackInvoiceFulfillments.usagePackSubscriptionId,
-            subscription.id,
-          ),
-        )
-        .orderBy(asc(usagePackInvoiceFulfillments.stripeInvoiceId))
-    : [];
+  const { allocations, fulfillments, changes } =
+    await readUsagePackRelatedStateRows(db, subscription?.id);
   const grants = await db
     .select()
     .from(usagePackCreditGrants)
@@ -260,6 +320,13 @@ async function readUsagePackState(
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   signal.throwIfAborted();
+  const remainingCreditsByUser = new Map<string, number>();
+  for (const grant of grants) {
+    remainingCreditsByUser.set(
+      grant.userId,
+      (remainingCreditsByUser.get(grant.userId) ?? 0) + grant.remainingAmount,
+    );
+  }
 
   return {
     subscriptionCount,
@@ -276,6 +343,7 @@ async function readUsagePackState(
       : null,
     allocations: allocations.map((allocation) => {
       return {
+        id: allocation.id,
         userId: allocation.userId,
         invitationId: allocation.invitationId,
         usagePackUsd: allocation.usagePackUsd as 20 | 50 | 100 | 200,
@@ -283,6 +351,20 @@ async function readUsagePackState(
         status: allocation.status,
         currentPeriodStart: isoDate(allocation.currentPeriodStart),
         currentPeriodEnd: isoDate(allocation.currentPeriodEnd),
+      };
+    }),
+    changes: changes.map((change) => {
+      return {
+        id: change.id,
+        userId: change.userId,
+        kind: change.kind,
+        status: change.status,
+        sourceUsagePackUsd: change.sourceUsagePackUsd as UsagePackUsd,
+        targetUsagePackUsd: change.targetUsagePackUsd as UsagePackUsd | null,
+        immediateAmountCents: change.immediateAmountCents,
+        nextRecurringAmountCents: change.nextRecurringAmountCents,
+        effectiveAt: isoDate(change.effectiveAt),
+        stripeInvoiceId: change.stripeInvoiceId,
       };
     }),
     grants: grants.map((grant) => {
@@ -295,6 +377,9 @@ async function readUsagePackState(
     }),
     fulfillmentInvoiceIds: fulfillments.map((row) => {
       return row.invoiceId;
+    }),
+    remainingCredits: [...remainingCreditsByUser].map(([userId, amount]) => {
+      return { userId, amount };
     }),
     org: org
       ? {

@@ -184,6 +184,102 @@ const usagePackCheckoutRequestSchema = z.object({
   adAttribution: adAttributionMetadataSchema.optional(),
 });
 
+const usagePackChangeStatusSchema = z.enum([
+  "previewed",
+  "applying",
+  "pending_payment",
+  "scheduled",
+  "applied",
+]);
+
+const usagePackPendingChangeSchema = z.object({
+  id: z.uuid(),
+  kind: z.enum(["upgrade", "downgrade", "removal"]),
+  status: usagePackChangeStatusSchema,
+  targetUsagePackUsd: usagePackUsdSchema.nullable(),
+  effectiveAt: z.iso.datetime().nullable(),
+});
+
+const managedUsagePackAllocationSchema = z.object({
+  id: z.uuid(),
+  memberId: z.string().min(1),
+  usagePackUsd: usagePackUsdSchema,
+  currentPeriodEnd: z.iso.datetime().nullable(),
+  pendingChange: usagePackPendingChangeSchema.nullable(),
+});
+
+const usagePackManagementResponseSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  currentPeriodEnd: z.iso.datetime().nullable(),
+  allocations: z.array(managedUsagePackAllocationSchema),
+});
+
+const usagePackChangePreviewRequestSchema = z.object({
+  memberId: z.string().min(1),
+  targetUsagePackUsd: usagePackUsdSchema,
+});
+
+const usagePackChangePreviewResponseSchema = z.object({
+  changeId: z.uuid(),
+  kind: z.enum(["upgrade", "downgrade"]),
+  sourceUsagePackUsd: usagePackUsdSchema,
+  targetUsagePackUsd: usagePackUsdSchema,
+  immediateAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  effectiveAt: z.iso.datetime().nullable(),
+  prorationDate: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+const usagePackChangeConfirmResponseSchema = z.object({
+  status: z.enum(["processing", "pending_payment", "scheduled", "completed"]),
+  effectiveAt: z.iso.datetime().nullable(),
+  hostedInvoiceUrl: z.string().url().nullable(),
+});
+
+const usagePackSubscriptionChangePreviewRequestSchema = z.object({
+  targetTier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+});
+
+const usagePackSubscriptionChangePreviewResponseSchema = z.object({
+  changeId: z.uuid(),
+  sourceTier: z.enum(["pro", "team"]),
+  targetTier: z.enum(["pro", "team"]),
+  immediateAmountCents: z.number().int().nonnegative(),
+  immediateCreditGrant: z
+    .object({
+      purchasedCredits: z.number().int().nonnegative(),
+      bonusCredits: z.number().int().nonnegative(),
+      totalCredits: z.number().int().nonnegative(),
+      expiresAt: z.iso.datetime().optional(),
+    })
+    .optional(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  effectiveAt: z.iso.datetime(),
+  prorationDate: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+const usagePackSubscriptionChangeConfirmRequestSchema = z.object({
+  changeId: z.uuid(),
+});
+
+export type UsagePackManagementResponse = z.infer<
+  typeof usagePackManagementResponseSchema
+>;
+export type UsagePackChangePreviewResponse = z.infer<
+  typeof usagePackChangePreviewResponseSchema
+>;
+export type UsagePackChangeConfirmResponse = z.infer<
+  typeof usagePackChangeConfirmResponseSchema
+>;
+export type UsagePackSubscriptionChangePreviewResponse = z.infer<
+  typeof usagePackSubscriptionChangePreviewResponseSchema
+>;
+
 const checkoutCompleteRequestSchema = z.object({
   sessionId: z.string().min(1),
 });
@@ -377,6 +473,95 @@ export const zeroBillingUsagePackCatalogContract = c.router({
 
 export type ZeroBillingUsagePackCatalogContract =
   typeof zeroBillingUsagePackCatalogContract;
+
+export const zeroBillingUsagePackManagementContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/billing/usage-pack-subscription",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackManagementResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get current member usage pack allocations",
+  },
+  previewChange: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-subscription/changes/preview",
+    headers: authHeadersSchema,
+    body: usagePackChangePreviewRequestSchema,
+    responses: {
+      200: usagePackChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a member usage pack change",
+  },
+  confirmChange: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-subscription/changes/:changeId/confirm",
+    pathParams: z.object({ changeId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: usagePackChangeConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a previewed member usage pack change",
+  },
+  previewSubscriptionChange: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-subscription/subscription-change/preview",
+    headers: authHeadersSchema,
+    body: usagePackSubscriptionChangePreviewRequestSchema,
+    responses: {
+      200: usagePackSubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview an existing usage pack subscription change",
+  },
+  confirmSubscriptionChange: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-subscription/subscription-change/confirm",
+    headers: authHeadersSchema,
+    body: usagePackSubscriptionChangeConfirmRequestSchema,
+    responses: {
+      200: usagePackChangeConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Apply an existing usage pack subscription change in place",
+  },
+});
+
+export type ZeroBillingUsagePackManagementContract =
+  typeof zeroBillingUsagePackManagementContract;
 
 /**
  * Zero contract for POST /api/zero/billing/concurrency-checkout

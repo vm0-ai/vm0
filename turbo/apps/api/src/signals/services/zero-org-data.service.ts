@@ -26,8 +26,13 @@ import {
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { now, nowDate } from "../../lib/time";
-import { settle } from "../utils";
+import { onRejection, settle } from "../utils";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
+import {
+  cancelUsagePackMemberRemovalReservation,
+  reserveUsagePackMemberRemoval,
+  scheduleUsagePackMemberRemoval,
+} from "./usage-pack-allocation-change.service";
 
 const clerkOrgIdentitySchema = z.object({
   name: z.string().nullable().optional(),
@@ -276,6 +281,25 @@ export const zeroOrgDetail$ = command(
   },
 );
 
+async function commitOrgMemberRemoval(
+  db: Db,
+  args: { readonly orgId: string; readonly userId: string },
+  reservationId: string | null,
+  deleteMembership: () => Promise<void>,
+): Promise<void> {
+  // Once Clerk accepts the deletion, billing and resource cleanup must finish
+  // even if the originating request disconnects.
+  const commitSignal = new AbortController().signal;
+  await onRejection(deleteMembership(), async () => {
+    await cancelUsagePackMemberRemovalReservation(db, reservationId);
+  });
+  commitSignal.throwIfAborted();
+  await scheduleUsagePackMemberRemoval(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+  await cleanupOrgMemberResources(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+}
+
 export const leaveZeroOrg$ = command(
   async (
     { get, set },
@@ -287,13 +311,22 @@ export const leaveZeroOrg$ = command(
     }
 
     const client = get(clerk$);
-    await client.organizations.deleteOrganizationMembership({
-      organizationId: args.orgId,
-      userId: args.userId,
-    });
+    const writeDb = set(writeDb$);
+    const reservationId = await reserveUsagePackMemberRemoval(
+      writeDb,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+      },
+      signal,
+    );
     signal.throwIfAborted();
-
-    await cleanupOrgMemberResources(set(writeDb$), args, signal);
+    await commitOrgMemberRemoval(writeDb, args, reservationId, async () => {
+      await client.organizations.deleteOrganizationMembership({
+        organizationId: args.orgId,
+        userId: args.userId,
+      });
+    });
     signal.throwIfAborted();
 
     return { message: "Left org" };
@@ -338,16 +371,26 @@ export const removeZeroOrgMember$ = command(
       return notFound("Resource not found");
     }
 
-    await client.organizations.deleteOrganizationMembership({
-      organizationId: args.orgId,
-      userId: target.id,
-    });
-    signal.throwIfAborted();
-
-    await cleanupOrgMemberResources(
-      set(writeDb$),
-      { orgId: args.orgId, userId: target.id },
+    const writeDb = set(writeDb$);
+    const reservationId = await reserveUsagePackMemberRemoval(
+      writeDb,
+      {
+        orgId: args.orgId,
+        userId: target.id,
+      },
       signal,
+    );
+    signal.throwIfAborted();
+    await commitOrgMemberRemoval(
+      writeDb,
+      { orgId: args.orgId, userId: target.id },
+      reservationId,
+      async () => {
+        await client.organizations.deleteOrganizationMembership({
+          organizationId: args.orgId,
+          userId: target.id,
+        });
+      },
     );
     signal.throwIfAborted();
 

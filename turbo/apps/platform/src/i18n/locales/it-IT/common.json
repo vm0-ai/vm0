@@ -809,6 +809,7 @@
     "common": {
       "back": "Indietro",
       "cancel": "Annulla",
+      "confirm": "Conferma",
       "credits": "crediti",
       "manage": "Gestisci",
       "redirecting": "Reindirizzamento...",
@@ -920,10 +921,9 @@
         "communitySupport": "Supporto comunitario",
         "emailSupport": "Supporto via e-mail",
         "existingCredits": "Solo crediti gratuiti esistenti",
-        "monthlyCredits": "{{value}} crediti/mese",
         "oneConcurrentRun": "1 esecuzione simultanea",
-        "payAsYouGo": "Poi paghi in base al consumo",
         "prioritySupport": "Supporto prioritario",
+        "sharedAndPrivateAgents": "7 agent condivisi, agent privati illimitati",
         "tenConcurrentRuns": "10 esecuzioni simultanee",
         "twoConcurrentRuns": "2 esecuzioni simultanee",
         "unlimitedAgents": "Agenti totali illimitati",
@@ -949,7 +949,7 @@
       "popular": "Popolare",
       "pricePerMonth": "{{price}}/mese",
       "pro": {
-        "description": "Più potenza e collaborazione perfetta per il tuo team.",
+        "description": "Più crediti e concorrenza per i team che eseguono agenti IA ogni giorno.",
         "name": "Pro"
       },
       "renews": "Rinnova {{date}}",
@@ -957,13 +957,13 @@
       "sectionTitle": "Piano",
       "selectedPlan": "il piano selezionato",
       "team": {
-        "description": "Scala velocemente con zero attriti e massima flessibilità.",
+        "description": "Spazio per un team di dipendenti IA: molti crediti e 10 agent in esecuzione contemporaneamente.",
         "name": "Team"
       },
       "upgrade": "Aggiorna",
       "upgradeTo": "Passa a {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} crediti bonus",
+        "bonusCredits": "Crediti bonus",
         "changePlan": "Cambia piano",
         "choosePlan": "Scegli un piano",
         "choosePlanDescription": "Scegli prima il piano dell’area di lavoro. I pacchetti dei membri vengono configurati dopo.",
@@ -972,19 +972,35 @@
         "currentMember": "Membro attuale",
         "description": "Scegli un pacchetto di utilizzo mensile per ogni membro.",
         "discountBonusCredits": "Crediti bonus dallo sconto",
+        "existingPackagesUnchanged": "I pacchetti esistenti dei membri restano invariati.",
+        "management": {
+          "comparison": "Confronto tra abbonamento attuale e nuovo",
+          "current": "Attuale",
+          "downgradeDescription": "Il pacchetto inferiore inizia alla prossima data di fatturazione. I crediti esistenti restano disponibili fino alla scadenza.",
+          "downgradesToDate": "Passa a {{package}} il {{date}}.",
+          "downgradesToPeriod": "Passa a {{package}} alla prossima data di fatturazione.",
+          "immediateAmount": "Da pagare ora",
+          "immediateCredits": "Crediti aggiunti dopo il pagamento",
+          "new": "Nuovo",
+          "processing": "Modifica in elaborazione",
+          "reviewDescription": "Controlla il prezzo dell’abbonamento qui sotto. Confermando, l’importo dovuto verrà addebitato sul metodo di pagamento salvato.",
+          "reviewTitle": "Rivedi modifica del pacchetto",
+          "scheduledFor": "Programmato per il {{date}}"
+        },
         "memberExclusive": "Ogni pacchetto appartiene a un membro e non può essere condiviso. Quando un pacchetto si esaurisce, l’utilizzo torna ai crediti a consumo. In seguito puoi passare a un nuovo pacchetto.",
         "memberPackages": "Pacchetti dei membri",
         "memberUsage": "Utilizzo del membro",
-        "memberUsageTotal": "Totale pacchetti mensili",
         "minimumPackageBreakdown": "Piano da {{base}} + pacchetto membro obbligatorio da {{package}}",
         "monthlyTotal": "Totale mensile",
         "orderSummary": "Riepilogo dell’ordine",
         "packagesStep": "Pacchetti",
         "packOption": "{{price}} · {{credits}} crediti · {{discount}}% di sconto",
+        "planChangeError": "Impossibile preparare la modifica dell’abbonamento. Riprova.",
         "planStep": "Piano",
+        "purchasedCredits": "Crediti acquistati",
         "purchaseSteps": "Passaggi di acquisto",
         "selectedPlan": "Piano selezionato",
-        "selectPlan": "Seleziona {{plan}}",
+        "selectPlan": "Inizia con {{plan}}",
         "selectUsage": "Utilizzo per {{name}}",
         "startingAt": "A partire da",
         "totalCredits": "Crediti totali"
@@ -1017,7 +1033,8 @@
       "planRestored": "Piano ripristinato. Il tuo abbonamento si rinnoverà normalmente.",
       "preparingReceiptDownload": "Preparazione download ricevuta...",
       "receiptDownloadFailed": "Impossibile scaricare le ricevute",
-      "receiptsDownloaded": "Ricevute scaricate"
+      "receiptsDownloaded": "Ricevute scaricate",
+      "subscriptionChangeConfirmed": "La modifica dell'abbonamento è stata confermata."
     },
     "usage": {
       "added": "Aggiunto {{date}}",

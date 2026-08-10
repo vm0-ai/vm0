@@ -4,6 +4,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
+  zeroBillingUsagePackManagementContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -27,6 +28,10 @@ import {
   getStoredAdAttributionMetadata,
 } from "../bootstrap/ad-attribution.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
+import {
+  setUsagePackSubscriptionChangePreview$,
+  usagePackSubscriptionChangePreview$,
+} from "./settings/usage-pack-pricing-state.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -207,6 +212,7 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
 // ---------------------------------------------------------------------------
 
 const billingReload$ = state(0);
+const usagePackManagementReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
 const internalRestoreDialogOpen$ = state(false);
 const internalPendingEnabled$ = state<boolean | null>(null);
@@ -245,7 +251,6 @@ export const concurrencyPurchaseDialogOpen$ = computed((get) => {
 export const concurrencyConfirmDialog$ = computed((get) => {
   return get(internalConcurrencyConfirmDialog$);
 });
-
 export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
 });
@@ -333,6 +338,14 @@ export const usagePackCatalogAsync$ = computed(async (get) => {
   return result.body.usagePacks;
 });
 
+export const usagePackManagementAsync$ = computed(async (get) => {
+  get(usagePackManagementReload$);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingUsagePackManagementContract);
+  const result = await accept(client.get(), [200, 404]);
+  return result.status === 200 ? result.body : null;
+});
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -341,6 +354,12 @@ export const usagePackCatalogAsync$ = computed(async (get) => {
 export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => {
     return x + 1;
+  });
+});
+
+const reloadUsagePackManagement$ = command(({ set }) => {
+  set(usagePackManagementReload$, (value) => {
+    return value + 1;
   });
 });
 
@@ -410,6 +429,7 @@ export const handleBillingRedirect$ = command(({ get, set }) => {
 
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
   set(reloadBillingStatus$);
+  set(reloadUsagePackManagement$);
   set(reloadUsageRecords$);
   return false;
 });
@@ -529,6 +549,65 @@ export const startUsagePackCheckout$ = command(
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const previewUsagePackSubscriptionChange$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackManagementContract);
+    const preview = await accept(
+      client.previewSubscriptionChange({
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackSubscriptionChangePreview$, preview.body);
+    return preview.body;
+  },
+);
+
+export const closeUsagePackSubscriptionChangePreview$ = command(({ set }) => {
+  set(setUsagePackSubscriptionChangePreview$, null);
+});
+
+export const confirmUsagePackSubscriptionChange$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const preview = get(usagePackSubscriptionChangePreview$);
+    if (!preview) {
+      throw new Error("Usage pack subscription change preview is not open");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackManagementContract);
+    const result = await accept(
+      client.confirmSubscriptionChange({
+        body: { changeId: preview.changeId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
+    set(setUsagePackSubscriptionChangePreview$, null);
+    set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
+    return result.body;
   },
 );
 

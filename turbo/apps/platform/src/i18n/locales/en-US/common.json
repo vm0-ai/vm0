@@ -790,6 +790,7 @@
     "common": {
       "back": "Back",
       "cancel": "Cancel",
+      "confirm": "Confirm",
       "credits": "credits",
       "manage": "Manage",
       "redirecting": "Redirecting...",
@@ -899,10 +900,9 @@
         "communitySupport": "Community support",
         "emailSupport": "Email support",
         "existingCredits": "Existing free credits only",
-        "monthlyCredits": "{{value}} credits / month",
         "oneConcurrentRun": "1 concurrent run",
-        "payAsYouGo": "Pay as you go after that",
         "prioritySupport": "Priority support",
+        "sharedAndPrivateAgents": "7 shared agents, unlimited private",
         "tenConcurrentRuns": "10 concurrent runs",
         "twoConcurrentRuns": "2 concurrent runs",
         "unlimitedAgents": "Unlimited total agents",
@@ -928,7 +928,7 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/month",
       "pro": {
-        "description": "More power and seamless collaboration for your team.",
+        "description": "More credits and concurrency for teams running AI agents every day.",
         "name": "Pro"
       },
       "renews": "Renews {{date}}",
@@ -936,13 +936,13 @@
       "sectionTitle": "Plan",
       "selectedPlan": "the selected plan",
       "team": {
-        "description": "Scale fast with zero friction and full flexibility.",
+        "description": "Room for a team of AI employees: high credit volume and 10 agents running at once.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
       "upgradeTo": "Upgrade to {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} bonus credits",
+        "bonusCredits": "Bonus credits",
         "changePlan": "Change plan",
         "choosePlan": "Choose a plan",
         "choosePlanDescription": "Choose the workspace plan first. Member packages are configured next.",
@@ -951,19 +951,35 @@
         "currentMember": "Current member",
         "description": "Choose a monthly usage pack for every member.",
         "discountBonusCredits": "Bonus credits from discount",
+        "existingPackagesUnchanged": "Existing member packages stay unchanged.",
+        "management": {
+          "comparison": "Current and new subscription comparison",
+          "current": "Current",
+          "downgradeDescription": "The lower package starts at the next billing date. Existing credits remain available until they expire.",
+          "downgradesToDate": "Downgrades to {{package}} on {{date}}.",
+          "downgradesToPeriod": "Downgrades to {{package}} at the next billing date.",
+          "immediateAmount": "Due now",
+          "immediateCredits": "Credits added after payment",
+          "new": "New",
+          "processing": "Change is processing",
+          "reviewDescription": "Review the subscription price below. Confirming charges the amount due with your saved payment method.",
+          "reviewTitle": "Review package change",
+          "scheduledFor": "Scheduled for {{date}}"
+        },
         "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
-        "memberUsageTotal": "Monthly pack total",
         "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
         "monthlyTotal": "Monthly total",
         "orderSummary": "Order summary",
         "packagesStep": "Packages",
         "packOption": "{{price}} · {{credits}} credits · {{discount}}% off",
+        "planChangeError": "Could not prepare the subscription change. Try again.",
         "planStep": "Plan",
+        "purchasedCredits": "Purchased credits",
         "purchaseSteps": "Purchase steps",
         "selectedPlan": "Selected plan",
-        "selectPlan": "Select {{plan}}",
+        "selectPlan": "Start with {{plan}}",
         "selectUsage": "Usage for {{name}}",
         "startingAt": "Starting at",
         "totalCredits": "Total credits"
@@ -996,7 +1012,8 @@
       "planRestored": "Plan restored. Your subscription will renew normally.",
       "preparingReceiptDownload": "Preparing receipt download...",
       "receiptDownloadFailed": "Failed to download receipts",
-      "receiptsDownloaded": "Receipts downloaded"
+      "receiptsDownloaded": "Receipts downloaded",
+      "subscriptionChangeConfirmed": "Subscription change confirmed."
     },
     "usage": {
       "added": "Added {{date}}",

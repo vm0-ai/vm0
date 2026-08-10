@@ -70,6 +70,7 @@ export interface StripeSubscription {
   readonly default_payment_method?: StripeRef;
   readonly latest_invoice: string | StripeInvoice | null;
   readonly pending_update?: {
+    readonly expires_at: number;
     readonly subscription_items?: readonly StripeSubscriptionItem[] | null;
   } | null;
   readonly items: { readonly data: readonly StripeSubscriptionItem[] };
@@ -118,10 +119,29 @@ export interface StripeSubscriptionScheduleUpdateParams {
   readonly phases?: StripeSchedulePhaseParam[];
 }
 
+export interface StripeRequestOptions {
+  readonly idempotencyKey?: string;
+}
+
+export interface StripeSubscriptionUpdateItemParam {
+  readonly id?: string;
+  readonly price?: string;
+  readonly quantity?: number;
+  readonly deleted?: boolean;
+}
+
 export interface StripeSubscriptionUpdateParams {
   readonly cancel_at?: number | null;
   readonly cancel_at_period_end?: boolean;
   readonly metadata?: StripeMetadataParam;
+  readonly items?: StripeSubscriptionUpdateItemParam[];
+  readonly payment_behavior?:
+    | "allow_incomplete"
+    | "error_if_incomplete"
+    | "pending_if_incomplete";
+  readonly proration_behavior?: "always_invoice" | "create_prorations" | "none";
+  readonly proration_date?: number;
+  readonly expand?: string[];
 }
 
 export interface StripeCustomer {
@@ -163,7 +183,7 @@ export interface StripePaymentIntent {
 
 export interface StripeInvoiceLine {
   readonly id?: string;
-  readonly amount?: number | null;
+  readonly amount: number;
   readonly subtotal?: number | null;
   readonly quantity?: number | null;
   readonly price?: { readonly id: string } | null;
@@ -173,6 +193,16 @@ export interface StripeInvoiceLine {
     } | null;
   } | null;
   readonly proration?: boolean;
+  readonly taxes?:
+    | readonly {
+        readonly amount: number;
+        readonly tax_behavior?:
+          | "exclusive"
+          | "inclusive"
+          | "unspecified"
+          | null;
+      }[]
+    | null;
   readonly period: { readonly start?: number; readonly end: number };
   readonly parent: {
     readonly type: "subscription_item_details" | "invoice_item_details";
@@ -196,6 +226,10 @@ export interface StripeInvoice {
   readonly hosted_invoice_url?: string | null;
   readonly customer: StripeRef;
   readonly metadata: Record<string, string> | null;
+  readonly amount_due: number;
+  readonly currency: string;
+  readonly status: "draft" | "open" | "paid" | "uncollectible" | "void" | null;
+  readonly paid?: boolean;
   readonly subtotal?: number | null;
   readonly lines: { readonly data: readonly StripeInvoiceLine[] };
   readonly parent: {
@@ -284,6 +318,7 @@ export interface StripeSubscriptionsApi {
   update(
     id: string,
     params: StripeSubscriptionUpdateParams,
+    options?: StripeRequestOptions,
   ): Promise<StripeSubscription>;
   list(params: {
     customer?: string;
@@ -299,12 +334,16 @@ export interface StripeSubscriptionsApi {
 
 export interface StripeSubscriptionSchedulesApi {
   retrieve(id: string): Promise<StripeSubscriptionSchedule>;
-  create(params: {
-    from_subscription: string;
-  }): Promise<StripeSubscriptionSchedule>;
+  create(
+    params: {
+      from_subscription: string;
+    },
+    options?: StripeRequestOptions,
+  ): Promise<StripeSubscriptionSchedule>;
   update(
     id: string,
     params: StripeSubscriptionScheduleUpdateParams,
+    options?: StripeRequestOptions,
   ): Promise<StripeSubscriptionSchedule>;
   release(id: string): Promise<StripeSubscriptionSchedule>;
 }
@@ -347,6 +386,29 @@ export interface StripeInvoicesApi {
   }): Promise<StripeInvoice>;
   finalizeInvoice(id: string): Promise<StripeInvoice>;
   pay(id: string): Promise<StripeInvoice>;
+  retrieve(id: string): Promise<StripeInvoice>;
+  createPreview(
+    params: StripeInvoiceCreatePreviewParams,
+  ): Promise<StripeInvoice>;
+  voidInvoice(
+    id: string,
+    params?: Record<string, never>,
+    options?: StripeRequestOptions,
+  ): Promise<StripeInvoice>;
+}
+
+export interface StripeInvoiceCreatePreviewParams {
+  readonly customer?: string;
+  readonly subscription?: string;
+  readonly preview_mode: "next" | "recurring";
+  readonly subscription_details: {
+    readonly items: StripeSubscriptionUpdateItemParam[];
+    readonly proration_behavior?:
+      | "always_invoice"
+      | "create_prorations"
+      | "none";
+    readonly proration_date?: number;
+  };
 }
 
 export interface StripeInvoiceItemsApi {

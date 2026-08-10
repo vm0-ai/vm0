@@ -809,6 +809,7 @@
     "common": {
       "back": "Retour",
       "cancel": "Annuler",
+      "confirm": "Confirmer",
       "credits": "crédits",
       "manage": "Gérer",
       "redirecting": "Redirection...",
@@ -920,10 +921,9 @@
         "communitySupport": "Support communautaire",
         "emailSupport": "Support par e-mail",
         "existingCredits": "Crédits gratuits existants uniquement",
-        "monthlyCredits": "{{value}} crédits / mois",
         "oneConcurrentRun": "1 exécution simultanée",
-        "payAsYouGo": "Paiement à l'utilisation après cela",
         "prioritySupport": "Support prioritaire",
+        "sharedAndPrivateAgents": "7 agents partagés, agents privés illimités",
         "tenConcurrentRuns": "10 exécutions simultanées",
         "twoConcurrentRuns": "2 exécutions simultanées",
         "unlimitedAgents": "Agents totaux illimités",
@@ -949,7 +949,7 @@
       "popular": "Populaire",
       "pricePerMonth": "{{price}}/mois",
       "pro": {
-        "description": "Plus de puissance et une collaboration fluide pour votre équipe.",
+        "description": "Plus de crédits et de simultanéité pour les équipes qui utilisent des agents IA au quotidien.",
         "name": "Pro"
       },
       "renews": "Renouvelle le {{date}}",
@@ -957,13 +957,13 @@
       "sectionTitle": "Forfait",
       "selectedPlan": "le forfait sélectionné",
       "team": {
-        "description": "Montez en puissance rapidement sans friction et avec une flexibilité totale.",
+        "description": "De la place pour une équipe d’employés IA : un volume élevé de crédits et 10 agents exécutés simultanément.",
         "name": "Team"
       },
       "upgrade": "Mettre à niveau",
       "upgradeTo": "Passer à {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} crédits bonus",
+        "bonusCredits": "Crédits bonus",
         "changePlan": "Changer de forfait",
         "choosePlan": "Choisissez un forfait",
         "choosePlanDescription": "Choisissez d’abord le forfait de l’espace de travail. Les forfaits des membres sont configurés ensuite.",
@@ -972,19 +972,35 @@
         "currentMember": "Membre actuel",
         "description": "Choisissez un forfait d’utilisation mensuel pour chaque membre.",
         "discountBonusCredits": "Crédits bonus liés à la remise",
+        "existingPackagesUnchanged": "Les forfaits actuels des membres restent inchangés.",
+        "management": {
+          "comparison": "Comparaison de l’abonnement actuel et du nouveau",
+          "current": "Actuel",
+          "downgradeDescription": "Le forfait inférieur commence à la prochaine date de facturation. Les crédits existants restent disponibles jusqu’à leur expiration.",
+          "downgradesToDate": "Passe à {{package}} le {{date}}.",
+          "downgradesToPeriod": "Passe à {{package}} à la prochaine date de facturation.",
+          "immediateAmount": "À payer maintenant",
+          "immediateCredits": "Crédits ajoutés après le paiement",
+          "new": "Nouveau",
+          "processing": "Modification en cours",
+          "reviewDescription": "Vérifiez le prix de l’abonnement ci-dessous. La confirmation débitera le montant dû via votre moyen de paiement enregistré.",
+          "reviewTitle": "Vérifier la modification du forfait",
+          "scheduledFor": "Prévu pour le {{date}}"
+        },
         "memberExclusive": "Chaque forfait appartient à un membre et ne peut pas être partagé. Lorsqu’un forfait est épuisé, l’utilisation revient aux crédits à l’usage. Vous pourrez passer à un nouveau forfait ultérieurement.",
         "memberPackages": "Forfaits des membres",
         "memberUsage": "Utilisation du membre",
-        "memberUsageTotal": "Total des forfaits mensuels",
         "minimumPackageBreakdown": "Forfait de {{base}} + forfait membre obligatoire de {{package}}",
         "monthlyTotal": "Total mensuel",
         "orderSummary": "Récapitulatif de la commande",
         "packagesStep": "Forfaits",
         "packOption": "{{price}} · {{credits}} crédits · {{discount}} % de réduction",
+        "planChangeError": "Impossible de préparer la modification de l’abonnement. Réessayez.",
         "planStep": "Forfait",
+        "purchasedCredits": "Crédits achetés",
         "purchaseSteps": "Étapes d’achat",
         "selectedPlan": "Forfait sélectionné",
-        "selectPlan": "Sélectionner {{plan}}",
+        "selectPlan": "Commencer avec {{plan}}",
         "selectUsage": "Utilisation de {{name}}",
         "startingAt": "À partir de",
         "totalCredits": "Crédits totaux"
@@ -1017,7 +1033,8 @@
       "planRestored": "Forfait restauré. Votre abonnement se renouvellera normalement.",
       "preparingReceiptDownload": "Préparation du téléchargement du reçu...",
       "receiptDownloadFailed": "Échec du téléchargement des reçus",
-      "receiptsDownloaded": "Reçus téléchargés"
+      "receiptsDownloaded": "Reçus téléchargés",
+      "subscriptionChangeConfirmed": "La modification de l’abonnement a été confirmée."
     },
     "usage": {
       "added": "Ajouté {{date}}",

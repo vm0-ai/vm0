@@ -790,6 +790,7 @@
     "common": {
       "back": "Zurück",
       "cancel": "Abbrechen",
+      "confirm": "Bestätigen",
       "credits": "Credits",
       "manage": "Verwalten",
       "redirecting": "Weiterleitung...",
@@ -899,10 +900,9 @@
         "communitySupport": "Community-Unterstützung",
         "emailSupport": "E-Mail-Support",
         "existingCredits": "Nur vorhandene Gratisguthaben",
-        "monthlyCredits": "{{value}} Credits / Monat",
         "oneConcurrentRun": "1 gleichzeitige Ausführung",
-        "payAsYouGo": "Danach zahlen Sie nach Bedarf",
         "prioritySupport": "Vorrangiger Support",
+        "sharedAndPrivateAgents": "7 geteilte Agents, unbegrenzt private Agents",
         "tenConcurrentRuns": "10 gleichzeitige Ausführungen",
         "twoConcurrentRuns": "2 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Gesamtanzahl an Agenten",
@@ -928,7 +928,7 @@
       "popular": "Beliebt",
       "pricePerMonth": "{{price}}/Monat",
       "pro": {
-        "description": "Mehr Leistung und nahtlose Zusammenarbeit für Ihr Team.",
+        "description": "Mehr Credits und Parallelität für Teams, die täglich KI-Agents einsetzen.",
         "name": "Pro"
       },
       "renews": "Erneuert {{date}}",
@@ -936,13 +936,13 @@
       "sectionTitle": "Planen",
       "selectedPlan": "den ausgewählten Plan",
       "team": {
-        "description": "Skalieren Sie schnell, ohne Reibung und mit voller Flexibilität.",
+        "description": "Platz für ein Team aus KI-Mitarbeitern: hohes Credit-Volumen und 10 gleichzeitig laufende Agents.",
         "name": "Team"
       },
       "upgrade": "Upgrade",
       "upgradeTo": "Upgrade auf {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} Bonus-Credits",
+        "bonusCredits": "Bonus-Credits",
         "changePlan": "Plan ändern",
         "choosePlan": "Plan auswählen",
         "choosePlanDescription": "Wählen Sie zuerst den Workspace-Plan. Mitgliederpakete konfigurieren Sie im nächsten Schritt.",
@@ -951,19 +951,35 @@
         "currentMember": "Aktuelles Mitglied",
         "description": "Wählen Sie für jedes Mitglied ein monatliches Nutzungspaket aus.",
         "discountBonusCredits": "Bonus-Credits durch Rabatt",
+        "existingPackagesUnchanged": "Bestehende Mitgliederpakete bleiben unverändert.",
+        "management": {
+          "comparison": "Vergleich des aktuellen und neuen Abonnements",
+          "current": "Aktuell",
+          "downgradeDescription": "Das kleinere Paket beginnt am nächsten Abrechnungstag. Vorhandene Credits bleiben bis zu ihrem Ablauf verfügbar.",
+          "downgradesToDate": "Downgrade auf {{package}} am {{date}}.",
+          "downgradesToPeriod": "Downgrade auf {{package}} zum nächsten Abrechnungsdatum.",
+          "immediateAmount": "Jetzt fällig",
+          "immediateCredits": "Nach Zahlung gutgeschriebene Credits",
+          "new": "Neu",
+          "processing": "Änderung wird verarbeitet",
+          "reviewDescription": "Prüfen Sie unten den Abonnementpreis. Mit der Bestätigung wird der fällige Betrag über Ihre gespeicherte Zahlungsmethode abgerechnet.",
+          "reviewTitle": "Paketänderung prüfen",
+          "scheduledFor": "Geplant für {{date}}"
+        },
         "memberExclusive": "Jedes Paket gehört einem Mitglied und kann nicht geteilt werden. Wenn ein Paket aufgebraucht ist, wird die Nutzung über nutzungsabhängige Credits abgerechnet. Sie können später auf ein neues Paket upgraden.",
         "memberPackages": "Mitgliederpakete",
         "memberUsage": "Nutzung des Mitglieds",
-        "memberUsageTotal": "Monatliche Paketsumme",
         "minimumPackageBreakdown": "{{base}} Plan + {{package}} erforderliches Mitgliederpaket",
         "monthlyTotal": "Monatliche Gesamtkosten",
         "orderSummary": "Bestellübersicht",
         "packagesStep": "Pakete",
         "packOption": "{{price}} · {{credits}} Credits · {{discount}} % Rabatt",
+        "planChangeError": "Die Abonnementänderung konnte nicht vorbereitet werden. Versuche es erneut.",
         "planStep": "Plan",
+        "purchasedCredits": "Gekaufte Credits",
         "purchaseSteps": "Kaufschritte",
         "selectedPlan": "Ausgewählter Plan",
-        "selectPlan": "{{plan}} auswählen",
+        "selectPlan": "Mit {{plan}} starten",
         "selectUsage": "Nutzung für {{name}}",
         "startingAt": "Ab",
         "totalCredits": "Credits insgesamt"
@@ -996,7 +1012,8 @@
       "planRestored": "Plan wiederhergestellt. Ihr Abonnement verlängert sich normal.",
       "preparingReceiptDownload": "Download der Quittung wird vorbereitet...",
       "receiptDownloadFailed": "Belege konnten nicht heruntergeladen werden",
-      "receiptsDownloaded": "Quittungen heruntergeladen"
+      "receiptsDownloaded": "Quittungen heruntergeladen",
+      "subscriptionChangeConfirmed": "Die Abonnementänderung wurde bestätigt."
     },
     "usage": {
       "added": "Hinzugefügt {{date}}",

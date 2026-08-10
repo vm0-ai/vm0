@@ -790,6 +790,7 @@
     "common": {
       "back": "Kembali",
       "cancel": "Batal",
+      "confirm": "Konfirmasi",
       "credits": "kredit",
       "manage": "Kelola",
       "redirecting": "Mengarahkan...",
@@ -899,10 +900,9 @@
         "communitySupport": "Dukungan komunitas",
         "emailSupport": "Dukungan email",
         "existingCredits": "Hanya kredit gratis yang sudah ada",
-        "monthlyCredits": "{{value}} kredit / bulan",
         "oneConcurrentRun": "1 eksekusi concurrent",
-        "payAsYouGo": "Bayar sesuai pemakaian setelah itu",
         "prioritySupport": "Dukungan prioritas",
+        "sharedAndPrivateAgents": "7 agen bersama, agen privat tanpa batas",
         "tenConcurrentRuns": "10 eksekusi concurrent",
         "twoConcurrentRuns": "2 eksekusi concurrent",
         "unlimitedAgents": "Agen total tidak terbatas",
@@ -928,7 +928,7 @@
       "popular": "Populer",
       "pricePerMonth": "{{price}}/bulan",
       "pro": {
-        "description": "Lebih bertenaga dan kolaborasi yang mulus untuk tim Anda.",
+        "description": "Lebih banyak kredit dan konkurensi untuk tim yang menjalankan agen AI setiap hari.",
         "name": "Pro"
       },
       "renews": "Memperbarui {{date}}",
@@ -936,13 +936,13 @@
       "sectionTitle": "Paket",
       "selectedPlan": "paket yang dipilih",
       "team": {
-        "description": "Berkembang cepat tanpa hambatan dan dengan fleksibilitas penuh.",
+        "description": "Ruang untuk tim pekerja AI: volume kredit tinggi dan 10 agen berjalan bersamaan.",
         "name": "Tim"
       },
       "upgrade": "Tingkatkan",
       "upgradeTo": "Tingkatkan ke {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} kredit bonus",
+        "bonusCredits": "Kredit bonus",
         "changePlan": "Ubah paket",
         "choosePlan": "Pilih paket",
         "choosePlanDescription": "Pilih paket ruang kerja terlebih dahulu. Paket anggota dikonfigurasi berikutnya.",
@@ -951,19 +951,35 @@
         "currentMember": "Anggota saat ini",
         "description": "Pilih paket penggunaan bulanan untuk setiap anggota.",
         "discountBonusCredits": "Bonus kredit dari diskon",
+        "existingPackagesUnchanged": "Paket anggota yang ada tetap tidak berubah.",
+        "management": {
+          "comparison": "Perbandingan langganan saat ini dan baru",
+          "current": "Saat ini",
+          "downgradeDescription": "Paket yang lebih rendah dimulai pada tanggal penagihan berikutnya. Kredit yang ada tetap tersedia hingga kedaluwarsa.",
+          "downgradesToDate": "Turun ke {{package}} pada {{date}}.",
+          "downgradesToPeriod": "Turun ke {{package}} pada tanggal penagihan berikutnya.",
+          "immediateAmount": "Dibayar sekarang",
+          "immediateCredits": "Kredit ditambahkan setelah pembayaran",
+          "new": "Baru",
+          "processing": "Perubahan sedang diproses",
+          "reviewDescription": "Tinjau harga langganan di bawah ini. Konfirmasi akan menagih jumlah yang harus dibayar melalui metode pembayaran tersimpan.",
+          "reviewTitle": "Tinjau perubahan paket",
+          "scheduledFor": "Dijadwalkan untuk {{date}}"
+        },
         "memberExclusive": "Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Saat paket habis, penggunaan kembali memakai kredit bayar sesuai pemakaian. Anda dapat meningkatkan ke paket baru nanti.",
         "memberPackages": "Paket anggota",
         "memberUsage": "Penggunaan anggota",
-        "memberUsageTotal": "Total paket bulanan",
         "minimumPackageBreakdown": "Paket {{base}} + paket anggota wajib {{package}}",
         "monthlyTotal": "Total bulanan",
         "orderSummary": "Ringkasan pesanan",
         "packagesStep": "Paket",
         "packOption": "{{price}} · {{credits}} kredit · Diskon {{discount}}%",
+        "planChangeError": "Perubahan langganan tidak dapat disiapkan. Coba lagi.",
         "planStep": "Paket",
+        "purchasedCredits": "Kredit yang dibeli",
         "purchaseSteps": "Langkah pembelian",
         "selectedPlan": "Paket yang dipilih",
-        "selectPlan": "Pilih {{plan}}",
+        "selectPlan": "Mulai dengan {{plan}}",
         "selectUsage": "Penggunaan untuk {{name}}",
         "startingAt": "Mulai dari",
         "totalCredits": "Total kredit"
@@ -996,7 +1012,8 @@
       "planRestored": "Paket dipulihkan. Langganan Anda akan diperbarui seperti biasa.",
       "preparingReceiptDownload": "Menyiapkan unduhan struk...",
       "receiptDownloadFailed": "Gagal mengunduh struk",
-      "receiptsDownloaded": "Struk diunduh"
+      "receiptsDownloaded": "Struk diunduh",
+      "subscriptionChangeConfirmed": "Perubahan langganan dikonfirmasi."
     },
     "usage": {
       "added": "Ditambahkan {{date}}",

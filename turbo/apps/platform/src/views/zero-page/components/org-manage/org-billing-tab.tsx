@@ -162,6 +162,9 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
   const unlimitedAgents = i18n.t(($) => {
     return $.billing.plans.features.unlimitedAgents;
   });
+  const sharedAndPrivateAgents = i18n.t(($) => {
+    return $.billing.plans.features.sharedAndPrivateAgents;
+  });
   const byok = i18n.t(($) => {
     return $.billing.plans.features.byok;
   });
@@ -186,25 +189,7 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
       }),
     ];
   }
-  const credits =
-    tier === "pro"
-      ? i18n.t(
-          ($) => {
-            return $.billing.plans.features.monthlyCredits;
-          },
-          { value: formatLocalizedNumber(20_000) },
-        )
-      : i18n.t(
-          ($) => {
-            return $.billing.plans.features.monthlyCredits;
-          },
-          { value: formatLocalizedNumber(120_000) },
-        );
   return [
-    credits,
-    i18n.t(($) => {
-      return $.billing.plans.features.payAsYouGo;
-    }),
     tier === "pro"
       ? i18n.t(($) => {
           return $.billing.plans.features.twoConcurrentRuns;
@@ -212,7 +197,7 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
       : i18n.t(($) => {
           return $.billing.plans.features.tenConcurrentRuns;
         }),
-    unlimitedAgents,
+    sharedAndPrivateAgents,
     byok,
     voiceInput,
     tier === "pro"
@@ -418,7 +403,11 @@ function planCardAction(args: {
   return planButtonAction(args.plan, args.currentTier);
 }
 
-function planCardLabel(action: PlanCardAction, plan: BillingPlan): string {
+function planCardLabel(
+  action: PlanCardAction,
+  plan: BillingPlan,
+  currentTier: BillingTier,
+): string {
   if (action === "current") {
     return i18n.t(($) => {
       return $.billing.plans.currentPlan;
@@ -435,6 +424,14 @@ function planCardLabel(action: PlanCardAction, plan: BillingPlan): string {
     });
   }
   if (action === "upgrade") {
+    if (!isPaidTier(currentTier)) {
+      return i18n.t(
+        ($) => {
+          return $.billing.plans.usagePacks.selectPlan;
+        },
+        { plan: planName(plan.tier) },
+      );
+    }
     return i18n.t(
       ($) => {
         return $.billing.plans.upgradeTo;
@@ -587,7 +584,7 @@ function PlanCard({
     scheduledChange,
     restoreCurrentPlan,
   });
-  const label = planCardLabel(action, plan);
+  const label = planCardLabel(action, plan, currentTier);
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
   const buttonVariant = planCardButtonVariant({
     plan,
@@ -2002,7 +1999,7 @@ function BillingPricingPage({
 }) {
   const featureSwitches = useGet(featureSwitch$);
   const usagePackPlansEnabled =
-    featureSwitches[FeatureSwitchKey.UsagePackPlans] ?? false;
+    featureSwitches[FeatureSwitchKey.UsagePackPlans];
   return (
     <>
       {usagePackPlansEnabled ? (
