@@ -24,6 +24,7 @@ import type {
 import {
   canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
+  validateBaseUrlHostPolicy,
 } from "@vm0/connectors/firewall-types";
 import { connectors } from "@vm0/db/schema/connector";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
@@ -71,6 +72,7 @@ import {
   commitConnectorRuntimeMutation,
   publishConnectorRuntimeSyncWakeups,
 } from "./connector-runtime-wakeup.service";
+import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -85,6 +87,33 @@ const TEMPLATE_REFERENCE_REGEX =
 const VARIABLE_REFERENCE_REGEX = /\{\{\s*variables\.[a-z][a-z0-9_]*\s*\}\}/;
 const TEMPLATE_PLACEHOLDER_VALUE = "placeholder";
 const HOST_TEMPLATE_VALUE_UNSAFE_REGEX = /[/?#\\@:]/;
+const MCP_ENDPOINT_TEMPLATE_CHARACTER_REGEX = /[{}]/;
+const MCP_PROTECTED_HEADER_NAMES = Object.freeze([
+  "accept",
+  "accept-encoding",
+  "connection",
+  "content-encoding",
+  "content-length",
+  "content-type",
+  "expect",
+  "forwarded",
+  "host",
+  "keep-alive",
+  "last-event-id",
+  "origin",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "via",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-vm0-connector-intent",
+]);
 export const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
 export const CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME = "refresh_token";
 export const CUSTOM_CONNECTOR_OAUTH_ID_TOKEN_SECRET_NAME = "id_token";
@@ -94,7 +123,28 @@ const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE = "oauth.access_token";
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 type NotFoundResponse = ReturnType<typeof notFound>;
+type ForbiddenResponse = {
+  readonly status: 403;
+  readonly body: {
+    readonly error: {
+      readonly message: string;
+      readonly code: "FORBIDDEN";
+    };
+  };
+};
 type DbTransaction = Tx;
+
+function forbidden(message: string): ForbiddenResponse {
+  return {
+    status: 403,
+    body: {
+      error: {
+        message,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
 
 export interface CustomConnectorOAuthConfigRow {
   readonly connectorId: string;
@@ -148,9 +198,8 @@ export interface CustomConnectorMcpRow extends CustomConnectorSharedRow {
 
 export type CustomConnectorRow = CustomConnectorHttpRow | CustomConnectorMcpRow;
 
-interface DefinitionInput {
+interface DefinitionInputBase {
   readonly displayName: string;
-  readonly prefixTemplates: readonly string[];
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
@@ -160,9 +209,22 @@ interface DefinitionInput {
   readonly slug?: string;
 }
 
-interface ValidatedDefinition {
-  readonly displayName: string;
+interface HttpDefinitionInput extends DefinitionInputBase {
+  readonly kind: "http";
   readonly prefixTemplates: readonly string[];
+}
+
+interface McpDefinitionInput extends DefinitionInputBase {
+  readonly kind: "mcp";
+  readonly endpoint: string;
+  readonly transport: CustomConnectorMcpTransport;
+  readonly permissionBundleRef: null;
+}
+
+type DefinitionInput = HttpDefinitionInput | McpDefinitionInput;
+
+interface ValidatedDefinitionBase {
+  readonly displayName: string;
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
@@ -171,6 +233,20 @@ interface ValidatedDefinition {
   readonly skillMarkdown: string | null;
   readonly slug: string | undefined;
 }
+
+interface ValidatedHttpDefinition extends ValidatedDefinitionBase {
+  readonly kind: "http";
+  readonly prefixTemplates: readonly string[];
+}
+
+interface ValidatedMcpDefinition extends ValidatedDefinitionBase {
+  readonly kind: "mcp";
+  readonly endpoint: string;
+  readonly transport: CustomConnectorMcpTransport;
+  readonly permissionBundleRef: null;
+}
+
+type ValidatedDefinition = ValidatedHttpDefinition | ValidatedMcpDefinition;
 
 type ValidatedOAuthConfigUpdate =
   | { readonly kind: "none" }
@@ -486,16 +562,26 @@ function jsonValuesEqual(left: unknown, right: unknown): boolean {
 }
 
 function grantConfigurationChanged(args: {
-  readonly existing: CustomConnectorHttpRow;
+  readonly existing: CustomConnectorRow;
   readonly definition: ValidatedDefinition;
   readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
 }): boolean {
+  const protocolConfigurationChanged =
+    args.existing.kind !== args.definition.kind ||
+    (args.existing.kind === "http" && args.definition.kind === "http"
+      ? !jsonValuesEqual(
+          args.existing.prefixTemplates,
+          args.definition.prefixTemplates,
+        ) ||
+        args.existing.permissionBundleRef !==
+          args.definition.permissionBundleRef
+      : args.existing.kind === "mcp" && args.definition.kind === "mcp"
+        ? args.existing.endpoint !== args.definition.endpoint ||
+          args.existing.transport !== args.definition.transport
+        : true);
   return (
+    protocolConfigurationChanged ||
     args.existing.authMode !== args.definition.authMode ||
-    !jsonValuesEqual(
-      args.existing.prefixTemplates,
-      args.definition.prefixTemplates,
-    ) ||
     !jsonValuesEqual(args.existing.fields, args.definition.fields) ||
     !jsonValuesEqual(
       args.existing.headerInjections,
@@ -505,7 +591,6 @@ function grantConfigurationChanged(args: {
       args.existing.queryInjections,
       args.definition.queryInjections,
     ) ||
-    args.existing.permissionBundleRef !== args.definition.permissionBundleRef ||
     !oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig)
   );
 }
@@ -531,7 +616,7 @@ function credentialFieldsEqual(
 }
 
 function credentialContractChanged(args: {
-  readonly existing: CustomConnectorHttpRow;
+  readonly existing: CustomConnectorRow;
   readonly definition: ValidatedDefinition;
   readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
 }): boolean {
@@ -539,6 +624,32 @@ function credentialContractChanged(args: {
     args.existing.authMode !== args.definition.authMode ||
     !credentialFieldsEqual(args.existing.fields, args.definition.fields) ||
     !oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig)
+  );
+}
+
+function mcpDefinitionUpdateIsAccessNeutralOrReducing(args: {
+  readonly existing: CustomConnectorMcpRow;
+  readonly definition: ValidatedMcpDefinition;
+  readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
+  readonly requestedStorageVersion: number | undefined;
+}): boolean {
+  return (
+    args.existing.endpoint === args.definition.endpoint &&
+    args.existing.transport === args.definition.transport &&
+    args.existing.authMode === args.definition.authMode &&
+    jsonValuesEqual(args.existing.fields, args.definition.fields) &&
+    jsonValuesEqual(
+      args.existing.headerInjections,
+      args.definition.headerInjections,
+    ) &&
+    jsonValuesEqual(
+      args.existing.queryInjections,
+      args.definition.queryInjections,
+    ) &&
+    args.existing.skillMarkdown === args.definition.skillMarkdown &&
+    oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig) &&
+    (args.requestedStorageVersion === undefined ||
+      args.requestedStorageVersion >= args.existing.storageVersion)
   );
 }
 
@@ -937,6 +1048,39 @@ function validateAndNormalizePrefixTemplate(args: {
   return normalised;
 }
 
+function validateAndNormalizeMcpEndpoint(
+  raw: string,
+): string | BadRequestResponse {
+  const endpoint = raw.trim();
+  if (MCP_ENDPOINT_TEMPLATE_CHARACTER_REGEX.test(endpoint)) {
+    return badRequestMessage("MCP endpoint must not contain templates");
+  }
+  const validation = safeSync(() => {
+    const canonical = canonicalizeFirewallBaseUrl(
+      endpoint,
+      "MCP custom connector",
+    );
+    const url = new URL(canonical);
+    if (url.protocol !== "https:") {
+      throw new Error("MCP endpoint must use https://");
+    }
+    validateBaseUrlHostPolicy({
+      base: canonical,
+      serviceName: "MCP custom connector",
+      hostPolicy: { kind: "publicDestination" },
+    });
+    return canonical;
+  });
+  if ("error" in validation) {
+    return badRequestMessage(
+      validation.error instanceof Error
+        ? validation.error.message
+        : "Invalid MCP endpoint",
+    );
+  }
+  return validation.ok;
+}
+
 function validateFields(
   raw: readonly CustomConnectorField[],
 ): readonly CustomConnectorField[] | BadRequestResponse {
@@ -985,6 +1129,7 @@ function validateHeaderInjections(args: {
   readonly raw: readonly CustomConnectorHeaderInjection[];
   readonly fields: readonly CustomConnectorField[];
   readonly authMode: CustomConnectorAuthMode;
+  readonly connectorKind: CustomConnectorRow["kind"];
 }): readonly CustomConnectorHeaderInjection[] | BadRequestResponse {
   const seen = new Set<string>();
   const headers: CustomConnectorHeaderInjection[] = [];
@@ -994,6 +1139,15 @@ function validateHeaderInjections(args: {
       return name;
     }
     const normalisedName = name.toLowerCase();
+    if (
+      args.connectorKind === "mcp" &&
+      (normalisedName.startsWith("mcp-") ||
+        MCP_PROTECTED_HEADER_NAMES.includes(normalisedName))
+    ) {
+      return badRequestMessage(
+        `MCP custom connector cannot inject protected header: ${name}`,
+      );
+    }
     if (seen.has(normalisedName)) {
       return badRequestMessage(`Duplicate header injection: ${name}`);
     }
@@ -1213,33 +1367,11 @@ function validateDefinition(
     return badRequestMessage("OAuth custom connector fields must be variables");
   }
 
-  const prefixTemplates: string[] = [];
-  if (input.prefixTemplates.length === 0) {
-    return badRequestMessage("At least one prefix template is required");
-  }
-  for (const raw of input.prefixTemplates) {
-    const normalized = validateAndNormalizePrefixTemplate({
-      raw,
-      fields,
-    });
-    if (isBadRequest(normalized)) {
-      return normalized;
-    }
-    prefixTemplates.push(normalized);
-  }
-  const seenPrefixes = new Set<string>();
-  for (const prefix of prefixTemplates) {
-    const identity = customConnectorPrefixTemplateIdentity(prefix);
-    if (seenPrefixes.has(identity)) {
-      return badRequestMessage(`Duplicate prefix template: ${prefix}`);
-    }
-    seenPrefixes.add(identity);
-  }
-
   const headerInjections = validateHeaderInjections({
     raw: input.headerInjections,
     fields,
     authMode,
+    connectorKind: input.kind,
   });
   if (isBadRequest(headerInjections)) {
     return headerInjections;
@@ -1279,9 +1411,8 @@ function validateDefinition(
     return slug;
   }
 
-  return {
+  const shared = {
     displayName,
-    prefixTemplates,
     fields,
     headerInjections,
     queryInjections,
@@ -1289,6 +1420,44 @@ function validateDefinition(
     permissionBundleRef: input.permissionBundleRef,
     skillMarkdown: input.skillMarkdown,
     slug,
+  };
+  if (input.kind === "mcp") {
+    const endpoint = validateAndNormalizeMcpEndpoint(input.endpoint);
+    if (isBadRequest(endpoint)) {
+      return endpoint;
+    }
+    return {
+      ...shared,
+      kind: "mcp",
+      endpoint,
+      transport: input.transport,
+      permissionBundleRef: null,
+    };
+  }
+
+  const prefixTemplates: string[] = [];
+  if (input.prefixTemplates.length === 0) {
+    return badRequestMessage("At least one prefix template is required");
+  }
+  for (const raw of input.prefixTemplates) {
+    const normalized = validateAndNormalizePrefixTemplate({ raw, fields });
+    if (isBadRequest(normalized)) {
+      return normalized;
+    }
+    prefixTemplates.push(normalized);
+  }
+  const seenPrefixes = new Set<string>();
+  for (const prefix of prefixTemplates) {
+    const identity = customConnectorPrefixTemplateIdentity(prefix);
+    if (seenPrefixes.has(identity)) {
+      return badRequestMessage(`Duplicate prefix template: ${prefix}`);
+    }
+    seenPrefixes.add(identity);
+  }
+  return {
+    ...shared,
+    kind: "http",
+    prefixTemplates,
   };
 }
 
@@ -1311,9 +1480,14 @@ async function validatePermissionBundleRef(
       );
 }
 
-function definitionFromCreateInput(
-  input: CreateCustomConnectorBody,
-): DefinitionInput | BadRequestResponse {
+type HttpCreateCustomConnectorBody = Exclude<
+  CreateCustomConnectorBody,
+  { readonly kind: "mcp" }
+>;
+
+function definitionFromHttpCreateInput(
+  input: HttpCreateCustomConnectorBody,
+): HttpDefinitionInput | BadRequestResponse {
   const usesCanonical =
     input.prefixTemplates !== undefined ||
     input.fields !== undefined ||
@@ -1323,6 +1497,7 @@ function definitionFromCreateInput(
     input.oauthConfig !== undefined;
   if (usesCanonical) {
     return {
+      kind: "http",
       displayName: input.displayName,
       prefixTemplates: input.prefixTemplates ?? [],
       fields: input.fields ?? [],
@@ -1345,6 +1520,7 @@ function definitionFromCreateInput(
     );
   }
   return {
+    kind: "http",
     displayName: input.displayName,
     prefixTemplates: input.prefixes,
     fields: canonicalFieldsFromLegacy(),
@@ -1362,11 +1538,49 @@ function definitionFromCreateInput(
   };
 }
 
+function definitionFromCreateInput(
+  input: CreateCustomConnectorBody,
+): DefinitionInput | BadRequestResponse {
+  return input.kind === "mcp"
+    ? {
+        kind: "mcp",
+        displayName: input.displayName,
+        endpoint: input.endpoint,
+        transport: input.transport,
+        fields: input.fields,
+        headerInjections: input.headerInjections,
+        queryInjections: input.queryInjections,
+        authMode: input.authMode,
+        permissionBundleRef: null,
+        skillMarkdown: input.skillMarkdown ?? null,
+        slug: input.slug,
+      }
+    : definitionFromHttpCreateInput(input);
+}
+
 function definitionFromUpdateInput(
   input: UpdateCustomConnectorBody,
   existing?: CustomConnectorRow,
 ): DefinitionInput {
+  if (input.kind === "mcp") {
+    return {
+      kind: "mcp",
+      displayName: input.displayName,
+      endpoint: input.endpoint,
+      transport: input.transport,
+      fields: input.fields,
+      headerInjections: input.headerInjections,
+      queryInjections: input.queryInjections,
+      authMode: input.authMode ?? existing?.authMode ?? "manual",
+      permissionBundleRef: null,
+      skillMarkdown:
+        input.skillMarkdown !== undefined
+          ? input.skillMarkdown
+          : (existing?.skillMarkdown ?? null),
+    };
+  }
   return {
+    kind: "http",
     displayName: input.displayName,
     prefixTemplates: input.prefixTemplates,
     fields: input.fields,
@@ -1384,7 +1598,7 @@ function definitionFromUpdateInput(
   };
 }
 
-function legacyColumns(definition: ValidatedDefinition): {
+function legacyColumns(definition: ValidatedHttpDefinition): {
   readonly prefixes: readonly string[];
   readonly headerName: string;
   readonly headerTemplate: string;
@@ -1399,14 +1613,42 @@ function legacyColumns(definition: ValidatedDefinition): {
   };
 }
 
-function hostSlugFromPrefixTemplate(prefix: string): string {
-  const canonicalPrefix = canonicalizeFirewallBaseUrl(
-    expandHostWildcardsInBaseUrl(templateWithPlaceholders(prefix)),
-    "custom connector",
-  );
-  const authorityStart = canonicalPrefix.indexOf("://") + 3;
-  const authorityEnd = canonicalPrefix.indexOf("/", authorityStart);
-  const host = canonicalPrefix
+function protocolColumns(definition: ValidatedDefinition): {
+  readonly prefixes: string[];
+  readonly headerName: string | null;
+  readonly headerTemplate: string | null;
+  readonly prefixTemplates: string[];
+  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
+  readonly mcpEndpoint: string | null;
+  readonly mcpTransport: CustomConnectorMcpTransport | null;
+} {
+  if (definition.kind === "mcp") {
+    return {
+      prefixes: [],
+      headerName: null,
+      headerTemplate: null,
+      prefixTemplates: [],
+      permissionBundleRef: null,
+      mcpEndpoint: definition.endpoint,
+      mcpTransport: definition.transport,
+    };
+  }
+  const legacy = legacyColumns(definition);
+  return {
+    prefixes: [...legacy.prefixes],
+    headerName: legacy.headerName,
+    headerTemplate: legacy.headerTemplate,
+    prefixTemplates: [...definition.prefixTemplates],
+    permissionBundleRef: definition.permissionBundleRef,
+    mcpEndpoint: null,
+    mcpTransport: null,
+  };
+}
+
+function hostSlugFromCanonicalUrl(canonicalUrl: string): string {
+  const authorityStart = canonicalUrl.indexOf("://") + 3;
+  const authorityEnd = canonicalUrl.indexOf("/", authorityStart);
+  const host = canonicalUrl
     .slice(authorityStart, authorityEnd)
     .replace(/\{hostWildcard[0-9]+\}/g, "")
     .toLowerCase();
@@ -1414,6 +1656,26 @@ function hostSlugFromPrefixTemplate(prefix: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
+}
+
+function hostSlugFromPrefixTemplate(prefix: string): string {
+  return hostSlugFromCanonicalUrl(
+    canonicalizeFirewallBaseUrl(
+      expandHostWildcardsInBaseUrl(templateWithPlaceholders(prefix)),
+      "custom connector",
+    ),
+  );
+}
+
+function hostSlugFromDefinition(definition: ValidatedDefinition): string {
+  if (definition.kind === "mcp") {
+    return hostSlugFromCanonicalUrl(definition.endpoint);
+  }
+  const firstPrefix = definition.prefixTemplates[0];
+  if (!firstPrefix) {
+    throw new Error("Expected validated HTTP prefix template");
+  }
+  return hostSlugFromPrefixTemplate(firstPrefix);
 }
 
 function randomShortId(): string {
@@ -1469,6 +1731,75 @@ async function findCustomConnectorPrefixConflict(
   return null;
 }
 
+async function persistCustomConnectorCreate(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly slug: string;
+    readonly definition: ValidatedDefinition;
+    readonly storageVersion: number;
+    readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+    readonly encryptedClientSecret: string | null;
+  },
+): Promise<
+  | {
+      readonly row: CustomConnectorDefinitionRow;
+      readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
+    }
+  | BadRequestResponse
+> {
+  return await db.transaction(async (tx) => {
+    if (args.definition.kind === "http") {
+      const prefixConflict = await findCustomConnectorPrefixConflict(tx, {
+        orgId: args.orgId,
+        prefixTemplates: args.definition.prefixTemplates,
+      });
+      if (prefixConflict) {
+        return prefixConflict;
+      }
+    }
+    const [row] = await tx
+      .insert(orgCustomConnectors)
+      .values({
+        orgId: args.orgId,
+        slug: args.slug,
+        displayName: args.definition.displayName,
+        ...protocolColumns(args.definition),
+        fields: [...args.definition.fields],
+        headerInjections: [...args.definition.headerInjections],
+        queryInjections: [...args.definition.queryInjections],
+        authMode: args.definition.authMode,
+        skillMarkdown: args.definition.skillMarkdown,
+        storageVersion: args.storageVersion,
+        createdBy: args.userId,
+      })
+      .returning(customConnectorDefinitionSelection());
+    if (!row) {
+      throw new Error("Expected insert to return a row");
+    }
+    if (
+      args.oauthConfigUpdate.kind !== "upsert" ||
+      !args.encryptedClientSecret
+    ) {
+      return { row, oauthConfig: null };
+    }
+    const [oauthConfig] = await tx
+      .insert(orgCustomConnectorOauthConfigs)
+      .values({
+        connectorId: row.id,
+        orgId: args.orgId,
+        ...args.oauthConfigUpdate.config,
+        encryptedClientSecret: args.encryptedClientSecret,
+      })
+      .returning();
+    if (!oauthConfig) {
+      throw new Error("Expected OAuth config insert to return a row");
+    }
+    return { row, oauthConfig };
+  });
+}
+
 export const createCustomConnector$ = command(
   async (
     { get, set },
@@ -1478,7 +1809,7 @@ export const createCustomConnector$ = command(
       readonly input: CreateCustomConnectorBody;
     },
     signal: AbortSignal,
-  ): Promise<CustomConnectorRow | BadRequestResponse> => {
+  ): Promise<CustomConnectorRow | BadRequestResponse | ForbiddenResponse> => {
     const canonicalInput = definitionFromCreateInput(args.input);
     if (isBadRequest(canonicalInput)) {
       return canonicalInput;
@@ -1487,6 +1818,14 @@ export const createCustomConnector$ = command(
     const v = validateDefinition(canonicalInput);
     if (isBadRequest(v)) {
       return v;
+    }
+    const mcpFeatureContext =
+      v.kind === "mcp"
+        ? await get(userFeatureSwitchContext(args.orgId, args.userId))
+        : null;
+    signal.throwIfAborted();
+    if (mcpFeatureContext && !isCustomConnectorMcpEnabled(mcpFeatureContext)) {
+      return forbidden("MCP custom connector management is not enabled");
     }
     const invalidPermissionBundle = await validatePermissionBundleRef(
       writeDb,
@@ -1508,9 +1847,9 @@ export const createCustomConnector$ = command(
 
     let encryptedClientSecret: string | null = null;
     if (oauthConfigUpdate.kind === "upsert" && oauthConfigUpdate.clientSecret) {
-      const featureContext = await get(
-        userFeatureSwitchContext(args.orgId, args.userId),
-      );
+      const featureContext =
+        mcpFeatureContext ??
+        (await get(userFeatureSwitchContext(args.orgId, args.userId)));
       signal.throwIfAborted();
       encryptedClientSecret = await encryptStoredSecretValue(
         oauthConfigUpdate.clientSecret,
@@ -1519,59 +1858,18 @@ export const createCustomConnector$ = command(
     }
     signal.throwIfAborted();
 
-    const slug =
-      v.slug ??
-      `_${hostSlugFromPrefixTemplate(v.prefixTemplates[0]!)}-${randomShortId()}`;
-    const legacy = legacyColumns(v);
+    const slugHost = hostSlugFromDefinition(v);
+    const slug = v.slug ?? `_${slugHost}-${randomShortId()}`;
     L.debug("creating custom connector", { orgId: args.orgId, slug });
 
-    const created = await writeDb.transaction(async (tx) => {
-      const prefixConflict = await findCustomConnectorPrefixConflict(tx, {
-        orgId: args.orgId,
-        prefixTemplates: v.prefixTemplates,
-      });
-      if (prefixConflict) {
-        return prefixConflict;
-      }
-      const [row] = await tx
-        .insert(orgCustomConnectors)
-        .values({
-          orgId: args.orgId,
-          slug,
-          displayName: v.displayName,
-          prefixes: [...legacy.prefixes],
-          headerName: legacy.headerName,
-          headerTemplate: legacy.headerTemplate,
-          prefixTemplates: [...v.prefixTemplates],
-          fields: [...v.fields],
-          headerInjections: [...v.headerInjections],
-          queryInjections: [...v.queryInjections],
-          authMode: v.authMode,
-          permissionBundleRef: v.permissionBundleRef,
-          skillMarkdown: v.skillMarkdown,
-          storageVersion: args.input.storageVersion ?? 1,
-          createdBy: args.userId,
-        })
-        .returning(customConnectorDefinitionSelection());
-      if (!row) {
-        throw new Error("Expected insert to return a row");
-      }
-      if (oauthConfigUpdate.kind !== "upsert" || !encryptedClientSecret) {
-        return { row, oauthConfig: null };
-      }
-      const [oauthConfig] = await tx
-        .insert(orgCustomConnectorOauthConfigs)
-        .values({
-          connectorId: row.id,
-          orgId: args.orgId,
-          ...oauthConfigUpdate.config,
-          encryptedClientSecret,
-        })
-        .returning();
-      if (!oauthConfig) {
-        throw new Error("Expected OAuth config insert to return a row");
-      }
-      return { row, oauthConfig };
+    const created = await persistCustomConnectorCreate(writeDb, {
+      orgId: args.orgId,
+      userId: args.userId,
+      slug,
+      definition: v,
+      storageVersion: args.input.storageVersion ?? 1,
+      oauthConfigUpdate,
+      encryptedClientSecret,
     });
     signal.throwIfAborted();
     if (isBadRequest(created)) {
@@ -1676,29 +1974,27 @@ async function persistCustomConnectorUpdate(
   | BadRequestResponse
   | null
 > {
-  const legacy = legacyColumns(args.definition);
   return await db.transaction(async (tx) => {
-    const prefixConflict = await findCustomConnectorPrefixConflict(tx, {
-      orgId: args.orgId,
-      prefixTemplates: args.definition.prefixTemplates,
-      excludeConnectorId: args.id,
-    });
-    if (prefixConflict) {
-      return prefixConflict;
+    if (args.definition.kind === "http") {
+      const prefixConflict = await findCustomConnectorPrefixConflict(tx, {
+        orgId: args.orgId,
+        prefixTemplates: args.definition.prefixTemplates,
+        excludeConnectorId: args.id,
+      });
+      if (prefixConflict) {
+        return prefixConflict;
+      }
     }
+    const kindColumns = protocolColumns(args.definition);
     const [updated] = await tx
       .update(orgCustomConnectors)
       .set({
         displayName: args.definition.displayName,
-        prefixes: [...legacy.prefixes],
-        headerName: legacy.headerName,
-        headerTemplate: legacy.headerTemplate,
-        prefixTemplates: [...args.definition.prefixTemplates],
+        ...kindColumns,
         fields: [...args.definition.fields],
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
-        permissionBundleRef: args.definition.permissionBundleRef,
         skillMarkdown: args.definition.skillMarkdown,
         storageVersion: args.storageVersion,
         updatedAt: nowDate(),
@@ -1794,6 +2090,106 @@ async function persistCustomConnectorUpdateAndPublishRuntimeWakeup(
   return connector;
 }
 
+interface PreparedCustomConnectorUpdate {
+  readonly definition: ValidatedDefinition;
+  readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+}
+
+function prepareCustomConnectorUpdate(args: {
+  readonly existing: CustomConnectorRow;
+  readonly input: UpdateCustomConnectorBody;
+}): PreparedCustomConnectorUpdate | BadRequestResponse {
+  if (args.existing.kind !== (args.input.kind ?? "http")) {
+    return badRequestMessage(
+      "Custom connector protocol kind cannot be changed",
+    );
+  }
+  const definition = validateDefinition(
+    definitionFromUpdateInput(args.input, args.existing),
+  );
+  if (isBadRequest(definition)) {
+    return definition;
+  }
+  const oauthConfigUpdate = validateOAuthConfigUpdate({
+    authMode: definition.authMode,
+    input: args.input.oauthConfig,
+    existingConfig: args.existing.oauthConfig,
+  });
+  return isBadRequest(oauthConfigUpdate)
+    ? oauthConfigUpdate
+    : { definition, oauthConfigUpdate };
+}
+
+function mcpUpdateRequiresEnabledFeature(args: {
+  readonly existing: CustomConnectorRow;
+  readonly definition: ValidatedDefinition;
+  readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+  readonly comparisonNextOAuthConfig: CustomConnectorOAuthConfigRow | null;
+  readonly requestedStorageVersion: number | undefined;
+  readonly featureEnabled: boolean;
+}): boolean {
+  if (
+    args.featureEnabled ||
+    args.existing.kind !== "mcp" ||
+    args.definition.kind !== "mcp"
+  ) {
+    return false;
+  }
+  if (
+    args.oauthConfigUpdate.kind === "upsert" &&
+    args.oauthConfigUpdate.clientSecret !== null
+  ) {
+    return true;
+  }
+  return !mcpDefinitionUpdateIsAccessNeutralOrReducing({
+    existing: args.existing,
+    definition: args.definition,
+    nextOAuthConfig: args.comparisonNextOAuthConfig,
+    requestedStorageVersion: args.requestedStorageVersion,
+  });
+}
+
+function resolveCustomConnectorUpdateWrite(args: {
+  readonly existing: CustomConnectorRow;
+  readonly definition: ValidatedDefinition;
+  readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
+  readonly encryptedClientSecret: string | null;
+  readonly requestedStorageVersion: number | undefined;
+  readonly orgId: string;
+}):
+  | {
+      readonly storageVersion: number;
+      readonly grantConfigurationChanged: boolean;
+    }
+  | BadRequestResponse {
+  const nextOAuthConfig = nextOAuthConfigForUpdate({
+    connector: args.existing,
+    orgId: args.orgId,
+    update: args.oauthConfigUpdate,
+    encryptedClientSecret: args.encryptedClientSecret,
+  });
+  const storageVersion = resolveUpdatedStorageVersion({
+    current: args.existing.storageVersion,
+    requested: args.requestedStorageVersion,
+    contractChanged: credentialContractChanged({
+      existing: args.existing,
+      definition: args.definition,
+      nextOAuthConfig,
+    }),
+  });
+  if (isBadRequest(storageVersion)) {
+    return storageVersion;
+  }
+  return {
+    storageVersion,
+    grantConfigurationChanged: grantConfigurationChanged({
+      existing: args.existing,
+      definition: args.definition,
+      nextOAuthConfig,
+    }),
+  };
+}
+
 export const updateCustomConnectorDefinition$ = command(
   async (
     { get, set },
@@ -1804,89 +2200,95 @@ export const updateCustomConnectorDefinition$ = command(
       readonly input: UpdateCustomConnectorBody;
     },
     signal: AbortSignal,
-  ): Promise<CustomConnectorRow | BadRequestResponse | NotFoundResponse> => {
+  ): Promise<
+    | CustomConnectorRow
+    | BadRequestResponse
+    | NotFoundResponse
+    | ForbiddenResponse
+  > => {
     const writeDb = set(writeDb$);
     const existingConnector = await loadCustomConnectorForUpdate(writeDb, args);
     signal.throwIfAborted();
     if (!existingConnector) {
       return notFound("Custom connector not found");
     }
-    if (existingConnector.kind !== "http") {
-      return badRequestMessage(
-        "MCP Custom Connectors cannot be updated with an HTTP definition",
-      );
-    }
-    const v = validateDefinition(
-      definitionFromUpdateInput(args.input, existingConnector),
-    );
-    if (isBadRequest(v)) {
-      return v;
+    const prepared = prepareCustomConnectorUpdate({
+      existing: existingConnector,
+      input: args.input,
+    });
+    if (isBadRequest(prepared)) {
+      return prepared;
     }
     const invalidPermissionBundle = await validatePermissionBundleRef(
       writeDb,
-      v.permissionBundleRef,
+      prepared.definition.permissionBundleRef,
     );
     signal.throwIfAborted();
     if (invalidPermissionBundle) {
       return invalidPermissionBundle;
     }
-    const oauthConfigUpdate = validateOAuthConfigUpdate({
-      authMode: v.authMode,
-      input: args.input.oauthConfig,
-      existingConfig: existingConnector.oauthConfig,
-    });
-    if (isBadRequest(oauthConfigUpdate)) {
-      return oauthConfigUpdate;
-    }
-
+    const mcpFeatureContext =
+      existingConnector.kind === "mcp"
+        ? await get(userFeatureSwitchContext(args.orgId, args.userId))
+        : null;
+    signal.throwIfAborted();
     let encryptedClientSecret =
       existingConnector.oauthConfig?.encryptedClientSecret ?? null;
-    if (oauthConfigUpdate.kind === "upsert" && oauthConfigUpdate.clientSecret) {
-      const featureContext = await get(
-        userFeatureSwitchContext(args.orgId, args.userId),
-      );
+    const comparisonNextOAuthConfig = nextOAuthConfigForUpdate({
+      connector: existingConnector,
+      orgId: args.orgId,
+      update: prepared.oauthConfigUpdate,
+      encryptedClientSecret,
+    });
+    if (
+      mcpUpdateRequiresEnabledFeature({
+        existing: existingConnector,
+        definition: prepared.definition,
+        oauthConfigUpdate: prepared.oauthConfigUpdate,
+        comparisonNextOAuthConfig,
+        requestedStorageVersion: args.input.storageVersion,
+        featureEnabled:
+          !mcpFeatureContext || isCustomConnectorMcpEnabled(mcpFeatureContext),
+      })
+    ) {
+      return forbidden("MCP custom connector management is not enabled");
+    }
+    if (
+      prepared.oauthConfigUpdate.kind === "upsert" &&
+      prepared.oauthConfigUpdate.clientSecret
+    ) {
+      const featureContext =
+        mcpFeatureContext ??
+        (await get(userFeatureSwitchContext(args.orgId, args.userId)));
       signal.throwIfAborted();
       encryptedClientSecret = await encryptStoredSecretValue(
-        oauthConfigUpdate.clientSecret,
+        prepared.oauthConfigUpdate.clientSecret,
         featureContext,
       );
       signal.throwIfAborted();
     }
 
-    const nextOAuthConfig = nextOAuthConfigForUpdate({
-      connector: existingConnector,
-      orgId: args.orgId,
-      update: oauthConfigUpdate,
+    const resolved = resolveCustomConnectorUpdateWrite({
+      existing: existingConnector,
+      definition: prepared.definition,
+      oauthConfigUpdate: prepared.oauthConfigUpdate,
       encryptedClientSecret,
+      requestedStorageVersion: args.input.storageVersion,
+      orgId: args.orgId,
     });
-    const contractChanged = credentialContractChanged({
-      existing: existingConnector,
-      definition: v,
-      nextOAuthConfig,
-    });
-    const storageVersion = resolveUpdatedStorageVersion({
-      current: existingConnector.storageVersion,
-      requested: args.input.storageVersion,
-      contractChanged,
-    });
-    if (isBadRequest(storageVersion)) {
-      return storageVersion;
+    if (isBadRequest(resolved)) {
+      return resolved;
     }
-    const connectorGrantConfigurationChanged = grantConfigurationChanged({
-      existing: existingConnector,
-      definition: v,
-      nextOAuthConfig,
-    });
     const normalized =
       await persistCustomConnectorUpdateAndPublishRuntimeWakeup(writeDb, {
         orgId: args.orgId,
         id: args.id,
-        definition: v,
+        definition: prepared.definition,
         existing: existingConnector,
-        oauthConfigUpdate,
+        oauthConfigUpdate: prepared.oauthConfigUpdate,
         encryptedClientSecret,
-        grantConfigurationChanged: connectorGrantConfigurationChanged,
-        storageVersion,
+        grantConfigurationChanged: resolved.grantConfigurationChanged,
+        storageVersion: resolved.storageVersion,
       });
     signal.throwIfAborted();
     if (isBadRequest(normalized)) {
@@ -2166,14 +2568,10 @@ function validateValueInputs(args: {
   readonly connector: CustomConnectorRow;
   readonly values: readonly CustomConnectorValueInput[];
 }): readonly CustomConnectorValueInput[] | BadRequestResponse {
-  if (args.connector.kind !== "http") {
-    return badRequestMessage(
-      "MCP Custom Connector credentials are not supported yet",
-    );
-  }
   return validateValueInputsForDefinition({
     fields: args.connector.fields,
-    prefixTemplates: args.connector.prefixTemplates,
+    prefixTemplates:
+      args.connector.kind === "http" ? args.connector.prefixTemplates : [],
     values: args.values,
   });
 }
@@ -2487,7 +2885,10 @@ export const setCustomConnectorValues$ = command(
     },
     signal: AbortSignal,
   ): Promise<
-    CustomConnectorResponse | BadRequestResponse | NotFoundResponse
+    | CustomConnectorResponse
+    | BadRequestResponse
+    | NotFoundResponse
+    | ForbiddenResponse
   > => {
     const connector = await get(
       getCustomConnectorById({
@@ -2504,14 +2905,20 @@ export const setCustomConnectorValues$ = command(
         "OAuth custom connectors must be connected through OAuth",
       );
     }
-    const values = validateValueInputs({ connector, values: args.values });
-    if (isBadRequest(values)) {
-      return values;
-    }
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
     signal.throwIfAborted();
+    if (
+      connector.kind === "mcp" &&
+      !isCustomConnectorMcpEnabled(featureSwitchContext)
+    ) {
+      return forbidden("MCP custom connector management is not enabled");
+    }
+    const values = validateValueInputs({ connector, values: args.values });
+    if (isBadRequest(values)) {
+      return values;
+    }
     const writeDb = set(writeDb$);
     const encryptionInput = { values, featureSwitchContext };
     const encryptedValues = await encryptCustomConnectorValues(
@@ -3041,16 +3448,6 @@ interface SaveCustomConnectorProposalArgs {
   readonly agentId?: string;
 }
 
-type ForbiddenResponse = {
-  readonly status: 403;
-  readonly body: {
-    readonly error: {
-      readonly message: string;
-      readonly code: "FORBIDDEN";
-    };
-  };
-};
-
 type SaveCustomConnectorProposalResult =
   | {
       readonly connector: CustomConnectorResponse;
@@ -3059,18 +3456,6 @@ type SaveCustomConnectorProposalResult =
   | BadRequestResponse
   | NotFoundResponse
   | ForbiddenResponse;
-
-function forbidden(message: string): ForbiddenResponse {
-  return {
-    status: 403,
-    body: {
-      error: {
-        message,
-        code: "FORBIDDEN",
-      },
-    },
-  };
-}
 
 function proposalUpdateInput(
   proposal: CustomConnectorProposal,
@@ -3159,7 +3544,8 @@ const authorizeProposalAgent$ = command(
     }
     if (
       added.status === "customConnectorPermissionSelectionRequired" ||
-      added.status === "invalidCustomConnectorPermissions"
+      added.status === "invalidCustomConnectorPermissions" ||
+      added.status === "mcpFeatureDisabled"
     ) {
       return undefined;
     }
@@ -3178,6 +3564,9 @@ export const saveCustomConnectorProposal$ = command(
     );
     if (isBadRequest(proposalDefinition)) {
       return proposalDefinition;
+    }
+    if (proposalDefinition.kind !== "http") {
+      return badRequestMessage("Custom connector proposals must use HTTP");
     }
     const proposalValues = validateValueInputsForDefinition({
       fields: proposalDefinition.fields,

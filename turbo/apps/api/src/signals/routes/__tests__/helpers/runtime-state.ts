@@ -150,34 +150,6 @@ export async function readUsagePackInvitationSchemaAvailable(
   return response.usage_pack_invitation_schema_available;
 }
 
-export async function seedMcpCustomConnectorFixture(
-  context: TestContext,
-  args: {
-    readonly connectorId: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly slug: string;
-    readonly displayName: string;
-    readonly endpoint: string;
-  },
-): Promise<void> {
-  await postAction(context, {
-    action: "seed-mcp-custom-connector",
-    connector_id: args.connectorId,
-    org_id: args.orgId,
-    user_id: args.userId,
-    slug: args.slug,
-    display_name: args.displayName,
-    endpoint: args.endpoint,
-  });
-  onTestFinished(async () => {
-    await postAction(context, {
-      action: "delete-custom-connector-fixture",
-      connector_id: args.connectorId,
-    });
-  });
-}
-
 export async function readRunAutonomyBudgetFixture(
   context: TestContext,
   runId: string,

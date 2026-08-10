@@ -43,6 +43,8 @@ import {
   updateUserConnectors,
   updateUserCustomConnectors,
 } from "../services/user-connectors.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { isCustomConnectorMcpEnabled } from "../services/custom-connector-mcp-feature.service";
 import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -769,15 +771,26 @@ const updateAgentCustomConnectorsInner$ = command(
             return grant.customConnectorId;
           });
     const operation = body.data.operation ?? "replace";
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
 
-    const updated = await updateUserCustomConnectors(writeDb, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      agentId: params.id,
-      enabledIds,
-      ...(grants !== undefined ? { grants } : {}),
-      operation,
-    });
+    const updated = await updateUserCustomConnectors(
+      writeDb,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        agentId: params.id,
+        enabledIds,
+        ...(grants !== undefined ? { grants } : {}),
+        operation,
+      },
+      {
+        allowMcpGrantAdditions:
+          isCustomConnectorMcpEnabled(featureSwitchContext),
+      },
+    );
     signal.throwIfAborted();
     if (updated.status === "agentNotFound") {
       return agentNotFound(params.id);
@@ -800,6 +813,9 @@ const updateAgentCustomConnectorsInner$ = command(
     }
     if (updated.status === "invalidCustomConnectorPermissions") {
       return validationError(updated.message);
+    }
+    if (updated.status === "mcpFeatureDisabled") {
+      return forbidden("MCP custom connector management is not enabled");
     }
 
     return {

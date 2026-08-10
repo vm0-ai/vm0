@@ -1,9 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import {
-  updateCustomConnectorBodySchema,
-  type CustomConnectorResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import chalk from "chalk";
 import { Command } from "commander";
 
@@ -15,50 +12,7 @@ import {
   printCallbackActionUrlExample,
 } from "../action-url";
 import { getPlatformOrigin } from "../../doctor/platform-url";
-
-const customConnectorDefinitionSchema = updateCustomConnectorBodySchema
-  .strict()
-  .refine(
-    (definition) => {
-      return definition.authMode !== undefined;
-    },
-    { message: 'Custom connector authMode must be "manual" or "oauth"' },
-  )
-  .refine(
-    (definition) => {
-      if (definition.authMode !== "manual") {
-        return true;
-      }
-      const field = definition.fields[0];
-      return (
-        definition.oauthConfig === undefined &&
-        definition.fields.length === 1 &&
-        field?.key === "secret" &&
-        field.kind === "secret" &&
-        field.required
-      );
-    },
-    {
-      message:
-        'Manual definitions require exactly one required secret field with key "secret" and no oauthConfig',
-    },
-  )
-  .refine(
-    (definition) => {
-      if (definition.authMode !== "oauth") {
-        return true;
-      }
-      return (
-        definition.fields.length === 0 &&
-        definition.oauthConfig?.providerAdapter === "standard" &&
-        definition.oauthConfig.clientSecret !== undefined
-      );
-    },
-    {
-      message:
-        "OAuth definitions require empty fields and standard OAuth app configuration including clientSecret",
-    },
-  );
+import { createCustomConnectorDefinitionFileSchema } from "./definition";
 
 interface CreateOptions {
   readonly file: string;
@@ -179,6 +133,30 @@ OAuth connector example:
     }
   }
 
+Manual Streamable HTTP MCP connector example:
+  {
+    "kind": "mcp",
+    "displayName": "Acme MCP",
+    "endpoint": "https://mcp.acme.example/mcp",
+    "transport": "streamable-http",
+    "fields": [
+      {
+        "key": "secret",
+        "label": "API Token",
+        "kind": "secret",
+        "required": true
+      }
+    ],
+    "headerInjections": [
+      {
+        "name": "Authorization",
+        "valueTemplate": "Bearer {{secrets.secret}}"
+      }
+    ],
+    "queryInjections": [],
+    "authMode": "manual"
+  }
+
 Examples:
   zero connector custom create --file ./connector.json
   zero connector custom create --file ./connector.json --json
@@ -197,7 +175,7 @@ Notes:
       requireCustomConnectorWriteCapability();
       const raw = await readFile(options.file, "utf8");
       const input: unknown = JSON.parse(raw);
-      const definition = customConnectorDefinitionSchema.parse(input);
+      const definition = createCustomConnectorDefinitionFileSchema.parse(input);
       const connector = await createZeroCustomConnector(definition);
       await printCreateResult(connector, options.json ?? false);
     }),
