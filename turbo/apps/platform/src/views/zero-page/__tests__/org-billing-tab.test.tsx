@@ -1371,7 +1371,12 @@ describe("organization billing settings", () => {
     const confirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });
-    expect(within(confirmationDialog).getByText("$0.00")).toBeInTheDocument();
+    expect(
+      within(confirmationDialog).queryByText("Due now"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(confirmationDialog).queryByText("$0.00"),
+    ).not.toBeInTheDocument();
     expect(
       within(confirmationDialog).getByText("$20/month"),
     ).toBeInTheDocument();

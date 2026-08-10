@@ -921,7 +921,7 @@ function OrderSummary({
           <span>{formatLocalizedNumber(memberUsageBonusCredits)}</span>
         </div>
         <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
-          <span className="font-medium">
+          <span className="font-semibold">
             {i18n.t(($) => {
               return $.billing.plans.usagePacks.monthlyTotal;
             })}
@@ -1106,7 +1106,7 @@ function ManagedSubscriptionSummaryDetails({
         <span>{formatLocalizedNumber(totals.bonusCredits)}</span>
       </div>
       <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
-        <span className="font-medium">
+        <span className="font-semibold">
           {i18n.t(($) => {
             return $.billing.plans.usagePacks.monthlyTotal;
           })}
@@ -1229,17 +1229,17 @@ function ManagedSubscriptionComparison({
               >
                 <th
                   scope="row"
-                  className={`px-3 py-2.5 text-left ${monthlyTotal ? "font-medium text-foreground" : "font-normal text-muted-foreground"}`}
+                  className={`px-3 py-2.5 text-left ${monthlyTotal ? "font-semibold text-foreground" : "font-normal text-muted-foreground"}`}
                 >
                   {row.label}
                 </th>
                 <td
-                  className={`px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-medium" : ""}`}
+                  className={`px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-semibold" : ""}`}
                 >
                   {row.current}
                 </td>
                 <td
-                  className={`px-3 py-2.5 text-right ${row.changed ? "font-semibold text-primary" : "font-medium text-foreground"}`}
+                  className={`px-3 py-2.5 text-right ${monthlyTotal || row.changed ? "font-semibold" : "font-medium"} ${row.changed ? "text-primary" : "text-foreground"}`}
                 >
                   {row.next}
                 </td>
@@ -1286,79 +1286,76 @@ function UsagePackChangePaymentSummary({
     preview.immediateCreditGrant.totalCredits > 0
       ? preview.immediateCreditGrant
       : null;
+  const hasImmediateAmount = preview.immediateAmountCents > 0;
+
+  if (!hasImmediateAmount && !immediateCreditGrant) {
+    return null;
+  }
+
   return (
-    <div className="mt-1 border-y border-border/70 py-4">
-      <div
-        className={
-          immediateCreditGrant
-            ? "grid grid-cols-2 divide-x divide-border/70"
-            : "grid grid-cols-1"
-        }
-      >
-        <div className={immediateCreditGrant ? "pr-5" : undefined}>
-          <p className="text-xs font-medium text-muted-foreground">
+    <div className="mt-1 divide-y divide-border/70 border-y border-border/70">
+      {hasImmediateAmount && (
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-4">
+          <p className="text-sm font-semibold text-foreground">
             {i18n.t(($) => {
               return $.billing.plans.usagePacks.management.immediateAmount;
             })}
           </p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-primary">
+          <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
             {formatUsd(preview.immediateAmountCents / 100)}
           </p>
         </div>
-        {immediateCreditGrant && (
-          <div
-            role="group"
-            aria-label={i18n.t(($) => {
-              return $.billing.plans.usagePacks.management.immediateCredits;
-            })}
-            className="pl-5"
-          >
-            <p className="text-xs font-medium text-muted-foreground">
+      )}
+      {immediateCreditGrant && (
+        <div
+          role="group"
+          aria-label={i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.immediateCredits;
+          })}
+          className="py-4"
+        >
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4">
+            <p className="text-sm font-semibold text-foreground">
               {i18n.t(($) => {
                 return $.billing.plans.usagePacks.management.immediateCredits;
               })}
             </p>
-            <p className="mt-1 text-2xl font-semibold tracking-tight text-primary">
+            <p className="text-right text-2xl font-semibold tabular-nums tracking-tight text-primary">
               +{formatLocalizedNumber(immediateCreditGrant.totalCredits)}
             </p>
-            <div className="mt-2 space-y-1 text-xs">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">
-                  {i18n.t(($) => {
-                    return $.billing.plans.usagePacks.purchasedCredits;
-                  })}
-                </span>
-                <span className="font-medium tabular-nums text-foreground">
-                  +
-                  {formatLocalizedNumber(immediateCreditGrant.purchasedCredits)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">
-                  {i18n.t(($) => {
-                    return $.billing.plans.usagePacks.bonusCredits;
-                  })}
-                </span>
-                <span className="font-medium tabular-nums text-foreground">
-                  +{formatLocalizedNumber(immediateCreditGrant.bonusCredits)}
-                </span>
-              </div>
-            </div>
-            {immediateCreditGrant.expiresAt && (
-              <p className="mt-2 border-t border-border/70 pt-2 text-[11px] text-muted-foreground">
-                {i18n.t(
-                  ($) => {
-                    return $.billing.usage.expires;
-                  },
-                  {
-                    date: formatBillingDate(immediateCreditGrant.expiresAt),
-                  },
-                )}
-              </p>
-            )}
           </div>
-        )}
-      </div>
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 text-xs">
+            <span className="text-muted-foreground">
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.purchasedCredits;
+              })}
+            </span>
+            <span className="text-right font-medium tabular-nums text-foreground">
+              +{formatLocalizedNumber(immediateCreditGrant.purchasedCredits)}
+            </span>
+            <span className="text-muted-foreground">
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.bonusCredits;
+              })}
+            </span>
+            <span className="text-right font-medium tabular-nums text-foreground">
+              +{formatLocalizedNumber(immediateCreditGrant.bonusCredits)}
+            </span>
+          </div>
+          {immediateCreditGrant.expiresAt && (
+            <p className="mt-3 border-t border-border/70 pt-2 text-right text-[11px] text-muted-foreground">
+              {i18n.t(
+                ($) => {
+                  return $.billing.usage.expires;
+                },
+                {
+                  date: formatBillingDate(immediateCreditGrant.expiresAt),
+                },
+              )}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
