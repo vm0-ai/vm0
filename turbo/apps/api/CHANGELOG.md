@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.411.7](https://github.com/vm0-ai/vm0/compare/api-v1.411.6...api-v1.411.7) (2026-08-10)
+
+
+### Bug Fixes
+
+* **stripe:** wire automation webhook endpoint ([#25998](https://github.com/vm0-ai/vm0/issues/25998)) ([7f33387](https://github.com/vm0-ai/vm0/commit/7f333874b936877225564b5785177bea08f01bdb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.3
+
 ## [1.411.6](https://github.com/vm0-ai/vm0/compare/api-v1.411.5...api-v1.411.6) (2026-08-10)
 
 

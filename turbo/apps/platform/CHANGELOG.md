@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.715.0](https://github.com/vm0-ai/vm0/compare/app-v0.714.6...app-v0.715.0) (2026-08-10)
+
+
+### Features
+
+* **platform:** move avatar voice controls into dialog header ([#25997](https://github.com/vm0-ai/vm0/issues/25997)) ([df5dd2a](https://github.com/vm0-ai/vm0/commit/df5dd2a71a3a354e68c2bb7abd4e7089ab7238a8))
+
+
+### Bug Fixes
+
+* **platform:** keep connectors stable across chat navigation ([#26014](https://github.com/vm0-ai/vm0/issues/26014)) ([f38dc9c](https://github.com/vm0-ai/vm0/commit/f38dc9cc3d27622a51d703def394a300b12a3df1))
+* **ui:** put every icon on one stroke width and match paired icon colour ([#25995](https://github.com/vm0-ai/vm0/issues/25995)) ([3df271b](https://github.com/vm0-ai/vm0/commit/3df271b84226781c45da7e133c0e9343a1f5a727))
+
 ## [0.714.6](https://github.com/vm0-ai/vm0/compare/app-v0.714.5...app-v0.714.6) (2026-08-10)
 
 

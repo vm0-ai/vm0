@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.41](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.40...sandbox-v0.19.41) (2026-08-10)
+
+
+### Performance Improvements
+
+* **rust:** restore 64 kib guest output drains ([#26006](https://github.com/vm0-ai/vm0/issues/26006)) ([a54ade4](https://github.com/vm0-ai/vm0/commit/a54ade4ad15ed3031cd0b6b9c33cd00999687fb0))
+
 ## [0.19.40](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.39...sandbox-v0.19.40) (2026-08-07)
 
 
