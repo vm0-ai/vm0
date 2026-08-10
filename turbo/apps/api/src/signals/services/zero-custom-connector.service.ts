@@ -787,17 +787,12 @@ export function serialiseCustomConnector(args: {
     fields: args.row.fields,
     markers: connectorMarkers,
   });
-  const validManualHttpAuth =
-    args.row.kind !== "http" ||
+  const validManualAuth =
     args.row.authMode !== "manual" ||
     customConnectorManualAuthReferencesMemberField(args.row);
-  const usableConnection =
-    args.row.kind === "mcp" && args.row.authMode === "manual"
-      ? true
-      : args.usableConnection;
   const connected =
-    usableConnection &&
-    validManualHttpAuth &&
+    args.usableConnection &&
+    validManualAuth &&
     missingRequiredFields.length === 0;
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
@@ -1408,14 +1403,12 @@ function validateOAuthConfigUpdate(args: {
 }
 
 function validateAuthInjectionReferences(args: {
-  readonly connectorKind: "http" | "mcp";
   readonly authMode: CustomConnectorAuthMode;
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
 }): BadRequestResponse | null {
   if (
-    args.connectorKind === "http" &&
     args.authMode === "manual" &&
     !customConnectorManualAuthReferencesMemberField(args)
   ) {
@@ -1487,7 +1480,6 @@ function validateDefinition(
     );
   }
   const authInjectionError = validateAuthInjectionReferences({
-    connectorKind: input.kind,
     authMode,
     fields,
     headerInjections,
