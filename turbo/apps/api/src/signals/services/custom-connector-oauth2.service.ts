@@ -54,6 +54,11 @@ import {
 } from "./zero-custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
+import {
+  customConnectorMcpDisabledResponse,
+  isCustomConnectorMcpEnabled,
+} from "./custom-connector-mcp-feature.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
@@ -493,14 +498,19 @@ export const startCustomConnectorOAuth2$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
-    if (
-      connector.kind !== "http" ||
-      connector.authMode !== "oauth" ||
-      !connector.oauthConfig
-    ) {
+    if (connector.authMode !== "oauth" || !connector.oauthConfig) {
       return badRequestMessage(
         "Custom connector does not support OAuth 2.0 authentication",
       );
+    }
+    if (connector.kind === "mcp") {
+      const featureContext = await get(
+        userFeatureSwitchContext(args.orgId, args.userId),
+      );
+      signal.throwIfAborted();
+      if (!isCustomConnectorMcpEnabled(featureContext)) {
+        return customConnectorMcpDisabledResponse();
+      }
     }
     const providerAdapter = connector.oauthConfig.providerAdapter;
     const redirectUri =

@@ -486,6 +486,9 @@ function mockCustomConnectorStory(): {
     zeroCustomConnectorByIdContract.update,
     ({ params, body, respond }) => {
       updateBodies.push(body);
+      if (body.kind === "mcp") {
+        throw new Error("Expected an HTTP custom connector update");
+      }
       let updated = connectors.find((connector) => {
         return connector.id === params.id;
       });
@@ -4177,6 +4180,9 @@ describe("connectors page", () => {
       ({ params, body, respond }) => {
         expect(params.id).toBe(connector?.id);
         updatedBodies.push(body);
+        if (body.kind === "mcp") {
+          throw new Error("Expected an HTTP custom connector update");
+        }
         if (!connector) {
           throw new Error("Expected custom connector to exist");
         }
