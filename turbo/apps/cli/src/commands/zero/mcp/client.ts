@@ -162,9 +162,14 @@ async function closeMcpClient(
 function safeMcpError(
   error: unknown,
   deadlineSignal: AbortSignal,
+  deadlineAt: number,
   timeoutSeconds: number,
 ): Error {
-  if (deadlineSignal.aborted || error instanceof McpDeadlineError) {
+  if (
+    deadlineSignal.aborted ||
+    Date.now() >= deadlineAt ||
+    error instanceof McpDeadlineError
+  ) {
     return new Error(`MCP command timed out after ${timeoutSeconds}s`);
   }
   if (error instanceof McpCommandError) {
@@ -235,7 +240,12 @@ async function runMcpOperation<T>(
   } catch (error) {
     outcome = {
       ok: false,
-      error: safeMcpError(error, deadlineController.signal, timeoutSeconds),
+      error: safeMcpError(
+        error,
+        deadlineController.signal,
+        deadlineAt,
+        timeoutSeconds,
+      ),
     };
   }
 
