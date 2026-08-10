@@ -155,7 +155,7 @@ export type QueueFirstRunAssociation =
       readonly morningBriefDeliveryId?: string;
     }
   | {
-      readonly kind: "workflow_event";
+      readonly kind: "automation_event";
       readonly threadId: string;
       readonly eventId: string;
       readonly prompt: string;
@@ -395,7 +395,7 @@ async function resolveUserQueueFirstClaimSnapshot(
 
 async function resolveWorkflowQueueFirstClaimSnapshot(
   db: DbTransaction,
-  args: Extract<QueueFirstClaimArgs, { readonly kind: "workflow_event" }>,
+  args: Extract<QueueFirstClaimArgs, { readonly kind: "automation_event" }>,
 ): Promise<QueueFirstClaimSnapshot | null> {
   const [head] = await db
     .select({
@@ -531,7 +531,7 @@ async function resolveQueueFirstClaimSnapshot(
   if (args.kind === "user_message") {
     return await resolveUserQueueFirstClaimSnapshot(db, args);
   }
-  if (args.kind === "workflow_event") {
+  if (args.kind === "automation_event") {
     return await resolveWorkflowQueueFirstClaimSnapshot(db, args);
   }
   return await resolveGoalQueueFirstClaimSnapshot(db, args);

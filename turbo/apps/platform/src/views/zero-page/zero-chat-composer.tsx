@@ -441,7 +441,7 @@ function ComposerStripRow({
   removeAriaLabel,
   cancellationRecoveryPending,
 }: {
-  kind: "queued" | "workflow-event" | "goal";
+  kind: "queued" | "automation-event" | "goal";
   text: string;
   onRemove?: () => void;
   onOpenDetail?: () => void;
@@ -450,12 +450,12 @@ function ComposerStripRow({
 }) {
   const { t } = useTranslation();
   const isGoal = kind === "goal";
-  const isWorkflowEvent = kind === "workflow-event";
+  const isAutomationEvent = kind === "automation-event";
   const itemAriaLabel = isGoal
     ? t(($) => {
         return $.chat.queue.activeGoal;
       })
-    : isWorkflowEvent
+    : isAutomationEvent
       ? t(($) => {
           return $.chat.queue.pendingAutomationEvent;
         })
@@ -466,7 +466,7 @@ function ComposerStripRow({
     ? t(($) => {
         return $.chat.queue.aboutGoal;
       })
-    : isWorkflowEvent
+    : isAutomationEvent
       ? t(($) => {
           return $.chat.queue.aboutAutomationEvent;
         })
@@ -477,7 +477,7 @@ function ComposerStripRow({
     ? t(($) => {
         return $.chat.queue.goal;
       })
-    : isWorkflowEvent
+    : isAutomationEvent
       ? t(($) => {
           return $.chat.queue.automationEvent;
         })
@@ -493,7 +493,7 @@ function ComposerStripRow({
         ? t(($) => {
             return $.chat.queue.goalDescription;
           })
-        : isWorkflowEvent
+        : isAutomationEvent
           ? t(($) => {
               return $.chat.queue.automationEventDescription;
             })
@@ -533,7 +533,7 @@ function ComposerStripRow({
               >
                 {isGoal ? (
                   <Target size={16} aria-hidden="true" />
-                ) : isWorkflowEvent ? (
+                ) : isAutomationEvent ? (
                   <Bolt size={16} aria-hidden="true" />
                 ) : (
                   <ComposerQueueGlyph />
@@ -610,7 +610,7 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
     signals.goal.activeGoalObjective$,
   );
   const removeQueuedMessage = useSet(signals.queue.removeQueuedMessage$);
-  const removeWorkflowEvent = useSet(signals.queue.removeWorkflowEvent$);
+  const removeAutomationEvent = useSet(signals.queue.removeAutomationEvent$);
   const cancelActiveGoal = useSet(signals.goal.cancelActiveGoal$);
   const openActiveGoal = useSet(signals.goal.openActiveGoal$);
   const pageSignal = useGet(pageSignal$);
@@ -704,11 +704,11 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
           return (
             <ComposerStripRow
               key={event.id}
-              kind="workflow-event"
+              kind="automation-event"
               text={event.text}
               onRemove={() => {
                 detach(
-                  removeWorkflowEvent(event.id, pageSignal),
+                  removeAutomationEvent(event.id, pageSignal),
                   Reason.DomCallback,
                 );
               }}

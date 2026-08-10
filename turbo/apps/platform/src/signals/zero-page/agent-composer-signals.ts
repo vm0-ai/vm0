@@ -159,7 +159,7 @@ function createAgentComposerSignalsWithDraft(
     cancelRun$: noOpAction$,
     cancellationRecoveryPending$: idle$,
     removeQueuedMessage$: noOpEventAction$,
-    removeWorkflowEvent$: noOpEventAction$,
+    removeAutomationEvent$: noOpEventAction$,
     cancelActiveGoal$: noOpAction$,
     openActiveGoal$: noOp$,
   });

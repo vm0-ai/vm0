@@ -189,7 +189,10 @@ interface ComposerQueueSignals {
   readonly pendingEvents$: Computed<Promise<readonly ComposerPendingEvent[]>>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
   readonly removeQueuedMessage$: Command<Promise<void>, [string, AbortSignal]>;
-  readonly removeWorkflowEvent$: Command<Promise<void>, [string, AbortSignal]>;
+  readonly removeAutomationEvent$: Command<
+    Promise<void>,
+    [string, AbortSignal]
+  >;
 }
 
 interface ComposerGoalSignals {
@@ -247,7 +250,7 @@ interface CreateComposerSignalsOptions {
   readonly cancelRun$: Command<Promise<void>, [AbortSignal]>;
   readonly cancellationRecoveryPending$: ComposerQueueSignals["cancellationRecoveryPending$"];
   readonly removeQueuedMessage$: ComposerQueueSignals["removeQueuedMessage$"];
-  readonly removeWorkflowEvent$: ComposerQueueSignals["removeWorkflowEvent$"];
+  readonly removeAutomationEvent$: ComposerQueueSignals["removeAutomationEvent$"];
   readonly cancelActiveGoal$: ComposerGoalSignals["cancelActiveGoal$"];
   readonly openActiveGoal$: ComposerGoalSignals["openActiveGoal$"];
 }
@@ -519,7 +522,7 @@ export function createComposerSignals(
         options.removeQueuedMessage$,
         workflowComposer,
       ),
-      removeWorkflowEvent$: options.removeWorkflowEvent$,
+      removeAutomationEvent$: options.removeAutomationEvent$,
     },
     goal: {
       activeGoalObjective$: eventSignals.activeGoalObjective$,
