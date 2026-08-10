@@ -1148,6 +1148,37 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Uploaded vm0-api-preview version ${version_id} at ${url} (startup ${startup_time_ms} ms)"
 
+      # `wrangler versions upload` does not apply the non-versioned
+      # workers.dev/Preview URL routing settings from wrangler.jsonc. Reconcile
+      # only those settings without deploying the version or cron triggers.
+      - name: Reconcile API Worker Preview routing
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_DEPLOY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_DEPLOY_API_TOKEN secret is required}"
+
+          response="$(curl \
+            --request POST \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 30 \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data '{"enabled":false,"previews_enabled":true}' \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/vm0-api-preview/subdomain")"
+          jq -e '
+            .success == true and
+            .result.enabled == false and
+            .result.previews_enabled == true
+          ' <<< "$response" >/dev/null || {
+            echo "::error::Cloudflare did not enable API Worker Preview URLs"
+            exit 1
+          }
+
       - name: Check API Worker Access and health
         env:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
