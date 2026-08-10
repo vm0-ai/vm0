@@ -249,6 +249,42 @@ function mockAdminAccountSidebar(): void {
 }
 
 describe("zero sidebar account menu", () => {
+  it("uses the shared focus treatment and preserves keyboard menu behavior", async () => {
+    const user = userEvent.setup();
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+
+    expect(accountButton).toHaveClass("focus-visible:outline-none");
+    expect(accountButton).toHaveClass("focus-visible:ring-2");
+    expect(accountButton).toHaveClass("focus-visible:ring-ring");
+    expect(accountButton).toHaveClass("focus-visible:ring-offset-2");
+
+    accountButton.focus();
+    await user.keyboard("{Enter}");
+    const menu = await screen.findByRole("menu");
+    expect(menu).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(accountButton).toHaveFocus();
+    });
+  });
+
   it("opens credit balance and export data from the account menu", async () => {
     mockAdminAccountSidebar();
     const openMock = context.mocks.browser.open(null);
