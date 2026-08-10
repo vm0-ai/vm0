@@ -10,7 +10,7 @@ import {
   type ZeroWebSearchRequest,
 } from "@vm0/api-contracts/contracts/zero-web-search";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
+import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -40,7 +40,7 @@ import {
   postUsageAllowanceInvoicePaid,
 } from "./helpers/stripe-billing-webhook";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { zeroUsageRunsRoutes } from "../zero-usage-runs";
+import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
 const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
@@ -275,19 +275,25 @@ describe("zero web-search route", () => {
       ],
     });
     const usage = await accept(
-      setupApp({ context, routes: zeroUsageRunsRoutes })(
-        zeroUsageRunsContract,
+      setupApp({ context, routes: zeroUsageRecordRoutes })(
+        zeroUsageRecordContract,
       ).get({
         headers: authenticate(actor),
-        query: { runId: run.runId },
+        query: {
+          page: 1,
+          pageSize: 20,
+          scope: "mine",
+          range: "24h",
+          tz: "UTC",
+        },
       }),
       [200],
     );
 
     expect(response.body.creditsCharged).toBe(5);
-    expect(usage.body.runs).toHaveLength(1);
-    expect(usage.body.runs[0]?.runId).toBe(run.runId);
-    expect(usage.body.runs[0]?.creditsCharged).toBe(5);
+    expect(usage.body.rows).toHaveLength(1);
+    expect(usage.body.rows[0]?.runId).toBe(run.runId);
+    expect(usage.body.rows[0]?.credits).toBe(5);
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       "billing:changed",
       null,

@@ -15,11 +15,11 @@ import { clearMockNow, mockNow } from "../../../lib/time";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
-  deleteUsageInsightFixture$,
+  deleteUsageStateFixture$,
   seedCompose$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+  seedUsageStateFixture$,
+  type UsageStateFixture,
+} from "./helpers/usage-state";
 import { zeroUserPermissionGrantsRoutes } from "../zero-user-permission-grants";
 
 const TEST_APP_ROUTES = Object.freeze([...zeroUserPermissionGrantsRoutes]);
@@ -150,13 +150,13 @@ async function applyPermissionGrant(
 }
 
 describe("zero user permission grants", () => {
-  const fixtures: UsageInsightFixture[] = [];
+  const fixtures: UsageStateFixture[] = [];
 
   async function createFixture(
     role: "admin" | "member" = "member",
-  ): Promise<UsageInsightFixture> {
+  ): Promise<UsageStateFixture> {
     const fixture = await store.set(
-      seedUsageInsightFixture$,
+      seedUsageStateFixture$,
       undefined,
       context.signal,
     );
@@ -175,7 +175,7 @@ describe("zero user permission grants", () => {
     while (fixtures.length > 0) {
       const fixture = fixtures.pop();
       if (fixture) {
-        await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+        await store.set(deleteUsageStateFixture$, fixture, context.signal);
       }
     }
   });

@@ -41,9 +41,9 @@ import {
   type SlackIntegrationFixture,
 } from "./helpers/zero-integrations-slack";
 import {
-  deleteUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+  deleteUsageStateFixture$,
+  type UsageStateFixture,
+} from "./helpers/usage-state";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "../zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "../zero-integrations-slack-upload-init";
 import { zeroIntegrationsSlackUploadMaterializeRoutes } from "../zero-integrations-slack-upload-materialize";
@@ -175,7 +175,7 @@ interface RunScopedContext {
 
 describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
-  const insightFixtures: UsageInsightFixture[] = [];
+  const usageFixtures: UsageStateFixture[] = [];
 
   function actorFor(args: { readonly orgId: string; readonly userId: string }) {
     return {
@@ -220,10 +220,10 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         );
       }
     }
-    while (insightFixtures.length > 0) {
-      const fixture = insightFixtures.pop();
+    while (usageFixtures.length > 0) {
+      const fixture = usageFixtures.pop();
       if (fixture) {
-        await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+        await store.set(deleteUsageStateFixture$, fixture, context.signal);
       }
     }
   });
@@ -254,7 +254,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    insightFixtures.push({ orgId, userId });
+    usageFixtures.push({ orgId, userId });
     return { orgId, userId };
   }
 

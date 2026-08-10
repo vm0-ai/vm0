@@ -19,7 +19,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
-import { seedRun$ } from "./helpers/zero-usage-insight";
+import { seedRun$ } from "./helpers/usage-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();

@@ -663,13 +663,14 @@ async function unitPriceModelTokens(model: string): Promise<void> {
   );
 }
 
-async function usageRun(actor: ApiTestUser, runId: string) {
-  const response = await billing.readUsageRuns(actor, [200]);
-  if (response.status !== 200) {
-    throw new Error("Expected usage runs read to succeed");
-  }
-  return response.body.runs.find((run) => {
-    return run.runId === runId;
+async function usageRecordRow(
+  actor: ApiTestUser,
+  runId: string,
+  threadId: string,
+) {
+  const response = await billing.readUsageRecord(actor);
+  return response.body.rows.find((row) => {
+    return row.runId === runId || row.threadId === threadId;
   });
 }
 
@@ -1512,13 +1513,12 @@ describe("PiLoop edge turn", () => {
     const runState = await api.readRun(fixture.actor, run.runId);
     expect(runState.error).toBeUndefined();
     expect(runState.status).toBe("completed");
-    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      runId: run.runId,
-      model: MODEL,
-      inputTokens: 75,
-      outputTokens: 11,
-      cacheTokens: 25,
-      creditsCharged: 111,
+    await expect(
+      usageRecordRow(fixture.actor, run.runId, run.threadId),
+    ).resolves.toMatchObject({
+      threadId: run.threadId,
+      tokens: 111,
+      credits: 111,
     });
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore - 111,
@@ -1544,9 +1544,9 @@ describe("PiLoop edge turn", () => {
     await flushWaitUntilForTest();
     expect(replay).toStrictEqual(run);
     expect(responsesRequests).toHaveLength(1);
-    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      creditsCharged: 111,
-    });
+    await expect(
+      usageRecordRow(fixture.actor, run.runId, run.threadId),
+    ).resolves.toMatchObject({ credits: 111 });
   });
 
   it("keeps BYOK API-edge usage out of vm0 billing", async () => {
@@ -1571,7 +1571,9 @@ describe("PiLoop edge turn", () => {
     const runState = await api.readRun(fixture.actor, run.runId);
     expect(runState.error).toBeUndefined();
     expect(runState.status).toBe("completed");
-    await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
+    await expect(
+      usageRecordRow(fixture.actor, run.runId, run.threadId),
+    ).resolves.toBeUndefined();
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore,
     );
@@ -1635,12 +1637,11 @@ describe("PiLoop edge turn", () => {
     await flushWaitUntilForTest();
 
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
-    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      model: MODEL,
-      inputTokens: 20,
-      outputTokens: 3,
-      cacheTokens: 0,
-      creditsCharged: 23,
+    await expect(
+      usageRecordRow(fixture.actor, run.runId, run.threadId),
+    ).resolves.toMatchObject({
+      tokens: 23,
+      credits: 23,
     });
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore - 23,
@@ -1698,7 +1699,9 @@ describe("PiLoop edge turn", () => {
     await expect(
       outputMessages(fixture.actor, run.threadId),
     ).resolves.toHaveLength(0);
-    await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
+    await expect(
+      usageRecordRow(fixture.actor, run.runId, run.threadId),
+    ).resolves.toBeUndefined();
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore,
     );
@@ -1787,13 +1790,10 @@ describe("PiLoop edge turn", () => {
       },
     });
     await expect(
-      usageRun(fixture.actor, queuedRun.runId),
+      usageRecordRow(fixture.actor, queuedRun.runId, queuedRun.threadId),
     ).resolves.toMatchObject({
-      model: MODEL,
-      inputTokens: 14,
-      outputTokens: 3,
-      cacheTokens: 2,
-      creditsCharged: 19,
+      tokens: 19,
+      credits: 19,
     });
   });
 
@@ -2056,12 +2056,11 @@ describe("PiLoop edge turn", () => {
         }),
       ],
     });
-    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      model: MODEL,
-      inputTokens: 10,
-      outputTokens: 8,
-      cacheTokens: 2,
-      creditsCharged: 20,
+    await expect(
+      usageRecordRow(fixture.actor, run.runId, run.threadId),
+    ).resolves.toMatchObject({
+      tokens: 20,
+      credits: 20,
     });
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore - 20,

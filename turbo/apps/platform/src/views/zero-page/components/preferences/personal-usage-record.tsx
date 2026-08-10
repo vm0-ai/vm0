@@ -99,8 +99,7 @@ const RANGE_OPTIONS = [
 const ROW_CLASS =
   "relative px-5 py-3.5 [&:not(:first-child)]:before:absolute [&:not(:first-child)]:before:inset-x-5 [&:not(:first-child)]:before:top-0 [&:not(:first-child)]:before:border-t [&:not(:first-child)]:before:border-border/50 [&:not(:first-child)]:before:content-['']";
 
-// Dotted-underline link affordance for the title, mirroring the insights page
-// (network-insights-page.tsx): click navigates. leading-6 keeps the line box
+// Dotted-underline link affordance for navigable titles. leading-6 keeps the line box
 // tall enough that the offset-4 underline isn't clipped by `truncate`'s
 // overflow-hidden. inline-block + max-w-full keeps the hover fill hugging the
 // title text (not the whole row), truncating long titles; the chip padding /

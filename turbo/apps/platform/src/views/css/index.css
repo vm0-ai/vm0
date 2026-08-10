@@ -38,10 +38,9 @@
   --color-credit-plan-pro: #edc43e;
   --color-credit-plan-team: #6b8de3;
 
-  /* Usage record kind breakdown segment colors — drawn from the Insights
-     card-palette hues so usage and insights read as one system. Model uses a
-     cool indigo so the dominant LLM segment separates cleanly from the pink
-     image hue; image and video also sit far apart (pink vs teal). */
+  /* Usage record kind breakdown segment colors. Model uses a cool indigo so
+     the dominant LLM segment separates cleanly from the pink image hue; image
+     and video also sit far apart (pink vs teal). */
   --color-usage-kind-model: #5e6ad2;
   --color-usage-kind-image: #ec70a5;
   --color-usage-kind-video: #358a8e;

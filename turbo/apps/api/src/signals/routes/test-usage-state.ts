@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import {
-  testUsageInsightStateContract,
-  type TestUsageInsightStateActionBody,
-} from "@vm0/api-contracts/contracts/test-usage-insight-state";
+  testUsageStateContract,
+  type TestUsageStateActionBody,
+} from "@vm0/api-contracts/contracts/test-usage-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -13,7 +13,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
-import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
@@ -54,9 +53,9 @@ import {
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
 
-const actionBody$ = bodyResultOf(testUsageInsightStateContract.action);
+const actionBody$ = bodyResultOf(testUsageStateContract.action);
 
-interface UsageInsightFixture {
+interface UsageStateFixture {
   readonly orgId: string;
   readonly userId: string;
 }
@@ -94,19 +93,16 @@ interface ModelUsageEventArgs {
   readonly processedAt?: Date | null;
 }
 
-type UsageInsightAction<
-  Action extends TestUsageInsightStateActionBody["action"],
-> = Extract<TestUsageInsightStateActionBody, { readonly action: Action }>;
+type UsageStateAction<Action extends TestUsageStateActionBody["action"]> =
+  Extract<TestUsageStateActionBody, { readonly action: Action }>;
 
-type UsageInsightFixtureAction = UsageInsightAction<
+type UsageStateFixtureAction = UsageStateAction<
   "seed-fixture" | "delete-fixture" | "seed-compose"
 >;
 
-type UsageInsightRunAction = UsageInsightAction<
-  "seed-run" | "seed-chat-thread"
->;
+type UsageStateRunAction = UsageStateAction<"seed-run" | "seed-chat-thread">;
 
-type UsageInsightEventWriteAction = UsageInsightAction<
+type UsageStateEventWriteAction = UsageStateAction<
   | "insert-model-usage-event-for-run"
   | "insert-usage-event"
   | "attach-usage-allowance"
@@ -114,16 +110,15 @@ type UsageInsightEventWriteAction = UsageInsightAction<
   | "read-usage-event-state"
 >;
 
-type UsageInsightEventMaterializationAction = UsageInsightAction<
+type UsageStateEventMaterializationAction = UsageStateAction<
   | "delete-run"
   | "seed-usage-overflow-grain"
   | "set-usage-event-created-at"
   | "materialize-hourly-usage"
   | "read-usage-storage-counts"
-  | "read-insights-daily-permissions"
 >;
 
-type UsageInsightCleanupAction = UsageInsightAction<"delete-usage-data">;
+type UsageStateCleanupAction = UsageStateAction<"delete-usage-data">;
 
 const MODEL_TOKEN_CATEGORIES = [
   "tokens.input",
@@ -146,18 +141,18 @@ function parseMaybeDate(value: string | undefined): Date | undefined {
   return new Date(value);
 }
 
-function fixtureToWire(fixture: UsageInsightFixture) {
+function fixtureToWire(fixture: UsageStateFixture) {
   return { org_id: fixture.orgId, user_id: fixture.userId };
 }
 
 function fixtureFromWire(fixture: {
   readonly org_id: string;
   readonly user_id: string;
-}): UsageInsightFixture {
+}): UsageStateFixture {
   return { orgId: fixture.org_id, userId: fixture.user_id };
 }
 
-async function seedUsageInsightFixture(db: Db): Promise<UsageInsightFixture> {
+async function seedUsageStateFixture(db: Db): Promise<UsageStateFixture> {
   const fixture = {
     orgId: `org_${randomUUID()}`,
     userId: `user_${randomUUID()}`,
@@ -170,9 +165,9 @@ async function seedUsageInsightFixture(db: Db): Promise<UsageInsightFixture> {
   return fixture;
 }
 
-async function deleteUsageInsightFixtureUsageData(
+async function deleteUsageStateFixtureUsageData(
   db: Db,
-  fixture: UsageInsightFixture,
+  fixture: UsageStateFixture,
   signal: AbortSignal,
 ): Promise<void> {
   await db
@@ -199,15 +194,15 @@ async function deleteUsageInsightFixtureUsageData(
   signal.throwIfAborted();
 }
 
-async function deleteUsageInsightFixture(
+async function deleteUsageStateFixture(
   db: Db,
-  fixture: UsageInsightFixture,
+  fixture: UsageStateFixture,
   signal: AbortSignal,
 ): Promise<void> {
   const orgId = fixture.orgId;
   const userId = fixture.userId;
 
-  await deleteUsageInsightFixtureUsageData(db, fixture, signal);
+  await deleteUsageStateFixtureUsageData(db, fixture, signal);
 
   await db
     .delete(userPermissionGrants)
@@ -928,41 +923,6 @@ async function readUsageStorageCounts(
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-async function readInsightsDailyPermissions(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly date: string;
-  },
-): Promise<readonly Record<string, unknown>[]> {
-  const [row] = await db
-    .select({ data: insightsDaily.data })
-    .from(insightsDaily)
-    .where(
-      and(
-        eq(insightsDaily.orgId, args.orgId),
-        eq(insightsDaily.userId, args.userId),
-        eq(insightsDaily.date, args.date),
-      ),
-    )
-    .limit(1);
-  if (!row || !isRecord(row.data)) {
-    throw new Error("readInsightsDailyPermissions: insight data not found");
-  }
-  const { permissions } = row.data;
-  if (!Array.isArray(permissions) || !permissions.every(isRecord)) {
-    throw new Error(
-      "readInsightsDailyPermissions: insight permissions not found",
-    );
-  }
-  return permissions;
-}
-
 async function readUsageEventState(
   db: Db,
   idempotencyKey: string,
@@ -1000,14 +960,14 @@ async function deleteUsageData(
   await deleteUserUsageData(db, id);
 }
 
-async function mutateUsageInsightFixtureState(
+async function mutateUsageStateFixtureState(
   db: Db,
-  body: UsageInsightFixtureAction,
+  body: UsageStateFixtureAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
     case "seed-fixture": {
-      const fixture = await seedUsageInsightFixture(db);
+      const fixture = await seedUsageStateFixture(db);
       signal.throwIfAborted();
       return {
         status: 200 as const,
@@ -1015,11 +975,7 @@ async function mutateUsageInsightFixtureState(
       };
     }
     case "delete-fixture": {
-      await deleteUsageInsightFixture(
-        db,
-        fixtureFromWire(body.fixture),
-        signal,
-      );
+      await deleteUsageStateFixture(db, fixtureFromWire(body.fixture), signal);
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "seed-compose": {
@@ -1043,9 +999,9 @@ async function mutateUsageInsightFixtureState(
   }
 }
 
-async function mutateUsageInsightRunState(
+async function mutateUsageStateRunState(
   db: Db,
-  body: UsageInsightRunAction,
+  body: UsageStateRunAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -1102,9 +1058,9 @@ async function mutateUsageInsightRunState(
   }
 }
 
-async function mutateUsageInsightEventWriteState(
+async function mutateUsageStateEventWriteState(
   db: Db,
-  body: UsageInsightEventWriteAction,
+  body: UsageStateEventWriteAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -1209,9 +1165,9 @@ async function mutateUsageInsightEventWriteState(
   }
 }
 
-async function mutateUsageInsightEventMaterializationState(
+async function mutateUsageStateEventMaterializationState(
   db: Db,
-  body: UsageInsightEventMaterializationAction,
+  body: UsageStateEventMaterializationAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -1267,27 +1223,12 @@ async function mutateUsageInsightEventMaterializationState(
         },
       };
     }
-    case "read-insights-daily-permissions": {
-      const permissions = await readInsightsDailyPermissions(db, {
-        orgId: body.org_id,
-        userId: body.user_id,
-        date: body.date,
-      });
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          insights_daily_permissions: permissions,
-        },
-      };
-    }
   }
 }
 
-async function mutateUsageInsightCleanupState(
+async function mutateUsageStateCleanupState(
   db: Db,
-  body: UsageInsightCleanupAction,
+  body: UsageStateCleanupAction,
   signal: AbortSignal,
 ) {
   switch (body.action) {
@@ -1299,69 +1240,58 @@ async function mutateUsageInsightCleanupState(
   }
 }
 
-async function mutateUsageInsightState(
+async function mutateUsageState(
   db: Db,
-  body: TestUsageInsightStateActionBody,
+  body: TestUsageStateActionBody,
   signal: AbortSignal,
 ) {
   switch (body.action) {
     case "seed-fixture":
     case "delete-fixture":
     case "seed-compose": {
-      return await mutateUsageInsightFixtureState(db, body, signal);
+      return await mutateUsageStateFixtureState(db, body, signal);
     }
     case "seed-run":
     case "seed-chat-thread": {
-      return await mutateUsageInsightRunState(db, body, signal);
+      return await mutateUsageStateRunState(db, body, signal);
     }
     case "insert-model-usage-event-for-run":
     case "insert-usage-event":
     case "attach-usage-allowance":
     case "read-allowance-window-state":
     case "read-usage-event-state": {
-      return await mutateUsageInsightEventWriteState(db, body, signal);
+      return await mutateUsageStateEventWriteState(db, body, signal);
     }
     case "delete-run":
     case "seed-usage-overflow-grain":
     case "set-usage-event-created-at":
     case "materialize-hourly-usage":
-    case "read-usage-storage-counts":
-    case "read-insights-daily-permissions": {
-      return await mutateUsageInsightEventMaterializationState(
-        db,
-        body,
-        signal,
-      );
+    case "read-usage-storage-counts": {
+      return await mutateUsageStateEventMaterializationState(db, body, signal);
     }
     case "delete-usage-data": {
-      return await mutateUsageInsightCleanupState(db, body, signal);
+      return await mutateUsageStateCleanupState(db, body, signal);
     }
   }
 }
 
-const mutateUsageInsightState$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    if (!isTestEndpointAllowed(get(request$))) {
-      return testEndpointNotFoundResponse();
-    }
+const mutateUsageState$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (!isTestEndpointAllowed(get(request$))) {
+    return testEndpointNotFoundResponse();
+  }
 
-    const bodyResult = await get(actionBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
+  const bodyResult = await get(actionBody$);
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
 
-    return await mutateUsageInsightState(
-      set(writeDb$),
-      bodyResult.data,
-      signal,
-    );
-  },
-);
+  return await mutateUsageState(set(writeDb$), bodyResult.data, signal);
+});
 
-export const testUsageInsightStateRoutes: readonly RouteEntry[] = [
+export const testUsageStateRoutes: readonly RouteEntry[] = [
   {
-    route: testUsageInsightStateContract.action,
-    handler: mutateUsageInsightState$,
+    route: testUsageStateContract.action,
+    handler: mutateUsageState$,
   },
 ];

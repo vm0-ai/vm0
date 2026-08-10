@@ -989,6 +989,38 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
+const activeInputDeliveryReferenceSchema = z.object({
+  deliveryId: z.uuid(),
+  eventIds: z.array(z.uuid()).min(1),
+});
+
+export const activeInputDeliveryReserveResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    activeInputDeliveryReferenceSchema.extend({
+      outcome: z.literal("reserved"),
+      prompt: z.string().min(1),
+    }),
+    z.object({ outcome: z.literal("empty") }),
+    z.object({ outcome: z.literal("terminal") }),
+    activeInputDeliveryReferenceSchema.extend({
+      outcome: z.literal("held"),
+    }),
+    z.object({
+      outcome: z.literal("rejected"),
+      reason: z.enum(["payload_too_large", "run_not_running"]),
+    }),
+  ],
+);
+
+export const activeInputDeliveryReceiptResponseSchema = z.discriminatedUnion(
+  "outcome",
+  [
+    z.object({ outcome: z.literal("delivered") }),
+    z.object({ outcome: z.literal("rejected") }),
+  ],
+);
+
 export const runnersActiveInputsContract = c.router({
   list: {
     method: "GET",
@@ -1030,6 +1062,47 @@ export const runnersActiveInputsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Claim pending input prompts for a running agent run",
+  },
+  /**
+   * This additive route intentionally has no 404 response. During the rollout,
+   * Runner uses route-level 404 exclusively to identify an API that predates
+   * reservation support; every response from an API that implements the route
+   * must preserve its actual lifecycle or error classification.
+   */
+  reserve: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/active-inputs/reserve",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+    }),
+    body: z.object({}),
+    responses: {
+      200: activeInputDeliveryReserveResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Reserve or retrieve pending active input for a run",
+  },
+  receipt: {
+    method: "POST",
+    path: "/api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      runId: z.uuid(),
+      deliveryId: z.uuid(),
+    }),
+    body: z.object({}),
+    responses: {
+      200: activeInputDeliveryReceiptResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Record acceptance of an active-input delivery",
   },
 });
 

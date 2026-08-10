@@ -53,8 +53,6 @@ export const ROUTES = {
   signInToken: "/sign-in-token",
   morningBriefUnsubscribe: "/email/morning-brief/unsubscribe",
   lab: "/_/lab",
-  insights: "/insights",
-  usage: "/usage",
   exportData: "/export",
   reportError: "/runs/:runId/report-error",
   redeemCampaign: "/redeem/:campaign",

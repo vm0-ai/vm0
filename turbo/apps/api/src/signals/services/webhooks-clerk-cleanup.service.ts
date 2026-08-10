@@ -29,7 +29,6 @@ import { sharedThreads } from "@vm0/db/schema/shared-thread";
 import { storages } from "@vm0/db/schema/storage";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
@@ -802,7 +801,6 @@ async function deleteOrgData(
   await db
     .delete(connectorExternalCodeSessions)
     .where(eq(connectorExternalCodeSessions.orgId, orgId));
-  await db.delete(usageDaily).where(eq(usageDaily.orgId, orgId));
   await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.orgId, orgId));
   await db
@@ -870,7 +868,6 @@ async function deleteUserData(
   await deleteConnectorOwnerState(db, { kind: "user", userId }, signal);
   await db.delete(secrets).where(eq(secrets.userId, userId));
   await db.delete(variables).where(eq(variables.userId, userId));
-  await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
   await db.delete(exportJobs).where(eq(exportJobs.userId, userId));
   await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
   await db.delete(composeJobs).where(eq(composeJobs.userId, userId));

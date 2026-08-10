@@ -26,7 +26,7 @@ import {
   seedOrgMetadata,
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
+import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
