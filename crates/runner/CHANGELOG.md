@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.162.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.10...runner-rs-v0.162.11) (2026-08-10)
+
+
+### Bug Fixes
+
+* install noto fonts in sandbox images ([#26113](https://github.com/vm0-ai/vm0/issues/26113)) ([d561785](https://github.com/vm0-ai/vm0/commit/d56178597c6afa8149336c924196836a58ad5898))
+
+
+### Performance Improvements
+
+* **python:** bound and reuse sigv4 request inspection ([#26141](https://github.com/vm0-ai/vm0/issues/26141)) ([7c1d422](https://github.com/vm0-ai/vm0/commit/7c1d42257d37c9b213d4ed25cee57de0aeb87617))
+
 ## [0.162.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.9...runner-rs-v0.162.10) (2026-08-10)
 
 
