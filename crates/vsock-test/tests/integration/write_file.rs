@@ -20,9 +20,11 @@ fn shell_quote_escapes_single_quotes() {
 }
 
 #[tokio::test]
-async fn blocked_write_keeps_ping_responsive_and_rejects_overlap() {
+async fn long_path_blocked_write_keeps_ping_responsive_and_rejects_overlap() {
     let dir = tempfile::tempdir().expect("create blocked-write temp dir");
-    let blocked_path = blocking_write_path(dir.path(), "blocked");
+    let long_dir = dir.path().join("x".repeat(96));
+    fs::create_dir(&long_dir).expect("create long blocked-write directory");
+    let blocked_path = blocking_write_path(&long_dir, "blocked");
     let blocked_path_string = blocked_path.to_string_lossy();
     let blocked_content = b"blocked content";
     let overlap_path = dir.path().join("overlap.txt");
