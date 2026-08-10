@@ -1852,12 +1852,6 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "Tidak digunakan oleh agen mana pun",
-        "usedBy": "Digunakan oleh {{agents}}",
-        "usedByOverflow_one": "Digunakan oleh {{agents}} +{{value}}",
-        "usedByOverflow_other": "Digunakan oleh {{agents}} +{{value}}"
-      },
       "connect": {
         "apiAuthentication": "Autentikasi API",
         "apiDescription": "Masukkan rahasia API yang diterbitkan oleh penyedia.",

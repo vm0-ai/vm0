@@ -16,10 +16,7 @@
     "connectorsLink": "Connecteurs",
     "connectorsSaved": "Connecteurs enregistrés",
     "customConnectors": {
-      "authorize": "Autoriser {{connectorName}} pour cet agent",
-      "description": "Connecteurs personnalisés enregistrés par votre organisation. Seuls les connecteurs pour lesquels vous avez fourni un secret peuvent être activés.",
-      "noSecret": "Aucun secret défini",
-      "noSecretSuffix": "— aucun secret défini",
+      "description": "Connecteurs personnalisés enregistrés par votre organisation.",
       "saved": "Connecteurs personnalisés enregistrés"
     },
     "description": "Lors de l'exécution, l'agent peut utiliser vos services connectés en toute sécurité. Vous pouvez gérer ou désactiver l'accès à tout moment.",

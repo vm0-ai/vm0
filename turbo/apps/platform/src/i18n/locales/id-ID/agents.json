@@ -16,10 +16,7 @@
     "connectorsLink": "Konektor",
     "connectorsSaved": "Konektor disimpan",
     "customConnectors": {
-      "authorize": "Otorisasi {{connectorName}} untuk agen ini",
-      "description": "Konektor kustom yang didaftarkan oleh organisasi Anda. Hanya konektor yang sudah Anda beri secret yang bisa diaktifkan.",
-      "noSecret": "Belum ada secret",
-      "noSecretSuffix": " — belum ada secret",
+      "description": "Konektor kustom yang didaftarkan oleh organisasi Anda.",
       "saved": "Konektor kustom disimpan"
     },
     "description": "Saat dijalankan, agen dapat menggunakan layanan yang terhubung dengan aman. Anda dapat mengelola atau mematikan akses kapan saja.",
