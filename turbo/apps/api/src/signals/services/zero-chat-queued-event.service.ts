@@ -69,7 +69,7 @@ export type QueuedUserMessageTriggerSource =
   | "telegram"
   | "agentphone"
   | "github"
-  | "workflow-schedule";
+  | "automation-schedule";
 
 function unreachableQueuedContextType(contextType: never): never {
   throw new Error(`Unsupported queued context type: ${String(contextType)}`);
@@ -101,7 +101,7 @@ export function queuedUserMessageTriggerSource(
       return "agent";
     }
     case "morning_brief": {
-      return "workflow-schedule";
+      return "automation-schedule";
     }
     case "automation":
     case "goal": {

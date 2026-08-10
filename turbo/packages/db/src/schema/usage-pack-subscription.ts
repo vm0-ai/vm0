@@ -17,11 +17,29 @@ export const USAGE_PACK_ALLOCATION_STATUSES = [
   "pending_payment",
   "active",
   "pending_invitation",
+  "paid_pending_invitation",
   "inactive",
 ] as const;
 
 export type UsagePackAllocationStatus =
   (typeof USAGE_PACK_ALLOCATION_STATUSES)[number];
+
+export const USAGE_PACK_INVITATION_PURCHASE_STATUSES = [
+  "checkout_pending",
+  "payment_succeeded",
+  "creating_invitation",
+  "invitation_pending",
+  "accepted_pending_activation",
+  "activating",
+  "accepted",
+  "refund_pending",
+  "refunding",
+  "refunded",
+  "failed",
+] as const;
+
+export type UsagePackInvitationPurchaseStatus =
+  (typeof USAGE_PACK_INVITATION_PURCHASE_STATUSES)[number];
 
 export const USAGE_PACK_ALLOCATION_CHANGE_KINDS = [
   "upgrade",
@@ -248,11 +266,124 @@ export const usagePackAllocations = pgTable(
       ),
       check(
         "chk_usage_pack_allocations_status",
-        sql`${table.status} IN ('pending_payment', 'active', 'pending_invitation', 'inactive')`,
+        sql`${table.status} IN ('pending_payment', 'active', 'pending_invitation', 'paid_pending_invitation', 'inactive')`,
       ),
       check(
         "chk_usage_pack_allocations_period",
         sql`(${table.currentPeriodStart} IS NULL AND ${table.currentPeriodEnd} IS NULL) OR (${table.currentPeriodStart} IS NOT NULL AND ${table.currentPeriodEnd} IS NOT NULL AND ${table.currentPeriodEnd} > ${table.currentPeriodStart})`,
+      ),
+    ];
+  },
+);
+
+/**
+ * One dedicated, prorated payment for a member invitation. The recurring
+ * allocation remains outside Stripe until Clerk confirms acceptance.
+ */
+export const usagePackInvitationPurchases = pgTable(
+  "usage_pack_invitation_purchases",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    usagePackSubscriptionId: uuid("usage_pack_subscription_id")
+      .notNull()
+      .references(
+        () => {
+          return usagePackSubscriptions.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    allocationId: uuid("allocation_id").references(
+      () => {
+        return usagePackAllocations.id;
+      },
+      { onDelete: "set null" },
+    ),
+    orgId: text("org_id").notNull(),
+    normalizedEmail: text("normalized_email").notNull(),
+    role: varchar("role", { length: 20 }).$type<"admin" | "member">().notNull(),
+    inviterUserId: text("inviter_user_id").notNull(),
+    usagePackUsd: integer("usage_pack_usd").notNull(),
+    stripePriceId: text("stripe_price_id").notNull(),
+    status: varchar("status", { length: 40 })
+      .$type<UsagePackInvitationPurchaseStatus>()
+      .notNull()
+      .default("checkout_pending"),
+    currentPeriodStart: timestamp("current_period_start").notNull(),
+    currentPeriodEnd: timestamp("current_period_end").notNull(),
+    prorationTimestamp: bigint("proration_timestamp", {
+      mode: "number",
+    }).notNull(),
+    unitAmountCents: integer("unit_amount_cents").notNull(),
+    expectedAmountCents: integer("expected_amount_cents").notNull(),
+    amountPaidCents: integer("amount_paid_cents"),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    purchasedCredits: bigint("purchased_credits", { mode: "number" })
+      .notNull()
+      .default(0),
+    bonusCredits: bigint("bonus_credits", { mode: "number" })
+      .notNull()
+      .default(0),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+    stripeCheckoutExpiresAt: timestamp("stripe_checkout_expires_at"),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    stripeRefundId: text("stripe_refund_id"),
+    refundAttempt: integer("refund_attempt").notNull().default(1),
+    clerkInvitationId: text("clerk_invitation_id"),
+    acceptedUserId: text("accepted_user_id"),
+    failureReason: text("failure_reason"),
+    paidAt: timestamp("paid_at"),
+    acceptedAt: timestamp("accepted_at"),
+    refundedAt: timestamp("refunded_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_usage_pack_invitation_purchases_current_email")
+        .on(table.orgId, table.normalizedEmail)
+        .where(
+          sql`${table.status} IN ('checkout_pending', 'payment_succeeded', 'creating_invitation', 'invitation_pending', 'accepted_pending_activation', 'activating')`,
+        ),
+      uniqueIndex("uq_usage_pack_invitation_purchases_allocation")
+        .on(table.allocationId)
+        .where(sql`${table.allocationId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_invitation_purchases_checkout")
+        .on(table.stripeCheckoutSessionId)
+        .where(sql`${table.stripeCheckoutSessionId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_invitation_purchases_payment_intent")
+        .on(table.stripePaymentIntentId)
+        .where(sql`${table.stripePaymentIntentId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_invitation_purchases_refund")
+        .on(table.stripeRefundId)
+        .where(sql`${table.stripeRefundId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_invitation_purchases_clerk_invitation")
+        .on(table.clerkInvitationId)
+        .where(sql`${table.clerkInvitationId} IS NOT NULL`),
+      index("idx_usage_pack_invitation_purchases_reconcile").on(
+        table.status,
+        table.currentPeriodEnd,
+        table.updatedAt,
+      ),
+      index("idx_usage_pack_invitation_purchases_org").on(table.orgId),
+      check(
+        "chk_usage_pack_invitation_purchases_role",
+        sql`${table.role} IN ('admin', 'member')`,
+      ),
+      check(
+        "chk_usage_pack_invitation_purchases_package",
+        sql`${table.usagePackUsd} IN (20, 50, 100, 200)`,
+      ),
+      check(
+        "chk_usage_pack_invitation_purchases_status",
+        sql`${table.status} IN ('checkout_pending', 'payment_succeeded', 'creating_invitation', 'invitation_pending', 'accepted_pending_activation', 'activating', 'accepted', 'refund_pending', 'refunding', 'refunded', 'failed')`,
+      ),
+      check(
+        "chk_usage_pack_invitation_purchases_period",
+        sql`${table.currentPeriodEnd} > ${table.currentPeriodStart}`,
+      ),
+      check(
+        "chk_usage_pack_invitation_purchases_amounts",
+        sql`${table.unitAmountCents} > 0 AND ${table.expectedAmountCents} > 0 AND (${table.amountPaidCents} IS NULL OR ${table.amountPaidCents} >= 0) AND ${table.purchasedCredits} >= 0 AND ${table.bonusCredits} >= 0 AND ${table.refundAttempt} > 0`,
       ),
     ];
   },

@@ -8,6 +8,8 @@ import {
   revokeInvitationRequestSchema,
   membershipRequestActionSchema,
   orgMessageResponseSchema,
+  orgInvitationCheckoutResponseSchema,
+  purchaseOrgInvitationRequestSchema,
 } from "./org-members";
 
 const c = initContract();
@@ -80,9 +82,28 @@ export const zeroOrgInviteContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Invite a member to the org (zero proxy)",
+  },
+  purchase: {
+    method: "POST",
+    path: "/api/zero/org/invite/checkout",
+    headers: authHeadersSchema,
+    body: purchaseOrgInvitationRequestSchema,
+    responses: {
+      200: orgInvitationCheckoutResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Purchase a prorated usage pack for an org invitation",
   },
   revoke: {
     method: "DELETE",
@@ -94,6 +115,7 @@ export const zeroOrgInviteContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Revoke a pending invitation (zero proxy)",

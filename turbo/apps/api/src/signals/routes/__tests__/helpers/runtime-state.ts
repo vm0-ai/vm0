@@ -136,6 +136,20 @@ export async function readBrowserScreenshotSchemaAvailable(
   return response.browser_screenshot_schema_available;
 }
 
+export async function readUsagePackInvitationSchemaAvailable(
+  context: TestContext,
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "read-usage-pack-invitation-schema-state",
+  });
+  if (response.usage_pack_invitation_schema_available === undefined) {
+    throw new Error(
+      "readUsagePackInvitationSchemaAvailable missing schema availability",
+    );
+  }
+  return response.usage_pack_invitation_schema_available;
+}
+
 export async function seedMcpCustomConnectorFixture(
   context: TestContext,
   args: {

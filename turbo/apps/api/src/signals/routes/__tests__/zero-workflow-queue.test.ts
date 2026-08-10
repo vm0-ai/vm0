@@ -614,7 +614,7 @@ describe("workflow queue", () => {
     );
     await expect(
       readWorkflowRunTriggerSourceFixture(workflowRunId),
-    ).resolves.toBe("workflow-event");
+    ).resolves.toBe("automation-event");
     const events = await wf.readThreadEvents(automation.threadId);
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -966,7 +966,7 @@ describe("workflow queue", () => {
     const runIds = await workflowRunIds(webhookAutomation.threadId);
     expect(runIds).toHaveLength(2);
     await expect(readWorkflowRunTriggerSourceFixture(runIds[1]!)).resolves.toBe(
-      "workflow-schedule",
+      "automation-schedule",
     );
     const claimedTick = (
       await wf.readThreadEvents(webhookAutomation.threadId)

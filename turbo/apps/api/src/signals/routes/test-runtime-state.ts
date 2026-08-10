@@ -15,7 +15,6 @@ import {
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
@@ -52,6 +51,7 @@ import {
   releaseVm0ManagedModelKeyFixture,
 } from "../services/test-vm0-managed-model-key-fixture.service";
 import { browserScreenshotSchemaAvailable } from "../services/browser-screenshot-schema.service";
+import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
@@ -739,6 +739,10 @@ type ReadBrowserScreenshotSchemaStateAction = Extract<
   TestRuntimeStateActionBody,
   { action: "read-browser-screenshot-schema-state" }
 >;
+type ReadUsagePackInvitationSchemaStateAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "read-usage-pack-invitation-schema-state" }
+>;
 type ResetDatabasePoolAction = Extract<
   TestRuntimeStateActionBody,
   { action: "reset-database-pool" }
@@ -749,6 +753,7 @@ type PersistenceStateAction =
   | ReadRunnerJobStorageStateAction
   | ReadRunClaimOwnerAction
   | ReadBrowserScreenshotSchemaStateAction
+  | ReadUsagePackInvitationSchemaStateAction
   | ResetDatabasePoolAction;
 
 function isPersistenceStateAction(
@@ -764,6 +769,9 @@ function isPersistenceStateAction(
       return true;
     }
     case "read-browser-screenshot-schema-state": {
+      return true;
+    }
+    case "read-usage-pack-invitation-schema-state": {
       return true;
     }
     case "reset-database-pool": {
@@ -831,6 +839,17 @@ async function persistenceStateActionResponse(
         body: {
           ok: true as const,
           browser_screenshot_schema_available: available,
+        },
+      };
+    }
+    case "read-usage-pack-invitation-schema-state": {
+      const available = await usagePackInvitationPurchaseSchemaAvailable(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          usage_pack_invitation_schema_available: available,
         },
       };
     }

@@ -2,6 +2,7 @@
 
 import json
 import urllib.parse
+from collections.abc import Callable
 from typing import Final
 
 from mitmproxy import http
@@ -30,20 +31,32 @@ def _diagnostic_url_without_query_or_fragment(original_url: str) -> str:
     return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
+def apply_synthetic_json_response_content(
+    flow: http.HTTPFlow,
+    response: http.Response,
+    content_factory: Callable[[], bytes],
+) -> bytes:
+    """Apply method-aware JSON content framing to a synthetic response."""
+    is_head_request = flow.request.method.upper() == "HEAD"
+    content = b"" if is_head_request else content_factory()
+    response.content = content
+    response.headers["Content-Type"] = "application/json"
+    if is_head_request:
+        del response.headers["Content-Length"]
+    return content
+
+
 def make_local_json_response(
     flow: http.HTTPFlow,
     status_code: int,
     body: dict[str, object],
 ) -> http.Response:
-    is_head_request = flow.request.method.upper() == "HEAD"
-    content = b"" if is_head_request else json.dumps(body).encode()
-    response = http.Response.make(
-        status_code,
-        content,
-        {"Content-Type": "application/json"},
+    response = http.Response.make(status_code)
+    apply_synthetic_json_response_content(
+        flow,
+        response,
+        lambda: json.dumps(body).encode(),
     )
-    if is_head_request:
-        del response.headers["Content-Length"]
     return response
 
 

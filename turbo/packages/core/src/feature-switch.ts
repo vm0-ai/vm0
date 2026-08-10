@@ -368,6 +368,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ConnectorCatalogCount]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the exact connector catalog size with a pending count animation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.SharedThreadSharing]: {
     maintainer: "ethan@vm0.ai",
     description:

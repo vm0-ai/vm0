@@ -2200,7 +2200,7 @@ async function startNotionWorkflowRun(
       },
       automationContext: args.context,
       apiStartTime: now(),
-      triggerSource: "workflow-event",
+      triggerSource: "automation-event",
       triggerBrief: args.triggerBrief,
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     },

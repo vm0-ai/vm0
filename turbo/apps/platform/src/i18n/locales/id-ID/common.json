@@ -1773,6 +1773,7 @@
       },
       "categoriesAria": "Kategori konektor",
       "description": "Hubungkan layanan pihak ketiga agar agen Anda dapat menggunakannya.",
+      "descriptionWithCount": "Hubungkan {{value}} layanan agar agen Anda dapat menggunakannya.",
       "empty": {
         "agent": "Tidak ada konektor untuk agen ini",
         "connected": "Tidak ada konektor yang terhubung",

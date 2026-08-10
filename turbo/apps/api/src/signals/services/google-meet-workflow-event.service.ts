@@ -1486,7 +1486,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
               },
               automationContext: runInput.context,
               apiStartTime: args.apiStartTime,
-              triggerSource: "workflow-event",
+              triggerSource: "automation-event",
               triggerBrief: runInput.triggerBrief,
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,
               timing: timing.collectorForRunStart(),

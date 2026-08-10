@@ -63,6 +63,11 @@ import {
   handleUsagePackSubscriptionDeleted,
   handleUsagePackSubscriptionUpdated,
 } from "./usage-pack-subscription.service";
+import {
+  handleUsagePackInvitationCheckoutFailed,
+  handleUsagePackInvitationCheckoutPaid,
+  handleUsagePackInvitationPaymentIntentSucceeded,
+} from "./usage-pack-invitation-purchase.service";
 
 const L = logger("WebhookStripe");
 
@@ -82,6 +87,7 @@ interface CheckoutSessionInput {
   readonly invoice?: string | { readonly id: string } | null;
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
+  readonly payment_intent?: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
   readonly mode?: string | null;
   readonly setup_intent?:
@@ -94,6 +100,7 @@ interface CheckoutSessionInput {
   readonly amount_subtotal?: number | null;
   readonly amount_total?: number | null;
   readonly payment_status?: string | null;
+  readonly currency?: string | null;
 }
 
 interface InvoiceInput {
@@ -1011,7 +1018,8 @@ function stripePreviewMetadataForEvent(
   event: StripeWebhookEvent,
 ): readonly (Readonly<Record<string, string>> | null | undefined)[] | null {
   switch (event.kind) {
-    case "checkout.session.paid": {
+    case "checkout.session.paid":
+    case "checkout.session.failed": {
       return [event.object.metadata];
     }
     case "invoice.paid": {
@@ -3115,11 +3123,26 @@ async function processSubscriptionInvoicePaid(
 
 async function handleCheckoutCompleted(
   db: Db,
+  getClerk: ClerkClientProvider,
   session: CheckoutSessionInput,
+  paidAt: Date,
 ): Promise<{
   readonly drainOrgId: string | null;
   readonly orgIds: readonly string[];
 }> {
+  const usagePackInvitation = await handleUsagePackInvitationCheckoutPaid(
+    db,
+    getClerk(),
+    session,
+    paidAt,
+  );
+  if (usagePackInvitation.handled) {
+    return {
+      drainOrgId: null,
+      orgIds: usagePackInvitation.orgId ? [usagePackInvitation.orgId] : [],
+    };
+  }
+
   const billingRestoreResult = await handleBillingRestoreCheckoutCompleted(
     db,
     session,
@@ -3929,6 +3952,23 @@ async function handleSubscriptionDeleted(
   ];
 }
 
+async function publishBillingChanges(
+  db: Db,
+  orgIds: ReadonlySet<string>,
+  signal: AbortSignal,
+): Promise<void> {
+  for (const orgId of orgIds) {
+    await disableIneligibleWorkflowWebhookAutomationsForOrg(
+      db,
+      { orgId },
+      signal,
+    );
+    signal.throwIfAborted();
+    await publishBillingChangedForOrg(db, orgId);
+    signal.throwIfAborted();
+  }
+}
+
 export const handleStripeWebhookEvent$ = command(
   async (
     { get, set },
@@ -3953,15 +3993,39 @@ export const handleStripeWebhookEvent$ = command(
 
     switch (event.kind) {
       case "payment_intent.succeeded": {
+        const usagePackInvitation =
+          await handleUsagePackInvitationPaymentIntentSucceeded(
+            db,
+            getClerk(),
+            event.object,
+            new Date(event.created * 1000),
+          );
+        signal.throwIfAborted();
+        if (usagePackInvitation.handled) {
+          if (usagePackInvitation.orgId) {
+            billingChangedOrgIds.add(usagePackInvitation.orgId);
+          }
+          break;
+        }
         await handlePaymentIntentSucceeded(event.object);
         signal.throwIfAborted();
         break;
       }
       case "checkout.session.paid": {
-        const result = await handleCheckoutCompleted(db, event.object);
+        const result = await handleCheckoutCompleted(
+          db,
+          getClerk,
+          event.object,
+          new Date(event.created * 1000),
+        );
         signal.throwIfAborted();
         drainOrgId = result.drainOrgId;
         addBillingChangedOrgIds(billingChangedOrgIds, result.orgIds);
+        break;
+      }
+      case "checkout.session.failed": {
+        await handleUsagePackInvitationCheckoutFailed(db, event.object);
+        signal.throwIfAborted();
         break;
       }
       case "invoice.paid": {
@@ -4024,18 +4088,7 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     signal.throwIfAborted();
-    for (const orgId of billingChangedOrgIds) {
-      await disableIneligibleWorkflowWebhookAutomationsForOrg(
-        db,
-        {
-          orgId,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      await publishBillingChangedForOrg(db, orgId);
-      signal.throwIfAborted();
-    }
+    await publishBillingChanges(db, billingChangedOrgIds, signal);
 
     if (drainOrgId) {
       await set(drainOrgQueueToCapacity$, { orgId: drainOrgId }, signal);
