@@ -14,6 +14,10 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
@@ -2620,11 +2624,54 @@ describe("chat composer models", () => {
     expect(nextConnectorButton.querySelector("img")).not.toBeNull();
   });
 
-  it("keeps connector access resolved across same-agent chat navigation", async () => {
+  it("keeps connector catalog and access resolved across same-agent chat navigation", async () => {
     const unexpectedReload = context.mocks.deferred<void>();
     const unexpectedCustomReload = context.mocks.deferred<void>();
+    const unexpectedDiscoveryReload = context.mocks.deferred<void>();
     let authorizationRequestCount = 0;
     let customAuthorizationRequestCount = 0;
+    let discoveryRequestCount = 0;
+    const githubCatalogItem: PublicConnectorCatalogStatusItem = {
+      slug: "github",
+      label: "GitHub",
+      description: "Connect GitHub",
+      icon: {
+        url: "https://icons.example.test/github.svg",
+        invertInDarkMode: false,
+      },
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: [],
+      authMethods: [
+        {
+          id: "oauth",
+          label: "OAuth",
+          description: null,
+          grantKind: "auth-code",
+          manualFields: [],
+          startOptions: [],
+        },
+      ],
+      permissionSummary: {
+        hasPermissions: false,
+        permissionCount: 0,
+        hasCategories: false,
+        hasDefaultPolicyOverrides: false,
+      },
+      connection: {
+        authMethod: "oauth",
+        externalUsername: "octocat",
+        externalEmail: null,
+        reconnectReason: null,
+      },
+      connected: true,
+      connectionStatus: "connected",
+      scopeMismatch: false,
+      authMethodSupportsRefresh: true,
+      tokenExpiresAt: null,
+      singleAuthCodeAuthMethodId: "oauth",
+      connectNotice: null,
+    };
 
     mockOrgModelRoutes("claude-sonnet-4-6");
     mockAgent();
@@ -2658,8 +2705,25 @@ describe("chat composer models", () => {
         return respond(200, { enabledIds: [] });
       },
     );
+    context.mocks.api(
+      zeroConnectorCatalogContract.discovery,
+      async ({ respond, withSignal }) => {
+        discoveryRequestCount += 1;
+        if (discoveryRequestCount > 1) {
+          await withSignal(unexpectedDiscoveryReload.promise);
+        }
+        return respond(200, {
+          connectors: [githubCatalogItem],
+          totalConnectorCount: 1,
+        });
+      },
+    );
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
 
     const initialThread = await screen.findByLabelText("Chat thread");
     const initialConnectorButton =
@@ -2668,6 +2732,7 @@ describe("chat composer models", () => {
       expect(initialConnectorButton.querySelector("img")).not.toBeNull();
       expect(authorizationRequestCount).toBe(1);
       expect(customAuthorizationRequestCount).toBe(1);
+      expect(discoveryRequestCount).toBe(1);
     });
 
     await navigateToChatThread(OTHER_AGENT_THREAD_ID);
@@ -2687,12 +2752,15 @@ describe("chat composer models", () => {
       screen.queryByLabelText("Remove GitHub") !== null;
     const requestCountAfterNavigation = authorizationRequestCount;
     const customRequestCountAfterNavigation = customAuthorizationRequestCount;
+    const discoveryRequestCountAfterNavigation = discoveryRequestCount;
     unexpectedReload.resolve();
     unexpectedCustomReload.resolve();
+    unexpectedDiscoveryReload.resolve();
 
     expect(connectorStatusStayedResolved).toBeTruthy();
     expect(requestCountAfterNavigation).toBe(1);
     expect(customRequestCountAfterNavigation).toBe(1);
+    expect(discoveryRequestCountAfterNavigation).toBe(1);
     expect(nextConnectorButton.querySelector("img")).not.toBeNull();
   });
 
