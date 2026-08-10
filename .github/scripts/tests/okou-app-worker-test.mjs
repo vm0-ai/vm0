@@ -20,18 +20,8 @@ function parseAttributes(tag) {
   return attributes;
 }
 
-function escapeHtml(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 function serializeAttributes(attributes) {
-  return [...attributes]
-    .map(([name, value]) => ` ${name}="${escapeHtml(value)}"`)
-    .join("");
+  return [...attributes].map(([name, value]) => ` ${name}="${value}"`).join("");
 }
 
 function matchesSelector(tagName, attributes, selector) {
@@ -61,8 +51,8 @@ function applyHandler({ attributes, handler, innerContent = "" }) {
     removed: false,
   };
   handler.element({
-    append(content, options) {
-      state.appendedContent += options?.html ? content : escapeHtml(content);
+    append(content) {
+      state.appendedContent += content;
     },
     remove() {
       state.removed = true;
@@ -70,18 +60,20 @@ function applyHandler({ attributes, handler, innerContent = "" }) {
     setAttribute(name, value) {
       state.attributes.set(name, value);
     },
-    setInnerContent(content, options) {
-      state.innerContent = options?.html ? content : escapeHtml(content);
+    setInnerContent(content) {
+      state.innerContent = content;
     },
   });
   return state;
 }
 
 function rewritePairedTag(html, tagName, handler) {
-  const pattern = new RegExp(
-    `<${tagName}([^>]*)>([\\s\\S]*?)</${tagName}>`,
-    "iu",
-  );
+  const pattern =
+    tagName === "html"
+      ? /<html([^>]*)>([\s\S]*?)<\/html>/iu
+      : tagName === "head"
+        ? /<head([^>]*)>([\s\S]*?)<\/head>/iu
+        : /<title([^>]*)>([\s\S]*?)<\/title>/iu;
   return html.replace(pattern, (tag, attributeSource, innerContent) => {
     const state = applyHandler({
       attributes: parseAttributes(attributeSource),
@@ -96,7 +88,7 @@ function rewritePairedTag(html, tagName, handler) {
 }
 
 function rewriteVoidTag(html, tagName, selector, handler) {
-  const pattern = new RegExp(`<${tagName}\\b[^>]*>`, "giu");
+  const pattern = tagName === "meta" ? /<meta\b[^>]*>/giu : /<link\b[^>]*>/giu;
   return html.replace(pattern, (tag) => {
     const attributes = parseAttributes(tag);
     if (!matchesSelector(tagName, attributes, selector)) {
@@ -214,7 +206,7 @@ function assetEnvironment(apiOrigin = "") {
 }
 
 function tagAttribute(html, tagName, selectorAttribute, selectorValue, target) {
-  const pattern = new RegExp(`<${tagName}\\b[^>]*>`, "giu");
+  const pattern = tagName === "meta" ? /<meta\b[^>]*>/giu : /<link\b[^>]*>/giu;
   for (const match of html.matchAll(pattern)) {
     const attributes = parseAttributes(match[0]);
     if (attributes.get(selectorAttribute) === selectorValue) {

@@ -23,7 +23,7 @@ function brandedBrowserUpgradeCopy(
   const brandName = document.documentElement.dataset.appBrandName ?? "Zero";
   return {
     ...copy,
-    description: copy.description.replaceAll("Zero", brandName),
+    description: copy.description.replace(/Zero/gu, brandName),
   };
 }
 
