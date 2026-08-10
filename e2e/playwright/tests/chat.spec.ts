@@ -964,7 +964,27 @@ test("send a message through the deployed runner", async ({ page }) => {
   const editor = composer.getByRole("textbox", { name: "Message" });
   await expect(editor).toBeVisible();
   await editor.fill(`printf ${marker}`);
+  const sendResponsePromise = page.waitForResponse((response) => {
+    return (
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/zero/chat/events"
+    );
+  });
   await composer.getByRole("button", { name: "Send" }).click();
+  const sendResponse = await sendResponsePromise;
+  const sendResult: unknown = await sendResponse.json();
+  if (
+    typeof sendResult === "object" &&
+    sendResult !== null &&
+    "status" in sendResult &&
+    sendResult.status === "failed" &&
+    "error" in sendResult &&
+    typeof sendResult.error === "string"
+  ) {
+    throw new Error(
+      `Chat run failed before runner dispatch: ${sendResult.error}`,
+    );
+  }
 
   await expect(
     page.locator('[data-role="assistant"]').filter({ hasText: marker }).first(),

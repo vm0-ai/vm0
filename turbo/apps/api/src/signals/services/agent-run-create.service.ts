@@ -7049,6 +7049,10 @@ async function commitFailedLaunch(args: {
   readonly error: unknown;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<CreateRunSuccessResult | QueueFirstRunClaimLost> {
+  L.error("Run launch failed before runner queue persistence", {
+    runId: args.identity.runId,
+    error: args.error,
+  });
   const message = runFailureMessage(args.error);
   const committed = await args.db.transaction(
     async (tx): Promise<FailedLaunchCommitResult> => {
