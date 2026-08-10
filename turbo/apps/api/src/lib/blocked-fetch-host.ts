@@ -1,18 +1,9 @@
-import { lookup } from "node:dns/promises";
+import { lookup, resolve4, resolve6 } from "node:dns/promises";
 import { BlockList } from "node:net";
 
 export interface ResolvedFetchAddress {
   readonly address: string;
   readonly family: 4 | 6;
-}
-
-interface DnsJsonAnswer {
-  readonly data: string;
-  readonly type: number;
-}
-
-interface DnsJsonResponse {
-  readonly Answer?: readonly DnsJsonAnswer[];
 }
 
 export function isCloudflareWorkerRuntime(): boolean {
@@ -23,53 +14,6 @@ export function isCloudflareWorkerRuntime(): boolean {
     "userAgent" in runtimeNavigator &&
     runtimeNavigator.userAgent === "Cloudflare-Workers"
   );
-}
-
-function isDnsJsonResponse(value: unknown): value is DnsJsonResponse {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const answer = (value as { readonly Answer?: unknown }).Answer;
-  return (
-    answer === undefined ||
-    (Array.isArray(answer) &&
-      answer.every((entry) => {
-        return (
-          entry !== null &&
-          typeof entry === "object" &&
-          typeof entry.data === "string" &&
-          typeof entry.type === "number"
-        );
-      }))
-  );
-}
-
-async function resolveWithDnsOverHttps(
-  hostname: string,
-  type: "A" | "AAAA",
-): Promise<ResolvedFetchAddress[]> {
-  const url = new URL("https://cloudflare-dns.com/dns-query");
-  url.searchParams.set("name", hostname);
-  url.searchParams.set("type", type);
-  const response = await fetch(url, {
-    headers: { accept: "application/dns-json" },
-    redirect: "error",
-  });
-  if (!response.ok) {
-    throw new Error(`DNS over HTTPS returned ${response.status}`);
-  }
-  const payload: unknown = await response.json();
-  if (!isDnsJsonResponse(payload)) {
-    throw new Error("DNS over HTTPS returned an invalid response");
-  }
-  const expectedType = type === "A" ? 1 : 28;
-  return (payload.Answer ?? [])
-    .filter((answer) => {
-      return answer.type === expectedType;
-    })
-    .map((answer) => {
-      return { address: answer.data, family: type === "A" ? 4 : 6 };
-    });
 }
 
 // Non-public and address-translation ranges we must never fetch from.
@@ -129,11 +73,26 @@ export async function resolveFetchHostAddresses(
   hostname: string,
 ): Promise<ResolvedFetchAddress[]> {
   if (isCloudflareWorkerRuntime()) {
-    const [ipv4, ipv6] = await Promise.all([
-      resolveWithDnsOverHttps(hostname, "A"),
-      resolveWithDnsOverHttps(hostname, "AAAA"),
+    const [ipv4, ipv6] = await Promise.allSettled([
+      resolve4(hostname),
+      resolve6(hostname),
     ]);
-    return [...ipv4, ...ipv6];
+    const addresses = [
+      ...(ipv4.status === "fulfilled"
+        ? ipv4.value.map((address) => {
+            return { address, family: 4 as const };
+          })
+        : []),
+      ...(ipv6.status === "fulfilled"
+        ? ipv6.value.map((address) => {
+            return { address, family: 6 as const };
+          })
+        : []),
+    ];
+    if (addresses.length === 0) {
+      throw new Error(`Could not resolve ${hostname}`);
+    }
+    return addresses;
   }
   const addresses = await lookup(hostname, { all: true });
   return addresses.map(({ address, family }) => {

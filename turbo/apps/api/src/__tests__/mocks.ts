@@ -117,6 +117,9 @@ export interface ApiTestMocks {
         ) => readonly { readonly address: string; readonly family: number }[])
     >;
   };
+  readonly runtime: {
+    readonly setNavigatorUserAgent: Mock<(userAgent: string) => void>;
+  };
   readonly nodeRequest: {
     readonly pinnedAddresses: string[];
   };
@@ -455,6 +458,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     dns: {
       lookupOverrides: new Map(),
     },
+    runtime: {
+      setNavigatorUserAgent: vi.fn<(userAgent: string) => void>(),
+    },
     nodeRequest: {
       pinnedAddresses: [],
     },
@@ -491,6 +497,14 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
   };
 });
+
+function setNavigatorUserAgent(userAgent: string): void {
+  vi.stubGlobal("navigator", { userAgent });
+}
+
+apiTestMocks.runtime.setNavigatorUserAgent.mockImplementation(
+  setNavigatorUserAgent,
+);
 
 const originalAbortSignalTimeout = AbortSignal.timeout.bind(AbortSignal);
 vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
@@ -675,20 +689,53 @@ vi.mock("@aws-sdk/s3-request-presigner", () => {
 
 vi.mock("node:dns/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:dns/promises")>();
+  const overrideAddresses = (hostname: string) => {
+    const override = apiTestMocks.dns.lookupOverrides.get(hostname);
+    if (!override) {
+      return null;
+    }
+    return typeof override === "function" ? override(hostname) : override;
+  };
   return {
     ...actual,
     lookup: (hostname: string, options?: unknown): Promise<unknown> => {
-      const override = apiTestMocks.dns.lookupOverrides.get(hostname);
-      if (!override) {
+      const addresses = overrideAddresses(hostname);
+      if (!addresses) {
         return actual.lookup(hostname, options as never);
       }
-      const resolved =
-        typeof override === "function" ? override(hostname) : override;
       const wantsAll =
         typeof options === "object" &&
         options !== null &&
         (options as { all?: boolean }).all === true;
-      return Promise.resolve(wantsAll ? resolved : resolved[0]);
+      return Promise.resolve(wantsAll ? addresses : addresses[0]);
+    },
+    resolve4: (hostname: string): Promise<readonly string[]> => {
+      const addresses = overrideAddresses(hostname);
+      return addresses
+        ? Promise.resolve(
+            addresses
+              .filter(({ family }) => {
+                return family === 4;
+              })
+              .map(({ address }) => {
+                return address;
+              }),
+          )
+        : actual.resolve4(hostname);
+    },
+    resolve6: (hostname: string): Promise<readonly string[]> => {
+      const addresses = overrideAddresses(hostname);
+      return addresses
+        ? Promise.resolve(
+            addresses
+              .filter(({ family }) => {
+                return family === 6;
+              })
+              .map(({ address }) => {
+                return address;
+              }),
+          )
+        : actual.resolve6(hostname);
     },
   };
 });
@@ -1174,6 +1221,11 @@ export function resetApiTestMocks(): void {
   );
   apiTestMocks.s3.clientConfig.mockReset();
   apiTestMocks.dns.lookupOverrides.clear();
+  vi.unstubAllGlobals();
+  apiTestMocks.runtime.setNavigatorUserAgent.mockReset();
+  apiTestMocks.runtime.setNavigatorUserAgent.mockImplementation(
+    setNavigatorUserAgent,
+  );
   apiTestMocks.nodeRequest.pinnedAddresses.length = 0;
   apiTestMocks.resend.send.mockReset();
   apiTestMocks.signalTimers.delay.mockReset();
