@@ -4,6 +4,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
@@ -40,13 +41,17 @@ const MARKETING_PRESENTATION_PROMPT = [
 const MARKETING_PRESENTATION_SHOWCASE =
   "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8199ef0a-c692-4c20-8267-e91ffe060b4c/playful-launch-presentation.html";
 
-function templateTypeFromUserMessage(
-  document: UserMessageDocument | undefined,
-): string | undefined {
+function templateFromUserMessage(document: UserMessageDocument | undefined) {
   const part = document?.parts.find((candidate) => {
     return candidate.type === "template";
   });
-  return part?.type === "template" ? part.template.type : undefined;
+  return part?.type === "template" ? part.template : undefined;
+}
+
+function templateTypeFromUserMessage(
+  document: UserMessageDocument | undefined,
+): string | undefined {
+  return templateFromUserMessage(document)?.type;
 }
 
 function firstItem<Item>(items: readonly Item[]): Item {
@@ -566,48 +571,131 @@ describe("onboarding flow", () => {
     expect(screen.queryByRole("dialog", { name: "Ahrefs" })).toBeNull();
   });
 
-  it("runs a presentation prompt from a marketing deep link without connectors", async () => {
-    let runPrompt: string | undefined;
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        runPrompt = body.prompt;
-      },
-    });
-    mockOnboardingNeeded();
-    const params = new URLSearchParams({
-      prompt: MARKETING_PRESENTATION_PROMPT,
-      showcase: MARKETING_PRESENTATION_SHOWCASE,
-      vm0_source: "presentation",
-      landing_host: "www.vm0.ai",
-      landing_path: "/en/presentation",
-      source_type: "direct",
+  describe("vm0-marketing onboarding entry contract", () => {
+    it("runs a presentation prompt from a marketing deep link without connectors", async () => {
+      let runPrompt: string | undefined;
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          runPrompt = body.prompt;
+        },
+      });
+      mockOnboardingNeeded();
+      const params = new URLSearchParams({
+        prompt: MARKETING_PRESENTATION_PROMPT,
+        showcase: MARKETING_PRESENTATION_SHOWCASE,
+        vm0_source: "presentation",
+        landing_host: "www.vm0.ai",
+        landing_path: "/en/presentation",
+        source_type: "direct",
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/onboarding?${params.toString()}`,
+      });
+
+      await expect(
+        screen.findByRole("heading", { name: "Try this prompt" }),
+      ).resolves.toBeInTheDocument();
+      expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+        MARKETING_PRESENTATION_PROMPT,
+      );
+      expect(context.store.get(searchParams$).get("connector")).toBeNull();
+
+      click(buttonByText("Next"));
+
+      await waitFor(() => {
+        expect(runPrompt).toBe(MARKETING_PRESENTATION_PROMPT);
+        expect(pathname()).toMatch(/^\/chats\//u);
+      });
+      const handoffParams = context.store.get(searchParams$);
+      expect(handoffParams.get("showcase")).toBe(
+        MARKETING_PRESENTATION_SHOWCASE,
+      );
+      expect(handoffParams.get("vm0_source")).toBe("presentation");
+      expect(handoffParams.get("landing_host")).toBe("www.vm0.ai");
+      expect(handoffParams.get("landing_path")).toBe("/en/presentation");
+      expect(handoffParams.get("source_type")).toBe("direct");
     });
 
-    detachedSetupPage({
-      context,
-      path: `/onboarding?${params.toString()}`,
+    it("keeps a website template through first-time onboarding", async () => {
+      const websiteTemplate = WEBSITE_TEMPLATE_ITEMS.find((item) => {
+        return item.id === "website-template:warm-cards";
+      });
+      if (!websiteTemplate) {
+        throw new Error("Expected the Warm Cards website template");
+      }
+
+      let websiteTemplateId: string | undefined;
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          const template = templateFromUserMessage(body.userMessage);
+          websiteTemplateId =
+            template?.type === "website"
+              ? template.selection.websiteTemplateId
+              : undefined;
+        },
+      });
+      mockOnboardingNeeded();
+      const params = new URLSearchParams({
+        prompt: "Build a warm launch page",
+        template: websiteTemplate.id,
+        showcase: websiteTemplate.previewUrl,
+        vm0_source: "web_design",
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/onboarding?${params.toString()}`,
+      });
+
+      await expect(
+        screen.findByRole("heading", { name: "Try this prompt" }),
+      ).resolves.toBeInTheDocument();
+      click(buttonByText("Next"));
+
+      await waitFor(() => {
+        expect(websiteTemplateId).toBe(websiteTemplate.id);
+        expect(pathname()).toMatch(/^\/chats\//u);
+      });
+      expect(context.store.get(searchParams$).get("showcase")).toBe(
+        websiteTemplate.previewUrl,
+      );
+      expect(context.store.get(searchParams$).get("vm0_source")).toBe(
+        "web_design",
+      );
     });
 
-    await expect(
-      screen.findByRole("heading", { name: "Try this prompt" }),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
-      MARKETING_PRESENTATION_PROMPT,
-    );
-    expect(context.store.get(searchParams$).get("connector")).toBeNull();
+    it("runs directly for an onboarded workspace", async () => {
+      let runPrompt: string | undefined;
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          runPrompt = body.prompt;
+        },
+      });
+      const params = new URLSearchParams({
+        prompt: "Summarize this week's launch metrics",
+        connector: "google-analytics,slack",
+        vm0_source: "marketing",
+        landing_path: "/en/workflow-automation-examples",
+      });
 
-    click(buttonByText("Next"));
+      detachedSetupPage({
+        context,
+        path: `/onboarding?${params.toString()}`,
+      });
 
-    await waitFor(() => {
-      expect(runPrompt).toBe(MARKETING_PRESENTATION_PROMPT);
-      expect(pathname()).toMatch(/^\/chats\//u);
+      await waitFor(() => {
+        expect(runPrompt).toBe("Summarize this week's launch metrics");
+        expect(pathname()).toMatch(/^\/chats\//u);
+      });
+      const handoffParams = context.store.get(searchParams$);
+      expect(handoffParams.get("connector")).toBeNull();
+      expect(handoffParams.get("vm0_source")).toBe("marketing");
+      expect(handoffParams.get("landing_path")).toBe(
+        "/en/workflow-automation-examples",
+      );
     });
-    const handoffParams = context.store.get(searchParams$);
-    expect(handoffParams.get("showcase")).toBe(MARKETING_PRESENTATION_SHOWCASE);
-    expect(handoffParams.get("vm0_source")).toBe("presentation");
-    expect(handoffParams.get("landing_host")).toBe("www.vm0.ai");
-    expect(handoffParams.get("landing_path")).toBe("/en/presentation");
-    expect(handoffParams.get("source_type")).toBe("direct");
   });
 
   it("selects and reviews a presentation template", async () => {

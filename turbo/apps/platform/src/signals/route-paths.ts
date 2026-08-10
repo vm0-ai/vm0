@@ -37,6 +37,7 @@ export const ROUTES = {
   githubConnect: "/github/connect",
   telegramConnect: "/telegram/connect",
   agentphoneConnect: "/agentphone/connect",
+  // Stable public handoff from vm0-marketing into App onboarding.
   onboarding: "/onboarding",
   onboardingWorkflowPicker: "/onboarding/workflow-picker",
   onboardingWorkflowRun: "/onboarding/workflow-run",
