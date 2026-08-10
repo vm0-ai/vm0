@@ -45,7 +45,7 @@ export interface PrepareVolumeServerSideInput {
   readonly files: readonly VolumeFileInput[];
 }
 
-interface PreparedServerSideVolume {
+export interface PreparedServerSideVolume {
   readonly storageName: string;
   readonly version: PreparedStorageVersion;
   readonly updatedAt: Date;
