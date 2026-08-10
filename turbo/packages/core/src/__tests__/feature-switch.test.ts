@@ -112,6 +112,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
 
     const otherOrgStates = getAllFeatureStates({
@@ -132,6 +133,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UsagePackPlans]).toBe(false);
   });
 

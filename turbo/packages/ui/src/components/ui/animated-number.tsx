@@ -42,13 +42,16 @@ function AnimatedNumber({
       1,
       Math.floor(Math.random() * (max - min + 1)) + min,
     );
-    let frameId = 0;
+    let frameId: number | null = null;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       frameId = window.requestAnimationFrame(() => {
+        frameId = null;
         setPendingValue(pendingTarget);
       });
       return () => {
-        window.cancelAnimationFrame(frameId);
+        if (frameId !== null) {
+          window.cancelAnimationFrame(frameId);
+        }
       };
     }
 
@@ -66,12 +69,18 @@ function AnimatedNumber({
           return current === nextValue ? current : nextValue;
         });
         lastUpdateAt = now;
+        if (nextValue === pendingTarget - 1) {
+          frameId = null;
+          return;
+        }
       }
       frameId = window.requestAnimationFrame(update);
     };
     frameId = window.requestAnimationFrame(update);
     return () => {
-      window.cancelAnimationFrame(frameId);
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
     };
   }, [pendingMax, pendingMin, pendingTickMs, value]);
 

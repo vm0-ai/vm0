@@ -14,6 +14,7 @@ import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-ident
 import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
@@ -21,6 +22,7 @@ import {
   openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
@@ -904,6 +906,8 @@ export function ZeroConnectorsPage() {
     filteredConnectorCatalogItems$,
   );
   const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
+  const connectorCatalogCountEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -1079,13 +1083,21 @@ export function ZeroConnectorsPage() {
                 return $.connectors.catalog.title;
               })}
             </h1>
-            <ConnectorCatalogDescription
-              connectorCount={
-                catalogStatusLoadable.state === "hasData"
-                  ? catalogStatusLoadable.data.connectors.length
-                  : null
-              }
-            />
+            {connectorCatalogCountEnabled ? (
+              <ConnectorCatalogDescription
+                connectorCount={
+                  catalogStatusLoadable.state === "hasData"
+                    ? catalogStatusLoadable.data.connectors.length
+                    : null
+                }
+              />
+            ) : (
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t(($) => {
+                  return $.connectors.catalog.description;
+                })}
+              </p>
+            )}
           </div>
         </div>
       </header>
