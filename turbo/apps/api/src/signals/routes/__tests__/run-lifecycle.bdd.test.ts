@@ -9357,7 +9357,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("preserves runtime auth templates while omitting missing optional values", async () => {
+  it("fails closed when a custom auth header references an optional missing value", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -9388,15 +9388,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
             kind: "variable",
             required: false,
           },
+          {
+            key: "unused_note",
+            label: "Unused note",
+            kind: "variable",
+            required: false,
+          },
         ],
         headerInjections: [
           {
             name: "Authorization",
-            valueTemplate: "Bearer {{secrets.api_key}}",
-          },
-          {
-            name: "X-Secondary",
-            valueTemplate: "{{secrets.secondary_token}}",
+            valueTemplate:
+              "Bearer {{secrets.api_key}}:{{secrets.secondary_token}}",
           },
         ],
         queryInjections: [
@@ -9406,7 +9409,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           },
         ],
       },
-      values: [{ key: "api_key", kind: "secret", value: "optional-primary" }],
+      values: [
+        { key: "api_key", kind: "secret", value: "optional-primary" },
+        { key: "tenant_id", kind: "variable", value: "initial-tenant" },
+      ],
       agentId,
     });
 
@@ -9425,8 +9431,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const tenantVarKey = `CUSTOM_${idPart}_V_TENANT_ID`;
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
     expect(customApis[0]?.auth?.headers).toStrictEqual({
-      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-      "X-Secondary": `\${{ secrets.${secondarySecretKey} }}`,
+      Authorization:
+        `Bearer \${{ secrets.${secretKey} }}:` +
+        `\${{ secrets.${secondarySecretKey} }}`,
     });
     expect(customApis[0]?.auth?.query).toStrictEqual({
       tenant: `\${{ secrets.${tenantVarKey} }}`,
@@ -9439,20 +9446,43 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { api: runtimeApi, body: runtimeAuthBody } =
       customConnectorRuntimeAuthBody(runtime, fw.encryptedSecretsBody({}));
     expect(runtimeApi.auth.headers).toStrictEqual({
-      Authorization: `Bearer \${{ secrets.${secretKey} }}`,
-      "X-Secondary": `\${{ secrets.${secondarySecretKey} }}`,
+      Authorization:
+        `Bearer \${{ secrets.${secretKey} }}:` +
+        `\${{ secrets.${secondarySecretKey} }}`,
     });
     expect(runtimeApi.auth.query).toStrictEqual({
       tenant: `\${{ secrets.${tenantVarKey} }}`,
     });
-    const runtimeResolved = await fw.requestFirewallAuth(
+    const missingHeaderAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      runtimeAuthBody,
+      [424],
+    );
+    if (missingHeaderAuth.status !== 424) {
+      throw new Error("Expected missing matched Custom auth to fail");
+    }
+    expect(missingHeaderAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+      {
+        key: "secondary_token",
+        kind: "secret",
+        value: "optional-secondary",
+      },
+    ]);
+    const restoredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
       [200],
     );
-    expect(runtimeResolved.body).toMatchObject({
-      headers: { Authorization: "Bearer optional-primary" },
-      query: {},
+    if (restoredAuth.status !== 200) {
+      throw new Error("Expected restored matched Custom auth to resolve");
+    }
+    expect(restoredAuth.body).toMatchObject({
+      headers: {
+        Authorization: "Bearer optional-primary:optional-secondary",
+      },
+      query: { tenant: "initial-tenant" },
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -9667,7 +9697,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await connectors.deleteCustomConnector(actor, saved.connector.id);
   });
 
-  it("keeps optional-only firewall policy while omitting absent auth", async () => {
+  it("keeps an active custom firewall while optional query auth is unavailable", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
@@ -9684,7 +9714,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
             key: "secret",
             label: "API key",
             kind: "secret",
-            required: false,
+            required: true,
           },
           {
             key: "tenant",
@@ -9712,16 +9742,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           kind: "secret",
           value: "optional-only-secret",
         },
-        {
-          key: "tenant",
-          kind: "variable",
-          value: "retained-tenant",
-        },
       ],
       agentId,
     });
     expect(saved.authorizedAgentId).toBe(agentId);
-    await connectors.deleteCustomConnectorSecret(actor, saved.connector.id);
 
     const run = await api.createRun(actor, {
       agentId,
@@ -9734,6 +9758,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const idPart = saved.connector.id.replaceAll("-", "");
     const internalName = `custom_connector_${idPart}`;
     const secretKey = `CUSTOM_${idPart}_S_SECRET`;
+    const tenantVarKey = `CUSTOM_${idPart}_V_TENANT`;
     expect(findFirewallEntry(claim.firewalls, internalName)).toMatchObject({
       kind: "inline",
       customConnectorId: saved.connector.id,
@@ -9750,31 +9775,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(runtimeApi.auth.headers).toStrictEqual({
       Authorization: `Bearer \${{ secrets.${secretKey} }}`,
     });
-    const resolvedAuth = await fw.requestFirewallAuth(
+    expect(runtimeApi.auth.query).toStrictEqual({
+      tenant: `\${{ secrets.${tenantVarKey} }}`,
+    });
+    const missingQueryAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
-      [200],
+      [424],
     );
-    if (resolvedAuth.status !== 200) {
-      throw new Error("Expected optional-only custom connector auth");
+    if (missingQueryAuth.status !== 424) {
+      throw new Error("Expected missing Custom query auth to fail");
     }
-    expect(resolvedAuth.body.headers).toStrictEqual({});
-    expect(resolvedAuth.body.query).toStrictEqual({
-      tenant: "retained-tenant",
-    });
+    expect(missingQueryAuth.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
 
-    context.mocks.ably.publish.mockClear();
     await connectors.setCustomConnectorValues(actor, saved.connector.id, [
       {
-        key: "secret",
-        kind: "secret",
-        value: "restored-optional-secret",
+        key: "tenant",
+        kind: "variable",
+        value: "restored-tenant",
       },
     ]);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      expect.anything(),
-    );
     const restoredAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       runtimeAuthBody,
@@ -9784,10 +9804,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       throw new Error("Expected restored optional custom connector auth");
     }
     expect(restoredAuth.body.headers).toStrictEqual({
-      Authorization: "Bearer restored-optional-secret",
+      Authorization: "Bearer optional-only-secret",
     });
     expect(restoredAuth.body.query).toStrictEqual({
-      tenant: "retained-tenant",
+      tenant: "restored-tenant",
     });
 
     await api.requestCancelRun(actor, run.runId, [200]);
