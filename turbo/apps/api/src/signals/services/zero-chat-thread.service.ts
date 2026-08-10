@@ -161,7 +161,9 @@ function effectiveChatEventRunId() {
   return sql`CASE
     WHEN ${chatEvents.eventType} = 'control.interrupt' THEN NULL
     ELSE ${chatEvents.runId}
-  END`.mapWith(nullableDriverValueDecoder(chatEvents.runId));
+  END`
+    .mapWith(nullableDriverValueDecoder(chatEvents.runId))
+    .as("effective_run_id");
 }
 
 const eventColumns = {
