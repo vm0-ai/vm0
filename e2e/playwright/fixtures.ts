@@ -22,6 +22,12 @@ export async function installApiPreviewHeaders(
   if (Object.keys(previewHeaders).length === 0) {
     return;
   }
+  if (previewHeaders["cf-access-client-id"]) {
+    // The setup project persists its browser state for the feature projects.
+    // Do not carry the short-lived Access session assertion into a new test
+    // context: the service-token headers below will mint a fresh assertion.
+    await context.clearCookies({ name: "CF_Authorization" });
+  }
   const apiOrigin = new URL(apiUrl).origin;
   await context.route(`${apiOrigin}/**`, async (route) => {
     await route.continue({
