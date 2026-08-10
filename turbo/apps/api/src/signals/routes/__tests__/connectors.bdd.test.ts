@@ -3553,6 +3553,17 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(first).toMatchObject({ kind: "mcp", endpoint: sharedEndpoint });
     expect(second).toMatchObject({ kind: "mcp", endpoint: sharedEndpoint });
 
+    const rootEndpoint = "https://root-mcp.example.test";
+    const root = await connectorsApi.createCustomConnector(
+      admin,
+      manualMcpConnectorBody({
+        displayName: "Root MCP",
+        endpoint: rootEndpoint,
+      }),
+    );
+    expect(root).toMatchObject({ kind: "mcp", endpoint: rootEndpoint });
+    expect(root.slug).toMatch(/^_root-mcp-example-test-[a-f0-9]{6}$/u);
+
     const http = await connectorsApi.createCustomConnector(admin, {
       displayName: "BDD HTTP Transition Source",
       prefixes: ["https://http-transition.example.test/"],
@@ -3575,6 +3586,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     await connectorsApi.deleteCustomConnector(admin, first.id);
     await connectorsApi.deleteCustomConnector(admin, second.id);
+    await connectorsApi.deleteCustomConnector(admin, root.id);
     await connectorsApi.deleteCustomConnector(admin, http.id);
   });
 

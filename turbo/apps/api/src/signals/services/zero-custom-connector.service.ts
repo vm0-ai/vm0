@@ -1647,7 +1647,8 @@ function protocolColumns(definition: ValidatedDefinition): {
 
 function hostSlugFromCanonicalUrl(canonicalUrl: string): string {
   const authorityStart = canonicalUrl.indexOf("://") + 3;
-  const authorityEnd = canonicalUrl.indexOf("/", authorityStart);
+  const pathStart = canonicalUrl.indexOf("/", authorityStart);
+  const authorityEnd = pathStart === -1 ? canonicalUrl.length : pathStart;
   const host = canonicalUrl
     .slice(authorityStart, authorityEnd)
     .replace(/\{hostWildcard[0-9]+\}/g, "")
