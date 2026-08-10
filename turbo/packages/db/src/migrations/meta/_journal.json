@@ -512,6 +512,13 @@
       "when": 1786356506954,
       "tag": "0880_regular_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 881,
+      "version": "7",
+      "when": 1786363170690,
+      "tag": "0881_remove_serpapi_seo_pricing",
+      "breakpoints": true
     }
   ]
 }
