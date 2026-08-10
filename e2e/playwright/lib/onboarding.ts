@@ -1,15 +1,8 @@
 import { expect, type Page } from "@playwright/test";
+import { apiPreviewHeaders } from "./api-preview-auth";
 
 type AuthHeaders = Readonly<
-  Record<"Authorization", string> &
-    Partial<
-      Record<
-        | "x-vercel-protection-bypass"
-        | "cf-access-client-id"
-        | "cf-access-client-secret",
-        string
-      >
-    >
+  Record<"Authorization", string> & ReturnType<typeof apiPreviewHeaders>
 >;
 
 interface OnboardingFlowOptions {
@@ -17,23 +10,9 @@ interface OnboardingFlowOptions {
 }
 
 export function authHeadersForToken(token: string): AuthHeaders {
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  const accessClientId = process.env.CF_ACCESS_CLIENT_ID;
-  const accessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET;
-  if (Boolean(accessClientId) !== Boolean(accessClientSecret)) {
-    throw new Error("Cloudflare Access credentials must be configured together");
-  }
   return {
     Authorization: `Bearer ${token}`,
-    ...(bypassSecret
-      ? { "x-vercel-protection-bypass": bypassSecret }
-      : undefined),
-    ...(accessClientId && accessClientSecret
-      ? {
-          "cf-access-client-id": accessClientId,
-          "cf-access-client-secret": accessClientSecret,
-        }
-      : undefined),
+    ...apiPreviewHeaders(),
   };
 }
 

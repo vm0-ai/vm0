@@ -9,7 +9,9 @@
 #     -e "ansible_user=ubuntu" \
 #     -e "job_ref=pr-123" \
 #     -e "forward_url=https://api-preview.example.com/api/webhooks/stripe" \
-#     -e "stripe_secret_key=sk_test_..."
+#     -e "stripe_secret_key=sk_test_..." \
+#     -e "api_access_client_id=..." \
+#     -e "api_access_client_secret=..."
 
 - name: Start Stripe CLI Listener
   hosts: all
@@ -20,6 +22,7 @@
     stripe_dir: "{{ base_dir }}/stripe/{{ job_ref }}"
     stripe_bin_dir: "{{ stripe_dir }}/bin"
     stripe_bin: "{{ stripe_bin_dir }}/stripe"
+    stripe_start: "{{ stripe_dir }}/start-listener"
     stripe_log: "{{ stripe_dir }}/stripe-listen.log"
     stripe_cli_version: "1.41.2"
     stripe_events: checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted
@@ -32,10 +35,14 @@
           - job_ref is defined
           - forward_url is defined
           - stripe_secret_key is defined
+          - api_access_client_id is defined
+          - api_access_client_secret is defined
           - job_ref | length > 0
           - forward_url | length > 0
           - stripe_secret_key | length > 0
-        fail_msg: "Required variables: job_ref, forward_url, stripe_secret_key"
+          - api_access_client_id | length > 0
+          - api_access_client_secret | length > 0
+        fail_msg: "Required variables: job_ref, forward_url, stripe_secret_key, api_access_client_id, api_access_client_secret"
 
     - name: Create Stripe listener directory
       file:
@@ -90,7 +97,21 @@
         mode: "0600"
         content: |
           STRIPE_API_KEY={{ stripe_secret_key }}
+          CF_ACCESS_CLIENT_ID={{ api_access_client_id }}
+          CF_ACCESS_CLIENT_SECRET={{ api_access_client_secret }}
       no_log: true
+
+    - name: Write Stripe listener launcher
+      copy:
+        dest: "{{ stripe_start }}"
+        mode: "0700"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec "{{ stripe_bin }}" listen \
+            --events "{{ stripe_events }}" \
+            --forward-to "{{ forward_url }}" \
+            --headers "CF-Access-Client-Id:${CF_ACCESS_CLIENT_ID},CF-Access-Client-Secret:${CF_ACCESS_CLIENT_SECRET}"
 
     - name: Write Stripe listener systemd unit
       copy:
@@ -106,7 +127,7 @@
           Type=simple
           EnvironmentFile={{ stripe_dir }}/env
           WorkingDirectory={{ stripe_dir }}
-          ExecStart={{ stripe_bin }} listen --events {{ stripe_events }} --forward-to {{ forward_url }}
+          ExecStart={{ stripe_start }}
           Restart=always
           RestartSec=3
           StandardOutput=append:{{ stripe_log }}

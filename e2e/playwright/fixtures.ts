@@ -1,9 +1,12 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import {
+  type APIResponse,
   expect,
+  type Route,
   test as base,
   type BrowserContext,
 } from "@playwright/test";
+import { apiPreviewHeaders } from "./lib/api-preview-auth";
 
 export { expect };
 
@@ -14,13 +17,8 @@ export async function installApiPreviewHeaders(
   if (!apiUrl) {
     return;
   }
-  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  const accessClientId = process.env.CF_ACCESS_CLIENT_ID;
-  const accessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET;
-  if (Boolean(accessClientId) !== Boolean(accessClientSecret)) {
-    throw new Error("Cloudflare Access credentials must be configured together");
-  }
-  if (!bypassSecret && !accessClientId) {
+  const previewHeaders = apiPreviewHeaders();
+  if (Object.keys(previewHeaders).length === 0) {
     return;
   }
   const apiOrigin = new URL(apiUrl).origin;
@@ -28,17 +26,18 @@ export async function installApiPreviewHeaders(
     await route.continue({
       headers: {
         ...route.request().headers(),
-        ...(bypassSecret
-          ? { "x-vercel-protection-bypass": bypassSecret }
-          : {}),
-        ...(accessClientId && accessClientSecret
-          ? {
-              "cf-access-client-id": accessClientId,
-              "cf-access-client-secret": accessClientSecret,
-            }
-          : {}),
+        ...previewHeaders,
       },
     });
+  });
+}
+
+export function fetchApiPreviewRoute(route: Route): Promise<APIResponse> {
+  return route.fetch({
+    headers: {
+      ...route.request().headers(),
+      ...apiPreviewHeaders(),
+    },
   });
 }
 

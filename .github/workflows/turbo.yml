@@ -1954,6 +1954,8 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          API_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          API_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           cd ansible
@@ -1982,7 +1984,9 @@ jobs:
             --arg job_ref "$JOB_REF" \
             --arg forward_url "$FORWARD_URL" \
             --arg stripe_secret_key "$STRIPE_SECRET_KEY" \
-            '{ansible_user: $ansible_user, job_ref: $job_ref, forward_url: $forward_url, stripe_secret_key: $stripe_secret_key}')"
+            --arg api_access_client_id "$API_ACCESS_CLIENT_ID" \
+            --arg api_access_client_secret "$API_ACCESS_CLIENT_SECRET" \
+            '{ansible_user: $ansible_user, job_ref: $job_ref, forward_url: $forward_url, stripe_secret_key: $stripe_secret_key, api_access_client_id: $api_access_client_id, api_access_client_secret: $api_access_client_secret}')"
 
           ansible-playbook \
             -i "${STRIPE_LISTENER_HOST}," \
