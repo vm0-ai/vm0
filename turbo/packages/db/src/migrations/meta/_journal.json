@@ -526,6 +526,13 @@
       "when": 1786365253783,
       "tag": "0882_nasty_hobgoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 883,
+      "version": "7",
+      "when": 1786366308486,
+      "tag": "0883_nappy_jack_murdock",
+      "breakpoints": true
     }
   ]
 }

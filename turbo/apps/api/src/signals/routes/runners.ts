@@ -32,7 +32,6 @@ import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realti
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
-import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -42,7 +41,6 @@ import {
 } from "@vm0/db/schema/runner-state";
 import {
   and,
-  asc,
   desc,
   eq,
   gt,
@@ -91,16 +89,18 @@ import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import {
   activeInputPromptFitsControlPayload,
-  materializeActiveInputPrompt,
+  materializePendingActiveInputPrompts,
+  pendingActiveInputRows,
 } from "../services/active-input-prompt.service";
 import {
-  lockChatQueueThread,
-  pendingActiveInputCondition,
-} from "../services/chat-event-queue.service";
+  recordActiveInputDeliveryReceipt,
+  replacePendingActiveInputEvent,
+  reserveActiveInputDelivery,
+} from "../services/active-input-delivery.service";
+import { lockChatQueueThread } from "../services/chat-event-queue.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
 import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
-import { replaceLoadedChatEvent } from "../services/zero-chat-event.service";
 import {
   networkPolicyRefreshesRecord,
   mergeNetworkPolicyRefreshes,
@@ -2831,119 +2831,13 @@ async function loadRunningActiveInputRun(
   return { chatThreadId: run.chatThreadId };
 }
 
-function pendingActiveInputRows(
-  db: Pick<Db, "select">,
-  chatThreadId: string,
-  runId: string,
-  eventIds?: readonly string[],
-) {
-  return db
-    .select({
-      id: chatEvents.id,
-      chatThreadId: chatEvents.chatThreadId,
-      createdAt: chatEvents.createdAt,
-      eventType: chatEvents.eventType,
-      contextType: chatEvents.contextType,
-      contextId: chatEvents.contextId,
-      userMessage: chatEvents.userMessage,
-      seqId: chatEvents.seqId,
-    })
-    .from(chatEvents)
-    .where(
-      and(
-        eq(chatEvents.chatThreadId, chatThreadId),
-        pendingActiveInputCondition(db, runId),
-        eventIds ? inArray(chatEvents.id, eventIds) : undefined,
-      ),
-    )
-    .orderBy(asc(chatEvents.seqId));
-}
-
-type PendingActiveInputRow = Awaited<
-  ReturnType<typeof pendingActiveInputRows>
->[number];
-type ActiveInputClaimTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
-
-async function claimPendingActiveInputEvent(
-  tx: ActiveInputClaimTransaction,
-  event: PendingActiveInputRow,
-  runId: string,
-): Promise<void> {
-  if (!event.userMessage) {
-    throw new Error("Pending active input has invalid prompt data");
-  }
-  if (
-    event.eventType !== "input.prompt" &&
-    event.eventType !== "input.budget"
-  ) {
-    throw new Error("Pending active input has invalid event type");
-  }
-  const target = {
-    id: event.id,
-    chatThreadId: event.chatThreadId,
-    createdAt: event.createdAt,
-    eventType: event.eventType,
-    contextType: event.contextType,
-    contextId: event.contextId,
-  };
-  const replacement =
-    event.eventType === "input.budget"
-      ? await replaceLoadedChatEvent(tx, target, {
-          chatThreadId: event.chatThreadId,
-          eventType: "input.budget",
-          runId,
-          userMessage: event.userMessage,
-        })
-      : await replaceLoadedChatEvent(tx, target, {
-          chatThreadId: event.chatThreadId,
-          eventType: "input.prompt",
-          runId,
-          userMessage: event.userMessage,
-        });
-  if (!replacement) {
-    throw new Error("Active input claim lost after locking the thread");
-  }
-}
-
-async function materializePendingActiveInputPrompts(
-  db: Db,
-  candidates: readonly PendingActiveInputRow[],
-  auth: { readonly orgId: string; readonly userId: string },
-  signal: AbortSignal,
-): Promise<Map<string, string> | null> {
-  const prompts = new Map<string, string>();
-  for (const event of candidates) {
-    if (
-      !event.userMessage ||
-      (event.eventType !== "input.prompt" && event.eventType !== "input.budget")
-    ) {
-      return null;
-    }
-    if (event.contextType === null) {
-      throw new Error("Pending active input is missing its context type");
-    }
-    prompts.set(
-      event.id,
-      await materializeActiveInputPrompt(db, {
-        event: {
-          id: event.id,
-          chatThreadId: event.chatThreadId,
-          eventType: event.eventType,
-          contextType: event.contextType,
-          userMessage: event.userMessage,
-        },
-        orgId: auth.orgId,
-        userId: auth.userId,
-      }),
-    );
-    signal.throwIfAborted();
-  }
-  return prompts;
-}
-
 const activeInputClaimBody$ = bodyResultOf(runnersActiveInputsContract.claim);
+const activeInputReserveBody$ = bodyResultOf(
+  runnersActiveInputsContract.reserve,
+);
+const activeInputReceiptBody$ = bodyResultOf(
+  runnersActiveInputsContract.receipt,
+);
 
 const listActiveInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
   const auth = get(authContext$);
@@ -3064,7 +2958,7 @@ const claimActiveInputsInner$ = command(
         return null;
       }
       for (const event of events) {
-        await claimPendingActiveInputEvent(tx, event, runId);
+        await replacePendingActiveInputEvent(tx, event, runId);
       }
       return true;
     });
@@ -3078,6 +2972,93 @@ const claimActiveInputsInner$ = command(
       status: 200 as const,
       body: { prompt: materializedPrompt },
     };
+  },
+);
+
+const reserveActiveInputsInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const { runId } = get(pathParamsOf(runnersActiveInputsContract.reserve));
+    if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+      return forbidden("Active input delivery is not available");
+    }
+    const body = await get(activeInputReserveBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const result = await reserveActiveInputDelivery(
+      set(writeDb$),
+      {
+        runId,
+        userId: auth.userId,
+        orgId: auth.orgId,
+      },
+      signal,
+    );
+    if (result.outcome === "forbidden") {
+      return forbidden("Active input delivery is not available");
+    }
+    if (result.outcome === "reserved") {
+      return {
+        status: 200 as const,
+        body: {
+          outcome: result.outcome,
+          deliveryId: result.deliveryId,
+          eventIds: [...result.eventIds],
+          prompt: result.prompt,
+        },
+      };
+    }
+    if (result.outcome === "held") {
+      return {
+        status: 200 as const,
+        body: {
+          outcome: result.outcome,
+          deliveryId: result.deliveryId,
+          eventIds: [...result.eventIds],
+        },
+      };
+    }
+    return { status: 200 as const, body: result };
+  },
+);
+
+const recordActiveInputDeliveryReceiptInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
+    const { runId, deliveryId } = get(
+      pathParamsOf(runnersActiveInputsContract.receipt),
+    );
+    if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
+      return forbidden("Active input delivery is not available");
+    }
+    const body = await get(activeInputReceiptBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const result = await recordActiveInputDeliveryReceipt(
+      set(writeDb$),
+      {
+        runId,
+        deliveryId,
+        userId: auth.userId,
+        orgId: auth.orgId,
+      },
+      signal,
+    );
+    if (result.outcome === "forbidden") {
+      return forbidden("Active input delivery is not available");
+    }
+    if (result.replacementsAppended) {
+      await publishChatThreadMessageCreatedSafely(
+        auth.userId,
+        result.chatThreadId,
+      );
+      signal.throwIfAborted();
+    }
+    return { status: 200 as const, body: { outcome: result.outcome } };
   },
 );
 
@@ -3106,6 +3087,20 @@ export const runnersRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { accept: ["sandbox"], acceptAnySandboxCapability: true },
       claimActiveInputsInner$,
+    ),
+  },
+  {
+    route: runnersActiveInputsContract.reserve,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      reserveActiveInputsInner$,
+    ),
+  },
+  {
+    route: runnersActiveInputsContract.receipt,
+    handler: authRoute(
+      { accept: ["sandbox"], acceptAnySandboxCapability: true },
+      recordActiveInputDeliveryReceiptInner$,
     ),
   },
   {

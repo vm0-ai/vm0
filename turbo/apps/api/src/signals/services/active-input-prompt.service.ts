@@ -1,8 +1,9 @@
 import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
-import type {
-  ChatEventUserMessage,
+import {
   chatEvents,
+  type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
@@ -15,6 +16,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
+import { pendingActiveInputCondition } from "./chat-event-queue.service";
 
 type ChatEventContextType = NonNullable<
   (typeof chatEvents.$inferSelect)["contextType"]
@@ -49,11 +51,121 @@ const CONTEXT_BACKED_CONTEXT_TYPES: readonly ContextBackedContextType[] = [
 ];
 
 export function activeInputPromptFitsControlPayload(prompt: string): boolean {
-  const payload = JSON.stringify({ type: "active-input", text: prompt });
+  return activeInputControlPayloadFits({ type: "active-input", text: prompt });
+}
+
+export function activeInputDeliveryPromptFitsControlPayload(
+  deliveryId: string,
+  prompt: string,
+): boolean {
+  return activeInputControlPayloadFits({
+    type: "active-input",
+    deliveryId,
+    text: prompt,
+  });
+}
+
+function activeInputControlPayloadFits(payload: object): boolean {
+  const serialized = JSON.stringify(payload);
   return (
-    new TextEncoder().encode(payload).byteLength <=
+    new TextEncoder().encode(serialized).byteLength <=
     ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES
   );
+}
+
+export function pendingActiveInputRows(
+  db: Pick<Db, "select">,
+  chatThreadId: string,
+  runId: string,
+  eventIds?: readonly string[],
+) {
+  return db
+    .select({
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      eventType: chatEvents.eventType,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+      userMessage: chatEvents.userMessage,
+      seqId: chatEvents.seqId,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, chatThreadId),
+        pendingActiveInputCondition(db, runId),
+        eventIds ? inArray(chatEvents.id, eventIds) : undefined,
+      ),
+    )
+    .orderBy(asc(chatEvents.seqId));
+}
+
+export function activeInputRowsByIds(
+  db: Pick<Db, "select">,
+  chatThreadId: string,
+  eventIds: readonly string[],
+) {
+  return db
+    .select({
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      runId: chatEvents.runId,
+      eventType: chatEvents.eventType,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+      userMessage: chatEvents.userMessage,
+      seqId: chatEvents.seqId,
+    })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, chatThreadId),
+        inArray(chatEvents.id, eventIds),
+      ),
+    )
+    .orderBy(asc(chatEvents.seqId));
+}
+
+export type PendingActiveInputRow = Awaited<
+  ReturnType<typeof pendingActiveInputRows>
+>[number];
+
+export async function materializePendingActiveInputPrompts(
+  db: Db,
+  candidates: readonly PendingActiveInputRow[],
+  auth: { readonly orgId: string; readonly userId: string },
+  signal: AbortSignal,
+): Promise<Map<string, string> | null> {
+  const prompts = new Map<string, string>();
+  for (const event of candidates) {
+    if (
+      !event.userMessage ||
+      (event.eventType !== "input.prompt" && event.eventType !== "input.budget")
+    ) {
+      return null;
+    }
+    if (event.contextType === null) {
+      throw new Error("Pending active input is missing its context type");
+    }
+    prompts.set(
+      event.id,
+      await materializeActiveInputPrompt(db, {
+        event: {
+          id: event.id,
+          chatThreadId: event.chatThreadId,
+          eventType: event.eventType,
+          contextType: event.contextType,
+          userMessage: event.userMessage,
+        },
+        orgId: auth.orgId,
+        userId: auth.userId,
+      }),
+    );
+    signal.throwIfAborted();
+  }
+  return prompts;
 }
 
 function isContextBackedContextType(
@@ -110,7 +222,7 @@ function unreachableActiveInputContextType(contextType: never): never {
 }
 
 /** Materialize one claimed input prompt into the same text capability as a run prompt. */
-export async function materializeActiveInputPrompt(
+async function materializeActiveInputPrompt(
   db: Db,
   args: {
     readonly event: ActiveInputPromptEvent;
