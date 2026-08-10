@@ -21,7 +21,6 @@ import {
   setConnectorsPageTab$,
   openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
-import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
@@ -29,6 +28,7 @@ import { CustomConnectorsPanel } from "./components/settings/custom-connectors-p
 import { ConnectorCatalogDescription } from "./components/settings/connector-catalog-description.tsx";
 import {
   allConnectorCatalogItems$,
+  connectorCatalogDiscovery$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
   connectFlowConnectorSlug$,
@@ -905,7 +905,7 @@ export function ZeroConnectorsPage() {
   const filteredCatalogItemsLoadable = useLastLoadable(
     filteredConnectorCatalogItems$,
   );
-  const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
+  const catalogStatusLoadable = useLastLoadable(connectorCatalogDiscovery$);
   const connectorCatalogCountEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.ConnectorCatalogCount] ?? false;
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
@@ -1087,7 +1087,8 @@ export function ZeroConnectorsPage() {
               <ConnectorCatalogDescription
                 connectorCount={
                   catalogStatusLoadable.state === "hasData"
-                    ? catalogStatusLoadable.data.connectors.length
+                    ? (catalogStatusLoadable.data.totalConnectorCount ??
+                      catalogStatusLoadable.data.connectors.length)
                     : null
                 }
               />

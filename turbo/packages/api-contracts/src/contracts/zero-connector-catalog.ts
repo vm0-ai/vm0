@@ -140,6 +140,7 @@ const publicConnectorCatalogStatusItemSchema =
 const publicConnectorCatalogStatusResponseSchema = z.object({
   connectors: z.array(publicConnectorCatalogStatusItemSchema),
   categoryMetadata: publicConnectorCatalogCategoryMetadataSchema.optional(),
+  totalConnectorCount: z.number().int().nonnegative().optional(),
 });
 
 const publicFirewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
@@ -260,6 +261,20 @@ export const zeroConnectorCatalogContract = c.router({
       503: apiErrorSchema,
     },
     summary: "List public connector catalog metadata with connection status",
+  },
+  discovery: {
+    method: "GET",
+    path: "/api/zero/connector-catalog/discovery",
+    headers: authHeadersSchema,
+    query: z.object({ keyword: z.string().optional() }),
+    responses: {
+      200: publicConnectorCatalogStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Browse featured connectors or search by slug and label",
   },
   diagnostics: {
     method: "GET",

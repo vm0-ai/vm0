@@ -486,6 +486,69 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("hides connector discovery when its feature switch is disabled", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
+    const response = await accept(
+      client.discovery({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns bounded featured connectors and searches only slug or label", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.ConnectorDiscovery]: true,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    const featured = await accept(
+      client.discovery({ query: {}, headers }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(featured.body);
+    expect(featured.body.connectors.length).toBeGreaterThan(0);
+    expect(featured.body.connectors.length).toBeLessThanOrEqual(100);
+    expect(featured.body.totalConnectorCount ?? 0).toBeGreaterThanOrEqual(
+      featured.body.connectors.length,
+    );
+
+    const labelOrSlugSearch = await accept(
+      client.discovery({ query: { keyword: "GITHUB" }, headers }),
+      [200],
+    );
+    expect(labelOrSlugSearch.body.connectors.length).toBeGreaterThan(0);
+    for (const connector of labelOrSlugSearch.body.connectors) {
+      expect(
+        connector.slug.toLowerCase().includes("github") ||
+          connector.label.toLowerCase().includes("github"),
+      ).toBeTruthy();
+    }
+
+    const descriptionSearch = await accept(
+      client.discovery({
+        query: { keyword: "permission behavior" },
+        headers,
+      }),
+      [200],
+    );
+    expect(descriptionSearch.body.connectors).toStrictEqual([]);
+  });
+
   it("rejects catalog status ZERO_TOKEN calls without connector:read", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

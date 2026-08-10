@@ -368,6 +368,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ConnectorDiscovery]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Browse a bounded featured connector catalog and search it by slug or label.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ConnectorCatalogCount]: {
     maintainer: "ethan@vm0.ai",
     description:

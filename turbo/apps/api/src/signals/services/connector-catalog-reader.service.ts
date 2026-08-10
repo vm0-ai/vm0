@@ -10,6 +10,7 @@ import type {
 import type { ReadonlyDb } from "../external/db";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import {
+  discoverExternalPublicConnectorCatalogStatus,
   ExternalConnectorCatalogUnavailableError,
   getExternalPublicConnectorCatalogDetail,
   getExternalPublicConnectorCatalogPermissionDetail,
@@ -63,6 +64,19 @@ export async function listPublicConnectorCatalogStatus(
   },
 ): Promise<PublicConnectorCatalogStatusResponse> {
   const read = await readPublicConnectorCatalogStatus({
+    ...args,
+    referenceConnectorSlugs: [],
+  });
+  return read.status;
+}
+
+export async function discoverPublicConnectorCatalogStatus(
+  args: ConnectorCatalogReadArgs & {
+    readonly connectors: readonly ConnectorResponse[];
+    readonly keyword: string | undefined;
+  },
+): Promise<PublicConnectorCatalogStatusResponse> {
+  const read = await discoverExternalPublicConnectorCatalogStatus({
     ...args,
     referenceConnectorSlugs: [],
   });

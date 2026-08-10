@@ -67,7 +67,6 @@ import { normalizeManualGrantSubmittedValuesWithMethod } from "./connector-catal
 import { searchConnectorCatalog } from "./connector-catalog-reader.service";
 import {
   getConnectorRuntimeMethod,
-  listConnectorRuntimeVisibleSlugs,
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
@@ -93,8 +92,6 @@ type StoredConnectorRow = {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
-type FeatureStates = ReturnType<typeof getAllFeatureStates>;
-
 interface ExternalUserInfo {
   readonly id: string;
   readonly username: string | null;
@@ -408,7 +405,6 @@ async function encryptManualGrantSecrets(
 export function zeroConnectorList(args: {
   readonly orgId: string;
   readonly userId: string;
-  readonly featureStates?: FeatureStates;
 }): Computed<Promise<ConnectorListResponse>> {
   return computed(async (get): Promise<ConnectorListResponse> => {
     const db = get(db$);
@@ -438,30 +434,10 @@ export function zeroConnectorList(args: {
           isNotNull(connectors.connectorSlug),
         ),
       );
-    const featureStatesPromise = (async () => {
-      if (args.featureStates) {
-        return args.featureStates;
-      }
-      const overrides = await get(
-        userFeatureSwitchOverrides(args.orgId, args.userId),
-      );
-      return getAllFeatureStates({
-        userId: args.userId,
-        orgId: args.orgId,
-        overrides,
-      });
-    })();
-    const [storedRows, featureStates, snapshot] = await Promise.all([
+    const [storedRows, snapshot] = await Promise.all([
       storedRowsPromise,
-      featureStatesPromise,
       loadConnectorRuntimeSnapshot(db),
     ]);
-    const visibleSlugs = listConnectorRuntimeVisibleSlugs({
-      snapshot,
-      featureStates,
-    });
-    // Feature switches filter visible slugs for discovery only. Stored
-    // connections remain manageable and executable after rollout is disabled.
     const now = nowDate();
     const connectorList: ConnectorWithRuntimeMethod[] = storedRows.map(
       (row) => {
@@ -489,7 +465,9 @@ export function zeroConnectorList(args: {
       connectors: connectorList.map((connector) => {
         return connector.response;
       }),
-      configuredConnectorSlugs: [...visibleSlugs],
+      // Keep the field during the stale-client window without returning the
+      // full catalog. Remove it after deployed clients stop requiring it.
+      configuredConnectorSlugs: [],
       connectorProvidedBindings,
     };
   });

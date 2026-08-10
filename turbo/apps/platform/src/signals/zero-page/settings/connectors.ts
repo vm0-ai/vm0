@@ -30,17 +30,21 @@ import type {
   InitClientReturn,
 } from "@vm0/api-contracts/contracts/trpc-contract";
 import type { ConnectorOauthDeviceAuthSessionPollResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import type {
-  PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogConnectionStatus,
-  PublicConnectorCatalogIcon,
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogAuthMethodDetail,
+  type PublicConnectorCatalogConnectionStatus,
+  type PublicConnectorCatalogIcon,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   connectorCatalogStatus$,
   connectors$,
+  connectorsReloadVersion$,
   deleteConnector$,
   reloadConnectors$,
 } from "../../external/connectors.ts";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
 import { connectorAgentAuthorizations$ } from "./connector-access-management.ts";
 import {
@@ -356,15 +360,12 @@ export function connectorExpiryCountdownText(
 }
 
 /**
- * Case-insensitive substring match across label, slug, description, and tags.
+ * Case-insensitive substring match across label and slug.
  * Returns true when `search` is empty, so callers can use it directly as a filter.
  */
 export function matchesConnectorSearch(
   search: string,
-  connector: Pick<
-    PlatformConnectorCatalogStatusItem,
-    "slug" | "description" | "label" | "tags"
-  >,
+  connector: Pick<PlatformConnectorCatalogStatusItem, "slug" | "label">,
 ): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) {
@@ -376,33 +377,8 @@ export function matchesConnectorSearch(
   if (connector.slug.toLowerCase().includes(needle)) {
     return true;
   }
-  if (connector.description.toLowerCase().includes(needle)) {
-    return true;
-  }
-  if (
-    connector.tags?.some((t) => {
-      return t.toLowerCase().includes(needle);
-    })
-  ) {
-    return true;
-  }
   return false;
 }
-
-export const allConnectorCatalogItems$ = computed(async (get) => {
-  const { connectors } = await get(connectorCatalogStatus$);
-  const items = [...connectors];
-
-  // Sort connected connectors to the top of the list
-  items.sort((a, b) => {
-    if (a.connected === b.connected) {
-      return 0;
-    }
-    return a.connected ? -1 : 1;
-  });
-
-  return items;
-});
 
 // ---------------------------------------------------------------------------
 // Search filter
@@ -441,6 +417,44 @@ export const connectorsConnectionFilter$ = computed(
 
 export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
+});
+
+export const connectorCatalogDiscovery$ = computed(async (get) => {
+  const featureStates = get(featureSwitch$);
+  if (!featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
+    return await get(connectorCatalogStatus$);
+  }
+
+  get(connectorsReloadVersion$);
+  const keyword = get(connectorsSearch$).trim();
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroConnectorCatalogContract);
+  const result = await accept(
+    client.discovery({ query: keyword ? { keyword } : {} }),
+    [200, 404],
+  );
+  // The API deploys before the app, but preserve new-app -> previous-API
+  // compatibility for rollback and propagation windows. Remove after the
+  // discovery backend and replacement app have fully rolled out.
+  if (result.status === 404) {
+    return await get(connectorCatalogStatus$);
+  }
+  return result.body;
+});
+
+export const allConnectorCatalogItems$ = computed(async (get) => {
+  const { connectors } = await get(connectorCatalogDiscovery$);
+  const items = [...connectors];
+
+  // Sort connected connectors to the top of the list
+  items.sort((a, b) => {
+    if (a.connected === b.connected) {
+      return 0;
+    }
+    return a.connected ? -1 : 1;
+  });
+
+  return items;
 });
 
 export const filteredConnectorCatalogItems$ = computed(async (get) => {

@@ -288,7 +288,6 @@ export const detectWorkflowConnectorReadiness$ = command(
           zeroConnectorList({
             orgId: args.orgId,
             userId: args.userId,
-            featureStates: args.featureStates,
           }),
         ),
         loadAgentConnectorScope(db, {

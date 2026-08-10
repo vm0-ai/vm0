@@ -91,11 +91,11 @@ describe("GET /api/zero/connectors", () => {
     );
 
     expect(response.body.connectors).toStrictEqual([]);
-    expect(Array.isArray(response.body.configuredConnectorSlugs)).toBeTruthy();
+    expect(response.body.configuredConnectorSlugs).toStrictEqual([]);
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
   });
 
-  it("filters configured connector slugs by feature availability", async () => {
+  it("does not return the connector catalog through the deprecated field", async () => {
     const fixture = seedAuthenticatedFixture();
     seededFixtures.push(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -107,12 +107,7 @@ describe("GET /api/zero/connectors", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    expect(nonStaff.body.configuredConnectorSlugs).toContain("aws");
-    expect(nonStaff.body.configuredConnectorSlugs).not.toContain("test-oauth");
-    expect(nonStaff.body.configuredConnectorSlugs).toContain("nintendo-store");
-    expect(nonStaff.body.configuredConnectorSlugs).toContain(
-      "nintendo-switch-parental-controls",
-    );
+    expect(nonStaff.body.configuredConnectorSlugs).toStrictEqual([]);
   });
 
   it("returns connectors created through the connector API", async () => {

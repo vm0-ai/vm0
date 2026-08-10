@@ -52,6 +52,10 @@ import {
 } from "./connector-catalog-validator-authority";
 import type { ApiDispatchTimingActionType } from "./api-dispatch-timing.service";
 import { connectorAuthMethodFeatureSwitch } from "./connector-auth-method-feature-switches";
+import {
+  CONNECTOR_DISCOVERY_LIMIT,
+  FEATURED_CONNECTOR_SLUGS,
+} from "./connector-catalog-featured";
 
 const log = logger("connector-catalog:reader");
 
@@ -114,6 +118,10 @@ interface ExternalCatalogSearchArgs extends ExternalCatalogReadArgs {
 interface ExternalCatalogStatusArgs extends ExternalCatalogReadArgs {
   readonly connectors: readonly ConnectorResponse[];
   readonly referenceConnectorSlugs: readonly string[];
+}
+
+interface ExternalCatalogDiscoveryArgs extends ExternalCatalogStatusArgs {
+  readonly keyword: string | undefined;
 }
 
 export interface ConnectorCatalogReferenceMetadata {
@@ -909,6 +917,83 @@ export async function listExternalPublicConnectorCatalog(
   };
 }
 
+function connectorMatchesKeyword(
+  entry: EffectiveConnector,
+  keyword: string,
+): boolean {
+  return (
+    entry.connector.slug.toLowerCase().includes(keyword) ||
+    entry.connector.label.toLowerCase().includes(keyword)
+  );
+}
+
+function featuredEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+): EffectiveConnector[] {
+  const bySlug = new Map(
+    effective.map((entry) => {
+      return [entry.connector.slug, entry];
+    }),
+  );
+  const featured = FEATURED_CONNECTOR_SLUGS.flatMap((slug) => {
+    const entry = bySlug.get(slug);
+    return entry ? [entry] : [];
+  });
+  const selectedSlugs = new Set(
+    featured.map((entry) => {
+      return entry.connector.slug;
+    }),
+  );
+  for (const entry of effective) {
+    if (featured.length >= CONNECTOR_DISCOVERY_LIMIT) {
+      break;
+    }
+    if (!selectedSlugs.has(entry.connector.slug)) {
+      featured.push(entry);
+      selectedSlugs.add(entry.connector.slug);
+    }
+  }
+  return featured;
+}
+
+function searchEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+  keyword: string | undefined,
+): EffectiveConnector[] {
+  const normalizedKeyword = keyword?.trim().toLowerCase();
+  if (!normalizedKeyword) {
+    return featuredEffectiveConnectors(effective);
+  }
+  return effective
+    .filter((entry) => {
+      return connectorMatchesKeyword(entry, normalizedKeyword);
+    })
+    .slice(0, CONNECTOR_DISCOVERY_LIMIT);
+}
+
+function discoveryEffectiveConnectors(
+  effective: readonly EffectiveConnector[],
+  args: Pick<ExternalCatalogDiscoveryArgs, "connectors" | "keyword">,
+): EffectiveConnector[] {
+  if (args.keyword?.trim()) {
+    return searchEffectiveConnectors(effective, args.keyword);
+  }
+  const connectedSlugs = new Set(
+    args.connectors.map((connector) => {
+      return connector.slug;
+    }),
+  );
+  const connected = effective.filter((entry) => {
+    return connectedSlugs.has(entry.connector.slug);
+  });
+  return [
+    ...connected,
+    ...featuredEffectiveConnectors(effective).filter((entry) => {
+      return !connectedSlugs.has(entry.connector.slug);
+    }),
+  ];
+}
+
 export async function searchExternalConnectorCatalog(
   args: ExternalCatalogSearchArgs,
 ): Promise<ConnectorSearchItem[]> {
@@ -917,29 +1002,16 @@ export async function searchExternalConnectorCatalog(
     catalog,
     featureStates: args.featureStates,
   });
-  const keyword = args.keyword?.toLowerCase();
-  return effective.flatMap((entry) => {
+  return searchEffectiveConnectors(effective, args.keyword).map((entry) => {
     const connector = entry.connector;
-    if (
-      keyword &&
-      !connector.label.toLowerCase().includes(keyword) &&
-      !connector.description.toLowerCase().includes(keyword) &&
-      !connector.tags.some((tag) => {
-        return tag.toLowerCase().includes(keyword);
-      })
-    ) {
-      return [];
-    }
-    return [
-      {
-        slug: connector.slug,
-        label: connector.label,
-        description: connector.description,
-        authMethods: entry.authMethods.map((method) => {
-          return method.id;
-        }),
-      },
-    ];
+    return {
+      slug: connector.slug,
+      label: connector.label,
+      description: connector.description,
+      authMethods: entry.authMethods.map((method) => {
+        return method.id;
+      }),
+    };
   });
 }
 
@@ -965,14 +1037,46 @@ export async function listExternalPublicConnectorCatalogStatus(
     catalog,
     featureStates: args.featureStates,
   });
+  return connectorCatalogStatusRead({
+    catalog,
+    effective,
+    connectors: args.connectors,
+    referenceConnectorSlugs: args.referenceConnectorSlugs,
+  });
+}
+
+export async function discoverExternalPublicConnectorCatalogStatus(
+  args: ExternalCatalogDiscoveryArgs,
+): Promise<ConnectorCatalogStatusRead> {
+  const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
+  const effective = effectiveConnectors({
+    catalog,
+    featureStates: args.featureStates,
+  });
+  return connectorCatalogStatusRead({
+    catalog,
+    effective: discoveryEffectiveConnectors(effective, args),
+    connectors: args.connectors,
+    referenceConnectorSlugs: args.referenceConnectorSlugs,
+    totalConnectorCount: effective.length,
+  });
+}
+
+function connectorCatalogStatusRead(args: {
+  readonly catalog: AcceptedConnectorCatalogSnapshot;
+  readonly effective: readonly EffectiveConnector[];
+  readonly connectors: readonly ConnectorResponse[];
+  readonly referenceConnectorSlugs: readonly string[];
+  readonly totalConnectorCount?: number;
+}): ConnectorCatalogStatusRead {
   const connectorsBySlug = new Map(
     args.connectors.map((connector) => {
       return [connector.slug, connector];
     }),
   );
-  const connectors = effective.map((entry) => {
+  const connectors = args.effective.map((entry) => {
     return connectorCatalogStatusItem({
-      catalog,
+      catalog: args.catalog,
       effective: entry,
       connector: connectorsBySlug.get(entry.connector.slug) ?? null,
     });
@@ -980,10 +1084,16 @@ export async function listExternalPublicConnectorCatalogStatus(
   return {
     status: {
       connectors,
-      categoryMetadata: categoryMetadataForConnectors(catalog, effective),
+      categoryMetadata: categoryMetadataForConnectors(
+        args.catalog,
+        args.effective,
+      ),
+      ...(args.totalConnectorCount === undefined
+        ? {}
+        : { totalConnectorCount: args.totalConnectorCount }),
     },
     referenceMetadata: referenceMetadataForCatalog(
-      catalog,
+      args.catalog,
       args.referenceConnectorSlugs,
     ),
   };

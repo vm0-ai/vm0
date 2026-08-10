@@ -5,12 +5,13 @@ import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf } from "../context/request";
+import { pathParamsOf, queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { connectorCatalogDiagnostics$ } from "../services/connector-catalog-diagnostics.service";
 import {
+  discoverPublicConnectorCatalogStatus,
   getPublicConnectorCatalogDetail,
   getPublicConnectorCatalogPermissionDetail,
   isConnectorCatalogUnavailableError,
@@ -49,6 +50,10 @@ function connectorCatalogNotFound() {
 
 function connectorCatalogUnavailable() {
   return providerUnavailable("Connector catalog is temporarily unavailable");
+}
+
+function connectorDiscoveryNotFound() {
+  return notFound("Connector discovery not found");
 }
 
 async function settleConnectorCatalogRead<T>(
@@ -112,7 +117,6 @@ const listConnectorCatalogStatusInner$ = command(
         zeroConnectorList({
           orgId: auth.orgId,
           userId: auth.userId,
-          featureStates: context.featureStates,
         }),
       ),
       signal,
@@ -127,6 +131,47 @@ const listConnectorCatalogStatusInner$ = command(
         db: context.db,
         featureStates: context.featureStates,
         connectors: connectorState.value.connectors,
+      }),
+      signal,
+    );
+    if (!catalog.ok) {
+      return connectorCatalogUnavailable();
+    }
+
+    return { status: 200 as const, body: catalog.value };
+  },
+);
+
+const discoverConnectorCatalogInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const query = get(queryOf(zeroConnectorCatalogContract.discovery));
+    const context = await set(connectorCatalogRequestContext$);
+    signal.throwIfAborted();
+    if (!context.featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
+      return connectorDiscoveryNotFound();
+    }
+
+    const connectorState = await settleConnectorCatalogRead(
+      get(
+        zeroConnectorList({
+          orgId: auth.orgId,
+          userId: auth.userId,
+        }),
+      ),
+      signal,
+    );
+    if (!connectorState.ok) {
+      return connectorCatalogUnavailable();
+    }
+    signal.throwIfAborted();
+
+    const catalog = await settleConnectorCatalogRead(
+      discoverPublicConnectorCatalogStatus({
+        db: context.db,
+        featureStates: context.featureStates,
+        connectors: connectorState.value.connectors,
+        keyword: query.keyword,
       }),
       signal,
     );
@@ -209,6 +254,10 @@ export const zeroConnectorCatalogRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorCatalogContract.status,
     handler: authRoute(connectorCatalogAuth, listConnectorCatalogStatusInner$),
+  },
+  {
+    route: zeroConnectorCatalogContract.discovery,
+    handler: authRoute(connectorCatalogAuth, discoverConnectorCatalogInner$),
   },
   {
     route: zeroConnectorCatalogContract.diagnostics,
