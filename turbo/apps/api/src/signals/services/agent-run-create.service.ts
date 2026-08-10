@@ -18,6 +18,7 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import { ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -67,7 +68,9 @@ import {
   type FirewallPolicy,
   type NetworkPolicies,
   type NetworkPolicy,
+  canonicalizeFirewallBaseUrl,
   normalizeFirewallFixedHost,
+  validateBaseUrlHostPolicy,
 } from "@vm0/connectors/firewall-types";
 import {
   type CreateRunResponse,
@@ -3855,7 +3858,12 @@ class CustomConnectorRuntimeBuildStats {
       return total + row.values.length;
     }, 0);
     this.prefixTemplateCount = rows.reduce((total, row) => {
-      return total + row.connector.prefixTemplates.length;
+      return (
+        total +
+        (row.connector.kind === "http"
+          ? row.connector.prefixTemplates.length
+          : 0)
+      );
     }, 0);
   }
 
@@ -3998,6 +4006,52 @@ function buildCustomConnectorRuntimeApis(args: {
   if (args.baseUrlVars === undefined) {
     return [];
   }
+  const prefixStartedAt = now();
+  const connector = args.row.connector;
+  if (connector.kind === "mcp") {
+    const endpointResult = safeSync(() => {
+      const canonicalEndpoint = canonicalizeFirewallBaseUrl(
+        connector.endpoint,
+        "MCP custom connector",
+      );
+      const endpoint = new URL(canonicalEndpoint);
+      if (endpoint.protocol !== "https:") {
+        throw new Error("MCP endpoint must use https://");
+      }
+      validateBaseUrlHostPolicy({
+        base: canonicalEndpoint,
+        serviceName: "MCP custom connector",
+        hostPolicy: { kind: "publicDestination" },
+      });
+      return endpoint;
+    });
+    if ("error" in endpointResult) {
+      args.stats.recordInvalidPrefix();
+      args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
+      return [];
+    }
+    const endpoint = endpointResult.ok;
+    const endpointPath = endpoint.pathname;
+    args.stats.recordRenderedApi();
+    args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
+    return [
+      {
+        base: endpoint.origin,
+        hostPolicy: { kind: "publicDestination" },
+        auth: { headers: args.headers, query: args.query },
+        permissions: [
+          {
+            name: "mcp-endpoint",
+            rules: [
+              `POST ${endpointPath}`,
+              `GET ${endpointPath}`,
+              `DELETE ${endpointPath}`,
+            ],
+          },
+        ],
+      },
+    ];
+  }
   const templateValues = Object.fromEntries(
     Object.entries(args.baseUrlVars).map(([key, value]) => {
       return [customConnectorValueMarkerKey({ kind: "variable", key }), value];
@@ -4005,12 +4059,11 @@ function buildCustomConnectorRuntimeApis(args: {
   );
 
   const apis: ExpandedFirewallConfig["apis"] = [];
-  const prefixStartedAt = now();
-  for (const prefixTemplate of args.row.connector.prefixTemplates) {
+  for (const prefixTemplate of connector.prefixTemplates) {
     const renderedPrefix = renderCustomConnectorRuntimePrefix({
       template: prefixTemplate,
       values: templateValues,
-      connectorName: args.row.connector.displayName,
+      connectorName: connector.displayName,
     });
     if (!renderedPrefix) {
       args.stats.recordInvalidPrefix();
@@ -4036,6 +4089,12 @@ async function resolveCustomConnectorBaseUrlVars(args: {
   readonly hasProvided: boolean;
   readonly stats: CustomConnectorRuntimeBuildStats;
 }): Promise<Readonly<Record<string, string>> | undefined> {
+  if (args.row.connector.kind === "mcp") {
+    if (!args.hasProvided) {
+      return {};
+    }
+    return Object.keys(args.provided ?? {}).length === 0 ? {} : undefined;
+  }
   const variableKeys = [
     ...customConnectorPrefixTemplateVariableKeys(
       args.row.connector.prefixTemplates,
@@ -4162,6 +4221,9 @@ export async function loadEffectiveCustomConnectorPermissionBundle(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly snapshot: ConnectorRuntimeSnapshot;
 }): Promise<CustomConnectorPermissionBundle | null | undefined> {
+  if (args.row.connector.kind === "mcp") {
+    return null;
+  }
   const ref = effectiveCustomConnectorPermissionBundleRef({
     slug: args.row.connector.slug,
     authMode: args.row.connector.authMode,
@@ -4237,6 +4299,9 @@ async function buildCustomConnectorRuntimeRow(args: {
   args.stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
   if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
     args.stats.recordNoAuthInjectionConnector();
+    if (args.row.connector.kind === "mcp") {
+      return unavailableCustomConnectorRuntimeRow(target, skill);
+    }
   }
   const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle({
     row: args.row,
@@ -4274,12 +4339,18 @@ async function buildCustomConnectorRuntimeRow(args: {
       description: args.row.connector.displayName,
       apis,
     },
-    permissionPolicy: permissionBundle
-      ? buildCustomConnectorPermissionPolicy({
-          bundle: permissionBundle,
-          selectedPermissionNames: args.selectedPermissionNames,
-        })
-      : undefined,
+    permissionPolicy:
+      args.row.connector.kind === "mcp"
+        ? {
+            policies: { "mcp-endpoint": "allow" },
+            unknownPolicy: "deny",
+          }
+        : permissionBundle
+          ? buildCustomConnectorPermissionPolicy({
+              bundle: permissionBundle,
+              selectedPermissionNames: args.selectedPermissionNames,
+            })
+          : undefined,
   };
 }
 
@@ -4485,8 +4556,17 @@ async function loadCustomConnectorContext(
       skills: [],
     };
   }
+  const newRunRows = rows.filter((row) => {
+    return (
+      row.connector.kind !== "mcp" ||
+      isFeatureEnabled(
+        FeatureSwitchKey.CustomConnectorMcp,
+        args.featureSwitchContext,
+      )
+    );
+  });
   const refreshedRows: CustomConnectorRuntimeDataRows[number][] = [];
-  for (const row of rows) {
+  for (const row of newRunRows) {
     refreshedRows.push({
       connector: row.connector,
       credentialAccess: row.credentialAccess,
@@ -5810,6 +5890,17 @@ async function buildStoredExecutionContextDraft(args: {
   const secretValues = executionSecrets.secrets
     ? Object.values(executionSecrets.secrets)
     : [];
+  const connectorRuntimeTargets = storedConnectorRuntimeTargets({
+    permissionManifest: permissions,
+    customTargets: args.customConnectorContext.targets,
+  });
+  const customConnectorIds = [
+    ...new Set(
+      connectorRuntimeTargets.flatMap((target) => {
+        return target.kind === "custom" ? [target.customConnectorId] : [];
+      }),
+    ),
+  ].sort();
   const environment = {
     ...expandEnvironment({
       content: args.resolved.content,
@@ -5822,6 +5913,7 @@ async function buildStoredExecutionContextDraft(args: {
     }),
     ...args.extraEnvironment,
     CLI_PKG_URL: env("CLI_PKG_URL"),
+    [ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]: JSON.stringify(customConnectorIds),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
@@ -5835,11 +5927,6 @@ async function buildStoredExecutionContextDraft(args: {
         return key === undefined ? [] : [key];
       })
     : null;
-  const connectorRuntimeTargets = storedConnectorRuntimeTargets({
-    permissionManifest: permissions,
-    customTargets: args.customConnectorContext.targets,
-  });
-
   return {
     context: {
       environment,

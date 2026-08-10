@@ -47,7 +47,6 @@ import {
   CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME,
   getCustomConnectorById,
   normaliseCustomConnectorRow,
-  type CustomConnectorHttpRow,
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
   type StoredValueRow,
@@ -1010,7 +1009,7 @@ interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly connector: CustomConnectorHttpRow;
+  readonly connector: CustomConnectorRow;
   readonly featureContext: FeatureSwitchContext;
   readonly forceRefresh?: boolean;
 }
@@ -1144,7 +1143,7 @@ export async function refreshCustomConnectorOAuth2ValuesIfNeeded(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
-    readonly connector: CustomConnectorHttpRow;
+    readonly connector: CustomConnectorRow;
     readonly values: readonly StoredValueRow[];
     readonly featureContext: FeatureSwitchContext;
   },
@@ -1210,11 +1209,7 @@ export async function resolveCurrentCustomConnectorOAuth2AccessToken(
 ): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   const connector = await loadLiveCustomConnector(args);
   signal.throwIfAborted();
-  if (
-    !connector ||
-    connector.kind !== "http" ||
-    connector.authMode !== "oauth"
-  ) {
+  if (!connector || connector.authMode !== "oauth") {
     return { kind: "unavailable" };
   }
   return await resolveCustomConnectorOAuth2AccessToken(

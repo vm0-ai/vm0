@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
@@ -3349,7 +3349,7 @@ export async function loadCustomConnectorRuntimeData(
   },
 ): Promise<
   readonly {
-    readonly connector: CustomConnectorHttpRow;
+    readonly connector: CustomConnectorRow;
     readonly values: readonly StoredValueRow[];
     readonly credentialAccess: CustomConnectorCredentialAccess;
   }[]
@@ -3384,13 +3384,11 @@ export async function loadCustomConnectorRuntimeData(
           ? and(
               eq(orgCustomConnectors.orgId, args.orgId),
               eq(orgCustomConnectors.enabled, true),
-              isNull(orgCustomConnectors.mcpTransport),
               inArray(orgCustomConnectors.id, [...args.connectorIds]),
             )
           : and(
               eq(orgCustomConnectors.orgId, args.orgId),
               eq(orgCustomConnectors.enabled, true),
-              isNull(orgCustomConnectors.mcpTransport),
             ),
       );
   });
@@ -3416,9 +3414,6 @@ export async function loadCustomConnectorRuntimeData(
           row.connector,
           row.oauthConfig,
         );
-        if (connector.kind !== "http") {
-          throw new Error("Expected HTTP Custom Connector runtime data");
-        }
         const credentialAccess = credentialAccesses.get(connector.id);
         if (!credentialAccess) {
           throw new Error("Expected custom connector credential access");
