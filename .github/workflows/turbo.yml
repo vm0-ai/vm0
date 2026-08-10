@@ -2755,7 +2755,7 @@ jobs:
               # Preserve the actual startup failure instead of only reporting
               # the readiness timeout from the supervising CI job.
               # shellcheck disable=SC2029
-              ssh "$REMOTE" "sudo ${BIN_DIR}/runner service logs --name ${RUNNER_NAME} --lines 100" || true
+              ssh "$REMOTE" "sudo ${BIN_DIR}/runner service logs --name ${RUNNER_NAME} --lines 100" >&2 || true
               return 1
             fi
           }
