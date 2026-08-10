@@ -255,24 +255,15 @@ impl RunnerPreSpawnTiming {
             }
         }
         if let Some(observation) = self.immediate_successor_intent.as_ref() {
-            let snapshot = observation.snapshot();
             let idle_unpark = self
                 .phase_durations
                 .get(RunnerPreSpawnPhase::IdleUnpark)
                 .unwrap_or_default();
-            if snapshot.state
-                == crate::immediate_successor_intent::ImmediateSuccessorObservationState::Missing
-            {
-                let reporter = telemetry.reporter();
-                let observation = observation.clone();
-                tokio::spawn(async move {
-                    reporter
-                        .report(observation.settled_claim_records(idle_unpark).await)
-                        .await;
-                });
-            } else {
-                snapshot.record_claim(telemetry, idle_unpark);
-            }
+            // A non-missing observation can still be superseded by a later
+            // competing arm or revoke. Settle every claim after the advisory
+            // window so delivery order cannot change the recorded outcome.
+            let observation = observation.clone();
+            telemetry.defer_report(observation.settled_claim_records(idle_unpark));
         }
     }
 }

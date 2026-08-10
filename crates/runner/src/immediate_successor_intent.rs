@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::ids::RunId;
 use crate::provider::RunnerProcessIdentity;
-use crate::telemetry::{JobTelemetry, SandboxOpRecord};
+use crate::telemetry::SandboxOpRecord;
 
 pub(crate) const IMMEDIATE_SUCCESSOR_INTENT_EVENT_NAME: &str = "immediate-successor-intent";
 const DEFAULT_CAPACITY: usize = 1024;
@@ -109,6 +109,7 @@ pub(crate) enum ImmediateSuccessorFinalizationStage {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ImmediateSuccessorReceiptPhase {
+    Unknown,
     BeforeFinalization,
     BeforePreparation,
     DuringPreparation,
@@ -121,6 +122,7 @@ pub(crate) enum ImmediateSuccessorReceiptPhase {
 impl ImmediateSuccessorReceiptPhase {
     pub(crate) const fn action_type(self) -> &'static str {
         match self {
+            Self::Unknown => "runner_immediate_successor_received_phase_unknown",
             Self::BeforeFinalization => "runner_immediate_successor_received_before_finalization",
             Self::BeforePreparation => "runner_immediate_successor_received_before_preparation",
             Self::DuringPreparation => "runner_immediate_successor_received_during_preparation",
@@ -503,7 +505,9 @@ fn snapshot_entry(
         }
         timeline.preparation_completed_at.map(|prepared_at| {
             claimed_at
-                .or(entry.revoked_at)
+                .into_iter()
+                .chain(entry.revoked_at)
+                .min()
                 .unwrap_or(entry.deadline)
                 .min(entry.deadline)
                 .saturating_duration_since(prepared_at)
@@ -542,10 +546,10 @@ fn receipt_phase(
     timeline: Option<&FinalizationTimeline>,
 ) -> ImmediateSuccessorReceiptPhase {
     let Some(timeline) = timeline else {
-        return ImmediateSuccessorReceiptPhase::BeforeFinalization;
+        return ImmediateSuccessorReceiptPhase::Unknown;
     };
     let Some(finalization_started_at) = timeline.finalization_started_at else {
-        return ImmediateSuccessorReceiptPhase::BeforeFinalization;
+        return ImmediateSuccessorReceiptPhase::Unknown;
     };
     if entry.received_at <= finalization_started_at {
         return ImmediateSuccessorReceiptPhase::BeforeFinalization;
@@ -704,17 +708,6 @@ impl ImmediateSuccessorIntentSnapshot {
         records
     }
 
-    pub(crate) fn record_receipt(self, telemetry: &mut JobTelemetry) {
-        for record in self.receipt_records() {
-            telemetry.record(
-                record.action_type,
-                record.duration,
-                record.success,
-                record.error,
-            );
-        }
-    }
-
     pub(crate) fn claim_records(self, idle_unpark: Duration) -> Vec<SandboxOpRecord> {
         let (action_type, success, error) = match self.state {
             ImmediateSuccessorObservationState::Armed => {
@@ -776,17 +769,6 @@ impl ImmediateSuccessorIntentSnapshot {
             ));
         }
         records
-    }
-
-    pub(crate) fn record_claim(self, telemetry: &mut JobTelemetry, idle_unpark: Duration) {
-        for record in self.claim_records(idle_unpark) {
-            telemetry.record(
-                record.action_type,
-                record.duration,
-                record.success,
-                record.error,
-            );
-        }
     }
 }
 
@@ -927,6 +909,10 @@ mod tests {
 
         let snapshot = observation.snapshot();
         assert_eq!(snapshot.state, ImmediateSuccessorObservationState::Armed);
+        assert_eq!(
+            snapshot.receipt_phase,
+            Some(ImmediateSuccessorReceiptPhase::Unknown)
+        );
         assert!(snapshot.claim_before_receipt);
         assert_eq!(snapshot.receipt_to_claim, None);
     }
@@ -968,6 +954,28 @@ mod tests {
         assert!(action_types.contains(&"runner_immediate_successor_intent_matched"));
         assert!(action_types.contains(&"runner_immediate_successor_claim_before_receipt"));
         assert!(!action_types.contains(&"runner_immediate_successor_intent_missing"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn delayed_claim_outcome_reports_mixed_version_signal_absence() {
+        let registry = ImmediateSuccessorIntents::new(2);
+        let predecessor = RunId::new_v4();
+        let observation = registry
+            .observe_claim(Some(predecessor), Instant::now())
+            .unwrap();
+
+        let report = tokio::spawn(observation.settled_claim_records(Duration::ZERO));
+        tokio::task::yield_now().await;
+        tokio::time::advance(MAX_INTENT_RETENTION).await;
+
+        let records = report.await.unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(
+            records[0].action_type,
+            "runner_immediate_successor_intent_missing"
+        );
+        assert!(!records[0].success);
+        assert_eq!(records[0].error, Some("missing"));
     }
 
     #[tokio::test(start_paused = true)]
@@ -1109,7 +1117,7 @@ mod tests {
     }
 
     #[test]
-    fn wrong_generation_and_invalid_timestamp_span_do_not_mutate_registry() {
+    fn wrong_target_and_invalid_timestamp_span_do_not_mutate_registry() {
         let registry = ImmediateSuccessorIntents::new(2);
         let predecessor = RunId::new_v4();
         let intent_id = Uuid::new_v4();
@@ -1121,6 +1129,16 @@ mod tests {
             intent_id,
             wall,
             wall + chrono::Duration::seconds(1),
+        );
+        assert_eq!(
+            registry.receive_at(
+                valid.clone(),
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                GENERATION,
+                received,
+                wall,
+            ),
+            ImmediateSuccessorReceiveOutcome::WrongTarget
         );
         assert_eq!(
             registry.receive_at(valid, RUNNER_ID, GENERATION + 1, received, wall),
@@ -1366,5 +1384,62 @@ mod tests {
             .unwrap()
             .snapshot();
         assert_eq!(snapshot.predicted_park_saved, None);
+    }
+
+    #[test]
+    fn predicted_prepared_hold_stops_at_revoke_before_a_later_claim() {
+        let registry = ImmediateSuccessorIntents::new(2);
+        let predecessor = RunId::new_v4();
+        let intent_id = Uuid::new_v4();
+        let wall = Utc::now();
+        let base = Instant::now();
+        assert_eq!(
+            registry.receive_at(
+                notification(
+                    ImmediateSuccessorIntentAction::Arm,
+                    predecessor,
+                    intent_id,
+                    wall,
+                    wall + chrono::Duration::seconds(1),
+                ),
+                RUNNER_ID,
+                GENERATION,
+                base,
+                wall,
+            ),
+            ImmediateSuccessorReceiveOutcome::Armed
+        );
+        registry.record_finalization_stage(
+            predecessor,
+            ImmediateSuccessorFinalizationStage::ReusePreparation,
+            base + Duration::from_millis(5),
+            base + Duration::from_millis(10),
+            true,
+        );
+        assert_eq!(
+            registry.receive_at(
+                notification(
+                    ImmediateSuccessorIntentAction::Revoke,
+                    predecessor,
+                    intent_id,
+                    wall,
+                    wall + chrono::Duration::seconds(1),
+                ),
+                RUNNER_ID,
+                GENERATION,
+                base + Duration::from_millis(30),
+                wall + chrono::Duration::milliseconds(30),
+            ),
+            ImmediateSuccessorReceiveOutcome::Revoked
+        );
+
+        let snapshot = registry
+            .observe_claim(Some(predecessor), base + Duration::from_millis(80))
+            .unwrap()
+            .snapshot();
+        assert_eq!(
+            snapshot.predicted_prepared_hold,
+            Some(Duration::from_millis(20))
+        );
     }
 }

@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::routes;
@@ -127,6 +128,19 @@ impl JobTelemetry {
             run_id: self.run_id,
             sandbox_token: self.sandbox_token.clone(),
         }
+    }
+
+    /// Start a best-effort report without putting it on the run's critical
+    /// path, while retaining the task so the final flush and graceful shutdown
+    /// still drain it.
+    pub(crate) fn defer_report(
+        &mut self,
+        records: impl Future<Output = Vec<SandboxOpRecord>> + Send + 'static,
+    ) {
+        let reporter = self.reporter();
+        self.in_flight_flushes.push(tokio::spawn(async move {
+            reporter.report(records.await).await;
+        }));
     }
 
     fn record_inner(
@@ -727,6 +741,30 @@ mod tests {
             .await
             .expect("server should exit")
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn flush_waits_for_deferred_report() {
+        use futures_util::FutureExt;
+
+        let mut telemetry = JobTelemetry::new(http_client(), RunId::nil(), "tok".to_string());
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        telemetry.defer_report(async move {
+            release_rx.await.unwrap();
+            Vec::new()
+        });
+
+        assert_eq!(telemetry.in_flight_flushes.len(), 1);
+        let mut flush = Box::pin(telemetry.flush());
+        assert!(
+            flush.as_mut().now_or_never().is_none(),
+            "flush returned before the deferred report settled"
+        );
+
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), flush)
+            .await
+            .expect("flush should complete after the deferred report settles");
     }
 
     #[tokio::test]

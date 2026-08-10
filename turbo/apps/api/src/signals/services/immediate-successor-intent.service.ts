@@ -1,7 +1,7 @@
 import type { ImmediateSuccessorIntentSignal } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -116,12 +116,7 @@ async function resolveIntentSource(
         })
         .from(agentRuns)
         .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-        .where(
-          and(
-            eq(agentRuns.id, args.predecessorRunId),
-            eq(zeroRuns.chatThreadId, args.chatThreadId),
-          ),
-        )
+        .where(eq(agentRuns.id, args.predecessorRunId))
         .limit(1);
       return source ?? null;
     })(),
@@ -282,6 +277,7 @@ export function scheduleImmediateSuccessorIntent(
 
   return {
     revoke(): void {
+      const revokeDecidedAtMs = now();
       waitUntil(
         (async () => {
           const resolved = await arm;
@@ -290,7 +286,7 @@ export function scheduleImmediateSuccessorIntent(
             action: "revoke",
             predecessorRunId,
             eventClass: args.eventClass,
-            decidedAtMs: decidedAt.getTime(),
+            decidedAtMs: revokeDecidedAtMs,
           });
         })(),
       );

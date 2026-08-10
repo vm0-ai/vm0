@@ -26,6 +26,7 @@ use super::orphan_reap::OrphanedActiveRuns;
 use super::ownership::{OwnershipTransitions, RunSandbox};
 use super::sandbox_finalization::{
     FinalizeContext, finalize_sandbox_for_completion_with_telemetry,
+    should_track_immediate_successor_intents,
 };
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
@@ -275,6 +276,21 @@ struct FinalizationPhase {
 struct FinalizedJob {
     completion_ready: CompletionReady,
     telemetry: JobTelemetry,
+    immediate_successor_receipt: Option<ImmediateSuccessorReceiptTelemetry>,
+}
+
+struct ImmediateSuccessorReceiptTelemetry {
+    intents: crate::immediate_successor_intent::ImmediateSuccessorIntents,
+    predecessor_run_id: RunId,
+}
+
+impl ImmediateSuccessorReceiptTelemetry {
+    fn report_after_completion(self, telemetry: &mut JobTelemetry) {
+        telemetry.defer_report(
+            self.intents
+                .settled_receipt_records(self.predecessor_run_id),
+        );
+    }
 }
 
 impl FinalizationPhase {
@@ -329,6 +345,8 @@ impl FinalizationPhase {
         let had_sandbox = sandbox.is_some();
         let has_restored_session_identity = restored_session_identity.is_some();
         let has_reuse_key = reuse_key.is_some();
+        let track_immediate_successor_intents =
+            should_track_immediate_successor_intents(reuse_key.as_deref());
         let cleanup_state_after_finalize = cleanup_state.clone();
 
         let completion_payload = CompletionPayload::new(
@@ -377,7 +395,7 @@ impl FinalizationPhase {
                 status,
                 reuse_state_notify: Arc::clone(&reuse_state_notify),
                 active_run_reuse: active_run_reuse.clone(),
-                immediate_successor_intents,
+                immediate_successor_intents: immediate_successor_intents.clone(),
                 workspace_cache_snapshot,
                 parking_gate,
                 network_log_drain,
@@ -438,6 +456,12 @@ impl FinalizationPhase {
         FinalizedJob {
             completion_ready,
             telemetry,
+            immediate_successor_receipt: track_immediate_successor_intents.then_some(
+                ImmediateSuccessorReceiptTelemetry {
+                    intents: immediate_successor_intents,
+                    predecessor_run_id: run_id,
+                },
+            ),
         }
     }
 }
@@ -751,6 +775,7 @@ pub(super) async fn run_job(
         let FinalizedJob {
             completion_ready,
             mut telemetry,
+            immediate_successor_receipt,
         } = finalization.finalize(executor_result).await;
         CompletionPhase {
             run_id,
@@ -762,6 +787,14 @@ pub(super) async fn run_job(
         }
         .complete(completion_ready, &mut telemetry)
         .await;
+        // The API acknowledges `/complete` before its detached terminal
+        // callback publishes the advisory signal. Start the bounded settlement
+        // window only after completion has been acknowledged, otherwise a
+        // fallback completion after finalization can be misclassified as
+        // missing.
+        if let Some(receipt) = immediate_successor_receipt {
+            receipt.report_after_completion(&mut telemetry);
+        }
         deferred_upload.flush(telemetry).await;
     };
 
@@ -867,6 +900,7 @@ mod tests {
     use crate::ids::RunId;
     use crate::immediate_successor_intent::{
         ImmediateSuccessorIntentNotification, ImmediateSuccessorIntents,
+        ImmediateSuccessorObservationState, ImmediateSuccessorReceiptPhase,
         ImmediateSuccessorReceiveOutcome,
     };
     use crate::resource_budget::ResourceBudget;
@@ -1163,19 +1197,22 @@ mod tests {
         ] {
             assert_telemetry_action(&finalized.telemetry, action);
         }
-        for action in [
-            "runner_immediate_successor_event_prompt",
-            "runner_immediate_successor_received_before_finalization",
-            "runner_immediate_successor_decision_to_receipt",
-            "runner_immediate_successor_deadline_remaining_at_receipt",
-            "runner_immediate_successor_predicted_prepared_hold",
-        ] {
-            assert_telemetry_action(&finalized.telemetry, action);
-        }
-        assert_failed_telemetry_action(
-            &finalized.telemetry,
-            "runner_immediate_successor_intent_receipt_revoked",
-            "revoked",
+        let receipt = finalized
+            .immediate_successor_receipt
+            .as_ref()
+            .expect("thread finalization should defer intent receipt telemetry");
+        assert_eq!(receipt.predecessor_run_id, run_id);
+        let snapshots = receipt
+            .intents
+            .snapshots_for_predecessor(run_id, Instant::now());
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(
+            snapshots[0].state,
+            ImmediateSuccessorObservationState::Revoked
+        );
+        assert_eq!(
+            snapshots[0].receipt_phase,
+            Some(ImmediateSuccessorReceiptPhase::BeforeFinalization)
         );
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(

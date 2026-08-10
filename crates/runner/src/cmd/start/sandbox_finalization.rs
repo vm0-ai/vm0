@@ -35,7 +35,6 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::immediate_successor_intent::{
     ImmediateSuccessorFinalizationStage, ImmediateSuccessorIntents,
-    ImmediateSuccessorObservationState,
 };
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
@@ -166,43 +165,7 @@ impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
     }
 }
 
-impl Drop for FinalizationTelemetry<'_> {
-    fn drop(&mut self) {
-        if !self.track_immediate_successor_intents {
-            return;
-        }
-        let snapshots = self
-            .immediate_successor_intents
-            .snapshots_for_predecessor(self.run_id, Instant::now());
-        let Some(telemetry) = self.telemetry.as_deref_mut() else {
-            return;
-        };
-        if snapshots.is_empty()
-            || snapshots
-                .iter()
-                .any(|snapshot| snapshot.state == ImmediateSuccessorObservationState::Armed)
-        {
-            let reporter = telemetry.reporter();
-            let immediate_successor_intents = self.immediate_successor_intents.clone();
-            let run_id = self.run_id;
-            tokio::spawn(async move {
-                reporter
-                    .report(
-                        immediate_successor_intents
-                            .settled_receipt_records(run_id)
-                            .await,
-                    )
-                    .await;
-            });
-            return;
-        }
-        for snapshot in snapshots {
-            snapshot.record_receipt(telemetry);
-        }
-    }
-}
-
-fn should_track_immediate_successor_intents(reuse_key: Option<&str>) -> bool {
+pub(super) fn should_track_immediate_successor_intents(reuse_key: Option<&str>) -> bool {
     // The API only emits these signals from canonical chat-thread queues. Do
     // not let unrelated finalizations consume the bounded observation state.
     reuse_key.is_some_and(|reuse_key| reuse_key_kind(reuse_key) == "thread")

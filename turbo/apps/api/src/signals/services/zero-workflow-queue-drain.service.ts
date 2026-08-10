@@ -208,9 +208,6 @@ async function handleWorkflowLaunchResult(
 ): Promise<WorkflowQueueDrainStep> {
   const { db, event, result, launchHint, immediateSuccessorIntent } = args;
   if (result.kind === "ok") {
-    if (result.queued) {
-      immediateSuccessorIntent?.revoke();
-    }
     await publishQueueEventChanged(event, signal);
     return { eventId: event.id, result };
   }
@@ -229,11 +226,13 @@ async function handleWorkflowLaunchResult(
       chatThreadId: event.chatThreadId,
       reason: result.message,
     });
+    if (consumed) {
+      immediateSuccessorIntent?.revoke();
+    }
     signal.throwIfAborted();
     if (!consumed) {
       return null;
     }
-    immediateSuccessorIntent?.revoke();
     await publishQueueEventChanged(event, signal);
     return launchHint ? { eventId: event.id, result } : CONTINUE_DRAIN;
   }
@@ -243,11 +242,13 @@ async function handleWorkflowLaunchResult(
     chatThreadId: event.chatThreadId,
     reason: result.response.body.error.message,
   });
+  if (failed) {
+    immediateSuccessorIntent?.revoke();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return null;
   }
-  immediateSuccessorIntent?.revoke();
   log.warn("Workflow queue event rejected after run creation failure", {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
@@ -359,6 +360,7 @@ export const drainWorkflowQueueForThread$ = command(
               launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
+          immediateSuccessorIntent,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime,
           prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
@@ -375,7 +377,6 @@ export const drainWorkflowQueueForThread$ = command(
         signal,
       );
       signal.throwIfAborted();
-
       const step = await handleWorkflowLaunchResult(
         { db, event, result, launchHint, immediateSuccessorIntent },
         signal,

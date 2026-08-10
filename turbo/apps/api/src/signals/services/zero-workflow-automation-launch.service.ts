@@ -10,6 +10,7 @@ import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
+import type { ImmediateSuccessorIntentHandle } from "./immediate-successor-intent.service";
 import type { PersistWorkflowQueueSourceTransition } from "./workflow-chat-event-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
@@ -47,7 +48,7 @@ type RunErrorResponse = {
 };
 
 export type RunWorkflowAutomationResult =
-  | { readonly kind: "ok"; readonly runId: string; readonly queued: boolean }
+  | { readonly kind: "ok"; readonly runId: string }
   // The event was accepted into the workflow queue instead of starting a run.
   | { readonly kind: "enqueued" }
   | { readonly kind: "conflict"; readonly message: string }
@@ -112,6 +113,7 @@ interface WorkflowAutomationLaunchArgs {
 
 interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArgs {
   readonly queueEventId: string;
+  readonly immediateSuccessorIntent: ImmediateSuccessorIntentHandle | undefined;
 }
 
 interface WorkflowAutomationRunInput {
@@ -625,15 +627,23 @@ export const launchQueuedWorkflowAutomation$ = command(
       },
       signal,
     );
-    signal.throwIfAborted();
 
     if (isQueueFirstRunClaimLost(result)) {
+      signal.throwIfAborted();
       return { kind: "enqueued" };
     }
     if (result.status !== 201) {
+      signal.throwIfAborted();
       return { kind: "run_error", response: result };
     }
-
+    const runnableImmediately =
+      result.body.status === "pending" || result.body.status === "running";
+    if (!runnableImmediately) {
+      // Run persistence is irreversible. Settle the observation before an
+      // abort can hide a queued or terminal creation result from the outer
+      // drain.
+      args.immediateSuccessorIntent?.revoke();
+    }
     await recordWorkflowAutomationRunStart(
       {
         db,
@@ -648,7 +658,6 @@ export const launchQueuedWorkflowAutomation$ = command(
     return {
       kind: "ok",
       runId: result.body.runId,
-      queued: result.body.status === "queued",
     };
   },
 );

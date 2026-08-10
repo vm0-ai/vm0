@@ -60,7 +60,7 @@ interface InternalRunCallbackInput {
 }
 
 type RunGoalResult =
-  | { readonly kind: "ok"; readonly runId: string; readonly queued: boolean }
+  | { readonly kind: "ok"; readonly runId: string }
   | { readonly kind: "enqueued" }
   | {
       readonly kind: "run_error";
@@ -268,11 +268,15 @@ async function revokeGoalEvent(
   db: Db,
   event: PendingGoalQueueEvent,
   signal: AbortSignal,
+  onRevoked?: () => void,
 ): Promise<boolean> {
   const revoked = await revokeGoalQueueEvent(db, {
     chatThreadId: event.chatThreadId,
     eventId: event.id,
   });
+  if (revoked) {
+    onRevoked?.();
+  }
   signal.throwIfAborted();
   if (revoked) {
     await publishGoalQueueChanged(event, signal);
@@ -286,6 +290,7 @@ const launchQueuedGoal$ = command(
     args: {
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
+      readonly intent: ImmediateSuccessorIntentHandle | undefined;
       readonly apiStartTime: number;
       readonly attempt: GoalDrainAttempt;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -350,18 +355,27 @@ const launchQueuedGoal$ = command(
       phaseDimensions,
     );
     const result = await set(createQueueFirstZeroRun$, runInput, signal);
-    signal.throwIfAborted();
 
     if (isQueueFirstRunClaimLost(result)) {
+      signal.throwIfAborted();
       return { kind: "enqueued" };
     }
     if (result.status !== 201) {
+      signal.throwIfAborted();
       return { kind: "run_error", response: result };
     }
+    const runnableImmediately =
+      result.body.status === "pending" || result.body.status === "running";
+    if (!runnableImmediately) {
+      // Run persistence is irreversible. Settle the observation before an
+      // abort can hide a queued or terminal creation result from the outer
+      // drain.
+      args.intent?.revoke();
+    }
+    signal.throwIfAborted();
     return {
       kind: "ok",
       runId: result.body.runId,
-      queued: result.body.status === "queued",
     };
   },
 );
@@ -377,9 +391,6 @@ async function handleGoalLaunchResult(
   signal: AbortSignal,
 ): Promise<"continue" | "done"> {
   if (args.result.kind === "ok") {
-    if (args.result.queued) {
-      args.intent?.revoke();
-    }
     await publishGoalQueueChanged(args.event, signal);
     return "done";
   }
@@ -387,10 +398,9 @@ async function handleGoalLaunchResult(
     const stillValid = await loadGoalQueueTarget(args.db, args.event);
     signal.throwIfAborted();
     if (!stillValid) {
-      const revoked = await revokeGoalEvent(args.db, args.event, signal);
-      if (revoked) {
+      await revokeGoalEvent(args.db, args.event, signal, () => {
         args.intent?.revoke();
-      }
+      });
       return "done";
     }
     return stillValid.stateRevision === args.goal.stateRevision
@@ -403,12 +413,12 @@ async function handleGoalLaunchResult(
     expectedGoalStateRevision: args.goal.stateRevision,
     reason: args.result.response.body.error.message,
   });
+  if (settlement.kind === "revoked" || settlement.kind === "rejected") {
+    args.intent?.revoke();
+  }
   signal.throwIfAborted();
   if (settlement.kind === "stale") {
     return "continue";
-  }
-  if (settlement.kind === "revoked" || settlement.kind === "rejected") {
-    args.intent?.revoke();
   }
   if (settlement.kind !== "not_pending") {
     await publishGoalQueueChanged(args.event, signal);
@@ -518,6 +528,7 @@ export const drainGoalQueueForThread$ = command(
         {
           event,
           goal,
+          intent: immediateSuccessorIntent,
           apiStartTime,
           attempt: attemptCategory,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
