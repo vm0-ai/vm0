@@ -276,29 +276,87 @@ body {
 }
 
 /* Shimmer text effect for active/thinking states */
-@keyframes zero-shimmer {
-  0% {
-    background-position: 100% center;
+@keyframes zero-shimmer-window {
+  from {
+    transform: translate3d(-50%, 0, 0);
   }
-  100% {
-    background-position: -100% center;
+  to {
+    transform: translate3d(283.333333%, 0, 0);
   }
 }
+@keyframes zero-shimmer-highlight {
+  from {
+    transform: translate3d(30%, 0, 0);
+  }
+  to {
+    transform: translate3d(-170%, 0, 0);
+  }
+}
+@keyframes zero-shimmer-highlight-secondary {
+  from {
+    transform: translate3d(230%, 0, 0);
+  }
+  to {
+    transform: translate3d(30%, 0, 0);
+  }
+}
+.zero-shimmer-text-shell {
+  position: relative;
+  contain: paint;
+}
 .zero-shimmer-text {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--muted-foreground) / 0.8) 0%,
-    hsl(var(--muted-foreground) / 0.8) 35%,
-    hsl(var(--foreground)) 48%,
-    hsl(var(--foreground)) 52%,
-    hsl(var(--muted-foreground) / 0.8) 65%,
-    hsl(var(--muted-foreground) / 0.8) 100%
-  );
-  background-size: 200% 100%;
+  background-color: hsl(var(--muted-foreground) / 0.8);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: zero-shimmer 3.5s linear infinite;
+}
+.zero-shimmer-window {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 60%;
+  overflow: hidden;
+  background-color: hsl(var(--background));
+  pointer-events: none;
+  user-select: none;
+  /* Map the old 35%-65% band from its 200%-wide gradient into one window. */
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 43.333333%,
+    black 56.666667%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 43.333333%,
+    black 56.666667%,
+    transparent 100%
+  );
+  animation: zero-shimmer-window 3.5s linear infinite;
+  will-change: transform;
+}
+.zero-shimmer-highlight {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  display: block;
+  width: 166.666667%;
+  overflow: hidden;
+  white-space: nowrap;
+  background-color: hsl(var(--foreground));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: zero-shimmer-highlight 3.5s linear infinite;
+  will-change: transform;
+}
+.zero-shimmer-window-secondary {
+  left: -200%;
+}
+.zero-shimmer-window-secondary .zero-shimmer-highlight {
+  animation-name: zero-shimmer-highlight-secondary;
 }
 
 @keyframes zero-thinking-in {
