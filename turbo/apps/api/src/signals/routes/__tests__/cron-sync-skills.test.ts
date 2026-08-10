@@ -1,4 +1,4 @@
-import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   DEFAULT_SKILLS_BRANCH,
@@ -394,8 +394,8 @@ describe("GET /api/cron/sync-skills", () => {
   beforeEach(() => {
     mockGitTreesByCommit.clear();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
-    mockOptionalEnv("GITHUB_APP_ID", undefined);
-    mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", undefined);
+    mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", undefined);
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockImplementation(successfulS3Response);
   });
@@ -486,50 +486,19 @@ describe("GET /api/cron/sync-skills", () => {
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
   });
 
-  it("authenticates tree requests as the repository installation", async () => {
+  it("authenticates public tree requests with OAuth client credentials", async () => {
     const commitSha = newCommitSha();
     const sourceSkills = createFullSkillTree([EXTRA_SKILLS.alphaSkill]);
     await seedCurrentSeedSkillVersions();
     setupMswHandlers(commitSha, sourceSkills);
-    const { privateKey } = generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-    });
-    mockOptionalEnv("GITHUB_APP_ID", "123456");
-    mockOptionalEnv(
-      "GITHUB_APP_PRIVATE_KEY",
-      privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
-    );
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", "github-client-id");
+    mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "github-client-secret");
     server.use(
-      http.get(
-        "https://api.github.com/repos/vm0-ai/vm0-skills/installation",
-        ({ request }) => {
-          expect(request.headers.get("authorization")).toMatch(
-            /^Bearer [^.]+\.[^.]+\.[^.]+$/,
-          );
-          return HttpResponse.json({ id: 987_654 });
-        },
-      ),
-      http.post(
-        "https://api.github.com/app/installations/987654/access_tokens",
-        async ({ request }) => {
-          expect(request.headers.get("authorization")).toMatch(
-            /^Bearer [^.]+\.[^.]+\.[^.]+$/,
-          );
-          await expect(request.json()).resolves.toStrictEqual({
-            repositories: ["vm0-skills"],
-            permissions: { contents: "read" },
-          });
-          return HttpResponse.json({
-            token: "github-installation-token",
-            expires_at: "2026-08-10T07:00:00Z",
-          });
-        },
-      ),
       http.get(
         "https://api.github.com/repos/vm0-ai/vm0-skills/git/trees/:commitSha",
         ({ params, request }) => {
           expect(request.headers.get("authorization")).toBe(
-            "Bearer github-installation-token",
+            `Basic ${Buffer.from("github-client-id:github-client-secret").toString("base64")}`,
           );
           const treeCommitSha = String(params.commitSha);
           return HttpResponse.json({

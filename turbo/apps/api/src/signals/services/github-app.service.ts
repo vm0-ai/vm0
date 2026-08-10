@@ -71,20 +71,11 @@ export async function getGithubInstallationAccessToken(
     readonly appId: string;
     readonly privateKey: string;
     readonly installationId: string;
-    readonly repositories?: readonly string[];
-    readonly permissions?: Readonly<Record<string, "read" | "write">>;
   },
   signal: AbortSignal,
 ): Promise<{ readonly token: string; readonly expiresAt: string }> {
   const installationId = validateInstallationId(args.installationId);
   const jwt = createAppJwt(args.appId, args.privateKey);
-  const body =
-    args.repositories || args.permissions
-      ? JSON.stringify({
-          ...(args.repositories ? { repositories: args.repositories } : {}),
-          ...(args.permissions ? { permissions: args.permissions } : {}),
-        })
-      : undefined;
   const response = await fetch(
     `https://api.github.com/app/installations/${installationId}/access_tokens`,
     {
@@ -93,9 +84,7 @@ export async function getGithubInstallationAccessToken(
         Authorization: `Bearer ${jwt}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        ...(body ? { "Content-Type": "application/json" } : {}),
       },
-      body,
       signal,
     },
   );
@@ -112,47 +101,4 @@ export async function getGithubInstallationAccessToken(
     readonly expires_at: string;
   };
   return { token: data.token, expiresAt: data.expires_at };
-}
-
-export async function getGithubRepositoryInstallationAccessToken(
-  args: {
-    readonly appId: string;
-    readonly privateKey: string;
-    readonly owner: string;
-    readonly repository: string;
-  },
-  signal: AbortSignal,
-): Promise<string> {
-  const jwt = createAppJwt(args.appId, args.privateKey);
-  const response = await fetch(
-    `https://api.github.com/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.repository)}/installation`,
-    {
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      signal,
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to get GitHub repository installation: ${response.status}`,
-    );
-  }
-  const data = (await response.json()) as { readonly id?: unknown };
-  if (typeof data.id !== "number" || !Number.isSafeInteger(data.id)) {
-    throw new Error("GitHub repository installation response is invalid");
-  }
-  const { token } = await getGithubInstallationAccessToken(
-    {
-      appId: args.appId,
-      privateKey: args.privateKey,
-      installationId: String(data.id),
-      repositories: [args.repository],
-      permissions: { contents: "read" },
-    },
-    signal,
-  );
-  return token;
 }

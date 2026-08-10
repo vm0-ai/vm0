@@ -37,7 +37,6 @@ import {
   uploadS3ObjectStream,
 } from "../external/s3";
 import { createDeferredPromise, settle, tapError } from "../utils";
-import { getGithubRepositoryInstallationAccessToken } from "./github-app.service";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
@@ -167,7 +166,7 @@ async function fetchHeadCommitSha(signal: AbortSignal): Promise<string> {
 
 async function fetchGitTree(
   commitSha: string,
-  accessToken: string | undefined,
+  authorization: string | undefined,
   signal: AbortSignal,
 ): Promise<GitTreeSnapshot> {
   const response = await fetch(
@@ -175,7 +174,7 @@ async function fetchGitTree(
     {
       headers: {
         ...GITHUB_API_HEADERS,
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(authorization ? { Authorization: authorization } : {}),
       },
       signal,
     },
@@ -866,10 +865,10 @@ function isUsableBaseCommitSha(commitSha: string): boolean {
 async function buildSkillTreeSyncPlan(
   existing: readonly StoredSkillSource[],
   headSha: string,
-  accessToken: string | undefined,
+  authorization: string | undefined,
   signal: AbortSignal,
 ): Promise<SkillTreeSyncPlan> {
-  const currentTree = await fetchGitTree(headSha, accessToken, signal);
+  const currentTree = await fetchGitTree(headSha, authorization, signal);
   signal.throwIfAborted();
   const baseCommitShas = new Set(
     existing.flatMap((skill) => {
@@ -881,7 +880,7 @@ async function buildSkillTreeSyncPlan(
   const [baseCommitSha] = baseCommitShas;
   const previousTreeResult =
     baseCommitShas.size === 1 && baseCommitSha
-      ? await settle(fetchGitTree(baseCommitSha, accessToken, signal), signal)
+      ? await settle(fetchGitTree(baseCommitSha, authorization, signal), signal)
       : undefined;
   if (previousTreeResult && !previousTreeResult.ok) {
     log.warn("Failed to fetch previous skills tree; checking all skills", {
@@ -913,26 +912,16 @@ async function buildSkillTreeSyncPlan(
   };
 }
 
-async function githubApiAccessToken(
-  signal: AbortSignal,
-): Promise<string | undefined> {
-  const appId = optionalEnv("GITHUB_APP_ID");
-  const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
-  if (!appId && !privateKey) {
+function githubApiAuthorization(): string | undefined {
+  const clientId = optionalEnv("GH_OAUTH_CLIENT_ID");
+  const clientSecret = optionalEnv("GH_OAUTH_CLIENT_SECRET");
+  if (!clientId && !clientSecret) {
     return undefined;
   }
-  if (!appId || !privateKey) {
-    throw new Error("GitHub App credentials must be configured together");
+  if (!clientId || !clientSecret) {
+    throw new Error("GitHub OAuth credentials must be configured together");
   }
-  return await getGithubRepositoryInstallationAccessToken(
-    {
-      appId,
-      privateKey,
-      owner: DEFAULT_SKILLS_OWNER,
-      repository: DEFAULT_SKILLS_REPO,
-    },
-    signal,
-  );
+  return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
 }
 
 async function markSkillsSyncComplete(
@@ -983,10 +972,9 @@ export const syncSkills$ = command(
       };
     }
 
-    const accessToken = await githubApiAccessToken(signal);
-    signal.throwIfAborted();
+    const authorization = githubApiAuthorization();
     const { currentTree, changedSkills, sourceSkillNames } =
-      await buildSkillTreeSyncPlan(existing, headSha, accessToken, signal);
+      await buildSkillTreeSyncPlan(existing, headSha, authorization, signal);
 
     let synced = 0;
     let skipped = 0;
