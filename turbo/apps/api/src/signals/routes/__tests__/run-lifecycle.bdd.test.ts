@@ -13402,11 +13402,15 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     await billing.processOrgUsageEvents(actor);
 
     const usageRecord = await billing.readUsageRecord(actor);
-    expect(
-      usageRecord.body.rows.find((entry) => {
-        return entry.runId === run.runId;
+    expect(usageRecord.body.totalCredits).toBe(17);
+    expect(usageRecord.body.rows).toContainEqual(
+      expect.objectContaining({
+        source: "chat",
+        runId: null,
+        title: "Deleted chats",
+        credits: 17,
       }),
-    ).toMatchObject({ credits: 17 });
+    );
   });
 
   it("exposes usage records, members, and processed usage events through public reads", async () => {
@@ -13445,11 +13449,13 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     await billing.processOrgUsageEvents(actor);
 
     const record = await billing.readUsageRecord(actor);
-    const listedRun = record.body.rows.find((entry) => {
-      return entry.runId === run.runId;
+    const listedUsage = record.body.rows.find((entry) => {
+      return entry.source === "chat";
     });
-    expect(listedRun).toBeDefined();
-    expect(listedRun?.title).toBe("generate usage");
+    expect(listedUsage).toMatchObject({
+      runId: null,
+      title: "Deleted chats",
+    });
     expect(record.body.pagination.total).toBeGreaterThanOrEqual(1);
 
     const members = await billing.readUsageMembers(actor);
