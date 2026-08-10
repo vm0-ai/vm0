@@ -138,6 +138,7 @@ async function publishConnectorRuntimeSyncWakeupsInner(
       examinedRunCount: rows.length,
       failedWakeupCount,
       firstFailedRunId: firstFailure.wakeup.runId,
+      firstFailedRunnerGroup: firstFailure.wakeup.runnerGroup,
       firstFailedTarget: firstFailure.wakeup.target,
       error: firstFailure.error,
     });
