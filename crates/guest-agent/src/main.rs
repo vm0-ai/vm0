@@ -124,7 +124,7 @@ fn helper_exit_code_from_args() -> Option<i32> {
                         }
                         Err(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
                     },
-                    Err(error) => session_history_identity_helper_exit_code(&error),
+                    Err(error) => session_history_sidecar_export_helper_exit_code(&error),
                 },
             )
         }
@@ -162,6 +162,22 @@ fn session_history_identity_helper_exit_code(
         SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
     } else {
         exit_code
+    }
+}
+
+fn session_history_sidecar_export_helper_exit_code(
+    error: &session_history_identity::FinalSessionHistorySidecarExportError,
+) -> i32 {
+    let exit_code = error.helper_exit_code();
+    let Some(failure) = error.output_failure() else {
+        return exit_code;
+    };
+    match serde_json::to_string(&failure) {
+        Ok(json) => {
+            println!("{json}");
+            exit_code
+        }
+        Err(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
     }
 }
 
