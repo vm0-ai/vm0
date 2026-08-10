@@ -4,7 +4,10 @@ import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingStatusContract,
+  zeroBillingUsagePackCreditsContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
@@ -248,6 +251,15 @@ function mockAdminAccountSidebar(): void {
   mockAdminBillingStatus(12_500);
 }
 
+function mockMemberAccountSidebar(): void {
+  prepareDefaultAgent();
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "member",
+  });
+}
+
 describe("zero sidebar account menu", () => {
   it("restores visible focus to the account trigger when the menu closes", async () => {
     const user = userEvent.setup();
@@ -278,6 +290,81 @@ describe("zero sidebar account menu", () => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument();
       expect(accountButton).toHaveFocus();
       expect(accountButton.matches(":focus-visible")).toBeTruthy();
+    });
+  });
+
+  it("does not request or show member usage pack credits when the switch is disabled", async () => {
+    mockMemberAccountSidebar();
+    let usagePackCreditRequests = 0;
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        usagePackCreditRequests += 1;
+        return respond(200, {
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+    expect(within(menu).getByText("Settings")).toBeInTheDocument();
+    expect(
+      within(menu).queryByTestId("account-menu-usage-pack-credits"),
+    ).toBeNull();
+    expect(usagePackCreditRequests).toBe(0);
+  });
+
+  it("shows member usage pack credits and opens their credit usage", async () => {
+    mockMemberAccountSidebar();
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    const menu = await openAccountMenu();
+    const usagePackItem = await within(menu).findByTestId(
+      "account-menu-usage-pack-credits",
+    );
+    expect(
+      within(usagePackItem).getByText("20,400 usage pack credits"),
+    ).toBeInTheDocument();
+
+    click(usagePackItem);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Credit usage" }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("usage-pack-credit-card")).toBeInTheDocument();
     });
   });
 

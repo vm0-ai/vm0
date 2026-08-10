@@ -1055,6 +1055,11 @@
       "unavailable": "Saldo kredit tidak tersedia.",
       "upgradeDescription": "Pro mencakup kredit bulanan dan membuka opsi kredit tambahan.",
       "upgradeTitle": "Tingkatkan ke Pro untuk mendapatkan lebih banyak kredit",
+      "usagePack": {
+        "bonus": "Bonus",
+        "purchased": "Dibeli",
+        "title": "Kredit paket penggunaan"
+      },
       "used": "Digunakan"
     }
   },
@@ -3934,6 +3939,8 @@
         }
       },
       "switchAccount": "Ganti akun",
+      "usagePackCreditBalance_one": "{{value}} kredit paket penggunaan",
+      "usagePackCreditBalance_other": "{{value}} kredit paket penggunaan",
       "userFallback": "Pengguna"
     },
     "buildInfo": {

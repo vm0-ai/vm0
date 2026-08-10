@@ -1,4 +1,7 @@
-import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
+import {
+  usagePackCreditGrants,
+  type UsagePackCreditGrantType,
+} from "@vm0/db/schema/usage-pack-credit-grant";
 import { and, eq, gt, sql, sum } from "drizzle-orm";
 
 import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
@@ -20,6 +23,12 @@ interface UsagePackCreditGrantResult {
 }
 
 type UsagePackCreditGrantStore = Pick<Db, "insert" | "select">;
+
+interface UsagePackCreditBalance {
+  readonly totalCredits: number;
+  readonly purchasedCredits: number;
+  readonly bonusCredits: number;
+}
 
 export async function createUsagePackCreditGrant(
   db: UsagePackCreditGrantStore,
@@ -95,4 +104,46 @@ export async function getSpendableUsagePackCredits(
       ),
     );
   return row?.total ?? 0;
+}
+
+export async function getUsagePackCreditBalance(
+  db: Pick<Db, "select">,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly at?: Date;
+  },
+): Promise<UsagePackCreditBalance> {
+  const at = args.at ?? nowDate();
+  const rows = await db
+    .select({
+      grantType: usagePackCreditGrants.grantType,
+      credits:
+        sql`COALESCE(${sum(usagePackCreditGrants.remainingAmount)}, 0)::bigint`
+          .mapWith(pgInt8ToSafeIntegerDecoder)
+          .as("credits"),
+    })
+    .from(usagePackCreditGrants)
+    .where(
+      and(
+        eq(usagePackCreditGrants.orgId, args.orgId),
+        eq(usagePackCreditGrants.userId, args.userId),
+        gt(usagePackCreditGrants.remainingAmount, 0),
+        gt(usagePackCreditGrants.expiresAt, at),
+      ),
+    )
+    .groupBy(usagePackCreditGrants.grantType);
+
+  const creditsByType: Record<UsagePackCreditGrantType, number> = {
+    purchased: 0,
+    bonus: 0,
+  };
+  for (const row of rows) {
+    creditsByType[row.grantType] = row.credits;
+  }
+  return {
+    totalCredits: creditsByType.purchased + creditsByType.bonus,
+    purchasedCredits: creditsByType.purchased,
+    bonusCredits: creditsByType.bonus,
+  };
 }

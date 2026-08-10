@@ -1055,6 +1055,11 @@
       "unavailable": "Credit-Guthaben nicht verfügbar.",
       "upgradeDescription": "Pro beinhaltet monatliche Credits und schaltet zusätzliche Credit-Optionen frei.",
       "upgradeTitle": "Upgraden Sie auf Pro, um mehr Credits zu erhalten",
+      "usagePack": {
+        "bonus": "Bonus",
+        "purchased": "Gekauft",
+        "title": "Nutzungspaket-Credits"
+      },
       "used": "Verwendet"
     }
   },
@@ -3935,6 +3940,8 @@
         }
       },
       "switchAccount": "Konto wechseln",
+      "usagePackCreditBalance_one": "{{value}} Nutzungspaket-Credit",
+      "usagePackCreditBalance_other": "{{value}} Nutzungspaket-Credits",
       "userFallback": "Benutzer"
     },
     "buildInfo": {

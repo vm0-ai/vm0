@@ -1,9 +1,13 @@
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingStatusContract,
+  zeroBillingUsagePackCreditsContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import {
   zeroUsageRecordContract,
   type UsageRecordRow,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
-import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -200,8 +204,14 @@ function mockPersonalUsageStory(
   return requestedRanges;
 }
 
-async function openUsageSettings(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=usage" });
+async function openUsageSettings(usagePackPlansEnabled = false): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=usage",
+    featureSwitches: usagePackPlansEnabled
+      ? { [FeatureSwitchKey.UsagePackPlans]: true }
+      : undefined,
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Today")).toBeInTheDocument();
@@ -209,6 +219,55 @@ async function openUsageSettings(): Promise<void> {
 }
 
 describe("personal usage settings", () => {
+  it("does not request or show usage pack credits when the switch is disabled", async () => {
+    mockPersonalUsageStory();
+    let usagePackCreditRequests = 0;
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        usagePackCreditRequests += 1;
+        return respond(200, {
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+        });
+      },
+    );
+
+    await openUsageSettings();
+    await expect(
+      screen.findByText("Quarterly planning chat"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
+    expect(usagePackCreditRequests).toBe(0);
+  });
+
+  it("shows the member's usage pack credit breakdown when the switch is enabled", async () => {
+    mockPersonalUsageStory();
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+        });
+      },
+    );
+
+    await openUsageSettings(true);
+
+    const card = await screen.findByTestId("usage-pack-credit-card");
+    expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
+    expect(
+      within(card).getByText("20,400 credits remaining"),
+    ).toBeInTheDocument();
+    expect(within(card).getByText("Purchased")).toBeInTheDocument();
+    expect(within(card).getByText("20,000")).toBeInTheDocument();
+    expect(within(card).getByText("Bonus")).toBeInTheDocument();
+    expect(within(card).getByText("400")).toBeInTheDocument();
+  });
+
   it("shows personal usage, loads more, and changes the usage range", async () => {
     const user = userEvent.setup();
     const requestedRanges = mockPersonalUsageStory();

@@ -173,6 +173,12 @@ const usagePackCatalogResponseSchema = z.object({
   usagePacks: z.array(usagePackCatalogItemSchema),
 });
 
+const usagePackCreditsResponseSchema = z.object({
+  totalCredits: z.number().int().nonnegative(),
+  purchasedCredits: z.number().int().nonnegative(),
+  bonusCredits: z.number().int().nonnegative(),
+});
+
 const memberUsagePackSchema = z.object({
   memberId: z.string().min(1),
   usagePackUsd: usagePackUsdSchema,
@@ -596,6 +602,27 @@ export const zeroBillingUsagePackManagementContract = c.router({
 
 export type ZeroBillingUsagePackManagementContract =
   typeof zeroBillingUsagePackManagementContract;
+
+export const zeroBillingUsagePackCreditsContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/billing/usage-pack-credits",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackCreditsResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get the current member's spendable usage pack credits",
+  },
+});
+
+export type ZeroBillingUsagePackCreditsContract =
+  typeof zeroBillingUsagePackCreditsContract;
+export type UsagePackCreditsResponse = z.infer<
+  typeof usagePackCreditsResponseSchema
+>;
 
 /**
  * Zero contract for POST /api/zero/billing/concurrency-checkout
