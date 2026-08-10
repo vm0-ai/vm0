@@ -354,7 +354,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "seo",
-    description: "Query managed SEO data through DataForSEO and SerpAPI",
+    description: "Query managed SEO data through DataForSEO",
     load: async () => {
       return (await import("./commands/zero/seo")).zeroSeoCommand;
     },

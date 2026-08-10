@@ -505,6 +505,13 @@
       "when": 1786354744070,
       "tag": "0879_sturdy_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 880,
+      "version": "7",
+      "when": 1786358650061,
+      "tag": "0880_remove_serpapi_seo_pricing",
+      "breakpoints": true
     }
   ]
 }

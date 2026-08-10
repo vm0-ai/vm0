@@ -41,18 +41,6 @@ function dataForSeoResponse(operation: string, result: unknown) {
   };
 }
 
-function serpApiResponse(result: unknown) {
-  return {
-    operation: "serp",
-    provider: "serpapi",
-    billingCategory: "search",
-    billingQuantity: 1,
-    cached: false,
-    creditsCharged: 32,
-    result,
-  };
-}
-
 describe("zero seo command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
@@ -75,11 +63,9 @@ describe("zero seo command", () => {
     for (const command of zeroSeoCommand.commands) {
       command.setOptionValue("json", undefined);
       if (command.name() === "serp") {
-        command.setOptionValue("provider", "dataforseo");
         command.setOptionValue("engine", "google");
         command.setOptionValue("location", "United States");
         command.setOptionValue("language", "en");
-        command.setOptionValue("country", "us");
         command.setOptionValue("device", "desktop");
         command.setOptionValue("limit", 10);
       } else if (command.name() === "backlinks-summary") {
@@ -109,9 +95,11 @@ describe("zero seo command", () => {
     await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
-  it("posts SerpAPI options and prints the JSON response", async () => {
+  it("posts DataForSEO SERP options and prints the JSON response", async () => {
     let requestBody: unknown;
-    const response = serpApiResponse({ local_results: [{ title: "Coffee" }] });
+    const response = dataForSeoResponse("serp", {
+      tasks: [{ result: [{ title: "Coffee" }] }],
+    });
     server.use(
       http.post(
         "http://localhost:3000/api/zero/seo/serp",
@@ -127,14 +115,10 @@ describe("zero seo command", () => {
       "cli",
       "serp",
       "coffee shops",
-      "--provider",
-      "serpapi",
       "--engine",
       "google_maps",
       "--location",
       "Austin, Texas, United States",
-      "--country",
-      "us",
       "--language",
       "en",
       "--device",
@@ -146,11 +130,10 @@ describe("zero seo command", () => {
 
     expect(requestBody).toStrictEqual({
       query: "coffee shops",
-      provider: "serpapi",
+      provider: "dataforseo",
       engine: "google_maps",
       location: "Austin, Texas, United States",
       languageCode: "en",
-      countryCode: "us",
       device: "mobile",
       limit: 20,
     });
@@ -223,13 +206,12 @@ describe("zero seo command", () => {
       engine: "bing",
       location: "United States",
       languageCode: "en",
-      countryCode: "us",
       device: "mobile",
       limit: 20,
     });
   });
 
-  it("rejects DataForSEO Google Shopping before calling the API", async () => {
+  it("rejects the removed provider option before calling the API", async () => {
     let apiRequests = 0;
     server.use(
       http.post("http://localhost:3000/api/zero/seo/serp", () => {
@@ -244,8 +226,8 @@ describe("zero seo command", () => {
         "cli",
         "serp",
         "running shoes",
-        "--engine",
-        "google_shopping",
+        "--provider",
+        "serpapi",
       ]),
     ).rejects.toThrow("process.exit called");
 
@@ -255,9 +237,7 @@ describe("zero seo command", () => {
     ]
       .map(String)
       .join("\n");
-    expect(errors).toContain(
-      "DataForSEO Google Shopping is asynchronous; use SerpAPI",
-    );
+    expect(errors).toContain("unknown option '--provider'");
     expect(apiRequests).toBe(0);
   });
 
@@ -295,7 +275,7 @@ describe("zero seo command", () => {
     expect(apiRequests).toBe(0);
   });
 
-  it("explains provider selection and compatibility in serp help", () => {
+  it("explains DataForSEO engine compatibility in serp help", () => {
     const command = zeroSeoCommand.commands.find((candidate) => {
       return candidate.name() === "serp";
     });
@@ -311,15 +291,12 @@ describe("zero seo command", () => {
 
     command.outputHelp();
 
-    expect(help).toContain("Provider selection:");
+    expect(help).toContain("Provider:");
+    expect(help).toContain("DataForSEO is the only managed SEO provider");
     expect(help).toContain("provider-reported cost +25%");
-    expect(help).toContain("fresh successful search costs 32 credits");
-    expect(help).toContain(
-      "google_news      dataforseo (desktop only), serpapi",
-    );
-    expect(help).toContain("google_shopping  serpapi only");
-    expect(help).toContain("does not automatically select a provider");
+    expect(help).toContain("google_news  desktop only");
     expect(help).toContain("google_maps returns at most 20 results on mobile");
-    expect(help).toContain("do not automatically fall back");
+    expect(help).not.toContain("--provider");
+    expect(help).not.toContain("SerpAPI");
   });
 });
