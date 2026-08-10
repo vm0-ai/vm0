@@ -5217,6 +5217,122 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log();
 }
 
+const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0876_nebulous_vision";
+const ZERO_RUN_CODEX_TIER_MIGRATION = "0877_amusing_ender_wiggin";
+
+async function validateZeroRunCodexTierExpansion(): Promise<void> {
+  console.log("=== Validate zero-run Codex tier expansion ===\n");
+  const testDb = "migration_zero_run_codex_tier_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000087701",
+    sessionId: "00000000-0000-4000-8000-000000087702",
+    runId: "00000000-0000-4000-8000-000000087703",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'codex-tier-user', 'codex-tier-agent', 'codex-tier-org')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id", "user_id", "org_id", "agent_compose_id"
+          ) VALUES ($1, 'codex-tier-user', 'codex-tier-org', $2)
+        `,
+        [fixture.sessionId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id", "user_id", "org_id", "session_id", "status", "prompt"
+          ) VALUES (
+            $1,
+            'codex-tier-user',
+            'codex-tier-org',
+            $2,
+            'pending',
+            'migration compatibility'
+          )
+        `,
+        [fixture.runId, fixture.sessionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" ("id", "trigger_source", "selected_model")
+          VALUES ($1, 'web', 'gpt-5.6-sol')
+        `,
+        [fixture.runId],
+      );
+
+      const beforeExpansion = await client.query<{
+        codexServiceTier: string | null;
+        selectedModel: string | null;
+      }>(
+        `
+          SELECT
+            "selected_model" AS "selectedModel",
+            to_jsonb("zero_runs") ->> 'codex_service_tier'
+              AS "codexServiceTier"
+          FROM "zero_runs"
+          WHERE "id" = $1
+        `,
+        [fixture.runId],
+      );
+      assert.deepEqual(beforeExpansion.rows, [
+        { selectedModel: "gpt-5.6-sol", codexServiceTier: null },
+      ]);
+
+      await applyMigrationsUpToTag(client, ZERO_RUN_CODEX_TIER_MIGRATION);
+      await client.query(
+        `
+          UPDATE "zero_runs"
+          SET "codex_service_tier" = 'fast'
+          WHERE "id" = $1
+        `,
+        [fixture.runId],
+      );
+      const afterExpansion = await client.query<{
+        codexServiceTier: string | null;
+        selectedModel: string | null;
+      }>(
+        `
+          SELECT
+            "selected_model" AS "selectedModel",
+            to_jsonb("zero_runs") ->> 'codex_service_tier'
+              AS "codexServiceTier"
+          FROM "zero_runs"
+          WHERE "id" = $1
+        `,
+        [fixture.runId],
+      );
+      assert.deepEqual(afterExpansion.rows, [
+        { selectedModel: "gpt-5.6-sol", codexServiceTier: "fast" },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ old-schema standard writes and rollout-safe tier reads remain legal\n",
+  );
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -5243,6 +5359,7 @@ async function main(): Promise<void> {
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
+    await validateZeroRunCodexTierExpansion();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -5305,6 +5422,9 @@ async function main(): Promise<void> {
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
       );
       console.log("   ✅ Legacy Teams message file scope is backfilled");
+      console.log(
+        "   ✅ Zero-run Codex tier readers survive the pre-expansion schema",
+      );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",

@@ -143,6 +143,14 @@ import {
   type SQLWrapper,
   type WithSubquery,
 } from "drizzle-orm";
+import {
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import {
@@ -442,6 +450,29 @@ interface ZeroRunMetadata {
   readonly autonomyBudget?: number;
   readonly codexServiceTier?: CodexServiceTier;
 }
+
+// Migration 0877 can briefly lag a newly deployed API. Drizzle inserts name
+// every column declared on a table even when its value is omitted, so standard
+// runs use the pre-expansion column set until the migration is guaranteed.
+// Fast mode is staff-gated and uses the expanded schema. Remove this table
+// declaration after 0877 is everywhere and outside the API rollback window.
+const zeroRunsBeforeCodexServiceTier = pgTable("zero_runs", {
+  id: uuid("id").primaryKey(),
+  triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
+  autonomyBudget: integer("autonomy_budget").notNull().default(10),
+  workflowAutomationId: uuid("workflow_automation_id"),
+  runGroupId: uuid("run_group_id"),
+  goalId: uuid("goal_id"),
+  modelProvider: varchar("model_provider", { length: 100 }),
+  modelProviderId: uuid("model_provider_id"),
+  modelProviderCredentialScope: varchar("model_provider_credential_scope", {
+    length: 20,
+  }),
+  selectedModel: varchar("selected_model", { length: 255 }),
+  chatThreadId: uuid("chat_thread_id"),
+  apiStartedAt: timestamp("api_started_at"),
+  triggerBrief: text("trigger_brief"),
+});
 
 interface AgentConfig {
   readonly framework?: string;
@@ -5491,7 +5522,9 @@ function launchZeroRunValues(
       ? {}
       : { autonomyBudget: metadata.autonomyBudget }),
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
-    codexServiceTier: metadata.codexServiceTier ?? null,
+    ...(metadata.codexServiceTier === undefined
+      ? {}
+      : { codexServiceTier: metadata.codexServiceTier }),
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   };
@@ -5507,7 +5540,12 @@ async function insertLaunchRunRows(
 
   const createdAt = nowDate();
   await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
+  const zeroRunValues = launchZeroRunValues(args);
+  if (zeroRunValues.codexServiceTier === undefined) {
+    await tx.insert(zeroRunsBeforeCodexServiceTier).values(zeroRunValues);
+  } else {
+    await tx.insert(zeroRuns).values(zeroRunValues);
+  }
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -6460,9 +6498,18 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     ...launchZeroRunValues(rowsArgs),
     id: returnedCteId(insertedRun),
   };
-  const insertedZeroRun = args.tx
-    .$with("inserted_launch_zero_run")
-    .as(args.tx.insert(zeroRuns).values(zeroRunValues));
+  const insertedZeroRun =
+    zeroRunValues.codexServiceTier === undefined
+      ? args.tx
+          .$with("inserted_launch_zero_run")
+          .as(
+            args.tx
+              .insert(zeroRunsBeforeCodexServiceTier)
+              .values(zeroRunValues),
+          )
+      : args.tx
+          .$with("inserted_launch_zero_run")
+          .as(args.tx.insert(zeroRuns).values(zeroRunValues));
   ctes.push(insertedZeroRun);
 
   appendLaunchCallbackCte({

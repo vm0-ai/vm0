@@ -1,5 +1,4 @@
 import { getRunModelDisplayName } from "@vm0/core/model-display-name";
-import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
@@ -8,10 +7,10 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
+import { resolveZeroRunModelSelection } from "./zero-run-model-selection.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -91,32 +90,12 @@ async function resolveOrgDefaultModelProviderSelectedModel(
   return row?.selectedModel ?? undefined;
 }
 
-interface RunModelSelection {
-  readonly selectedModel: string | null;
-  readonly codexServiceTier: CodexServiceTier | null;
-}
-
-async function resolveRunModelSelection(
-  db: ReadonlyDb,
-  runId: string,
-): Promise<RunModelSelection | undefined> {
-  const [row] = await db
-    .select({
-      selectedModel: zeroRuns.selectedModel,
-      codexServiceTier: zeroRuns.codexServiceTier,
-    })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return row;
-}
-
 async function resolveAgentReplyModelLabel(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly runId: string;
 }): Promise<string | undefined> {
-  const runModel = await resolveRunModelSelection(args.db, args.runId);
+  const runModel = await resolveZeroRunModelSelection(args.db, args.runId);
   const model =
     runModel?.selectedModel ??
     (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));

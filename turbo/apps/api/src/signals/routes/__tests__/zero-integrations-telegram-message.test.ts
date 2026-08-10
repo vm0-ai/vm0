@@ -14,6 +14,7 @@ import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   seedTelegramInstallation$,
   seedTelegramUserLink$,
+  updateZeroRunModelSelection$,
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
@@ -248,6 +249,15 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       telegramUsername: "ada_telegram",
       telegramDisplayName: "Ada Lovelace",
     });
+    await store.set(
+      updateZeroRunModelSelection$,
+      {
+        runId: fixture.runId,
+        selectedModel: "gpt-5.6-sol",
+        codexServiceTier: "fast",
+      },
+      context.signal,
+    );
 
     let telegramBody: Record<string, unknown> | undefined;
     server.use(
@@ -306,7 +316,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     const sentText = String(telegramBody?.text);
     expect(sentText).toContain("Hello <b>world</b>");
     expect(sentText).toContain(
-      '<i>Sent via my-assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Sonnet 4.6</i>',
+      '<i>Sent via my-assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · GPT 5.6 Sol Fast</i>',
     );
   });
 

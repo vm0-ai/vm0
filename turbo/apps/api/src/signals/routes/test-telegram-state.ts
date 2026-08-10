@@ -696,10 +696,27 @@ async function updateRunForAction(
   if (!runId) {
     return actionBadRequest("run_id is required");
   }
-  await db
-    .update(zeroRuns)
-    .set({ selectedModel: readActionNullableString(body, "selected_model") })
-    .where(eq(zeroRuns.id, runId));
+  const selectedModel = readActionNullableString(body, "selected_model");
+  const codexServiceTier = readActionNullableString(body, "codex_service_tier");
+  if (
+    codexServiceTier !== undefined &&
+    codexServiceTier !== null &&
+    codexServiceTier !== "fast"
+  ) {
+    return actionBadRequest("codex_service_tier must be fast or null");
+  }
+  const normalizedCodexServiceTier: "fast" | null =
+    codexServiceTier === "fast" ? "fast" : null;
+  const values = {
+    ...(selectedModel === undefined ? {} : { selectedModel }),
+    ...(codexServiceTier === undefined
+      ? {}
+      : { codexServiceTier: normalizedCodexServiceTier }),
+  };
+  if (Object.keys(values).length === 0) {
+    return actionBadRequest("selected_model or codex_service_tier is required");
+  }
+  await db.update(zeroRuns).set(values).where(eq(zeroRuns.id, runId));
   signal.throwIfAborted();
   return actionOk();
 }

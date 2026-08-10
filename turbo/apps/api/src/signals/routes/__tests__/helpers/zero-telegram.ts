@@ -57,6 +57,12 @@ interface SeedTelegramUserLinkValues {
   readonly telegramDisplayName?: string | null;
 }
 
+interface UpdateZeroRunModelSelectionValues {
+  readonly runId: string;
+  readonly selectedModel?: string | null;
+  readonly codexServiceTier?: "fast" | null;
+}
+
 function requestTelegramStateAction(
   signal: AbortSignal,
   body: TestTelegramStateActionBody,
@@ -196,6 +202,24 @@ export const seedTelegramUserLink$ = command(
           ? response.user_link_id
           : null,
     };
+  },
+);
+
+// The public direct-run fixture cannot select Codex service tier. Keep this
+// diagnostic mutation narrow: the run itself is created through the product
+// API and assertions remain at the provider-facing message boundary.
+export const updateZeroRunModelSelection$ = command(
+  async (
+    _,
+    values: UpdateZeroRunModelSelectionValues,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "update-run",
+      run_id: values.runId,
+      selected_model: values.selectedModel,
+      codex_service_tier: values.codexServiceTier,
+    });
   },
 );
 
