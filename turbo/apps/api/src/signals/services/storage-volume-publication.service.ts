@@ -94,7 +94,7 @@ function materializeFiles(
   files: readonly VolumeFileInput[],
 ): readonly MaterializedVolumeFile[] {
   const validationRoot = resolve(tmpdir(), "vm0-api-volume-validation");
-  const materialized = files.map((file) => {
+  return files.map((file) => {
     resolveVolumeFilePath(validationRoot, file.path);
     const content = Buffer.from(file.content, "utf8");
     return {
@@ -104,7 +104,6 @@ function materializeFiles(
       size: content.length,
     };
   });
-  return materialized.sort(compareFilePaths);
 }
 
 function resolveVolumeFilePath(root: string, path: string): string {
@@ -167,9 +166,10 @@ async function createVolumeArchive(
   files: readonly MaterializedVolumeFile[],
   signal: AbortSignal,
 ): Promise<Buffer> {
+  const archiveFiles = [...files].sort(compareFilePaths);
   const tmpDir = await mkdtemp(join(tmpdir(), "vm0-api-volume-"));
   const archiveBuffer = await onRejection(
-    buildVolumeArchive(tmpDir, files, signal),
+    buildVolumeArchive(tmpDir, archiveFiles, signal),
     () => {
       rmSync(tmpDir, { recursive: true, force: true });
     },
