@@ -15,49 +15,70 @@ pub(super) struct ActiveRuns {
 struct ActiveRunEntry {
     reuse_key: Option<String>,
     profile_name: String,
-    phase: watch::Sender<ActiveRunPhase>,
+    reuse_state: watch::Sender<ActiveRunReuseState>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ActiveRunPhase {
-    Running,
-    Finalized,
+pub(super) enum ActiveRunReuseState {
+    Pending,
+    ExactSandboxPublished,
+    NoExactSandbox,
     Released,
 }
 
-pub(super) struct ActiveRunProof {
-    phase: watch::Receiver<ActiveRunPhase>,
+pub(super) struct ActiveRunReuseProof {
+    reuse_state: watch::Receiver<ActiveRunReuseState>,
 }
 
-impl ActiveRunProof {
-    pub(super) fn phase(&self) -> ActiveRunPhase {
-        *self.phase.borrow()
+impl ActiveRunReuseProof {
+    pub(super) fn state(&self) -> ActiveRunReuseState {
+        *self.reuse_state.borrow()
     }
 
-    pub(super) async fn changed(&mut self) -> ActiveRunPhase {
-        if self.phase.changed().await.is_err() {
-            return ActiveRunPhase::Released;
+    pub(super) async fn changed(&mut self) -> ActiveRunReuseState {
+        if self.reuse_state.changed().await.is_err() {
+            return ActiveRunReuseState::Released;
         }
-        self.phase()
+        self.state()
     }
 }
 
 #[derive(Clone)]
-pub(super) struct ActiveRunFinalizationPublisher {
-    phase: watch::Sender<ActiveRunPhase>,
+pub(super) struct ActiveRunReusePublisher {
+    reuse_state: watch::Sender<ActiveRunReuseState>,
     changes: watch::Sender<u64>,
 }
 
-impl ActiveRunFinalizationPublisher {
-    pub(super) fn mark_finalized(&self) {
-        if self.phase.send_if_modified(|phase| {
-            if *phase != ActiveRunPhase::Running {
+impl ActiveRunReusePublisher {
+    pub(super) fn publish_exact_sandbox(&self) -> bool {
+        self.resolve_pending(ActiveRunReuseState::ExactSandboxPublished)
+    }
+
+    pub(super) fn publish_no_exact_sandbox(&self) -> bool {
+        self.resolve_pending(ActiveRunReuseState::NoExactSandbox)
+    }
+
+    fn resolve_pending(&self, next: ActiveRunReuseState) -> bool {
+        let changed = self.reuse_state.send_if_modified(|state| {
+            if *state != ActiveRunReuseState::Pending {
                 return false;
             }
-            *phase = ActiveRunPhase::Finalized;
+            *state = next;
             true
-        }) {
+        });
+        if changed {
             bump_changes(&self.changes);
+        }
+        changed
+    }
+
+    #[cfg(test)]
+    pub(super) fn detached() -> Self {
+        let (reuse_state, _reuse_state_rx) = watch::channel(ActiveRunReuseState::Pending);
+        let (changes, _changes_rx) = watch::channel(0);
+        Self {
+            reuse_state,
+            changes,
         }
     }
 }
@@ -66,7 +87,7 @@ pub(super) struct ActiveRunGuard {
     active_runs: ActiveRuns,
     run_id: Option<RunId>,
     has_reuse_key: bool,
-    phase: watch::Sender<ActiveRunPhase>,
+    reuse_state: watch::Sender<ActiveRunReuseState>,
 }
 
 impl ActiveRuns {
@@ -85,7 +106,7 @@ impl ActiveRuns {
         reuse_key: Option<String>,
         profile_name: String,
     ) -> ActiveRunGuard {
-        let (phase, _phase_rx) = watch::channel(ActiveRunPhase::Running);
+        let (reuse_state, _reuse_state_rx) = watch::channel(ActiveRunReuseState::Pending);
         let has_reuse_key = reuse_key.is_some();
         let mut entries = lock_entries(&self.entries);
         let entry = entries.entry(run_id);
@@ -97,7 +118,7 @@ impl ActiveRuns {
             entry.insert(ActiveRunEntry {
                 reuse_key,
                 profile_name,
-                phase: phase.clone(),
+                reuse_state: reuse_state.clone(),
             });
         }
         drop(entries);
@@ -106,7 +127,7 @@ impl ActiveRuns {
             active_runs: self.clone(),
             run_id: Some(run_id),
             has_reuse_key,
-            phase,
+            reuse_state,
         }
     }
 
@@ -115,28 +136,30 @@ impl ActiveRuns {
         run_id: RunId,
         reuse_key: &str,
         profile_name: &str,
-    ) -> Option<ActiveRunProof> {
+    ) -> Option<ActiveRunReuseProof> {
         let entries = lock_entries(&self.entries);
         let entry = entries.get(&run_id)?;
         if entry.reuse_key.as_deref() != Some(reuse_key) || entry.profile_name != profile_name {
             return None;
         }
-        Some(ActiveRunProof {
-            phase: entry.phase.subscribe(),
-        })
+        let proof = ActiveRunReuseProof {
+            reuse_state: entry.reuse_state.subscribe(),
+        };
+        (proof.state() == ActiveRunReuseState::Pending).then_some(proof)
     }
 
     pub(super) fn reuse_keys(&self) -> HashSet<String> {
         lock_entries(&self.entries)
             .values()
+            .filter(|entry| *entry.reuse_state.borrow() == ActiveRunReuseState::Pending)
             .filter_map(|entry| entry.reuse_key.clone())
             .collect()
     }
 
     pub(super) fn has_reusable_run(&self) -> bool {
-        lock_entries(&self.entries)
-            .values()
-            .any(|entry| entry.reuse_key.is_some())
+        lock_entries(&self.entries).values().any(|entry| {
+            entry.reuse_key.is_some() && *entry.reuse_state.borrow() == ActiveRunReuseState::Pending
+        })
     }
 
     #[cfg(test)]
@@ -150,9 +173,9 @@ impl ActiveRuns {
 }
 
 impl ActiveRunGuard {
-    pub(super) fn finalization_publisher(&self) -> ActiveRunFinalizationPublisher {
-        ActiveRunFinalizationPublisher {
-            phase: self.phase.clone(),
+    pub(super) fn reuse_publisher(&self) -> ActiveRunReusePublisher {
+        ActiveRunReusePublisher {
+            reuse_state: self.reuse_state.clone(),
             changes: self.active_runs.changes.clone(),
         }
     }
@@ -166,9 +189,10 @@ impl ActiveRunGuard {
             return false;
         };
         lock_entries(&self.active_runs.entries).remove(&run_id);
-        self.phase.send_replace(ActiveRunPhase::Released);
+        let was_pending = self.reuse_state.send_replace(ActiveRunReuseState::Released)
+            == ActiveRunReuseState::Pending;
         bump_changes(&self.active_runs.changes);
-        if self.has_reuse_key {
+        if self.has_reuse_key && was_pending {
             self.active_runs.reuse_state_notify.notify_one();
         }
         self.has_reuse_key
@@ -245,7 +269,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn proof_observes_finalization_then_release() {
+    async fn proof_observes_exact_publication_then_release() {
         let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
         let run_id = RunId::new_v4();
         let guard = active_runs.register(
@@ -253,15 +277,67 @@ mod tests {
             Some("thread:finalizing".into()),
             "vm0/default".into(),
         );
-        let publisher = guard.finalization_publisher();
+        let publisher = guard.reuse_publisher();
         let mut proof = active_runs
             .finalizing_predecessor(run_id, "thread:finalizing", "vm0/default")
             .unwrap();
 
-        publisher.mark_finalized();
-        assert_eq!(proof.changed().await, ActiveRunPhase::Finalized);
+        assert!(publisher.publish_exact_sandbox());
+        assert_eq!(
+            proof.changed().await,
+            ActiveRunReuseState::ExactSandboxPublished
+        );
+        assert!(active_runs.reuse_keys().is_empty());
+        assert!(!active_runs.has_reusable_run());
+        assert!(
+            active_runs
+                .finalizing_predecessor(run_id, "thread:finalizing", "vm0/default")
+                .is_none()
+        );
         drop(guard);
-        assert_eq!(proof.changed().await, ActiveRunPhase::Released);
+        assert_eq!(proof.changed().await, ActiveRunReuseState::Released);
         assert!(!active_runs.contains(run_id));
+    }
+
+    #[tokio::test]
+    async fn proof_observes_no_exact_and_direct_release_outcomes() {
+        let active_runs = ActiveRuns::new(Arc::new(Notify::new()));
+        let no_exact_run_id = RunId::new_v4();
+        let no_exact_guard = active_runs.register(
+            no_exact_run_id,
+            Some("thread:no-exact".into()),
+            "vm0/default".into(),
+        );
+        let no_exact_publisher = no_exact_guard.reuse_publisher();
+        let mut no_exact_proof = active_runs
+            .finalizing_predecessor(no_exact_run_id, "thread:no-exact", "vm0/default")
+            .unwrap();
+
+        assert!(no_exact_publisher.publish_no_exact_sandbox());
+        assert_eq!(
+            no_exact_proof.changed().await,
+            ActiveRunReuseState::NoExactSandbox
+        );
+        assert!(!no_exact_publisher.publish_exact_sandbox());
+        drop(no_exact_guard);
+        assert_eq!(
+            no_exact_proof.changed().await,
+            ActiveRunReuseState::Released
+        );
+
+        let released_run_id = RunId::new_v4();
+        let released_guard = active_runs.register(
+            released_run_id,
+            Some("thread:released".into()),
+            "vm0/default".into(),
+        );
+        let mut released_proof = active_runs
+            .finalizing_predecessor(released_run_id, "thread:released", "vm0/default")
+            .unwrap();
+        drop(released_guard);
+        assert_eq!(
+            released_proof.changed().await,
+            ActiveRunReuseState::Released
+        );
     }
 }

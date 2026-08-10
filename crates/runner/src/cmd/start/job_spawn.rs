@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tracing::{error, warn};
 
-use super::active_runs::{ActiveRunFinalizationPublisher, ActiveRunGuard, ActiveRuns};
+use super::active_runs::{ActiveRunGuard, ActiveRunReusePublisher, ActiveRuns};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
@@ -260,7 +260,7 @@ struct FinalizationPhase {
     network_log_drain: NetworkLogDrainCoordinator,
     cancel: RunCancellationHandle,
     cleanup_state: RunCleanupState,
-    active_run_finalization: ActiveRunFinalizationPublisher,
+    active_run_reuse: ActiveRunReusePublisher,
     #[cfg(test)]
     outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
@@ -296,7 +296,7 @@ impl FinalizationPhase {
             network_log_drain,
             cancel,
             cleanup_state,
-            active_run_finalization,
+            active_run_reuse,
             #[cfg(test)]
             outer_job_panic,
             #[cfg(test)]
@@ -321,6 +321,7 @@ impl FinalizationPhase {
         } = outcome;
         let had_sandbox = sandbox.is_some();
         let has_restored_session_identity = restored_session_identity.is_some();
+        let has_reuse_key = reuse_key.is_some();
         let cleanup_state_after_finalize = cleanup_state.clone();
 
         let completion_payload = CompletionPayload::new(
@@ -365,7 +366,8 @@ impl FinalizationPhase {
                 factory,
                 idle_pool,
                 status,
-                reuse_state_notify,
+                reuse_state_notify: Arc::clone(&reuse_state_notify),
+                active_run_reuse: active_run_reuse.clone(),
                 workspace_cache_snapshot,
                 parking_gate,
                 network_log_drain,
@@ -380,7 +382,9 @@ impl FinalizationPhase {
             },
         )
         .await;
-        active_run_finalization.mark_finalized();
+        if has_reuse_key && active_run_reuse.publish_no_exact_sandbox() {
+            reuse_state_notify.notify_one();
+        }
         let finalization_duration = finalization_started.elapsed();
         let disposition = cleanup_state_after_finalize.disposition();
         let reuse_state_changed = completion_ready.reuse_state_changed();
@@ -449,7 +453,6 @@ struct CompletionPhase {
     provider: Arc<dyn JobProvider>,
     status: Arc<StatusTracker>,
     usage_flush_tx: mpsc::Sender<()>,
-    reuse_state_notify: Arc<tokio::sync::Notify>,
     active_run_guard: ActiveRunGuard,
     cleanup_state: RunCleanupState,
 }
@@ -461,7 +464,6 @@ impl CompletionPhase {
             provider,
             status,
             usage_flush_tx,
-            reuse_state_notify,
             active_run_guard,
             cleanup_state,
         } = self;
@@ -469,7 +471,6 @@ impl CompletionPhase {
         // Structural guarantee: claim (in provider) is always paired with complete.
         signal_usage_flush(run_id, &usage_flush_tx);
         let ownership = OwnershipTransitions::new(status.as_ref());
-        let reuse_state_changed = completion_ready.reuse_state_changed();
         let provider_completion_duration = completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
@@ -486,9 +487,6 @@ impl CompletionPhase {
                 true,
                 None,
             );
-        }
-        if reuse_state_changed {
-            reuse_state_notify.notify_one();
         }
     }
 }
@@ -587,7 +585,7 @@ pub(super) async fn run_job(
         session_history_restore_plan,
         active_run_guard,
     } = request;
-    let active_run_finalization = active_run_guard.finalization_publisher();
+    let active_run_reuse = active_run_guard.reuse_publisher();
     let (context, completion_auth, active_input_source, pi_standby_source) =
         claimed.into_run_parts();
     let run_id = context.run_id;
@@ -708,7 +706,7 @@ pub(super) async fn run_job(
         network_log_drain: exec_config.network_log_drain.clone(),
         cancel: job_cancel.clone(),
         cleanup_state: cleanup_state_for_body.clone(),
-        active_run_finalization,
+        active_run_reuse,
         #[cfg(test)]
         outer_job_panic,
         #[cfg(test)]
@@ -746,7 +744,6 @@ pub(super) async fn run_job(
             provider,
             status,
             usage_flush_tx,
-            reuse_state_notify,
             active_run_guard,
             cleanup_state: cleanup_state_for_body,
         }
@@ -855,36 +852,10 @@ mod tests {
     };
     use crate::idle_reuse_preparation::mock_sandbox_ready_for_idle_reuse;
     use crate::ids::RunId;
-    use crate::provider::JobCandidate;
     use crate::resource_budget::ResourceBudget;
     use crate::restored_session_identity::RestoredSessionIdentity;
     use crate::run_cancellation::RunCancellationRegistry;
     use crate::status::StatusTracker;
-    use crate::types::HeartbeatState;
-
-    struct NoopCompletionProvider;
-
-    #[async_trait::async_trait]
-    impl JobProvider for NoopCompletionProvider {
-        async fn discover(&self) -> Option<JobCandidate> {
-            None
-        }
-
-        async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
-            None
-        }
-
-        async fn complete(
-            &self,
-            _request: crate::types::CompleteRequest,
-            _completion_auth: CompletionAuth,
-        ) {
-        }
-
-        async fn heartbeat(&self, _state: &HeartbeatState) {}
-
-        async fn shutdown(&self) {}
-    }
 
     fn test_http_client() -> HttpClient {
         HttpClient::new(HttpClientConfig {
@@ -979,7 +950,7 @@ mod tests {
             let active_run_guard =
                 self.active_runs
                     .register(run_id, Some(session_id.into()), "vm0/default".into());
-            let active_run_finalization = active_run_guard.finalization_publisher();
+            let active_run_reuse = active_run_guard.reuse_publisher();
             self.active_run_guards
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1006,7 +977,7 @@ mod tests {
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 cancel: RunCancellationHandle::new(),
                 cleanup_state,
-                active_run_finalization,
+                active_run_reuse,
                 outer_job_panic: None,
                 test_observer: StartLoopTestObserver::default(),
             }
@@ -1397,74 +1368,6 @@ mod tests {
         );
         assert_no_telemetry_action(&finalized.telemetry, "runner_host_idle_publication");
         assert_telemetry_action(&finalized.telemetry, "runner_host_finalization_no_resource");
-    }
-
-    #[tokio::test]
-    async fn completion_notifies_again_after_releasing_active_session_guard() {
-        let fixture = FinalizationTelemetryFixture::new().await;
-        let (_budget, lease) = test_budget_lease();
-        let run_id = RunId::new_v4();
-        let sandbox_id = SandboxId::new_v4();
-        let session_id = "sess-post-complete-refresh";
-        fixture.status.add_run(run_id, sandbox_id).await;
-        let finalization = fixture.finalization_phase(
-            run_id,
-            sandbox_id,
-            session_id,
-            lease,
-            RunCleanupState::new(),
-        );
-        let FinalizedJob {
-            completion_ready,
-            mut telemetry,
-        } = finalization
-            .finalize(executor_phase_outcome(
-                run_id,
-                "post-complete-refresh",
-                None,
-            ))
-            .await;
-        assert!(
-            fixture
-                .reuse_state_notify
-                .notified()
-                .now_or_never()
-                .is_some(),
-            "finalizer should send the early park refresh"
-        );
-
-        let active_runs = ActiveRuns::new(Arc::clone(&fixture.reuse_state_notify));
-        let active_run_guard =
-            active_runs.register(run_id, Some(session_id.to_owned()), "vm0/default".into());
-        let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);
-
-        CompletionPhase {
-            run_id,
-            provider: Arc::new(NoopCompletionProvider),
-            status: Arc::clone(&fixture.status),
-            usage_flush_tx,
-            reuse_state_notify: Arc::clone(&fixture.reuse_state_notify),
-            active_run_guard,
-            cleanup_state: RunCleanupState::new(),
-        }
-        .complete(completion_ready, &mut telemetry)
-        .await;
-
-        assert_telemetry_action(&telemetry, "runner_host_completion_fallback");
-        assert_telemetry_action(&telemetry, "runner_active_reuse_key_released");
-
-        assert!(
-            active_runs.reuse_keys().is_empty(),
-            "completion should release the active reuse-key guard before notifying"
-        );
-        assert!(
-            fixture
-                .reuse_state_notify
-                .notified()
-                .now_or_never()
-                .is_some(),
-            "completion should send a post-guard-release refresh"
-        );
     }
 
     async fn status_idle_reuse_keys_and_active_runs(

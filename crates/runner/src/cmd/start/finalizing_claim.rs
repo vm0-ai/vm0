@@ -7,6 +7,7 @@ use futures_util::FutureExt;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
+use super::active_runs::ActiveRunReuseState;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     destroy_idle_jobs_and_wait, evict_expired_idle_entries, evict_oldest_idle_entry,
@@ -285,8 +286,19 @@ async fn wait_for_finalizing_resource(
 ) -> FinalizingWaitOutcome {
     let cancel = cancellation.token();
     loop {
-        let phase = admission.predecessor.phase();
-        if phase != super::active_runs::ActiveRunPhase::Running && reserved_exact.is_none() {
+        if cancel.is_cancelled() {
+            return FinalizingWaitOutcome::Cancelled;
+        }
+        let state = admission.predecessor.state();
+        let missing_exact_reason = match state {
+            ActiveRunReuseState::ExactSandboxPublished => Some("published_exact_unavailable"),
+            ActiveRunReuseState::Released => Some("predecessor_released_without_exact"),
+            ActiveRunReuseState::NoExactSandbox => {
+                return FinalizingWaitOutcome::Fallback("predecessor_no_exact");
+            }
+            ActiveRunReuseState::Pending => None,
+        };
+        if let Some(missing_exact_reason) = missing_exact_reason {
             *reserved_exact = reserve_reusable_idle_for_spawn(
                 &admission.reuse_key,
                 profile_name,
@@ -296,8 +308,13 @@ async fn wait_for_finalizing_resource(
             )
             .await
             .map(Box::new);
-        }
-        if phase == super::active_runs::ActiveRunPhase::Released {
+            if cancel.is_cancelled() {
+                if let Some(reservation) = reserved_exact.take() {
+                    rollback_reserved_idle_for_spawn(*reservation, ctx).await;
+                    ctx.reuse_state_notify.notify_one();
+                }
+                return FinalizingWaitOutcome::Cancelled;
+            }
             if let Some(reservation) = reserved_exact.take() {
                 info!(
                     run_id = %run_id,
@@ -306,7 +323,7 @@ async fn wait_for_finalizing_resource(
                 );
                 return FinalizingWaitOutcome::Exact(reservation);
             }
-            return FinalizingWaitOutcome::Fallback("predecessor_released_without_exact");
+            return FinalizingWaitOutcome::Fallback(missing_exact_reason);
         }
 
         let deadline = tokio::time::Instant::from_std(admission.deadline);
@@ -315,16 +332,12 @@ async fn wait_for_finalizing_resource(
             () = cancel.cancelled() => {
                 return FinalizingWaitOutcome::Cancelled;
             }
-            _ = tokio::time::sleep_until(deadline) => {
-                let reason = if let Some(reservation) = reserved_exact.take() {
-                    rollback_reserved_idle_for_spawn(*reservation, ctx).await;
-                    "predecessor_release_deadline"
-                } else {
-                    "preference_deadline"
-                };
-                return FinalizingWaitOutcome::Fallback(reason);
-            }
             _ = admission.predecessor.changed() => {}
+            _ = tokio::time::sleep_until(deadline) => {
+                if admission.predecessor.state() == ActiveRunReuseState::Pending {
+                    return FinalizingWaitOutcome::Fallback("preference_deadline");
+                }
+            }
         }
     }
 }

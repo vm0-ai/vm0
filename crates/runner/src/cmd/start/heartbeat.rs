@@ -996,7 +996,7 @@ mod tests {
             ],
         );
         let active_runs = test_active_runs();
-        let _active_guard = active_runs.register(
+        let active_guard = active_runs.register(
             crate::ids::RunId::new_v4(),
             Some("sess-active".into()),
             "vm0/default".into(),
@@ -1010,6 +1010,16 @@ mod tests {
                 "2026-06-01T00:00:02.000Z",
                 &["vm0/default"],
             )]
+        );
+
+        assert!(active_guard.reuse_publisher().publish_no_exact_sandbox());
+        let states = snapshot.current_held_workspace_states(&active_runs, Some("sess-claimed"));
+        assert_eq!(
+            states,
+            vec![
+                held_workspace_state("sess-active", "2026-06-01T00:00:04.000Z", &["vm0/default"],),
+                held_workspace_state("sess-cache", "2026-06-01T00:00:02.000Z", &["vm0/default"],),
+            ]
         );
     }
 
@@ -1114,7 +1124,7 @@ mod tests {
     #[test]
     fn held_sandbox_states_filter_active_reuse_keys() {
         let active_runs = test_active_runs();
-        let _active_guard = active_runs.register(
+        let active_guard = active_runs.register(
             crate::ids::RunId::new_v4(),
             Some("thread-active".into()),
             "vm0/default".into(),
@@ -1138,11 +1148,20 @@ mod tests {
             },
         ];
 
-        let filtered =
-            filter_current_held_sandbox_states(states, &active_runs, Some("thread-claimed"));
+        let filtered = filter_current_held_sandbox_states(
+            states.clone(),
+            &active_runs,
+            Some("thread-claimed"),
+        );
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].reuse_key, "thread-held");
+
+        assert!(active_guard.reuse_publisher().publish_exact_sandbox());
+        let filtered = filter_current_held_sandbox_states(states, &active_runs, None);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].reuse_key, "thread-active");
+        assert_eq!(filtered[1].reuse_key, "thread-held");
     }
 
     #[test]

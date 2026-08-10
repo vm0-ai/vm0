@@ -1,11 +1,11 @@
 use super::super::super::*;
 use super::super::support::{
-    TEST_HEARTBEAT_GENERATION, TEST_RUNNER_ID, assert_run_exits_within, context_with_session,
-    minimal_context, mock_run_config, mock_run_config_with_overrides, push_job, seed_idle_pool,
-    seed_idle_pool_with_history_generation, seed_idle_pool_with_overrides,
+    SpeculativeIdleSeedSpec, TEST_HEARTBEAT_GENERATION, TEST_RUNNER_ID, assert_run_exits_within,
+    context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
+    push_job, seed_idle_pool, seed_idle_pool_with_history_generation,
+    seed_idle_pool_with_overrides, seed_idle_pool_with_speculative_timezone,
     seed_workspace_cache_state, shutdown, test_profiles, wait_budget_count, wait_cancel_token,
-    wait_cancel_token_removed, wait_discover_entered, wait_idle_pool_len,
-    wait_status_idle_reuse_keys_and_active_runs,
+    wait_cancel_token_removed, wait_discover_entered, wait_status_idle_reuse_keys_and_active_runs,
 };
 use std::sync::Arc;
 
@@ -838,11 +838,15 @@ async fn selected_ranked_finalizing_candidate_falls_back_at_deadline() {
 }
 
 #[tokio::test]
-async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wakeup() {
+async fn finalizing_successor_starts_before_replaced_sandbox_cleanup_finishes() {
     let predecessor_gate = sandbox_mock::MockLifecycleGate::new();
+    let destroy_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(predecessor_gate.clone());
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 4, 8192, 2, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
     let reuse_key = "thread:pending-exact-resource";
     let history_generation_run_id = RunId::new_v4();
     let status_path = env._temp_dir.path().join("status.json");
@@ -865,6 +869,16 @@ async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wake
         .wait_entered(1, Duration::from_secs(5))
         .await
         .expect("predecessor should still be running when its successor is discovered");
+    seed_idle_pool_with_overrides(
+        &env.idle_pool,
+        &budget,
+        &overrides,
+        reuse_key,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
 
     let run_id = RunId::new_v4();
     env.provider
@@ -892,101 +906,68 @@ async fn selected_finalizing_candidate_claims_exact_resource_on_reuse_state_wake
     .await;
 
     predecessor_gate.release_one();
-    env.handle
-        .wait_completion(history_generation_run_id, Duration::from_secs(5))
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
         .await
-        .expect("predecessor should complete and publish its sandbox");
+        .expect("replaced sandbox cleanup should remain in predecessor finalization");
     predecessor_gate
         .wait_entered(2, Duration::from_secs(5))
         .await
-        .expect("successor should activate the published sandbox");
-    predecessor_gate.release_one();
-
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await
-        .expect("predecessor finalization should wake the claimed successor");
-    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
-    shutdown(&env, run_handle).await;
-}
-
-#[tokio::test]
-async fn cancellation_after_finalizing_publication_restores_exact_resource() {
-    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
-    let budget = Arc::clone(&config.capacity.budget);
-    let reuse_key = "thread:cancel-after-finalization";
-    let history_generation_run_id = RunId::new_v4();
-    let predecessor_guard = env.active_runs.register(
-        history_generation_run_id,
-        Some(reuse_key.to_owned()),
-        "vm0/default".into(),
+        .expect("successor should activate the published sandbox before cleanup finishes");
+    assert!(
+        env.handle
+            .wait_completion(history_generation_run_id, Duration::ZERO)
+            .await
+            .is_none(),
+        "predecessor completion must still be blocked on replaced sandbox cleanup"
     );
-    let predecessor_finalization = predecessor_guard.finalization_publisher();
-    let run_handle = tokio::spawn(run(config));
-    wait_discover_entered(&env, Duration::from_secs(2)).await;
-
-    let run_id = RunId::new_v4();
-    env.provider
-        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    destroy_gate.release_one();
     env.handle
-        .discover_tx
-        .send(finalizing_candidate(
-            run_id,
-            reuse_key,
-            history_generation_run_id,
-            TEST_RUNNER_ID,
-            TEST_HEARTBEAT_GENERATION,
-        ))
-        .unwrap();
-    wait_discover_entered(&env, Duration::from_secs(5)).await;
-
-    seed_idle_pool_with_history_generation(
-        &env.idle_pool,
-        &budget,
-        reuse_key,
-        "vm0/default",
-        2,
-        4096,
-        history_generation_run_id,
+        .wait_completion(history_generation_run_id, Duration::from_secs(5))
+        .await
+        .expect("predecessor should complete after replaced sandbox cleanup");
+    wait_status_idle_reuse_keys_and_active_runs(
+        &status_path,
+        &[],
+        &[run_id.to_string()],
+        Duration::from_secs(5),
     )
     .await;
-    predecessor_finalization.mark_finalized();
-    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .wait_completion(run_id, Duration::ZERO)
+            .await
+            .is_none(),
+        "predecessor cleanup must not remove or cancel the active successor"
+    );
 
-    env.cancel_tokens
-        .handle(run_id)
-        .await
-        .expect("claimed finalizing successor should retain cancellation registration")
-        .request_hard_cancellation()
-        .await;
+    predecessor_gate.release_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await
-        .expect("cancelled finalizing successor should complete");
-    assert_eq!(completion.exit_code, 137);
-    assert_eq!(completion.error.as_deref(), Some("cancelled by user"));
-    assert!(completion.sandbox_id.is_none());
-    wait_idle_pool_len(&env.idle_pool, 1, Duration::from_secs(5)).await;
-    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
-
-    drop(predecessor_guard);
+        .expect("sandbox publication should wake the claimed successor");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    destroy_gate.release_one();
     shutdown(&env, run_handle).await;
 }
 
 #[tokio::test(start_paused = true)]
-async fn finalizing_release_deadline_restores_exact_before_fallback() {
-    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+async fn published_exact_remains_reusable_past_preference_deadline() {
+    let successor_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(successor_gate.clone());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
-    let reuse_key = "thread:finalized-release-deadline";
+    let reuse_key = "thread:published-past-preference-deadline";
     let history_generation_run_id = RunId::new_v4();
     let predecessor_guard = env.active_runs.register(
         history_generation_run_id,
         Some(reuse_key.to_owned()),
         "vm0/default".into(),
     );
-    let predecessor_finalization = predecessor_guard.finalization_publisher();
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
@@ -1009,25 +990,84 @@ async fn finalizing_release_deadline_restores_exact_before_fallback() {
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
-    seed_idle_pool_with_history_generation(
+    seed_idle_pool_with_speculative_timezone(
         &env.idle_pool,
         &budget,
-        reuse_key,
-        "vm0/default",
-        2,
-        4096,
-        history_generation_run_id,
+        &overrides,
+        SpeculativeIdleSeedSpec {
+            reuse_key,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id,
+            guest_timezone_intent: crate::guest_timezone::GuestTimezoneIntent::Unknown,
+            timing: None,
+        },
     )
     .await;
-    predecessor_finalization.mark_finalized();
-    wait_idle_pool_len(&env.idle_pool, 0, Duration::from_secs(5)).await;
+    assert!(predecessor_reuse.publish_exact_sandbox());
+    successor_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("published exact sandbox should start before predecessor release");
 
     tokio::time::advance(Duration::from_millis(101)).await;
+    successor_gate.release_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await
-        .expect("stuck predecessor release should enter fallback at the original deadline");
+        .expect("published exact sandbox should remain reusable past the preference deadline");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(
+        env.handle
+            .claim_candidates()
+            .iter()
+            .filter(|candidate| candidate.run_id() == run_id)
+            .count(),
+        1,
+        "exact activation should retain the original claim"
+    );
+
+    drop(predecessor_guard);
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn no_exact_resolution_falls_back_before_predecessor_release() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let reuse_key = "thread:no-exact-before-release";
+    let history_generation_run_id = RunId::new_v4();
+    let predecessor_guard = env.active_runs.register(
+        history_generation_run_id,
+        Some(reuse_key.to_owned()),
+        "vm0/default".into(),
+    );
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_reuse_key(run_id, reuse_key)));
+    env.handle
+        .discover_tx
+        .send(finalizing_candidate(
+            run_id,
+            reuse_key,
+            history_generation_run_id,
+            TEST_RUNNER_ID,
+            TEST_HEARTBEAT_GENERATION,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    assert!(predecessor_reuse.publish_no_exact_sandbox());
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("no-exact outcome should start fallback before predecessor release");
     assert_ne!(completion.reuse_result, Some(SandboxReuseResult::Reused));
     assert_eq!(
         env.handle
@@ -1054,7 +1094,7 @@ async fn competing_finalizing_successors_reserve_exact_generation_once() {
         Some(reuse_key.to_owned()),
         "vm0/default".into(),
     );
-    let predecessor_finalization = predecessor_guard.finalization_publisher();
+    let predecessor_reuse = predecessor_guard.reuse_publisher();
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
@@ -1086,8 +1126,7 @@ async fn competing_finalizing_successors_reserve_exact_generation_once() {
         history_generation_run_id,
     )
     .await;
-    predecessor_finalization.mark_finalized();
-    drop(predecessor_guard);
+    assert!(predecessor_reuse.publish_exact_sandbox());
 
     let first = env
         .handle
@@ -1108,6 +1147,7 @@ async fn competing_finalizing_successors_reserve_exact_generation_once() {
         "an exact history generation must be reserved by at most one successor"
     );
 
+    drop(predecessor_guard);
     shutdown(&env, run_handle).await;
 }
 
