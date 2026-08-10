@@ -84,11 +84,23 @@ export const zeroSeoSerpRequestSchema = z
       .default(ZERO_SEO_DEFAULT_SERP_LIMIT),
   })
   .superRefine((value, context) => {
-    if (value.provider === "dataforseo" && value.engine !== "google") {
+    if (value.provider === "dataforseo" && value.engine === "google_shopping") {
       context.addIssue({
         code: "custom",
         path: ["engine"],
-        message: "DataForSEO SERP currently supports only the google engine",
+        message:
+          "DataForSEO Google Shopping is asynchronous; use SerpAPI for the google_shopping engine",
+      });
+    }
+    if (
+      value.provider === "dataforseo" &&
+      value.engine === "google_news" &&
+      value.device === "mobile"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["device"],
+        message: "DataForSEO Google News supports only the desktop device",
       });
     }
   });

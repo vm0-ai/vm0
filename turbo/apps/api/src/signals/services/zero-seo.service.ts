@@ -1,5 +1,6 @@
 import type {
   ZeroSeoBacklinksSummaryRequest,
+  ZeroSeoEngine,
   ZeroSeoKeywordIdeasRequest,
   ZeroSeoRankedKeywordsRequest,
   ZeroSeoResponse,
@@ -46,11 +47,23 @@ type SeoRequest =
       readonly body: ZeroSeoBacklinksSummaryRequest;
     };
 
+type DataForSeoSerpEngine = Exclude<ZeroSeoEngine, "google_shopping">;
+
+const DATAFORSEO_SERP_PATHS: Readonly<Record<DataForSeoSerpEngine, string>> = {
+  google: "/v3/serp/google/organic/live/advanced",
+  bing: "/v3/serp/bing/organic/live/advanced",
+  google_maps: "/v3/serp/google/maps/live/advanced",
+  google_news: "/v3/serp/google/news/live/advanced",
+};
+
 type DataForSeoRequest =
   | Exclude<SeoRequest, { readonly operation: "serp" }>
   | {
       readonly operation: "serp";
-      readonly body: ZeroSeoSerpRequest & { readonly provider: "dataforseo" };
+      readonly body: ZeroSeoSerpRequest & {
+        readonly provider: "dataforseo";
+        readonly engine: DataForSeoSerpEngine;
+      };
     };
 
 interface AuthedSeoArgs {
@@ -228,7 +241,7 @@ async function fetchProviderJson(
 function dataForSeoPath(request: DataForSeoRequest): string {
   switch (request.operation) {
     case "serp": {
-      return "/v3/serp/google/organic/live/advanced";
+      return DATAFORSEO_SERP_PATHS[request.body.engine];
     }
     case "keyword-ideas": {
       return "/v3/dataforseo_labs/keyword_ideas/live";
@@ -249,7 +262,9 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
         keyword: request.body.query,
         location_name: request.body.location,
         language_code: request.body.languageCode,
-        device: request.body.device,
+        ...(request.body.engine === "google_news"
+          ? {}
+          : { device: request.body.device }),
         depth: request.body.limit,
       };
     }
@@ -281,7 +296,8 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
 function dataForSeoPreflightQuantity(request: DataForSeoRequest): number {
   switch (request.operation) {
     case "serp": {
-      return 2000 * Math.ceil(request.body.limit / 10);
+      const resultsPerPage = request.body.engine === "google_maps" ? 100 : 10;
+      return 2000 * Math.ceil(request.body.limit / resultsPerPage);
     }
     case "keyword-ideas":
     case "ranked-keywords": {
@@ -477,12 +493,20 @@ function dataForSeoRequest(request: SeoRequest): DataForSeoRequest | undefined {
   if (request.operation !== "serp") {
     return request;
   }
-  return request.body.provider === "dataforseo"
-    ? {
-        operation: "serp",
-        body: { ...request.body, provider: "dataforseo" },
-      }
-    : undefined;
+  if (
+    request.body.provider !== "dataforseo" ||
+    request.body.engine === "google_shopping"
+  ) {
+    return undefined;
+  }
+  return {
+    operation: "serp",
+    body: {
+      ...request.body,
+      provider: "dataforseo",
+      engine: request.body.engine,
+    },
+  };
 }
 
 const runDataForSeo$ = command(

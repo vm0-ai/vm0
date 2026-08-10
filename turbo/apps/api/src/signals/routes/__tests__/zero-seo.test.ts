@@ -32,6 +32,8 @@ const SEO_ROUTES = Object.freeze([
 const DATAFORSEO_BASE_URL = "https://api.dataforseo.com";
 const SERPAPI_SEARCH_URL = "https://serpapi.com/search.json";
 
+type OrgApiTestUser = ApiTestUser & { readonly orgId: string };
+
 function authenticate(actor: ApiTestUser) {
   createZeroRouteMocks(context).clerk.session(
     actor.userId,
@@ -45,12 +47,13 @@ function client() {
   return setupApp({ context, routes: SEO_ROUTES });
 }
 
-async function seedActor(featureEnabled = true): Promise<ApiTestUser> {
+async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
     throw new Error("Zero SEO test actor must belong to an organization");
   }
-  await createRunsApi(context).grantProEntitlement(actor);
+  const orgActor = { ...actor, orgId: actor.orgId };
+  await createRunsApi(context).grantProEntitlement(orgActor);
   await seedUsagePricingRows([
     {
       kind: "seo",
@@ -68,11 +71,11 @@ async function seedActor(featureEnabled = true): Promise<ApiTestUser> {
     },
   ]);
   if (featureEnabled) {
-    await updateFeatureSwitchesForUser(context, actor, {
+    await updateFeatureSwitchesForUser(context, orgActor, {
       [FeatureSwitchKey.SeoBuiltIn]: true,
     });
   }
-  return actor;
+  return orgActor;
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -316,6 +319,146 @@ describe("zero SEO routes", () => {
       [{ target: "example.com", include_subdomains: false }],
     ]);
     expect(beforeCredits - (await credits(actor))).toBe(78);
+  });
+
+  it("routes supported DataForSEO search engines to their live endpoints", async () => {
+    const actor = await seedActor();
+    configureProviders();
+    const beforeCredits = await credits(actor);
+    const observed: unknown[] = [];
+    server.use(
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/bing/organic/live/advanced`,
+        async ({ request }) => {
+          observed.push(await request.json());
+          return HttpResponse.json(
+            dataForSeoResponse(0.002, [{ keyword: "technical seo" }]),
+          );
+        },
+      ),
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/maps/live/advanced`,
+        async ({ request }) => {
+          observed.push(await request.json());
+          return HttpResponse.json(
+            dataForSeoResponse(0.002, [{ keyword: "coffee shops" }]),
+          );
+        },
+      ),
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/news/live/advanced`,
+        async ({ request }) => {
+          observed.push(await request.json());
+          return HttpResponse.json(
+            dataForSeoResponse(0.02, [{ keyword: "ai news" }]),
+          );
+        },
+      ),
+    );
+    const seoClient = client()(zeroSeoContract);
+    const headers = authenticate(actor);
+
+    const bing = await accept(
+      seoClient.serp({
+        headers,
+        body: {
+          query: "technical seo",
+          provider: "dataforseo",
+          engine: "bing",
+          location: "United States",
+          languageCode: "en",
+          countryCode: "us",
+          device: "mobile",
+          limit: 20,
+        },
+      }),
+      [200],
+    );
+    const maps = await accept(
+      seoClient.serp({
+        headers,
+        body: {
+          query: "coffee shops",
+          provider: "dataforseo",
+          engine: "google_maps",
+          location: "Austin, Texas, United States",
+          languageCode: "en",
+          countryCode: "us",
+          device: "mobile",
+          limit: 100,
+        },
+      }),
+      [200],
+    );
+    const news = await accept(
+      seoClient.serp({
+        headers,
+        body: {
+          query: "ai news",
+          provider: "dataforseo",
+          engine: "google_news",
+          location: "United States",
+          languageCode: "en",
+          countryCode: "us",
+          device: "desktop",
+          limit: 100,
+        },
+      }),
+      [200],
+    );
+
+    expect([bing.body, maps.body, news.body]).toStrictEqual([
+      expect.objectContaining({
+        operation: "serp",
+        provider: "dataforseo",
+        billingQuantity: 2000,
+        providerCostUsd: 0.002,
+        creditsCharged: 3,
+      }),
+      expect.objectContaining({
+        operation: "serp",
+        provider: "dataforseo",
+        billingQuantity: 2000,
+        providerCostUsd: 0.002,
+        creditsCharged: 3,
+      }),
+      expect.objectContaining({
+        operation: "serp",
+        provider: "dataforseo",
+        billingQuantity: 20_000,
+        providerCostUsd: 0.02,
+        creditsCharged: 25,
+      }),
+    ]);
+    expect(observed).toStrictEqual([
+      [
+        {
+          keyword: "technical seo",
+          location_name: "United States",
+          language_code: "en",
+          device: "mobile",
+          depth: 20,
+        },
+      ],
+      [
+        {
+          keyword: "coffee shops",
+          location_name: "Austin, Texas, United States",
+          language_code: "en",
+          device: "mobile",
+          depth: 100,
+        },
+      ],
+      [
+        {
+          keyword: "ai news",
+          location_name: "United States",
+          language_code: "en",
+          depth: 100,
+        },
+      ],
+    ]);
+    expect(beforeCredits - (await credits(actor))).toBe(31);
   });
 
   it("charges fresh SerpAPI results and leaves confirmed cache hits free", async () => {

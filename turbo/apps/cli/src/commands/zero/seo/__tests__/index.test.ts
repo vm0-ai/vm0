@@ -192,7 +192,44 @@ describe("zero seo command", () => {
     expect(output).toContain("Credits charged: 30");
   });
 
-  it("rejects non-Google DataForSEO engines before calling the API", async () => {
+  it("posts supported DataForSEO search engines", async () => {
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/seo/serp",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(dataForSeoResponse("serp", {}));
+        },
+      ),
+    );
+
+    await zeroSeoCommand.parseAsync([
+      "node",
+      "cli",
+      "serp",
+      "technical seo",
+      "--engine",
+      "bing",
+      "--device",
+      "mobile",
+      "--limit",
+      "20",
+    ]);
+
+    expect(requestBody).toStrictEqual({
+      query: "technical seo",
+      provider: "dataforseo",
+      engine: "bing",
+      location: "United States",
+      languageCode: "en",
+      countryCode: "us",
+      device: "mobile",
+      limit: 20,
+    });
+  });
+
+  it("rejects DataForSEO Google Shopping before calling the API", async () => {
     let apiRequests = 0;
     server.use(
       http.post("http://localhost:3000/api/zero/seo/serp", () => {
@@ -206,9 +243,9 @@ describe("zero seo command", () => {
         "node",
         "cli",
         "serp",
-        "technical seo",
+        "running shoes",
         "--engine",
-        "bing",
+        "google_shopping",
       ]),
     ).rejects.toThrow("process.exit called");
 
@@ -218,7 +255,71 @@ describe("zero seo command", () => {
     ]
       .map(String)
       .join("\n");
-    expect(errors).toContain("supports only the google engine");
+    expect(errors).toContain(
+      "DataForSEO Google Shopping is asynchronous; use SerpAPI",
+    );
     expect(apiRequests).toBe(0);
+  });
+
+  it("rejects mobile DataForSEO Google News before calling the API", async () => {
+    let apiRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/zero/seo/serp", () => {
+        apiRequests += 1;
+        return HttpResponse.json(dataForSeoResponse("serp", {}));
+      }),
+    );
+
+    await expect(
+      zeroSeoCommand.parseAsync([
+        "node",
+        "cli",
+        "serp",
+        "ai news",
+        "--engine",
+        "google_news",
+        "--device",
+        "mobile",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = [
+      ...mockConsoleError.mock.calls.flat(),
+      ...mockStderrWrite.mock.calls.flat(),
+    ]
+      .map(String)
+      .join("\n");
+    expect(errors).toContain(
+      "DataForSEO Google News supports only the desktop device",
+    );
+    expect(apiRequests).toBe(0);
+  });
+
+  it("explains provider selection and compatibility in serp help", () => {
+    const command = zeroSeoCommand.commands.find((candidate) => {
+      return candidate.name() === "serp";
+    });
+    if (!command) {
+      throw new Error("Zero SEO serp command is missing");
+    }
+    let help = "";
+    command.configureOutput({
+      writeOut: (value) => {
+        help += value;
+      },
+    });
+
+    command.outputHelp();
+
+    expect(help).toContain("Provider selection:");
+    expect(help).toContain("provider-reported cost +25%");
+    expect(help).toContain("fresh successful search costs 32 credits");
+    expect(help).toContain(
+      "google_news      dataforseo (desktop only), serpapi",
+    );
+    expect(help).toContain("google_shopping  serpapi only");
+    expect(help).toContain("does not automatically select a provider");
+    expect(help).toContain("google_maps returns at most 20 results on mobile");
+    expect(help).toContain("do not automatically fall back");
   });
 });

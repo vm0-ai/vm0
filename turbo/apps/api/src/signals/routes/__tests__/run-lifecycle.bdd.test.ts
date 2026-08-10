@@ -11193,6 +11193,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
+    expect(claim.appendSystemPrompt ?? "").not.toContain("zero seo --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       'zero translate "<text>" --to <language> [--from <language>]',
@@ -11202,6 +11203,38 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.appendSystemPrompt ?? "").toContain("model-extracted");
     expect(claim.appendSystemPrompt ?? "").toContain("provider-backed sources");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("advertises managed SEO tools when the feature switch is enabled", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.SeoBuiltIn]: true,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "research search rankings",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+
+    expect(appendSystemPrompt).toContain(
+      "SEO research, live search-engine results, keyword ideas, ranked keywords, and backlink summaries",
+    );
+    expect(appendSystemPrompt).toContain("zero seo --help");
+    expect(appendSystemPrompt).toContain("zero seo serp --help");
+    expect(appendSystemPrompt).toContain(
+      "do not assume automatic provider selection or fallback",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Use `zero web-search` instead for general public-web source discovery",
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
