@@ -28,9 +28,14 @@ END;
 $$;--> statement-breakpoint
 
 -- Fail before touching any data when the legacy and canonical columns
--- disagree. The backfill only fills canonical values that are still NULL; a
--- populated value that contradicts its legacy source has no deterministic
--- resolution and must abort instead of guessing.
+-- genuinely disagree. A control.interrupt whose run_id contradicts
+-- interrupts_run_id, two different goal ids on one row, or a zero_run whose
+-- goal_id contradicts run_group_id have no deterministic resolution and must
+-- abort instead of guessing. A non-goal source tag on a goal-grouped row is
+-- NOT a conflict: the dual-writer replaces the display context with the
+-- canonical goal pointer whenever run_group_id is present, and production
+-- holds 18,300 historical input.prompt rows tagged ('automation', NULL) that
+-- canonicalize the same way.
 DO $$
 DECLARE
   conflict_count bigint;
@@ -52,13 +57,12 @@ BEGIN
   INTO conflict_count
   FROM "chat_events"
   WHERE "run_group_id" IS NOT NULL
-    AND (
-      ("context_type" IS NOT NULL AND "context_type" <> 'goal')
-      OR ("context_id" IS NOT NULL AND "context_id" <> "run_group_id")
-    );
+    AND "context_type" = 'goal'
+    AND "context_id" IS NOT NULL
+    AND "context_id" <> "run_group_id";
   IF conflict_count > 0 THEN
     RAISE EXCEPTION
-      'chat_events has % goal-grouped rows whose context conflicts with run_group_id',
+      'chat_events has % goal-grouped rows whose goal context_id conflicts with run_group_id',
       conflict_count;
   END IF;
 
@@ -118,10 +122,12 @@ $$;--> statement-breakpoint
 -- transition per row: the deterministic canonical image of its legacy
 -- columns. payload may only become the derived payload (or stay put once
 -- populated), run_id may only adopt interrupts_run_id on a control.interrupt
--- row that has none, and the goal context pointers may only be completed from
--- run_group_id when the existing context is compatible. Every other column
--- and every other transition remain immutable, so a conflicting row cannot be
--- rewritten even by the backfill itself.
+-- row that has none, and a goal-grouped row may only adopt the canonical
+-- ('goal', run_group_id) pointer — replacing a non-goal source tag exactly as
+-- the dual-writer does. A goal pointer naming a different goal id stays
+-- immutable, so a genuinely conflicting row cannot be rewritten even by the
+-- backfill itself. Every other column and every other transition remain
+-- immutable.
 CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$
 BEGIN
   IF TG_TABLE_NAME = 'chat_events'
@@ -138,15 +144,17 @@ BEGIN
     END)
     AND NEW."context_type" IS NOT DISTINCT FROM (CASE
       WHEN OLD."run_group_id" IS NOT NULL
-        AND (OLD."context_type" IS NULL
-          OR (OLD."context_type" = 'goal' AND OLD."context_id" IS NULL))
+        AND (OLD."context_type" IS DISTINCT FROM 'goal'
+          OR OLD."context_id" IS NULL
+          OR OLD."context_id" = OLD."run_group_id")
       THEN 'goal'
       ELSE OLD."context_type"
     END)
     AND NEW."context_id" IS NOT DISTINCT FROM (CASE
       WHEN OLD."run_group_id" IS NOT NULL
-        AND (OLD."context_type" IS NULL
-          OR (OLD."context_type" = 'goal' AND OLD."context_id" IS NULL))
+        AND (OLD."context_type" IS DISTINCT FROM 'goal'
+          OR OLD."context_id" IS NULL
+          OR OLD."context_id" = OLD."run_group_id")
       THEN OLD."run_group_id"
       ELSE OLD."context_id"
     END)
@@ -182,9 +190,11 @@ BEGIN
             AND "candidate"."run_id" IS NULL
             AND "candidate"."interrupts_run_id" IS NOT NULL)
           OR ("candidate"."run_group_id" IS NOT NULL
-            AND ("candidate"."context_type" IS NULL
-              OR ("candidate"."context_type" = 'goal'
-                AND "candidate"."context_id" IS NULL)))
+            AND ("candidate"."context_type" IS DISTINCT FROM 'goal'
+              OR "candidate"."context_id" IS DISTINCT FROM "candidate"."run_group_id")
+            AND ("candidate"."context_type" IS DISTINCT FROM 'goal'
+              OR "candidate"."context_id" IS NULL
+              OR "candidate"."context_id" = "candidate"."run_group_id"))
         )
       ORDER BY "candidate"."id"
       LIMIT 500
@@ -203,17 +213,17 @@ BEGIN
         END,
         "context_type" = CASE
           WHEN "target"."run_group_id" IS NOT NULL
-            AND ("target"."context_type" IS NULL
-              OR ("target"."context_type" = 'goal'
-                AND "target"."context_id" IS NULL))
+            AND ("target"."context_type" IS DISTINCT FROM 'goal'
+              OR "target"."context_id" IS NULL
+              OR "target"."context_id" = "target"."run_group_id")
           THEN 'goal'
           ELSE "target"."context_type"
         END,
         "context_id" = CASE
           WHEN "target"."run_group_id" IS NOT NULL
-            AND ("target"."context_type" IS NULL
-              OR ("target"."context_type" = 'goal'
-                AND "target"."context_id" IS NULL))
+            AND ("target"."context_type" IS DISTINCT FROM 'goal'
+              OR "target"."context_id" IS NULL
+              OR "target"."context_id" = "target"."run_group_id")
           THEN "target"."run_group_id"
           ELSE "target"."context_id"
         END
@@ -252,9 +262,11 @@ BEGIN
           AND "candidate"."run_id" IS NULL
           AND "candidate"."interrupts_run_id" IS NOT NULL)
         OR ("candidate"."run_group_id" IS NOT NULL
-          AND ("candidate"."context_type" IS NULL
-            OR ("candidate"."context_type" = 'goal'
-              AND "candidate"."context_id" IS NULL)))
+          AND ("candidate"."context_type" IS DISTINCT FROM 'goal'
+            OR "candidate"."context_id" IS DISTINCT FROM "candidate"."run_group_id")
+          AND ("candidate"."context_type" IS DISTINCT FROM 'goal'
+            OR "candidate"."context_id" IS NULL
+            OR "candidate"."context_id" = "candidate"."run_group_id"))
     ) THEN
       last_id := NULL;
       PERFORM pg_sleep(0.25);

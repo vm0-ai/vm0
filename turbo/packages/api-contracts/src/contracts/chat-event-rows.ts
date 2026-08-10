@@ -113,8 +113,10 @@ function canonicalChatEventRowPayload(
  * Normalize one raw row from either generation into the canonical model.
  * The v3 mapping mirrors the server-side backfill exactly: payload from every
  * non-null legacy leaf, interrupts_run_id as the canonical runId of a
- * control.interrupt row that has none, and goal context pointers completed
- * from runGroupId only when the existing context is compatible.
+ * control.interrupt row that has none, and the canonical
+ * ('goal', runGroupId) pointer replacing any non-goal source tag on a
+ * goal-grouped row, exactly as the dual-writer does. Only a goal pointer
+ * naming a different goal id is preserved as-is.
  */
 export function canonicalChatEventRow(
   row: ChatEventRow | ChatEventRowV4,
@@ -124,8 +126,9 @@ export function canonicalChatEventRow(
   }
   const goalContext =
     row.runGroupId !== null &&
-    (row.contextType === null ||
-      (row.contextType === "goal" && row.contextId === null))
+    (row.contextType !== "goal" ||
+      row.contextId === null ||
+      row.contextId === row.runGroupId)
       ? { contextType: "goal", contextId: row.runGroupId }
       : { contextType: row.contextType, contextId: row.contextId };
   return {

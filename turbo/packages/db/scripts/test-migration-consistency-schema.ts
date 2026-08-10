@@ -5502,6 +5502,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
     missingGoalId: "00000000-0000-4000-8000-000000088636",
     duplicateProbeEventId: "00000000-0000-4000-8000-000000088637",
     conflictContextId: "00000000-0000-4000-8000-000000088638",
+    automationTaggedEventId: "00000000-0000-4000-8000-000000088639",
   } as const;
   const nestedNullUserMessage = JSON.stringify({
     version: 1,
@@ -5631,7 +5632,9 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
             ($20, $14, NULL, NULL, NULL, $19, 'input.goal', NULL, 'goal', NULL,
               NULL, $17::jsonb, NULL, NULL, 11),
             ($21, $15, NULL, NULL, NULL, $22, 'output.message', NULL, NULL, NULL,
-              'dangling goal result', NULL, NULL, NULL, 1)
+              'dangling goal result', NULL, NULL, NULL, 1),
+            ($23, $14, NULL, NULL, NULL, $19, 'input.prompt', NULL, 'automation', NULL,
+              NULL, $16::jsonb, NULL, NULL, 13)
         `,
         [
           fixture.multiLeafEventId,
@@ -5656,6 +5659,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
           fixture.goalInputEventId,
           fixture.goalDanglingEventId,
           fixture.goalBId,
+          fixture.automationTaggedEventId,
         ],
       );
       // A row the dual-write release already stored canonically must survive
@@ -5734,7 +5738,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
             "id", "chat_thread_id", "run_group_id", "event_type", "context_type",
             "context_id", "content", "seq_id"
           )
-          VALUES ($1, $2, $3, 'output.message', 'teams', $4, 'conflicting context', 20)
+          VALUES ($1, $2, $3, 'output.message', 'goal', $4, 'conflicting goal id', 20)
         `,
         [
           fixture.conflictContextEventId,
@@ -5745,7 +5749,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
       );
       await assert.rejects(
         applyMigrationsUpToTag(client, CANONICAL_CHAT_EVENT_STORAGE_MIGRATION),
-        /goal-grouped rows whose context conflicts with run_group_id/u,
+        /goal-grouped rows whose goal context_id conflicts with run_group_id/u,
       );
       await client.query(`DELETE FROM "chat_events" WHERE "id" = $1`, [
         fixture.conflictContextEventId,
@@ -5857,6 +5861,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
             fixture.goalOutputEventId,
             fixture.goalInputEventId,
             fixture.goalDanglingEventId,
+            fixture.automationTaggedEventId,
             fixture.concurrentInsertEventId,
           ],
         ],
@@ -5944,6 +5949,17 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
         runGroupId: fixture.goalBId,
         contextType: "goal",
         contextId: fixture.goalBId,
+      });
+      // The production shape behind the 0886 smoke abort: an automation-tagged
+      // goal continuation adopts the canonical goal pointer.
+      assert.deepEqual(canonicalRow(fixture.automationTaggedEventId), {
+        id: fixture.automationTaggedEventId,
+        payload: { userMessage: JSON.parse(nestedNullUserMessage) },
+        runId: null,
+        interruptsRunId: null,
+        runGroupId: fixture.goalAId,
+        contextType: "goal",
+        contextId: fixture.goalAId,
       });
       assert.deepEqual(canonicalRow(fixture.concurrentInsertEventId).payload, {
         content: "concurrent dual write",

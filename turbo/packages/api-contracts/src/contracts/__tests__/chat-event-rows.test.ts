@@ -121,7 +121,7 @@ describe("chat event row reader union", () => {
     expect(owned.runId).toBe(target);
   });
 
-  it("completes compatible goal context pointers from runGroupId", () => {
+  it("adopts the canonical goal context on goal-grouped rows", () => {
     const goalId = "00000000-0000-4000-8000-000000000011";
     const grouped = canonicalChatEventRow(v3Row({ runGroupId: goalId }));
     expect(grouped.contextType).toBe("goal");
@@ -138,6 +138,35 @@ describe("chat event row reader union", () => {
     );
     expect(goalInput.contextType).toBe("goal");
     expect(goalInput.contextId).toBe(goalId);
+
+    // Historical goal continuations tagged with a bare automation source keep
+    // their goal grouping: the goal pointer replaces the source tag exactly as
+    // the dual-writer does.
+    const automationTagged = canonicalChatEventRow(
+      v3Row({
+        eventType: "input.prompt",
+        runGroupId: goalId,
+        contextType: "automation",
+        contextId: null,
+        userMessage: { version: 1, parts: [] },
+      }),
+    );
+    expect(automationTagged.contextType).toBe("goal");
+    expect(automationTagged.contextId).toBe(goalId);
+
+    // A goal pointer naming a different goal id is a genuine conflict and is
+    // preserved as-is.
+    const conflictingGoal = canonicalChatEventRow(
+      v3Row({
+        runGroupId: goalId,
+        contextType: "goal",
+        contextId: "00000000-0000-4000-8000-000000000013",
+      }),
+    );
+    expect(conflictingGoal.contextType).toBe("goal");
+    expect(conflictingGoal.contextId).toBe(
+      "00000000-0000-4000-8000-000000000013",
+    );
 
     const foreignContext = canonicalChatEventRow(
       v3Row({
@@ -191,6 +220,26 @@ describe("canonical row projection keeps the v3 ChatEvent shape", () => {
     expect(projected).toMatchObject({
       eventType: "output.message",
       content: "goal result",
+      runGroupId: goalId,
+    });
+
+    // The historical automation-tagged goal continuation keeps its grouping
+    // through normalization, matching the legacy runGroupId projection.
+    const automationPrompt = chatEventFromRow(
+      canonicalChatEventRow(
+        v3Row({
+          eventType: "input.prompt",
+          runGroupId: goalId,
+          contextType: "automation",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: "goal continuation" }],
+          },
+        }),
+      ),
+    );
+    expect(automationPrompt).toMatchObject({
+      eventType: "input.prompt",
       runGroupId: goalId,
     });
   });
