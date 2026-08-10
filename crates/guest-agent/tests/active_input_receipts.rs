@@ -24,6 +24,34 @@ fn payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
 }
 
 #[tokio::test]
+async fn explicit_null_delivery_id_is_rejected_instead_of_using_legacy_delivery()
+-> Result<(), Box<dyn std::error::Error>> {
+    let server = MockServer::start();
+    let tmp = tempfile::tempdir()?;
+    let runtime = ActiveInputRuntime::new_with_receipts(
+        RUN_ID,
+        true,
+        "initial",
+        tmp.path().join("active-input-receipts.json"),
+        receipt_http(&server.base_url())?,
+    )?;
+    let controller = runtime.controller();
+    let _writer = runtime.into_writer();
+
+    assert!(matches!(
+        controller.handle_control_payload(
+            br#"{"type":"active-input","deliveryId":null,"text":"hello"}"#
+        ),
+        ActiveInputControlOutcome::Rejected { diagnostic }
+            if diagnostic == "active input payload is invalid"
+    ));
+
+    controller.close_terminal();
+    assert!(controller.finalize_receipts().await?.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
 async fn accepted_input_is_deduplicated_reported_and_compacted()
 -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
