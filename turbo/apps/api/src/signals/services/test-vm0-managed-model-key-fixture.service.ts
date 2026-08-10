@@ -53,20 +53,20 @@ export async function acquireVm0ManagedModelKeyFixture(
 ): Promise<void> {
   for (const value of rows) {
     await db.transaction(async (tx) => {
-      await tx
+      const [row] = await tx
         .insert(vm0ApiKeys)
         .values({
           ...value,
           label: vm0ManagedModelKeyFixtureLabel([fixtureId]),
         })
-        .onConflictDoNothing({ target: vm0ApiKeys.vendor });
-
-      const [row] = await tx
-        .select({ id: vm0ApiKeys.id, label: vm0ApiKeys.label })
-        .from(vm0ApiKeys)
-        .where(eq(vm0ApiKeys.vendor, value.vendor))
-        .for("update")
-        .limit(1);
+        .onConflictDoUpdate({
+          target: vm0ApiKeys.vendor,
+          // Keep the existing key while atomically locking and returning its
+          // vendor row. DO NOTHING followed by SELECT FOR UPDATE leaves a
+          // window where the previous fixture owner can delete the row.
+          set: { vendor: value.vendor },
+        })
+        .returning({ id: vm0ApiKeys.id, label: vm0ApiKeys.label });
       if (!row) {
         throw new Error(`Expected VM0 managed key for vendor: ${value.vendor}`);
       }
