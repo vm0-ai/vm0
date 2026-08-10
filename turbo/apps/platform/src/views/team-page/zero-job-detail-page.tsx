@@ -92,10 +92,8 @@ import {
   applyUserPermissionGrants$,
   currentAgentUserPermissionGrants$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import {
-  allConnectorCatalogItems$,
-  matchesConnectorSearch,
-} from "../../signals/zero-page/settings/connectors.ts";
+import { matchesConnectorSearch } from "../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import {
   currentAgentVisibleWorkflows$,
   copyWorkflow$,
@@ -658,9 +656,11 @@ function JobPermissionsTab({
 
   const connectorsLoading = connectorsLoadable.state === "loading";
 
-  const catalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
+  const catalogItemsLoadable = useLastLoadable(connectorCatalogStatus$);
   const allConnectors =
-    catalogItemsLoadable.state === "hasData" ? catalogItemsLoadable.data : [];
+    catalogItemsLoadable.state === "hasData"
+      ? catalogItemsLoadable.data.connectors
+      : [];
   const canManagePermissions = true;
 
   const connectedConnectors = allConnectors.filter((c) => {

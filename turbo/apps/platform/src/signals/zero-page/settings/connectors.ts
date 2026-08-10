@@ -36,9 +36,9 @@ import type {
   PublicConnectorCatalogIcon,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
-  connectorCatalogStatus$,
   connectors$,
   deleteConnector$,
+  relatedConnectorCatalog,
   reloadConnectors$,
 } from "../../external/connectors.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
@@ -356,15 +356,12 @@ export function connectorExpiryCountdownText(
 }
 
 /**
- * Case-insensitive substring match across label, slug, description, and tags.
+ * Case-insensitive substring match across label and slug.
  * Returns true when `search` is empty, so callers can use it directly as a filter.
  */
 export function matchesConnectorSearch(
   search: string,
-  connector: Pick<
-    PlatformConnectorCatalogStatusItem,
-    "slug" | "description" | "label" | "tags"
-  >,
+  connector: Pick<PlatformConnectorCatalogStatusItem, "slug" | "label">,
 ): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) {
@@ -376,33 +373,8 @@ export function matchesConnectorSearch(
   if (connector.slug.toLowerCase().includes(needle)) {
     return true;
   }
-  if (connector.description.toLowerCase().includes(needle)) {
-    return true;
-  }
-  if (
-    connector.tags?.some((t) => {
-      return t.toLowerCase().includes(needle);
-    })
-  ) {
-    return true;
-  }
   return false;
 }
-
-export const allConnectorCatalogItems$ = computed(async (get) => {
-  const { connectors } = await get(connectorCatalogStatus$);
-  const items = [...connectors];
-
-  // Sort connected connectors to the top of the list
-  items.sort((a, b) => {
-    if (a.connected === b.connected) {
-      return 0;
-    }
-    return a.connected ? -1 : 1;
-  });
-
-  return items;
-});
 
 // ---------------------------------------------------------------------------
 // Search filter
@@ -443,6 +415,24 @@ export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
 
+export const connectorCatalogDiscovery$ =
+  relatedConnectorCatalog(connectorsSearch$);
+
+export const relatedCatalogItems$ = computed(async (get) => {
+  const { connectors } = await get(connectorCatalogDiscovery$);
+  const items = [...connectors];
+
+  // Sort connected connectors to the top of the list
+  items.sort((a, b) => {
+    if (a.connected === b.connected) {
+      return 0;
+    }
+    return a.connected ? -1 : 1;
+  });
+
+  return items;
+});
+
 export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const effectiveFilter = get(connectorsConnectionFilter$);
@@ -456,8 +446,8 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
         )
       : null;
 
-  const allConnectorCatalogItems = await get(allConnectorCatalogItems$);
-  return allConnectorCatalogItems.filter((connector) => {
+  const relatedCatalogItems = await get(relatedCatalogItems$);
+  return relatedCatalogItems.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
       return false;
     }
@@ -1088,12 +1078,12 @@ export const runConnectorConnectSuccess$ = command(
 
 // ---------------------------------------------------------------------------
 // Optimistic connected state — bridges the gap between connect success and
-// allConnectorCatalogItems$ recomputation so the UI doesn't flash.
+// relatedCatalogItems$ recomputation so the UI doesn't flash.
 // ---------------------------------------------------------------------------
 
 const internalJustConnectedSlugs$ = state<Set<ConnectorSlug>>(new Set());
 
-/** Slugs that were just connected but may not yet be reflected in allConnectorCatalogItems$. */
+/** Slugs that were just connected but may not yet be reflected in relatedCatalogItems$. */
 export const justConnectedSlugs$ = computed((get) => {
   return get(internalJustConnectedSlugs$);
 });
@@ -1103,7 +1093,7 @@ export const justConnectedSlugs$ = computed((get) => {
  *
  * Without this cleanup, a connector that was connected earlier in the session
  * stays in the Connected section of /connectors after disconnect because the
- * optimistic override in allConnectorCatalogItems$ wins over the fresh
+ * optimistic override in relatedCatalogItems$ wins over the fresh
  * `connected = false` from the API (regression #10272).
  */
 export const disconnectConnector$ = command(
