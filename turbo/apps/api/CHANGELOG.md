@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.416.1](https://github.com/vm0-ai/vm0/compare/api-v1.416.0...api-v1.416.1) (2026-08-10)
+
+
+### Refactoring
+
+* **connectors:** unify oauth state claim readers ([#26140](https://github.com/vm0-ai/vm0/issues/26140)) ([0d8c596](https://github.com/vm0-ai/vm0/commit/0d8c5964a726f1a721a9148705ca6f324bd011f7))
+* rename automation-event type vocabulary ([#26145](https://github.com/vm0-ai/vm0/issues/26145)) ([81b9f94](https://github.com/vm0-ai/vm0/commit/81b9f9463587796a82708e4e31bfee0c2000a17a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.306.1
+    * @vm0/core bumped to 8.538.2
+    * @vm0/db bumped to 1.186.1
+    * @vm0/pi-agent-runtime bumped to 1.3.29
+
 ## [1.416.0](https://github.com/vm0-ai/vm0/compare/api-v1.415.0...api-v1.416.0) (2026-08-10)
 
 
