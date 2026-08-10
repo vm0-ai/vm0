@@ -10,6 +10,7 @@ import {
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProviderConnectionsMainContract } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createApp } from "../../../app-factory";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -21,6 +22,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroModelPoliciesRoutes } from "../zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
 import { zeroUserModelPreferenceRoutes } from "../zero-user-model-preference";
@@ -961,6 +963,76 @@ describe("GET/PUT /api/zero/model-policies", () => {
       modelProviderId: null,
       routeStatus: "valid",
     });
+  });
+
+  it("stores priority with a Codex user model preference", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const preferenceClient = setupApp({
+      context,
+      routes: zeroUserModelPreferenceRoutes,
+    })(zeroUserModelPreferenceContract);
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      return policy.model === "gpt-5.6-sol"
+        ? {
+            ...policy,
+            defaultProviderType: "codex-oauth-token" as const,
+            credentialScope: "member" as const,
+            modelProviderId: null,
+          }
+        : policy;
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    const switchOff = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: "gpt-5.6-sol", serviceTier: "priority" },
+      }),
+      [400],
+    );
+    expect(switchOff.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+    const priority = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: "gpt-5.6-sol", serviceTier: "priority" },
+      }),
+      [200],
+    );
+    expect(priority.body).toMatchObject({
+      selectedModel: "gpt-5.6-sol",
+      serviceTier: "priority",
+    });
+    expect(
+      (await accept(preferenceClient.get({ headers: authHeaders() }), [200]))
+        .body.serviceTier,
+    ).toBe("priority");
+
+    const legacyUpdate = await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: "gpt-5.6-sol" },
+      }),
+      [200],
+    );
+    expect(legacyUpdate.body.serviceTier).toBeNull();
   });
 
   it("allows compatible member OAuth provider routes", async () => {

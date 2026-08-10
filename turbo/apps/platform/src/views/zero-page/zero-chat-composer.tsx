@@ -7437,26 +7437,62 @@ function ComposerTemporaryModelNotice({
   const [updateLoadable, updatePreference] = useLoadableSet(
     updateUserModelPreference$,
   );
+  const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const pageSignal = useGet(pageSignal$);
   const defaultSelection = resolveModelFirstUserDefaultSelection({
     userPreference,
     policies,
+    codexFastModeEnabled,
   });
+  const selectionServiceTier =
+    selection?.codexServiceTier === "fast" ? "priority" : null;
+  const defaultServiceTier =
+    defaultSelection?.codexServiceTier === "fast" ? "priority" : null;
+  const modelChanged =
+    selection?.selectedModel !== defaultSelection?.selectedModel;
+  const serviceTierChanged = selectionServiceTier !== defaultServiceTier;
   if (
     !selection ||
     !defaultSelection ||
-    selection.selectedModel === defaultSelection.selectedModel
+    (!modelChanged && !serviceTierChanged)
   ) {
     return null;
   }
   const updating = updateLoadable.state === "loading";
   const modelName = getModelDisplayName(selection.selectedModel);
+  const runSpeedLabel = t(($) => {
+    return selectionServiceTier === "priority"
+      ? $.settings.models.picker.fast
+      : $.settings.models.picker.standard;
+  });
+  const notice = !modelChanged
+    ? t(($) => {
+        return selectionServiceTier === "priority"
+          ? $.chat.composer.temporaryFastModeEnabledNotice
+          : $.chat.composer.temporaryFastModeDisabledNotice;
+      })
+    : t(
+        ($) => {
+          return $.chat.composer.temporaryModelNotice;
+        },
+        {
+          model: serviceTierChanged
+            ? `${modelName} ${runSpeedLabel}`
+            : modelName,
+        },
+      );
   const setAsDefault = () => {
     if (updating) {
       return;
     }
     detach(
-      updatePreference({ selectedModel: selection.selectedModel }, pageSignal),
+      updatePreference(
+        {
+          selectedModel: selection.selectedModel,
+          serviceTier: selectionServiceTier,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
@@ -7466,14 +7502,7 @@ function ComposerTemporaryModelNotice({
       aria-live="polite"
       aria-atomic="true"
     >
-      <span>
-        {t(
-          ($) => {
-            return $.chat.composer.temporaryModelNotice;
-          },
-          { model: modelName },
-        )}
-      </span>
+      <span>{notice}</span>
       <button
         type="button"
         className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline-offset-2 transition-colors hover:text-foreground/70 hover:underline focus-visible:text-foreground/70 focus-visible:underline disabled:pointer-events-none disabled:opacity-70"

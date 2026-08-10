@@ -48,7 +48,10 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
-import { resolveIntegrationModelRouteForUser$ } from "./integration-model-route.service";
+import {
+  resolveIntegrationModelRouteForUser$,
+  type IntegrationModelRoutePin,
+} from "./integration-model-route.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
   updateUserModelPreference$,
@@ -748,6 +751,12 @@ const resolveSlackRouteCompose$ = command(
   },
 );
 
+function integrationModelRouteServiceTier(
+  route: IntegrationModelRoutePin | undefined,
+): IntegrationModelRoutePin["serviceTier"] {
+  return route?.serviceTier ?? null;
+}
+
 const resolveConnectedSlackAgentRouteAdmission$ = command(
   async (
     { set },
@@ -799,6 +808,9 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
         ? { agentComposeId: effectiveCompose.composeId }
         : {}),
       selectedModel: mainDirectMessageModelRoute?.selectedModel ?? null,
+      serviceTier: integrationModelRouteServiceTier(
+        mainDirectMessageModelRoute,
+      ),
     });
     const routeKey = {
       connectionId: args.connection.id,
@@ -848,6 +860,7 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
       orgId: args.orgId,
       agentComposeId: effectiveCompose.composeId,
       selectedModel: modelRoute?.selectedModel ?? null,
+      serviceTier: modelRoute?.serviceTier ?? null,
       currentTime: nowDate(),
     });
     signal.throwIfAborted();

@@ -1280,6 +1280,8 @@
       "selectedModelUnavailableToast": "Le modèle sélectionné n'est pas disponible",
       "selectModel": "Sélectionner le modèle",
       "setAsDefault": "Définir par défaut",
+      "temporaryFastModeDisabledNotice": "Le mode rapide est temporairement désactivé pour cette exécution",
+      "temporaryFastModeEnabledNotice": "Le mode rapide est temporairement activé pour cette exécution",
       "temporaryModelNotice": "Passage temporaire à {{model}}",
       "threadSuggestions": "Conversations",
       "visualAttachmentsUnsupported": "{{modelName}} ne peut pas reconnaître les images ou les vidéos. Passez à un modèle capable de vision pour les joindre.",

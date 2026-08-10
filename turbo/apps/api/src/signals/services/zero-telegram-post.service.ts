@@ -1773,6 +1773,7 @@ async function persistTelegramChatMessage(
     orgId: args.source.orgId,
     agentComposeId: args.source.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
+    serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,
   };
   const binding =

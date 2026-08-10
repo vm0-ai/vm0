@@ -16,6 +16,7 @@ import {
 import {
   isCodexFastServiceTierSupported,
   resolveDefaultModelFirstPin,
+  type DefaultModelFirstPin,
   resolveModelFirstProviderAdmission,
   resolvePersistedModelFirstRoute,
   type ModelFirstPin,
@@ -446,7 +447,7 @@ export async function resolveRequiredDefaultChatThreadModelPin(
     readonly orgId: string;
     readonly userId: string;
   },
-): Promise<ModelFirstPin> {
+): Promise<DefaultModelFirstPin> {
   const pin = await resolveDefaultModelFirstPin(db, args.orgId, args.userId);
   if (!pin.selectedModel) {
     throw new Error("A model selection is required");

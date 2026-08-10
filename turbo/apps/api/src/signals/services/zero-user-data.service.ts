@@ -11,6 +11,7 @@ import type {
   UserModelPreferenceResponse,
 } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   SecretResponse,
   SecretType,
@@ -155,6 +156,7 @@ export function userModelPreference({
     const [row] = await db
       .select({
         selectedModel: orgMembersMetadata.selectedModel,
+        serviceTier: orgMembersMetadata.serviceTier,
         updatedAt: orgMembersMetadata.updatedAt,
       })
       .from(orgMembersMetadata)
@@ -169,8 +171,11 @@ export function userModelPreference({
     const selectedModel = isSupportedRunModel(row?.selectedModel)
       ? row.selectedModel
       : null;
+    const serviceTier: ChatThreadServiceTier | null =
+      selectedModel && row?.serviceTier === "priority" ? "priority" : null;
     return {
       selectedModel,
+      serviceTier,
       updatedAt: selectedModel ? (row?.updatedAt.toISOString() ?? null) : null,
     };
   });
@@ -319,7 +324,7 @@ export const updateUserModelPreference$ = command(
     if (args.preference.selectedModel === null) {
       await writeDb
         .update(orgMembersMetadata)
-        .set({ selectedModel: null, updatedAt: nowDate() })
+        .set({ selectedModel: null, serviceTier: null, updatedAt: nowDate() })
         .where(
           and(
             eq(orgMembersMetadata.orgId, args.orgId),
@@ -327,16 +332,18 @@ export const updateUserModelPreference$ = command(
           ),
         );
       signal.throwIfAborted();
-      return { selectedModel: null, updatedAt: null };
+      return { selectedModel: null, serviceTier: null, updatedAt: null };
     }
 
     const updatedAt = nowDate();
+    const serviceTier = args.preference.serviceTier ?? null;
     await writeDb
       .insert(orgMembersMetadata)
       .values({
         orgId: args.orgId,
         userId: args.userId,
         selectedModel: args.preference.selectedModel,
+        serviceTier,
         createdAt: updatedAt,
         updatedAt,
       })
@@ -344,6 +351,7 @@ export const updateUserModelPreference$ = command(
         target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
         set: {
           selectedModel: args.preference.selectedModel,
+          serviceTier,
           updatedAt,
         },
       });

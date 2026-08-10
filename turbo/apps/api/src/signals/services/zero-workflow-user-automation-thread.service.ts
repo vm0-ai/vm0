@@ -55,6 +55,7 @@ export async function createAutomationChatThread(
       agentComposeId: args.agentId,
       title: args.title,
       ...chatThreadModelPinColumns(pin),
+      codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
       lastMessageAt: args.currentTime,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
@@ -71,6 +72,7 @@ export async function createAutomationChatThread(
     agentComposeId: args.agentId,
     title: args.title,
     selectedModel: pin.selectedModel,
+    serviceTier: pin.serviceTier,
     createdAt: thread.createdAt,
   });
   return thread.id;

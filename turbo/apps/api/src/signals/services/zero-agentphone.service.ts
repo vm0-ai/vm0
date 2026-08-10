@@ -1491,6 +1491,7 @@ async function persistAgentPhoneChatMessage(
     orgId: args.userLink.orgId,
     agentComposeId: args.agent.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
+    serviceTier: args.modelRoute?.serviceTier ?? null,
     currentTime,
   });
   signal.throwIfAborted();

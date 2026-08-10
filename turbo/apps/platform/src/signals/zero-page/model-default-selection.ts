@@ -14,6 +14,7 @@ import {
 
 interface UserModelDefaultSource {
   selectedModel: string | null;
+  serviceTier?: "priority" | null;
 }
 
 function createModelFirstSelection(
@@ -58,34 +59,28 @@ export function isCodexFastModeAvailableForSelection(params: {
   );
 }
 
-export function applyCodexFastModeDefault(params: {
-  readonly selection: ModelProviderSelection | null;
-  readonly policies: OrgModelPoliciesResponse | null | undefined;
-  readonly codexFastModeEnabled: boolean;
-  readonly codexFastModeDefault: boolean;
-}): ModelProviderSelection | null {
-  if (
-    !params.codexFastModeDefault ||
-    !params.selection ||
-    !isCodexFastModeAvailableForSelection({
-      policies: params.policies,
-      selectedModel: params.selection.selectedModel,
-      codexFastModeEnabled: params.codexFastModeEnabled,
-    })
-  ) {
-    return params.selection;
-  }
-  return { ...params.selection, codexServiceTier: "fast" };
-}
-
 export function resolveModelFirstUserDefaultSelection(params: {
   userPreference: UserModelDefaultSource | null | undefined;
   policies: OrgModelPoliciesResponse | null | undefined;
+  codexFastModeEnabled: boolean;
 }): ModelProviderSelection | null {
-  return (
-    createModelFirstSelection(params.userPreference?.selectedModel) ??
-    resolveModelFirstWorkspaceDefaultSelection(params.policies)
+  const userSelection = createModelFirstSelection(
+    params.userPreference?.selectedModel,
   );
+  if (!userSelection) {
+    return resolveModelFirstWorkspaceDefaultSelection(params.policies);
+  }
+  if (
+    params.userPreference?.serviceTier === "priority" &&
+    isCodexFastModeAvailableForSelection({
+      policies: params.policies,
+      selectedModel: userSelection.selectedModel,
+      codexFastModeEnabled: params.codexFastModeEnabled,
+    })
+  ) {
+    return { ...userSelection, codexServiceTier: "fast" };
+  }
+  return userSelection;
 }
 
 type ExplicitModelSelectionResult =

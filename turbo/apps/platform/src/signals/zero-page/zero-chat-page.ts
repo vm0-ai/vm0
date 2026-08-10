@@ -8,16 +8,10 @@ import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
-  applyCodexFastModeDefault,
   isCodexFastModeAvailableForSelection,
   resolveModelFirstUserDefaultSelection,
 } from "./model-default-selection.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  codexFastModeLocalDefault$,
-  setCodexFastModeLocalDefault$,
-} from "./codex-fast-local-default.ts";
 import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
 import { openClaudeCodeDeviceAuthDialogPersonal$ } from "./settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialogPersonal$ } from "./settings/codex-device-auth.ts";
@@ -77,17 +71,10 @@ export const chatPageModelSelection$ = computed(
     }
     const policies = await get(orgModelPolicies$);
     const userPreference = await get(userModelPreference$);
-    const codexFastModeDefault = await get(codexFastModeLocalDefault$);
-    const featureSwitches = get(featureSwitch$);
-    return applyCodexFastModeDefault({
-      selection: resolveModelFirstUserDefaultSelection({
-        userPreference,
-        policies,
-      }),
+    return resolveModelFirstUserDefaultSelection({
+      userPreference,
       policies,
-      codexFastModeEnabled:
-        featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
-      codexFastModeDefault,
+      codexFastModeEnabled: get(codexFastModeEnabled$),
     });
   },
 );
@@ -127,31 +114,6 @@ export const configureChatPageSelectedModel$ = command(
 export const setChatPageModelSelection$ = command(
   ({ set }, value: ModelProviderSelection | null) => {
     set(internalChatPageUserOverride$, { kind: "set", value });
-  },
-);
-
-export const updateCodexFastModeDefaultForSelection$ = command(
-  async (
-    { get, set },
-    selection: ModelProviderSelection | null,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const policies = await get(orgModelPolicies$);
-    signal.throwIfAborted();
-    if (
-      !isCodexFastModeAvailableForSelection({
-        policies,
-        selectedModel: selection?.selectedModel,
-        codexFastModeEnabled: get(codexFastModeEnabled$),
-      })
-    ) {
-      return;
-    }
-    await set(
-      setCodexFastModeLocalDefault$,
-      selection?.codexServiceTier === "fast",
-      signal,
-    );
   },
 );
 

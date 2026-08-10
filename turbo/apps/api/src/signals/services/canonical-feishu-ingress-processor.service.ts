@@ -81,14 +81,17 @@ function canonicalThreadId(args: {
   readonly message: FeishuInboundMessage;
   readonly agentId: string;
   readonly selectedModel: string | null;
+  readonly serviceTier: IntegrationModelRoutePin["serviceTier"];
 }): string {
   const { message } = args;
   const replyThreadId =
     message.rootId ?? message.threadId ?? message.parentId ?? null;
   if (message.chatType === "p2p") {
-    return message.threadId
-      ? `thread:${message.threadId}`
-      : `direct-message:${args.agentId}:${args.selectedModel ?? "default"}`;
+    if (message.threadId) {
+      return `thread:${message.threadId}`;
+    }
+    const session = `direct-message:${args.agentId}:${args.selectedModel ?? "default"}`;
+    return args.serviceTier === "priority" ? `${session}:priority` : session;
   }
   return replyThreadId ?? message.messageId;
 }
@@ -328,6 +331,7 @@ async function persistCanonicalFeishuIngress(
     readonly message: FeishuInboundMessage;
     readonly agentId: string;
     readonly selectedModel: string | null;
+    readonly serviceTier: IntegrationModelRoutePin["serviceTier"];
     readonly reactionId: string | undefined;
     readonly launchContext: CanonicalFeishuLaunchContext;
   },
@@ -337,6 +341,7 @@ async function persistCanonicalFeishuIngress(
     message: args.message,
     agentId: args.agentId,
     selectedModel: args.selectedModel,
+    serviceTier: args.serviceTier,
   });
   const route = await ensureFeishuChatThreadRoute(args.db, {
     connectionId: args.connection.id,
@@ -346,6 +351,7 @@ async function persistCanonicalFeishuIngress(
     orgId: args.installation.orgId,
     agentComposeId: args.agentId,
     selectedModel: args.selectedModel,
+    serviceTier: args.serviceTier,
     currentTime: args.ingress.createdAt,
   });
   signal.throwIfAborted();
@@ -603,6 +609,7 @@ async function processClaimedIngress(
     message,
     agentId: effectiveAgent.agent.id,
     selectedModel,
+    serviceTier: modelRoute?.serviceTier ?? null,
     reactionId,
     launchContext: canonicalFeishuLaunchContext({
       message,

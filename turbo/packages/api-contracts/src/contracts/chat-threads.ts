@@ -128,7 +128,7 @@ const chatThreadUnreadAgentsSchema = z.object({
 
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
-const chatThreadServiceTierSchema = z.enum(["priority"]);
+export const chatThreadServiceTierSchema = z.enum(["priority"]);
 
 const chatThreadSnapshotProjectionSchema = z.object({
   id: z.string().uuid(),

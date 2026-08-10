@@ -36,7 +36,6 @@ import {
   reloadUserModelPreference$,
   userModelPreference$,
 } from "../../../signals/external/user-model-preference.ts";
-import { codexFastModeLocalDefault$ } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import {
@@ -62,8 +61,6 @@ import {
   THREAD_ID,
   OTHER_AGENT_THREAD_ID,
   MOONSHOT_PROVIDER_ID,
-  setCodexFastModeDefaultStorageForTest$,
-  clearCodexFastModeDefaultStorageForTest$,
   applyUserConnectorUpdate,
   expectTextBefore,
   buttonContainingText,
@@ -335,6 +332,175 @@ describe("chat composer models", () => {
     });
   });
 
+  it.each([
+    {
+      defaultServiceTier: null,
+      targetSpeed: "Fast",
+      notice: "Fast mode is temporarily enabled for this run",
+      expectedServiceTier: "priority" as const,
+    },
+    {
+      defaultServiceTier: "priority" as const,
+      targetSpeed: "Standard",
+      notice: "Fast mode is temporarily disabled for this run",
+      expectedServiceTier: null,
+    },
+  ])(
+    "offers to make a temporary $targetSpeed run speed the default",
+    async ({
+      defaultServiceTier,
+      targetSpeed,
+      notice,
+      expectedServiceTier,
+    }) => {
+      const user = userEvent.setup({ delay: null });
+      const codexProvider = buildProvider({
+        id: "00000000-0000-4000-a000-000000000921",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+      });
+      let updatedPreference:
+        | { selectedModel: string | null; serviceTier?: "priority" | null }
+        | undefined;
+      context.mocks.data.orgModelPolicies([
+        buildModelPolicy({
+          id: "00000000-0000-4000-a000-000000000922",
+          model: "gpt-5.6-sol",
+          modelLabel: "GPT 5.6 Sol",
+          isDefault: true,
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+        }),
+      ]);
+      context.mocks.data.personalModelProviders([codexProvider]);
+      context.mocks.data.userModelPreference({
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: defaultServiceTier,
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+      context.mocks.api(
+        zeroUserModelPreferenceContract.update,
+        ({ body, respond }) => {
+          updatedPreference = body;
+          return respond(200, {
+            selectedModel: body.selectedModel,
+            serviceTier: body.serviceTier ?? null,
+            updatedAt: "2026-03-10T00:01:00Z",
+          });
+        },
+      );
+      mockAgent();
+
+      detachedSetupPage({
+        context,
+        featureSwitches: {
+          [FeatureSwitchKey.CodexFastMode]: true,
+          [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+        },
+        path: `/agents/${AGENT_ID}/chat`,
+      });
+
+      await expectComposerModel("GPT 5.6 Sol");
+      click(await findComposerModel("GPT 5.6 Sol"));
+      const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+      click(buttonContainingText(targetSpeed, runSpeed));
+      await user.keyboard("{Escape}");
+
+      await expect(screen.findByText(notice)).resolves.toBeInTheDocument();
+      await user.click(buttonContainingText("Set as default", document.body));
+
+      await waitFor(() => {
+        expect(updatedPreference).toStrictEqual({
+          selectedModel: "gpt-5.6-sol",
+          serviceTier: expectedServiceTier,
+        });
+      });
+    },
+  );
+
+  it("includes Fast in the temporary label when model and run speed change", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000919",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let updatedPreference:
+      | { selectedModel: string | null; serviceTier?: "priority" | null }
+      | undefined;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000918",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000920",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    context.mocks.data.userModelPreference({
+      selectedModel: "kimi-k2.7-code",
+      serviceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        updatedPreference = body;
+        return respond(200, {
+          selectedModel: body.selectedModel,
+          serviceTier: body.serviceTier ?? null,
+          updatedAt: "2026-03-10T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.CodexFastMode]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(
+      await screen.findByRole("option", { name: /GPT 5\.6 Sol/ }),
+    );
+    click(await findComposerModel("GPT 5.6 Sol"));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    click(buttonContainingText("Fast", runSpeed));
+    await user.keyboard("{Escape}");
+
+    await expect(
+      screen.findByText("Temporarily switched to GPT 5.6 Sol Fast"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonContainingText("Set as default", document.body));
+
+    await waitFor(() => {
+      expect(updatedPreference).toStrictEqual({
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      });
+    });
+  });
+
   it("preserves selection-as-default behavior while the feature switch is off", async () => {
     const user = userEvent.setup({ delay: null });
     let updatedModel: string | null = null;
@@ -515,7 +681,7 @@ describe("chat composer models", () => {
     ).resolves.not.toHaveLength(0);
   });
 
-  it("remembers Codex fast mode for new chats in the current browser account", async () => {
+  it("remembers Codex fast mode in the user model preference", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000923",
@@ -585,6 +751,11 @@ describe("chat composer models", () => {
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
     act(() => {
+      triggerAblyEvent("userPreferenceChanged", {
+        kinds: ["defaultModel"],
+      });
+    });
+    act(() => {
       context.store.set(resetChatPageModelSelection$);
     });
 
@@ -623,62 +794,55 @@ describe("chat composer models", () => {
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
-    act(() => {
-      context.store.set(
-        setCodexFastModeDefaultStorageForTest$,
-        JSON.stringify({ "test-user-123:org_default": true }),
-      );
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      serviceTier: "priority",
+      updatedAt: "2026-05-08T00:00:00.000Z",
     });
 
-    try {
-      context.mocks.data.orgModelPolicies([
-        buildModelPolicy({
-          id: "00000000-0000-4000-a000-000000000926",
-          model: "gpt-5.5",
-          modelLabel: "GPT 5.5",
-          isDefault: true,
-          defaultProviderType: "codex-oauth-token",
-          credentialScope: "member",
-        }),
-      ]);
-      context.mocks.data.personalModelProviders([codexProvider]);
-      mockAgent();
-      mockChatLifecycle(context, {
-        onRunCreate: (body) => {
-          sentBody = body;
-        },
-      });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000926",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
 
-      detachedSetupPage({
-        context,
-        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await waitFor(() => {
-        expect(
-          screen.getByRole("combobox", { name: /^GPT 5\.5$/ }),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole("group", { name: "Run speed" }),
-        ).not.toBeInTheDocument();
-      });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: /^GPT 5\.5$/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("group", { name: "Run speed" }),
+      ).not.toBeInTheDocument();
+    });
 
-      await sendMessageInUI(
-        user,
-        screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-        "Use standard mode",
-      );
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Use standard mode",
+    );
 
-      await waitFor(() => {
-        expect(sentBody).toBeDefined();
-        expect(sentBody?.runOptions).toBeUndefined();
-      });
-    } finally {
-      act(() => {
-        context.store.set(clearCodexFastModeDefaultStorageForTest$);
-      });
-    }
+    await waitFor(() => {
+      expect(sentBody).toBeDefined();
+      expect(sentBody?.runOptions).toBeUndefined();
+    });
   });
 
   it.each([
@@ -768,8 +932,7 @@ describe("chat composer models", () => {
     },
   );
 
-  it("keeps the remembered Codex fast default when Fast is unavailable", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("ignores the stored Codex priority default when Fast is unavailable", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000927",
       type: "codex-oauth-token",
@@ -778,54 +941,49 @@ describe("chat composer models", () => {
       authMethod: "auth_json",
       secretNames: ["CODEX_AUTH_JSON"],
     });
-    act(() => {
-      context.store.set(
-        setCodexFastModeDefaultStorageForTest$,
-        JSON.stringify({ "test-user-123:org_default": true }),
-      );
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      serviceTier: "priority",
+      updatedAt: "2026-05-08T00:00:00.000Z",
     });
 
-    try {
-      context.mocks.data.orgModelPolicies([
-        buildModelPolicy({
-          id: "00000000-0000-4000-a000-000000000928",
-          model: "kimi-k2.7-code",
-          modelLabel: "Kimi K2.7 Code",
-          isDefault: true,
-          defaultProviderType: "vm0",
-          credentialScope: "org",
-        }),
-        buildModelPolicy({
-          id: "00000000-0000-4000-a000-000000000929",
-          model: "gpt-5.5",
-          modelLabel: "GPT 5.5",
-          defaultProviderType: "codex-oauth-token",
-          credentialScope: "member",
-        }),
-      ]);
-      context.mocks.data.personalModelProviders([codexProvider]);
-      mockAgent();
-      mockChatLifecycle(context);
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000928",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000929",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context);
 
-      detachedSetupPage({
-        context,
-        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
-        path: `/agents/${AGENT_ID}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
 
-      await user.click(await findComposerModel("Kimi K2.7 Code"));
-      await user.click(await screen.findByRole("option", { name: /GPT 5\.5/ }));
-      await expectComposerModel("GPT 5.5");
-      await waitFor(async () => {
-        await expect(
-          context.store.get(codexFastModeLocalDefault$),
-        ).resolves.toBeTruthy();
+    await expectComposerModel("GPT 5.5");
+    await waitFor(async () => {
+      await expect(
+        context.store.get(userModelPreference$),
+      ).resolves.toStrictEqual({
+        selectedModel: "gpt-5.5",
+        serviceTier: "priority",
+        updatedAt: "2026-05-08T00:00:00.000Z",
       });
-    } finally {
-      act(() => {
-        context.store.set(clearCodexFastModeDefaultStorageForTest$);
-      });
-    }
+    });
   });
 
   it("keeps Codex fast mode when continuing a hydrated thread", async () => {

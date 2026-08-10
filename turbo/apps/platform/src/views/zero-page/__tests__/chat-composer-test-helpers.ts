@@ -29,8 +29,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { expect } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { localStorageSignals } from "../../../signals/external/local-storage.ts";
-import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -58,11 +56,6 @@ const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 export const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
-
-export const {
-  set$: setCodexFastModeDefaultStorageForTest$,
-  clear$: clearCodexFastModeDefaultStorageForTest$,
-} = localStorageSignals(CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY);
 
 export function applyUserConnectorUpdate(
   current: readonly string[],
