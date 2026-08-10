@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.67.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.5...guest-agent-v0.67.0) (2026-08-10)
+
+
+### Features
+
+* add priority inheritance and gpt-5.6 fast billing ([#26147](https://github.com/vm0-ai/vm0/issues/26147)) ([3350fbb](https://github.com/vm0-ai/vm0/commit/3350fbbec7afa95483d0b051e6580fa969a50b10))
+
 ## [0.66.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.4...guest-agent-v0.66.5) (2026-08-10)
 
 ## [0.66.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.3...guest-agent-v0.66.4) (2026-08-10)

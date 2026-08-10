@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.723.0](https://github.com/vm0-ai/vm0/compare/app-v0.722.0...app-v0.723.0) (2026-08-10)
+
+
+### Features
+
+* add priority inheritance and gpt-5.6 fast billing ([#26147](https://github.com/vm0-ai/vm0/issues/26147)) ([3350fbb](https://github.com/vm0-ai/vm0/commit/3350fbbec7afa95483d0b051e6580fa969a50b10))
+
+
+### Bug Fixes
+
+* **onboarding:** preserve marketing entry contract ([#26181](https://github.com/vm0-ai/vm0/issues/26181)) ([99a33e8](https://github.com/vm0-ai/vm0/commit/99a33e82742003e99ff97e168a8c5059be6db36e))
+* use shared button for account menu trigger ([#26188](https://github.com/vm0-ai/vm0/issues/26188)) ([b3b9698](https://github.com/vm0-ai/vm0/commit/b3b96986bef87df70de60a279bfbe20d33237773))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.0
+    * @vm0/connectors bumped to 1.205.0
+    * @vm0/core bumped to 8.541.0
+
 ## [0.722.0](https://github.com/vm0-ai/vm0/compare/app-v0.721.0...app-v0.722.0) (2026-08-10)
 
 
