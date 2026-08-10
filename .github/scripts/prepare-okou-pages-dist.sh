@@ -25,7 +25,7 @@ fi
 cp -a "${canonical_dist}/." "$pages_dist/"
 
 if [[ -n "$preview_api_origin" ]]; then
-  if [[ ! "$preview_api_origin" =~ ^https://(staging|pr-[0-9]+)-api\.vm6\.ai$ ]]; then
+  if [[ ! "$preview_api_origin" =~ ^https://(staging|pr-[0-9]+)-vm0-api-preview\.[a-z0-9-]+\.workers\.dev$ ]]; then
     echo "invalid preview API origin: ${preview_api_origin}" >&2
     exit 1
   fi
@@ -35,9 +35,10 @@ if [[ -n "$preview_api_origin" ]]; then
     echo "canonical app artifact is missing the API origin marker" >&2
     exit 1
   fi
-  sed -i \
+  sed -i.bak \
     "s|${runtime_config_marker}|<meta name=\"vm0-api-origin\" content=\"${preview_api_origin}\" />|" \
     "${pages_dist}/index.html"
+  rm "${pages_dist}/index.html.bak"
 fi
 
 find "$pages_dist" -type f -name '*.map' -delete

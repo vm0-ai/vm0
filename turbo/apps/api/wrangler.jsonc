@@ -3,7 +3,11 @@
   "name": "vm0-api",
   "main": "src/worker.ts",
   "compatibility_date": "2026-08-05",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env",
+    "global_fetch_strictly_public",
+  ],
   "workers_dev": false,
   "preview_urls": true,
   "placement": { "mode": "smart" },

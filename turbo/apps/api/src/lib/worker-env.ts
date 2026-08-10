@@ -21,13 +21,18 @@ function parsedShard(value: string, name: string): Record<string, string> {
 }
 
 export function resolveRuntimeEnv(
-  source: NodeJS.ProcessEnv,
+  source: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, string | undefined>> {
-  const result: Record<string, string | undefined> = { ...source };
+  const result: Record<string, string | undefined> = {};
+  for (const [name, value] of Object.entries(source)) {
+    if (typeof value === "string") {
+      result[name] = value;
+    }
+  }
   const shardValues = Array.from(
     { length: WORKER_ENV_SHARD_COUNT },
     (_, index) => {
-      return source[shardName(index + 1)];
+      return result[shardName(index + 1)];
     },
   );
   const hasShards = shardValues.some((value) => {

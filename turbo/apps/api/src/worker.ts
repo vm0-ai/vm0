@@ -1,13 +1,10 @@
 import { instrument, type ResolveConfigFn } from "@microlabs/otel-cf-workers";
 
-import { createProductionApp } from "./production-bootstrap";
-import { cloudflareAccessHeadersForApiUrl } from "./lib/cloudflare-access";
-import { env } from "./lib/env";
-import { runInvocation } from "./lib/invocation-context";
+import { singleton } from "./lib/singleton";
+import { resolveRuntimeEnv } from "./lib/worker-env";
 import { WORKER_CRON_ROUTES } from "./worker-crons";
 
 const MAX_CONCURRENT_CRON_ROUTES = 6;
-const app = createProductionApp();
 
 interface WorkerVersionMetadata {
   readonly id: string;
@@ -39,19 +36,46 @@ interface WorkerHandler {
   ): Promise<void>;
 }
 
+async function createRuntime() {
+  const [bootstrap, access, environment, invocation] = await Promise.all([
+    import("./production-bootstrap"),
+    import("./lib/cloudflare-access"),
+    import("./lib/env"),
+    import("./lib/invocation-context"),
+  ]);
+  return {
+    app: bootstrap.createProductionApp(),
+    cloudflareAccessHeadersForApiUrl: access.cloudflareAccessHeadersForApiUrl,
+    env: environment.env,
+    runInvocation: invocation.runInvocation,
+  };
+}
+
+type WorkerRuntime = Awaited<ReturnType<typeof createRuntime>>;
+
+const loadRuntime = singleton<Promise<WorkerRuntime>>(createRuntime);
+
+async function installRuntimeEnv(bindings: WorkerBindings): Promise<void> {
+  const environment = await import("./lib/env");
+  environment.installWorkerRuntimeEnv(bindings);
+}
+
 function requestId(request?: Request): string {
   return request?.headers.get("cf-ray") ?? crypto.randomUUID();
 }
 
-async function dispatchCronRoute(path: string): Promise<void> {
+async function dispatchCronRoute(
+  runtime: WorkerRuntime,
+  path: string,
+): Promise<void> {
   const url = new URL(
     path,
-    env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL"),
+    runtime.env("VM0_API_BACKEND_URL") ?? runtime.env("VM0_WEB_URL"),
   ).toString();
   const response = await fetch(url, {
     headers: {
-      authorization: `Bearer ${env("CRON_SECRET")}`,
-      ...cloudflareAccessHeadersForApiUrl(url),
+      authorization: `Bearer ${runtime.env("CRON_SECRET")}`,
+      ...runtime.cloudflareAccessHeadersForApiUrl(url),
     },
   });
   if (!response.ok) {
@@ -60,7 +84,10 @@ async function dispatchCronRoute(path: string): Promise<void> {
   await response.body?.cancel();
 }
 
-async function dispatchCronSchedule(cron: string): Promise<void> {
+async function dispatchCronSchedule(
+  runtime: WorkerRuntime,
+  cron: string,
+): Promise<void> {
   const paths = WORKER_CRON_ROUTES[cron];
   if (!paths) {
     throw new Error(`Unsupported Worker cron schedule: ${cron}`);
@@ -72,7 +99,11 @@ async function dispatchCronSchedule(cron: string): Promise<void> {
     index += MAX_CONCURRENT_CRON_ROUTES
   ) {
     const batch = paths.slice(index, index + MAX_CONCURRENT_CRON_ROUTES);
-    const results = await Promise.allSettled(batch.map(dispatchCronRoute));
+    const results = await Promise.allSettled(
+      batch.map(async (path) => {
+        await dispatchCronRoute(runtime, path);
+      }),
+    );
     for (const result of results) {
       if (result.status === "rejected") {
         errors.push(result.reason);
@@ -84,18 +115,19 @@ async function dispatchCronSchedule(cron: string): Promise<void> {
   }
 }
 
-const traceConfig: ResolveConfigFn<WorkerBindings> = () => {
+const traceConfig: ResolveConfigFn<WorkerBindings> = (bindings) => {
+  const runtimeEnv = resolveRuntimeEnv(bindings);
   return {
     exporter: {
       url: "https://api.axiom.co/v1/traces",
       headers: {
-        authorization: `Bearer ${env("AXIOM_TOKEN_TELEMETRY")}`,
-        "x-axiom-dataset": `vm0-traces-${env("AXIOM_DATASET_SUFFIX")}`,
+        authorization: `Bearer ${runtimeEnv.AXIOM_TOKEN_TELEMETRY}`,
+        "x-axiom-dataset": `vm0-traces-${runtimeEnv.AXIOM_DATASET_SUFFIX}`,
       },
     },
     service: {
       name: "vm0-api",
-      version: env("GIT_COMMIT_SHA"),
+      version: runtimeEnv.GIT_COMMIT_SHA,
     },
     fetch: { includeTraceContext: false },
     handlers: { fetch: { acceptTraceContext: false } },
@@ -105,7 +137,9 @@ const traceConfig: ResolveConfigFn<WorkerBindings> = () => {
 export default instrument(
   {
     async fetch(request, bindings, executionContext): Promise<Response> {
-      return await runInvocation(
+      await installRuntimeEnv(bindings);
+      const runtime = await loadRuntime();
+      return await runtime.runInvocation(
         executionContext,
         {
           kind: "fetch",
@@ -113,12 +147,14 @@ export default instrument(
           workerVersion: bindings.CF_VERSION_METADATA?.id,
         },
         async () => {
-          return await app.fetch(request);
+          return await runtime.app.fetch(request);
         },
       );
     },
     async scheduled(controller, bindings, executionContext): Promise<void> {
-      await runInvocation(
+      await installRuntimeEnv(bindings);
+      const runtime = await loadRuntime();
+      await runtime.runInvocation(
         executionContext,
         {
           kind: "scheduled",
@@ -126,7 +162,7 @@ export default instrument(
           workerVersion: bindings.CF_VERSION_METADATA?.id,
         },
         async () => {
-          await dispatchCronSchedule(controller.cron);
+          await dispatchCronSchedule(runtime, controller.cron);
         },
       );
     },

@@ -108,6 +108,22 @@ function importBindings(sourceFile) {
           : [],
     });
   }
+  function visit(node) {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      bindings.push({
+        statement: node,
+        specifier: node.arguments[0].text,
+        named: [],
+      });
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
   return bindings;
 }
 

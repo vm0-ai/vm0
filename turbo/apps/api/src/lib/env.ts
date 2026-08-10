@@ -1,10 +1,8 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z, type ZodType } from "zod";
 
-import { testOverride } from "./singleton";
+import { singleton, testOverride } from "./singleton";
 import { resolveRuntimeEnv } from "./worker-env";
-
-const runtimeEnv = resolveRuntimeEnv(process.env);
 
 const priceIdsSchema = z
   .string()
@@ -188,16 +186,30 @@ const SCHEMA = {
   CONCURRENT_RUN_LIMIT_CAP: z.coerce.number().int().min(0).optional(),
 } as const;
 
-const baseEnv = createEnv<undefined, typeof SCHEMA>({
-  server: SCHEMA,
-  runtimeEnv: {
-    ...runtimeEnv,
-    S3_PUBLIC_ENDPOINT: runtimeEnv.S3_PUBLIC_ENDPOINT || runtimeEnv.S3_ENDPOINT,
-  },
-  emptyStringAsUndefined: true,
+const runtimeEnvState = testOverride<
+  Readonly<Record<string, string | undefined>>
+>(() => {
+  return resolveRuntimeEnv(process.env);
 });
 
-type EnvShape = typeof baseEnv;
+const workerRuntimeEnvInstalled = testOverride<boolean>(() => {
+  return false;
+});
+
+const baseEnv = singleton(() => {
+  const runtimeEnv = runtimeEnvState.get();
+  return createEnv<undefined, typeof SCHEMA>({
+    server: SCHEMA,
+    runtimeEnv: {
+      ...runtimeEnv,
+      S3_PUBLIC_ENDPOINT:
+        runtimeEnv.S3_PUBLIC_ENDPOINT || runtimeEnv.S3_ENDPOINT,
+    },
+    emptyStringAsUndefined: true,
+  });
+});
+
+type EnvShape = ReturnType<typeof baseEnv>;
 type EnvName = keyof EnvShape;
 
 const OKOU_ENV_FALLBACKS = {
@@ -247,7 +259,7 @@ function readEnv<K extends EnvName>(name: K): EnvShape[K] {
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name] as EnvShape[K];
   }
-  return baseEnv[name];
+  return baseEnv()[name];
 }
 
 function isOkouEnvName(name: EnvName): name is OkouEnvName {
@@ -267,7 +279,18 @@ export function optionalEnv(name: string): string | undefined {
   if (Object.prototype.hasOwnProperty.call(overrideEnv, name)) {
     return overrideEnv[name];
   }
-  return runtimeEnv[name] || undefined;
+  return runtimeEnvState.get()[name] || undefined;
+}
+
+export function installWorkerRuntimeEnv(
+  source: Readonly<Record<string, unknown>>,
+): void {
+  if (workerRuntimeEnvInstalled.get()) {
+    return;
+  }
+  runtimeEnvState.set(resolveRuntimeEnv(source));
+  baseEnv.reset();
+  workerRuntimeEnvInstalled.set(true);
 }
 
 export function mockEnv<K extends EnvName>(
