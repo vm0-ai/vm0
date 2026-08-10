@@ -555,6 +555,17 @@ describe("activity inspect page", () => {
   it.each([
     { triggerSource: "teams", sourceLabel: "Teams" },
     { triggerSource: "feishu", sourceLabel: "Feishu" },
+    { triggerSource: "workflow-event", sourceLabel: "Automation event" },
+    { triggerSource: "automation-event", sourceLabel: "Automation event" },
+    {
+      triggerSource: "workflow-schedule",
+      sourceLabel: "Automation schedule",
+    },
+    {
+      triggerSource: "automation-schedule",
+      sourceLabel: "Automation schedule",
+    },
+    { triggerSource: "goal", sourceLabel: "Goal" },
   ] as const)(
     "preserves the $triggerSource source from an exported log",
     async ({ triggerSource, sourceLabel }) => {
