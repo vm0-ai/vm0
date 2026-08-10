@@ -1772,6 +1772,24 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async requestCreateCustomConnectorRaw(
+      actor: ApiTestUser | null,
+      body: unknown,
+    ): Promise<Response> {
+      const app = createApp({
+        signal: context.signal,
+        routes: zeroCustomConnectorsRoutes,
+      });
+      return await app.request("/api/zero/custom-connectors", {
+        method: "POST",
+        headers: {
+          ...authenticate(actor),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    },
+
     async createCustomConnector(
       actor: ApiTestUser,
       body: CreateCustomConnectorBody,

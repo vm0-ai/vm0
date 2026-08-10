@@ -18,7 +18,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -1222,60 +1221,6 @@ type CompatibilityFixtureAction =
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
 
-type CustomConnectorDefinitionFixtureAction = Extract<
-  TestRuntimeStateActionBody,
-  {
-    action: "seed-mcp-custom-connector" | "delete-custom-connector-fixture";
-  }
->;
-
-function isCustomConnectorDefinitionFixtureAction(
-  body: TestRuntimeStateActionBody,
-): body is CustomConnectorDefinitionFixtureAction {
-  return (
-    body.action === "seed-mcp-custom-connector" ||
-    body.action === "delete-custom-connector-fixture"
-  );
-}
-
-async function customConnectorDefinitionFixtureActionResponse(
-  db: Db,
-  body: CustomConnectorDefinitionFixtureAction,
-  signal: AbortSignal,
-) {
-  switch (body.action) {
-    case "seed-mcp-custom-connector": {
-      await db.insert(orgCustomConnectors).values({
-        id: body.connector_id,
-        orgId: body.org_id,
-        slug: body.slug,
-        displayName: body.display_name,
-        prefixes: [],
-        headerName: null,
-        headerTemplate: null,
-        prefixTemplates: [],
-        fields: [],
-        headerInjections: [],
-        queryInjections: [],
-        authMode: "manual",
-        permissionBundleRef: null,
-        mcpEndpoint: body.endpoint,
-        mcpTransport: "streamable-http",
-        createdBy: body.user_id,
-      });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-    case "delete-custom-connector-fixture": {
-      await db
-        .delete(orgCustomConnectors)
-        .where(eq(orgCustomConnectors.id, body.connector_id));
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
-    }
-  }
-}
-
 type ChatEventSnapshotFixtureAction = Extract<
   TestRuntimeStateActionBody,
   {
@@ -1431,13 +1376,6 @@ const postRuntimeStateAction$ = command(
     }
     if (isVm0ManagedModelKeyAction(body)) {
       return await vm0ManagedModelKeyActionResponse(db, body, signal);
-    }
-    if (isCustomConnectorDefinitionFixtureAction(body)) {
-      return await customConnectorDefinitionFixtureActionResponse(
-        db,
-        body,
-        signal,
-      );
     }
     switch (body.action) {
       case "enable-fake-kms": {
