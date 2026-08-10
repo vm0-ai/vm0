@@ -86,5 +86,9 @@ export default defineConfig({
         storageState: STORAGE_STATE,
       },
     },
+    {
+      name: "runner-api",
+      testMatch: "runner-api.spec.ts",
+    },
   ],
 });

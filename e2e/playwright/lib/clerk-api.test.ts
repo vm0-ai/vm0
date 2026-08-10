@@ -8,9 +8,12 @@ import { test } from "node:test";
 
 import {
   createOrganization,
+  createOrganizationMembership,
   createUser,
+  deleteOrganizationById,
   deleteStaleTestUsers,
   deleteUserByEmail,
+  runnerTestAccounts,
 } from "./clerk-api";
 
 interface ObservedRequest {
@@ -90,6 +93,77 @@ test("retries an idempotent membership role update", async () => {
           "PATCH",
           "/v1/organizations/org_test/memberships/user_test",
         ),
+        2,
+      );
+    },
+  );
+});
+
+test("creates runner accounts with the historical three email names", () => {
+  const previousJobRef = process.env.JOB_REF;
+  process.env.JOB_REF = "pull-25550";
+  try {
+    assert.deepEqual(runnerTestAccounts(), {
+      runner: "pull-25550+clerk_test+runner@vm0-e2e.ai",
+      codex: "pull-25550+clerk_test+runner-real-codex@vm0-e2e.ai",
+      claude: "pull-25550+clerk_test+runner-real-claude@vm0-e2e.ai",
+    });
+  } finally {
+    restoreEnvironmentVariable("JOB_REF", previousJobRef);
+  }
+});
+
+test("creates an organization member without replaying the POST", async () => {
+  await withClerkServer(
+    (request, response) => {
+      if (
+        request.method === "POST" &&
+        request.url === "/v1/organizations/org_test/memberships"
+      ) {
+        sendJson(response, 200, { role: "org:member" });
+        return;
+      }
+      sendJson(response, 404, { errors: [] });
+    },
+    async (requests) => {
+      await createOrganizationMembership("org_test", "user_member");
+      assert.equal(
+        countRequests(
+          requests,
+          "POST",
+          "/v1/organizations/org_test/memberships",
+        ),
+        1,
+      );
+    },
+  );
+});
+
+test("retries organization cleanup and accepts not found", async () => {
+  await withClerkServer(
+    (request, response, requests) => {
+      if (
+        request.method === "DELETE" &&
+        request.url === "/v1/organizations/org_cleanup"
+      ) {
+        const deleteCount = countRequests(
+          requests,
+          "DELETE",
+          "/v1/organizations/org_cleanup",
+        );
+        if (deleteCount === 1) {
+          sendJson(response, 503, { errors: [] }, { "retry-after": "0" });
+        } else {
+          sendJson(response, 404, { errors: [] });
+        }
+        return;
+      }
+      sendJson(response, 404, { errors: [] });
+    },
+    async (requests) => {
+      await deleteOrganizationById("org_cleanup");
+      assert.equal(
+        countRequests(requests, "DELETE", "/v1/organizations/org_cleanup"),
         2,
       );
     },

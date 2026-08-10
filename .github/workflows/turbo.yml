@@ -1848,7 +1848,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Run Playwright E2E tests
         continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
-        run: cd e2e && npx playwright test --config playwright/playwright.config.ts
+        run: cd e2e && npx playwright test --config playwright/playwright.config.ts --project setup --project paid-onboarding --project features
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
@@ -1873,6 +1873,192 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Exercise the deployed runner exclusively through the same Clerk-authenticated
+  # Zero APIs used by the product. This stage must not use /api/test fixtures or
+  # mint a test-only API credential.
+  cli-e2e-03-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: cli-e2e-03-runner-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs:
+      - prepare
+      - deploy-api
+      - deploy-app
+      - deploy-stripe-listener
+      - deploy-runner-start
+    if: |
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.playwright-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-app.result == 'success' &&
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success') &&
+      needs.deploy-runner-start.result == 'success'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Check runner API E2E types
+        run: cd e2e && pnpm check-types
+      - name: Run runner API fixture integration tests
+        run: cd e2e && pnpm test
+      - name: Install Playwright browser
+        run: cd e2e && pnpm exec playwright install --with-deps chromium
+      - name: Install cloudflared
+        shell: bash
+        env:
+          CLOUDFLARED_VERSION: "2026.6.0"
+        run: |
+          set -euo pipefail
+          deb_arch="$(dpkg --print-architecture)"
+          case "$deb_arch" in
+            amd64) cloudflared_arch=amd64 ;;
+            arm64) cloudflared_arch=arm64 ;;
+            *) echo "Unsupported cloudflared architecture: ${deb_arch}" >&2; exit 1 ;;
+          esac
+          curl -sfL \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${cloudflared_arch}.deb" \
+            -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+      - name: Start Stripe webhook forwarding
+        # Staging receives webhooks from the Dashboard endpoint; PR previews use
+        # the long-running listener from deploy-stripe-listener.
+        if: github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          bash e2e/scripts/ensure-stripe-cli.sh
+
+          stripe_webhook_secret="$(stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret 2>/dev/null)"
+          echo "::add-mask::$stripe_webhook_secret"
+
+          forward_url="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
+            echo "::add-mask::$encoded_bypass"
+            forward_url="${forward_url}?x-vercel-protection-bypass=${encoded_bypass}"
+          fi
+          stripe listen \
+            --api-key "$STRIPE_SECRET_KEY" \
+            --events checkout.session.completed,payment_intent.succeeded,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
+            --forward-to "$forward_url" \
+            > /tmp/runner-api-stripe-listen.log 2>&1 &
+          stripe_pid="$!"
+          echo "$stripe_pid" > /tmp/runner-api-stripe-listen.pid
+
+          for _ in {1..10}; do
+            if grep -qi 'ready' /tmp/runner-api-stripe-listen.log; then
+              echo "Stripe webhook forwarding started for $forward_url"
+              exit 0
+            fi
+            if ! kill -0 "$stripe_pid" 2>/dev/null; then
+              sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' /tmp/runner-api-stripe-listen.log >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Stripe CLI did not become ready" >&2
+          sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' /tmp/runner-api-stripe-listen.log >&2
+          exit 1
+        env:
+          API_PREVIEW_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Start external provider simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_port=4705
+          control_token="$(openssl rand -hex 32)"
+          echo "::add-mask::$control_token"
+
+          pushd e2e >/dev/null
+          E2E_PROVIDER_SIMULATOR_PORT="$simulator_port" \
+            E2E_PROVIDER_SIMULATOR_CONTROL_TOKEN="$control_token" \
+            pnpm exec tsx playwright/simulator/provider-simulator.ts \
+            > /tmp/provider-simulator.log 2>&1 &
+          simulator_pid="$!"
+          popd >/dev/null
+          echo "$simulator_pid" > /tmp/provider-simulator.pid
+
+          for _ in {1..20}; do
+            if curl -fsS "http://127.0.0.1:${simulator_port}/health" >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$simulator_pid" 2>/dev/null; then
+              cat /tmp/provider-simulator.log >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:${simulator_port}/health" >/dev/null
+
+          # Force scripts/tunnel.sh into anonymous quick-tunnel mode in CI.
+          git config user.email github-actions@users.noreply.github.com
+          simulator_url="$(bash scripts/tunnel.sh "$simulator_port")"
+          curl -fsS "${simulator_url}/health" >/dev/null
+
+          echo "E2E_PROVIDER_SIMULATOR_URL=$simulator_url" >> "$GITHUB_ENV"
+          echo "E2E_PROVIDER_SIMULATOR_CONTROL_URL=http://127.0.0.1:${simulator_port}" >> "$GITHUB_ENV"
+          echo "E2E_PROVIDER_SIMULATOR_CONTROL_TOKEN=$control_token" >> "$GITHUB_ENV"
+      - name: Run runner API E2E tests
+        run: cd e2e && pnpm exec playwright test --config playwright/playwright.config.ts --project runner-api
+        env:
+          E2E_RUNNER_API: "1"
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          JOB_REF: ${{ format('{0}-runner-api', needs.prepare.outputs.job-ref) }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Print runner API service logs
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/provider-simulator.log ]]; then
+            tail -200 /tmp/provider-simulator.log
+          fi
+          if [[ -f /tmp/runner-api-stripe-listen.log ]]; then
+            tail -200 /tmp/runner-api-stripe-listen.log | sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g'
+          fi
+      - name: Stop runner API support services
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/provider-simulator.pid ]]; then
+            kill "$(cat /tmp/provider-simulator.pid)" 2>/dev/null || true
+          fi
+          if [[ -f /tmp/cloudflared-4705.pid ]]; then
+            kill "$(cat /tmp/cloudflared-4705.pid)" 2>/dev/null || true
+          fi
+          if [[ -f /tmp/runner-api-stripe-listen.pid ]]; then
+            kill "$(cat /tmp/runner-api-stripe-listen.pid)" 2>/dev/null || true
+          fi
+      - name: Upload runner API Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: runner-api-playwright-report
           path: |
             e2e/playwright-report/
             e2e/test-results/
@@ -2586,6 +2772,7 @@ jobs:
       - deploy-cli
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
+      - cli-e2e-03-runner
       - cli-e2e-01-serial
       - deploy-runner-prepare
       - deploy-runner-start
@@ -2629,11 +2816,16 @@ jobs:
           if [ "${{ needs.prepare.outputs.playwright-runner-consumer-needed }}" = "true" ]; then
             RUNNER_DEPLOY_SKIP_ALLOWED=""
           fi
+          RUNNER_E2E_SKIP_ALLOWED="skipped"
+          if [ "${{ needs.prepare.outputs.playwright-runner-consumer-needed }}" = "true" ]; then
+            RUNNER_E2E_SKIP_ALLOWED=""
+          fi
           CF_APP_SKIP_ALLOWED=""
           if [ "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
             # External fork PRs cannot access runner infra secrets, so their
             # runner deployment jobs are expected to skip.
             RUNNER_DEPLOY_SKIP_ALLOWED="true"
+            RUNNER_E2E_SKIP_ALLOWED="skipped"
             CF_APP_SKIP_ALLOWED="true"
           fi
           if [ "${{ github.actor == 'dependabot[bot]' }}" = "true" ]; then
@@ -2685,6 +2877,7 @@ jobs:
           check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
+          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
