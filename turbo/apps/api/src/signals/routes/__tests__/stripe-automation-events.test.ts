@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { testStripeAutomationEventFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-automation-events";
+import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -24,6 +25,7 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
 import { testStripeAutomationEventRoutes } from "../test-stripe-automation-events";
+import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
@@ -58,6 +60,13 @@ function automationsClient() {
   return setupApp({ context, routes: zeroWorkflowAutomationsRoutes })(
     zeroWorkflowAutomationsContract,
   );
+}
+
+function workflowAutomationExecutionClient() {
+  return setupApp({
+    context,
+    routes: testWorkflowAutomationExecutionRoutes,
+  })(testWorkflowAutomationExecutionContract);
 }
 
 async function connectStripeOAuth(
@@ -258,6 +267,15 @@ async function executeCron(): Promise<{
   });
   expect(response.status).toBe(200);
   return cronResultSchema.parse(await response.json());
+}
+
+async function executeAutomation(scenario: Scenario) {
+  return await accept(
+    workflowAutomationExecutionClient().execute({
+      body: { automation_id: scenario.automationId },
+    }),
+    [200],
+  );
 }
 
 async function applyDeliveryFixture(
@@ -839,9 +857,14 @@ describe("Stripe automation event webhook", () => {
   });
 
   it("updates receipt health across filters and delivers unknown billing reasons to unfiltered automations", async () => {
-    const filtered = await setupScenario({ billingReasons: ["manual"] });
-    const unfiltered = await setupScenario();
+    const accountId = `acct_stripe_unknown_${randomUUID()}`;
+    const filtered = await setupScenario({
+      accountId,
+      billingReasons: ["manual"],
+    });
+    const unfiltered = await setupScenario({ accountId });
     const unknownReasonEvent = invoicePaidEvent({
+      accountId,
       eventId: "evt_unknown_billing_reason",
       billingReason: "future_reason",
     });
@@ -856,7 +879,7 @@ describe("Stripe automation event webhook", () => {
       lastMatchingEventReceivedAt: expect.any(String),
       lastDeliveryStatus: "pending",
     });
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(unfiltered)).body.executed).toBe(1);
     const unknownClaim = await claimScenarioRun(
       unfiltered,
       "evt_unknown_billing_reason",
