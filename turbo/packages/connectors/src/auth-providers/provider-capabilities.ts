@@ -1905,13 +1905,13 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
       grant: {
         kind: "auth-code",
         callbackOrigin: "web",
-        outputNames: ["accessToken", "refreshToken"],
+        outputNames: ["accessToken"],
         startOptionNames: [],
       },
       access: {
-        kind: "refresh-token",
-        inputNames: ["refreshToken"],
-        outputNames: ["accessToken", "refreshToken"],
+        kind: "static",
+        inputNames: [],
+        outputNames: [],
         platformSecrets: [],
       },
       revoke: {

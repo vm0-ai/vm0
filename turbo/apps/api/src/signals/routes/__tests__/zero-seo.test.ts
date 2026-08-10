@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { now, nowDate } from "../../../lib/time";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   seedOrgMetadata,
@@ -33,7 +33,6 @@ const SEO_ROUTES = Object.freeze([
   ...zeroSeoRoutes,
 ]);
 const DATAFORSEO_BASE_URL = "https://api.dataforseo.com";
-const SERPAPI_SEARCH_URL = "https://serpapi.com/search.json";
 
 type OrgApiTestUser = ApiTestUser & { readonly orgId: string };
 
@@ -58,13 +57,6 @@ async function seedSeoPricing(): Promise<void> {
       category: "provider_cost_usd_micros",
       unitPrice: 1250,
       unitSize: 1_000_000,
-    },
-    {
-      kind: "seo",
-      provider: "serpapi",
-      category: "search",
-      unitPrice: 32,
-      unitSize: 1,
     },
   ]);
 }
@@ -112,7 +104,6 @@ async function credits(actor: ApiTestUser): Promise<number> {
 }
 
 function configureProviders(): void {
-  mockEnv("ZERO_SEO_SERPAPI_TOKEN", "test-serpapi-token");
   mockEnv("ZERO_SEO_DATAFORSEO_LOGIN", "test-dataforseo-login");
   mockEnv("ZERO_SEO_DATAFORSEO_PASSWORD", "test-dataforseo-password");
 }
@@ -191,7 +182,6 @@ describe("zero SEO routes", () => {
           engine: "google",
           location: "United States",
           languageCode: "en",
-          countryCode: "us",
           device: "desktop",
           limit: 10,
         },
@@ -210,10 +200,13 @@ describe("zero SEO routes", () => {
     configureProviders();
     let providerRequests = 0;
     server.use(
-      http.get(SERPAPI_SEARCH_URL, () => {
-        providerRequests += 1;
-        return HttpResponse.json({});
-      }),
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/organic/live/advanced`,
+        () => {
+          providerRequests += 1;
+          return HttpResponse.json({});
+        },
+      ),
     );
 
     const response = await accept(
@@ -221,11 +214,10 @@ describe("zero SEO routes", () => {
         headers: authenticate(actor),
         body: {
           query: "technical seo",
-          provider: "serpapi",
+          provider: "dataforseo",
           engine: "google",
           location: "United States",
           languageCode: "en",
-          countryCode: "us",
           device: "desktop",
           limit: 10,
         },
@@ -238,14 +230,25 @@ describe("zero SEO routes", () => {
     expect(providerRequests).toBe(0);
   });
 
-  it("does not charge credits when the provider fails", async () => {
+  it("does not charge DataForSEO authorization failures", async () => {
     const actor = await seedActor();
     configureProviders();
     const beforeCredits = await credits(actor);
+    context.mocks.axiomLogging.warn.mockClear();
     server.use(
-      http.get(SERPAPI_SEARCH_URL, () => {
-        return HttpResponse.json({ error: "slow down" }, { status: 429 });
-      }),
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/organic/live/advanced`,
+        () => {
+          return HttpResponse.json(
+            {
+              status_code: 40_100,
+              status_message:
+                "You are not authorized. Check your login and password.",
+            },
+            { status: 401, statusText: "Unauthorized" },
+          );
+        },
+      ),
     );
 
     const response = await accept(
@@ -253,11 +256,10 @@ describe("zero SEO routes", () => {
         headers: authenticate(actor),
         body: {
           query: "technical seo",
-          provider: "serpapi",
+          provider: "dataforseo",
           engine: "google",
           location: "United States",
           languageCode: "en",
-          countryCode: "us",
           device: "desktop",
           limit: 10,
         },
@@ -266,8 +268,28 @@ describe("zero SEO routes", () => {
     );
 
     expectApiError(response.body);
-    expect(response.body.error.code).toBe("SEO_PROVIDER_RATE_LIMITED");
+    expect(response.body.error.code).toBe("SEO_PROVIDER_ERROR");
     await expect(credits(actor)).resolves.toBe(beforeCredits);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "DataForSEO API request failed",
+      expect.objectContaining({
+        operation: "serp",
+        endpoint: "/v3/serp/google/organic/live/advanced",
+        httpStatus: 401,
+        httpStatusText: "Unauthorized",
+        providerStatusCode: 40_100,
+        providerStatusMessage:
+          "You are not authorized. Check your login and password.",
+      }),
+    );
+    const warningCalls = JSON.stringify(
+      context.mocks.axiomLogging.warn.mock.calls,
+    );
+    expect(warningCalls).not.toContain("technical seo");
+    expect(warningCalls).not.toContain("test-dataforseo-login");
+    expect(warningCalls).not.toContain("test-dataforseo-password");
+    expect(warningCalls).not.toContain("Basic ");
   });
 
   it("maps DataForSEO operations and bills the reported cost with a 25% markup", async () => {
@@ -329,7 +351,6 @@ describe("zero SEO routes", () => {
           engine: "google",
           location: "United States",
           languageCode: "en",
-          countryCode: "us",
           device: "desktop",
           limit: 10,
         },
@@ -455,7 +476,6 @@ describe("zero SEO routes", () => {
           engine: "bing",
           location: "United States",
           languageCode: "en",
-          countryCode: "us",
           device: "mobile",
           limit: 20,
         },
@@ -471,7 +491,6 @@ describe("zero SEO routes", () => {
           engine: "google_maps",
           location: "Austin, Texas, United States",
           languageCode: "en",
-          countryCode: "us",
           device: "mobile",
           limit: 100,
         },
@@ -487,7 +506,6 @@ describe("zero SEO routes", () => {
           engine: "google_news",
           location: "United States",
           languageCode: "en",
-          countryCode: "us",
           device: "desktop",
           limit: 100,
         },
@@ -547,81 +565,5 @@ describe("zero SEO routes", () => {
       ],
     ]);
     expect(beforeCredits - (await credits(actor))).toBe(31);
-  });
-
-  it("charges fresh SerpAPI results and leaves confirmed cache hits free", async () => {
-    const actor = await seedActor();
-    configureProviders();
-    const beforeCredits = await credits(actor);
-    let requestCount = 0;
-    server.use(
-      http.get(SERPAPI_SEARCH_URL, ({ request }) => {
-        requestCount += 1;
-        const url = new URL(request.url);
-        expect(url.searchParams.get("api_key")).toBe("test-serpapi-token");
-        expect(url.searchParams.get("engine")).toBe("google_maps");
-        expect(url.searchParams.get("q")).toBe("coffee shops");
-        expect(url.searchParams.get("location")).toBe(
-          "Austin, Texas, United States",
-        );
-        expect(url.searchParams.get("z")).toBe("14");
-        return HttpResponse.json({
-          search_metadata: {
-            id: `search-${requestCount}`,
-            status: "Success",
-            created_at:
-              requestCount === 1
-                ? nowDate().toISOString()
-                : "2000-01-01 00:00:00 UTC",
-          },
-          search_parameters: {
-            api_key: "test-serpapi-token",
-            engine: "google_maps",
-            q: "coffee shops",
-          },
-          local_results: [{ title: "Coffee" }],
-        });
-      }),
-    );
-    const request = {
-      query: "coffee shops",
-      provider: "serpapi" as const,
-      engine: "google_maps" as const,
-      location: "Austin, Texas, United States",
-      languageCode: "en",
-      countryCode: "us",
-      device: "mobile" as const,
-      limit: 10,
-    };
-    const seoClient = client()(zeroSeoContract);
-
-    const fresh = await accept(
-      seoClient.serp({ headers: authenticate(actor), body: request }),
-      [200],
-    );
-    const cached = await accept(
-      seoClient.serp({ headers: authenticate(actor), body: request }),
-      [200],
-    );
-
-    expect(fresh.body).toMatchObject({
-      provider: "serpapi",
-      billingQuantity: 1,
-      cached: false,
-      creditsCharged: 32,
-      result: {
-        search_parameters: { engine: "google_maps", q: "coffee shops" },
-      },
-    });
-    expect(fresh.body.result).not.toMatchObject({
-      search_parameters: { api_key: expect.anything() },
-    });
-    expect(cached.body).toMatchObject({
-      provider: "serpapi",
-      billingQuantity: 0,
-      cached: true,
-      creditsCharged: 0,
-    });
-    expect(beforeCredits - (await credits(actor))).toBe(32);
   });
 });
