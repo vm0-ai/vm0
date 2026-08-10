@@ -670,7 +670,7 @@ impl ProcessOutputMode {
     /// Default stream byte budget for long-running process logs.
     pub const DEFAULT_STREAM_LIMIT_BYTES: u32 = 64 * 1024 * 1024;
     /// Default maximum size of each streamed process stdout chunk.
-    pub const DEFAULT_CHUNK_LIMIT_BYTES: u32 = 8 * 1024;
+    pub const DEFAULT_CHUNK_LIMIT_BYTES: u32 = 64 * 1024;
     /// Default bounded host queue capacity for process stdout chunks.
     pub const DEFAULT_QUEUE_CAPACITY: usize = 8192;
 
@@ -872,7 +872,7 @@ mod tests {
             ProcessOutputMode::stream(),
             ProcessOutputMode::Stream {
                 stream_limit_bytes: ProcessOutputMode::DEFAULT_STREAM_LIMIT_BYTES,
-                chunk_limit_bytes: ProcessOutputMode::DEFAULT_CHUNK_LIMIT_BYTES,
+                chunk_limit_bytes: 64 * 1024,
                 queue_capacity: ProcessOutputMode::DEFAULT_QUEUE_CAPACITY,
                 stderr_capture_limit_bytes: None,
             }
@@ -885,7 +885,7 @@ mod tests {
             ProcessOutputMode::stream_with_stderr_capture(4096),
             ProcessOutputMode::Stream {
                 stream_limit_bytes: ProcessOutputMode::DEFAULT_STREAM_LIMIT_BYTES,
-                chunk_limit_bytes: ProcessOutputMode::DEFAULT_CHUNK_LIMIT_BYTES,
+                chunk_limit_bytes: 64 * 1024,
                 queue_capacity: ProcessOutputMode::DEFAULT_QUEUE_CAPACITY,
                 stderr_capture_limit_bytes: Some(4096),
             }
