@@ -79,6 +79,10 @@ export interface ComposerConnectorSignals {
   >;
 }
 
+const relatedConnectorCatalogKeyword$ = computed(() => {
+  return "";
+});
+
 interface AgentCustomConnectorAuthorizationRequestBroker {
   load(params: {
     readonly createClient: ZeroClientFactory;
@@ -319,13 +323,12 @@ export function createComposerConnectorSignals(
   agentId: string,
 ): ComposerConnectorSignals {
   const ui = createConnectorUiSignals();
-  const relatedKeyword$ = computed(() => {
-    return "";
-  });
   const addDialogKeyword$ = computed((get) => {
     return get(ui.connectorUiState$).addDialogSearch;
   });
-  const relatedCatalog$ = relatedConnectorCatalog(relatedKeyword$);
+  const relatedCatalog$ = relatedConnectorCatalog(
+    relatedConnectorCatalogKeyword$,
+  );
   const searchedCatalog$ = relatedConnectorCatalog(addDialogKeyword$);
   const relatedCatalogItems$ = computed(async (get) => {
     return (await get(relatedCatalog$)).connectors;

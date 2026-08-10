@@ -343,18 +343,6 @@ export const apiConnectorsHandlers = [
     });
   }),
 
-  mockApi(zeroConnectorCatalogContract.get, ({ params, respond }) => {
-    const connector = mockConnectorCatalogStatus().find((candidate) => {
-      return candidate.slug === params.connectorSlug;
-    });
-    if (!connector) {
-      return respond(404, {
-        error: { message: "Connector not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, { connector });
-  }),
-
   mockApi(zeroCustomConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [] });
   }),
@@ -399,6 +387,20 @@ export const apiConnectorsHandlers = [
         unresolvedBridgeCredentials: 5,
       },
     });
+  }),
+
+  // Keep this parameterized route after the static /diagnostics route so the
+  // mock server does not interpret "diagnostics" as a connector slug.
+  mockApi(zeroConnectorCatalogContract.get, ({ params, respond }) => {
+    const connector = mockConnectorCatalogStatus().find((candidate) => {
+      return candidate.slug === params.connectorSlug;
+    });
+    if (!connector) {
+      return respond(404, {
+        error: { message: "Connector not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, { connector });
   }),
 
   mockApi(zeroConnectorCatalogContract.permissions, ({ params, respond }) => {
