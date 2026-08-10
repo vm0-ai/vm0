@@ -11,7 +11,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { deleteCustomConnectorMemberConnection } from "./custom-connector-credential-storage.service";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
-import { commitCustomConnectorRuntimeMutation } from "./custom-connector-runtime-wakeup.service";
+import { commitConnectorRuntimeMutation } from "./connector-runtime-wakeup.service";
 import {
   customConnectorDefinitionSelection,
   type CustomConnectorDefinitionRow,
@@ -410,14 +410,19 @@ export const ensureFeishuCustomConnector$ = command(
     const reconciliation = db.transaction(async (tx) => {
       return await reconcileFeishuCustomConnector(tx, args, signal);
     });
-    const result = await commitCustomConnectorRuntimeMutation(
+    const result = await commitConnectorRuntimeMutation(
       reconciliation,
       (connector) => {
         return connector?.runtimeChanged
           ? {
               db,
               scope: { orgId: args.orgId },
-              customConnectorIds: [connector.connectorId],
+              targets: [
+                {
+                  kind: "custom",
+                  customConnectorId: connector.connectorId,
+                },
+              ],
             }
           : undefined;
       },
@@ -465,14 +470,14 @@ export const deleteFeishuCustomConnector$ = command(
         ),
       )
       .returning({ id: orgCustomConnectors.id });
-    const [deleted] = await commitCustomConnectorRuntimeMutation(
+    const [deleted] = await commitConnectorRuntimeMutation(
       deletion,
       ([connector]) => {
         return connector
           ? {
               db: set(writeDb$),
               scope: { orgId: args.orgId },
-              customConnectorIds: [connector.id],
+              targets: [{ kind: "custom", customConnectorId: connector.id }],
             }
           : undefined;
       },

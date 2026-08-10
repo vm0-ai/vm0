@@ -64,7 +64,7 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
-import { publishCustomConnectorRuntimeSyncWakeups } from "./custom-connector-runtime-wakeup.service";
+import { publishConnectorRuntimeSyncWakeups } from "./connector-runtime-wakeup.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { createAcceptedConnectorServerFirewallCatalog } from "./connector-server-firewall-catalog.service";
 
@@ -234,10 +234,12 @@ async function publishCatalogPermissionBundleWakeupsInner(args: {
 
   await Promise.all(
     [...affectedByOrg].map(async ([orgId, customConnectorIds]) => {
-      await publishCustomConnectorRuntimeSyncWakeups({
+      await publishConnectorRuntimeSyncWakeups({
         db: args.db,
         scope: { orgId },
-        customConnectorIds,
+        targets: customConnectorIds.map((customConnectorId) => {
+          return { kind: "custom" as const, customConnectorId };
+        }),
       });
     }),
   );

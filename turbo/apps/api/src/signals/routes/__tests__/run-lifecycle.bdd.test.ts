@@ -8430,7 +8430,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(defaultPermissionRuntime?.nextSyncAt).toBeUndefined();
 
+    context.mocks.ably.publish.mockClear();
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    const restoredGrantWakeups = context.mocks.ably.publish.mock.calls.filter(
+      ([eventName]) => {
+        return eventName === "connector-runtime-sync";
+      },
+    );
+    expect(restoredGrantWakeups).toStrictEqual([
+      ["connector-runtime-sync", { runId: run.runId, target: targetIdentity }],
+    ]);
     const [restoredRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
