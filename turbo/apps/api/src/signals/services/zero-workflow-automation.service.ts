@@ -22,25 +22,25 @@ import {
   webhookReceivedEventConfigSchema,
   type ChatRunFinishedEventConfig,
   type ChatThreadWorkflowAutomation,
-  type GmailWorkflowEventConfig,
-  type GoogleCalendarWorkflowEventConfig,
-  type GoogleMeetWorkflowEventConfig,
+  type GmailAutomationEventConfig,
+  type GoogleCalendarAutomationEventConfig,
+  type GoogleMeetAutomationEventConfig,
   type GoogleFormsResponseSubmittedEventConfig,
   type GoogleFormsResponseSubmittedEventCreateConfig,
-  type GithubWorkflowEventConfig,
+  type GithubAutomationEventConfig,
   type NotionChildPageCreatedEventConfig,
   type NotionChildPageCreatedEventCreateConfig,
   type NotionDatabaseItemCreatedEventConfig,
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventConfig,
   type NotionPageContentUpdatedEventCreateConfig,
-  type NotionWorkflowEventConfig,
+  type NotionAutomationEventConfig,
   type StripeInvoicePaidEventConfig,
   type StripeInvoicePaidEventCreateConfig,
   type StripeWorkflowAutomationHealth,
   type StrapiEntryPublishedEventConfig,
   type WebhookReceivedEventConfig,
-  type ZeroWorkflowEventType,
+  type ZeroAutomationEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowAutomationsListEntry,
@@ -136,16 +136,16 @@ import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecy
 
 type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 type WorkflowRow = typeof zeroWorkflows.$inferSelect;
-type ChatRunFinishedWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type ChatRunFinishedAutomationEventType = Extract<
+  ZeroAutomationEventType,
   "chat-run-finished"
 >;
-type GmailWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GmailAutomationEventType = Extract<
+  ZeroAutomationEventType,
   "gmail-new-message" | "gmail-label-applied"
 >;
-type GithubWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GithubAutomationEventType = Extract<
+  ZeroAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
   | "github-label-applied"
@@ -153,39 +153,39 @@ type GithubWorkflowEventType = Extract<
   | "github-workflow-job-completed"
   | "github-workflow-run-completed"
 >;
-type GithubWebhookWorkflowEventType = Extract<
-  GithubWorkflowEventType,
+type GithubWebhookAutomationEventType = Extract<
+  GithubAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
   | "github-pull-request-review-submitted"
   | "github-workflow-job-completed"
 >;
-type GoogleCalendarWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GoogleCalendarAutomationEventType = Extract<
+  ZeroAutomationEventType,
   | "google-calendar-event-created"
   | "google-calendar-event-updated"
   | "google-calendar-event-cancelled"
 >;
-type GoogleMeetWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GoogleMeetAutomationEventType = Extract<
+  ZeroAutomationEventType,
   "google-meet-transcript-generated"
 >;
-type GoogleFormsWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type GoogleFormsAutomationEventType = Extract<
+  ZeroAutomationEventType,
   "google-forms-response-submitted"
 >;
-type NotionWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type NotionAutomationEventType = Extract<
+  ZeroAutomationEventType,
   | "notion-child-page-created"
   | "notion-database-item-created"
   | "notion-page-content-updated"
 >;
-type StrapiWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type StrapiAutomationEventType = Extract<
+  ZeroAutomationEventType,
   "strapi-entry-published"
 >;
-type StripeInvoicePaidWorkflowEventType = Extract<
-  ZeroWorkflowEventType,
+type StripeInvoicePaidAutomationEventType = Extract<
+  ZeroAutomationEventType,
   "stripe-invoice-paid"
 >;
 
@@ -445,9 +445,9 @@ function rowToSchedule(row: AutomationRow): ZeroWorkflowSchedule {
   };
 }
 
-function supportedWorkflowEventType(
+function supportedAutomationEventType(
   eventType: string | null,
-): eventType is ZeroWorkflowEventType {
+): eventType is ZeroAutomationEventType {
   return (
     eventType === "chat-run-finished" ||
     eventType === "gmail-new-message" ||
@@ -474,13 +474,13 @@ function supportedWorkflowEventType(
 
 function supportedChatRunFinishedEventType(
   eventType: string | null,
-): eventType is ChatRunFinishedWorkflowEventType {
+): eventType is ChatRunFinishedAutomationEventType {
   return eventType === "chat-run-finished";
 }
 
 function supportedGmailEventType(
   eventType: string | null,
-): eventType is GmailWorkflowEventType {
+): eventType is GmailAutomationEventType {
   return (
     eventType === "gmail-new-message" || eventType === "gmail-label-applied"
   );
@@ -488,7 +488,7 @@ function supportedGmailEventType(
 
 function supportedGithubEventType(
   eventType: string | null,
-): eventType is GithubWorkflowEventType {
+): eventType is GithubAutomationEventType {
   return (
     eventType === "github-label-applied" ||
     eventType === "github-deployment-status-created" ||
@@ -501,7 +501,7 @@ function supportedGithubEventType(
 
 function supportedGithubWebhookEventType(
   eventType: string | null,
-): eventType is GithubWebhookWorkflowEventType {
+): eventType is GithubWebhookAutomationEventType {
   return (
     eventType === "github-deployment-status-created" ||
     eventType === "github-issue-comment-created" ||
@@ -512,7 +512,7 @@ function supportedGithubWebhookEventType(
 
 function supportedGoogleCalendarEventType(
   eventType: string | null,
-): eventType is GoogleCalendarWorkflowEventType {
+): eventType is GoogleCalendarAutomationEventType {
   return (
     eventType === "google-calendar-event-created" ||
     eventType === "google-calendar-event-updated" ||
@@ -522,19 +522,19 @@ function supportedGoogleCalendarEventType(
 
 function supportedGoogleMeetEventType(
   eventType: string | null,
-): eventType is GoogleMeetWorkflowEventType {
+): eventType is GoogleMeetAutomationEventType {
   return eventType === "google-meet-transcript-generated";
 }
 
 function supportedGoogleFormsEventType(
   eventType: string | null,
-): eventType is GoogleFormsWorkflowEventType {
+): eventType is GoogleFormsAutomationEventType {
   return eventType === "google-forms-response-submitted";
 }
 
 function supportedNotionEventType(
   eventType: string | null,
-): eventType is NotionWorkflowEventType {
+): eventType is NotionAutomationEventType {
   return (
     eventType === "notion-child-page-created" ||
     eventType === "notion-database-item-created" ||
@@ -544,13 +544,13 @@ function supportedNotionEventType(
 
 function supportedStrapiEventType(
   eventType: string | null,
-): eventType is StrapiWorkflowEventType {
+): eventType is StrapiAutomationEventType {
   return eventType === "strapi-entry-published";
 }
 
 function supportedStripeInvoicePaidEventType(
   eventType: string | null,
-): eventType is StripeInvoicePaidWorkflowEventType {
+): eventType is StripeInvoicePaidAutomationEventType {
   return eventType === "stripe-invoice-paid";
 }
 
@@ -912,7 +912,7 @@ async function rowToPublicSummary(
   row: AutomationRow,
   options: { readonly chatThreadId?: string | null } = {},
 ): Promise<ZeroWorkflowAutomationSummary | null> {
-  if (row.kind === "event" && !supportedWorkflowEventType(row.eventType)) {
+  if (row.kind === "event" && !supportedAutomationEventType(row.eventType)) {
     return null;
   }
   if (
@@ -1324,8 +1324,8 @@ interface CreateGmailEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GmailWorkflowEventType;
-  readonly eventConfig: GmailWorkflowEventConfig;
+  readonly eventType: GmailAutomationEventType;
+  readonly eventConfig: GmailAutomationEventConfig;
   readonly enabled: boolean;
   readonly autonomyBudget?: number;
 }
@@ -1341,42 +1341,42 @@ type CreateGithubEventAutomationInput =
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-label-applied";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "label_applied" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-workflow-run-completed";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "workflow_run_completed" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-workflow-job-completed";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "workflow_job_completed" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-pull-request-review-submitted";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "pull_request_review_submitted" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-deployment-status-created";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "deployment_status_created" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
       readonly eventType: "github-issue-comment-created";
       readonly eventConfig: Extract<
-        GithubWorkflowEventConfig,
+        GithubAutomationEventConfig,
         { readonly event: "issue_comment_created" }
       >;
     });
@@ -1385,7 +1385,7 @@ interface CreateChatRunFinishedEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: ChatRunFinishedWorkflowEventType;
+  readonly eventType: ChatRunFinishedAutomationEventType;
   readonly eventConfig: ChatRunFinishedEventConfig;
   readonly enabled: boolean;
   readonly autonomyBudget?: number;
@@ -1395,8 +1395,8 @@ interface CreateGoogleCalendarEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GoogleCalendarWorkflowEventType;
-  readonly eventConfig: GoogleCalendarWorkflowEventConfig;
+  readonly eventType: GoogleCalendarAutomationEventType;
+  readonly eventConfig: GoogleCalendarAutomationEventConfig;
   readonly enabled: boolean;
   readonly autonomyBudget?: number;
 }
@@ -1405,7 +1405,7 @@ interface CreateGoogleFormsEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GoogleFormsWorkflowEventType;
+  readonly eventType: GoogleFormsAutomationEventType;
   readonly eventConfig:
     | GoogleFormsResponseSubmittedEventCreateConfig
     | GoogleFormsResponseSubmittedEventConfig;
@@ -1417,8 +1417,8 @@ interface CreateGoogleMeetEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: GoogleMeetWorkflowEventType;
-  readonly eventConfig: GoogleMeetWorkflowEventConfig;
+  readonly eventType: GoogleMeetAutomationEventType;
+  readonly eventConfig: GoogleMeetAutomationEventConfig;
   readonly enabled: boolean;
   readonly autonomyBudget?: number;
 }
@@ -1427,7 +1427,7 @@ interface CreateNotionEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: NotionWorkflowEventType;
+  readonly eventType: NotionAutomationEventType;
   readonly eventConfig:
     | NotionChildPageCreatedEventCreateConfig
     | NotionChildPageCreatedEventConfig
@@ -1443,7 +1443,7 @@ interface CreateStrapiEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: StrapiWorkflowEventType;
+  readonly eventType: StrapiAutomationEventType;
   readonly eventConfig: StrapiEntryPublishedEventConfig;
   readonly enabled: boolean;
   readonly autonomyBudget?: number;
@@ -1453,7 +1453,7 @@ interface CreateStripeInvoicePaidEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
   readonly workflowId: string;
-  readonly eventType: StripeInvoicePaidWorkflowEventType;
+  readonly eventType: StripeInvoicePaidAutomationEventType;
   readonly eventConfig: StripeInvoicePaidEventCreateConfig;
   readonly enabled: boolean;
   readonly autonomyBudget?: number;
@@ -1508,7 +1508,7 @@ function automationCreateInputIsGithubWebhook(
   args: CreateEventAutomationInput,
 ): args is Extract<
   CreateGithubEventAutomationInput,
-  { readonly eventType: GithubWebhookWorkflowEventType }
+  { readonly eventType: GithubWebhookAutomationEventType }
 > {
   return supportedGithubWebhookEventType(args.eventType);
 }
@@ -1549,7 +1549,7 @@ function automationCreateInputIsStripeInvoicePaid(
   return supportedStripeInvoicePaidEventType(args.eventType);
 }
 
-async function insertWorkflowEventAutomation(
+async function insertEventAutomation(
   db: Db,
   args: {
     readonly input:
@@ -1565,7 +1565,7 @@ async function insertWorkflowEventAutomation(
           readonly eventConfig: StripeInvoicePaidEventConfig;
         })
       | (CreateNotionEventAutomationInput & {
-          readonly eventConfig: NotionWorkflowEventConfig;
+          readonly eventConfig: NotionAutomationEventConfig;
         });
     readonly workflowId: string;
     readonly agentId: string;
@@ -1696,12 +1696,12 @@ async function prepareGmailEventConfigForPersist(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly eventType: ZeroWorkflowEventType;
-    readonly eventConfig: GmailWorkflowEventConfig;
+    readonly eventType: ZeroAutomationEventType;
+    readonly eventConfig: GmailAutomationEventConfig;
   },
   signal: AbortSignal,
 ): Promise<
-  | { readonly kind: "ok"; readonly eventConfig: GmailWorkflowEventConfig }
+  | { readonly kind: "ok"; readonly eventConfig: GmailAutomationEventConfig }
   | { readonly kind: "bad-request"; readonly message: string }
 > {
   if (args.eventType === "gmail-new-message") {
@@ -1777,7 +1777,7 @@ async function createGmailEventAutomationForWorkflow(
         signal,
       )
     : false;
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig.eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -1930,7 +1930,7 @@ async function createGithubLabelEventAutomationForWorkflow(
     return preparedConfig;
   }
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig.eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -1964,7 +1964,7 @@ async function createGithubWorkflowRunEventAutomationForWorkflow(
   if (preparedConfig.kind !== "ok") {
     return preparedConfig;
   }
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig.eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -1981,7 +1981,7 @@ async function createGithubWebhookEventAutomationForWorkflow(
     readonly input: Extract<
       CreateGithubEventAutomationInput,
       {
-        readonly eventType: GithubWebhookWorkflowEventType;
+        readonly eventType: GithubWebhookAutomationEventType;
       }
     >;
   },
@@ -1999,7 +1999,7 @@ async function createGithubWebhookEventAutomationForWorkflow(
   if (preparedConfig.kind !== "ok") {
     return preparedConfig;
   }
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: args.input,
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -2011,9 +2011,9 @@ async function createGithubWebhookEventAutomationForWorkflow(
 }
 
 function parseGoogleCalendarEventConfig(
-  eventType: GoogleCalendarWorkflowEventType,
+  eventType: GoogleCalendarAutomationEventType,
   eventConfig: unknown,
-): GoogleCalendarWorkflowEventConfig {
+): GoogleCalendarAutomationEventConfig {
   if (eventType === "google-calendar-event-created") {
     return googleCalendarEventCreatedEventConfigSchema.parse(eventConfig);
   }
@@ -2046,7 +2046,7 @@ async function createGoogleCalendarEventAutomationForWorkflow(
       )
     : false;
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -2149,7 +2149,7 @@ async function createGoogleFormsEventAutomationForWorkflow(
         signal,
       )
     : false;
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: prepared.eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -2232,7 +2232,7 @@ async function createGoogleMeetEventAutomationForWorkflow(
     return { kind: "bad-request", message: subscriptionResult.message };
   }
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -2254,7 +2254,7 @@ async function createNotionEventAutomationForWorkflow(
   let preparedConfig:
     | {
         readonly kind: "ok";
-        readonly eventConfig: NotionWorkflowEventConfig;
+        readonly eventConfig: NotionAutomationEventConfig;
       }
     | { readonly kind: "bad-request"; readonly message: string };
   if (args.input.eventType === "notion-child-page-created") {
@@ -2346,7 +2346,7 @@ async function createNotionEventAutomationForWorkflow(
     return preparedConfig;
   }
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig: preparedConfig.eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -2462,7 +2462,7 @@ async function createStripeInvoicePaidEventAutomationForWorkflow(
     ...args.input.eventConfig,
     ...readiness.binding,
   });
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: { ...args.input, eventConfig },
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -2525,7 +2525,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
     };
   }
 
-  const summary = await insertWorkflowEventAutomation(args.context.db, {
+  const summary = await insertEventAutomation(args.context.db, {
     input: args.input,
     workflowId: args.context.workflowId,
     agentId: args.context.agentId,
@@ -2795,7 +2795,7 @@ async function loadOwnedAutomation(
   }
   if (
     automation.kind === "event" &&
-    !supportedWorkflowEventType(automation.eventType)
+    !supportedAutomationEventType(automation.eventType)
   ) {
     return { kind: "not-found" };
   }
@@ -2821,14 +2821,18 @@ interface UpdateAutomationInput {
   readonly member: WorkflowMember;
   readonly automationId: string;
   readonly schedule?: ZeroWorkflowSchedule;
-  readonly eventConfig?: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
+  readonly eventConfig?:
+    | GmailAutomationEventConfig
+    | GithubAutomationEventConfig;
 }
 
 async function updateAutomationEventConfig(
   db: Db,
   args: {
     readonly automationId: string;
-    readonly eventConfig: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
+    readonly eventConfig:
+      | GmailAutomationEventConfig
+      | GithubAutomationEventConfig;
   },
   signal: AbortSignal,
 ): Promise<ZeroWorkflowAutomationSummary> {
@@ -2848,9 +2852,9 @@ async function updateAutomationEventConfig(
 }
 
 function parseGithubAutomationEventConfig(
-  eventType: GithubWorkflowEventType,
+  eventType: GithubAutomationEventType,
   eventConfig: unknown,
-): GithubWorkflowEventConfig | null {
+): GithubAutomationEventConfig | null {
   const result =
     eventType === "github-label-applied"
       ? githubLabelAppliedEventConfigSchema.safeParse(eventConfig)
@@ -2877,7 +2881,7 @@ async function prepareGithubAutomationEventConfig(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly eventType: GithubWorkflowEventType;
+    readonly eventType: GithubAutomationEventType;
     readonly eventConfig: unknown;
   },
 ) {
@@ -2929,8 +2933,8 @@ const updateEventAutomationForWorkflow$ = command(
       readonly member: WorkflowMember;
       readonly automation: AutomationRow;
       readonly eventConfig?:
-        | GmailWorkflowEventConfig
-        | GithubWorkflowEventConfig;
+        | GmailAutomationEventConfig
+        | GithubAutomationEventConfig;
     },
     signal: AbortSignal,
   ): Promise<AutomationResult> => {

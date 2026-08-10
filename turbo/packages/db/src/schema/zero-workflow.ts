@@ -14,8 +14,8 @@ import {
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
-import type { ZeroWorkflowEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
-export type { ZeroWorkflowEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
+import type { ZeroAutomationEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
+export type { ZeroAutomationEventConfig } from "@vm0/db/jsonb-contracts/zero-workflow";
 
 /**
  * Zero workflow visibility.
@@ -148,7 +148,7 @@ export const workflowUserAutomationThreads = pgTable(
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
 export type ZeroWorkflowAutomationKind = "schedule" | "event";
-export type ZeroWorkflowEventType =
+export type ZeroAutomationEventType =
   | "chat-run-finished"
   | "gmail-new-message"
   | "gmail-label-applied"
@@ -204,8 +204,8 @@ export const zeroWorkflowAutomations = pgTable(
       .default("schedule"),
     eventType: varchar("event_type", {
       length: 64,
-    }).$type<ZeroWorkflowEventType>(),
-    eventConfig: jsonb("event_config").$type<ZeroWorkflowEventConfig>(),
+    }).$type<ZeroAutomationEventType>(),
+    eventConfig: jsonb("event_config").$type<ZeroAutomationEventConfig>(),
     scheduleType: varchar("schedule_type", {
       length: 16,
     }).$type<ZeroWorkflowScheduleType>(),
