@@ -2936,11 +2936,10 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("resumes Feishu DM sessions across messages and quoted replies", async () => {
+  it("resumes Feishu DM sessions across messages", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
-    const { firstMessageId, mainSessionId } =
-      await startFeishuDmSession(fixture);
+    const { mainSessionId } = await startFeishuDmSession(fixture);
 
     await postEvent(
       callbackUrl,
@@ -2959,6 +2958,24 @@ describe("Feishu integration", () => {
       history: `bdd continued feishu history ${followUpRun.id}`,
       assistantText: "Continued Feishu DM answer",
     });
+
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resumes quoted Feishu DM replies without opening a thread", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    const { firstMessageId, mainSessionId } =
+      await startFeishuDmSession(fixture);
 
     const quotedReplyMessageId = `om_${randomUUID()}`;
     await postEvent(
