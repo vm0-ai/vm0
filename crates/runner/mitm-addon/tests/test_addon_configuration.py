@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import sys
+import threading
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -200,6 +201,58 @@ class TestAddonConfiguration:
             str(log_path),
             timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
         )
+
+    def test_configure_does_not_publish_ready_when_jsonl_watcher_fails_to_start(self, tmp_path):
+        ready_path = tmp_path / "addon-ready"
+        startup_error = RuntimeError("can't start new thread")
+        real_thread_start = runner_flush_lifecycle.threading.Thread.start
+
+        def fail_start(_worker: threading.Thread) -> None:
+            raise startup_error
+
+        worker_started = False
+
+        def start_before_ready(worker: threading.Thread) -> None:
+            nonlocal worker_started
+
+            assert not ready_path.exists()
+            real_thread_start(worker)
+            worker_started = True
+
+        with (
+            patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(
+                mitm_addon.ctx,
+                "options",
+                _Options(addon_ready_path=str(ready_path)),
+                create=True,
+            ),
+        ):
+            with (
+                patch.object(
+                    runner_flush_lifecycle.threading.Thread,
+                    "start",
+                    new=fail_start,
+                ),
+                pytest.raises(RuntimeError) as raised,
+            ):
+                mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+
+            assert raised.value is startup_error
+            assert not ready_path.exists()
+
+            try:
+                with patch.object(
+                    runner_flush_lifecycle.threading.Thread,
+                    "start",
+                    new=start_before_ready,
+                ):
+                    mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+
+                assert worker_started
+                assert ready_path.read_text(encoding="utf-8") == "runner-usage-state-id"
+            finally:
+                runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
 
     def test_configure_writes_fallback_pending_state_id_when_usage_state_id_is_empty(
         self, tmp_path
