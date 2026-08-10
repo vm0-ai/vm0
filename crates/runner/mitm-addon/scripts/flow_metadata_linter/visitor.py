@@ -310,6 +310,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_key_checked_node_ids.add(node_id)
         self._add_violations(violations)
 
+    def _record_metadata_subscript_key_violations(self, node: ast.Subscript) -> None:
+        if self._is_metadata_alias_value(node.value):
+            self._add_violations(_metadata_key_expression_violations(self.path, node.slice))
+
     def _metadata_default_argument_names(self, args: ast.arguments) -> set[str]:
         metadata_defaults: set[str] = set()
         positional_args = [*args.posonlyargs, *args.args]
@@ -411,6 +415,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         if isinstance(node, ast.Subscript):
             self._record_metadata_merge_key_violations(node.value)
             self._record_metadata_merge_key_violations(node.slice)
+            self._record_metadata_subscript_key_violations(node)
             self.visit(node.value)
             self.visit(node.slice)
 
@@ -827,8 +832,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
     def visit_Subscript(self, node: ast.Subscript) -> None:
         self._record_metadata_merge_key_violations(node.value)
         self._record_metadata_merge_key_violations(node.slice)
-        if self._is_metadata_alias_value(node.value):
-            self._add_violations(_metadata_key_expression_violations(self.path, node.slice))
+        self._record_metadata_subscript_key_violations(node)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
