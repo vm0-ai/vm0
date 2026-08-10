@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.535.0](https://github.com/vm0-ai/vm0/compare/core-v8.534.2...core-v8.535.0) (2026-08-10)
+
+
+### Features
+
+* enable pi loop for staff org ([#25967](https://github.com/vm0-ai/vm0/issues/25967)) ([74eb0c3](https://github.com/vm0-ai/vm0/commit/74eb0c318edecf04d804fd0cc271d772ba6da232))
+
 ## [8.534.2](https://github.com/vm0-ai/vm0/compare/core-v8.534.1...core-v8.534.2) (2026-08-10)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.411.4](https://github.com/vm0-ai/vm0/compare/api-v1.411.3...api-v1.411.4) (2026-08-10)
+
+
+### Bug Fixes
+
+* **test:** arbitrate managed key fixture acquisition ([#25966](https://github.com/vm0-ai/vm0/issues/25966)) ([deab47d](https://github.com/vm0-ai/vm0/commit/deab47d2a0d9dc166a6bb954192ce9255f4bafea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.535.0
+    * @vm0/db bumped to 1.182.4
+
 ## [1.411.3](https://github.com/vm0-ai/vm0/compare/api-v1.411.2...api-v1.411.3) (2026-08-10)
 
 
