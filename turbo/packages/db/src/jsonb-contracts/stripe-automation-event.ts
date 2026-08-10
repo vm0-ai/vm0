@@ -1,8 +1,8 @@
-export interface StripeWorkflowEventSnapshotMetadata {
+export interface StripeAutomationEventSnapshotMetadata {
   readonly [key: string]: string;
 }
 
-export interface StripeWorkflowEventSnapshotLinePrice {
+export interface StripeAutomationEventSnapshotLinePrice {
   readonly id: string | null;
   readonly productId: string | null;
   readonly currency: string | null;
@@ -10,30 +10,30 @@ export interface StripeWorkflowEventSnapshotLinePrice {
   readonly recurringInterval: string | null;
 }
 
-export interface StripeWorkflowEventSnapshotLinePricing {
+export interface StripeAutomationEventSnapshotLinePricing {
   readonly type: string | null;
   readonly priceId: string | null;
   readonly productId: string | null;
   readonly unitAmountDecimal: string | null;
 }
 
-export interface StripeWorkflowEventSnapshotLine {
+export interface StripeAutomationEventSnapshotLine {
   readonly id: string | null;
   readonly type: string | null;
   readonly description: string | null;
   readonly quantity: number | null;
   readonly amount: number | null;
   readonly currency: string | null;
-  readonly metadata: StripeWorkflowEventSnapshotMetadata;
+  readonly metadata: StripeAutomationEventSnapshotMetadata;
   readonly period: {
     readonly start: string | null;
     readonly end: string | null;
   } | null;
-  readonly price: StripeWorkflowEventSnapshotLinePrice | null;
-  readonly pricing: StripeWorkflowEventSnapshotLinePricing | null;
+  readonly price: StripeAutomationEventSnapshotLinePrice | null;
+  readonly pricing: StripeAutomationEventSnapshotLinePricing | null;
 }
 
-export interface StripeWorkflowEventSnapshot {
+export interface StripeAutomationEventSnapshot {
   readonly event: {
     readonly id: string;
     readonly type: "invoice.paid";
@@ -51,9 +51,9 @@ export interface StripeWorkflowEventSnapshot {
     readonly collectionMethod: string | null;
     readonly hostedInvoiceUrl: string | null;
     readonly invoicePdf: string | null;
-    readonly metadata: StripeWorkflowEventSnapshotMetadata;
+    readonly metadata: StripeAutomationEventSnapshotMetadata;
     readonly lines: {
-      readonly data: readonly StripeWorkflowEventSnapshotLine[];
+      readonly data: readonly StripeAutomationEventSnapshotLine[];
       readonly hasMore: boolean;
       readonly totalCount: number | null;
     };

@@ -10,14 +10,14 @@ import { reconcileGmailWatchesForUser } from "./gmail-workflow-event.service";
 import { reconcileGoogleCalendarWatchesForUser } from "./google-calendar-workflow-event.service";
 import { reconcileGoogleFormsWatchesForUser } from "./google-forms-workflow-event.service";
 
-interface WorkflowEventWatchAutomation {
+interface AutomationEventWatchAutomation {
   readonly orgId: string;
   readonly ownerUserId: string;
   readonly eventType: string | null;
   readonly eventConfig: unknown;
 }
 
-type WorkflowEventWatchTarget =
+type AutomationEventWatchTarget =
   | {
       readonly provider: "gmail";
       readonly orgId: string;
@@ -37,7 +37,7 @@ type WorkflowEventWatchTarget =
     };
 
 function googleCalendarId(
-  automation: WorkflowEventWatchAutomation,
+  automation: AutomationEventWatchAutomation,
 ): string | null {
   if (automation.eventType === "google-calendar-event-created") {
     const config = googleCalendarEventCreatedEventConfigSchema.safeParse(
@@ -60,9 +60,9 @@ function googleCalendarId(
   return null;
 }
 
-function workflowEventWatchTarget(
-  automation: WorkflowEventWatchAutomation,
-): WorkflowEventWatchTarget | null {
+function automationEventWatchTarget(
+  automation: AutomationEventWatchAutomation,
+): AutomationEventWatchTarget | null {
   if (
     automation.eventType === "gmail-new-message" ||
     automation.eventType === "gmail-label-applied"
@@ -99,7 +99,7 @@ function workflowEventWatchTarget(
   };
 }
 
-function targetKey(target: WorkflowEventWatchTarget): string {
+function targetKey(target: AutomationEventWatchTarget): string {
   if (target.provider === "gmail") {
     return `gmail:${target.orgId}:${target.userId}`;
   }
@@ -109,16 +109,16 @@ function targetKey(target: WorkflowEventWatchTarget): string {
   return `google_calendar:${target.orgId}:${target.userId}:${target.calendarId}`;
 }
 
-export async function reconcileWorkflowEventWatches(
+export async function reconcileAutomationEventWatches(
   args: {
     readonly db: Db;
-    readonly automations: readonly WorkflowEventWatchAutomation[];
+    readonly automations: readonly AutomationEventWatchAutomation[];
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const targets = new Map<string, WorkflowEventWatchTarget>();
+  const targets = new Map<string, AutomationEventWatchTarget>();
   for (const automation of args.automations) {
-    const target = workflowEventWatchTarget(automation);
+    const target = automationEventWatchTarget(automation);
     if (target) {
       targets.set(targetKey(target), target);
     }

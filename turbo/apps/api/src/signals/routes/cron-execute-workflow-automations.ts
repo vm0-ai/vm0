@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import type { RouteEntry } from "../route-entry";
 import { executeDueNotionWorkflowEvents$ } from "../services/notion-workflow-event.service";
 import { executeDueStrapiWorkflowEvents$ } from "../services/strapi-workflow-event.service";
-import { executeDueStripeWorkflowEvents$ } from "../services/stripe-workflow-event.service";
+import { executeDueStripeAutomationEvents$ } from "../services/stripe-automation-event.service";
 import { executeDueWorkflowAutomations$ } from "../services/zero-workflow-automation-poller.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
@@ -19,7 +19,7 @@ const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
     const result = await set(executeDueWorkflowAutomations$, signal);
     const notionResult = await set(executeDueNotionWorkflowEvents$, signal);
     const strapiResult = await set(executeDueStrapiWorkflowEvents$, signal);
-    const stripeResult = await set(executeDueStripeWorkflowEvents$, signal);
+    const stripeResult = await set(executeDueStripeAutomationEvents$, signal);
     signal.throwIfAborted();
 
     return {
