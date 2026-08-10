@@ -1,6 +1,6 @@
 {
-  "id": "320a93a7-4622-4ad5-95d0-d801050ad92f",
-  "prevId": "cb808b11-a3ff-49ff-b636-dc490d708975",
+  "id": "9445a6ab-ce05-42b8-800c-9810d0a1487d",
+  "prevId": "320a93a7-4622-4ad5-95d0-d801050ad92f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -936,34 +936,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_agent_runs_completed_org_user": {
-          "name": "idx_agent_runs_completed_org_user",
-          "columns": [
-            {
-              "expression": "completed_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"agent_runs\".\"completed_at\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
