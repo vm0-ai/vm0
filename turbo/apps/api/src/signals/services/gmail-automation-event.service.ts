@@ -45,7 +45,7 @@ import type { WorkflowAutomationContext } from "./workflow-automation-context.se
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
-const log = logger("api:gmail-workflow-event");
+const log = logger("api:gmail-automation-event");
 
 const GMAIL_ACCESS_TOKEN_ENVIRONMENT_NAME = "GMAIL_TOKEN";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";

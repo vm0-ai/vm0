@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { cronRenewGmailWatchesContract } from "@vm0/api-contracts/contracts/cron";
 
 import type { RouteEntry } from "../route-entry";
-import { renewGmailWatches$ } from "../services/gmail-workflow-event.service";
+import { renewGmailWatches$ } from "../services/gmail-automation-event.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const renewGmailWatchesRoute$ = command(
