@@ -212,6 +212,7 @@ export interface ApiTestMocks {
     };
     readonly webhooks: {
       readonly constructEvent: UnknownMock;
+      readonly constructEventAsync: (...args: unknown[]) => Promise<unknown>;
     };
     readonly checkout: {
       readonly sessions: {
@@ -389,6 +390,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     webhooks: {
       constructEvent: vi.fn<(...args: unknown[]) => unknown>(),
+      constructEventAsync: (...args: unknown[]): Promise<unknown> => {
+        return Promise.resolve(stripe.webhooks.constructEvent(...args));
+      },
     },
     checkout: {
       sessions: {
@@ -1005,6 +1009,7 @@ vi.mock("stripe", async (importOriginal) => {
         },
         webhooks: {
           constructEvent: apiTestMocks.stripe.webhooks.constructEvent,
+          constructEventAsync: apiTestMocks.stripe.webhooks.constructEventAsync,
         },
         checkout: {
           sessions: {

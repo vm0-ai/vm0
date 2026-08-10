@@ -1305,6 +1305,53 @@ jobs:
             exit 1
           fi
 
+      - name: Verify API Worker Stripe webhook signing
+        if: github.event_name != 'push'
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
+        run: |
+          set -euo pipefail
+
+          stripe_webhook_secret="$(sed -n 's/^STRIPE_WEBHOOK_SECRET=//p' "$API_ENV_FILE")"
+          echo "::add-mask::$stripe_webhook_secret"
+          if [[ "$stripe_webhook_secret" != whsec_* ]]; then
+            echo "::error::Deployed API environment is missing the Stripe webhook secret"
+            exit 1
+          fi
+
+          probe_body='{"id":"evt_vm0_worker_preview_probe","object":"event","type":"vm0.worker-preview.probe","data":{"object":{}}}'
+          probe_timestamp="$(date +%s)"
+          probe_signature="$(
+            STRIPE_PROBE_SECRET="$stripe_webhook_secret" \
+            STRIPE_PROBE_BODY="$probe_body" \
+            STRIPE_PROBE_TIMESTAMP="$probe_timestamp" \
+              node <<'NODE'
+          const { createHmac } = require("node:crypto");
+
+          const secret = process.env.STRIPE_PROBE_SECRET;
+          const body = process.env.STRIPE_PROBE_BODY;
+          const timestamp = process.env.STRIPE_PROBE_TIMESTAMP;
+          if (!secret || !body || !timestamp) {
+            throw new Error("Stripe probe inputs are required");
+          }
+          process.stdout.write(
+            createHmac("sha256", secret)
+              .update(`${timestamp}.${body}`)
+              .digest("hex"),
+          );
+          NODE
+          )"
+
+          curl "${API_DEPLOYMENT_URL}/api/webhooks/stripe" \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 30 \
+            -H 'Content-Type: application/json' \
+            -H "stripe-signature: t=${probe_timestamp},v1=${probe_signature}" \
+            --data-binary "$probe_body"
+
       - name: Probe Worker outbound safety
         env:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
@@ -2213,6 +2260,28 @@ jobs:
             sed -E \
               -e 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' \
               -e 's/sk_(test|live)_[[:alnum:]_]+/[masked-stripe-api-key]/g'
+
+      - name: Print preview runner diagnostics
+        if: always() && github.event_name != 'push'
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+        run: |
+          set -euo pipefail
+
+          printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' |
+            while IFS= read -r host; do
+              remote="${METAL_USER}@${host}"
+              echo "=== Preview runner diagnostics for ${host} ==="
+              ssh "$remote" "sudo journalctl --no-pager --since '-15 min' -n 400 -u 'vm0-runner-${JOB_REF}-*.service'" |
+                sed -E \
+                  -e 's/vm0_official_[[:alnum:]_.-]+/[masked-runner-token]/g' \
+                  -e 's/(CF_ACCESS_CLIENT_SECRET|CF-Access-Client-Secret)[=:][^[:space:]]+/\1=[masked]/g' \
+                  -e 's/(Authorization:[[:space:]]*Bearer[[:space:]]+)[[:alnum:]_.-]+/\1[masked]/g' \
+                  -e 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' \
+                  -e 's/sk_(test|live)_[[:alnum:]_]+/[masked-stripe-api-key]/g'
+            done
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
