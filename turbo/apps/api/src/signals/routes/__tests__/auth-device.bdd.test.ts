@@ -1,5 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
@@ -567,6 +568,151 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
         return provider.type === "codex-oauth-token";
       }),
     ).toBeTruthy();
+
+    await support.deletePersonalModelProvider(
+      member,
+      "codex-oauth-token",
+      [204],
+    );
+  });
+
+  it("adds, switches, reconnects, deduplicates, and deletes concrete Codex accounts", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-a",
+      workspaceName: "Account A",
+    });
+    const startedA = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedA.status !== 200) {
+      throw new Error("Expected account A device auth to start");
+    }
+    const completedA = await authDevice.requestCodexComplete(
+      member,
+      startedA.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedA.body) ||
+      completedA.body.status !== "complete" ||
+      !completedA.body.provider.isActive
+    ) {
+      throw new Error("Expected account A to be the first active account");
+    }
+    const accountAId = completedA.body.provider.id;
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-b",
+      workspaceName: "Account B",
+    });
+    const startedB = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedB.status !== 200) {
+      throw new Error("Expected account B device auth to start");
+    }
+    const completedB = await authDevice.requestCodexComplete(
+      member,
+      startedB.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedB.body) ||
+      completedB.body.status !== "complete"
+    ) {
+      throw new Error("Expected account B device auth to complete");
+    }
+    const accountBId = completedB.body.provider.id;
+    expect(completedB.body.provider.isActive).toBeFalsy();
+
+    await support.activatePersonalModelProviderAccount(member, accountBId);
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-b",
+      workspaceName: "Account B reconnected",
+    });
+    const reconnectA = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "reconnect", modelProviderId: accountAId },
+    );
+    if (reconnectA.status !== 200) {
+      throw new Error("Expected account A reconnect to start");
+    }
+    await authDevice.requestCodexComplete(
+      member,
+      reconnectA.body.sessionToken,
+      [200],
+    );
+
+    const deduplicated = await support.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in deduplicated.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(deduplicated.body.modelProviders).toHaveLength(1);
+    expect(deduplicated.body.modelProviders[0]).toMatchObject({
+      id: accountAId,
+      isActive: true,
+      workspaceName: "Account B reconnected",
+    });
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "codex-account-c",
+      workspaceName: "Account C",
+    });
+    const startedC = await authDevice.requestCodexStart(
+      member,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedC.status !== 200) {
+      throw new Error("Expected account C device auth to start");
+    }
+    const completedC = await authDevice.requestCodexComplete(
+      member,
+      startedC.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedC.body) ||
+      completedC.body.status !== "complete"
+    ) {
+      throw new Error("Expected account C device auth to complete");
+    }
+
+    await support.deletePersonalModelProviderAccount(member, accountAId);
+    const afterActiveDelete = await support.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in afterActiveDelete.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(afterActiveDelete.body.modelProviders).toHaveLength(1);
+    expect(afterActiveDelete.body.modelProviders[0]).toMatchObject({
+      id: completedC.body.provider.id,
+      isActive: true,
+    });
 
     await support.deletePersonalModelProvider(
       member,

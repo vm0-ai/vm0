@@ -112,6 +112,10 @@ import { conversations } from "@vm0/db/schema/conversation";
 import { blobs } from "@vm0/db/schema/blob";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import {
+  modelProviderAccounts,
+  modelProviderAccountSecrets,
+} from "@vm0/db/schema/model-provider-account";
+import {
   modelProviderConnections,
   modelProviderSurfaces,
 } from "@vm0/db/schema/model-provider-gateway";
@@ -225,6 +229,12 @@ import {
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
 import { resolveLiveCodexModelProviderAccessToken } from "./agent-webhook-firewall-auth.service";
+import {
+  activePersonalModelProviderAccount,
+  ensurePersonalModelProviderAccount,
+  isPersonalSubscriptionProviderType,
+  personalModelProviderAccountById,
+} from "./model-provider-account.service";
 import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import {
   connectorRuntimeCredentialStatusWithMethod,
@@ -1138,6 +1148,7 @@ async function resolveRequestedRunFramework(
   db: Db,
   args: CreateAgentRunArgs,
   composeFramework: SupportedFramework,
+  featureSwitchContext: FeatureSwitchContext,
 ): Promise<SupportedFramework> {
   if (args.modelProviderType && isModelProviderType(args.modelProviderType)) {
     return (
@@ -1170,6 +1181,28 @@ async function resolveRequestedRunFramework(
     )
     .limit(1);
 
+  if (
+    !provider &&
+    isFeatureEnabled(
+      FeatureSwitchKey.PersonalModelProviderAccounts,
+      featureSwitchContext,
+    )
+  ) {
+    const [account] = await db
+      .select({ type: modelProviderAccounts.type })
+      .from(modelProviderAccounts)
+      .where(
+        and(
+          eq(modelProviderAccounts.id, args.modelProviderId),
+          eq(modelProviderAccounts.orgId, args.orgId),
+          eq(modelProviderAccounts.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    return account && isModelProviderType(account.type)
+      ? getFrameworkForType(account.type)
+      : composeFramework;
+  }
   if (!provider || !isModelProviderType(provider.type)) {
     return composeFramework;
   }
@@ -1680,6 +1713,7 @@ function modelProviderFirewallAuthMaps(
   providerType: ModelProviderType,
   sourceUserId: string,
   secretNames: readonly string[],
+  sourceId?: string,
 ):
   | {
       readonly secretConnectorMap: Record<string, string>;
@@ -1710,6 +1744,7 @@ function modelProviderFirewallAuthMaps(
         {
           sourceType: "model-provider" as const,
           sourceUserId,
+          ...(sourceId ? { sourceId } : {}),
           metadataKey: providerType,
         },
       ];
@@ -1726,6 +1761,7 @@ function modelProviderEnvironment(args: {
   readonly secretValue: string | undefined;
   readonly piEdgeApiKey?: string;
   readonly sourceUserId: string;
+  readonly sourceId?: string;
   readonly selectedModel: string | null;
 }): ResolvedModelProviderEnvironment {
   const firewall = getModelProviderFirewall(args.type);
@@ -1767,9 +1803,12 @@ function modelProviderEnvironment(args: {
     ...(args.piEdgeApiKey ? { piEdgeApiKey: args.piEdgeApiKey } : {}),
     selectedModel: model,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
-    ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
-      args.config.secretName,
-    ]),
+    ...modelProviderFirewallAuthMaps(
+      args.type,
+      args.sourceUserId,
+      [args.config.secretName],
+      args.sourceId,
+    ),
   };
 }
 
@@ -1891,6 +1930,7 @@ async function multiAuthModelProviderEnvironment(
     readonly selectedModel: string | null;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly resolvePiEdgeCredentials: boolean;
+    readonly accountId?: string;
   },
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.authMethod) {
@@ -1903,21 +1943,36 @@ async function multiAuthModelProviderEnvironment(
 
   const firewall = getModelProviderFirewall(args.type);
   const hasFirewallAuth = firewall !== undefined;
-  const secretRows = await db
-    .select({
-      name: secretsTable.name,
-      encryptedValue: hasFirewallAuth
-        ? sql`NULL`.mapWith(pgNullDecoder)
-        : secretsTable.encryptedValue,
-    })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, "model-provider"),
-      ),
-    );
+  const secretRows = args.accountId
+    ? await db
+        .select({
+          name: modelProviderAccountSecrets.name,
+          encryptedValue: hasFirewallAuth
+            ? sql`NULL`.mapWith(pgNullDecoder)
+            : modelProviderAccountSecrets.encryptedValue,
+        })
+        .from(modelProviderAccountSecrets)
+        .where(
+          eq(
+            modelProviderAccountSecrets.modelProviderAccountId,
+            args.accountId,
+          ),
+        )
+    : await db
+        .select({
+          name: secretsTable.name,
+          encryptedValue: hasFirewallAuth
+            ? sql`NULL`.mapWith(pgNullDecoder)
+            : secretsTable.encryptedValue,
+        })
+        .from(secretsTable)
+        .where(
+          and(
+            eq(secretsTable.orgId, args.orgId),
+            eq(secretsTable.userId, args.userId),
+            eq(secretsTable.type, "model-provider"),
+          ),
+        );
   const storedSecrets: Record<string, string> = {};
   if (hasFirewallAuth) {
     for (const row of secretRows) {
@@ -1965,6 +2020,7 @@ async function multiAuthModelProviderEnvironment(
     args.type,
     args.userId,
     Object.keys(forwardableSecrets),
+    args.accountId,
   );
   return {
     id: args.id,
@@ -1997,6 +2053,7 @@ async function resolveMultiAuthPiEdgeApiKey(
     readonly type: ModelProviderType;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly resolvePiEdgeCredentials: boolean;
+    readonly accountId?: string;
   },
 ): Promise<string | undefined> {
   if (!args.resolvePiEdgeCredentials || args.type !== "codex-oauth-token") {
@@ -2006,6 +2063,7 @@ async function resolveMultiAuthPiEdgeApiKey(
     db,
     orgId: args.orgId,
     sourceUserId: args.userId,
+    sourceId: args.accountId,
     featureSwitchContext: args.featureSwitchContext,
   });
 }
@@ -2152,6 +2210,9 @@ interface ResolvableModelProviderEnvironmentRow extends ModelProviderEnvironment
   readonly type: ModelProviderType;
 }
 
+type PersonalModelProviderAccountRow =
+  typeof modelProviderAccounts.$inferSelect;
+
 function isCandidateModelProviderRow(
   row: ModelProviderEnvironmentRow,
   args: ResolveModelProviderEnvironmentArgs,
@@ -2192,6 +2253,164 @@ async function resolveCandidatePiEdgeApiKey(
   return hasUsableModelProviderSecretValue(apiKey) ? apiKey : undefined;
 }
 
+async function resolvePersonalModelProviderAccountEnvironment(
+  db: Db,
+  args: ResolveModelProviderEnvironmentArgs,
+  account: PersonalModelProviderAccountRow,
+  selectedModel: string | null,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  if (
+    !isPersonalSubscriptionProviderType(account.type) ||
+    getFrameworkForType(account.type) !== args.framework ||
+    (args.modelProviderType !== undefined &&
+      args.modelProviderType !== account.type)
+  ) {
+    return null;
+  }
+
+  if (hasAuthMethods(account.type)) {
+    return await multiAuthModelProviderEnvironment(db, {
+      id: account.id,
+      orgId: account.orgId,
+      userId: account.userId,
+      type: account.type,
+      authMethod: account.authMethod,
+      selectedModel: args.selectedModelOverride ?? selectedModel,
+      featureSwitchContext: args.featureSwitchContext,
+      resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
+      accountId: account.id,
+    });
+  }
+
+  const config = MODEL_PROVIDER_TYPES[account.type];
+  if (!isSingleSecretModelProviderConfig(config)) {
+    return null;
+  }
+  const [secret] = await db
+    .select({ encryptedValue: modelProviderAccountSecrets.encryptedValue })
+    .from(modelProviderAccountSecrets)
+    .where(
+      and(
+        eq(modelProviderAccountSecrets.modelProviderAccountId, account.id),
+        eq(modelProviderAccountSecrets.name, config.secretName),
+      ),
+    )
+    .limit(1);
+  if (!secret) {
+    return null;
+  }
+
+  const hasFirewallAuth = getModelProviderFirewall(account.type) !== undefined;
+  const secretValue = hasFirewallAuth
+    ? undefined
+    : await decryptStoredSecretValue(
+        secret.encryptedValue,
+        args.featureSwitchContext,
+      );
+  if (
+    secretValue !== undefined &&
+    !hasUsableModelProviderSecretValue(secretValue)
+  ) {
+    return null;
+  }
+  return modelProviderEnvironment({
+    id: account.id,
+    type: account.type,
+    config,
+    secretValue,
+    sourceUserId: account.userId,
+    sourceId: account.id,
+    selectedModel: args.selectedModelOverride ?? selectedModel,
+  });
+}
+
+async function resolveExactPersonalModelProviderAccount(
+  db: Db,
+  args: ResolveModelProviderEnvironmentArgs,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  if (
+    !args.modelProviderId ||
+    args.modelProviderCredentialScope === "org" ||
+    !isFeatureEnabled(
+      FeatureSwitchKey.PersonalModelProviderAccounts,
+      args.featureSwitchContext,
+    )
+  ) {
+    return null;
+  }
+  const account = await personalModelProviderAccountById({
+    db,
+    id: args.modelProviderId,
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  if (!account) {
+    return null;
+  }
+  const [provider] = await db
+    .select({ selectedModel: modelProviders.selectedModel })
+    .from(modelProviders)
+    .where(eq(modelProviders.id, account.modelProviderId))
+    .limit(1);
+  if (!provider) {
+    return null;
+  }
+  return await resolvePersonalModelProviderAccountEnvironment(
+    db,
+    args,
+    account,
+    provider.selectedModel,
+  );
+}
+
+function shouldResolveActivePersonalModelProviderAccount(
+  args: ResolveModelProviderEnvironmentArgs,
+  row: ResolvableModelProviderEnvironmentRow,
+): boolean {
+  return (
+    row.userId === args.userId &&
+    isPersonalSubscriptionProviderType(row.type) &&
+    isFeatureEnabled(
+      FeatureSwitchKey.PersonalModelProviderAccounts,
+      args.featureSwitchContext,
+    )
+  );
+}
+
+async function resolveActivePersonalModelProviderAccountEnvironment(
+  db: Db,
+  args: ResolveModelProviderEnvironmentArgs,
+  row: ResolvableModelProviderEnvironmentRow,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  const [provider] = await db
+    .select()
+    .from(modelProviders)
+    .where(eq(modelProviders.id, row.id))
+    .limit(1);
+  if (!provider || !isPersonalSubscriptionProviderType(provider.type)) {
+    return null;
+  }
+  await ensurePersonalModelProviderAccount({
+    db,
+    provider,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  const account = await activePersonalModelProviderAccount({
+    db,
+    modelProviderId: row.id,
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  return account
+    ? await resolvePersonalModelProviderAccountEnvironment(
+        db,
+        args,
+        account,
+        row.selectedModel,
+      )
+    : null;
+}
+
 async function resolveCandidateModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
@@ -2211,6 +2430,14 @@ async function resolveCandidateModelProviderEnvironment(
 
   if (getFrameworkForType(row.type) !== args.framework) {
     return null;
+  }
+
+  if (shouldResolveActivePersonalModelProviderAccount(args, row)) {
+    return await resolveActivePersonalModelProviderAccountEnvironment(
+      db,
+      args,
+      row,
+    );
   }
 
   if (hasAuthMethods(row.type)) {
@@ -2283,6 +2510,14 @@ async function resolveModelProviderEnvironment(
       getFrameworkForType(provider.concreteType) === args.framework
       ? provider
       : null;
+  }
+
+  const personalAccount = await resolveExactPersonalModelProviderAccount(
+    db,
+    args,
+  );
+  if (personalAccount) {
+    return personalAccount;
   }
 
   const customGateway = await customGatewayModelProviderEnvironment(db, args);
@@ -7949,6 +8184,7 @@ async function prepareRunBodyContext(
         args.db,
         args.createArgs,
         frameworkValidation.framework,
+        featureSwitchContext,
       );
     },
   );

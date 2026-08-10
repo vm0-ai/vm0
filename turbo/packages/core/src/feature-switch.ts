@@ -397,6 +397,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PersonalModelProviderAccounts]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ConcurrencyMemberUsage]: {
     maintainer: "ethan@vm0.ai",
     description:

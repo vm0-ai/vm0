@@ -5,6 +5,7 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +71,23 @@ function connectedPersonalCodexProvider(): ModelProviderResponse {
     subscriptionResetCredits: 2,
     needsReconnect: false,
     lastRefreshErrorCode: null,
+  };
+}
+
+function connectedPersonalCodexAccount(args: {
+  readonly id: string;
+  readonly email: string;
+  readonly isActive: boolean;
+  readonly createdAt: string;
+}): ModelProviderResponse {
+  return {
+    ...connectedPersonalCodexProvider(),
+    id: args.id,
+    modelProviderId: "00000000-0000-4000-a000-000000000300",
+    isActive: args.isActive,
+    accountEmail: args.email,
+    workspaceName: args.email,
+    createdAt: args.createdAt,
   };
 }
 
@@ -161,10 +179,14 @@ function mockBillingCapabilities(modelCapabilities: {
   });
 }
 
-async function openModelSettings(heading = "Models"): Promise<void> {
+async function openModelSettings(
+  heading = "Models",
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
+): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
+    featureSwitches,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -263,6 +285,57 @@ function mockBrowserTimeZone(timeZone: string): void {
 }
 
 describe("personal model providers settings", () => {
+  it("lists subscription accounts and switches only on an explicit click", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    const accountA = connectedPersonalCodexAccount({
+      id: "00000000-0000-4000-a000-000000000311",
+      email: "account-a@example.com",
+      isActive: true,
+      createdAt: "2026-03-01T00:00:00Z",
+    });
+    const accountB = connectedPersonalCodexAccount({
+      id: "00000000-0000-4000-a000-000000000312",
+      email: "account-b@example.com",
+      isActive: false,
+      createdAt: "2026-03-02T00:00:00Z",
+    });
+    context.mocks.data.personalModelProviders([accountA, accountB]);
+
+    await openModelSettings("Models", {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    const rowA = await screen.findByTestId(`oauth-account-${accountA.id}`);
+    const rowB = await screen.findByTestId(`oauth-account-${accountB.id}`);
+    expect(within(rowA).getByText("account-a@example.com")).toBeInTheDocument();
+    expect(within(rowB).getByText("account-b@example.com")).toBeInTheDocument();
+    expect(within(rowA).getByText("Active")).toBeInTheDocument();
+    expect(within(rowB).queryByText("Active")).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").filter((button) => {
+        return button.textContent?.trim() === "Add account";
+      }),
+    ).toHaveLength(2);
+
+    click(within(rowA).getByLabelText("More options"));
+    expect(
+      queryAllByRoleFast("menuitem").some((item) => {
+        return item.textContent?.trim() === "Remove";
+      }),
+    ).toBeFalsy();
+    click(within(rowA).getByLabelText("More options"));
+
+    click(buttonByText("Use", rowB));
+    await waitFor(() => {
+      expect(within(rowB).getByText("Active")).toBeInTheDocument();
+      expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
+    });
+  });
+
   it("offers Pro upgrade when personal BYOK is unsupported", async () => {
     context.mocks.data.org({
       id: "org_1",

@@ -26,6 +26,7 @@ import * as chatTeamsContextSchema from "./schema/chat-teams-context";
 import * as chatTelegramContextSchema from "./schema/chat-telegram-context";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as modelProviderAccountSchema from "./schema/model-provider-account";
 import * as modelProviderGatewaySchema from "./schema/model-provider-gateway";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
@@ -156,6 +157,7 @@ export const schema = {
   ...chatTelegramContextSchema,
   ...secretSchema,
   ...modelProviderSchema,
+  ...modelProviderAccountSchema,
   ...modelProviderGatewaySchema,
   ...orgModelPolicySchema,
   ...modelStatSchema,

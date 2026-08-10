@@ -70,6 +70,7 @@ type UsageResponse = z.infer<typeof usageResponseSchema>;
 type UsageWindow = z.infer<typeof usageWindowSchema>;
 
 interface ClaudeCodeSubscriptionMetadata {
+  readonly accountEmail?: string | null;
   readonly workspaceName?: string | null;
   readonly planType?: string | null;
   readonly subscriptionResetPeriod?: string | null;
@@ -114,13 +115,12 @@ function planTypeFromProfile(profile: ProfileResponse): string | null {
   return null;
 }
 
-function accountNameFromProfile(profile: ProfileResponse): string | null {
+function workspaceNameFromProfile(profile: ProfileResponse): string | null {
   return (
-    nonEmptyString(profile.account?.email) ??
-    nonEmptyString(profile.account?.display_name) ??
-    nonEmptyString(profile.account?.full_name) ??
     nonEmptyString(profile.organization?.name) ??
-    nonEmptyString(profile.organization?.organization_name)
+    nonEmptyString(profile.organization?.organization_name) ??
+    nonEmptyString(profile.account?.display_name) ??
+    nonEmptyString(profile.account?.full_name)
   );
 }
 
@@ -320,7 +320,12 @@ async function fetchProfileMetadata(
     readonly accessToken: string;
   },
   signal: AbortSignal,
-): Promise<Pick<ClaudeCodeSubscriptionMetadata, "workspaceName" | "planType">> {
+): Promise<
+  Pick<
+    ClaudeCodeSubscriptionMetadata,
+    "accountEmail" | "workspaceName" | "planType"
+  >
+> {
   const parsed = profileResponseSchema.safeParse(
     await fetchClaudeCodeJson(
       {
@@ -334,7 +339,9 @@ async function fetchProfileMetadata(
     throw new Error("Claude Code profile response shape unrecognized");
   }
   return {
-    workspaceName: accountNameFromProfile(parsed.data),
+    accountEmail:
+      nonEmptyString(parsed.data.account?.email)?.toLowerCase() ?? null,
+    workspaceName: workspaceNameFromProfile(parsed.data),
     planType: planTypeFromProfile(parsed.data),
   };
 }

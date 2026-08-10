@@ -1099,8 +1099,10 @@ export {
 export {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProviderAccountsByIdContract,
   type ZeroPersonalModelProvidersMainContract,
   type ZeroPersonalModelProvidersByTypeContract,
+  type ZeroPersonalModelProviderAccountsByIdContract,
 } from "./zero-personal-model-providers";
 export {
   zeroUserPreferencesContract,

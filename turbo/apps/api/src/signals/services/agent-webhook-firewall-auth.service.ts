@@ -51,6 +51,10 @@ import {
 import { isChatgptRefreshError } from "@vm0/connectors/auth-providers/model-providers/codex-oauth/oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
+import {
+  modelProviderAccounts,
+  modelProviderAccountSecrets,
+} from "@vm0/db/schema/model-provider-account";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { variables as variablesTable } from "@vm0/db/schema/variable";
@@ -363,6 +367,7 @@ interface SecretTokenLookupArgs {
   readonly userId: string;
   readonly sourceType: StorageSecretSource;
   readonly sourceUserId?: string;
+  readonly sourceId?: string;
   readonly metadataKey?: string;
   readonly connectorAccessBySlug: ReadonlyMap<string, ConnectorAccessState>;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -611,6 +616,7 @@ function resolveRefreshMetadata(
     sourceType,
     sourceUserId:
       sourceType === "model-provider" ? metadata?.sourceUserId : undefined,
+    sourceId: sourceType === "model-provider" ? metadata?.sourceId : undefined,
     metadataKey:
       sourceType === "model-provider"
         ? (metadata?.metadataKey ??
@@ -841,6 +847,7 @@ async function getSecretValue(args: {
   readonly userId: string;
   readonly name: string;
   readonly type: SecretType;
+  readonly sourceId?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<string | null> {
   if (args.type === "connector") {
@@ -854,6 +861,33 @@ async function getSecretValue(args: {
       featureSwitchContext: args.featureSwitchContext,
     });
     return values.get(args.name) ?? null;
+  }
+  if (args.type === "model-provider" && args.sourceId) {
+    const [row] = await args.db
+      .select({ encryptedValue: modelProviderAccountSecrets.encryptedValue })
+      .from(modelProviderAccountSecrets)
+      .innerJoin(
+        modelProviderAccounts,
+        eq(
+          modelProviderAccountSecrets.modelProviderAccountId,
+          modelProviderAccounts.id,
+        ),
+      )
+      .where(
+        and(
+          eq(modelProviderAccounts.id, args.sourceId),
+          eq(modelProviderAccounts.orgId, args.orgId),
+          eq(modelProviderAccounts.userId, args.userId),
+          eq(modelProviderAccountSecrets.name, args.name),
+        ),
+      )
+      .limit(1);
+    return row
+      ? await decryptStoredSecretValue(
+          row.encryptedValue,
+          args.featureSwitchContext,
+        )
+      : null;
   }
   const [row] = await args.db
     .select({ encryptedValue: secretsTable.encryptedValue })
@@ -910,6 +944,7 @@ async function upsertModelProviderSecretValue(
     readonly userId: string;
     readonly name: string;
     readonly value: string;
+    readonly sourceId?: string;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
@@ -917,6 +952,43 @@ async function upsertModelProviderSecretValue(
     args.value,
     args.featureSwitchContext,
   );
+  if (args.sourceId) {
+    const [account] = await db
+      .select({ isActive: modelProviderAccounts.isActive })
+      .from(modelProviderAccounts)
+      .where(
+        and(
+          eq(modelProviderAccounts.id, args.sourceId),
+          eq(modelProviderAccounts.orgId, args.orgId),
+          eq(modelProviderAccounts.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    if (!account) {
+      return;
+    }
+    await db
+      .insert(modelProviderAccountSecrets)
+      .values({
+        modelProviderAccountId: args.sourceId,
+        name: args.name,
+        encryptedValue,
+        description: `Personal model provider account secret: ${args.name}`,
+      })
+      .onConflictDoUpdate({
+        target: [
+          modelProviderAccountSecrets.modelProviderAccountId,
+          modelProviderAccountSecrets.name,
+        ],
+        set: {
+          encryptedValue,
+          updatedAt: nowDate(),
+        },
+      });
+    if (!account.isActive) {
+      return;
+    }
+  }
   await db
     .insert(secretsTable)
     .values({
@@ -1068,6 +1140,7 @@ async function getCurrentAccessSecrets(
         userId: secretUserId,
         name: secretName,
         type: args.sourceType,
+        sourceId: args.sourceId,
         featureSwitchContext: args.featureSwitchContext,
       });
       if (value !== null) {
@@ -1151,6 +1224,7 @@ interface ModelProviderSourceLookup {
   readonly providerKey: string;
   readonly providerType: string;
   readonly userId: string;
+  readonly sourceId?: string;
 }
 
 interface SourceStateSnapshot {
@@ -1178,6 +1252,7 @@ function modelProviderSourceLookup(args: {
       args.userId,
       metadata.sourceUserId,
     ),
+    ...(metadata.sourceId ? { sourceId: metadata.sourceId } : {}),
   };
 }
 
@@ -1253,13 +1328,53 @@ async function loadModelProviderSourceStates(args: {
     return result;
   }
 
-  const lookupsByUserId = new Map<string, ModelProviderSourceLookup[]>();
-  for (const providerKey of args.providerKeys) {
-    const lookup = modelProviderSourceLookup({
+  const sourceLookups = args.providerKeys.map((providerKey) => {
+    return modelProviderSourceLookup({
       providerKey,
       userId: args.userId,
       metadataByAccessSource: args.metadataByAccessSource,
     });
+  });
+  const exactLookups = sourceLookups.filter(
+    (
+      lookup,
+    ): lookup is ModelProviderSourceLookup & { readonly sourceId: string } => {
+      return lookup.sourceId !== undefined;
+    },
+  );
+  const exactEntries = await Promise.all(
+    exactLookups.map(async (lookup) => {
+      const [row] = await args.db
+        .select({
+          tokenExpiresAt: modelProviderAccounts.tokenExpiresAt,
+          needsReconnect: modelProviderAccounts.needsReconnect,
+        })
+        .from(modelProviderAccounts)
+        .where(
+          and(
+            eq(modelProviderAccounts.id, lookup.sourceId),
+            eq(modelProviderAccounts.orgId, args.orgId),
+            eq(modelProviderAccounts.userId, lookup.userId),
+            eq(modelProviderAccounts.type, lookup.providerType),
+          ),
+        )
+        .limit(1);
+      return row
+        ? ([lookup.providerKey, refreshSourceStateFromRow(row)] as const)
+        : null;
+    }),
+  );
+  for (const entry of exactEntries) {
+    if (entry) {
+      result.set(...entry);
+    }
+  }
+
+  const lookupsByUserId = new Map<string, ModelProviderSourceLookup[]>();
+  for (const lookup of sourceLookups) {
+    if (lookup.sourceId) {
+      continue;
+    }
     const lookups = lookupsByUserId.get(lookup.userId) ?? [];
     lookups.push(lookup);
     lookupsByUserId.set(lookup.userId, lookups);
@@ -1403,6 +1518,7 @@ function prepareRefreshTokenContext(
   const metadata = resolveRefreshMetadata(args.accessSourceKey, {
     sourceType: args.sourceType,
     ...(args.sourceUserId ? { sourceUserId: args.sourceUserId } : {}),
+    ...(args.sourceId ? { sourceId: args.sourceId } : {}),
     ...(args.metadataKey ? { metadataKey: args.metadataKey } : {}),
   });
   const runtimeOutputSecrets = runtimeOutputSecretsForSource({
@@ -1781,6 +1897,40 @@ async function loadModelProviderRefreshStateRow(
   context: RefreshTokenContext,
   lockRow: boolean,
 ): Promise<RefreshStateRow | null> {
+  if (args.sourceId) {
+    const query = db
+      .select({
+        authMethod: sql`NULL`.mapWith(pgNullDecoder),
+        connectorId: sql`NULL`.mapWith(pgNullDecoder),
+        storageVersion: sql`NULL`.mapWith(pgNullDecoder),
+        tokenExpiresAt: modelProviderAccounts.tokenExpiresAt,
+        needsReconnect: modelProviderAccounts.needsReconnect,
+        lastRefreshErrorCode: modelProviderAccounts.lastRefreshErrorCode,
+        updatedAtMicros:
+          sql`(EXTRACT(EPOCH FROM ${modelProviderAccounts.updatedAt}) * 1000000)::bigint`.mapWith(
+            pgInt8ToBigIntDecoder,
+          ),
+      })
+      .from(modelProviderAccounts)
+      .where(
+        and(
+          eq(modelProviderAccounts.id, args.sourceId),
+          eq(modelProviderAccounts.orgId, args.orgId),
+          eq(modelProviderAccounts.userId, context.secretUserId),
+          eq(
+            modelProviderAccounts.type,
+            requiredModelProviderMetadataKey({
+              providerKey: args.accessSourceKey,
+              metadataKey: args.metadataKey,
+            }),
+          ),
+        ),
+      );
+    const rows = lockRow
+      ? await query.for("update").limit(1)
+      : await query.limit(1);
+    return rows[0] ?? null;
+  }
   const query = db
     .select({
       authMethod: sql`NULL`.mapWith(pgNullDecoder),
@@ -1881,6 +2031,7 @@ async function loadRefreshState(
       userId: context.secretUserId,
       name: secretName,
       type: args.sourceType,
+      sourceId: args.sourceId,
       featureSwitchContext: args.featureSwitchContext,
     });
   }
@@ -1896,6 +2047,7 @@ async function loadRefreshState(
             userId: context.secretUserId,
             name: inputSource.name,
             type: args.sourceType,
+            sourceId: args.sourceId,
             featureSwitchContext: args.featureSwitchContext,
           })
         : await getVariableValue({
@@ -1920,13 +2072,12 @@ async function loadRefreshState(
   };
 }
 
-async function markRefreshSuccess(
+async function persistRefreshOutputValues(
   args: RefreshAccessTokenArgs,
   prepared: PreparedRefreshTokenContext,
   context: RefreshTokenContext,
   outputs: readonly ValidatedRefreshOutput[],
-  expiresIn: number | undefined,
-): Promise<Record<string, string>> {
+): Promise<Map<string, string>> {
   const returnedSecretValues = new Map<string, string>();
   for (const { target, value } of outputs) {
     switch (target.kind) {
@@ -1937,6 +2088,7 @@ async function markRefreshSuccess(
             userId: context.secretUserId,
             name: target.name,
             value,
+            sourceId: args.sourceId,
             featureSwitchContext: args.featureSwitchContext,
           });
         } else {
@@ -1977,12 +2129,61 @@ async function markRefreshSuccess(
       }
     }
   }
+  return returnedSecretValues;
+}
+
+async function markRefreshSuccess(
+  args: RefreshAccessTokenArgs,
+  prepared: PreparedRefreshTokenContext,
+  context: RefreshTokenContext,
+  outputs: readonly ValidatedRefreshOutput[],
+  expiresIn: number | undefined,
+): Promise<Record<string, string>> {
+  const returnedSecretValues = await persistRefreshOutputValues(
+    args,
+    prepared,
+    context,
+    outputs,
+  );
 
   const expiresAt = new Date(
     nowDate().getTime() +
       (expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
   );
   if (prepared.sourceType === "model-provider") {
+    if (args.sourceId) {
+      const [account] = await args.db
+        .update(modelProviderAccounts)
+        .set({
+          tokenExpiresAt: expiresAt,
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(modelProviderAccounts.id, args.sourceId),
+            eq(modelProviderAccounts.orgId, args.orgId),
+            eq(modelProviderAccounts.userId, context.secretUserId),
+          ),
+        )
+        .returning({
+          isActive: modelProviderAccounts.isActive,
+          modelProviderId: modelProviderAccounts.modelProviderId,
+        });
+      if (account?.isActive) {
+        await args.db
+          .update(modelProviders)
+          .set({
+            tokenExpiresAt: expiresAt,
+            needsReconnect: false,
+            lastRefreshErrorCode: null,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(eq(modelProviders.id, account.modelProviderId));
+      }
+      return Object.fromEntries(returnedSecretValues);
+    }
     await args.db
       .update(modelProviders)
       .set({
@@ -2035,17 +2236,40 @@ async function markRefreshFailure(
   connectorReconnectReason: ConnectorReconnectReason | null,
 ): Promise<void> {
   if (args.sourceType === "model-provider") {
+    const updates =
+      failureReason === "upstream_provider"
+        ? { updatedAt: sql`clock_timestamp()` }
+        : {
+            needsReconnect: true,
+            lastRefreshErrorCode: errorCode,
+            updatedAt: sql`clock_timestamp()`,
+          };
+    if (args.sourceId) {
+      const [account] = await args.db
+        .update(modelProviderAccounts)
+        .set(updates)
+        .where(
+          and(
+            eq(modelProviderAccounts.id, args.sourceId),
+            eq(modelProviderAccounts.orgId, args.orgId),
+            eq(modelProviderAccounts.userId, context.secretUserId),
+          ),
+        )
+        .returning({
+          isActive: modelProviderAccounts.isActive,
+          modelProviderId: modelProviderAccounts.modelProviderId,
+        });
+      if (account?.isActive) {
+        await args.db
+          .update(modelProviders)
+          .set(updates)
+          .where(eq(modelProviders.id, account.modelProviderId));
+      }
+      return;
+    }
     await args.db
       .update(modelProviders)
-      .set(
-        failureReason === "upstream_provider"
-          ? { updatedAt: sql`clock_timestamp()` }
-          : {
-              needsReconnect: true,
-              lastRefreshErrorCode: errorCode,
-              updatedAt: sql`clock_timestamp()`,
-            },
-      )
+      .set(updates)
       .where(
         and(
           eq(modelProviders.orgId, args.orgId),
@@ -2507,6 +2731,7 @@ export async function resolveLiveCodexModelProviderAccessToken(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly sourceUserId: string;
+  readonly sourceId?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<string | undefined> {
   const result = await refreshAccessTokenForSource({
@@ -2516,6 +2741,7 @@ export async function resolveLiveCodexModelProviderAccessToken(args: {
     userId: args.sourceUserId,
     sourceType: "model-provider",
     sourceUserId: args.sourceUserId,
+    ...(args.sourceId ? { sourceId: args.sourceId } : {}),
     metadataKey: "codex-oauth-token",
     connectorSecrets: {},
     accessEnvVars: ["CHATGPT_ACCESS_TOKEN"],
@@ -2865,8 +3091,37 @@ async function getModelProviderRuntimeSecretValue(args: {
   readonly userId: string;
   readonly providerType: ModelProviderType;
   readonly secretName: string;
+  readonly sourceId?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
 }): Promise<string | null> {
+  if (args.sourceId) {
+    const [row] = await args.db
+      .select({ encryptedValue: modelProviderAccountSecrets.encryptedValue })
+      .from(modelProviderAccountSecrets)
+      .innerJoin(
+        modelProviderAccounts,
+        eq(
+          modelProviderAccountSecrets.modelProviderAccountId,
+          modelProviderAccounts.id,
+        ),
+      )
+      .where(
+        and(
+          eq(modelProviderAccounts.id, args.sourceId),
+          eq(modelProviderAccounts.orgId, args.orgId),
+          eq(modelProviderAccounts.userId, args.userId),
+          eq(modelProviderAccounts.type, args.providerType),
+          eq(modelProviderAccountSecrets.name, args.secretName),
+        ),
+      )
+      .limit(1);
+    return row
+      ? await decryptStoredSecretValue(
+          row.encryptedValue,
+          args.featureSwitchContext,
+        )
+      : null;
+  }
   const singleSecretName = getSecretNameForType(args.providerType);
   if (singleSecretName && args.secretName === singleSecretName) {
     const [row] = await args.db
@@ -2973,6 +3228,7 @@ async function syncModelProviderRuntimeSecrets(args: {
               args.userId,
               metadata.sourceUserId,
             ),
+            sourceId: metadata.sourceId,
           },
         ]
       : [];
@@ -2989,6 +3245,7 @@ async function syncModelProviderRuntimeSecrets(args: {
         userId: lookup.userId,
         providerType: lookup.providerType,
         secretName: lookup.secretName,
+        sourceId: lookup.sourceId,
         featureSwitchContext: args.featureSwitchContext,
       });
       if (value === null || value.trim().length === 0) {
@@ -3673,6 +3930,7 @@ async function refreshSelectedTokens(
         userId: context.userId,
         sourceType: metadata.sourceType,
         sourceUserId: metadata.sourceUserId,
+        sourceId: metadata.sourceId,
         metadataKey: metadata.metadataKey,
         connectorSecrets: context.secrets,
         accessEnvVars: context.envVarsByAccessSource.get(accessSourceKey) ?? [],
@@ -3751,6 +4009,7 @@ async function syncSkippedTokens(
           userId: context.userId,
           sourceType: metadata.sourceType,
           sourceUserId: metadata.sourceUserId,
+          sourceId: metadata.sourceId,
           metadataKey: metadata.metadataKey,
           metadata,
           accessEnvVars:
