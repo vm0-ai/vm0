@@ -1254,6 +1254,8 @@
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",
       "selectModel": "Pilih model",
       "setAsDefault": "Jadikan default",
+      "temporaryFastModeDisabledNotice": "Mode Cepat dinonaktifkan sementara untuk proses ini",
+      "temporaryFastModeEnabledNotice": "Mode Cepat diaktifkan sementara untuk proses ini",
       "temporaryModelNotice": "Sementara beralih ke {{model}}",
       "threadSuggestions": "Thread chat",
       "visualAttachmentsUnsupported": "{{modelName}} tidak dapat mengenali gambar atau video. Ganti ke model yang mendukung visi untuk melampirkannya.",

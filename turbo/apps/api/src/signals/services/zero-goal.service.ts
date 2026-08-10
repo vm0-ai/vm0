@@ -227,6 +227,7 @@ async function createGoalThread(
       agentComposeId: args.agentId,
       title: args.objective,
       ...chatThreadModelPinColumns(pin),
+      codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
       lastMessageAt: args.createdAt,
       createdAt: args.createdAt,
       updatedAt: args.createdAt,
@@ -243,6 +244,7 @@ async function createGoalThread(
     agentComposeId: args.agentId,
     title: args.objective,
     selectedModel: pin.selectedModel,
+    serviceTier: pin.serviceTier,
     createdAt: thread.createdAt,
   });
   return thread.id;

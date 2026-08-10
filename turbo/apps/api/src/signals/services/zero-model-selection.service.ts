@@ -14,7 +14,10 @@ import {
   getModelProviderTypeForSurfaceProtocol,
   modelProviderSurfaceProtocolSchema,
 } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedFramework } from "@vm0/core/frameworks";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import {
   modelProviderConnections,
@@ -32,6 +35,7 @@ import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
 } from "./org-plan-entitlement-read.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -42,6 +46,10 @@ export interface ModelFirstPin {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
+}
+
+export interface DefaultModelFirstPin extends ModelFirstPin {
+  readonly serviceTier: ChatThreadServiceTier | null;
 }
 
 interface ResolvedModelFirstPolicyRoute {
@@ -325,14 +333,17 @@ export async function resolveDefaultModelFirstPin(
   db: Db,
   orgId: string,
   userId: string,
-): Promise<ModelFirstPin> {
+): Promise<DefaultModelFirstPin> {
   if (userId !== "__no_preference__") {
     await ensureOrgModelPolicies(db, orgId, userId);
   }
   const capabilities = await orgModelCapabilities(db, orgId);
   if (userId !== "__no_preference__") {
     const [preference] = await db
-      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .select({
+        selectedModel: orgMembersMetadata.selectedModel,
+        serviceTier: orgMembersMetadata.serviceTier,
+      })
       .from(orgMembersMetadata)
       .where(
         and(
@@ -349,7 +360,23 @@ export async function resolveDefaultModelFirstPin(
         selectedModel: preference.selectedModel,
       });
       if (preferredRoute) {
-        return modelFirstPinFromRoute(preferredRoute);
+        const featureSwitchContext =
+          preference.serviceTier === "priority"
+            ? await loadUserFeatureSwitchContext(db, orgId, userId)
+            : null;
+        const serviceTier = isCodexFastServiceTierSupported({
+          selectedModel: preferredRoute.selectedModel,
+          effectiveModelProvider: preferredRoute.modelProviderType,
+          codexFastModeEnabled:
+            featureSwitchContext !== null &&
+            isFeatureEnabled(
+              FeatureSwitchKey.CodexFastMode,
+              featureSwitchContext,
+            ),
+        })
+          ? "priority"
+          : null;
+        return { ...modelFirstPinFromRoute(preferredRoute), serviceTier };
       }
     }
   }
@@ -360,12 +387,13 @@ export async function resolveDefaultModelFirstPin(
     capabilities,
   });
   return route
-    ? modelFirstPinFromRoute(route)
+    ? { ...modelFirstPinFromRoute(route), serviceTier: null }
     : {
         modelProviderId: null,
         modelProviderType: null,
         modelProviderCredentialScope: null,
         selectedModel: null,
+        serviceTier: null,
       };
 }
 

@@ -5,6 +5,7 @@ import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
   resolveChatEventRecommendedFollowups,
+  type ChatThreadServiceTier,
   type CodexServiceTier,
   type GenerationTemplateRequest,
   type UserMessageDocument,
@@ -891,6 +892,7 @@ async function updateUserModelPreference(
   orgId: string,
   userId: string,
   selectedModel: string,
+  serviceTier: ChatThreadServiceTier | null,
 ): Promise<void> {
   const nowValue = nowDate();
   await db
@@ -899,12 +901,13 @@ async function updateUserModelPreference(
       orgId,
       userId,
       selectedModel,
+      serviceTier,
       createdAt: nowValue,
       updatedAt: nowValue,
     })
     .onConflictDoUpdate({
       target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: { selectedModel, updatedAt: nowValue },
+      set: { selectedModel, serviceTier, updatedAt: nowValue },
     });
 }
 
@@ -913,6 +916,7 @@ async function maybePersistExplicitModelFirstSelection(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly modelSelection: IncomingModelSelection;
+  readonly serviceTier: ChatThreadServiceTier | null;
 }): Promise<boolean> {
   if (!params.modelSelection) {
     return false;
@@ -927,6 +931,7 @@ async function maybePersistExplicitModelFirstSelection(params: {
     params.orgId,
     params.userId,
     params.modelSelection.selectedModel,
+    params.serviceTier,
   );
   return true;
 }
@@ -2090,6 +2095,7 @@ function resolveTimedThread(
 function maybePersistTimedExplicitModelFirstSelection(
   args: NormalSendArgs,
   db: Db,
+  codexServiceTier: CodexServiceTier | undefined,
 ): ReturnType<typeof maybePersistExplicitModelFirstSelection> {
   return measureApiDispatchTiming(
     args.timing,
@@ -2101,6 +2107,7 @@ function maybePersistTimedExplicitModelFirstSelection(
         orgId: args.orgId,
         userId: args.userId,
         modelSelection: args.body.modelSelection,
+        serviceTier: chatThreadServiceTierFromCodex(codexServiceTier ?? null),
       });
     },
   );
@@ -2261,7 +2268,11 @@ const prepareNormalSend$ = command(
       explicitTemplates: runtimeBody.templates,
     });
     const persistedExplicitSelection =
-      await maybePersistTimedExplicitModelFirstSelection(args, db);
+      await maybePersistTimedExplicitModelFirstSelection(
+        args,
+        db,
+        runConfiguration.codexServiceTier,
+      );
     signal.throwIfAborted();
     await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
     signal.throwIfAborted();
@@ -3074,6 +3085,9 @@ const createNormalChatRun$ = command(
         args.orgId,
         args.userId,
         modelPin.selectedModel,
+        chatThreadServiceTierFromCodex(
+          prepared.runConfiguration.codexServiceTier ?? null,
+        ),
       );
       signal.throwIfAborted();
     }

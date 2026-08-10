@@ -814,7 +814,11 @@ async function persistOrgModelPolicyUpdates(params: {
     if (removedModels.length > 0 && defaultPolicy) {
       await tx
         .update(orgMembersMetadata)
-        .set({ selectedModel: defaultPolicy.model, updatedAt: params.now })
+        .set({
+          selectedModel: defaultPolicy.model,
+          serviceTier: null,
+          updatedAt: params.now,
+        })
         .where(
           and(
             eq(orgMembersMetadata.orgId, params.orgId),

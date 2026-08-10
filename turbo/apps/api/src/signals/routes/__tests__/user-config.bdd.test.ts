@@ -303,12 +303,17 @@ describe("AUTH-03 user model preference", () => {
     await onboardAdmin(admin, { slug: slug("bdd-uc-b2") });
 
     const defaults = await cfg.readModelPreference(admin);
-    expect(defaults).toStrictEqual({ selectedModel: null, updatedAt: null });
+    expect(defaults).toStrictEqual({
+      selectedModel: null,
+      serviceTier: null,
+      updatedAt: null,
+    });
 
     const updated = await cfg.updateModelPreference(admin, {
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
     expect(updated.selectedModel).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
+    expect(updated.serviceTier).toBeNull();
     expect(updated.updatedAt).toStrictEqual(expect.any(String));
     const readUpdated = await cfg.readModelPreference(admin);
     expect(readUpdated).toStrictEqual(updated);
@@ -316,9 +321,17 @@ describe("AUTH-03 user model preference", () => {
     const cleared = await cfg.updateModelPreference(admin, {
       selectedModel: null,
     });
-    expect(cleared).toStrictEqual({ selectedModel: null, updatedAt: null });
+    expect(cleared).toStrictEqual({
+      selectedModel: null,
+      serviceTier: null,
+      updatedAt: null,
+    });
     const readCleared = await cfg.readModelPreference(admin);
-    expect(readCleared).toStrictEqual({ selectedModel: null, updatedAt: null });
+    expect(readCleared).toStrictEqual({
+      selectedModel: null,
+      serviceTier: null,
+      updatedAt: null,
+    });
   });
 
   it("rejects contract-invalid model preference bodies and unauthenticated access", async () => {

@@ -2,11 +2,13 @@ import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
 import { supportedRunModelSchema } from "./model-providers";
+import { chatThreadServiceTierSchema } from "./chat-threads";
 
 const c = initContract();
 
 export const userModelPreferenceResponseSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
+  serviceTier: chatThreadServiceTierSchema.nullable().optional(),
   updatedAt: z.string().nullable(),
 });
 
@@ -16,6 +18,7 @@ export type UserModelPreferenceResponse = z.infer<
 
 export const updateUserModelPreferenceRequestSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
+  serviceTier: chatThreadServiceTierSchema.nullable().optional(),
 });
 
 export type UpdateUserModelPreferenceRequest = z.infer<

@@ -1,6 +1,8 @@
 import { command, computed } from "ccstate";
 import type { UserPreferenceChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { badRequestMessage } from "../../lib/error";
 import { publishUserPreferenceChangedForUserSafely } from "../external/realtime";
@@ -9,6 +11,8 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import { listOrgModelPolicies$ } from "../services/zero-model-policy.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { isCodexFastServiceTierSupported } from "../services/zero-model-selection.service";
 import {
   updateUserModelPreference$,
   userModelPreference,
@@ -33,17 +37,46 @@ const updateUserModelPreferenceInner$ = command(
       return body.response;
     }
 
-    if (body.data.selectedModel !== null) {
-      const policies = await set(
-        listOrgModelPolicies$,
-        { orgId: auth.orgId, userId: auth.userId },
-        signal,
-      );
-      const configured = policies.policies.some((policy) => {
-        return policy.model === body.data.selectedModel;
-      });
-      if (!configured) {
+    const policies =
+      body.data.selectedModel !== null
+        ? await set(
+            listOrgModelPolicies$,
+            { orgId: auth.orgId, userId: auth.userId },
+            signal,
+          )
+        : undefined;
+    const configuredPolicy = policies?.policies.find((policy) => {
+      return policy.model === body.data.selectedModel;
+    });
+    if (body.data.selectedModel !== null && !configuredPolicy) {
+      return badRequestMessage("Invalid request");
+    }
+
+    if (body.data.serviceTier === "priority") {
+      if (!configuredPolicy || configuredPolicy.routeStatus !== "valid") {
         return badRequestMessage("Invalid request");
+      }
+      const featureSwitchContext = await get(
+        userFeatureSwitchContext(auth.orgId, auth.userId),
+      );
+      signal.throwIfAborted();
+      if (
+        !isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)
+      ) {
+        return badRequestMessage(
+          "Codex fast mode is not enabled for this workspace",
+        );
+      }
+      if (
+        !isCodexFastServiceTierSupported({
+          selectedModel: configuredPolicy.model,
+          effectiveModelProvider: configuredPolicy.defaultProviderType,
+          codexFastModeEnabled: true,
+        })
+      ) {
+        return badRequestMessage(
+          "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+        );
       }
     }
 

@@ -1,4 +1,5 @@
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   feishuChatIngress,
   type FeishuChatIngressStatus,
@@ -56,6 +57,7 @@ export async function ensureFeishuChatThreadRoute(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly serviceTier: ChatThreadServiceTier | null;
     readonly currentTime: Date;
   },
 ): Promise<FeishuChatThreadRouteBinding> {
@@ -71,6 +73,7 @@ export async function ensureFeishuChatThreadRoute(
         userId: args.userId,
         agentComposeId: args.agentComposeId,
         selectedModel: args.selectedModel,
+        codexServiceTier: args.serviceTier === "priority" ? "fast" : null,
         title: null,
         lastReadAt: args.currentTime,
         lastMessageAt: args.currentTime,
@@ -128,6 +131,7 @@ export async function ensureFeishuChatThreadRoute(
       agentComposeId: args.agentComposeId,
       title: null,
       selectedModel: args.selectedModel,
+      serviceTier: args.serviceTier,
       createdAt: thread.createdAt,
     });
     return route;
