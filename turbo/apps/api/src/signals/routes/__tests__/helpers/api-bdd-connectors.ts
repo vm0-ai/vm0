@@ -1762,10 +1762,13 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       body: CreateCustomConnectorBody,
       statuses: readonly (201 | 400 | 401 | 403 | 500)[],
+      signal?: AbortSignal,
     ) {
-      const client = setupApp({ context, routes: zeroCustomConnectorsRoutes })(
-        zeroCustomConnectorsContract,
-      );
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorsRoutes,
+        signal,
+      })(zeroCustomConnectorsContract);
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,

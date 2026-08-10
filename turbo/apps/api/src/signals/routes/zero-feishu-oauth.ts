@@ -49,6 +49,7 @@ import {
   lockUserCustomConnectorGrantScope,
 } from "../services/user-connectors.service";
 import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
+import { publishCustomConnectorUserInvalidationAfterCommit } from "../services/connector-client-invalidation.service";
 import {
   getCustomConnectorById,
   type CustomConnectorHttpRow,
@@ -478,10 +479,15 @@ async function finishFeishuOAuthConnection(
         : undefined;
     },
   );
-  signal.throwIfAborted();
   if (!connection.connected) {
+    signal.throwIfAborted();
     return "account_in_use";
   }
+
+  await publishCustomConnectorUserInvalidationAfterCommit(
+    args.state.userId,
+    signal,
+  );
 
   await publishFeishuOrgChanged(
     args.db,

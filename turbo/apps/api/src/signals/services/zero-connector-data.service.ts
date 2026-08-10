@@ -36,7 +36,6 @@ import { optionalEnv } from "../../lib/env";
 import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
-import { publishConnectorChangedForUserSafely } from "../external/realtime";
 import { bestEffort } from "../utils";
 import {
   decryptStoredSecretValue,
@@ -57,6 +56,7 @@ import {
   resolveConnectorCredentialAccess,
   type ConnectorCredentialAccess,
 } from "./connector-credential-access.service";
+import { publishBuiltinConnectorInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import {
   deleteConnectorCredentialStorageConnection,
   deleteConnectorOwnedCredentialRows,
@@ -294,11 +294,16 @@ async function finalizeConnectorStateChangeAfterCommit(
     }
   }
 
-  await publishConnectorChangedForUserSafely(args.userId, args.connectorSlug);
-  if (signal.aborted) {
-    postCommitAbort ??= signal.reason;
-  }
-  throwCapturedAbort(postCommitAbort);
+  await publishBuiltinConnectorInvalidationAfterCommit(
+    {
+      userId: args.userId,
+      connectorSlug: args.connectorSlug,
+      ...(postCommitAbort === null
+        ? {}
+        : { previouslyCapturedAbort: { reason: postCommitAbort } }),
+    },
+    signal,
+  );
 }
 
 function prepareManualGrantConnect(

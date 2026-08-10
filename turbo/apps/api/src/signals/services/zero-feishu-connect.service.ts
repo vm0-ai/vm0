@@ -25,6 +25,10 @@ import {
   ensureFeishuCustomConnector$,
   hasFeishuCustomConnectorOAuthConnection,
 } from "./feishu-custom-connector.service";
+import {
+  publishCustomConnectorUserInvalidationAfterCommit,
+  type CapturedConnectorClientInvalidationAbort,
+} from "./connector-client-invalidation.service";
 import { feishuCallbackUrl, feishuOAuthAppCallbackUrl } from "./feishu-config";
 import { buildFeishuOAuthConnectUrl } from "./feishu-oauth-state";
 
@@ -532,6 +536,7 @@ export const disconnectFeishuConnection$ = command(
     if (installations.length === 0) {
       return false;
     }
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const rows = await db.transaction(async (tx) => {
       await disconnectFeishuCustomConnectorOAuthConnection(
         tx,
@@ -559,8 +564,19 @@ export const disconnectFeishuConnection$ = command(
       signal.throwIfAborted();
       return deleted;
     });
-    signal.throwIfAborted();
-    return rows.length > 0;
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
+    if (rows.length === 0) {
+      signal.throwIfAborted();
+      return false;
+    }
+    await publishCustomConnectorUserInvalidationAfterCommit(
+      args.userId,
+      signal,
+      postCommitAbort,
+    );
+    return true;
   },
 );
 
