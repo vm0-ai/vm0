@@ -415,6 +415,7 @@ describe("zero sidebar", () => {
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
         selectedModel: body.model ?? "claude-sonnet-4-6",
+        serviceTier: body.serviceTier ?? null,
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -582,6 +583,7 @@ describe("zero sidebar", () => {
         title: null,
         createdAt: "2026-03-12T12:00:00Z",
         selectedModel: body.model ?? "claude-sonnet-4-6",
+        serviceTier: body.serviceTier ?? null,
       });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -1478,6 +1480,7 @@ describe("zero sidebar", () => {
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
         selectedModel: body.model ?? "claude-sonnet-4-6",
+        serviceTier: body.serviceTier ?? null,
       });
     });
 

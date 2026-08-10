@@ -125,11 +125,7 @@ Notes:
         chalk.dim(`  Model:  ${thread.selectedModel ?? "(default)"}`),
       );
       const priority =
-        thread.serviceTier === undefined
-          ? "(unknown)"
-          : thread.serviceTier === "priority"
-            ? "enabled"
-            : "disabled";
+        thread.serviceTier === "priority" ? "enabled" : "disabled";
       console.log(chalk.dim(`  Priority: ${priority}`));
       console.log(chalk.dim(`  Agent:  ${agentId}`));
       console.log();

@@ -37,7 +37,7 @@ interface ZeroChatThreadCreateResult {
   readonly threadId: string;
   readonly title: string | null;
   readonly selectedModel: string | null;
-  readonly serviceTier: ChatThreadServiceTier | null | undefined;
+  readonly serviceTier: ChatThreadServiceTier | null;
 }
 
 interface ZeroChatEventSendResult {

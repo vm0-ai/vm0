@@ -802,9 +802,7 @@ const chatThreadMetadataSchema = z.object({
   agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
-  // Remove optionality after pre-service-tier APIs cannot serve a newly
-  // released CLI during rollout.
-  serviceTier: chatThreadServiceTierSchema.nullable().optional(),
+  serviceTier: chatThreadServiceTierSchema.nullable(),
 });
 
 const chatThreadDraftSchema = z
@@ -968,9 +966,7 @@ export const chatThreadsContract = c.router({
         createdAt: z.string(),
         /** The model the thread was pinned to. */
         selectedModel: z.string(),
-        // Remove optionality after pre-service-tier APIs cannot serve a newly
-        // released CLI during rollout.
-        serviceTier: chatThreadServiceTierSchema.nullable().optional(),
+        serviceTier: chatThreadServiceTierSchema.nullable(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

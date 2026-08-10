@@ -12,7 +12,7 @@ type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 export interface WorkflowAutomationThreadModel {
   readonly id: string;
   readonly label: string;
-  readonly serviceTier: ChatThreadServiceTier | null | undefined;
+  readonly serviceTier: ChatThreadServiceTier | null;
 }
 
 interface WorkflowAutomationDetailsOptions {
@@ -764,12 +764,7 @@ export function printWorkflowAutomationThreadModel(
   console.log(
     `${"Thread model:".padEnd(14)}${model.label} ${chalk.dim(`(${model.id})`)}`,
   );
-  const priority =
-    model.serviceTier === undefined
-      ? "unknown"
-      : model.serviceTier === "priority"
-        ? "enabled"
-        : "disabled";
+  const priority = model.serviceTier === "priority" ? "enabled" : "disabled";
   console.log(`${"Thread priority:".padEnd(18)}${priority}`);
 }
 

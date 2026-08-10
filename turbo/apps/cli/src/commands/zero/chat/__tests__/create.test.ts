@@ -177,37 +177,6 @@ describe("zero chat create command", () => {
     );
   });
 
-  it("reports unknown priority while an older API is serving the CLI", async () => {
-    server.use(
-      http.post(CREATE_URL, () => {
-        return HttpResponse.json(
-          {
-            id: NEW_THREAD_ID,
-            title: "Rollout thread",
-            createdAt: "2026-07-30T10:00:00.000Z",
-            selectedModel: "claude-sonnet-5",
-          },
-          { status: 201 },
-        );
-      }),
-    );
-
-    await zeroChatCommand.parseAsync([
-      "node",
-      "cli",
-      "create",
-      "Rollout thread",
-      "--agent",
-      OTHER_AGENT_ID,
-      "--model",
-      "claude-sonnet-5",
-    ]);
-
-    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-      "Priority: (unknown)",
-    );
-  });
-
   it("requires an agent when it runs outside a web chat thread", async () => {
     vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
 
