@@ -624,6 +624,60 @@ describe("connectors page", () => {
     ).toBeTruthy();
   });
 
+  it("uses bounded discovery for featured browsing and server search", async () => {
+    mockConnectors([]);
+    const github = publicStatusItem({
+      connectorSlug: "github",
+      label: "GitHub",
+      authMethods: [],
+    });
+    const slack = publicStatusItem({
+      connectorSlug: "slack",
+      label: "Slack",
+      authMethods: [],
+    });
+    const discoveryKeywords: (string | undefined)[] = [];
+    let legacyStatusRequests = 0;
+    context.mocks.api(
+      zeroConnectorCatalogContract.discovery,
+      ({ query, respond }) => {
+        discoveryKeywords.push(query.keyword);
+        return respond(200, {
+          connectors: query.keyword ? [slack] : [github],
+          totalConnectorCount: 347,
+        });
+      },
+    );
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      legacyStatusRequests += 1;
+      return respond(200, { connectors: [github, slack] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorDiscovery]: true,
+        [FeatureSwitchKey.ConnectorCatalogCount]: true,
+      },
+    });
+
+    await expect(
+      screen.findByTestId("connector-card-label"),
+    ).resolves.toHaveTextContent("GitHub");
+    await expect(
+      screen.findByLabelText("Connect 347 services for your agents to use."),
+    ).resolves.toBeInTheDocument();
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
+    await waitFor(() => {
+      expect(queryConnectorCardByLabel("Slack")).toBeInTheDocument();
+      expect(queryConnectorCardByLabel("GitHub")).not.toBeInTheDocument();
+    });
+    expect(discoveryKeywords).toContain("Slack");
+    expect(legacyStatusRequests).toBe(0);
+  });
+
   it("shows the exact connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
@@ -1309,22 +1363,22 @@ describe("connectors page", () => {
     });
   });
 
-  it("filters connectors by integration keywords", async () => {
+  it("filters connectors by slug", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "vcs");
+    await fill(searchInput, "github");
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(screen.queryByText("Slack")).not.toBeInTheDocument();
-    expect(search()).toBe("?keywords=vcs");
+    expect(search()).toBe("?keywords=github");
   });
 
-  it("filters connectors by capability keywords", async () => {
+  it("filters connectors by label", async () => {
     mockConnectors([
       { connectorSlug: "github", externalUsername: "octocat" },
       { connectorSlug: "axiom", authMethod: "api-token" },
@@ -1333,7 +1387,7 @@ describe("connectors page", () => {
     detachedSetupPage({ context, path: "/connectors" });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "logs");
+    await fill(searchInput, "axiom");
 
     await waitFor(() => {
       expect(screen.getByText("Axiom")).toBeInTheDocument();
@@ -1368,17 +1422,17 @@ describe("connectors page", () => {
 
   it("clears connector status filter", async () => {
     setupConnectorStatusFilterPage(
-      "/connectors?keywords=connect&connection=not-connected",
+      "/connectors?keywords=git&connection=not-connected",
     );
-    await expectConnectorCardsVisible({ github: false, asana: true });
+    await expectConnectorCardsVisible({ github: false, asana: false });
 
     const filterTrigger = screen.getByLabelText("Filter connectors");
     click(filterTrigger);
     click(menuItemByText("All"));
 
-    await expectConnectorCardsVisible({ github: true, asana: true });
+    await expectConnectorCardsVisible({ github: true, asana: false });
     const params = new URLSearchParams(search());
-    expect(params.get("keywords")).toBe("connect");
+    expect(params.get("keywords")).toBe("git");
     expect(params.has("connection")).toBeFalsy();
   });
 
@@ -1432,11 +1486,11 @@ describe("connectors page", () => {
       { connectorSlug: "axiom", authMethod: "api-token" },
     ]);
 
-    detachedSetupPage({ context, path: "/connectors?keywords=logs" });
+    detachedSetupPage({ context, path: "/connectors?keywords=axiom" });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
     await waitFor(() => {
-      expect(searchInput).toHaveValue("logs");
+      expect(searchInput).toHaveValue("axiom");
       expect(screen.getByText("Axiom")).toBeInTheDocument();
     });
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();

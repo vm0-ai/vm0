@@ -6,7 +6,6 @@ import {
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
-  allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectFlowConnectorSlug$,
@@ -16,6 +15,7 @@ import {
   selectedConnectorSlug$,
   setSelectedConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "../zero-page/components/settings/add-connection-dialog.tsx";
 import { ConnectorCard } from "../zero-page/components/settings/connector-card.tsx";
@@ -46,7 +46,7 @@ export function OnboardingConnectorSetup({
   );
   const pageSignal = useGet(pageSignal$);
   const connectorCatalogItemsLoadable = useLastLoadable(
-    allConnectorCatalogItems$,
+    connectorCatalogStatus$,
   );
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
@@ -63,8 +63,13 @@ export function OnboardingConnectorSetup({
 
   const connectorCatalogItems =
     connectorCatalogItemsLoadable.state === "hasData"
-      ? connectorCatalogItemsLoadable.data
+      ? connectorCatalogItemsLoadable.data.connectors
       : [];
+  const selectedConnector = selectedConnectorSlug
+    ? connectorCatalogItems.find((connector) => {
+        return connector.slug === selectedConnectorSlug;
+      })
+    : undefined;
   const loading = connectorCatalogItemsLoadable.state === "loading";
 
   return (
@@ -133,8 +138,9 @@ export function OnboardingConnectorSetup({
         })}
         {children}
       </section>
-      {selectedConnectorSlug ? (
+      {selectedConnector ? (
         <ConnectModal
+          item={selectedConnector}
           onClose={() => {
             setSelectedConnectorSlug(null);
           }}

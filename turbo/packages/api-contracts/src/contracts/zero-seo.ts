@@ -7,7 +7,6 @@ const c = initContract();
 
 export const ZERO_SEO_DEFAULT_LOCATION = "United States" as const;
 export const ZERO_SEO_DEFAULT_LANGUAGE_CODE = "en" as const;
-export const ZERO_SEO_DEFAULT_COUNTRY_CODE = "us" as const;
 export const ZERO_SEO_DEFAULT_SERP_LIMIT = 10;
 export const ZERO_SEO_DEFAULT_ANALYSIS_LIMIT = 100;
 export const ZERO_SEO_MAX_SERP_LIMIT = 100;
@@ -17,14 +16,11 @@ export const ZERO_SEO_MAX_KEYWORD_CHARS = 512;
 export const ZERO_SEO_MAX_TARGET_CHARS = 2048;
 export const ZERO_SEO_MAX_LOCATION_CHARS = 256;
 
-export const zeroSeoProviderSchema = z.enum(["dataforseo", "serpapi"]);
-
 export const zeroSeoEngineSchema = z.enum([
   "google",
   "bing",
   "google_maps",
   "google_news",
-  "google_shopping",
 ]);
 
 export const zeroSeoDeviceSchema = z.enum(["desktop", "mobile"]);
@@ -35,12 +31,6 @@ export const zeroSeoLanguageCodeSchema = z
   .min(2)
   .max(10)
   .regex(/^[a-z]{2,3}(?:-[a-z]{2,4})?$/i, "language must be a language code");
-
-export const zeroSeoCountryCodeSchema = z
-  .string()
-  .trim()
-  .length(2)
-  .regex(/^[a-z]{2}$/i, "country must be a two-letter country code");
 
 const zeroSeoLocationSchema = z
   .string()
@@ -66,14 +56,11 @@ const zeroSeoDomainSchema = z
 export const zeroSeoSerpRequestSchema = z
   .object({
     query: z.string().trim().min(1).max(ZERO_SEO_MAX_QUERY_CHARS),
-    provider: zeroSeoProviderSchema.default("dataforseo"),
+    provider: z.literal("dataforseo").default("dataforseo"),
     engine: zeroSeoEngineSchema.default("google"),
     location: zeroSeoLocationSchema.default(ZERO_SEO_DEFAULT_LOCATION),
     languageCode: zeroSeoLanguageCodeSchema.default(
       ZERO_SEO_DEFAULT_LANGUAGE_CODE,
-    ),
-    countryCode: zeroSeoCountryCodeSchema.default(
-      ZERO_SEO_DEFAULT_COUNTRY_CODE,
     ),
     device: zeroSeoDeviceSchema.default("desktop"),
     limit: z
@@ -84,19 +71,7 @@ export const zeroSeoSerpRequestSchema = z
       .default(ZERO_SEO_DEFAULT_SERP_LIMIT),
   })
   .superRefine((value, context) => {
-    if (value.provider === "dataforseo" && value.engine === "google_shopping") {
-      context.addIssue({
-        code: "custom",
-        path: ["engine"],
-        message:
-          "DataForSEO Google Shopping is asynchronous; use SerpAPI for the google_shopping engine",
-      });
-    }
-    if (
-      value.provider === "dataforseo" &&
-      value.engine === "google_news" &&
-      value.device === "mobile"
-    ) {
+    if (value.engine === "google_news" && value.device === "mobile") {
       context.addIssue({
         code: "custom",
         path: ["device"],
@@ -151,26 +126,13 @@ const zeroSeoResponseBaseSchema = z.object({
   result: z.unknown(),
 });
 
-const zeroSeoDataForSeoResponseSchema = zeroSeoResponseBaseSchema.extend({
+export const zeroSeoResponseSchema = zeroSeoResponseBaseSchema.extend({
   provider: z.literal("dataforseo"),
   billingCategory: z.literal("provider_cost_usd_micros"),
   billingQuantity: z.number().int().nonnegative(),
   providerCostUsd: z.number().nonnegative(),
 });
 
-const zeroSeoSerpApiResponseSchema = zeroSeoResponseBaseSchema.extend({
-  provider: z.literal("serpapi"),
-  billingCategory: z.literal("search"),
-  billingQuantity: z.union([z.literal(0), z.literal(1)]),
-  cached: z.boolean(),
-});
-
-export const zeroSeoResponseSchema = z.discriminatedUnion("provider", [
-  zeroSeoDataForSeoResponseSchema,
-  zeroSeoSerpApiResponseSchema,
-]);
-
-export type ZeroSeoProvider = z.infer<typeof zeroSeoProviderSchema>;
 export type ZeroSeoEngine = z.infer<typeof zeroSeoEngineSchema>;
 export type ZeroSeoDevice = z.infer<typeof zeroSeoDeviceSchema>;
 export type ZeroSeoSerpRequest = z.infer<typeof zeroSeoSerpRequestSchema>;

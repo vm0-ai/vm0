@@ -9,14 +9,12 @@ import {
   type CustomConnectorSlug,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
-import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
+import { connectorCatalogItemBySlug } from "../external/connectors.ts";
 import {
-  allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectorCurrentConnectionStatus,
   getConnectorStatusDirectConnectMethod,
-  setSelectedConnectorSlug$,
 } from "../zero-page/settings/connectors.ts";
 import {
   customConnectorAuthorizedAgentsById$,
@@ -85,7 +83,13 @@ export interface ConnectorCardSignalsRegistry {
   resolve(resourceKey: string): ConnectorSignals;
 }
 
-const activeChatConnectorActionState$ = state<ConnectorActionDescriptor | null>(
+type ActiveChatConnectorAction =
+  | (CatalogConnectorActionDescriptor & {
+      readonly catalogItem: PlatformConnectorCatalogStatusItem;
+    })
+  | CustomConnectorActionDescriptor;
+
+const activeChatConnectorActionState$ = state<ActiveChatConnectorAction | null>(
   null,
 );
 
@@ -95,7 +99,6 @@ export const activeChatConnectorAction$ = computed((get) => {
 
 export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(activeChatConnectorActionState$, null);
-  set(setSelectedConnectorSlug$, null);
 });
 
 export function parseConnectorAuthorizeUrl(
@@ -202,11 +205,7 @@ function createCatalogConnectorActivation(
       return;
     }
 
-    const connectorCatalogItems = await get(allConnectorCatalogItems$);
-    signal.throwIfAborted();
-    const connector = connectorCatalogItems.find((item) => {
-      return item.slug === descriptor.connectorSlug;
-    });
+    const connector = catalogItem;
     if (!connector) {
       return;
     }
@@ -214,8 +213,10 @@ function createCatalogConnectorActivation(
     const directConnectMethod =
       getConnectorStatusDirectConnectMethod(connector);
     if (!directConnectMethod) {
-      set(activeChatConnectorActionState$, descriptor);
-      set(setSelectedConnectorSlug$, descriptor.connectorSlug);
+      set(activeChatConnectorActionState$, {
+        ...descriptor,
+        catalogItem: connector,
+      });
       return;
     }
 
@@ -251,10 +252,7 @@ function createCatalogConnectorActivation(
 function createCatalogConnectorSignals(
   descriptor: CatalogConnectorActionDescriptor,
 ): CatalogConnectorSignals {
-  const catalogItem$ = computed(async (get) => {
-    const statusBySlug = await get(connectorCatalogStatusBySlug$);
-    return statusBySlug.get(descriptor.connectorSlug) ?? null;
-  });
+  const catalogItem$ = connectorCatalogItemBySlug(descriptor.connectorSlug);
 
   const available$ = computed(async (get): Promise<boolean> => {
     const catalogItem = await get(catalogItem$);
@@ -262,8 +260,7 @@ function createCatalogConnectorSignals(
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
-    const statusBySlug = await get(connectorCatalogStatusBySlug$);
-    return statusBySlug.get(descriptor.connectorSlug)?.connected ?? false;
+    return (await get(catalogItem$))?.connected ?? false;
   });
 
   const authorized$ = computed(async (get): Promise<boolean> => {

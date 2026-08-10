@@ -516,8 +516,15 @@
     {
       "idx": 881,
       "version": "7",
-      "when": 1786364327097,
-      "tag": "0881_add_gpt_5_6_fast_pricing",
+      "when": 1786363170690,
+      "tag": "0881_remove_serpapi_seo_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 882,
+      "version": "7",
+      "when": 1786365512153,
+      "tag": "0882_add_gpt_5_6_fast_pricing",
       "breakpoints": true
     }
   ]

@@ -1,4 +1,4 @@
-import { useLastResolved, useGet, useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Input } from "@vm0/ui/components/ui/input";
@@ -29,7 +29,6 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
-  allConnectorCatalogItems$,
   connectFlowConnectorSlug$,
   pollingOAuthAuthCodeConnectorSlug$,
   connectorExternalCodeState$,
@@ -51,7 +50,6 @@ import {
   setManualGrantFormValue$,
   clearManualGrantForm$,
   manualGrantFormValuesFor$,
-  selectedConnectorSlug$,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   hasConnectorStatusBrowserAuthGrant,
@@ -1446,25 +1444,19 @@ function ConnectModalContent({
 // ---------------------------------------------------------------------------
 
 export function ConnectModal({
+  item,
   onClose,
   onSuccess,
   authorizeVisibleAgentsOnConnect = false,
-  selectedConnectorSlug: selectedConnectorSlugOverride,
   agentId,
 }: {
+  item: PlatformConnectorCatalogStatusItem;
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
   authorizeVisibleAgentsOnConnect?: boolean;
-  selectedConnectorSlug?: ConnectorSlug | null;
   agentId?: string;
 }) {
   useTranslation();
-  const globalSelectedConnectorSlug = useGet(selectedConnectorSlug$);
-  const selectedConnectorSlug =
-    selectedConnectorSlugOverride === undefined
-      ? globalSelectedConnectorSlug
-      : selectedConnectorSlugOverride;
-  const connectorCatalogItems = useLastResolved(allConnectorCatalogItems$);
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const clearConnectorExternalCode = useSet(clearConnectorExternalCode$);
   const connectFlowConnectorSlug = useGet(connectFlowConnectorSlug$);
@@ -1472,13 +1464,7 @@ export function ConnectModal({
   const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
   const connectorExternalCodeState = useGet(connectorExternalCodeState$);
 
-  const item = connectorCatalogItems?.find((catalogItem) => {
-    return catalogItem.slug === selectedConnectorSlug;
-  });
-
-  if (!selectedConnectorSlug || !item) {
-    return null;
-  }
+  const selectedConnectorSlug = item.slug;
 
   const connectFlowActive =
     connectFlowConnectorSlug === selectedConnectorSlug ||

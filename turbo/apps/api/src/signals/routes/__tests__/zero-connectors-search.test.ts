@@ -102,6 +102,7 @@ describe("GET /api/zero/connectors/search", () => {
 
     expect(response.body.connectors).toBeInstanceOf(Array);
     expect(response.body.connectors.length).toBeGreaterThan(0);
+    expect(response.body.connectors.length).toBeLessThanOrEqual(100);
     for (const connector of response.body.connectors) {
       expect(connector).toHaveProperty("slug");
       expect(connector).toHaveProperty("label");
@@ -114,7 +115,7 @@ describe("GET /api/zero/connectors/search", () => {
     }
   });
 
-  it("filters connectors by keyword matching label", async () => {
+  it("filters connectors by keyword matching slug or label", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: zeroConnectorsRoutes })(
@@ -131,14 +132,12 @@ describe("GET /api/zero/connectors/search", () => {
     expect(response.body.connectors.length).toBeGreaterThan(0);
     for (const connector of response.body.connectors) {
       const matchesLabel = connector.label.toLowerCase().includes("github");
-      const matchesDescription = connector.description
-        .toLowerCase()
-        .includes("github");
-      expect(matchesLabel || matchesDescription).toBeTruthy();
+      const matchesSlug = connector.slug.toLowerCase().includes("github");
+      expect(matchesLabel || matchesSlug).toBeTruthy();
     }
   });
 
-  it("filters connectors by keyword matching description", async () => {
+  it("does not search connector descriptions", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: zeroConnectorsRoutes })(
@@ -152,14 +151,10 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    expect(
-      response.body.connectors.map((connector) => {
-        return connector.slug;
-      }),
-    ).toStrictEqual(["slack"]);
+    expect(response.body.connectors).toStrictEqual([]);
   });
 
-  it("filters connectors by keyword matching tags", async () => {
+  it("does not search connector tags", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context, routes: zeroConnectorsRoutes })(
@@ -173,11 +168,7 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    expect(
-      response.body.connectors.map((connector) => {
-        return connector.slug;
-      }),
-    ).toStrictEqual(["openai"]);
+    expect(response.body.connectors).toStrictEqual([]);
   });
 
   it("returns empty array for non-matching keyword", async () => {

@@ -116,7 +116,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.SeoBuiltIn]: {
     maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed DataForSEO and SerpAPI access",
+    description: "Enable vm0-managed DataForSEO access",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -364,6 +364,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Render recommended follow-ups as an equal-height centered card rail in narrow chat layouts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConnectorDiscovery]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Browse a bounded featured connector catalog and search it by slug or label.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
