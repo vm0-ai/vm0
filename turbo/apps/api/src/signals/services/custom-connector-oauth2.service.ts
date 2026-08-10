@@ -55,7 +55,6 @@ import {
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
 
-const CUSTOM_CONNECTOR_OAUTH_METHOD_ID = "oauth2";
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
@@ -542,7 +541,7 @@ export const startCustomConnectorOAuth2$ = command(
         state,
         customConnectorId: connector.id,
         storageVersion: connector.storageVersion,
-        authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
+        authMethod: "oauth",
         userId: args.userId,
         orgId: args.orgId,
         agentId: args.agentId,
