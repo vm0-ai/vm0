@@ -331,18 +331,6 @@ function isCorsPreflightRequest(context: Context): boolean {
   );
 }
 
-function accessAssertionErrorCode(error: unknown): string {
-  if (
-    error !== null &&
-    typeof error === "object" &&
-    "code" in error &&
-    typeof error.code === "string"
-  ) {
-    return error.code;
-  }
-  return error instanceof Error ? error.name : "UnknownError";
-}
-
 // External server-to-server webhook callers cannot present the Vercel bypass
 // secret, so the preview automation guard must let their paths through even on
 // protected preview/staging deployments. This covers every third-party and
@@ -375,13 +363,7 @@ async function cloudflareAccessAssertionMiddleware(
   const verified = await settle(verifyCloudflareAccessAssertion(assertion));
   if (!verified.ok) {
     L.warn("Cloudflare Access assertion rejected", { error: verified.error });
-    return context.json(
-      {
-        error: "Invalid Cloudflare Access assertion",
-        reason: accessAssertionErrorCode(verified.error),
-      },
-      401,
-    );
+    return context.json({ error: "Invalid Cloudflare Access assertion" }, 401);
   }
   await next();
 }

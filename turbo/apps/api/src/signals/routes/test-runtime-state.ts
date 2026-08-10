@@ -27,10 +27,6 @@ import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
-import {
-  fetchHostHasBlockedAddress,
-  resolveFetchHostAddresses,
-} from "../../lib/blocked-fetch-host";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -1386,30 +1382,6 @@ async function compatibilityFixtureActionResponse(
   }
 }
 
-async function workerOutboundSafetyResponse(signal: AbortSignal) {
-  const privateHostname = "localtest.me";
-  const addresses = await resolveFetchHostAddresses(privateHostname);
-  signal.throwIfAborted();
-  const dnsPrivateAddressBlocked = fetchHostHasBlockedAddress(addresses);
-  const privateFetch = await settleIncludingAbort(
-    fetch(`https://${privateHostname}`, {
-      redirect: "error",
-      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
-    }),
-  );
-  if (privateFetch.ok) {
-    await privateFetch.value.body?.cancel();
-  }
-  return {
-    status: 200 as const,
-    body: {
-      ok: true as const,
-      dns_private_address_blocked: dnsPrivateAddressBlocked,
-      native_private_fetch_blocked: !privateFetch.ok,
-    },
-  };
-}
-
 const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -1423,9 +1395,6 @@ const postRuntimeStateAction$ = command(
     }
 
     const body = bodyResult.data;
-    if (body.action === "probe-worker-outbound-safety") {
-      return await workerOutboundSafetyResponse(signal);
-    }
     const db = set(writeDb$);
     if (isPersistenceStateAction(body)) {
       return await persistenceStateActionResponse(db, body, signal);

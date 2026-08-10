@@ -1204,7 +1204,7 @@ jobs:
           curl "${API_DEPLOYMENT_URL}/health" \
             -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
             -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
-            --fail-with-body \
+            --fail \
             --show-error \
             --silent \
             --max-time 20 \
@@ -1232,7 +1232,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          response="$(curl "${API_DEPLOYMENT_URL}/api/test/runtime-state/action" \
+          response="$(curl "${API_DEPLOYMENT_URL}/api/test/worker-runtime/outbound-safety" \
             --fail \
             --show-error \
             --silent \
@@ -1241,7 +1241,7 @@ jobs:
             -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
             -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
             -H "x-vm0-test-endpoint-bypass: ${TEST_ENDPOINT_BYPASS_SECRET}" \
-            --data '{"action":"probe-worker-outbound-safety"}')"
+            --data '{}')"
           jq -e '
             .ok == true and
             .dns_private_address_blocked == true and

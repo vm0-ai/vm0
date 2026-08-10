@@ -753,10 +753,7 @@ describe("createApp", () => {
   });
 
   describe("Cloudflare Access assertion", () => {
-    async function requestInWorkerInvocation(
-      path: string,
-      init?: RequestInit,
-    ): Promise<Response> {
+    async function requestInWorkerInvocation(path: string): Promise<Response> {
       const pending: Promise<unknown>[] = [];
       const app = createApp({ routes: TEST_APP_ROUTES });
       const response = await runInvocation(
@@ -767,7 +764,7 @@ describe("createApp", () => {
         },
         { kind: "fetch", requestId: "test-request" },
         async () => {
-          return await app.request(path, init);
+          return await app.request(path);
         },
       );
       await Promise.allSettled(pending);
@@ -780,20 +777,6 @@ describe("createApp", () => {
       expect(response.status).toBe(401);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Cloudflare Access assertion required",
-      });
-    });
-
-    it("reports the safe JOSE error code for an invalid Access assertion", async () => {
-      mockEnv("CF_ACCESS_AUD", "test-audience");
-      mockEnv("CF_ACCESS_TEAM_DOMAIN", "https://access.example.com");
-      const response = await requestInWorkerInvocation("/health", {
-        headers: { "cf-access-jwt-assertion": "invalid" },
-      });
-
-      expect(response.status).toBe(401);
-      await expect(response.json()).resolves.toStrictEqual({
-        error: "Invalid Cloudflare Access assertion",
-        reason: "ERR_JWS_INVALID",
       });
     });
 
