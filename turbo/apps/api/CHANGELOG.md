@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.419.0](https://github.com/vm0-ai/vm0/compare/api-v1.418.0...api-v1.419.0) (2026-08-10)
+
+
+### Features
+
+* support multiple personal subscription accounts ([#26166](https://github.com/vm0-ai/vm0/issues/26166)) ([74c3a15](https://github.com/vm0-ai/vm0/commit/74c3a157adb0c08b70911e43f3479b81d405e5e1))
+
+
+### Bug Fixes
+
+* add chat run completion context to agent prompt ([#26172](https://github.com/vm0-ai/vm0/issues/26172)) ([f7ff876](https://github.com/vm0-ai/vm0/commit/f7ff87638d1d00d9b5bfdff434dc08a2d88298bf))
+* **ci:** deploy api after production migrations ([#26173](https://github.com/vm0-ai/vm0/issues/26173)) ([fd61d3c](https://github.com/vm0-ai/vm0/commit/fd61d3c7381132141095ab6805b6deb2822578f7))
+
+
+### Refactoring
+
+* **chat:** backfill canonical event storage ([#26175](https://github.com/vm0-ai/vm0/issues/26175)) ([ec855a7](https://github.com/vm0-ai/vm0/commit/ec855a7283afd2701b2f2cc109135267e837a2a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.309.0
+    * @vm0/core bumped to 8.540.0
+    * @vm0/db bumped to 1.189.0
+    * @vm0/pi-agent-runtime bumped to 1.3.32
+
 ## [1.418.0](https://github.com/vm0-ai/vm0/compare/api-v1.417.0...api-v1.418.0) (2026-08-10)
 
 
