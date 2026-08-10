@@ -1,8 +1,6 @@
 import Ably from "ably";
-import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   BrowserSessionChangedPayload,
-  ConnectorChangedPayload,
   UserPreferenceChangedPayload,
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
@@ -80,7 +78,7 @@ export async function createRunnerGroupRealtimeToken(
  *
  * NOT best-effort: rejections from Ably propagate to the caller. Use this
  * directly only when delivery failure should fail the operation. Post-commit
- * invalidations should expose a topic-specific safe publisher instead.
+ * invalidations should use their post-commit dispatcher instead.
  */
 export async function publishUserSignal(
   userIds: readonly string[],
@@ -95,36 +93,6 @@ export async function publishUserSignal(
     }),
   );
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
-}
-
-export async function publishConnectorChangedForUserSafely(
-  userId: string,
-  connectorSlug: ConnectorSlug,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], "connector:changed", {
-      connectorSlug,
-    } satisfies ConnectorChangedPayload),
-    (error) => {
-      L.warn("Failed to publish connector changed signal", {
-        connectorSlug,
-        error,
-      });
-    },
-  );
-}
-
-export async function publishCustomConnectorListChangedForUserSafely(
-  userId: string,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], "customConnectorListChanged"),
-    (error) => {
-      L.warn("Failed to publish custom connector list changed signal", {
-        error,
-      });
-    },
-  );
 }
 
 export async function publishUserPreferenceChangedForUserSafely(

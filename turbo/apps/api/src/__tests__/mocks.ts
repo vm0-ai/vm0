@@ -60,6 +60,7 @@ export interface ApiTestMocks {
     readonly flush: AsyncMock;
   };
   readonly ably: {
+    readonly channelGet: Mock<(channelName: string) => void>;
     readonly publish: AsyncMock;
     readonly createTokenRequest: AsyncMock;
     readonly requestToken: AsyncMock;
@@ -420,6 +421,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       timeout: vi.fn<(milliseconds: number) => AbortSignal | undefined>(),
     },
     ably: {
+      channelGet: vi.fn<(channelName: string) => void>(),
       publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       createTokenRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       requestToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -854,7 +856,8 @@ vi.mock("signal-timers", async (importOriginal) => {
 vi.mock("ably", () => {
   class MockRest {
     readonly channels = {
-      get: () => {
+      get: (channelName: string) => {
+        apiTestMocks.ably.channelGet(channelName);
         return { publish: apiTestMocks.ably.publish };
       },
     };
@@ -1095,6 +1098,7 @@ export function getApiTestMocks(): ApiTestMocks {
 
 export function resetApiTestMocks(): void {
   apiTestMocks.abortSignal.timeout.mockReset();
+  apiTestMocks.ably.channelGet.mockReset();
   apiTestMocks.ably.publish.mockReset();
   apiTestMocks.ably.publish.mockResolvedValue(undefined);
   apiTestMocks.ably.createTokenRequest.mockReset();

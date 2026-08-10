@@ -820,7 +820,8 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
   });
 
   it("publishes one connector change event on successful replacement", async () => {
-    await seedFixture();
+    const fixture = seedFixture();
+    context.mocks.ably.channelGet.mockClear();
     context.mocks.ably.publish.mockClear();
     const client = setupApp({ context, routes: zeroConnectorsRoutes })(
       zeroConnectorManualGrantContract,
@@ -835,6 +836,10 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
       [200],
     );
 
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledTimes(1);
+    expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
+      `user:${fixture.userId}`,
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "connector:changed",

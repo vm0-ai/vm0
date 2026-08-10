@@ -6,8 +6,8 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { writeDb$, type Db } from "../external/db";
-import { publishConnectorChangedForUserSafely } from "../external/realtime";
 import { recomposeAgentIfStale$ } from "./agent-compose.service";
+import { publishBuiltinConnectorInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import { updateUserConnectors } from "./user-connectors.service";
 
 interface AuthorizableAgent {
@@ -182,8 +182,13 @@ export const authorizeConnectedConnector$ = command(
         message: agentNotFoundMessage(agent.id),
       };
     }
-    await publishConnectorChangedForUserSafely(args.userId, args.connectorSlug);
-    signal.throwIfAborted();
+    await publishBuiltinConnectorInvalidationAfterCommit(
+      {
+        userId: args.userId,
+        connectorSlug: args.connectorSlug,
+      },
+      signal,
+    );
     return { status: "authorized", agentId: agent.id };
   },
 );

@@ -29,6 +29,7 @@ import type { Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { safeJsonParse, tapError } from "../utils";
 import { buildFeishuConnectUrl } from "./feishu-connect-token";
+import { publishCustomConnectorUserInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import { disconnectFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
@@ -791,7 +792,10 @@ async function handleDisconnectCommand(
       .where(eq(feishuOrgConnections.id, args.connection.id));
     signal.throwIfAborted();
   });
-  signal.throwIfAborted();
+  await publishCustomConnectorUserInvalidationAfterCommit(
+    args.connection.vm0UserId,
+    signal,
+  );
   await publishFeishuOrgChanged(
     args.db,
     args.installation.orgId,

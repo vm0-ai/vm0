@@ -8,7 +8,12 @@ import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connec
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { nowDate } from "../../lib/time";
+import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import {
+  publishCustomConnectorOrganizationInvalidationAfterCommit,
+  type CapturedConnectorClientInvalidationAbort,
+} from "./connector-client-invalidation.service";
 import { deleteCustomConnectorMemberConnection } from "./custom-connector-credential-storage.service";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 import { commitConnectorRuntimeMutation } from "./connector-runtime-wakeup.service";
@@ -57,6 +62,7 @@ interface ExistingFeishuCustomConnector {
 interface ReconciledFeishuCustomConnector {
   readonly connectorId: string;
   readonly displayName: string;
+  readonly definitionChanged: boolean;
   readonly runtimeChanged: boolean;
 }
 
@@ -270,6 +276,7 @@ async function createFeishuCustomConnector(
   return {
     connectorId: connector.id,
     displayName: feishuCustomConnectorDisplayName(installation.botName),
+    definitionChanged: true,
     runtimeChanged: false,
   };
 }
@@ -314,6 +321,7 @@ async function repairFeishuCustomConnector(
   return {
     connectorId: existing.connector.id,
     displayName: feishuCustomConnectorDisplayName(installation.botName),
+    definitionChanged: true,
     runtimeChanged: true,
   };
 }
@@ -388,6 +396,7 @@ async function reconcileFeishuCustomConnector(
     return {
       connectorId: existing.connector.id,
       displayName: feishuCustomConnectorDisplayName(installation.botName),
+      definitionChanged: false,
       runtimeChanged: false,
     };
   }
@@ -402,7 +411,7 @@ async function reconcileFeishuCustomConnector(
 
 export const ensureFeishuCustomConnector$ = command(
   async (
-    { set },
+    { get, set },
     args: EnsureFeishuCustomConnectorArgs,
     signal: AbortSignal,
   ): Promise<string | null> => {
@@ -410,6 +419,7 @@ export const ensureFeishuCustomConnector$ = command(
     const reconciliation = db.transaction(async (tx) => {
       return await reconcileFeishuCustomConnector(tx, args, signal);
     });
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const result = await commitConnectorRuntimeMutation(
       reconciliation,
       (connector) => {
@@ -427,9 +437,22 @@ export const ensureFeishuCustomConnector$ = command(
           : undefined;
       },
     );
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
     if (!result) {
+      signal.throwIfAborted();
       return null;
+    }
+    if (result.definitionChanged) {
+      await publishCustomConnectorOrganizationInvalidationAfterCommit(
+        args.orgId,
+        get(clerk$).organizations,
+        signal,
+        postCommitAbort,
+      );
+    } else {
+      signal.throwIfAborted();
     }
     await set(
       syncCustomConnectorSkillVolume$,
@@ -451,7 +474,7 @@ export const ensureFeishuCustomConnector$ = command(
 
 export const deleteFeishuCustomConnector$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly installationId: string;
@@ -470,6 +493,7 @@ export const deleteFeishuCustomConnector$ = command(
         ),
       )
       .returning({ id: orgCustomConnectors.id });
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const [deleted] = await commitConnectorRuntimeMutation(
       deletion,
       ([connector]) => {
@@ -482,10 +506,19 @@ export const deleteFeishuCustomConnector$ = command(
           : undefined;
       },
     );
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
     if (!deleted) {
+      signal.throwIfAborted();
       return;
     }
+    await publishCustomConnectorOrganizationInvalidationAfterCommit(
+      args.orgId,
+      get(clerk$).organizations,
+      signal,
+      postCommitAbort,
+    );
     await set(
       syncCustomConnectorSkillVolume$,
       {
