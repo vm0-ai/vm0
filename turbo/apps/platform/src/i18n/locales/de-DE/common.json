@@ -980,6 +980,7 @@
           "description": "Behalten Sie den {{plan}}-Workspace-Plan und weisen Sie jedem Mitglied ein eigenes monatliches Nutzungspaket zu.",
           "error": "Dieses Abonnement konnte nicht migriert werden. Aktualisieren Sie die Seite und versuchen Sie es erneut.",
           "invoice": "Rechnung anzeigen",
+          "nextRecurring": "Nächster wiederkehrender Gesamtbetrag",
           "pendingPayment": "Die Stripe-Zahlung wird abgewartet, bevor das Abonnement geändert wird.",
           "processing": "Stripe wendet die Abonnementänderung an.",
           "purchasedCredits": "Gekaufte Credits",

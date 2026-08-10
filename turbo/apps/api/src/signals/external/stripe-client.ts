@@ -131,6 +131,7 @@ export interface StripeSubscriptionUpdateItemParam {
 }
 
 export interface StripeSubscriptionUpdateParams {
+  readonly billing_cycle_anchor?: "unchanged";
   readonly cancel_at?: number | null;
   readonly cancel_at_period_end?: boolean;
   readonly metadata?: StripeMetadataParam;
@@ -269,6 +270,19 @@ export interface StripeInvoice {
   readonly currency: string;
   readonly status: "draft" | "open" | "paid" | "uncollectible" | "void" | null;
   readonly paid?: boolean;
+  readonly payments?: {
+    readonly data: readonly {
+      readonly status: string;
+      readonly amount_paid?: number | null;
+      readonly payment: {
+        readonly type: string;
+        readonly payment_intent?: StripeRef;
+      };
+    }[];
+  } | null;
+  readonly status_transitions?: {
+    readonly paid_at?: number | null;
+  } | null;
   readonly subtotal?: number | null;
   readonly lines: { readonly data: readonly StripeInvoiceLine[] };
   readonly parent: {
@@ -428,7 +442,10 @@ export interface StripeInvoicesApi {
   }): Promise<StripeInvoice>;
   finalizeInvoice(id: string): Promise<StripeInvoice>;
   pay(id: string): Promise<StripeInvoice>;
-  retrieve(id: string): Promise<StripeInvoice>;
+  retrieve(
+    id: string,
+    params?: { readonly expand?: readonly string[] },
+  ): Promise<StripeInvoice>;
   createPreview(
     params: StripeInvoiceCreatePreviewParams,
   ): Promise<StripeInvoice>;

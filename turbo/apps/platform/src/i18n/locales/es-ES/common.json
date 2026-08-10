@@ -1001,6 +1001,7 @@
           "description": "Conserva el plan {{plan}} del espacio de trabajo y asigna a cada miembro un paquete de uso mensual individual.",
           "error": "No se pudo migrar esta suscripción. Actualiza la página e inténtalo de nuevo.",
           "invoice": "Ver factura",
+          "nextRecurring": "Próximo total recurrente",
           "pendingPayment": "Esperando el pago de Stripe antes de cambiar la suscripción.",
           "processing": "Stripe está aplicando el cambio de suscripción.",
           "purchasedCredits": "Créditos comprados",

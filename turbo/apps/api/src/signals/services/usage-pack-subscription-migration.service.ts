@@ -14,13 +14,19 @@ import {
   usagePackSubscriptions,
 } from "@vm0/db/schema/usage-pack-subscription";
 import { and, desc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
-import type { Stripe } from "stripe";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  type StripeInvoice,
+  type StripeInvoiceLine,
+  type StripeSubscription,
+  type StripeSubscriptionItem,
+  type StripeSubscriptionUpdateItemParam,
+} from "../external/stripe-client";
 import { lockUsagePackBillingOrg } from "./usage-pack-allocation-change.service";
 import {
   handleUsagePackInvoicePaid,
@@ -70,8 +76,8 @@ interface LegacyMigrationContext {
     readonly stripeCustomerId: string;
     readonly stripeSubscriptionId: string;
   };
-  readonly subscription: Stripe.Subscription;
-  readonly legacyItem: Stripe.SubscriptionItem;
+  readonly subscription: StripeSubscription;
+  readonly legacyItem: StripeSubscriptionItem;
   readonly stripePlanPriceId: string;
 }
 
@@ -140,7 +146,7 @@ function unixDate(value: number | null | undefined): Date | null {
     : null;
 }
 
-function safeInvoiceAmount(invoice: Stripe.Invoice, label: string): number {
+function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
   if (
     !Number.isSafeInteger(invoice.amount_due) ||
     invoice.amount_due < 0 ||
@@ -249,9 +255,9 @@ async function loadMigrationSelections(
 }
 
 function legacyPlanItem(
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   tier: SubscriptionCheckoutTier,
-): Stripe.SubscriptionItem | null {
+): StripeSubscriptionItem | null {
   const planItems = subscription.items.data.filter((item) => {
     return tierForKnownPriceId(item.price.id) !== null;
   });
@@ -268,7 +274,7 @@ function legacyPlanItem(
 }
 
 function subscriptionHasUsagePackItems(
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): boolean {
   return subscription.items.data.some((item) => {
     return (
@@ -279,7 +285,7 @@ function subscriptionHasUsagePackItems(
 }
 
 function activeMigrationSubscription(
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): boolean {
   return (
     subscription.status === "active" &&
@@ -402,7 +408,7 @@ export async function getUsagePackMigrationState(
   };
 }
 
-function migrationPeriod(item: Stripe.SubscriptionItem): {
+function migrationPeriod(item: StripeSubscriptionItem): {
   readonly start: number;
   readonly end: number;
 } {
@@ -424,7 +430,7 @@ function migrationUpdateItems(
   selections: readonly {
     readonly stripePriceId: string;
   }[],
-): Stripe.SubscriptionUpdateParams.Item[] {
+): StripeSubscriptionUpdateItemParam[] {
   const quantities = new Map<string, number>();
   for (const selection of selections) {
     quantities.set(
@@ -573,11 +579,11 @@ export async function previewUsagePackSubscriptionMigration(
     readonly orgId: string;
     readonly memberUsagePacks: readonly MemberUsagePack[];
     readonly owners: readonly UsagePackMigrationOwner[];
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<MigrationPreviewResult> {
   const context = await loadLegacyMigrationContext(db, args.orgId);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!context) {
     return { status: "not_found" };
   }
@@ -588,7 +594,7 @@ export async function previewUsagePackSubscriptionMigration(
     args.memberUsagePacks,
     args.owners,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!selections) {
     return { status: "owners_changed" };
   }
@@ -625,7 +631,7 @@ export async function previewUsagePackSubscriptionMigration(
       },
     }),
   ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (recurringPreview.currency !== immediatePreview.currency) {
     throw new Error("Stripe migration previews returned different currencies");
   }
@@ -686,7 +692,7 @@ function packageQuantities(
 function desiredMigrationShape(
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): boolean {
   if (
     stripeObjectId(subscription.customer) !== migration.stripeCustomerId ||
@@ -728,7 +734,7 @@ function desiredMigrationShape(
 
 function legacyMigrationShape(
   migration: MigrationRow,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): boolean {
   const legacyItem = legacyPlanItem(subscription, migration.tier);
   if (!legacyItem) {
@@ -752,7 +758,7 @@ interface PaidInvoicePaymentIntent {
 }
 
 function paidInvoicePaymentIntent(
-  invoice: Stripe.Invoice,
+  invoice: StripeInvoice,
 ): PaidInvoicePaymentIntent | null {
   const payment = invoice.payments?.data.find((candidate) => {
     return (
@@ -773,19 +779,19 @@ function paidInvoicePaymentIntent(
   return { id, amountPaidCents: payment.amount_paid ?? 0 };
 }
 
-function invoicePaymentIntentId(invoice: Stripe.Invoice): string | null {
+function invoicePaymentIntentId(invoice: StripeInvoice): string | null {
   return paidInvoicePaymentIntent(invoice)?.id ?? null;
 }
 
 async function retrieveMigrationInvoice(
   invoiceId: string,
-): Promise<Stripe.Invoice> {
+): Promise<StripeInvoice> {
   return await getStripeClient().invoices.retrieve(invoiceId, {
     expand: ["payments.data.payment.payment_intent"],
   });
 }
 
-function latestInvoiceId(subscription: Stripe.Subscription): string | null {
+function latestInvoiceId(subscription: StripeSubscription): string | null {
   return stripeObjectId(subscription.latest_invoice);
 }
 
@@ -793,7 +799,7 @@ async function persistStripeMigrationState(
   db: Db,
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): Promise<MigrationRow> {
   const candidateInvoiceIds = new Set(
     [latestInvoiceId(subscription), migration.stripeInvoiceId].filter(
@@ -802,7 +808,7 @@ async function persistStripeMigrationState(
       },
     ),
   );
-  let invoice: Stripe.Invoice | null = null;
+  let invoice: StripeInvoice | null = null;
   for (const invoiceId of candidateInvoiceIds) {
     const candidate = await retrieveMigrationInvoice(invoiceId);
     if (migrationInvoiceMatchesSelections(candidate, migration, selections)) {
@@ -841,7 +847,7 @@ async function materializeUsagePackSnapshot(
   db: Db,
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await lockUsagePackBillingOrg(tx, migration.orgId);
@@ -905,18 +911,18 @@ async function materializeUsagePackSnapshot(
   });
 }
 
-function invoiceLinePriceId(line: Stripe.InvoiceLineItem): string | null {
+function invoiceLinePriceId(line: StripeInvoiceLine): string | null {
   const price = line.pricing?.price_details?.price;
   return typeof price === "string" ? price : (price?.id ?? null);
 }
 
-function invoiceLineAmount(line: Stripe.InvoiceLineItem): number | null {
+function invoiceLineAmount(line: StripeInvoiceLine): number | null {
   const amount = line.subtotal ?? line.amount;
   return Number.isSafeInteger(amount) ? amount : null;
 }
 
 function migrationInvoiceMatchesSelections(
-  invoice: Stripe.Invoice,
+  invoice: StripeInvoice,
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
 ): boolean {
@@ -954,7 +960,7 @@ interface SelectionCredits {
 }
 
 function selectionCreditsForInvoice(
-  invoice: Stripe.Invoice,
+  invoice: StripeInvoice,
   selections: readonly MigrationSelectionRow[],
 ): ReadonlyMap<string, SelectionCredits> {
   const quantities = packageQuantities(selections);
@@ -1039,15 +1045,15 @@ function paidAmountsBySelection(
   return result;
 }
 
-function invoicePaidAt(invoice: Stripe.Invoice): Date {
-  const paidAt = invoice.status_transitions.paid_at;
+function invoicePaidAt(invoice: StripeInvoice): Date {
+  const paidAt = invoice.status_transitions?.paid_at;
   return typeof paidAt === "number" ? new Date(paidAt * 1000) : nowDate();
 }
 
 async function completeMigrationInvitations(
   db: Db,
   migration: MigrationRow,
-  invoice: Stripe.Invoice,
+  invoice: StripeInvoice,
 ): Promise<void> {
   const selections = await loadMigrationSelections(db, migration.id);
   const credits = selectionCreditsForInvoice(invoice, selections);
@@ -1144,7 +1150,7 @@ async function completeMigrationInvitations(
 }
 
 function correlatedMigrationInvoice(
-  invoice: Stripe.Invoice,
+  invoice: StripeInvoice,
   migration: MigrationRow,
 ): UsagePackInvoiceInput {
   const subscriptionDetails = invoice.parent?.subscription_details;
@@ -1176,8 +1182,8 @@ async function finalizeAppliedMigration(
   db: Db,
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
-  subscription: Stripe.Subscription,
-  invoice: Stripe.Invoice,
+  subscription: StripeSubscription,
+  invoice: StripeInvoice,
 ): Promise<AppliedMigrationResult> {
   if (invoice.status !== "paid") {
     return {
@@ -1288,9 +1294,9 @@ async function applyMigrationUpdate(
   db: Db,
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal | undefined,
-): Promise<Stripe.Subscription> {
+): Promise<StripeSubscription> {
   if (!legacyMigrationShape(migration, subscription)) {
     throw new Error(`Legacy subscription ${subscription.id} changed`);
   }
@@ -1318,13 +1324,13 @@ async function reconcileMigration(
   db: Db,
   migration: MigrationRow,
   signal?: AbortSignal,
-  eventInvoice?: Stripe.Invoice,
+  eventInvoice?: StripeInvoice,
 ): Promise<AppliedMigrationResult> {
   const selections = await loadMigrationSelections(db, migration.id);
   if (selections.length === 0) {
     throw new Error(`Usage pack migration ${migration.id} has no selections`);
   }
-  let subscription: Stripe.Subscription =
+  let subscription: StripeSubscription =
     await getStripeClient().subscriptions.retrieve(
       migration.stripeSubscriptionId,
     );
@@ -1503,15 +1509,15 @@ export async function confirmUsagePackSubscriptionMigration(
     readonly orgId: string;
     readonly migrationId: string;
     readonly ownerIds: readonly string[];
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<MigrationConfirmResult> {
   const claimed = await claimMigrationConfirmation(db, args);
   if (claimed.status !== "ready") {
     return claimed;
   }
-  args.signal.throwIfAborted();
-  const result = await reconcileMigration(db, claimed.migration, args.signal);
+  signal.throwIfAborted();
+  const result = await reconcileMigration(db, claimed.migration, signal);
   if (result.status === "failed") {
     return { status: "conflict" };
   }
@@ -1520,7 +1526,7 @@ export async function confirmUsagePackSubscriptionMigration(
 
 async function migrationForInvoice(
   db: Pick<Db, "select">,
-  invoice: Stripe.Invoice,
+  invoice: Pick<UsagePackInvoiceInput, "id" | "parent">,
 ): Promise<MigrationRow | null> {
   const subscriptionId = stripeObjectId(
     invoice.parent?.subscription_details?.subscription,
@@ -1551,7 +1557,7 @@ async function migrationForInvoice(
 
 export async function handleUsagePackMigrationInvoicePaid(
   db: Db,
-  invoice: Stripe.Invoice,
+  invoice: UsagePackInvoiceInput,
 ): Promise<UsagePackMigrationLifecycleOutcome> {
   if (!(await usagePackSubscriptionMigrationSchemaAvailable(db))) {
     return { handled: false, orgId: null };
@@ -1560,26 +1566,30 @@ export async function handleUsagePackMigrationInvoicePaid(
   if (!migration) {
     return { handled: false, orgId: null };
   }
-  if (migration.stripeInvoiceId !== invoice.id) {
+  const currentInvoice = await retrieveMigrationInvoice(invoice.id);
+  if (migration.stripeInvoiceId !== currentInvoice.id) {
     const selections = await loadMigrationSelections(db, migration.id);
-    if (!migrationInvoiceMatchesSelections(invoice, migration, selections)) {
+    if (
+      !migrationInvoiceMatchesSelections(currentInvoice, migration, selections)
+    ) {
       return { handled: false, orgId: null };
     }
   }
   if (migration.status === "completed") {
     const outcome = await handleUsagePackInvoicePaid(
       db,
-      correlatedMigrationInvoice(invoice, migration),
+      correlatedMigrationInvoice(currentInvoice, migration),
     );
     return { handled: outcome.handled, orgId: migration.orgId };
   }
   const [updated] = await db
     .update(usagePackSubscriptionMigrations)
     .set({
-      stripeInvoiceId: invoice.id,
+      stripeInvoiceId: currentInvoice.id,
       stripePaymentIntentId:
-        invoicePaymentIntentId(invoice) ?? migration.stripePaymentIntentId,
-      hostedInvoiceUrl: invoice.hosted_invoice_url,
+        invoicePaymentIntentId(currentInvoice) ??
+        migration.stripePaymentIntentId,
+      hostedInvoiceUrl: currentInvoice.hosted_invoice_url,
       updatedAt: nowDate(),
     })
     .where(eq(usagePackSubscriptionMigrations.id, migration.id))
@@ -1588,14 +1598,14 @@ export async function handleUsagePackMigrationInvoicePaid(
     db,
     updated ?? migration,
     undefined,
-    invoice,
+    currentInvoice,
   );
   return { handled: true, orgId: result.orgId };
 }
 
 export async function handleUsagePackMigrationSubscriptionUpdated(
   db: Db,
-  subscription: Stripe.Subscription,
+  subscription: UsagePackSubscriptionInput,
 ): Promise<UsagePackMigrationLifecycleOutcome> {
   if (!(await usagePackSubscriptionMigrationSchemaAvailable(db))) {
     return { handled: false, orgId: null };

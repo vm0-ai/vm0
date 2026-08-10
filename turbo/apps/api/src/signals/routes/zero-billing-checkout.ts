@@ -762,16 +762,19 @@ const usagePackMigrationPreviewAuthed$ = command(
       ),
     ]);
     signal.throwIfAborted();
-    const result = await previewUsagePackSubscriptionMigration(db, {
-      orgId: access.auth.orgId,
-      memberUsagePacks: bodyResult.data.memberUsagePacks,
-      owners: usagePackMigrationOwners(
-        memberships,
-        invitations,
-        access.auth.userId,
-      ),
+    const result = await previewUsagePackSubscriptionMigration(
+      db,
+      {
+        orgId: access.auth.orgId,
+        memberUsagePacks: bodyResult.data.memberUsagePacks,
+        owners: usagePackMigrationOwners(
+          memberships,
+          invitations,
+          access.auth.userId,
+        ),
+      },
       signal,
-    });
+    );
     if (result.status === "not_found") {
       return notFound("Eligible legacy subscription not found");
     }
@@ -823,12 +826,15 @@ const usagePackMigrationConfirmAuthed$ = command(
     ).map((owner) => {
       return "userId" in owner ? owner.userId : owner.invitationId;
     });
-    const result = await confirmUsagePackSubscriptionMigration(db, {
-      orgId: access.auth.orgId,
-      migrationId,
-      ownerIds,
+    const result = await confirmUsagePackSubscriptionMigration(
+      db,
+      {
+        orgId: access.auth.orgId,
+        migrationId,
+        ownerIds,
+      },
       signal,
-    });
+    );
     if (result.status === "not_found") {
       return notFound("Usage pack migration not found");
     }

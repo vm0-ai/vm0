@@ -980,6 +980,7 @@
           "description": "Keep your {{plan}} workspace plan and move every member to an individual monthly usage package.",
           "error": "Could not migrate this subscription. Refresh and try again.",
           "invoice": "View invoice",
+          "nextRecurring": "Next recurring total",
           "pendingPayment": "Waiting for Stripe payment before changing the subscription.",
           "processing": "Stripe is applying the subscription change.",
           "purchasedCredits": "Purchased credits",

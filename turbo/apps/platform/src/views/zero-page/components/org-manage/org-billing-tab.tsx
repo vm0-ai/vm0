@@ -2188,7 +2188,7 @@ function UsagePackMigrationAvailability({
                 {i18n.t(($) => {
                   return $.billing.plans.usagePacks.migration.invoice;
                 })}
-                <IconExternalLink size={13} stroke={1.5} />
+                <ExternalLink size={13} strokeWidth={1.5} />
               </a>
             </Button>
           )}
@@ -2225,7 +2225,7 @@ function UsagePackMigrationProgressPage({
             return $.billing.common.back;
           })}
         >
-          <IconArrowLeft size={16} stroke={1.8} />
+          <ArrowLeft size={16} strokeWidth={1.8} />
         </Button>
         <h3 className="text-sm font-medium text-foreground">
           {i18n.t(($) => {

@@ -1327,14 +1327,11 @@ export async function syncUsagePackAllocationProjectionAfterInvitationRemoval(
     readonly removedAllocationId: string;
   },
 ): Promise<void> {
-  await syncUsagePackInvitationProjection(
-    db,
-    {
-      usagePackSubscriptionId: args.usagePackSubscriptionId,
-      operationId: args.operationId,
-      change: { kind: "remove", allocationId: args.removedAllocationId },
-    },
-  );
+  await syncUsagePackInvitationProjection(db, {
+    usagePackSubscriptionId: args.usagePackSubscriptionId,
+    operationId: args.operationId,
+    change: { kind: "remove", allocationId: args.removedAllocationId },
+  });
 }
 
 async function scheduleUsagePackAllocationChange(

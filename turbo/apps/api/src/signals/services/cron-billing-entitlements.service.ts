@@ -121,6 +121,22 @@ interface UsageAllowanceCandidateRow {
   readonly stripeSubscriptionId: string | null;
 }
 
+interface UsagePackMigrationReconciliation {
+  readonly reconciled: number;
+  readonly orgIds: readonly string[];
+}
+
+function logUsagePackMigrationReconciliation(
+  reconciliation: UsagePackMigrationReconciliation,
+): void {
+  if (reconciliation.reconciled > 0) {
+    L.warn("usage pack subscription migrations reconciled from Stripe", {
+      count: reconciliation.reconciled,
+      orgIds: reconciliation.orgIds.slice(0, 10),
+    });
+  }
+}
+
 interface ReconcileCandidateRows {
   readonly candidates: readonly BillingCandidate[];
   readonly atomGrantCandidates: readonly AtomGrantCandidate[];
@@ -1120,12 +1136,7 @@ export const reconcileBillingEntitlements$ = command(
         orgIds: usagePackReconciliation.orgIds.slice(0, 10),
       });
     }
-    if (usagePackMigrationReconciliation.reconciled > 0) {
-      L.warn("usage pack subscription migrations reconciled from Stripe", {
-        count: usagePackMigrationReconciliation.reconciled,
-        orgIds: usagePackMigrationReconciliation.orgIds.slice(0, 10),
-      });
-    }
+    logUsagePackMigrationReconciliation(usagePackMigrationReconciliation);
     if (invitationPurchasesReconciled > 0) {
       L.warn("usage pack invitation purchases reconciled", {
         count: invitationPurchasesReconciled,

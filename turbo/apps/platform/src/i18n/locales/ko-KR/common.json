@@ -980,6 +980,7 @@
           "description": "워크스페이스의 {{plan}} 플랜을 유지하면서 각 구성원을 개별 월간 사용량 패키지로 전환합니다.",
           "error": "이 구독을 마이그레이션하지 못했습니다. 페이지를 새로고침한 후 다시 시도하세요.",
           "invoice": "청구서 보기",
+          "nextRecurring": "다음 정기 결제 합계",
           "pendingPayment": "구독을 변경하기 전에 Stripe 결제를 기다리는 중입니다.",
           "processing": "Stripe가 구독 변경을 적용하고 있습니다.",
           "purchasedCredits": "구매 크레딧",

@@ -1001,6 +1001,7 @@
           "description": "Mantenha o plano {{plan}} do workspace e migre cada membro para um pacote de uso mensal individual.",
           "error": "Não foi possível migrar esta assinatura. Atualize a página e tente novamente.",
           "invoice": "Ver fatura",
+          "nextRecurring": "Próximo total recorrente",
           "pendingPayment": "Aguardando o pagamento da Stripe antes de alterar a assinatura.",
           "processing": "A Stripe está aplicando a alteração da assinatura.",
           "purchasedCredits": "Créditos comprados",

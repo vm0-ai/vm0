@@ -17,13 +17,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@vm0/ui/components/ui/dialog";
 import type {
   MemberUsagePack,
   UsagePackCatalogItem,
@@ -2091,7 +2084,7 @@ function MigrationReviewDialog({
           >
             {confirming
               ? i18n.t(($) => {
-                  return $.billing.plans.usagePacks.management.confirming;
+                  return $.billing.common.updating;
                 })
               : i18n.t(($) => {
                   return $.billing.common.confirm;
@@ -2123,7 +2116,7 @@ function MigrationPreviewDetails({
       <div className="flex items-center justify-between gap-4">
         <span className="text-muted-foreground">
           {i18n.t(($) => {
-            return $.billing.plans.usagePacks.management.nextRecurring;
+            return $.billing.plans.usagePacks.migration.nextRecurring;
           })}
         </span>
         <span className="font-medium text-foreground">
@@ -2199,7 +2192,11 @@ export function UsagePackMigrationPage({
         <>
           <PricingPageHeader onBack={onBack} step={2} />
           <SelectedPlanSummary plan={plan} />
-          <MemberUsageConfiguration catalog={catalog} members={members} />
+          <MemberUsageConfiguration
+            catalog={catalog}
+            management={null}
+            members={members}
+          />
           <MigrationOrderSummary
             members={members}
             plan={plan}

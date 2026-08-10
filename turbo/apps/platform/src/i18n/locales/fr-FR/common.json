@@ -1001,6 +1001,7 @@
           "description": "Conservez le forfait d’espace de travail {{plan}} et attribuez à chaque membre un forfait d’utilisation mensuel individuel.",
           "error": "Impossible de migrer cet abonnement. Actualisez la page et réessayez.",
           "invoice": "Voir la facture",
+          "nextRecurring": "Prochain total récurrent",
           "pendingPayment": "En attente du paiement Stripe avant la modification de l’abonnement.",
           "processing": "Stripe applique la modification de l’abonnement.",
           "purchasedCredits": "Crédits achetés",

@@ -980,6 +980,7 @@
           "description": "Pertahankan paket ruang kerja {{plan}} dan pindahkan setiap anggota ke paket penggunaan bulanan individual.",
           "error": "Langganan ini tidak dapat dimigrasikan. Muat ulang halaman dan coba lagi.",
           "invoice": "Lihat faktur",
+          "nextRecurring": "Total berulang berikutnya",
           "pendingPayment": "Menunggu pembayaran Stripe sebelum mengubah langganan.",
           "processing": "Stripe sedang menerapkan perubahan langganan.",
           "purchasedCredits": "Kredit yang dibeli",

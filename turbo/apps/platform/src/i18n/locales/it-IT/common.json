@@ -1001,6 +1001,7 @@
           "description": "Mantieni il piano {{plan}} del workspace e assegna a ogni membro un pacchetto di utilizzo mensile individuale.",
           "error": "Impossibile migrare questo abbonamento. Aggiorna la pagina e riprova.",
           "invoice": "Visualizza fattura",
+          "nextRecurring": "Prossimo totale ricorrente",
           "pendingPayment": "In attesa del pagamento Stripe prima di modificare l’abbonamento.",
           "processing": "Stripe sta applicando la modifica dell’abbonamento.",
           "purchasedCredits": "Crediti acquistati",

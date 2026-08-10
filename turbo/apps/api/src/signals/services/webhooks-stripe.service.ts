@@ -3289,7 +3289,7 @@ async function handleInvoicePaid(
 ): Promise<string | null> {
   const migrationResult = await handleUsagePackMigrationInvoicePaid(
     db,
-    invoice as Stripe.Invoice,
+    invoice,
   );
   if (migrationResult.handled) {
     return migrationResult.orgId;
@@ -3752,7 +3752,7 @@ async function handleSubscriptionUpdated(
 ): Promise<readonly string[]> {
   const migrationOutcome = await handleUsagePackMigrationSubscriptionUpdated(
     db,
-    subscription as Stripe.Subscription,
+    subscription,
   );
   if (migrationOutcome.handled) {
     return migrationOutcome.orgId ? [migrationOutcome.orgId] : [];

@@ -927,7 +927,7 @@ describe("organization billing settings", () => {
     click(buttonByText("Compare all plans"));
 
     const teamPlan = await screen.findByRole("article", { name: "Team plan" });
-    expect(buttonByText("Select Team", teamPlan)).toBeDisabled();
+    expect(buttonByText("Start with Team", teamPlan)).toBeDisabled();
   });
 
   it("previews and confirms an in-place legacy Team migration", async () => {
