@@ -194,7 +194,7 @@ function installVolumeS3Fixture() {
   const objects = new Map<string, Buffer>();
   const writes: { readonly key: string; readonly body: Buffer }[] = [];
   let beforeNextArchiveWrite:
-    | ((key: string, body: Buffer) => Promise<void>)
+    | ((key: string, body: Buffer) => void | Promise<void>)
     | undefined;
 
   context.mocks.s3.send.mockImplementation(async (command: unknown) => {
@@ -234,7 +234,7 @@ function installVolumeS3Fixture() {
       writes.length = 0;
     },
     beforeNextArchiveWrite(
-      callback: (key: string, body: Buffer) => Promise<void>,
+      callback: (key: string, body: Buffer) => void | Promise<void>,
     ): void {
       beforeNextArchiveWrite = callback;
     },
@@ -1760,6 +1760,57 @@ describe("zero workflows", () => {
     await expect(
       readWorkflowStorageVersion(actor, workflow.body.id, firstVersionId),
     ).resolves.toMatchObject({ archive_size: firstArchive.length });
+  });
+
+  it("repairs duplicate workflow paths with deterministic archive bytes", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Duplicate Path Volume Agent",
+      visibility: "private",
+    });
+    const s3 = installVolumeS3Fixture();
+    const duplicateFiles = [
+      { path: "duplicate.txt", content: "first duplicate" },
+      { path: "duplicate.txt", content: "second duplicate" },
+    ];
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `duplicate-volume-${randomUUID().slice(0, 8)}`,
+      description: "Exercises deterministic duplicate-path archives.",
+      instruction: "# duplicate path volume",
+      files: duplicateFiles,
+    });
+
+    const initialState = await readWorkflowStorageState(
+      actor,
+      workflow.body.id,
+    );
+    if (!initialState?.head_version_id) {
+      throw new Error("Expected the duplicate-path workflow volume version");
+    }
+    const archiveKey = `${initialState.s3_prefix}/${initialState.head_version_id}/archive.tar.gz`;
+    const initialArchive = s3.objects.get(archiveKey);
+    if (!initialArchive) {
+      throw new Error("Expected the duplicate-path workflow archive");
+    }
+
+    s3.objects.delete(archiveKey);
+    let observedRepair = false;
+    s3.beforeNextArchiveWrite((key, body) => {
+      expect(key).toBe(archiveKey);
+      expect(body).toStrictEqual(initialArchive);
+      observedRepair = true;
+    });
+
+    await updateWorkflow(actor, workflow.body.id, {
+      files: [...duplicateFiles].reverse(),
+    });
+
+    expect(observedRepair).toBeTruthy();
+    expect(
+      (await readWorkflowStorageState(actor, workflow.body.id))
+        ?.head_version_id,
+    ).toBe(initialState.head_version_id);
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {

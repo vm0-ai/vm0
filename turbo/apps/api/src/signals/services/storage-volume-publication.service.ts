@@ -77,7 +77,7 @@ async function bufferFromStream(
   return Buffer.concat(chunks);
 }
 
-function compareFilePaths(
+function compareArchiveFiles(
   left: MaterializedVolumeFile,
   right: MaterializedVolumeFile,
 ): number {
@@ -85,6 +85,12 @@ function compareFilePaths(
     return -1;
   }
   if (left.path > right.path) {
+    return 1;
+  }
+  if (left.hash < right.hash) {
+    return -1;
+  }
+  if (left.hash > right.hash) {
     return 1;
   }
   return 0;
@@ -166,7 +172,7 @@ async function createVolumeArchive(
   files: readonly MaterializedVolumeFile[],
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const archiveFiles = [...files].sort(compareFilePaths);
+  const archiveFiles = [...files].sort(compareArchiveFiles);
   const tmpDir = await mkdtemp(join(tmpdir(), "vm0-api-volume-"));
   const archiveBuffer = await onRejection(
     buildVolumeArchive(tmpDir, archiveFiles, signal),
