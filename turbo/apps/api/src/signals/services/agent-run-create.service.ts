@@ -129,7 +129,6 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRunsBeforeCodexServiceTier } from "@vm0/db/rollout-compat/zero-run-before-codex-service-tier";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import {
@@ -5826,12 +5825,7 @@ async function insertLaunchRunRows(
 
   const createdAt = nowDate();
   await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  const zeroRunValues = launchZeroRunValues(args);
-  if (zeroRunValues.codexServiceTier === undefined) {
-    await tx.insert(zeroRunsBeforeCodexServiceTier).values(zeroRunValues);
-  } else {
-    await tx.insert(zeroRuns).values(zeroRunValues);
-  }
+  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -6791,18 +6785,9 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     ...launchZeroRunValues(rowsArgs),
     id: returnedCteId(insertedRun),
   };
-  const insertedZeroRun =
-    zeroRunValues.codexServiceTier === undefined
-      ? args.tx
-          .$with("inserted_launch_zero_run")
-          .as(
-            args.tx
-              .insert(zeroRunsBeforeCodexServiceTier)
-              .values(zeroRunValues),
-          )
-      : args.tx
-          .$with("inserted_launch_zero_run")
-          .as(args.tx.insert(zeroRuns).values(zeroRunValues));
+  const insertedZeroRun = args.tx
+    .$with("inserted_launch_zero_run")
+    .as(args.tx.insert(zeroRuns).values(zeroRunValues));
   ctes.push(insertedZeroRun);
 
   appendLaunchCallbackCte({
