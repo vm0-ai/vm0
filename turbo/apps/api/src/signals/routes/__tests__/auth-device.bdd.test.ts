@@ -756,7 +756,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       provider: {
         type: "claude-code-oauth-token",
         secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-        workspaceName: "claude.user@example.com",
+        workspaceName: "Claude User's Organization",
         planType: "pro",
         subscriptionResetPeriod: "weekly",
         subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
@@ -783,7 +783,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
         return provider.type === "claude-code-oauth-token";
       }),
     ).toMatchObject({
-      workspaceName: "claude.user@example.com",
+      workspaceName: "Claude User's Organization",
       planType: "pro",
     });
 
@@ -830,7 +830,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       status: "complete",
       provider: {
         type: "claude-code-oauth-token",
-        workspaceName: "claude.user@example.com",
+        workspaceName: "Claude User's Organization",
         planType: "pro",
       },
     });
@@ -847,7 +847,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
         return provider.type === "claude-code-oauth-token";
       }),
     ).toMatchObject({
-      workspaceName: "claude.user@example.com",
+      workspaceName: "Claude User's Organization",
       planType: "pro",
       subscriptionUsage: {
         fiveHour: {
