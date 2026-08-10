@@ -15,7 +15,7 @@ Hook lifecycle
 1. ``requestheaders()`` and ``request()`` call ``capture_and_strip_prefetch_marker()``
    before the authenticated request path calls ``prepare_request()``. Preparation may
    bypass, serve a fresh local response, wait for the current owner, or reserve capacity
-   for a replacement owner. If a wait ends without a local response, the addon's helper
+   for a new or replacement owner. If a wait ends without a local response, the addon's helper
    revalidates ordinary credential-bearing upstream continuation before proceeding.
 2. ``responseheaders()`` calls ``observe_authenticated_models_etag()`` before
    ``handle_response_headers()``. For an eligible cold response that continues through the
@@ -41,10 +41,10 @@ Response modes and authenticated ETags
 ---------------------------------------
 Ordinary owners require identity responses. Prefetch owners request Brotli; for an eligible
 Brotli response, the compressed stream passes downstream unchanged while validation decodes
-the bounded capture. A successful, authenticated Codex Responses request can separately
-carry ``x-models-etag``; that signal is scoped to the same credential digest, renews matching
-entries, removes mismatches, and prevents a superseded in-flight catalog response from being
-stored.
+the bounded capture. A successful response to an authenticated Codex Responses request can
+separately carry ``x-models-etag``; that signal is scoped to the same credential digest,
+renews matching entries, removes mismatches, and prevents an in-flight catalog response with
+a conflicting ETag from being stored.
 
 Keep this contract synchronized with the owning ``mitm_addon`` hooks and these focused test
 modules:
