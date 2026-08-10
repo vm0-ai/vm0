@@ -3619,7 +3619,7 @@ function createThreadPendingActionSignals(
       await set(messageActions.recallMessage$, eventId, signal);
     },
   );
-  const removeWorkflowEvent$ = command(
+  const removeAutomationEvent$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(messageActions.skipAutomationEvent$, eventId, signal);
     },
@@ -3634,7 +3634,7 @@ function createThreadPendingActionSignals(
   });
   return {
     removeQueuedMessage$,
-    removeWorkflowEvent$,
+    removeAutomationEvent$,
     cancelActiveGoal$,
     openActiveGoal$,
   };

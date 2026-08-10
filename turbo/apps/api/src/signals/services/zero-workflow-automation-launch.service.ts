@@ -608,7 +608,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
         queueFirstAssociation: {
-          kind: "workflow_event",
+          kind: "automation_event",
           threadId: chatThreadId,
           eventId: args.queueEventId,
           prompt: runInput.prompt,
