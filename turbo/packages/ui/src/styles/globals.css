@@ -459,6 +459,12 @@
   svg[class*="lucide"][stroke-width="2"]:not([data-stroke]) {
     stroke-width: var(--icon-stroke-width);
   }
+
+  /* More icons are dots, not hollow rings. */
+  svg.lucide-ellipsis circle,
+  svg.lucide-ellipsis-vertical circle {
+    fill: currentColor;
+  }
 }
 
 @layer components {

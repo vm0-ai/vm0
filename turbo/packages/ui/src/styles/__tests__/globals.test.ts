@@ -96,6 +96,13 @@ describe("global Lucide defaults", () => {
       /stroke-width:\s*var\(--icon-stroke-width\);/,
     );
   });
+
+  it("renders more icons as solid dots", () => {
+    const selector =
+      "svg.lucide-ellipsis circle,\n  svg.lucide-ellipsis-vertical circle";
+
+    expect(readRuleBody(globalCss, selector)).toMatch(/fill:\s*currentColor;/);
+  });
 });
 
 describe("interaction state ladder", () => {
