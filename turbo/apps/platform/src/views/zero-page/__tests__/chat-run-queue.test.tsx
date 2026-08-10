@@ -764,7 +764,7 @@ describe("chat run queue", () => {
     expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
   });
 
-  it("annotates an optimistic Fast run while keeping the API message rollout-compatible", async () => {
+  it("annotates an optimistic Fast run and sends the service tier", async () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
     let requestUserMessage: UserMessageDocument | undefined;
@@ -839,6 +839,7 @@ describe("chat run queue", () => {
       ).toStrictEqual({
         type: "model",
         selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
       });
     });
     expect(sendGate.settled()).toBeFalsy();
