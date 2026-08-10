@@ -4,6 +4,7 @@ import { createStore } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
+import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -28,7 +29,11 @@ import {
 } from "./helpers/api-bdd";
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  mockCustomConnectorOAuth2Provider,
+  mockSlackConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import {
   createRunsApi,
@@ -36,6 +41,7 @@ import {
 } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import {
   generatedStripeCustomerId,
   generatedStripeSubscriptionId,
@@ -94,6 +100,62 @@ function orgOf(actor: ApiTestUser): string {
     throw new Error("Expected an org-scoped actor");
   }
   return actor.orgId;
+}
+
+function oauthStateFromAuthorizationUrl(authorizationUrl: string): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected connector authorization URL to include state");
+  }
+  return state;
+}
+
+function customManualConnectorBodyForTeardown(
+  scope: "org" | "user",
+): CreateCustomConnectorBody {
+  const slug = `_${scope}-teardown-${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  return {
+    slug,
+    displayName: `BDD ${scope === "org" ? "Org" : "User"} Teardown Custom`,
+    prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+  };
+}
+
+function customOauthConnectorBodyForTeardown(
+  scope: "org" | "user",
+  provider: {
+    readonly authorizationUrl: string;
+    readonly tokenUrl: string;
+  },
+): CreateCustomConnectorBody {
+  return {
+    displayName: `BDD ${scope} Teardown OAuth ${randomUUID()}`,
+    prefixTemplates: [
+      `https://${scope}-teardown-oauth-${randomUUID()}.example.test/v1/`,
+    ],
+    fields: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{oauth.access_token}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "oauth",
+    oauthConfig: {
+      providerAdapter: "standard",
+      clientId: `${scope}-teardown-client-id`,
+      clientSecret: `${scope}-teardown-client-secret`,
+      authorizationUrl: provider.authorizationUrl,
+      tokenUrl: provider.tokenUrl,
+      tokenEndpointAuthMethod: "client_secret_post",
+      pkceMethod: "none",
+      scopes: ["read"],
+      authorizationParams: {},
+    },
+  };
 }
 
 function epochSeconds(offsetDays: number): number {
@@ -5098,6 +5160,8 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     runs.acceptTelemetryIngest();
     runs.configureRunnerGroup();
     acceptGithubGrantRevocations();
+    mockSlackConnectorOAuth();
+    const customOAuthProvider = mockCustomConnectorOAuth2Provider(context);
 
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
@@ -5121,6 +5185,33 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       displayName: "BDD Org Teardown Agent",
       visibility: "public",
     });
+    const customManual = await connectors.createCustomConnector(
+      actor,
+      customManualConnectorBodyForTeardown("org"),
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      customManual.id,
+      "org-teardown-custom-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+      customManual.id,
+    ]);
+    const customOauth = await connectors.createCustomConnector(
+      actor,
+      customOauthConnectorBodyForTeardown("org", customOAuthProvider),
+    );
+    const builtinOauthState = oauthStateFromAuthorizationUrl(
+      (await connectors.startOauth(actor, "slack", "oauth", agent.agentId))
+        .authorizationUrl,
+    );
+    const customOauthState = oauthStateFromAuthorizationUrl(
+      await connectors.startCustomConnectorOAuth2(
+        actor,
+        customOauth.id,
+        agent.agentId,
+      ),
+    );
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
       prompt: "survive until teardown",
@@ -5318,6 +5409,33 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
           connectionStatus: "connected",
         }),
       );
+    });
+    await waitForExpectation(async () => {
+      await expect(
+        connectors.listCustomConnectors(actor),
+      ).resolves.toStrictEqual([]);
+    });
+    await expect(
+      connectors.completeOauthCallbackResult("slack", {
+        code: "org-teardown-deleted-state",
+        state: builtinOauthState,
+      }),
+    ).resolves.toMatchObject({
+      body: {
+        status: "error",
+        message: "Invalid state - please try again",
+      },
+    });
+    await expect(
+      connectors.completeCustomConnectorOAuth2CallbackResult({
+        code: "org-teardown-deleted-custom-state",
+        state: customOauthState,
+      }),
+    ).resolves.toMatchObject({
+      body: {
+        status: "error",
+        message: "Invalid OAuth state - please try again",
+      },
     });
     // An org without a live subscription skips the Stripe update.
     const updateCalls =
@@ -5543,6 +5661,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    const userConfig = createUserConfigBddApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -5550,6 +5669,8 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     runs.acceptTelemetryIngest();
     const runnerGroup = runs.configureRunnerGroup();
     acceptGithubGrantRevocations();
+    mockSlackConnectorOAuth();
+    const customOAuthProvider = mockCustomConnectorOAuth2Provider(context);
 
     const doomed = bdd.user();
     await runs.grantProEntitlement(doomed);
@@ -5566,6 +5687,68 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       displayName: "BDD Doomed Agent",
       visibility: "private",
     });
+    await runs.enableAgentConnectors(doomed, sharedAgent.agentId, ["openai"]);
+    await connectors.connectManualGrant(
+      peer,
+      "openai",
+      "api-token",
+      { apiKey: "peer-teardown-connector-token" },
+      sharedAgent.agentId,
+    );
+
+    const customManual = await connectors.createCustomConnector(
+      doomed,
+      customManualConnectorBodyForTeardown("user"),
+    );
+    await connectors.setCustomConnectorSecret(
+      doomed,
+      customManual.id,
+      "doomed-custom-secret",
+    );
+    await connectors.setCustomConnectorSecret(
+      peer,
+      customManual.id,
+      "peer-custom-secret",
+    );
+    await connectors.updateAgentCustomConnectors(doomed, sharedAgent.agentId, [
+      customManual.id,
+    ]);
+    await connectors.updateAgentCustomConnectors(peer, sharedAgent.agentId, [
+      customManual.id,
+    ]);
+
+    const customOauth = await connectors.createCustomConnector(
+      doomed,
+      customOauthConnectorBodyForTeardown("user", customOAuthProvider),
+    );
+    const doomedBuiltinOauthState = oauthStateFromAuthorizationUrl(
+      (
+        await connectors.startOauth(
+          doomed,
+          "slack",
+          "oauth",
+          sharedAgent.agentId,
+        )
+      ).authorizationUrl,
+    );
+    const peerBuiltinOauthState = oauthStateFromAuthorizationUrl(
+      (await connectors.startOauth(peer, "slack", "oauth", sharedAgent.agentId))
+        .authorizationUrl,
+    );
+    const doomedCustomOauthState = oauthStateFromAuthorizationUrl(
+      await connectors.startCustomConnectorOAuth2(
+        doomed,
+        customOauth.id,
+        sharedAgent.agentId,
+      ),
+    );
+    const peerCustomOauthState = oauthStateFromAuthorizationUrl(
+      await connectors.startCustomConnectorOAuth2(
+        peer,
+        customOauth.id,
+        sharedAgent.agentId,
+      ),
+    );
 
     const doomedKey = await runs.createCliToken(doomed);
     const doomedBearer = `Bearer ${doomedKey.token}`;
@@ -5741,6 +5924,65 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       permission: "chat:write",
       action: "deny",
     });
+    await expect(
+      userConfig.readUserConnectors(doomed, sharedAgent.agentId),
+    ).resolves.toStrictEqual({ enabledConnectorSlugs: [] });
+    await expect(
+      userConfig.readUserConnectors(peer, sharedAgent.agentId),
+    ).resolves.toMatchObject({ enabledConnectorSlugs: ["openai"] });
+    await expect(
+      connectors.readAgentCustomConnectors(doomed, sharedAgent.agentId),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      connectors.readAgentCustomConnectors(peer, sharedAgent.agentId),
+    ).resolves.toStrictEqual([customManual.id]);
+    await expect(
+      connectors.readCustomConnector(doomed, customManual.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      hasSecret: false,
+      configuredFieldKeys: [],
+    });
+    await expect(
+      connectors.readCustomConnector(peer, customManual.id),
+    ).resolves.toMatchObject({
+      connected: true,
+      hasSecret: true,
+    });
+    await expect(
+      connectors.completeOauthCallbackResult("slack", {
+        code: "doomed-deleted-state",
+        state: doomedBuiltinOauthState,
+      }),
+    ).resolves.toMatchObject({
+      body: {
+        status: "error",
+        message: "Invalid state - please try again",
+      },
+    });
+    await expect(
+      connectors.completeCustomConnectorOAuth2CallbackResult({
+        code: "doomed-deleted-custom-state",
+        state: doomedCustomOauthState,
+      }),
+    ).resolves.toMatchObject({
+      body: {
+        status: "error",
+        message: "Invalid OAuth state - please try again",
+      },
+    });
+    await expect(
+      connectors.completeOauthCallbackResult("slack", {
+        code: "peer-surviving-state",
+        state: peerBuiltinOauthState,
+      }),
+    ).resolves.toMatchObject({ body: { status: "success" } });
+    await expect(
+      connectors.completeCustomConnectorOAuth2CallbackResult({
+        code: "peer-surviving-custom-state",
+        state: peerCustomOauthState,
+      }),
+    ).resolves.toMatchObject({ body: { status: "success" } });
     await expect(
       store.set(
         readUsageStorageCounts$,
