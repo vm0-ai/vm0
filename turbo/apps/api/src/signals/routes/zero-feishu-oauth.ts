@@ -48,7 +48,7 @@ import {
   addUserCustomConnector,
   lockUserCustomConnectorGrantScope,
 } from "../services/user-connectors.service";
-import { commitCustomConnectorRuntimeMutation } from "../services/custom-connector-runtime-wakeup.service";
+import { commitConnectorRuntimeMutation } from "../services/connector-runtime-wakeup.service";
 import {
   getCustomConnectorById,
   type CustomConnectorHttpRow,
@@ -466,14 +466,14 @@ async function finishFeishuOAuthConnection(
     return "tenant_mismatch";
   }
   const connectionPersistence = persistFeishuOAuthConnection(args, signal);
-  const connection = await commitCustomConnectorRuntimeMutation(
+  const connection = await commitConnectorRuntimeMutation(
     connectionPersistence,
     (result) => {
       return result.connected
         ? {
             db: args.db,
             scope: { orgId: args.state.orgId, userId: args.state.userId },
-            customConnectorIds: [args.connector.id],
+            targets: [{ kind: "custom", customConnectorId: args.connector.id }],
           }
         : undefined;
     },

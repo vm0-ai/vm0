@@ -1771,7 +1771,8 @@ describe("organization billing settings", () => {
   });
 
   it("manages an active concurrency subscription through Change", async () => {
-    let requestedQuantity: number | null = null;
+    let previewedQuantity: number | null = null;
+    let confirmedQuantity: number | null = null;
     let canceledSubscriptionId: string | null = null;
     let restoredSubscriptionId: string | null = null;
     let billingStatus: BillingStatusResponse = {
@@ -1784,6 +1785,7 @@ describe("organization billing settings", () => {
           currentPeriodEnd: "2026-06-01T00:00:00Z",
           cancelAtPeriodEnd: false,
           canReduce: true,
+          canChangeInApp: true,
         },
       ],
     };
@@ -1836,11 +1838,26 @@ describe("organization billing settings", () => {
       },
     );
     context.mocks.api(
-      zeroBillingConcurrencyCheckoutContract.create,
+      zeroBillingConcurrencySubscriptionContract.previewChange,
       ({ body, respond }) => {
-        requestedQuantity = body.quantity;
+        previewedQuantity = body.quantity;
         return respond(200, {
-          url: `https://checkout.stripe.com/concurrency?quantity=${body.quantity}`,
+          currentQuantity: 2,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 15_000,
+          nextRecurringAmountCents: body.quantity * 10_000,
+          currency: "usd",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.confirmChange,
+      ({ body, respond }) => {
+        confirmedQuantity = body.quantity;
+        return respond(200, {
+          status: "pending_payment",
+          hostedInvoiceUrl:
+            "https://invoice.stripe.test/org-concurrency-change",
         });
       },
     );
@@ -1908,12 +1925,21 @@ describe("organization billing settings", () => {
       expect(within(changeDialog).getByText("$400/month")).toBeInTheDocument();
     });
 
-    click(buttonByText("Continue to Stripe", changeDialog));
+    click(buttonByText("Review change", changeDialog));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review concurrency change",
+    });
+    expect(previewedQuantity).toBe(4);
+    expect(within(reviewDialog).getByText("$150.00")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$400.00/month")).toBeInTheDocument();
+
+    click(buttonByText("Confirm", reviewDialog));
 
     await waitFor(() => {
-      expect(requestedQuantity).toBe(2);
+      expect(confirmedQuantity).toBe(4);
       expect(window.location.href).toBe(
-        "https://checkout.stripe.com/concurrency?quantity=2",
+        "https://invoice.stripe.test/org-concurrency-change",
       );
     });
   });
@@ -1968,11 +1994,8 @@ describe("organization billing settings", () => {
   });
 
   it("lets an admin enter a lower concurrency subscription quantity", async () => {
-    let reductionRequest: {
-      readonly quantity: number;
-      readonly successUrl: string;
-      readonly cancelUrl: string;
-    } | null = null;
+    let previewedQuantity: number | null = null;
+    let confirmedQuantity: number | null = null;
 
     context.mocks.data.org({
       id: "org_1",
@@ -1990,16 +2013,31 @@ describe("organization billing settings", () => {
             currentPeriodEnd: "2026-06-01T00:00:00Z",
             cancelAtPeriodEnd: false,
             canReduce: true,
+            canChangeInApp: true,
           },
         ],
       });
     });
     context.mocks.api(
-      zeroBillingConcurrencySubscriptionContract.reduce,
+      zeroBillingConcurrencySubscriptionContract.previewChange,
       ({ body, respond }) => {
-        reductionRequest = body;
+        previewedQuantity = body.quantity;
         return respond(200, {
-          url: "https://billing.stripe.com/concurrency-reduction",
+          currentQuantity: 5,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 0,
+          nextRecurringAmountCents: body.quantity * 10_000,
+          currency: "usd",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.confirmChange,
+      ({ body, respond }) => {
+        confirmedQuantity = body.quantity;
+        return respond(200, {
+          status: "processing",
+          hostedInvoiceUrl: null,
         });
       },
     );
@@ -2020,28 +2058,26 @@ describe("organization billing settings", () => {
     await fill(quantityInput, "3");
     expect(within(dialog).getByText("$300/month")).toBeInTheDocument();
 
-    const expectedSuccessUrl = new URL("/", window.location.origin);
-    expectedSuccessUrl.searchParams.set("concurrency", "reduced");
-    const expectedCancelUrl = new URL(
-      window.location.pathname,
-      window.location.origin,
-    );
-    expectedCancelUrl.searchParams.set("concurrency", "canceled");
-    click(buttonByText("Continue to Stripe", dialog));
+    const locationBeforeChange = window.location.href;
+    click(buttonByText("Review change", dialog));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review concurrency change",
+    });
+    expect(previewedQuantity).toBe(3);
+    expect(within(reviewDialog).queryByText("Due now")).not.toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$300.00/month")).toBeInTheDocument();
+
+    click(buttonByText("Confirm", reviewDialog));
 
     await waitFor(() => {
-      expect(reductionRequest).toStrictEqual({
-        quantity: 3,
-        successUrl: expectedSuccessUrl.toString(),
-        cancelUrl: expectedCancelUrl.toString(),
-      });
-      expect(window.location.href).toBe(
-        "https://billing.stripe.com/concurrency-reduction",
-      );
+      expect(confirmedQuantity).toBe(3);
+      expect(window.location.href).toBe(locationBeforeChange);
     });
   });
 
-  it("keeps full cancellation available with an older billing response", async () => {
+  it("keeps the Stripe fallback and full cancellation with an older billing response", async () => {
+    let requestedQuantity: number | null = null;
     context.mocks.data.org({
       id: "org_1",
       name: "Concurrency Compatibility Org",
@@ -2061,6 +2097,15 @@ describe("organization billing settings", () => {
         ],
       });
     });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        requestedQuantity = body.quantity;
+        return respond(200, {
+          url: "https://billing.stripe.com/concurrency-change",
+        });
+      },
+    );
 
     await openBillingTab();
 
@@ -2080,6 +2125,16 @@ describe("organization billing settings", () => {
       }),
     );
     expect(buttonByText("Cancel subscription", dialog)).toBeEnabled();
+    click(within(dialog).getByRole("radio", { name: /Change slots/u }));
+    await fill(within(dialog).getByLabelText("New total slot quantity"), "3");
+    click(buttonByText("Continue to Stripe", dialog));
+
+    await waitFor(() => {
+      expect(requestedQuantity).toBe(1);
+      expect(window.location.href).toBe(
+        "https://billing.stripe.com/concurrency-change",
+      );
+    });
   });
 
   it("redirects to checkout when cancelling a plan requires payment confirmation", async () => {

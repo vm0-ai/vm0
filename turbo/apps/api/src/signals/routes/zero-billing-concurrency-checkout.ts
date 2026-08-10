@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { zeroBillingConcurrencyCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -32,7 +32,6 @@ type ConcurrencyPurchaseTarget =
       readonly ok: true;
       readonly priceId: string;
       readonly existingSubscription: ActiveConcurrencySubscription | undefined;
-      readonly portalConfigurationId: string | undefined;
     }
   | { readonly ok: false; readonly message: string };
 
@@ -69,21 +68,10 @@ async function loadConcurrencyPurchaseTarget(
     };
   }
 
-  const portalConfigurationId = env(
-    "STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID",
-  );
-  if (existingSubscription && !portalConfigurationId) {
-    return {
-      ok: false,
-      message: "Concurrency billing portal configuration is not configured",
-    };
-  }
-
   return {
     ok: true,
     priceId,
     existingSubscription,
-    portalConfigurationId,
   };
 }
 
@@ -119,22 +107,28 @@ const concurrencyCheckoutAuthed$ = command(
       return badRequestMessage(target.message);
     }
 
-    const url = await set(
+    const purchase = await set(
       startConcurrencyPurchase$,
       {
         orgId: auth.orgId,
         quantity,
         priceId: target.priceId,
         existingSubscriptionId: target.existingSubscription?.id,
-        portalConfigurationId: target.portalConfigurationId,
         successUrl,
         cancelUrl,
       },
       signal,
     );
     signal.throwIfAborted();
+    if (!purchase.ok) {
+      return badRequestMessage(
+        purchase.reason === "invalid_quantity"
+          ? "Concurrency quantity cannot exceed 1000 slots"
+          : "Complete the pending concurrency update before adding slots",
+      );
+    }
 
-    return { status: 200 as const, body: { url } };
+    return { status: 200 as const, body: { url: purchase.url } };
   },
 );
 

@@ -96,7 +96,6 @@ const SCHEMA = {
   AXIOM_TOKEN_TELEMETRY: z.string().min(1),
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
   STRIPE_SECRET_KEY: z.string().min(1),
-  STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID: z.string().min(1).optional(),
   ATOM_URL: z.url().optional(),
   ATOM_GRANT_PRICE: z.string().min(1).optional(),
   VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),

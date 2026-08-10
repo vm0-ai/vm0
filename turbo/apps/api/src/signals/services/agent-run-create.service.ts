@@ -15,6 +15,7 @@ import {
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -121,6 +122,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRunsBeforeCodexServiceTier } from "@vm0/db/rollout-compat/zero-run-before-codex-service-tier";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import {
@@ -439,6 +441,7 @@ interface ZeroRunMetadata {
   // Run provenance for autonomous thread-goal continuation.
   readonly goalId?: string;
   readonly autonomyBudget?: number;
+  readonly codexServiceTier?: CodexServiceTier;
 }
 
 interface AgentConfig {
@@ -5490,6 +5493,9 @@ function launchZeroRunValues(
       ? {}
       : { autonomyBudget: metadata.autonomyBudget }),
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
+    ...(metadata.codexServiceTier === undefined
+      ? {}
+      : { codexServiceTier: metadata.codexServiceTier }),
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   };
@@ -5505,7 +5511,12 @@ async function insertLaunchRunRows(
 
   const createdAt = nowDate();
   await tx.insert(agentRuns).values(launchRunValues(args, createdAt));
-  await tx.insert(zeroRuns).values(launchZeroRunValues(args));
+  const zeroRunValues = launchZeroRunValues(args);
+  if (zeroRunValues.codexServiceTier === undefined) {
+    await tx.insert(zeroRunsBeforeCodexServiceTier).values(zeroRunValues);
+  } else {
+    await tx.insert(zeroRuns).values(zeroRunValues);
+  }
 
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
@@ -6458,9 +6469,18 @@ function buildAtomicLaunchCteContext(args: PersistAtomicLaunchRowsArgs) {
     ...launchZeroRunValues(rowsArgs),
     id: returnedCteId(insertedRun),
   };
-  const insertedZeroRun = args.tx
-    .$with("inserted_launch_zero_run")
-    .as(args.tx.insert(zeroRuns).values(zeroRunValues));
+  const insertedZeroRun =
+    zeroRunValues.codexServiceTier === undefined
+      ? args.tx
+          .$with("inserted_launch_zero_run")
+          .as(
+            args.tx
+              .insert(zeroRunsBeforeCodexServiceTier)
+              .values(zeroRunValues),
+          )
+      : args.tx
+          .$with("inserted_launch_zero_run")
+          .as(args.tx.insert(zeroRuns).values(zeroRunValues));
   ctes.push(insertedZeroRun);
 
   appendLaunchCallbackCte({

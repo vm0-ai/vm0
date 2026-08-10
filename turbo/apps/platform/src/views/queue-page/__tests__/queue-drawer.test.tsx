@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroBillingConcurrencyCheckoutContract,
+  zeroBillingConcurrencySubscriptionContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -77,7 +78,10 @@ function concurrencyWithMemberUsage(): ConcurrencyInfo {
   };
 }
 
-function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
+function mockConcurrencyCapability(
+  canBuyConcurrency: boolean,
+  concurrencySubscriptions: BillingStatusResponse["concurrencySubscriptions"] = [],
+): void {
   const status: BillingStatusResponse = {
     tier: "pro",
     canBuyConcurrency,
@@ -93,7 +97,7 @@ function mockConcurrencyCapability(canBuyConcurrency: boolean): void {
     creditBreakdown: [],
     creditGrants: [],
     concurrencyLimit: 2,
-    concurrencySubscriptions: [],
+    concurrencySubscriptions,
   };
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, status);
@@ -356,7 +360,7 @@ describe("queue drawer", () => {
     expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
   });
 
-  it("lets Team admins buy additional concurrency when the queue is full", async () => {
+  it("starts Checkout for a Team admin buying concurrency for the first time", async () => {
     let checkoutQuantity: number | null = null;
     let checkoutSuccessUrl: string | null = null;
     mockConcurrencyCapability(true);
@@ -424,6 +428,175 @@ describe("queue drawer", () => {
     const successUrl = new URL(checkoutSuccessUrl);
     expect(successUrl.pathname).toBe("/");
     expect(successUrl.searchParams.get("concurrency")).toBe("purchased");
+  });
+
+  it("reviews and confirms additional concurrency for an active subscription", async () => {
+    let checkoutQuantity: number | null = null;
+    let previewedSubscriptionId: string | null = null;
+    let previewedQuantity: number | null = null;
+    let confirmedSubscriptionId: string | null = null;
+    let confirmedQuantity: number | null = null;
+    mockConcurrencyCapability(true, [
+      {
+        id: "sub_concurrency_active",
+        quantity: 2,
+        currentPeriodEnd: "2026-09-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        canReduce: true,
+        canChangeInApp: true,
+      },
+    ]);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: {
+            tier: "team",
+            limit: 12,
+            active: 12,
+            available: 0,
+            memberUsage: [],
+          },
+          queue: [queuedEntry()],
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        checkoutQuantity = body.quantity;
+        return respond(200, {
+          url: "https://checkout.stripe.com/unexpected",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.previewChange,
+      ({ params, body, respond }) => {
+        previewedSubscriptionId = params.subscriptionId;
+        previewedQuantity = body.quantity;
+        return respond(200, {
+          currentQuantity: 2,
+          targetQuantity: body.quantity,
+          immediateAmountCents: 4321,
+          nextRecurringAmountCents: body.quantity * 10_000,
+          currency: "usd",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingConcurrencySubscriptionContract.confirmChange,
+      ({ params, body, respond }) => {
+        confirmedSubscriptionId = params.subscriptionId;
+        confirmedQuantity = body.quantity;
+        return respond(200, {
+          status: "pending_payment",
+          hostedInvoiceUrl:
+            "https://invoice.stripe.test/queue-concurrency-change",
+        });
+      },
+    );
+
+    await openDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Review the amount due now and your updated monthly subscription.",
+        ),
+      ).toBeInTheDocument();
+    });
+    const increaseQuantityButton = queryAllByRoleFast("button").find((el) => {
+      return el.getAttribute("aria-label") === "Increase concurrency quantity";
+    });
+    if (!increaseQuantityButton) {
+      throw new Error("Increase concurrency quantity button not found");
+    }
+    click(increaseQuantityButton);
+    await waitFor(() => {
+      expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Buy $200/month"));
+
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review concurrency change",
+    });
+    expect(checkoutQuantity).toBeNull();
+    expect(previewedSubscriptionId).toBe("sub_concurrency_active");
+    expect(previewedQuantity).toBe(4);
+    expect(within(reviewDialog).getByText("$43.21")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("$400.00/month")).toBeInTheDocument();
+
+    click(within(reviewDialog).getByText("Confirm"));
+
+    await waitFor(() => {
+      expect(confirmedSubscriptionId).toBe("sub_concurrency_active");
+      expect(confirmedQuantity).toBe(4);
+      expect(window.location.href).toBe(
+        "https://invoice.stripe.test/queue-concurrency-change",
+      );
+    });
+  });
+
+  it("keeps the Checkout fallback for an active subscription from an older API", async () => {
+    let checkoutQuantity: number | null = null;
+    mockConcurrencyCapability(true, [
+      {
+        id: "sub_concurrency_legacy",
+        quantity: 2,
+        currentPeriodEnd: "2026-09-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+      },
+    ]);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: {
+            tier: "team",
+            limit: 12,
+            active: 12,
+            available: 0,
+            memberUsage: [],
+          },
+          queue: [queuedEntry()],
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroBillingConcurrencyCheckoutContract.create,
+      ({ body, respond }) => {
+        checkoutQuantity = body.quantity;
+        return respond(200, {
+          url: "https://checkout.stripe.com/legacy-concurrency",
+        });
+      },
+    );
+
+    await openDrawer();
+    await waitFor(() => {
+      expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
+    });
+    click(screen.getByText("Buy $100/month"));
+
+    await waitFor(() => {
+      expect(checkoutQuantity).toBe(1);
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/legacy-concurrency",
+      );
+    });
   });
 
   it("hides additional concurrency checkout when the plan capability is disabled", async () => {

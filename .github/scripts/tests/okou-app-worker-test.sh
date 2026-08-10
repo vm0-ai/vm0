@@ -7,4 +7,6 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 cp "${repo_root}/.github/pages/okou-app/_worker.js" "${tmp_dir}/worker.mjs"
 node "${repo_root}/.github/scripts/tests/okou-app-worker-test.mjs" \
-  "${tmp_dir}/worker.mjs"
+  "${tmp_dir}/worker.mjs" \
+  "${repo_root}/turbo/apps/platform/index.html" \
+  "${repo_root}/turbo/apps/platform/public/manifest.webmanifest"
