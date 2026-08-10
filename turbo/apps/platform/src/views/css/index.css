@@ -357,10 +357,22 @@ body {
 
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
-  --zero-card-radius: 1rem;
+  --zero-card-radius: 1.25rem;
+  /* The composer is the largest surface on the page and leads the radius scale. */
+  --zero-composer-radius: 1.5rem;
   --zero-card-border: hsl(var(--border));
   --zero-card-shadow:
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
+  /* Focus layer for the composer: a single very wide, very light veil laid over
+     the resting shadow. Kept under 10% alpha so it reads as depth, not a ring. */
+  --zero-composer-focus-shadow:
+    0 2px 12px hsl(220 12% 50% / 0.04), 0 10px 48px -8px hsl(220 14% 50% / 0.08);
+}
+
+/* A grey veil is invisible on a dark page, so the dark theme casts the same
+   shape in black instead. The border step carries the state either way. */
+:where([data-theme="dark"]) .zero-app {
+  --zero-composer-focus-shadow: 0 10px 48px -8px rgb(0 0 0 / 0.45);
 }
 
 /* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
@@ -618,8 +630,24 @@ body {
 .zero-app .zero-composer {
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
-  border-radius: var(--zero-card-radius);
+  border-radius: var(--zero-composer-radius);
   box-shadow: var(--zero-card-shadow);
+  transition:
+    border-color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Composer is focused: the border steps one stop down the grey ramp and the
+   veil widens. Both revert on blur — there is no persistent active state. */
+.zero-app .zero-composer:focus-within {
+  border-color: hsl(var(--gray-500));
+  box-shadow: var(--zero-composer-focus-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zero-app .zero-composer {
+    transition: none;
+  }
 }
 
 /* Chat: outline buttons inside dialogue */

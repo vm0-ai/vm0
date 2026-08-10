@@ -228,6 +228,11 @@ const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web cons
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
+// `Button` sizes its icons to 16px. These controls drew at 18px before they were
+// routed through `Button`, and icon sizing is owned by a separate workstream, so
+// pin the existing value here rather than change two things at once.
+const COMPOSER_CONTROL_ICON_CLASS = "[&_svg]:size-[18px]";
+
 function isHappyDomTestEnvironment(): boolean {
   return (
     typeof globalThis.window !== "undefined" && "happyDOM" in globalThis.window
@@ -5693,11 +5698,13 @@ function TemplatePickerButton({
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
+              variant="quiet"
+              size="icon-sm"
               className={cn(
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-state-hover hover:text-foreground sm:h-9 sm:w-9",
-                COMPOSER_CONTROL_FOCUS_CLASS,
+                "shrink-0",
+                COMPOSER_CONTROL_ICON_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label={t(($) => {
@@ -5717,7 +5724,7 @@ function TemplatePickerButton({
               }}
             >
               <SwatchBook size={18} aria-hidden="true" />
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
             {selectedTitle
@@ -5795,19 +5802,18 @@ function CreateWorkflowPromptButton({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-state-hover hover:text-foreground sm:h-9 sm:w-9",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-            )}
+            variant="quiet"
+            size="icon-sm"
+            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
             aria-label={t(($) => {
               return $.chat.composer.createWorkflow;
             })}
             onClick={onCreateWorkflowPrompt}
           >
             <Route size={18} aria-hidden="true" />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {t(($) => {
@@ -6431,7 +6437,7 @@ function ConnectorsPopoverButton({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:h-9 sm:min-w-9 sm:px-1.5",
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:min-w-9 sm:px-1.5",
                   COMPOSER_CONTROL_FOCUS_CLASS,
                 )}
                 aria-label={t(($) => {
@@ -6863,14 +6869,15 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
             className={cn(
-              "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-              recording || starting || transcribing
-                ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
-                : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+              "relative shrink-0",
+              COMPOSER_CONTROL_ICON_CLASS,
+              (recording || starting || transcribing) &&
+                "bg-[#2E9E9F] text-white hover:bg-[#279394] hover:text-white",
             )}
             onClick={handleClick}
             disabled={disabled}
@@ -6894,7 +6901,7 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
             ) : (
               <Mic size={18} />
             )}
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {micButtonTooltip(status)}
@@ -6911,12 +6918,11 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            className={cn(
-              "rounded-lg p-2 transition-colors duration-200 hover:bg-state-hover hover:text-foreground sm:p-[9px]",
-              COMPOSER_CONTROL_FOCUS_CLASS,
-            )}
+            variant="quiet"
+            size="icon-sm"
+            className={cn("shrink-0", COMPOSER_CONTROL_ICON_CLASS)}
             aria-label={t(($) => {
               return $.chat.attachments.attach;
             })}
@@ -6925,7 +6931,7 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
             }}
           >
             <Paperclip size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
           {t(($) => {
@@ -7249,22 +7255,22 @@ function ComposerSendButton({
   if (action === "stop") {
     return (
       <Button
-        size="sm"
+        size="icon-sm"
         variant="destructive"
-        className="rounded-lg h-9 w-9 p-0 shrink-0"
+        className="shrink-0"
         onClick={onActivate}
         aria-label={t(($) => {
           return $.chat.actions.stop;
         })}
       >
-        <Square size={16} />
+        <Square />
       </Button>
     );
   }
   return (
     <Button
-      size="sm"
-      className="rounded-lg h-9 w-9 p-0 shrink-0"
+      size="icon-sm"
+      className="shrink-0"
       onClick={onActivate}
       disabled={action === "disabled"}
       aria-label={t(($) => {
@@ -7397,7 +7403,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
           return $.chat.composer.selectModel;
         })}
         triggerClassName={cn(
-          "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
+          "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
           "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
           "hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover data-[state=open]:text-foreground",
           COMPOSER_CONTROL_FOCUS_CLASS,
@@ -8034,7 +8040,10 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerTemplateAttachmentSync signals={signals} />
           <ComposerAttachments signals={signals} />
           <ComposerInputSlot signals={signals} />
-          <div className="flex items-center justify-between gap-1 px-2 pb-3 pt-1 sm:gap-2 sm:px-4">
+          {/* Edge inset is 16px on all four sides so it matches the editor's
+              `px-4 pt-4` above and stays concentric with the 24px shell: a
+              control 16px in from a 24px corner needs exactly an 8px radius. */}
+          <div className="flex items-center justify-between gap-1 px-4 pb-4 pt-1 sm:gap-2">
             <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
               <ComposerAttachButton signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />

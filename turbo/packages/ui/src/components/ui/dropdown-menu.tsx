@@ -11,6 +11,10 @@ const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
 const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
+// Concentric corners: an inner radius must equal the outer radius minus the gap
+// between them, or the two arcs cross instead of nesting. This surface is 12px
+// with `p-1` (4px), so every row inside it is `rounded-lg` (8px). Keep the three
+// values in step when changing any one of them.
 const DropdownMenuContent = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
@@ -21,7 +25,7 @@ const DropdownMenuContent = React.forwardRef<
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-[8rem] overflow-hidden rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          "z-50 min-w-[8rem] overflow-hidden rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           className,
         )}
         {...props}
@@ -39,7 +43,7 @@ const DropdownMenuItem = React.forwardRef<
     <DropdownMenuPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus:bg-state-hover hover:bg-state-hover data-[highlighted]:bg-state-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        "relative flex cursor-default select-none items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none transition-colors focus:bg-state-hover hover:bg-state-hover data-[highlighted]:bg-state-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
         className,
       )}
       {...props}
@@ -70,7 +74,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     <DropdownMenuPrimitive.SubTrigger
       ref={ref}
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus:bg-state-hover hover:bg-state-hover data-[highlighted]:bg-state-hover data-[state=open]:bg-state-hover [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        "flex cursor-default select-none items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none focus:bg-state-hover hover:bg-state-hover data-[highlighted]:bg-state-hover data-[state=open]:bg-state-hover [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
         className,
       )}
       {...props}
@@ -91,7 +95,7 @@ const DropdownMenuSubContent = React.forwardRef<
       <DropdownMenuPrimitive.SubContent
         ref={ref}
         className={cn(
-          "z-50 min-w-[8rem] overflow-hidden rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          "z-50 min-w-[8rem] overflow-hidden rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           className,
         )}
         {...props}
