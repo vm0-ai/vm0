@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.6...runner-rs-v0.162.7) (2026-08-10)
+
+
+### Refactoring
+
+* **runner:** centralize workspace cache entry paths ([#26047](https://github.com/vm0-ai/vm0/issues/26047)) ([9b8832f](https://github.com/vm0-ai/vm0/commit/9b8832f1b780b05a3f649596934d44dbee66fc26))
+
 ## [0.162.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.5...runner-rs-v0.162.6) (2026-08-10)
 
 
