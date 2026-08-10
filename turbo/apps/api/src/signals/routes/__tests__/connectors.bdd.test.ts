@@ -3898,7 +3898,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(response.status).toBe(500);
     await expect(
       connectorsApi.listCustomConnectors(admin),
-    ).resolves.not.toEqual(
+    ).resolves.not.toStrictEqual(
       expect.arrayContaining([expect.objectContaining({ slug })]),
     );
   });
