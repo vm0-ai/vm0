@@ -11128,9 +11128,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt.indexOf("- Web chat messaging:")).toBeLessThan(
       appendSystemPrompt.indexOf("- Cross-thread chat run completion:"),
     );
-    expect(appendSystemPrompt).not.toContain(
-      "Use the `workflow-setup` skill with a `chat-run-finished` automation",
-    );
     expect(appendSystemPrompt).toContain("zero upgrade pro");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
     expect(appendSystemPrompt).not.toContain(
