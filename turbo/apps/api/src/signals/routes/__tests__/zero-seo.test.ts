@@ -11,7 +11,10 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   createBddApi,
@@ -47,13 +50,7 @@ function client() {
   return setupApp({ context, routes: SEO_ROUTES });
 }
 
-async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
-  const actor = createBddApi(context).user();
-  if (!actor.orgId) {
-    throw new Error("Zero SEO test actor must belong to an organization");
-  }
-  const orgActor = { ...actor, orgId: actor.orgId };
-  await createRunsApi(context).grantProEntitlement(orgActor);
+async function seedSeoPricing(): Promise<void> {
   await seedUsagePricingRows([
     {
       kind: "seo",
@@ -70,11 +67,37 @@ async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
       unitSize: 1,
     },
   ]);
+}
+
+async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
+  const actor = createBddApi(context).user();
+  if (!actor.orgId) {
+    throw new Error("Zero SEO test actor must belong to an organization");
+  }
+  const orgActor = { ...actor, orgId: actor.orgId };
+  await createRunsApi(context).grantProEntitlement(orgActor);
+  await seedSeoPricing();
   if (featureEnabled) {
     await updateFeatureSwitchesForUser(context, orgActor, {
       [FeatureSwitchKey.SeoBuiltIn]: true,
     });
   }
+  return orgActor;
+}
+
+async function seedUnfundedActor(): Promise<OrgApiTestUser> {
+  const actor = createBddApi(context).user();
+  if (!actor.orgId) {
+    throw new Error("Zero SEO test actor must belong to an organization");
+  }
+  const orgActor = { ...actor, orgId: actor.orgId };
+  const onboarding = await createBddApi(context).completeOnboarding(orgActor);
+  expect(onboarding.status).toBe(200);
+  await seedOrgMetadata({ orgId: orgActor.orgId, tier: "pro", credits: 0 });
+  await seedSeoPricing();
+  await updateFeatureSwitchesForUser(context, orgActor, {
+    [FeatureSwitchKey.SeoBuiltIn]: true,
+  });
   return orgActor;
 }
 
@@ -180,6 +203,71 @@ describe("zero SEO routes", () => {
     expect(response.body.error.message).toBe(
       "Missing required capability: seo:read",
     );
+  });
+
+  it("rejects insufficient credits before calling the provider", async () => {
+    const actor = await seedUnfundedActor();
+    configureProviders();
+    let providerRequests = 0;
+    server.use(
+      http.get(SERPAPI_SEARCH_URL, () => {
+        providerRequests += 1;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroSeoContract).serp({
+        headers: authenticate(actor),
+        body: {
+          query: "technical seo",
+          provider: "serpapi",
+          engine: "google",
+          location: "United States",
+          languageCode: "en",
+          countryCode: "us",
+          device: "desktop",
+          limit: 10,
+        },
+      }),
+      [402],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(providerRequests).toBe(0);
+  });
+
+  it("does not charge credits when the provider fails", async () => {
+    const actor = await seedActor();
+    configureProviders();
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.get(SERPAPI_SEARCH_URL, () => {
+        return HttpResponse.json({ error: "slow down" }, { status: 429 });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroSeoContract).serp({
+        headers: authenticate(actor),
+        body: {
+          query: "technical seo",
+          provider: "serpapi",
+          engine: "google",
+          location: "United States",
+          languageCode: "en",
+          countryCode: "us",
+          device: "desktop",
+          limit: 10,
+        },
+      }),
+      [502],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("SEO_PROVIDER_RATE_LIMITED");
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 
   it("maps DataForSEO operations and bills the reported cost with a 25% markup", async () => {
@@ -473,6 +561,10 @@ describe("zero SEO routes", () => {
         expect(url.searchParams.get("api_key")).toBe("test-serpapi-token");
         expect(url.searchParams.get("engine")).toBe("google_maps");
         expect(url.searchParams.get("q")).toBe("coffee shops");
+        expect(url.searchParams.get("location")).toBe(
+          "Austin, Texas, United States",
+        );
+        expect(url.searchParams.get("z")).toBe("14");
         return HttpResponse.json({
           search_metadata: {
             id: `search-${requestCount}`,

@@ -27,6 +27,7 @@ const DATAFORSEO_BILLING_CATEGORY = "provider_cost_usd_micros";
 const SERPAPI_BILLING_CATEGORY = "search";
 const DATAFORSEO_BASE_URL = "https://api.dataforseo.com";
 const SERPAPI_SEARCH_URL = "https://serpapi.com/search.json";
+const SERPAPI_GOOGLE_MAPS_DEFAULT_ZOOM = 14;
 const PROVIDER_TIMEOUT_MS = 30_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_PROVIDER_ERROR_MESSAGE_CHARS = 4096;
@@ -393,7 +394,9 @@ function serpApiUrl(apiKey: string, request: ZeroSeoSerpRequest): URL {
   } else {
     url.searchParams.set("gl", request.countryCode);
     url.searchParams.set("hl", request.languageCode);
-    if (request.engine === "google") {
+    if (request.engine === "google_maps") {
+      url.searchParams.set("z", String(SERPAPI_GOOGLE_MAPS_DEFAULT_ZOOM));
+    } else if (request.engine === "google") {
       url.searchParams.set("device", request.device);
       url.searchParams.set("num", String(request.limit));
     }
