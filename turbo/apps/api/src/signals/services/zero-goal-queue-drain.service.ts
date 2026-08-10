@@ -60,7 +60,7 @@ interface InternalRunCallbackInput {
 }
 
 type RunGoalResult =
-  | { readonly kind: "ok"; readonly runId: string }
+  | { readonly kind: "ok"; readonly runId: string; readonly queued: boolean }
   | { readonly kind: "enqueued" }
   | {
       readonly kind: "run_error";
@@ -138,7 +138,6 @@ function buildQueueFirstGoalRunInput(args: {
   readonly goal: GoalQueueTarget;
   readonly modelContext: Extract<ModelContext, { readonly ok: true }>;
   readonly apiStartTime: number;
-  readonly immediateSuccessorIntentId?: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly timing: ApiDispatchTimingCollector;
 }): QueueFirstZeroRunInput {
@@ -168,7 +167,6 @@ function buildQueueFirstGoalRunInput(args: {
         : {}),
     },
     apiStartTime: args.apiStartTime,
-    immediateSuccessorIntentId: args.immediateSuccessorIntentId,
     triggerSource: "goal",
     appendSystemPrompt,
     chatThreadId: normalizedGoal.threadId,
@@ -289,7 +287,6 @@ const launchQueuedGoal$ = command(
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
       readonly apiStartTime: number;
-      readonly immediateSuccessorIntentId?: string;
       readonly attempt: GoalDrainAttempt;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly timing: ApiDispatchTimingCollector;
@@ -328,7 +325,6 @@ const launchQueuedGoal$ = command(
           goal: args.goal,
           modelContext,
           apiStartTime: args.apiStartTime,
-          immediateSuccessorIntentId: args.immediateSuccessorIntentId,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
           timing: args.timing,
         });
@@ -362,7 +358,11 @@ const launchQueuedGoal$ = command(
     if (result.status !== 201) {
       return { kind: "run_error", response: result };
     }
-    return { kind: "ok", runId: result.body.runId };
+    return {
+      kind: "ok",
+      runId: result.body.runId,
+      queued: result.body.status === "queued",
+    };
   },
 );
 
@@ -377,6 +377,9 @@ async function handleGoalLaunchResult(
   signal: AbortSignal,
 ): Promise<"continue" | "done"> {
   if (args.result.kind === "ok") {
+    if (args.result.queued) {
+      args.intent?.revoke();
+    }
     await publishGoalQueueChanged(args.event, signal);
     return "done";
   }
@@ -516,8 +519,6 @@ export const drainGoalQueueForThread$ = command(
           event,
           goal,
           apiStartTime,
-          immediateSuccessorIntentId:
-            immediateSuccessorIntent === undefined ? undefined : event.id,
           attempt: attemptCategory,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
           timing,

@@ -208,6 +208,9 @@ async function handleWorkflowLaunchResult(
 ): Promise<WorkflowQueueDrainStep> {
   const { db, event, result, launchHint, immediateSuccessorIntent } = args;
   if (result.kind === "ok") {
+    if (result.queued) {
+      immediateSuccessorIntent?.revoke();
+    }
     await publishQueueEventChanged(event, signal);
     return { eventId: event.id, result };
   }
@@ -356,9 +359,6 @@ export const drainWorkflowQueueForThread$ = command(
               launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
-          immediateSuccessorIntentId: immediateSuccessorIntent
-            ? event.id
-            : undefined,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime,
           prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,

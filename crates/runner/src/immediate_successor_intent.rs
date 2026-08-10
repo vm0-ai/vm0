@@ -3,6 +3,7 @@
 //! This registry is deliberately separate from active-run and idle-pool state.
 //! It records timing only and cannot authorize claims or sandbox transitions.
 
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -377,27 +378,37 @@ impl ImmediateSuccessorIntents {
     pub(crate) fn observe_claim(
         &self,
         predecessor_run_id: Option<RunId>,
-        intent_id: Option<Uuid>,
         claimed_at: Instant,
     ) -> Option<ImmediateSuccessorIntentObservation> {
         Some(ImmediateSuccessorIntentObservation {
             registry: self.clone(),
-            key: IntentKey {
-                predecessor_run_id: predecessor_run_id?,
-                intent_id: intent_id?,
-            },
+            predecessor_run_id: predecessor_run_id?,
             claimed_at,
         })
     }
 
-    fn snapshot(&self, key: IntentKey, claimed_at: Instant) -> ImmediateSuccessorIntentSnapshot {
+    fn claim_snapshot(
+        &self,
+        predecessor_run_id: RunId,
+        claimed_at: Instant,
+    ) -> ImmediateSuccessorIntentSnapshot {
         let now = Instant::now();
         let mut state = self.lock();
         prune_stale_entries(&mut state, now);
-        let Some(entry) = state.entries.get(&key) else {
+        // Intent IDs distinguish competing arm/revoke pairs only. A claim's
+        // existing history generation identifies the predecessor, so correlate
+        // it with the best retained candidate instead of extending job state.
+        let entry = state
+            .entries
+            .iter()
+            .filter_map(|(key, entry)| {
+                (key.predecessor_run_id == predecessor_run_id).then_some(entry)
+            })
+            .max_by_key(|entry| claim_entry_rank(entry, claimed_at));
+        let Some(entry) = entry else {
             return ImmediateSuccessorIntentSnapshot::missing();
         };
-        let timeline = state.finalizations.get(&key.predecessor_run_id);
+        let timeline = state.finalizations.get(&predecessor_run_id);
         snapshot_entry(entry, timeline, Some(claimed_at))
     }
 
@@ -432,12 +443,11 @@ impl ImmediateSuccessorIntents {
     }
 }
 
-fn snapshot_entry(
+fn observation_state(
     entry: &IntentEntry,
-    timeline: Option<&FinalizationTimeline>,
     claimed_at: Option<Instant>,
-) -> ImmediateSuccessorIntentSnapshot {
-    let observation_state = if entry.expired_on_receipt {
+) -> ImmediateSuccessorObservationState {
+    if entry.expired_on_receipt {
         ImmediateSuccessorObservationState::Expired
     } else if entry.revoked_at.is_some() {
         ImmediateSuccessorObservationState::Revoked
@@ -445,7 +455,31 @@ fn snapshot_entry(
         ImmediateSuccessorObservationState::Expired
     } else {
         ImmediateSuccessorObservationState::Armed
+    }
+}
+
+fn claim_entry_rank(entry: &IntentEntry, claimed_at: Instant) -> (u8, bool, Reverse<Duration>) {
+    let state_rank = match observation_state(entry, Some(claimed_at)) {
+        ImmediateSuccessorObservationState::Armed => 3,
+        ImmediateSuccessorObservationState::Expired => 2,
+        ImmediateSuccessorObservationState::Revoked => 1,
+        ImmediateSuccessorObservationState::Missing => 0,
     };
+    let received_before_claim = entry.received_at <= claimed_at;
+    let distance = if received_before_claim {
+        claimed_at.duration_since(entry.received_at)
+    } else {
+        entry.received_at.duration_since(claimed_at)
+    };
+    (state_rank, received_before_claim, Reverse(distance))
+}
+
+fn snapshot_entry(
+    entry: &IntentEntry,
+    timeline: Option<&FinalizationTimeline>,
+    claimed_at: Option<Instant>,
+) -> ImmediateSuccessorIntentSnapshot {
+    let observation_state = observation_state(entry, claimed_at);
     let predicted_park_saved = claimed_at.and_then(|claimed_at| {
         timeline.and_then(|timeline| {
             if timeline.park_succeeded != Some(true) {
@@ -553,13 +587,14 @@ fn receipt_phase(
 #[derive(Clone)]
 pub(crate) struct ImmediateSuccessorIntentObservation {
     registry: ImmediateSuccessorIntents,
-    key: IntentKey,
+    predecessor_run_id: RunId,
     claimed_at: Instant,
 }
 
 impl ImmediateSuccessorIntentObservation {
     pub(crate) fn snapshot(&self) -> ImmediateSuccessorIntentSnapshot {
-        self.registry.snapshot(self.key, self.claimed_at)
+        self.registry
+            .claim_snapshot(self.predecessor_run_id, self.claimed_at)
     }
 
     pub(crate) async fn settled_claim_records(self, idle_unpark: Duration) -> Vec<SandboxOpRecord> {
@@ -817,10 +852,47 @@ mod tests {
             ImmediateSuccessorReceiveOutcome::Revoked
         );
         let snapshot = registry
-            .observe_claim(Some(predecessor), Some(intent_id), received)
+            .observe_claim(Some(predecessor), received)
             .unwrap()
             .snapshot();
         assert_eq!(snapshot.state, ImmediateSuccessorObservationState::Revoked);
+    }
+
+    #[test]
+    fn claim_matches_an_active_candidate_after_another_candidate_is_revoked() {
+        let registry = ImmediateSuccessorIntents::new(4);
+        let predecessor = RunId::new_v4();
+        let revoked_intent = Uuid::new_v4();
+        let active_intent = Uuid::new_v4();
+        let wall = Utc::now();
+        let base = Instant::now();
+
+        for (offset_ms, action, intent_id) in [
+            (0, ImmediateSuccessorIntentAction::Arm, revoked_intent),
+            (5, ImmediateSuccessorIntentAction::Arm, active_intent),
+            (10, ImmediateSuccessorIntentAction::Revoke, revoked_intent),
+        ] {
+            registry.receive_at(
+                notification(
+                    action,
+                    predecessor,
+                    intent_id,
+                    wall,
+                    wall + chrono::Duration::seconds(1),
+                ),
+                RUNNER_ID,
+                GENERATION,
+                base + Duration::from_millis(offset_ms),
+                wall,
+            );
+        }
+
+        let snapshot = registry
+            .observe_claim(Some(predecessor), base + Duration::from_millis(20))
+            .unwrap()
+            .snapshot();
+        assert_eq!(snapshot.state, ImmediateSuccessorObservationState::Armed);
+        assert_eq!(snapshot.receipt_to_claim, Some(Duration::from_millis(15)));
     }
 
     #[test]
@@ -830,9 +902,7 @@ mod tests {
         let intent_id = Uuid::new_v4();
         let wall = Utc::now();
         let base = Instant::now();
-        let observation = registry
-            .observe_claim(Some(predecessor), Some(intent_id), base)
-            .unwrap();
+        let observation = registry.observe_claim(Some(predecessor), base).unwrap();
 
         assert_eq!(
             observation.snapshot().state,
@@ -868,9 +938,7 @@ mod tests {
         let intent_id = Uuid::new_v4();
         let wall = Utc::now();
         let base = Instant::now();
-        let observation = registry
-            .observe_claim(Some(predecessor), Some(intent_id), base)
-            .unwrap();
+        let observation = registry.observe_claim(Some(predecessor), base).unwrap();
         let report = tokio::spawn(observation.settled_claim_records(Duration::from_millis(7)));
         tokio::task::yield_now().await;
 
@@ -1033,7 +1101,7 @@ mod tests {
             ImmediateSuccessorReceiveOutcome::Expired
         );
         let snapshot = registry
-            .observe_claim(Some(predecessor), Some(intent_id), received)
+            .observe_claim(Some(predecessor), received)
             .unwrap()
             .snapshot();
         assert_eq!(snapshot.state, ImmediateSuccessorObservationState::Expired);
@@ -1076,7 +1144,7 @@ mod tests {
         );
         assert_eq!(
             registry
-                .observe_claim(Some(predecessor), Some(intent_id), received)
+                .observe_claim(Some(predecessor), received)
                 .unwrap()
                 .snapshot()
                 .state,
@@ -1194,7 +1262,7 @@ mod tests {
         );
         assert_eq!(
             registry
-                .observe_claim(Some(first_predecessor), Some(first_intent), received)
+                .observe_claim(Some(first_predecessor), received)
                 .unwrap()
                 .snapshot()
                 .state,
@@ -1244,11 +1312,7 @@ mod tests {
         registry.record_idle_publication(predecessor, base + Duration::from_millis(90));
 
         let snapshot = registry
-            .observe_claim(
-                Some(predecessor),
-                Some(intent_id),
-                base + Duration::from_millis(50),
-            )
+            .observe_claim(Some(predecessor), base + Duration::from_millis(50))
             .unwrap()
             .snapshot();
         assert_eq!(
@@ -1298,11 +1362,7 @@ mod tests {
         );
 
         let snapshot = registry
-            .observe_claim(
-                Some(predecessor),
-                Some(intent_id),
-                base + Duration::from_millis(20),
-            )
+            .observe_claim(Some(predecessor), base + Duration::from_millis(20))
             .unwrap()
             .snapshot();
         assert_eq!(snapshot.predicted_park_saved, None);

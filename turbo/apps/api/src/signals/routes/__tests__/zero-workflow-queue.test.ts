@@ -354,6 +354,29 @@ async function pendingAutomationEventForAutomation(
   return undefined;
 }
 
+async function startOrgConcurrencyBlocker(scenario: Scenario): Promise<string> {
+  const response = await accept(
+    chatEventsClient().send({
+      headers: authHeaders(),
+      body: {
+        agentId: scenario.agentId,
+        prompt: "hold org concurrency open",
+        model: "claude-sonnet-4-6",
+        hasTextContent: true,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "hold org concurrency open" }],
+        },
+      },
+    }),
+    [201],
+  );
+  if (!response.body.runId) {
+    throw new Error("Expected the concurrency blocker to create a run");
+  }
+  return response.body.runId;
+}
+
 async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
@@ -861,8 +884,7 @@ describe("workflow queue", () => {
         ? Promise.reject(new Error("intent publish unavailable"))
         : Promise.resolve(undefined);
     });
-    const firstClaim = await completeRunThroughSandbox(scenario, firstRunId);
-    expect(firstClaim).not.toHaveProperty("immediateSuccessorIntentId");
+    await completeRunThroughSandbox(scenario, firstRunId);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "immediate-successor-intent",
       expect.objectContaining({
@@ -882,7 +904,85 @@ describe("workflow queue", () => {
       afterFirst[1]!,
     );
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
-    expect(secondClaim.immediateSuccessorIntentId).toBe(secondEvent.id);
+  });
+
+  it("revokes workflow intent when org concurrency queues the successor", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
+
+    const firstRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
+    );
+    const blockerRunId = await startOrgConcurrencyBlocker(scenario);
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "queued behind first"),
+    );
+    const [queuedEvent] = await pendingAutomationEvents(automation.threadId);
+    if (!queuedEvent) {
+      throw new Error("Expected a queued workflow event");
+    }
+
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    await completeRunThroughSandbox(scenario, firstRunId);
+
+    for (const action of ["arm", "revoke"] as const) {
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        "immediate-successor-intent",
+        expect.objectContaining({
+          action,
+          predecessorRunId: firstRunId,
+          intentId: queuedEvent.id,
+          eventClass: "automation",
+        }),
+      );
+    }
+
+    const runIds = await workflowRunIds(automation.threadId);
+    expect(runIds).toHaveLength(2);
+    await runsApi.requestCancelRun(scenario.actor, runIds[1]!, [200]);
+    await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
+  });
+
+  it("revokes goal intent when org concurrency queues the successor", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
+
+    const firstRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
+    );
+    const blockerRunId = await startOrgConcurrencyBlocker(scenario);
+    const goal = await createActiveGoalQueueEventFixture({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      userId: scenario.userId,
+      agentId: scenario.agentId,
+      objective: "continue after org concurrency becomes available",
+      objectiveBrief: "Continue after org concurrency becomes available",
+    });
+
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    await completeRunThroughSandbox(scenario, firstRunId);
+
+    for (const action of ["arm", "revoke"] as const) {
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        "immediate-successor-intent",
+        expect.objectContaining({
+          action,
+          predecessorRunId: firstRunId,
+          intentId: goal.eventId,
+          eventClass: "goal",
+        }),
+      );
+    }
+
+    const goalQueue = await readGoalQueueStateFixture(automation.threadId);
+    expect(goalQueue.runIds).toHaveLength(1);
+    await runsApi.requestCancelRun(scenario.actor, goalQueue.runIds[0]!, [200]);
+    await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 
   it("keeps workflow events queued until cancellation recovery completes", async () => {

@@ -94,11 +94,8 @@ async fn run_finalizing_claim(
     let run_id = claimed.context().run_id;
     let mut pre_spawn_timing = RunnerPreSpawnTiming::start_at(claim_returned_at);
     pre_spawn_timing.observe_immediate_successor_intent(
-        ctx.immediate_successor_intents.observe_claim(
-            claimed.history_generation_run_id(),
-            claimed.context().immediate_successor_intent_id,
-            claim_returned_at,
-        ),
+        ctx.immediate_successor_intents
+            .observe_claim(claimed.history_generation_run_id(), claim_returned_at),
     );
     pre_spawn_timing.mark_task_enqueued();
     let started_at = Instant::now();

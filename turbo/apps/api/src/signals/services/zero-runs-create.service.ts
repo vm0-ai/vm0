@@ -167,7 +167,6 @@ interface CreateZeroRunCommandArgs {
   >;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
-  readonly immediateSuccessorIntentId?: string;
   readonly threadSessionRoute?: ChatThreadSessionRoute;
   readonly webChatSessionPromptContext?: WebChatSessionPromptContext;
   readonly computerUseHostId?: string;
@@ -826,7 +825,6 @@ function buildZeroCreateAgentRunArgs(args: {
       ? { codexServiceTier: command.codexServiceTier }
       : {}),
     chatThreadId: command.chatThreadId,
-    immediateSuccessorIntentId: command.immediateSuccessorIntentId,
     ...(args.threadSessionResolution
       ? { threadSessionResolution: args.threadSessionResolution }
       : {}),

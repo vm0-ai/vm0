@@ -648,7 +648,6 @@ interface CreateQueuedChatRunInput {
   readonly appendSystemPrompt: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
-  readonly immediateSuccessorIntentId?: string;
   readonly modelPin: ModelFirstPin;
   readonly effectiveModelProvider: string | null | undefined;
   readonly cliAgentType: string | null;
@@ -916,7 +915,6 @@ function buildQueuedCreateZeroRunArgs(
     appendSystemPrompt: input.appendSystemPrompt,
     userInfoExtras: input.userInfoExtras,
     dispatchFailedCallbacks,
-    immediateSuccessorIntentId: input.immediateSuccessorIntentId,
     queueFirstAssociation: {
       kind: "user_message" as const,
       threadId: input.threadId,
@@ -2671,7 +2669,6 @@ interface CreateQueuedChatRunInputArgs {
   readonly userId: string;
   readonly agent: AgentForAutoSend;
   readonly queuedMessage: QueuedUserMessage;
-  readonly immediateSuccessorIntentId?: string;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
   readonly resolveMorningBriefSignedUrls: (
     keys: { readonly inputKey: string; readonly outputKey: string },
@@ -3176,7 +3173,6 @@ async function buildCreateQueuedChatRunInput(
     ),
     threadId: args.threadId,
     queuedMessage: args.queuedMessage,
-    immediateSuccessorIntentId: args.immediateSuccessorIntentId,
     modelPin: modelRoute.modelPin,
     effectiveModelProvider: modelRoute.effectiveModelProvider,
     cliAgentType: modelRoute.cliAgentType,
@@ -3982,9 +3978,6 @@ async function prepareAutoSendQueuedMessageRunInput(
           userId: args.userId,
           agent,
           queuedMessage,
-          immediateSuccessorIntentId: immediateSuccessorIntent
-            ? queuedMessage.id
-            : undefined,
           timing: args.timing,
           resolveMorningBriefSignedUrls: args.resolveMorningBriefSignedUrls,
         },
@@ -4110,6 +4103,9 @@ async function autoSendQueuedMessageForThread(
       }
       const createdRun = launch.run;
       createdRunId = createdRun.runId;
+      if (createdRun.status === "queued") {
+        immediateSuccessorIntent?.revoke();
+      }
       const shouldPublishSignals = await appendAutoSentQueuedRunMarkerIfQueued({
         db: args.db,
         run: createdRun,

@@ -47,7 +47,7 @@ type RunErrorResponse = {
 };
 
 export type RunWorkflowAutomationResult =
-  | { readonly kind: "ok"; readonly runId: string }
+  | { readonly kind: "ok"; readonly runId: string; readonly queued: boolean }
   // The event was accepted into the workflow queue instead of starting a run.
   | { readonly kind: "enqueued" }
   | { readonly kind: "conflict"; readonly message: string }
@@ -112,7 +112,6 @@ interface WorkflowAutomationLaunchArgs {
 
 interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArgs {
   readonly queueEventId: string;
-  readonly immediateSuccessorIntentId?: string;
 }
 
 interface WorkflowAutomationRunInput {
@@ -596,7 +595,6 @@ export const launchQueuedWorkflowAutomation$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        immediateSuccessorIntentId: args.immediateSuccessorIntentId,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
         computerUseHostId: computerUseHostGrant?.hostId,
@@ -647,6 +645,10 @@ export const launchQueuedWorkflowAutomation$ = command(
       signal,
     );
 
-    return { kind: "ok", runId: result.body.runId };
+    return {
+      kind: "ok",
+      runId: result.body.runId,
+      queued: result.body.status === "queued",
+    };
   },
 );

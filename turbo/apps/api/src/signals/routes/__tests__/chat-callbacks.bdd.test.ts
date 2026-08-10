@@ -1300,8 +1300,7 @@ describe("CHAT-02: completed chat callback", () => {
       "ANTHROPIC_API_KEY",
     );
 
-    const autoClaim = await claimChatRunJob(runnerGroup, claimed.runId);
-    expect(autoClaim.immediateSuccessorIntentId).toBe(queued.id);
+    await claimChatRunJob(runnerGroup, claimed.runId);
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
@@ -1864,9 +1863,6 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     expect(continuationClaim.resumeSession?.sessionId).toBe(
       cliAgentSessionIdForChatRun(first.runId),
-    );
-    expect(continuationClaim.immediateSuccessorIntentId).toBe(
-      goalContinuation.revokesEventId,
     );
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);
     await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
@@ -2602,6 +2598,25 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       content: "Waiting in queue...",
       runId: claimed.runId,
     });
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.objectContaining({
+        action: "arm",
+        predecessorRunId: first.runId,
+        intentId: queued.id,
+        eventClass: "prompt",
+      }),
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.objectContaining({
+        action: "revoke",
+        predecessorRunId: first.runId,
+        intentId: queued.id,
+        eventClass: "prompt",
+      }),
+    );
 
     await api.requestCancelRun(actor, blocker.runId, [200]);
     await waitForRunStatus(actor, blocker.runId, "cancelled");

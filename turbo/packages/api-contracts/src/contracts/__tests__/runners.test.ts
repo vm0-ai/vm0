@@ -1754,30 +1754,6 @@ describe("immediate successor intent contract", () => {
       }).success,
     ).toBe(false);
   });
-
-  it("keeps the correlation field optional and UUID-shaped", () => {
-    const intentId = signal.intentId;
-    expect(
-      storedExecutionContextSchema.shape.immediateSuccessorIntentId.safeParse(
-        intentId,
-      ).success,
-    ).toBe(true);
-    expect(
-      executionContextSchema.shape.immediateSuccessorIntentId.safeParse(
-        intentId,
-      ).success,
-    ).toBe(true);
-    expect(
-      executionContextSchema.shape.immediateSuccessorIntentId.safeParse(
-        undefined,
-      ).success,
-    ).toBe(true);
-    expect(
-      executionContextSchema.shape.immediateSuccessorIntentId.safeParse(
-        "not-a-uuid",
-      ).success,
-    ).toBe(false);
-  });
 });
 
 describe("runner Claude tool list contracts", () => {

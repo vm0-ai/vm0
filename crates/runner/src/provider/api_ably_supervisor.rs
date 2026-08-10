@@ -1283,7 +1283,7 @@ mod tests {
         handle_immediate_successor_intent_notification(&message, &registry, runner_id, 7);
 
         let snapshot = registry
-            .observe_claim(Some(predecessor), Some(intent_id), StdInstant::now())
+            .observe_claim(Some(predecessor), StdInstant::now())
             .unwrap()
             .snapshot();
         assert_eq!(snapshot.state, ImmediateSuccessorObservationState::Armed);
@@ -1332,7 +1332,7 @@ mod tests {
 
         assert_eq!(
             registry
-                .observe_claim(Some(predecessor), Some(intent_id), StdInstant::now())
+                .observe_claim(Some(predecessor), StdInstant::now())
                 .unwrap()
                 .snapshot()
                 .state,

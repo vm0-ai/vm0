@@ -1803,7 +1803,7 @@ mod tests {
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
         let observation = fixture
             .immediate_successor_intents
-            .observe_claim(Some(run_id), Some(intent_id), Instant::now())
+            .observe_claim(Some(run_id), Instant::now())
             .unwrap()
             .snapshot();
         assert_eq!(
