@@ -5222,8 +5222,8 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log();
 }
 
-const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0878_graceful_zzzax";
-const ZERO_RUN_CODEX_TIER_MIGRATION = "0879_third_marvel_zombies";
+const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0879_sturdy_peter_quill";
+const ZERO_RUN_CODEX_TIER_MIGRATION = "0880_regular_piledriver";
 
 async function validateZeroRunCodexTierExpansion(): Promise<void> {
   console.log("=== Validate zero-run Codex tier expansion ===\n");
