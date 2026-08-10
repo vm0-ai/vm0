@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { GmailNewMessageEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
 import type { ZeroWorkflowAutomationSummary } from "../../../../lib/api/domains/zero-workflows";
 import { formatRelativeTime } from "../../../../lib/domain/relative-time";
@@ -11,6 +12,7 @@ type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 export interface WorkflowAutomationThreadModel {
   readonly id: string;
   readonly label: string;
+  readonly serviceTier: ChatThreadServiceTier | null;
 }
 
 interface WorkflowAutomationDetailsOptions {
@@ -762,6 +764,8 @@ export function printWorkflowAutomationThreadModel(
   console.log(
     `${"Thread model:".padEnd(14)}${model.label} ${chalk.dim(`(${model.id})`)}`,
   );
+  const priority = model.serviceTier === "priority" ? "enabled" : "disabled";
+  console.log(`${"Thread priority:".padEnd(18)}${priority}`);
 }
 
 function printGoogleFormsAutomationDetails(

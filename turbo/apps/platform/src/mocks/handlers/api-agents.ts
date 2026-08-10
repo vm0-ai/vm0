@@ -232,6 +232,7 @@ export const apiAgentsHandlers = [
       title: null,
       createdAt: "2026-03-10T00:00:00Z",
       selectedModel: body.model ?? "claude-sonnet-4-6",
+      serviceTier: body.serviceTier ?? null,
     });
   }),
 

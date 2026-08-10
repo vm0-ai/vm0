@@ -420,8 +420,7 @@ impl<'a> CliRuntimeConfig<'a> {
             )),
             codex_runtime_config,
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
-            codex_fast_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty()
-                && user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
+            codex_fast_mode: user_env_value(&config.user_env, "VM0_CODEX_SERVICE_TIER") == "fast",
             disable_builtin_web_search,
             agent_execution_deadline,
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,

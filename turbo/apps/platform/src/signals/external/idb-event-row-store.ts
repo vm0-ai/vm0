@@ -1,7 +1,7 @@
 import type { IDBPDatabase } from "idb";
 import {
-  chatEventRowSchema,
-  type ChatEventRow,
+  chatEventRowV4Schema,
+  type ChatEventRowV4,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { logger } from "../log.ts";
 import { onRejection } from "../utils.ts";
@@ -19,19 +19,21 @@ interface ChatEventRowReadStore {
     threadId: string,
     afterSeqId: number | null,
     signal?: AbortSignal,
-  ): Promise<ChatEventRow[]>;
+  ): Promise<ChatEventRowV4[]>;
 }
 
 interface ChatEventRowWriteStore {
   upsertRows(
-    rows: readonly ChatEventRow[],
+    rows: readonly ChatEventRowV4[],
     signal?: AbortSignal,
   ): Promise<void>;
   clearThread(threadId: string, signal?: AbortSignal): Promise<void>;
 }
 
-function storedChatEventRow(raw: unknown): ChatEventRow {
-  return chatEventRowSchema.parse(raw);
+// The store persists only normalized canonical rows; the schema upgrade that
+// introduced them dropped every store that still held raw v3 rows.
+function storedChatEventRow(raw: unknown): ChatEventRowV4 {
+  return chatEventRowV4Schema.parse(raw);
 }
 
 function threadRowRange(

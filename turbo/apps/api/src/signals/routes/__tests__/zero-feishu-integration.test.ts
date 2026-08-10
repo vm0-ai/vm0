@@ -94,6 +94,46 @@ const VERIFICATION_TOKEN = "feishu-test-verification-token";
 const APP_SECRET = "feishu-test-secret";
 const TENANT_KEY = "tenant_feishu_integration_test";
 const BOT_OPEN_ID = "ou_feishu_bot";
+
+function mockAuthoritativeOrganizationMembers(
+  actors: readonly ApiTestUser[],
+): void {
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+    {
+      data: actors.map((actor) => {
+        return { publicUserData: { userId: actor.userId } };
+      }),
+    },
+  );
+}
+
+function clearConnectorInvalidationMocks(): void {
+  context.mocks.ably.channelGet.mockClear();
+  context.mocks.ably.publish.mockClear();
+}
+
+function expectCustomConnectorInvalidations(userIds: readonly string[]): void {
+  const channels = context.mocks.ably.publish.mock.calls.flatMap(
+    ([topic], index) => {
+      if (topic !== "customConnectorListChanged") {
+        return [];
+      }
+      const channelName = context.mocks.ably.channelGet.mock.calls[index]?.[0];
+      if (!channelName) {
+        throw new Error("Expected every Ably publication to select a channel");
+      }
+      return [channelName];
+    },
+  );
+  expect(channels.sort()).toStrictEqual(
+    userIds
+      .map((userId) => {
+        return `user:${userId}`;
+      })
+      .sort(),
+  );
+}
+
 const EXPECTED_FEISHU_OAUTH_SCOPES = [
   "offline_access",
   "contact:contact.base:readonly",
@@ -1432,10 +1472,12 @@ describe("Feishu integration", () => {
       displayName: "Feishu OAuth agent",
       visibility: "public",
     });
+    mockAuthoritativeOrganizationMembers([admin, member]);
     mocks.clerk.session(admin.userId, admin.orgId, "org:admin");
     const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
       zeroFeishuConnectContract,
     );
+    clearConnectorInvalidationMocks();
     const configured = await accept(
       client.setup({
         headers: { authorization: "Bearer clerk-session" },
@@ -1449,10 +1491,12 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+    expectCustomConnectorInvalidations([admin.userId, member.userId]);
     const installationId = configured.body.installationId;
     if (!installationId) {
       throw new Error("Expected Feishu setup to return an installation id");
     }
+    clearConnectorInvalidationMocks();
     await accept(
       client.updateInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -1464,6 +1508,7 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+    expectCustomConnectorInvalidations([admin.userId, member.userId]);
 
     const customConnectorClient = setupApp({
       context,
@@ -1580,6 +1625,7 @@ describe("Feishu integration", () => {
       signal: context.signal,
       routes: zeroFeishuOauthRoutes,
     });
+    clearConnectorInvalidationMocks();
     const customConnectorCallback = await oauthApp.request(
       `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-custom-connector-code",
@@ -1588,6 +1634,7 @@ describe("Feishu integration", () => {
       })}`,
     );
     expect(customConnectorCallback.status).toBe(200);
+    expectCustomConnectorInvalidations([admin.userId]);
     await expect(customConnectorCallback.json()).resolves.toStrictEqual({
       redirectUrl: `${APP_ORIGIN}/connectors/custom/callback/success`,
     });
@@ -1668,6 +1715,7 @@ describe("Feishu integration", () => {
       [200],
     );
     expect(restoredFeishuStatus.body.isConnected).toBeTruthy();
+    clearConnectorInvalidationMocks();
     await accept(
       setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
         zeroCustomConnectorSecretContract,
@@ -1677,6 +1725,7 @@ describe("Feishu integration", () => {
       }),
       [204],
     );
+    expectCustomConnectorInvalidations([admin.userId]);
     const disconnectedFromCustomConnector = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -1773,6 +1822,7 @@ describe("Feishu integration", () => {
     expect(handoffUrl.searchParams.get("code")).toBe("feishu-oauth-code");
     expect(handoffUrl.searchParams.get("state")).toBe(state);
 
+    clearConnectorInvalidationMocks();
     const callbackResponse = await oauthApp.request(
       `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
         code: "feishu-oauth-code",
@@ -1781,6 +1831,7 @@ describe("Feishu integration", () => {
       })}`,
     );
     expect(callbackResponse.status).toBe(200);
+    expectCustomConnectorInvalidations([member.userId]);
     await expect(callbackResponse.json()).resolves.toStrictEqual({
       redirectUrl: `https://applink.feishu.cn/client/bot/open?appId=${appId}`,
     });
@@ -1788,6 +1839,7 @@ describe("Feishu integration", () => {
       `${APP_ORIGIN}/connectors/feishu/callback`,
     ]);
 
+    clearConnectorInvalidationMocks();
     const legacyCallbackResponse = await oauthApp.request(
       `${zeroFeishuOauthContract.callback.path}?${new URLSearchParams({
         code: "legacy-feishu-oauth-code",
@@ -1800,6 +1852,7 @@ describe("Feishu integration", () => {
       })}`,
     );
     expect(legacyCallbackResponse.status).toBe(200);
+    expectCustomConnectorInvalidations([member.userId]);
     expect(oauthTokenRedirectUris).toStrictEqual([
       `${APP_ORIGIN}/connectors/feishu/callback`,
       "https://www.vm0.test/api/zero/feishu/oauth/callback",
@@ -1839,6 +1892,7 @@ describe("Feishu integration", () => {
     });
     expect(welcome?.msgType).toBe("interactive");
 
+    clearConnectorInvalidationMocks();
     await accept(
       client.disconnectInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -1846,6 +1900,7 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+    expectCustomConnectorInvalidations([member.userId]);
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
         orgId: requireValue(
@@ -1882,6 +1937,8 @@ describe("Feishu integration", () => {
     ]);
 
     mocks.clerk.session(admin.userId, admin.orgId, admin.orgRole);
+    mockAuthoritativeOrganizationMembers([admin, member]);
+    clearConnectorInvalidationMocks();
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -1889,6 +1946,7 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+    expectCustomConnectorInvalidations([admin.userId, member.userId]);
     const removedConnectorList = await accept(
       customConnectorClient.list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2363,19 +2421,23 @@ describe("Feishu integration", () => {
         return content.includes("Choose a model");
       }),
     ).toBeTruthy();
+    clearConnectorInvalidationMocks();
     await postEvent(callbackUrl, directMessage(appId, "/disconnect"), {
       encrypted: true,
     });
     await flushWaitUntilForTest();
+    expectCustomConnectorInvalidations([fixture.actor.userId]);
     expect(
       outboundMessages.some((message) => {
         return messageContent(message).includes("Disconnected");
       }),
     ).toBeTruthy();
+    clearConnectorInvalidationMocks();
     await postEvent(callbackUrl, directMessage(appId, "/disconnect"), {
       encrypted: true,
     });
     await flushWaitUntilForTest();
+    expectCustomConnectorInvalidations([]);
     expect(
       outboundMessages.some((message) => {
         return messageContent(message).includes("You are not connected.");

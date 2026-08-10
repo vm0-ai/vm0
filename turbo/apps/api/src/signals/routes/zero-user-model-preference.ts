@@ -70,12 +70,11 @@ const updateUserModelPreferenceInner$ = command(
       if (
         !isCodexFastServiceTierSupported({
           selectedModel: configuredPolicy.model,
-          effectiveModelProvider: configuredPolicy.defaultProviderType,
           codexFastModeEnabled: true,
         })
       ) {
         return badRequestMessage(
-          "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+          "Codex fast mode is only available for GPT 5.6 runs",
         );
       }
     }

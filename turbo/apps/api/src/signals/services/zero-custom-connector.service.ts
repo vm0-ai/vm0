@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
@@ -39,6 +39,7 @@ import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 
+import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -72,6 +73,11 @@ import {
   commitConnectorRuntimeMutation,
   publishConnectorRuntimeSyncWakeups,
 } from "./connector-runtime-wakeup.service";
+import {
+  publishCustomConnectorOrganizationInvalidationAfterCommit,
+  publishCustomConnectorUserInvalidationAfterCommit,
+  type CapturedConnectorClientInvalidationAbort,
+} from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
 import type { Tx } from "../../lib/db-types";
 
@@ -1863,6 +1869,7 @@ export const createCustomConnector$ = command(
     const slug = v.slug ?? `_${slugHost}-${randomShortId()}`;
     L.debug("creating custom connector", { orgId: args.orgId, slug });
 
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const created = await persistCustomConnectorCreate(writeDb, {
       orgId: args.orgId,
       userId: args.userId,
@@ -1872,14 +1879,23 @@ export const createCustomConnector$ = command(
       oauthConfigUpdate,
       encryptedClientSecret,
     });
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
     if (isBadRequest(created)) {
+      signal.throwIfAborted();
       return created;
     }
 
     const result = normaliseCustomConnectorRow(
       created.row,
       created.oauthConfig,
+    );
+    await publishCustomConnectorOrganizationInvalidationAfterCommit(
+      args.orgId,
+      get(clerk$).organizations,
+      signal,
+      postCommitAbort,
     );
     if (result.skillMarkdown !== null) {
       await set(
@@ -2072,10 +2088,17 @@ async function persistCustomConnectorUpdate(
 async function persistCustomConnectorUpdateAndPublishRuntimeWakeup(
   db: Db,
   args: PersistCustomConnectorUpdateArgs,
-): Promise<CustomConnectorRow | BadRequestResponse | null> {
+  signal: AbortSignal,
+): Promise<{
+  readonly result: CustomConnectorRow | BadRequestResponse | null;
+  readonly postCommitAbort?: CapturedConnectorClientInvalidationAbort;
+}> {
   const result = await persistCustomConnectorUpdate(db, args);
   if (isBadRequest(result) || !result) {
-    return result;
+    return {
+      result,
+      ...(signal.aborted ? { postCommitAbort: { reason: signal.reason } } : {}),
+    };
   }
   const connector = normaliseCustomConnectorRow(result.row, result.oauthConfig);
   if (
@@ -2088,7 +2111,10 @@ async function persistCustomConnectorUpdateAndPublishRuntimeWakeup(
       targets: [{ kind: "custom", customConnectorId: connector.id }],
     });
   }
-  return connector;
+  return {
+    result: connector,
+    ...(signal.aborted ? { postCommitAbort: { reason: signal.reason } } : {}),
+  };
 }
 
 interface PreparedCustomConnectorUpdate {
@@ -2191,6 +2217,12 @@ function resolveCustomConnectorUpdateWrite(args: {
   };
 }
 
+type UpdateCustomConnectorDefinitionResult =
+  | CustomConnectorRow
+  | BadRequestResponse
+  | NotFoundResponse
+  | ForbiddenResponse;
+
 export const updateCustomConnectorDefinition$ = command(
   async (
     { get, set },
@@ -2201,12 +2233,7 @@ export const updateCustomConnectorDefinition$ = command(
       readonly input: UpdateCustomConnectorBody;
     },
     signal: AbortSignal,
-  ): Promise<
-    | CustomConnectorRow
-    | BadRequestResponse
-    | NotFoundResponse
-    | ForbiddenResponse
-  > => {
+  ): Promise<UpdateCustomConnectorDefinitionResult> => {
     const writeDb = set(writeDb$);
     const existingConnector = await loadCustomConnectorForUpdate(writeDb, args);
     signal.throwIfAborted();
@@ -2280,24 +2307,31 @@ export const updateCustomConnectorDefinition$ = command(
     if (isBadRequest(resolved)) {
       return resolved;
     }
-    const normalized =
-      await persistCustomConnectorUpdateAndPublishRuntimeWakeup(writeDb, {
-        orgId: args.orgId,
-        id: args.id,
-        definition: prepared.definition,
-        existing: existingConnector,
-        oauthConfigUpdate: prepared.oauthConfigUpdate,
-        encryptedClientSecret,
-        grantConfigurationChanged: resolved.grantConfigurationChanged,
-        storageVersion: resolved.storageVersion,
-      });
-    signal.throwIfAborted();
-    if (isBadRequest(normalized)) {
-      return normalized;
+    const { result: normalized, postCommitAbort } =
+      await persistCustomConnectorUpdateAndPublishRuntimeWakeup(
+        writeDb,
+        {
+          orgId: args.orgId,
+          id: args.id,
+          definition: prepared.definition,
+          existing: existingConnector,
+          oauthConfigUpdate: prepared.oauthConfigUpdate,
+          encryptedClientSecret,
+          grantConfigurationChanged: resolved.grantConfigurationChanged,
+          storageVersion: resolved.storageVersion,
+        },
+        signal,
+      );
+    if (isBadRequest(normalized) || !normalized) {
+      signal.throwIfAborted();
+      return normalized ?? notFound("Custom connector not found");
     }
-    if (!normalized) {
-      return notFound("Custom connector not found");
-    }
+    await publishCustomConnectorOrganizationInvalidationAfterCommit(
+      args.orgId,
+      get(clerk$).organizations,
+      signal,
+      postCommitAbort,
+    );
     if (
       normalized.skillMarkdown !== null ||
       args.input.skillMarkdown !== undefined
@@ -2321,7 +2355,7 @@ export const updateCustomConnectorDefinition$ = command(
 
 export const deleteCustomConnector$ = command(
   async (
-    { set },
+    { get, set },
     args: { readonly orgId: string; readonly id: string },
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
@@ -2356,6 +2390,7 @@ export const deleteCustomConnector$ = command(
         );
       return true;
     });
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const deleted = await commitConnectorRuntimeMutation(deletion, (result) => {
       return result
         ? {
@@ -2365,10 +2400,19 @@ export const deleteCustomConnector$ = command(
           }
         : undefined;
     });
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
     if (!deleted) {
+      signal.throwIfAborted();
       return notFound("Custom connector not found");
     }
+    await publishCustomConnectorOrganizationInvalidationAfterCommit(
+      args.orgId,
+      get(clerk$).organizations,
+      signal,
+      postCommitAbort,
+    );
     await set(
       syncCustomConnectorSkillVolume$,
       {
@@ -2938,6 +2982,7 @@ export const setCustomConnectorValues$ = command(
         signal,
       );
     });
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const writeResult = await commitConnectorRuntimeMutation(
       valueWrite,
       (result) => {
@@ -2952,10 +2997,18 @@ export const setCustomConnectorValues$ = command(
           : undefined;
       },
     );
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
     if ("status" in writeResult) {
+      signal.throwIfAborted();
       return writeResult;
     }
+    await publishCustomConnectorUserInvalidationAfterCommit(
+      args.userId,
+      signal,
+      postCommitAbort,
+    );
 
     const db = get(db$);
     const markers = await loadCurrentCustomConnectorValueMarkers(db, {
@@ -2981,6 +3034,7 @@ export const disconnectCustomConnector$ = command(
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
+    let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
     const disconnected = await writeDb.transaction(async (tx) => {
       const [connector] = await tx
         .select({
@@ -3039,10 +3093,18 @@ export const disconnectCustomConnector$ = command(
       await deleteCustomConnectorMemberConnection(tx, args, signal);
       return true;
     });
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      postCommitAbort = { reason: signal.reason };
+    }
     if (!disconnected) {
+      signal.throwIfAborted();
       return notFound("Custom connector not found");
     }
+    await publishCustomConnectorUserInvalidationAfterCommit(
+      args.userId,
+      signal,
+      postCommitAbort,
+    );
     return undefined;
   },
 );
@@ -3349,7 +3411,7 @@ export async function loadCustomConnectorRuntimeData(
   },
 ): Promise<
   readonly {
-    readonly connector: CustomConnectorHttpRow;
+    readonly connector: CustomConnectorRow;
     readonly values: readonly StoredValueRow[];
     readonly credentialAccess: CustomConnectorCredentialAccess;
   }[]
@@ -3384,13 +3446,11 @@ export async function loadCustomConnectorRuntimeData(
           ? and(
               eq(orgCustomConnectors.orgId, args.orgId),
               eq(orgCustomConnectors.enabled, true),
-              isNull(orgCustomConnectors.mcpTransport),
               inArray(orgCustomConnectors.id, [...args.connectorIds]),
             )
           : and(
               eq(orgCustomConnectors.orgId, args.orgId),
               eq(orgCustomConnectors.enabled, true),
-              isNull(orgCustomConnectors.mcpTransport),
             ),
       );
   });
@@ -3416,9 +3476,6 @@ export async function loadCustomConnectorRuntimeData(
           row.connector,
           row.oauthConfig,
         );
-        if (connector.kind !== "http") {
-          throw new Error("Expected HTTP Custom Connector runtime data");
-        }
         const credentialAccess = credentialAccesses.get(connector.id);
         if (!credentialAccess) {
           throw new Error("Expected custom connector credential access");

@@ -289,8 +289,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
 
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
-    description:
-      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 and GPT 5.6 runs.",
+    description: "Enable Codex fast mode for GPT 5.6 runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

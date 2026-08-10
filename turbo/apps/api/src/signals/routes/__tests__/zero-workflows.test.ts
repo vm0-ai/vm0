@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 
+import { HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  testSystemStoragePresignedUrlCacheStateContract,
+  type TestSystemStoragePresignedUrlCacheStateActionBody,
+} from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
@@ -9,7 +15,13 @@ import {
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import {
+  getCustomSkillStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
+import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -35,6 +47,7 @@ import {
 } from "./helpers/zero-route-test";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 import { zeroWorkflowsRoutes } from "../zero-workflows";
+import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -109,6 +122,143 @@ function detailClient() {
   return setupApp({ context, routes: zeroWorkflowsRoutes })(
     zeroWorkflowsDetailContract,
   );
+}
+
+function storageStateClient() {
+  return setupApp({
+    context,
+    routes: testSystemStoragePresignedUrlCacheStateRoutes,
+  })(testSystemStoragePresignedUrlCacheStateContract);
+}
+
+async function storageStateAction(
+  body: TestSystemStoragePresignedUrlCacheStateActionBody,
+) {
+  return await accept(storageStateClient().action({ body }), [200]);
+}
+
+async function readWorkflowStorageState(
+  actor: ApiTestUser,
+  workflowId: string,
+) {
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped workflow actor");
+  }
+  const response = await storageStateAction({
+    action: "read-storage-state",
+    org_id: actor.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: getCustomSkillStorageName(workflowId),
+  });
+  return response.body.storage_state ?? null;
+}
+
+async function readWorkflowStorageVersion(
+  actor: ApiTestUser,
+  workflowId: string,
+  versionId: string,
+) {
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped workflow actor");
+  }
+  const response = await storageStateAction({
+    action: "read-storage-version",
+    org_id: actor.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: getCustomSkillStorageName(workflowId),
+    version_id: versionId,
+  });
+  return response.body.storage_version ?? null;
+}
+
+async function setWorkflowStorageVersionArchiveSize(
+  actor: ApiTestUser,
+  workflowId: string,
+  versionId: string,
+  archiveSize: number,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped workflow actor");
+  }
+  await storageStateAction({
+    action: "set-storage-version-archive-size",
+    org_id: actor.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: getCustomSkillStorageName(workflowId),
+    version_id: versionId,
+    archive_size: archiveSize,
+  });
+}
+
+function s3BodyBuffer(body: unknown): Buffer {
+  if (Buffer.isBuffer(body)) {
+    return Buffer.from(body);
+  }
+  if (typeof body === "string") {
+    return Buffer.from(body, "utf8");
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body);
+  }
+  throw new Error("Expected an S3 object body");
+}
+
+function missingS3Object(key: string): Error {
+  return Object.assign(new Error(`Missing S3 object ${key}`), {
+    name: "NotFound",
+    $metadata: { httpStatusCode: 404 },
+  });
+}
+
+function installVolumeS3Fixture() {
+  const objects = new Map<string, Buffer>();
+  const writes: { readonly key: string; readonly body: Buffer }[] = [];
+  let beforeNextArchiveWrite:
+    | ((key: string, body: Buffer) => void | Promise<void>)
+    | undefined;
+
+  context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+    if (command instanceof PutObjectCommand) {
+      const key = command.input.Key;
+      if (!key) {
+        throw new Error("Expected an S3 object key");
+      }
+      const body = s3BodyBuffer(command.input.Body);
+      if (key.endsWith("/archive.tar.gz") && beforeNextArchiveWrite) {
+        const callback = beforeNextArchiveWrite;
+        beforeNextArchiveWrite = undefined;
+        await callback(key, body);
+      }
+      objects.set(key, body);
+      writes.push({ key, body });
+      return {};
+    }
+    if (command instanceof HeadObjectCommand) {
+      const key = command.input.Key;
+      if (!key) {
+        throw new Error("Expected an S3 object key");
+      }
+      const body = objects.get(key);
+      if (!body) {
+        throw missingS3Object(key);
+      }
+      return { ContentLength: body.length };
+    }
+    return {};
+  });
+
+  return {
+    objects,
+    writes,
+    clearWrites(): void {
+      writes.length = 0;
+    },
+    beforeNextArchiveWrite(
+      callback: (key: string, body: Buffer) => void | Promise<void>,
+    ): void {
+      beforeNextArchiveWrite = callback;
+    },
+  };
 }
 
 function mockConnectorReadinessModel(
@@ -1479,6 +1629,220 @@ describe("zero workflows", () => {
       workflow.body.name,
     );
     await api.requestCancelRun(actor, sourceRun.body.runId, [200]);
+  });
+
+  it("reuses and repairs immutable workflow volume versions without moving HEAD during preparation", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Immutable Volume Agent",
+      visibility: "private",
+    });
+    const s3 = installVolumeS3Fixture();
+    const name = `immutable-volume-${randomUUID().slice(0, 8)}`;
+    const description = "Exercises immutable workflow volume publication.";
+    const firstInstruction = "# immutable volume one";
+    const firstFiles = [
+      { path: "zeta.txt", content: "zeta one" },
+      { path: "alpha.txt", content: "alpha one" },
+    ];
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name,
+      description,
+      instruction: firstInstruction,
+      files: firstFiles,
+    });
+
+    const firstState = await readWorkflowStorageState(actor, workflow.body.id);
+    if (!firstState?.head_version_id) {
+      throw new Error("Expected the first workflow volume version");
+    }
+    const firstVersionId = firstState.head_version_id;
+    const firstArchiveKey = `${firstState.s3_prefix}/${firstVersionId}/archive.tar.gz`;
+    const firstArchive = s3.objects.get(firstArchiveKey);
+    if (!firstArchive) {
+      throw new Error("Expected the first workflow archive");
+    }
+    const firstVersion = await readWorkflowStorageVersion(
+      actor,
+      workflow.body.id,
+      firstVersionId,
+    );
+    const firstSkillMd = synthesizeWorkflowSkillMd({
+      name,
+      description,
+      instruction: firstInstruction,
+    });
+    const firstSize = [
+      firstSkillMd,
+      ...firstFiles.map((file) => {
+        return file.content;
+      }),
+    ]
+      .map((content) => {
+        return Buffer.byteLength(content, "utf8");
+      })
+      .reduce((sum, size) => {
+        return sum + size;
+      }, 0);
+    expect(firstVersion).toStrictEqual({
+      version_id: firstVersionId,
+      s3_key: `${firstState.s3_prefix}/${firstVersionId}`,
+      size: firstSize,
+      archive_size: firstArchive.length,
+      file_count: 3,
+      message: null,
+      created_by: "user",
+    });
+
+    const tar = gunzipSync(firstArchive);
+    const encodedMtime = tar
+      .subarray(136, 148)
+      .toString("ascii")
+      .replaceAll("\0", "")
+      .trim();
+    expect(Number.parseInt(encodedMtime, 8)).toBe(0);
+
+    const secondInstruction = "# immutable volume two";
+    const secondFiles = [
+      { path: "alpha.txt", content: "alpha two" },
+      { path: "zeta.txt", content: "zeta two" },
+    ];
+    await updateWorkflow(actor, workflow.body.id, {
+      instruction: secondInstruction,
+      files: secondFiles,
+    });
+    const secondState = await readWorkflowStorageState(actor, workflow.body.id);
+    if (!secondState?.head_version_id) {
+      throw new Error("Expected the second workflow volume version");
+    }
+    const secondVersionId = secondState.head_version_id;
+    expect(secondVersionId).not.toBe(firstVersionId);
+
+    s3.clearWrites();
+    await updateWorkflow(actor, workflow.body.id, {
+      instruction: firstInstruction,
+      files: [...firstFiles].reverse(),
+    });
+    expect(s3.writes).toHaveLength(0);
+    expect(
+      (await readWorkflowStorageState(actor, workflow.body.id))
+        ?.head_version_id,
+    ).toBe(firstVersionId);
+
+    await updateWorkflow(actor, workflow.body.id, {
+      instruction: secondInstruction,
+      files: secondFiles,
+    });
+    expect(s3.writes).toHaveLength(0);
+    expect(
+      (await readWorkflowStorageState(actor, workflow.body.id))
+        ?.head_version_id,
+    ).toBe(secondVersionId);
+
+    await setWorkflowStorageVersionArchiveSize(
+      actor,
+      workflow.body.id,
+      firstVersionId,
+      firstArchive.length + 1,
+    );
+    s3.objects.delete(firstArchiveKey);
+    s3.clearWrites();
+    let observedRepairPreparation = false;
+    s3.beforeNextArchiveWrite(async (key, body) => {
+      expect(key).toBe(firstArchiveKey);
+      expect(body).toStrictEqual(firstArchive);
+      expect(
+        (await readWorkflowStorageState(actor, workflow.body.id))
+          ?.head_version_id,
+      ).toBe(secondVersionId);
+      observedRepairPreparation = true;
+    });
+
+    await updateWorkflow(actor, workflow.body.id, {
+      instruction: firstInstruction,
+      files: firstFiles,
+    });
+    expect(observedRepairPreparation).toBeTruthy();
+    expect(
+      s3.writes.map((write) => {
+        return write.key;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        firstArchiveKey,
+        `${firstState.s3_prefix}/${firstVersionId}/manifest.json`,
+      ]),
+    );
+    expect(
+      s3.writes.find((write) => {
+        return write.key === firstArchiveKey;
+      })?.body,
+    ).toStrictEqual(firstArchive);
+    expect(
+      (await readWorkflowStorageState(actor, workflow.body.id))
+        ?.head_version_id,
+    ).toBe(firstVersionId);
+    await expect(
+      readWorkflowStorageVersion(actor, workflow.body.id, firstVersionId),
+    ).resolves.toMatchObject({ archive_size: firstArchive.length });
+  });
+
+  it("repairs workflow archives deterministically across path order and umask", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Duplicate Path Volume Agent",
+      visibility: "private",
+    });
+    const s3 = installVolumeS3Fixture();
+    const duplicateFiles = [
+      { path: "duplicate.txt", content: "first duplicate" },
+      { path: "duplicate.txt", content: "second duplicate" },
+    ];
+    const originalUmask = process.umask(0o022);
+    onTestFinished(() => {
+      process.umask(originalUmask);
+    });
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `duplicate-volume-${randomUUID().slice(0, 8)}`,
+      description: "Exercises deterministic duplicate-path archives.",
+      instruction: "# duplicate path volume",
+      files: duplicateFiles,
+    });
+
+    const initialState = await readWorkflowStorageState(
+      actor,
+      workflow.body.id,
+    );
+    if (!initialState?.head_version_id) {
+      throw new Error("Expected the duplicate-path workflow volume version");
+    }
+    const archiveKey = `${initialState.s3_prefix}/${initialState.head_version_id}/archive.tar.gz`;
+    const initialArchive = s3.objects.get(archiveKey);
+    if (!initialArchive) {
+      throw new Error("Expected the duplicate-path workflow archive");
+    }
+
+    s3.objects.delete(archiveKey);
+    let observedRepair = false;
+    s3.beforeNextArchiveWrite((key, body) => {
+      expect(key).toBe(archiveKey);
+      expect(body).toStrictEqual(initialArchive);
+      observedRepair = true;
+    });
+
+    process.umask(0o077);
+    await updateWorkflow(actor, workflow.body.id, {
+      files: [...duplicateFiles].reverse(),
+    });
+    process.umask(originalUmask);
+
+    expect(observedRepair).toBeTruthy();
+    expect(
+      (await readWorkflowStorageState(actor, workflow.body.id))
+        ?.head_version_id,
+    ).toBe(initialState.head_version_id);
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {

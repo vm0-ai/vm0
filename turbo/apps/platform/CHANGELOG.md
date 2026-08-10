@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.722.0](https://github.com/vm0-ai/vm0/compare/app-v0.721.0...app-v0.722.0) (2026-08-10)
+
+
+### Features
+
+* support multiple personal subscription accounts ([#26166](https://github.com/vm0-ai/vm0/issues/26166)) ([74c3a15](https://github.com/vm0-ai/vm0/commit/74c3a157adb0c08b70911e43f3479b81d405e5e1))
+
+
+### Bug Fixes
+
+* **platform:** stabilize composer connector discovery ([#26174](https://github.com/vm0-ai/vm0/issues/26174)) ([9eb39fb](https://github.com/vm0-ai/vm0/commit/9eb39fbd41c5e801e6000b47a6b35414aeaefd72))
+
+
+### Refactoring
+
+* **chat:** backfill canonical event storage ([#26175](https://github.com/vm0-ai/vm0/issues/26175)) ([ec855a7](https://github.com/vm0-ai/vm0/commit/ec855a7283afd2701b2f2cc109135267e837a2a3))
+
+
+### Performance Improvements
+
+* **platform:** composite composer focus effects ([#26180](https://github.com/vm0-ai/vm0/issues/26180)) ([71e6018](https://github.com/vm0-ai/vm0/commit/71e60183229bfaf7e57f73babbacc5c5fe0d3295))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.309.0
+    * @vm0/core bumped to 8.540.0
+
 ## [0.721.0](https://github.com/vm0-ai/vm0/compare/app-v0.720.0...app-v0.721.0) (2026-08-10)
 
 

@@ -1,4 +1,4 @@
-import type { ChatEventRow } from "./chat-event-rows";
+import type { ChatEventRowV4 } from "./chat-event-rows";
 import { chatEventSchema, type ChatEvent } from "./chat-threads";
 
 function requiredRowField<T>(
@@ -13,18 +13,29 @@ function requiredRowField<T>(
 }
 
 /**
- * Projects one raw row into the canonical ChatEvent response shape. This must
- * stay field-for-field equivalent to the API's own row projection; the API
- * test suite pins that parity by comparing this function's output for
- * /event-rows against the /events response of the same thread.
+ * Projects one canonical row into the v3 ChatEvent response shape. Raw rows
+ * from either generation normalize into the canonical model first
+ * (canonicalChatEventRow); this projection must stay field-for-field
+ * equivalent to the API's own row projection, and the API test suite pins
+ * that parity by comparing this function's output for /event-rows against the
+ * /events response of the same thread. control.interrupt rows keep the v3
+ * masking: their canonical runId is emitted as interruptsRunId, never as run
+ * ownership.
  */
-export function chatEventFromRow(row: ChatEventRow): ChatEvent {
+export function chatEventFromRow(row: ChatEventRowV4): ChatEvent {
+  const payload = row.payload;
   const base = {
     id: row.id,
     threadId: row.chatThreadId,
-    content: row.content,
-    runId: row.runId ?? undefined,
-    runGroupId: row.runGroupId ?? undefined,
+    content: payload?.content ?? null,
+    runId:
+      row.eventType === "control.interrupt"
+        ? undefined
+        : (row.runId ?? undefined),
+    runGroupId:
+      row.contextType === "goal" && row.contextId !== null
+        ? row.contextId
+        : undefined,
     runEventId: row.runEventId ?? undefined,
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,
@@ -38,14 +49,14 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
     createdAt: row.createdAt,
   };
 
-  const candidates: Record<ChatEventRow["eventType"], () => unknown> = {
+  const candidates: Record<ChatEventRowV4["eventType"], () => unknown> = {
     "input.prompt": () => {
       return {
         ...base,
         eventType: "input.prompt",
         content: null,
         userMessage: requiredRowField(
-          row.userMessage ?? null,
+          payload?.userMessage ?? null,
           row.eventType,
           "userMessage",
         ),
@@ -56,7 +67,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         ...base,
         eventType: "input.automation",
         content: null,
-        userMessage: row.userMessage ?? undefined,
+        userMessage: payload?.userMessage ?? undefined,
       };
     },
     "input.goal": () => {
@@ -65,7 +76,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         eventType: "input.goal",
         content: null,
         userMessage: requiredRowField(
-          row.userMessage ?? null,
+          payload?.userMessage ?? null,
           row.eventType,
           "userMessage",
         ),
@@ -77,7 +88,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         eventType: "input.budget",
         content: null,
         userMessage: requiredRowField(
-          row.userMessage ?? null,
+          payload?.userMessage ?? null,
           row.eventType,
           "userMessage",
         ),
@@ -89,25 +100,29 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         eventType: "input.rejected",
         content: null,
         userMessage: requiredRowField(
-          row.userMessage ?? null,
+          payload?.userMessage ?? null,
           row.eventType,
           "userMessage",
         ),
-        error: requiredRowField(row.error, row.eventType, "error"),
+        error: requiredRowField(payload?.error ?? null, row.eventType, "error"),
       };
     },
     "output.message": () => {
       return {
         ...base,
         eventType: "output.message",
-        content: requiredRowField(row.content, row.eventType, "content"),
+        content: requiredRowField(
+          payload?.content ?? null,
+          row.eventType,
+          "content",
+        ),
       };
     },
     "output.error": () => {
       return {
         ...base,
         eventType: "output.error",
-        error: requiredRowField(row.error, row.eventType, "error"),
+        error: requiredRowField(payload?.error ?? null, row.eventType, "error"),
       };
     },
     "output.thinking": () => {
@@ -115,14 +130,22 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         ...base,
         eventType: "output.thinking",
         content: null,
-        thinking: requiredRowField(row.thinking, row.eventType, "thinking"),
+        thinking: requiredRowField(
+          payload?.thinking ?? null,
+          row.eventType,
+          "thinking",
+        ),
       };
     },
     "output.followups": () => {
       return {
         ...base,
         eventType: "output.followups",
-        content: requiredRowField(row.content, row.eventType, "content"),
+        content: requiredRowField(
+          payload?.content ?? null,
+          row.eventType,
+          "content",
+        ),
       };
     },
     "run.queued": () => {
@@ -130,7 +153,11 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         ...base,
         eventType: "run.queued",
         runId: requiredRowField(row.runId, row.eventType, "runId"),
-        content: requiredRowField(row.content, row.eventType, "content"),
+        content: requiredRowField(
+          payload?.content ?? null,
+          row.eventType,
+          "content",
+        ),
       };
     },
     "run.dequeued": () => {
@@ -159,7 +186,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         ...base,
         eventType: "run.failed",
         runId: requiredRowField(row.runId, row.eventType, "runId"),
-        error: row.error ?? undefined,
+        error: payload?.error ?? undefined,
         runLifecycleEvent: "failed",
       };
     },
@@ -168,7 +195,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         ...base,
         eventType: "run.cancelled",
         runId: requiredRowField(row.runId, row.eventType, "runId"),
-        error: row.error ?? undefined,
+        error: payload?.error ?? undefined,
         runLifecycleEvent: "cancelled",
       };
     },
@@ -178,7 +205,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         eventType: "control.interrupt",
         content: null,
         interruptsRunId: requiredRowField(
-          row.interruptsRunId,
+          row.runId,
           row.eventType,
           "interruptsRunId",
         ),
@@ -206,7 +233,11 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
       return {
         ...reducedBase,
         eventType: "goal.open",
-        content: requiredRowField(row.content, row.eventType, "content"),
+        content: requiredRowField(
+          payload?.content ?? null,
+          row.eventType,
+          "content",
+        ),
       };
     },
     "goal.close": () => {
@@ -218,11 +249,7 @@ export function chatEventFromRow(row: ChatEventRow): ChatEvent {
         eventType: "usage.recorded",
         runId: requiredRowField(row.runId, row.eventType, "runId"),
         content: null,
-        usage: requiredRowField(
-          row.usagePayload ?? null,
-          row.eventType,
-          "usage",
-        ),
+        usage: requiredRowField(payload?.usage ?? null, row.eventType, "usage"),
       };
     },
   };

@@ -5,8 +5,9 @@ import type { TestContext } from "./test-context";
 interface SetupAppOptions {
   readonly context: TestContext;
   readonly routes: readonly RouteEntry[];
+  readonly signal?: AbortSignal;
 }
 
-export function setupApp({ context, routes }: SetupAppOptions) {
-  return setupAppWithRoutes({ context, routes });
+export function setupApp({ context, routes, signal }: SetupAppOptions) {
+  return setupAppWithRoutes({ context, routes, signal });
 }

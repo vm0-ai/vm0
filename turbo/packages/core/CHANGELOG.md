@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.540.0](https://github.com/vm0-ai/vm0/compare/core-v8.539.1...core-v8.540.0) (2026-08-10)
+
+
+### Features
+
+* support multiple personal subscription accounts ([#26166](https://github.com/vm0-ai/vm0/issues/26166)) ([74c3a15](https://github.com/vm0-ai/vm0/commit/74c3a157adb0c08b70911e43f3479b81d405e5e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.309.0
+
 ## [8.539.1](https://github.com/vm0-ai/vm0/compare/core-v8.539.0...core-v8.539.1) (2026-08-10)
 
 

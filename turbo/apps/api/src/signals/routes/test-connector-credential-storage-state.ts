@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { and, eq, inArray } from "drizzle-orm";
@@ -243,6 +244,57 @@ async function seedConnector(
   return actionOk({ connector_id: connector.id });
 }
 
+async function seedCustomRuntimeConnectors(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-custom-runtime-connectors">,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    await tx.insert(orgCustomConnectors).values(
+      body.custom_connectors.map((connector) => {
+        return {
+          id: connector.id,
+          orgId: body.org_id,
+          slug: connector.slug,
+          displayName: connector.display_name,
+          prefixes: [connector.prefix_template],
+          headerName: "X-Connector",
+          headerTemplate: "runtime-batch",
+          prefixTemplates: [connector.prefix_template],
+          fields: [
+            {
+              key: "optional_secret",
+              label: "Optional secret",
+              kind: "secret" as const,
+              required: false,
+            },
+          ],
+          headerInjections: [
+            { name: "X-Connector", valueTemplate: "runtime-batch" },
+          ],
+          queryInjections: [],
+          authMode: "manual" as const,
+          storageVersion: 1,
+          createdBy: body.user_id,
+        };
+      }),
+    );
+    await tx.insert(connectors).values(
+      body.custom_connectors.map((connector) => {
+        return {
+          orgId: body.org_id,
+          userId: body.user_id,
+          customConnectorId: connector.id,
+          authMethod: "manual",
+          storageVersion: 1,
+        };
+      }),
+    );
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function setConnectorState(
   db: Db,
   body: ConnectorCredentialStorageAction<"set-connector-state">,
@@ -387,6 +439,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "seed-connector": {
         return await seedConnector(db, body, signal);
+      }
+      case "seed-custom-runtime-connectors": {
+        return await seedCustomRuntimeConnectors(db, body, signal);
       }
       case "set-connector-state": {
         return await setConnectorState(db, body, signal);

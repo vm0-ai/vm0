@@ -1530,8 +1530,8 @@ describe("chat run queue", () => {
     const queuedBodies: QueuedMessageCapture[] = [];
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
       }),
@@ -1543,7 +1543,7 @@ describe("chat run queue", () => {
       }),
     ]);
     mockActiveRunThread(THREAD_ID, {
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-luna",
       codexServiceTier: "fast",
       onQueuedEventAppend: (body) => {
         queuedBodies.push(body);

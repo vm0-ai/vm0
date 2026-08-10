@@ -9,7 +9,6 @@ import {
   serialiseCustomConnector,
 } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route-entry";
-import { publishCustomConnectorListChangedForUserSafely } from "../external/realtime";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
@@ -43,9 +42,6 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if ("status" in result) {
     return result;
   }
-
-  await publishCustomConnectorListChangedForUserSafely(auth.userId);
-  signal.throwIfAborted();
 
   return {
     status: 201 as const,

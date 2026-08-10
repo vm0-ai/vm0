@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import { chatEventRowSchema } from "@vm0/api-contracts/contracts/chat-event-rows";
+import {
+  canonicalChatEventRow,
+  chatEventRowSchema,
+} from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   cronProjectChatEventSearchContract,
@@ -212,7 +215,7 @@ describe("chat event snapshot read endpoints", () => {
     }
 
     const projected = rows.body.rows.map((row) => {
-      return chatEventFromRow(row);
+      return chatEventFromRow(canonicalChatEventRow(row));
     });
     const expected = events.body.events.filter((event) => {
       return event.seqId > firstSeqId;

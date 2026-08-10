@@ -53,10 +53,7 @@ export function isCodexFastModeAvailableForSelection(params: {
   const policy = params.policies?.policies.find((candidate) => {
     return candidate.model === params.selectedModel;
   });
-  return (
-    policy?.routeStatus === "valid" &&
-    policy.defaultProviderType === "codex-oauth-token"
-  );
+  return policy?.routeStatus === "valid";
 }
 
 export function resolveModelFirstUserDefaultSelection(params: {

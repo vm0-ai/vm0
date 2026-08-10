@@ -569,6 +569,7 @@ class TestModelProviderWebSocketUsage:
         assert len(tiers) == 100
         assert "resp_ws_tier_0" not in tiers
         assert tiers["resp_ws_tier_100"].tier == "base"
+        assert tiers["resp_ws_tier_100"].fast is False
         assert tiers["resp_ws_tier_100"].committed is False
 
         mitm_addon.websocket_end(flow)
@@ -590,6 +591,7 @@ class TestModelProviderWebSocketUsage:
                     "response": {
                         "id": "resp_ws_partition",
                         "model": "gpt-5.6-sol",
+                        "service_tier": "priority",
                         "usage": {
                             "input_tokens": 300_000,
                             "output_tokens": 0,
@@ -622,9 +624,9 @@ class TestModelProviderWebSocketUsage:
         assert len(events) == len(by_category) == 3
         assert len({event["idempotencyKey"] for event in events}) == 3
         assert by_category == {
-            "tokens.input.long_context": 280_000,
-            "tokens.output.long_context": 40,
-            "tokens.cache_read.long_context": 20_000,
+            "tokens.input.long_context.fast": 280_000,
+            "tokens.output.long_context.fast": 40,
+            "tokens.cache_read.long_context.fast": 20_000,
         }
         observation_events = webhook.model_usage_observation_events()
         observations_by_category = compact_observation_quantities(observation_events)
