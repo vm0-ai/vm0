@@ -1,6 +1,6 @@
 {
-  "id": "58853308-9d84-49ce-b935-fad054fd9170",
-  "prevId": "1f2ccb74-cf97-40dc-b79c-3750853f8139",
+  "id": "5225f49e-1bf0-49eb-90e1-7c242ef0a78c",
+  "prevId": "58853308-9d84-49ce-b935-fad054fd9170",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -15098,6 +15098,12 @@
         "selected_model": {
           "name": "selected_model",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "service_tier": {
+          "name": "service_tier",
+          "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false
         },

@@ -1078,6 +1078,249 @@ const CUSTOM_CREDENTIAL_STORAGE_PREVIOUS_MIGRATION = "0838_gifted_korath";
 const CUSTOM_CREDENTIAL_STORAGE_MIGRATION =
   "0840_backfill_custom_connector_credential_parents_v1";
 
+const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
+  "0872_curious_yellow_claw";
+const MCP_CUSTOM_CONNECTOR_READERS_MIGRATION =
+  "0873_prepare_mcp_custom_connector_readers";
+
+async function validateMcpCustomConnectorReaderPreparation(): Promise<void> {
+  console.log("=== Validate MCP Custom Connector reader preparation ===\n");
+  const testDb = "migration_mcp_custom_connector_readers_test";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const connectorId = "26007000-0000-4000-8000-000000000001";
+  const agentId = "26007000-0000-4000-8000-000000000002";
+  const mcpConnectorId = "26007000-0000-4000-8000-000000000003";
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION,
+    );
+
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefixes",
+          "header_name",
+          "header_template",
+          "prefix_templates",
+          "mcp_resource",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26007-org',
+          '_existing-http',
+          'Existing HTTP',
+          '["https://api.example.test/"]'::jsonb,
+          'Authorization',
+          'Bearer {{secret}}',
+          '["https://api.example.test/"]'::jsonb,
+          'legacy-resource',
+          'issue-26007-user'
+        )
+      `,
+      [connectorId],
+    );
+    await client.query(
+      `
+        INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+        VALUES ($1, 'issue-26007-user', 'issue-26007-agent', 'issue-26007-org')
+      `,
+      [agentId],
+    );
+    await client.query(
+      `
+        INSERT INTO "zero_agents" (
+          "id", "org_id", "owner", "name", "visibility"
+        ) VALUES (
+          $1,
+          'issue-26007-org',
+          'issue-26007-user',
+          'issue-26007-agent',
+          'private'
+        )
+      `,
+      [agentId],
+    );
+    await client.query(
+      `
+        INSERT INTO "user_custom_connectors" (
+          "org_id",
+          "user_id",
+          "agent_id",
+          "custom_connector_id",
+          "allow_all_mcp_tools"
+        ) VALUES (
+          'issue-26007-org',
+          'issue-26007-user',
+          $1,
+          $2,
+          true
+        )
+      `,
+      [agentId, connectorId],
+    );
+
+    await assert.rejects(
+      applyMigrationsUpToTag(client, MCP_CUSTOM_CONNECTOR_READERS_MIGRATION),
+      /Unexpected Custom Connector definition state/u,
+    );
+    await client.query(
+      `UPDATE "org_custom_connectors" SET "mcp_resource" = NULL WHERE "id" = $1`,
+      [connectorId],
+    );
+    await assert.rejects(
+      applyMigrationsUpToTag(client, MCP_CUSTOM_CONNECTOR_READERS_MIGRATION),
+      /Unexpected Custom Connector MCP tool-grant state/u,
+    );
+    await client.query(
+      `UPDATE "user_custom_connectors" SET "allow_all_mcp_tools" = false`,
+    );
+
+    await applyMigrationsUpToTag(
+      client,
+      MCP_CUSTOM_CONNECTOR_READERS_MIGRATION,
+    );
+
+    const existingHttp = await client.query<{
+      headerName: string | null;
+      mcpEndpoint: string | null;
+      mcpTransport: string | null;
+      prefixes: string[];
+    }>(
+      `
+        SELECT
+          "header_name" AS "headerName",
+          "mcp_endpoint" AS "mcpEndpoint",
+          "mcp_transport" AS "mcpTransport",
+          "prefixes"
+        FROM "org_custom_connectors"
+        WHERE "id" = $1
+      `,
+      [connectorId],
+    );
+    assert.deepEqual(existingHttp.rows, [
+      {
+        headerName: "Authorization",
+        mcpEndpoint: null,
+        mcpTransport: null,
+        prefixes: ["https://api.example.test/"],
+      },
+    ]);
+
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefixes",
+          "header_name",
+          "header_template",
+          "prefix_templates",
+          "mcp_endpoint",
+          "mcp_transport",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26007-org',
+          '_mcp-reader',
+          'MCP Reader',
+          '[]'::jsonb,
+          NULL,
+          NULL,
+          '[]'::jsonb,
+          'https://mcp.example.test/server',
+          'streamable-http',
+          'issue-26007-user'
+        )
+      `,
+      [mcpConnectorId],
+    );
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_mcp",
+      query: `
+        INSERT INTO "org_custom_connectors" (
+          "org_id", "slug", "display_name", "prefixes", "header_name",
+          "header_template", "prefix_templates", "mcp_endpoint",
+          "mcp_transport", "created_by"
+        ) VALUES (
+          'issue-26007-org', '_partial-mcp', 'Partial MCP', '[]'::jsonb,
+          NULL, NULL, '[]'::jsonb, 'https://mcp.example.test/partial',
+          NULL, 'issue-26007-user'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_mcp",
+      query: `
+        INSERT INTO "org_custom_connectors" (
+          "org_id", "slug", "display_name", "prefixes", "header_name",
+          "header_template", "prefix_templates", "mcp_endpoint",
+          "mcp_transport", "created_by"
+        ) VALUES (
+          'issue-26007-org', '_hybrid-mcp', 'Hybrid MCP',
+          '["https://api.example.test/"]'::jsonb, NULL, NULL,
+          '[]'::jsonb, 'https://mcp.example.test/hybrid',
+          'streamable-http', 'issue-26007-user'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_mcp",
+      query: `
+        INSERT INTO "org_custom_connectors" (
+          "org_id", "slug", "display_name", "prefixes", "header_name",
+          "header_template", "prefix_templates", "created_by"
+        ) VALUES (
+          'issue-26007-org', '_headerless-http', 'Headerless HTTP',
+          '["https://api.example.test/"]'::jsonb, NULL, NULL,
+          '["https://api.example.test/"]'::jsonb, 'issue-26007-user'
+        )
+      `,
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_mcp",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "mcp_resource" = 'legacy-resource'
+        WHERE "id" = $1
+      `,
+      values: [connectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_user_custom_connectors_mcp_grant",
+      query: `
+        UPDATE "user_custom_connectors"
+        SET "allow_all_mcp_tools" = true
+        WHERE "custom_connector_id" = $1
+      `,
+      values: [connectorId],
+    });
+
+    console.log("   ✅ legacy MCP state aborts instead of being cleared");
+    console.log("   ✅ existing HTTP definitions remain valid");
+    console.log("   ✅ only exhaustive MCP definition rows are accepted\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateCustomCredentialStorageGenerationBackfill(): Promise<void> {
   console.log(
     "=== Validate custom credential storage generation backfill ===\n",
@@ -2322,10 +2565,22 @@ async function validateCustomConnectorOauthModeConstraints(
       "prefixes",
       "header_name",
       "header_template",
+      "prefix_templates",
       "auth_mode",
       "created_by"
     )
-    VALUES ($1, $2, $3, $4, '[]'::jsonb, 'Authorization', 'Bearer {{secret}}', $5, $6)
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      '["https://api.example.test/"]'::jsonb,
+      'Authorization',
+      'Bearer {{secret}}',
+      '["https://api.example.test/"]'::jsonb,
+      $5,
+      $6
+    )
   `;
   const insertOauthConfig = `
     INSERT INTO "org_custom_connector_oauth_configs" (
@@ -4983,6 +5238,7 @@ async function main(): Promise<void> {
     await validateGoalOnlyRunGroupsCleanup();
     await validateTeamsMessageFileScopeBackfill();
     await validateInvalidatedGoalContinuationCleanup();
+    await validateMcpCustomConnectorReaderPreparation();
     await validateCustomCredentialStorageGenerationBackfill();
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();

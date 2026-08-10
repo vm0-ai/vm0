@@ -184,14 +184,19 @@ async fn tick(client: &ApiClient, max_inflate: u32, tick_count: u64) {
         );
     }
 
+    // Derive feedback candidates from the actual size, then merge them with
+    // the requested target in the selected direction. This preserves a more
+    // aggressive in-flight request without stacking target-relative steps.
+
     // Inflate decision: use free_memory (excludes reclaimable cache)
     if let Some(free_mib) = free_mib
         && free_mib > TARGET_FREE_MIB + INFLATE_HYSTERESIS_MIB
     {
         let reclaim = (free_mib - TARGET_FREE_MIB) as u32;
         let reclaim = reclaim.min(MAX_INFLATE_PER_TICK_MIB);
-        let new_target = current.saturating_add(reclaim).min(max_inflate);
-        if new_target > current {
+        let candidate_target = current.saturating_add(reclaim).min(max_inflate);
+        let new_target = stats.target_mib.max(candidate_target);
+        if new_target > stats.target_mib {
             info!(current, new_target, free_mib, "balloon inflate");
             if let Err(e) = client.patch_balloon(new_target).await {
                 warn!(error = %e, "balloon inflate failed");
@@ -205,8 +210,9 @@ async fn tick(client: &ApiClient, max_inflate: u32, tick_count: u64) {
         && available_mib < PRESSURE_AVAILABLE_MIB
     {
         let deficit = (TARGET_FREE_MIB - available_mib) as u32;
-        let new_target = current.saturating_sub(deficit);
-        if new_target < current {
+        let candidate_target = current.saturating_sub(deficit);
+        let new_target = stats.target_mib.min(candidate_target);
+        if new_target < stats.target_mib {
             info!(current, new_target, available_mib, "balloon deflate");
             if let Err(e) = client.patch_balloon(new_target).await {
                 warn!(error = %e, "balloon deflate failed");
@@ -462,6 +468,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tick_keeps_more_aggressive_pending_inflate_target() {
+        // The guest has only reached 500 MiB of a 1000 MiB target. The
+        // actual-relative candidate is 756 MiB, so the existing target should
+        // remain in flight without a redundant PATCH.
+        let stats = r#"{"target_mib":1000,"actual_mib":500,"target_pages":256000,"actual_pages":128000,"free_memory":1073741824,"available_memory":1073741824}"#;
+        let patch = run_tick_with_mock(stats, 1536).await;
+        assert!(
+            patch.is_none(),
+            "should preserve a more aggressive pending inflate target"
+        );
+    }
+
+    #[tokio::test]
+    async fn tick_advances_pending_inflate_to_more_aggressive_candidate() {
+        // The 700 MiB target is ahead of actual but behind the 756 MiB
+        // actual-relative candidate, so the controller should advance it.
+        let stats = r#"{"target_mib":700,"actual_mib":500,"target_pages":179200,"actual_pages":128000,"free_memory":1073741824,"available_memory":1073741824}"#;
+        let patch = run_tick_with_mock(stats, 1536)
+            .await
+            .expect("expected PATCH advancing pending inflation");
+        assert_eq!(patch_amount_mib(&patch), 756);
+    }
+
+    #[tokio::test]
+    async fn tick_reverses_pending_deflate_on_high_free_memory() {
+        // A target below actual means deflation is in flight. A new inflate
+        // signal should cross the actual size immediately: 500 + 256 = 756.
+        let stats = r#"{"target_mib":0,"actual_mib":500,"target_pages":0,"actual_pages":128000,"free_memory":1073741824,"available_memory":1073741824}"#;
+        let patch = run_tick_with_mock(stats, 1536)
+            .await
+            .expect("expected PATCH reversing pending deflation");
+        assert_eq!(patch_amount_mib(&patch), 756);
+    }
+
+    #[tokio::test]
     async fn tick_no_inflate_when_free_low_but_available_high() {
         // Simulates guest with lots of page cache:
         // free_memory = 200 MiB (below inflate threshold 384), available = 600 MiB.
@@ -487,6 +528,41 @@ mod tests {
             amount, 384,
             "expected deflate target for 128 MiB available memory, got {amount}"
         );
+    }
+
+    #[tokio::test]
+    async fn tick_preserves_pending_unpark_deflate_target() {
+        // Unpark has requested target 0, but the guest still reports 1250 MiB.
+        // Low available memory must not replace the pending zero target with
+        // the stale actual-relative candidate of 1122 MiB.
+        let stats = r#"{"target_mib":0,"actual_mib":1250,"target_pages":0,"actual_pages":320000,"free_memory":52428800,"available_memory":134217728}"#;
+        let patch = run_tick_with_mock(stats, 1536).await;
+        assert!(
+            patch.is_none(),
+            "should preserve the pending zero target from unpark"
+        );
+    }
+
+    #[tokio::test]
+    async fn tick_advances_pending_deflate_to_more_aggressive_candidate() {
+        // The 400 MiB target is below actual but above the 372 MiB
+        // actual-relative candidate, so the controller should advance it.
+        let stats = r#"{"target_mib":400,"actual_mib":500,"target_pages":102400,"actual_pages":128000,"free_memory":52428800,"available_memory":134217728}"#;
+        let patch = run_tick_with_mock(stats, 1536)
+            .await
+            .expect("expected PATCH advancing pending deflation");
+        assert_eq!(patch_amount_mib(&patch), 372);
+    }
+
+    #[tokio::test]
+    async fn tick_reverses_pending_inflate_on_low_available_memory() {
+        // A target above actual means inflation is in flight. A new deflate
+        // signal should cross the actual size immediately: 500 - 128 = 372.
+        let stats = r#"{"target_mib":1000,"actual_mib":500,"target_pages":256000,"actual_pages":128000,"free_memory":52428800,"available_memory":134217728}"#;
+        let patch = run_tick_with_mock(stats, 1536)
+            .await
+            .expect("expected PATCH reversing pending inflation");
+        assert_eq!(patch_amount_mib(&patch), 372);
     }
 
     #[tokio::test]

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.201](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.200...sandbox-fc-v0.37.201) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** attribute severe balloon retention ([#26038](https://github.com/vm0-ai/vm0/issues/26038)) ([d996ab7](https://github.com/vm0-ai/vm0/commit/d996ab715ff06c03dee96b82f683e577c7e52b89))
+
 ## [0.37.200](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.199...sandbox-fc-v0.37.200) (2026-08-10)
 
 ## [0.37.199](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.198...sandbox-fc-v0.37.199) (2026-08-09)

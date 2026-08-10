@@ -777,14 +777,19 @@ async function handleDisconnectCommand(
   signal: AbortSignal,
 ): Promise<void> {
   await args.db.transaction(async (tx) => {
+    await disconnectFeishuCustomConnectorOAuthConnection(
+      tx,
+      {
+        orgId: args.installation.orgId,
+        userId: args.connection.vm0UserId,
+        installationId: args.message.installationId,
+      },
+      signal,
+    );
     await tx
       .delete(feishuOrgConnections)
       .where(eq(feishuOrgConnections.id, args.connection.id));
-    await disconnectFeishuCustomConnectorOAuthConnection(tx, {
-      orgId: args.installation.orgId,
-      userId: args.connection.vm0UserId,
-      installationId: args.message.installationId,
-    });
+    signal.throwIfAborted();
   });
   signal.throwIfAborted();
   await publishFeishuOrgChanged(

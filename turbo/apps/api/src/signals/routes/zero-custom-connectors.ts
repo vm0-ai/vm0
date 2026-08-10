@@ -10,7 +10,7 @@ import { zeroCustomConnectorsDeleteRoutes } from "./zero-custom-connectors-delet
 import { zeroCustomConnectorsGetRoutes } from "./zero-custom-connectors-get";
 import { zeroCustomConnectorsUpdateRoutes } from "./zero-custom-connectors-update";
 import { zeroCustomConnectorProposalRoutes } from "./zero-custom-connectors-proposal";
-import { zeroCustomConnectorSecretDeleteRoutes } from "./zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorDisconnectRoutes } from "./zero-custom-connectors-disconnect";
 import { zeroCustomConnectorsSecretSetRoutes } from "./zero-custom-connectors-secret-set";
 import { zeroCustomConnectorOAuth2Routes } from "./zero-custom-connectors-oauth2";
 import { zeroCustomConnectorsValuesSetRoutes } from "./zero-custom-connectors-values-set";
@@ -40,7 +40,7 @@ export const zeroCustomConnectorsRoutes: readonly RouteEntry[] = [
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsUpdateRoutes,
   ...zeroCustomConnectorProposalRoutes,
-  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorDisconnectRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,
   ...zeroCustomConnectorsValuesSetRoutes,
   ...zeroCustomConnectorOAuth2Routes,

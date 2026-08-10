@@ -18,7 +18,6 @@ export function customConnectorDefinitionSelection() {
     permissionBundleRef: orgCustomConnectors.permissionBundleRef,
     mcpEndpoint: orgCustomConnectors.mcpEndpoint,
     mcpTransport: orgCustomConnectors.mcpTransport,
-    mcpResource: orgCustomConnectors.mcpResource,
     skillMarkdown: orgCustomConnectors.skillMarkdown,
     storageVersion: orgCustomConnectors.storageVersion,
     createdBy: orgCustomConnectors.createdBy,

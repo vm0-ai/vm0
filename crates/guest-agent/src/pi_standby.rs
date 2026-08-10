@@ -29,10 +29,13 @@
 //!    canonical transcript page with its authenticated HTTP client. A runner
 //!    `pi-handoff` only accelerates the next read; an API-driven
 //!    `pi-standby-release` retires an unused standby.
-//! 3. When the latest persisted message is an assistant tool-use batch, the
-//!    child takes over without waiting for runner control and ignores later
-//!    controls. If no tool-use batch is persisted before the standby TTL, the
-//!    child fails and guest-agent completes the run with an error.
+//! 3. When the latest persisted message belongs to the current run and is an
+//!    assistant tool-use batch, the child takes over without waiting for runner
+//!    control and ignores later controls. When the latest message belongs to a
+//!    previous run, it does not trigger takeover even if it is a tool-use batch,
+//!    so the child keeps polling. If no qualifying message is persisted before
+//!    the standby TTL, the child fails and guest-agent completes the run with an
+//!    error.
 //! 4. The child sends each completed native message as a `pi-message` with an
 //!    intended sequence and `<run-id>/<sequence>` message id. Guest-agent
 //!    validates the event identity, writes it through the API, requires

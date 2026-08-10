@@ -55,6 +55,32 @@ async function waitForAgentDraftClear(
   await draftCleared;
 }
 
+function isInitialChatThreadEventsResponse(
+  response: Response,
+  threadId: string,
+): boolean {
+  const request = response.request();
+  const url = new URL(response.url());
+  return (
+    response.ok() &&
+    request.method() === "GET" &&
+    url.pathname === `/api/zero/chat-threads/${threadId}/events` &&
+    !url.searchParams.has("sinceSeqId") &&
+    !url.searchParams.has("beforeSeqId")
+  );
+}
+
+async function navigateToMockChatThread(
+  page: Page,
+  threadId: string,
+): Promise<void> {
+  const initialEventsLoaded = page.waitForResponse((response) => {
+    return isInitialChatThreadEventsResponse(response, threadId);
+  });
+  await page.goto(new URL(`/chats/${threadId}`, appUrl).href);
+  await initialEventsLoaded;
+}
+
 async function clearComposerEditor(editor: Locator): Promise<void> {
   await editor.press("ControlOrMeta+A");
   await editor.press("Backspace");
@@ -608,7 +634,7 @@ test("model change labels follow the divider at the right edge", async ({
     throw new Error("Could not resolve the active agent from the chat URL");
   }
   await mockModelChangeThread(page, agentId);
-  await page.goto(new URL(`/chats/${modelChangeThreadId}`, appUrl).href);
+  await navigateToMockChatThread(page, modelChangeThreadId);
 
   await expectRightAlignedDivider(
     page.getByText("Model changed to Claude Sonnet 4.6", { exact: true }),
@@ -638,9 +664,7 @@ test.describe("mobile follow-up card rail", () => {
       throw new Error("Could not resolve the active agent from the chat URL");
     }
     await mockResponsiveFollowupThread(page, agentId);
-    await page.goto(
-      new URL(`/chats/${responsiveFollowupThreadId}`, appUrl).href,
-    );
+    await navigateToMockChatThread(page, responsiveFollowupThreadId);
 
     const rail = page.getByRole("group", { name: "Keep going" });
     const cards = responsiveFollowupPrompts.map((prompt) => {
@@ -750,7 +774,7 @@ test("keeps the flat follow-up list in a narrow desktop window", async ({
     throw new Error("Could not resolve the active agent from the chat URL");
   }
   await mockResponsiveFollowupThread(page, agentId);
-  await page.goto(new URL(`/chats/${responsiveFollowupThreadId}`, appUrl).href);
+  await navigateToMockChatThread(page, responsiveFollowupThreadId);
 
   const list = page.getByRole("group", { name: "Keep going" });
   const rows = responsiveFollowupPrompts.map((prompt) => {

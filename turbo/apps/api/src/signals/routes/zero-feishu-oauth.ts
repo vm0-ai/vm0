@@ -25,6 +25,7 @@ import {
   customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
+  lockCustomConnectorOAuth2CredentialContract,
   parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
@@ -50,7 +51,7 @@ import {
 import { commitCustomConnectorRuntimeMutation } from "../services/custom-connector-runtime-wakeup.service";
 import {
   getCustomConnectorById,
-  type CustomConnectorRow,
+  type CustomConnectorHttpRow,
 } from "../services/zero-custom-connector.service";
 import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
 import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
@@ -186,7 +187,7 @@ function validCustomFeishuState(
 
 async function exchangeOAuthTokenAndUserInfo(
   args: {
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly clientSecret: string;
     readonly code: string;
     readonly codeVerifier: string | null;
@@ -356,7 +357,7 @@ async function persistFeishuOAuthConnection(
     readonly db: Db;
     readonly state: FeishuConnectionState;
     readonly installation: FeishuInstallationOAuthRow;
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly token: OAuthTokenResult;
     readonly userInfo: FeishuUserInfo;
     readonly featureContext: FeatureSwitchContext;
@@ -382,6 +383,13 @@ async function persistFeishuOAuthConnection(
         "Failed to authorize Feishu custom connector: agentNotFound",
       );
     }
+    await lockCustomConnectorOAuth2CredentialContract({
+      db: tx,
+      orgId: args.state.orgId,
+      connectorId: args.connector.id,
+      storageVersion: args.connector.storageVersion,
+    });
+    signal.throwIfAborted();
     const connection = await upsertFeishuConnection(
       {
         db: tx,
@@ -437,7 +445,7 @@ async function finishFeishuOAuthConnection(
     readonly db: Db;
     readonly state: FeishuConnectionState;
     readonly installation: FeishuInstallationOAuthRow;
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly token: OAuthTokenResult;
     readonly userInfo: FeishuUserInfo;
     readonly expectedOpenId?: string;
@@ -655,7 +663,8 @@ const completeLegacyFeishuOAuth$ = command(
     );
     signal.throwIfAborted();
     if (
-      !connector?.oauthConfig ||
+      connector?.kind !== "http" ||
+      !connector.oauthConfig ||
       connector.oauthConfig.providerAdapter !== "feishu"
     ) {
       return callbackRedirectResponse(
@@ -743,7 +752,8 @@ const completeClaimedCustomFeishuOAuth$ = command(
     );
     signal.throwIfAborted();
     if (
-      !connector?.oauthConfig ||
+      connector?.kind !== "http" ||
+      !connector.oauthConfig ||
       connector.oauthConfig.providerAdapter !== "feishu" ||
       !customConnectorOAuthStateMatchesDefinition(context, connector)
     ) {

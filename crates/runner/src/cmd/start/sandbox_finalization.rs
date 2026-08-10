@@ -44,7 +44,9 @@ use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::telemetry::JobTelemetry;
 use crate::types::reuse_key_kind;
-use crate::types::{HeldWorkspaceState, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability};
+use crate::types::{
+    HeldWorkspaceState, SandboxReuseResult, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheCapability,
+};
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionContext,
     WorkspaceImagePromotionRequest,
@@ -157,6 +159,8 @@ fn mark_workspace_cache_snapshot_promoted(
 pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
     pub(super) sandbox_id: SandboxId,
+    pub(super) runner_id: String,
+    pub(super) reuse_result: SandboxReuseResult,
     pub(super) profile_name: String,
     pub(super) reuse_key: Option<String>,
     pub(super) cli_agent_session_id: Option<String>,
@@ -242,6 +246,8 @@ async fn finalize_sandbox_for_completion_inner(
     let FinalizeContext {
         run_id,
         sandbox_id,
+        runner_id,
+        reuse_result,
         profile_name,
         reuse_key,
         cli_agent_session_id,
@@ -449,7 +455,7 @@ async fn finalize_sandbox_for_completion_inner(
                 }
             },
         };
-        let (candidate, non_reusable_reason) = park_outcome.into_parts();
+        let (candidate, non_reusable) = park_outcome.into_parts();
         if cancel.is_hard_cancelled() {
             telemetry.record_outcome("runner_host_finalization_cancelled", "cancelled");
             telemetry.record_idle_publication(false, Some("cancelled"));
@@ -476,17 +482,83 @@ async fn finalize_sandbox_for_completion_inner(
                 destroy_result.workspace_cache_promoted,
             );
             destroy_result.budget
-        } else if let Some(reason) = non_reusable_reason {
+        } else if let Some(non_reusable) = non_reusable {
+            let reason = non_reusable.reason;
+            let preparation_report = non_reusable.preparation_report;
             telemetry.record_idle_publication(false, Some("non_reusable"));
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
-            info!(
-                run_id = %run_id,
-                reuse_key_fingerprint = %reuse_key_fingerprint,
-                reuse_key_kind = reuse_kind,
-                reason = reason.as_str(),
-                admission_action = "reject_and_destroy",
-                "sandbox parked but is not reusable, destroying VM"
-            );
+            match &reason {
+                sandbox::SandboxParkNonReusableReason::SevereMemoryRetention(diagnostics) => {
+                    let guest = diagnostics.guest_memory_snapshot;
+                    warn!(
+                        run_id = %run_id,
+                        sandbox_id = %sandbox_id,
+                        runner_id = %runner_id,
+                        runner_version = env!("CARGO_PKG_VERSION"),
+                        profile_name = %profile_name,
+                        reuse_key_fingerprint = %reuse_key_fingerprint,
+                        reuse_key_kind = reuse_kind,
+                        sandbox_reuse_result = reuse_result.as_wire(),
+                        reuse_preparation_ready = true,
+                        containment_ready = true,
+                        reuse_preparation_removed_entries = preparation_report.removed_entries,
+                        reuse_preparation_before_available_bytes =
+                            preparation_report.before.available_bytes,
+                        reuse_preparation_before_available_inodes =
+                            preparation_report.before.available_inodes,
+                        reuse_preparation_after_available_bytes =
+                            preparation_report.after.available_bytes,
+                        reuse_preparation_after_available_inodes =
+                            preparation_report.after.available_inodes,
+                        requested_target_mib = diagnostics.requested_target_mib,
+                        first_observed_target_mib = diagnostics.first_observed_target_mib,
+                        observed_target_mib = diagnostics.observed_target_mib,
+                        target_observed = diagnostics.target_observed,
+                        first_actual_mib = diagnostics.first_actual_mib,
+                        actual_mib = diagnostics.actual_mib,
+                        max_actual_mib = diagnostics.max_actual_mib,
+                        deficit_mib = diagnostics.deficit_mib,
+                        actual_delta_mib = diagnostics.actual_delta_mib,
+                        elapsed_ms = diagnostics.elapsed_ms,
+                        sample_count = diagnostics.sample_count,
+                        reported_free_memory_bytes = diagnostics.reported_free_memory_bytes,
+                        reported_available_memory_bytes =
+                            diagnostics.reported_available_memory_bytes,
+                        reported_total_memory_bytes = diagnostics.reported_total_memory_bytes,
+                        reported_swap_in_bytes = diagnostics.reported_swap_in_bytes,
+                        reported_swap_out_bytes = diagnostics.reported_swap_out_bytes,
+                        reported_major_faults = diagnostics.reported_major_faults,
+                        reported_minor_faults = diagnostics.reported_minor_faults,
+                        reported_disk_caches_bytes = diagnostics.reported_disk_caches_bytes,
+                        guest_memory_snapshot_available = guest.is_some(),
+                        guest_mem_total_bytes = guest.map(|snapshot| snapshot.mem_total_bytes),
+                        guest_mem_free_bytes = guest.map(|snapshot| snapshot.mem_free_bytes),
+                        guest_mem_available_bytes =
+                            guest.map(|snapshot| snapshot.mem_available_bytes),
+                        guest_buffers_bytes = guest.map(|snapshot| snapshot.buffers_bytes),
+                        guest_cached_bytes = guest.map(|snapshot| snapshot.cached_bytes),
+                        guest_anon_pages_bytes = guest.map(|snapshot| snapshot.anon_pages_bytes),
+                        guest_mapped_bytes = guest.map(|snapshot| snapshot.mapped_bytes),
+                        guest_dirty_bytes = guest.map(|snapshot| snapshot.dirty_bytes),
+                        guest_writeback_bytes = guest.map(|snapshot| snapshot.writeback_bytes),
+                        guest_shmem_bytes = guest.map(|snapshot| snapshot.shmem_bytes),
+                        guest_slab_bytes = guest.map(|snapshot| snapshot.slab_bytes),
+                        guest_slab_reclaimable_bytes =
+                            guest.map(|snapshot| snapshot.slab_reclaimable_bytes),
+                        guest_slab_unreclaimable_bytes =
+                            guest.map(|snapshot| snapshot.slab_unreclaimable_bytes),
+                        guest_unevictable_bytes = guest.map(|snapshot| snapshot.unevictable_bytes),
+                        guest_kernel_stack_bytes =
+                            guest.map(|snapshot| snapshot.kernel_stack_bytes),
+                        guest_page_tables_bytes = guest.map(|snapshot| snapshot.page_tables_bytes),
+                        guest_swap_total_bytes = guest.map(|snapshot| snapshot.swap_total_bytes),
+                        guest_swap_free_bytes = guest.map(|snapshot| snapshot.swap_free_bytes),
+                        reason = reason.as_str(),
+                        admission_action = "reject_and_destroy",
+                        "sandbox parked with severe memory retention, destroying VM"
+                    );
+                }
+            }
             let (payload, budget_lease) = candidate.into_active_destroy_parts();
             let destroy_result = destroy_active_owned_idle_payload(
                 payload,
@@ -909,6 +981,7 @@ async fn stop_and_destroy_sandbox(
 mod tests {
     use super::*;
     use std::collections::{HashMap, HashSet};
+    use std::future::Future;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -921,6 +994,9 @@ mod tests {
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
     use sha2::{Digest, Sha256};
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     use super::super::active_runs::ActiveRuns;
     use super::super::idle_lifecycle::SharedIdlePool;
@@ -971,6 +1047,83 @@ mod tests {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         (budget, lease)
+    }
+
+    async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        assert_eq!(
+            event.fields.get(field).map(String::as_str),
+            Some(expected),
+            "unexpected {field}; event={event:#?}"
+        );
+    }
+
+    fn severe_memory_retention_diagnostics() -> sandbox::SevereMemoryRetentionDiagnostics {
+        sandbox::SevereMemoryRetentionDiagnostics {
+            requested_target_mib: 3584,
+            first_observed_target_mib: Some(3584),
+            observed_target_mib: Some(3584),
+            target_observed: true,
+            first_actual_mib: Some(2074),
+            actual_mib: Some(2448),
+            max_actual_mib: Some(2448),
+            deficit_mib: Some(1136),
+            actual_delta_mib: Some(374),
+            elapsed_ms: 5001,
+            sample_count: 9,
+            reported_free_memory_bytes: Some(8 * 1024 * 1024),
+            reported_available_memory_bytes: Some(9 * 1024 * 1024),
+            reported_total_memory_bytes: Some(4_i64 * 1024 * 1024 * 1024),
+            reported_swap_in_bytes: Some(11),
+            reported_swap_out_bytes: Some(12),
+            reported_major_faults: Some(13),
+            reported_minor_faults: Some(14),
+            reported_disk_caches_bytes: Some(15),
+            guest_memory_snapshot: Some(sandbox::GuestMemorySnapshot {
+                mem_total_bytes: 101,
+                mem_free_bytes: 102,
+                mem_available_bytes: 103,
+                buffers_bytes: 104,
+                cached_bytes: 105,
+                anon_pages_bytes: 106,
+                mapped_bytes: 107,
+                dirty_bytes: 108,
+                writeback_bytes: 109,
+                shmem_bytes: 110,
+                slab_bytes: 111,
+                slab_reclaimable_bytes: 112,
+                slab_unreclaimable_bytes: 113,
+                unevictable_bytes: 114,
+                kernel_stack_bytes: 115,
+                page_tables_bytes: 116,
+                swap_total_bytes: 117,
+                swap_free_bytes: 118,
+            }),
+        }
     }
 
     struct FinalizeTestFixture {
@@ -1032,6 +1185,8 @@ mod tests {
             FinalizeContext {
                 run_id,
                 sandbox_id,
+                runner_id: "runner-test".into(),
+                reuse_result: SandboxReuseResult::PoolMiss,
                 profile_name: "vm0/default".into(),
                 reuse_key: Some(session_id.into()),
                 cli_agent_session_id: Some(session_id.into()),
@@ -1303,6 +1458,139 @@ mod tests {
                 .await,
             "parked sandbox must not retain the previous run's network-log attribution",
         );
+    }
+
+    #[tokio::test]
+    async fn finalizer_emits_joined_severe_memory_retention_warning() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let report = ReusePreparationReport {
+            before: RootFilesystemCapacity {
+                available_bytes: 256 * 1024 * 1024,
+                available_inodes: 2048,
+            },
+            after: RootFilesystemCapacity {
+                available_bytes: 384 * 1024 * 1024,
+                available_inodes: 4096,
+            },
+            removed_entries: 7,
+        };
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "prepare-for-reuse".into(),
+            exit_code: 0,
+            stdout: serde_json::to_vec(&report).unwrap(),
+            stderr: Vec::new(),
+        });
+        overrides.push_park_result(Ok(sandbox::SandboxParkOutcome::NonReusable(
+            sandbox::SandboxParkNonReusableReason::SevereMemoryRetention(Box::new(
+                severe_memory_retention_diagnostics(),
+            )),
+        )));
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "thread:severe-memory-warning",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.runner_id = "runner-attribution-test".into();
+        context.reuse_result = SandboxReuseResult::Reused;
+
+        let (completion_ready, events) = capture_async_log_events(finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::Reused,
+                CompletionAuth::local(),
+            ),
+            context,
+        ))
+        .await;
+
+        assert_eq!(completion_ready.result_for_test(), (0, None));
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let matching_events: Vec<_> = events
+            .iter()
+            .filter(|event| {
+                event.fields.get("message").is_some_and(|message| {
+                    message == "sandbox parked with severe memory retention, destroying VM"
+                })
+            })
+            .collect();
+        assert_eq!(matching_events.len(), 1, "captured={events:#?}");
+        let event = captured_event(
+            &events,
+            "sandbox parked with severe memory retention, destroying VM",
+        );
+        assert_eq!(event.level, Level::WARN);
+        assert_event_field(event, "run_id", &run_id.to_string());
+        assert_event_field(event, "sandbox_id", &sandbox_id.to_string());
+        assert_event_field(event, "runner_id", "runner-attribution-test");
+        assert_event_field(event, "runner_version", env!("CARGO_PKG_VERSION"));
+        assert_event_field(event, "profile_name", "vm0/default");
+        assert_event_field(event, "reuse_key_kind", "thread");
+        assert_event_field(event, "sandbox_reuse_result", "reused");
+        assert_event_field(event, "reuse_preparation_ready", "true");
+        assert_event_field(event, "containment_ready", "true");
+        assert_event_field(event, "reuse_preparation_removed_entries", "7");
+        assert_event_field(
+            event,
+            "reuse_preparation_before_available_bytes",
+            "268435456",
+        );
+        assert_event_field(
+            event,
+            "reuse_preparation_after_available_bytes",
+            "402653184",
+        );
+        assert_event_field(event, "requested_target_mib", "3584");
+        assert_event_field(event, "first_actual_mib", "2074");
+        assert_event_field(event, "actual_mib", "2448");
+        assert_event_field(event, "deficit_mib", "1136");
+        assert_event_field(event, "reported_swap_in_bytes", "11");
+        assert_event_field(event, "reported_disk_caches_bytes", "15");
+        assert_event_field(event, "guest_memory_snapshot_available", "true");
+        for (field, value) in [
+            ("guest_mem_total_bytes", 101),
+            ("guest_mem_free_bytes", 102),
+            ("guest_mem_available_bytes", 103),
+            ("guest_buffers_bytes", 104),
+            ("guest_cached_bytes", 105),
+            ("guest_anon_pages_bytes", 106),
+            ("guest_mapped_bytes", 107),
+            ("guest_dirty_bytes", 108),
+            ("guest_writeback_bytes", 109),
+            ("guest_shmem_bytes", 110),
+            ("guest_slab_bytes", 111),
+            ("guest_slab_reclaimable_bytes", 112),
+            ("guest_slab_unreclaimable_bytes", 113),
+            ("guest_unevictable_bytes", 114),
+            ("guest_kernel_stack_bytes", 115),
+            ("guest_page_tables_bytes", 116),
+            ("guest_swap_total_bytes", 117),
+            ("guest_swap_free_bytes", 118),
+        ] {
+            assert_event_field(event, field, &value.to_string());
+        }
+        assert_eq!(event.field_kinds.get("first_actual_mib"), Some(&"u64"));
+        assert_eq!(
+            event.field_kinds.get("reported_swap_in_bytes"),
+            Some(&"i64")
+        );
+        assert_eq!(event.field_kinds.get("guest_mem_total_bytes"), Some(&"u64"));
+        assert_event_field(event, "reason", "severe_memory_retention");
+        assert_event_field(event, "admission_action", "reject_and_destroy");
     }
 
     #[tokio::test]
@@ -1895,8 +2183,10 @@ mod tests {
         )
         .await;
         let seeded_entry = cache.inspect().await.unwrap().entries.remove(0);
-        let entry_dir = paths.workspace_image_cache_entry_dir(&seeded_entry.cache_key);
-        let sidecar_metadata_path = entry_dir.join("session-history.metadata.json");
+        let sidecar_metadata_path = cache
+            .entry_paths(&seeded_entry.cache_key)
+            .session_history_sidecar_metadata()
+            .to_path_buf();
 
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -1940,7 +2230,10 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
+            cache
+                .entry_paths(&seeded_entry.cache_key)
+                .current_image()
+                .to_path_buf(),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -1996,9 +2289,14 @@ mod tests {
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].reuse_key, reuse_key);
         let workspace_metadata: serde_json::Value = serde_json::from_slice(
-            &tokio::fs::read(paths.workspace_image_cache_metadata(&seeded_entry.cache_key))
-                .await
-                .unwrap(),
+            &tokio::fs::read(
+                cache
+                    .entry_paths(&seeded_entry.cache_key)
+                    .metadata()
+                    .to_path_buf(),
+            )
+            .await
+            .unwrap(),
         )
         .unwrap();
         assert!(workspace_metadata.get("cliAgentSessionId").is_none());
@@ -2082,7 +2380,10 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
+            cache
+                .entry_paths(&seeded_entry.cache_key)
+                .current_image()
+                .to_path_buf(),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -2332,7 +2633,10 @@ mod tests {
         );
         let metadata: serde_json::Value = serde_json::from_slice(
             &tokio::fs::read(
-                paths.workspace_image_cache_metadata(&inspection.entries[0].cache_key),
+                cache
+                    .entry_paths(&inspection.entries[0].cache_key)
+                    .metadata()
+                    .to_path_buf(),
             )
             .await
             .unwrap(),

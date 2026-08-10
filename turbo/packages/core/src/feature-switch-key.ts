@@ -66,6 +66,7 @@ export enum FeatureSwitchKey {
   StrapiIntegration = "strapiIntegration",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ComposerConnectorPermissions = "composerConnectorPermissions",
+  CustomConnectorMcp = "customConnectorMcp",
   ThreeColumnNav = "threeColumnNav",
   SharedThreadSharing = "sharedThreadSharing",
   PiLoop = "piLoop",

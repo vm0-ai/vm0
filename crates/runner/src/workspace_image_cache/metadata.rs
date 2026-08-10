@@ -139,8 +139,9 @@ impl WorkspaceImageCache {
         run_id: RunId,
         metadata: WorkspaceCacheMetadata,
     ) -> RunnerResult<()> {
-        let metadata_path = self.workspace_image_cache_metadata(cache_key);
-        let tmp = metadata_path.with_file_name(format!("metadata.json.tmp.{run_id}"));
+        let entry_paths = self.entry_paths(cache_key);
+        let metadata_path = entry_paths.metadata();
+        let tmp = entry_paths.tmp_metadata(run_id);
         self.ensure_workspace_cache_entry_dir(cache_key).await?;
         let bytes = serde_json::to_vec_pretty(&metadata)
             .map_err(|e| RunnerError::Internal(format!("serialize workspace metadata: {e}")))?;
@@ -153,7 +154,7 @@ impl WorkspaceImageCache {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e);
         }
-        if let Err(e) = fs::rename(&tmp, &metadata_path).await {
+        if let Err(e) = fs::rename(&tmp, metadata_path).await {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
         }

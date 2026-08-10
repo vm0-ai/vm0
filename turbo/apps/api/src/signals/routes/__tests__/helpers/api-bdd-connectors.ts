@@ -77,7 +77,7 @@ import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-d
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
 import { zeroCustomConnectorOAuth2Routes } from "../../zero-custom-connectors-oauth2";
 import { zeroCustomConnectorProposalRoutes } from "../../zero-custom-connectors-proposal";
-import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
 import { zeroCustomConnectorsUpdateRoutes } from "../../zero-custom-connectors-update";
 import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
@@ -90,7 +90,7 @@ const zeroCustomConnectorByIdTestRoutes = Object.freeze([
 ]);
 
 const zeroCustomConnectorSecretTestRoutes = Object.freeze([
-  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorDisconnectRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,
 ]);
 
@@ -2014,7 +2014,7 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body;
     },
 
-    async requestDeleteCustomConnectorSecret(
+    async requestDisconnectCustomConnector(
       actor: ApiTestUser | null,
       connectorId: string,
       statuses: readonly (204 | 401 | 404 | 500)[],
@@ -2024,7 +2024,7 @@ export function createConnectorBddApi(context: TestContext) {
         routes: zeroCustomConnectorSecretTestRoutes,
       })(zeroCustomConnectorSecretContract);
       return await accept(
-        client.delete({
+        client.disconnect({
           params: { id: connectorId },
           headers: authenticate(actor),
         }),
@@ -2032,16 +2032,12 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
-    async deleteCustomConnectorSecret(
+    async disconnectCustomConnector(
       actor: ApiTestUser,
       connectorId: string,
       statuses: readonly (204 | 401 | 404 | 500)[] = [204],
     ): Promise<void> {
-      await api.requestDeleteCustomConnectorSecret(
-        actor,
-        connectorId,
-        statuses,
-      );
+      await api.requestDisconnectCustomConnector(actor, connectorId, statuses);
     },
 
     async requestStartCustomConnectorOAuth2(

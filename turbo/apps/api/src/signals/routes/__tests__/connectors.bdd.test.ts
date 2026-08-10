@@ -49,6 +49,7 @@ import {
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
+import { seedMcpCustomConnectorFixture } from "./helpers/runtime-state";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -1707,6 +1708,49 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({ connected: true });
 
+    await connectorsApi.disconnectCustomConnector(member, created.id);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(member),
+        userId: member.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ connector: null });
+    const disconnectedConnection =
+      await connectorsApi.listCustomConnectors(member);
+    expect(
+      disconnectedConnection.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["oauth"],
+    });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(member, agent.agentId),
+    ).resolves.toContain(created.id);
+
+    const reconnectUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+      agent.agentId,
+    );
+    await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+      code: "bdd-custom-oauth-reconnect-code",
+      state: stateFromAuthorizationUrl(reconnectUrl),
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+    expect(provider.tokenBodies[1]?.get("code")).toBe(
+      "bdd-custom-oauth-reconnect-code",
+    );
+    await expect(
+      connectorsApi.readCustomConnector(member, created.id),
+    ).resolves.toMatchObject({ connected: true });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(member, agent.agentId),
+    ).resolves.toContain(created.id);
+
     await connectorsApi.deleteCustomConnector(admin, created.id);
     await bdd.deleteAgent(member, agent.agentId);
   });
@@ -2025,14 +2069,39 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await expect(
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([]);
+    await connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
+      created.id,
+    ]);
 
-    await connectorsApi.deleteCustomConnectorSecret(admin, created.id);
-    const afterSecretDelete = await connectorsApi.listCustomConnectors(admin);
+    await connectorsApi.disconnectCustomConnector(admin, created.id);
+    const afterDisconnect = await connectorsApi.listCustomConnectors(admin);
     expect(
-      afterSecretDelete.find((connector) => {
+      afterDisconnect.find((connector) => {
         return connector.id === created.id;
-      })?.hasSecret,
-    ).toBeFalsy();
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      hasSecret: false,
+    });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toStrictEqual([created.id]);
+
+    await connectorsApi.setCustomConnectorSecret(
+      admin,
+      created.id,
+      "reconnected-custom-connector-secret-value",
+    );
+    const afterReconnect = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      afterReconnect.find((connector) => {
+        return connector.id === created.id;
+      }),
+    ).toMatchObject({ connected: true, hasSecret: true });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toStrictEqual([created.id]);
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
     const afterDelete = await connectorsApi.listCustomConnectors(admin);
@@ -2226,14 +2295,40 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       storageVersion: 1,
     });
 
-    await connectorsApi.deleteCustomConnectorSecret(admin, created.id);
+    await connectorsApi.disconnectCustomConnector(admin, created.id);
     await expect(
       readCustomConnectorCredentialStorageParent(context, {
         orgId: requiredOrgId(admin),
         userId: admin.userId,
         customConnectorId: created.id,
       }),
-    ).resolves.toMatchObject({ connector: parent.connector });
+    ).resolves.toMatchObject({ connector: null });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key", "subdomain"],
+    });
+
+    await connectorsApi.setCustomConnectorValues(admin, created.id, [
+      { key: "api_key", kind: "secret", value: "reconnected-secret" },
+      { key: "subdomain", kind: "variable", value: "reconnected" },
+    ]);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({ connector: { storage_version: 1 } });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["api_key", "subdomain"],
+      missingRequiredFields: [],
+    });
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
@@ -2686,7 +2781,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, original.id);
   });
 
-  it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
+  it("disconnects a variable-only connection through the stable endpoint", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
@@ -2694,15 +2789,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
       proposal: {
         operation: "create",
-        displayName: "BDD Legacy Delete API",
+        displayName: "BDD Variable-only Disconnect API",
         prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
         fields: [
-          {
-            key: "secret",
-            label: "API key",
-            kind: "secret",
-            required: true,
-          },
           {
             key: "subdomain",
             label: "Subdomain",
@@ -2710,12 +2799,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
             required: true,
           },
         ],
-        headerInjections: [
-          {
-            name: "Authorization",
-            valueTemplate: "Bearer {{secrets.secret}}",
-          },
-        ],
+        headerInjections: [],
         queryInjections: [
           {
             name: "tenant",
@@ -2723,13 +2807,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
           },
         ],
       },
-      values: [
-        { key: "secret", kind: "secret", value: "legacy-delete-secret" },
-        { key: "subdomain", kind: "variable", value: "acme" },
-      ],
+      values: [{ key: "subdomain", kind: "variable", value: "acme" }],
+    });
+    expect(saved.connector).toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["subdomain"],
     });
 
-    await connectorsApi.deleteCustomConnectorSecret(admin, saved.connector.id);
+    await connectorsApi.disconnectCustomConnector(admin, saved.connector.id);
 
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
@@ -2738,8 +2823,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).toMatchObject({
       connected: false,
-      configuredFieldKeys: ["subdomain"],
-      missingRequiredFields: ["secret"],
+      configuredFieldKeys: [],
+      missingRequiredFields: ["subdomain"],
     });
 
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
@@ -2783,14 +2868,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       expectApiError(secretSet.body);
       expect(secretSet.body.error.code).toBe("UNAUTHORIZED");
 
-      const secretDelete =
-        await connectorsApi.requestDeleteCustomConnectorSecret(
-          actor,
-          connectorId,
-          [401],
-        );
-      expectApiError(secretDelete.body);
-      expect(secretDelete.body.error.code).toBe("UNAUTHORIZED");
+      const disconnect = await connectorsApi.requestDisconnectCustomConnector(
+        actor,
+        connectorId,
+        [401],
+      );
+      expectApiError(disconnect.body);
+      expect(disconnect.body.error.code).toBe("UNAUTHORIZED");
 
       const oauthStart = await connectorsApi.requestStartCustomConnectorOAuth2(
         actor,
@@ -2905,6 +2989,86 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, autoSlug.id);
     await connectorsApi.deleteCustomConnector(admin, wildcard.id);
     await connectorsApi.deleteCustomConnector(admin, builtinOverlap.id);
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("lists a persisted MCP definition without exposing HTTP update semantics", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user();
+    const orgId = requiredOrgId(admin);
+    const connectorId = randomUUID();
+    const endpoint = "https://mcp-reader.example.test/server";
+
+    await seedMcpCustomConnectorFixture(context, {
+      connectorId,
+      orgId,
+      userId: admin.userId,
+      slug: uniqueSlug("bdd-mcp-reader"),
+      displayName: "BDD MCP Reader",
+      endpoint,
+    });
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((connector) => {
+        return connector.id === connectorId;
+      }),
+    ).toMatchObject({
+      kind: "mcp",
+      endpoint,
+      transport: "streamable-http",
+      prefixes: [],
+      prefixTemplates: [],
+      headerName: "",
+      headerTemplate: "",
+      permissionBundleRef: null,
+    });
+
+    const update = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      connectorId,
+      {
+        displayName: "HTTP Rewrite",
+        prefixTemplates: ["https://api.example.test/"],
+        fields: [
+          {
+            key: "secret",
+            label: "Secret",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+        storageVersion: 1,
+      },
+      [400],
+    );
+    expectApiError(update.body);
+    expect(update.body.error.message).toBe(
+      "MCP Custom Connectors cannot be updated with an HTTP definition",
+    );
+
+    const valueWrite = await connectorsApi.requestSetCustomConnectorValues(
+      admin,
+      connectorId,
+      [],
+      [400],
+    );
+    expectApiError(valueWrite.body);
+    expect(valueWrite.body.error.message).toBe(
+      "MCP Custom Connector credentials are not supported yet",
+    );
+
+    await connectorsApi.deleteCustomConnector(admin, connectorId);
     await expect(
       connectorsApi.listCustomConnectors(admin),
     ).resolves.toStrictEqual([]);
@@ -3234,8 +3398,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       readHasSecret(adminInOtherOrg, otherOrg.id),
     ).resolves.toBeTruthy();
 
-    await connectorsApi.deleteCustomConnectorSecret(admin, shared.id);
-    await connectorsApi.deleteCustomConnectorSecret(admin, shared.id);
+    await connectorsApi.disconnectCustomConnector(admin, shared.id);
+    await connectorsApi.disconnectCustomConnector(admin, shared.id);
     await expect(readHasSecret(admin, shared.id)).resolves.toBeFalsy();
     await expect(readHasSecret(member, shared.id)).resolves.toBeTruthy();
     await expect(

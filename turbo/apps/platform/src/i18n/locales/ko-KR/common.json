@@ -1900,6 +1900,7 @@
       },
       "emptyAdmin": "아직 커스텀 커넥터가 없습니다. 모든 멤버가 사용할 API를 등록하려면 새로 만드세요.",
       "emptyMember": "조직에 등록된 커스텀 커넥터가 없습니다.",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
       "moreOptions": "추가 옵션",
       "statusConnected": "연결됨",
       "toasts": {

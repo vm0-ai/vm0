@@ -172,29 +172,6 @@ impl RunnerPaths {
     pub fn workspace_image_cache_dir(&self) -> PathBuf {
         self.base_dir.join("workspace-image-cache")
     }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
-        self.workspace_image_cache_dir().join(cache_key)
-    }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_metadata(&self, cache_key: &str) -> PathBuf {
-        self.workspace_image_cache_entry_dir(cache_key)
-            .join("metadata.json")
-    }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_current_image(&self, cache_key: &str) -> PathBuf {
-        self.workspace_image_cache_entry_dir(cache_key)
-            .join("current.ext4")
-    }
-
-    #[cfg(test)]
-    pub fn workspace_image_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
-        self.workspace_image_cache_entry_dir(cache_key)
-            .join(format!("current.ext4.tmp.{run_id}"))
-    }
 }
 
 /// Paths rooted at /var/lib/vm0-runner/.

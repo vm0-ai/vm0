@@ -16,7 +16,7 @@ use crate::storage_fingerprints::StorageFingerprints;
 
 #[tokio::test]
 async fn prepare_removes_symlink_cache_entry_without_following_it() {
-    let (dir, paths, cache) = local_cache().await;
+    let (dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let reuse_key = "sess-entry-symlink";
@@ -49,7 +49,7 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
     )
     .await
     .unwrap();
-    let entry_dir = paths.workspace_image_cache_entry_dir(&key);
+    let entry_dir = cache.entry_paths(&key).entry_dir().to_path_buf();
     fs::create_dir_all(entry_dir.parent().unwrap())
         .await
         .unwrap();
@@ -86,14 +86,17 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
 
 #[tokio::test]
 async fn metadata_missing_current_present_is_not_a_cache_hit() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-no-metadata", "/workspace", 5);
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    fs::write(paths.workspace_image_cache_current_image(&key), b"image")
-        .await
-        .unwrap();
+    fs::write(
+        cache.entry_paths(&key).current_image().to_path_buf(),
+        b"image",
+    )
+    .await
+    .unwrap();
 
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -125,10 +128,10 @@ async fn metadata_validation_rejects_metadata_mismatch() {
     let cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
     let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 1024);
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -158,7 +161,7 @@ async fn metadata_validation_rejects_metadata_mismatch() {
 
     let err = cache
         .read_valid_metadata(
-            &paths.workspace_image_cache_metadata(&key),
+            cache.entry_paths(&key).metadata(),
             TEST_PROFILE_NAME,
             "sess-1",
             "/workspace",
@@ -171,20 +174,18 @@ async fn metadata_validation_rejects_metadata_mismatch() {
 
 #[tokio::test]
 async fn write_metadata_replaces_stale_tmp_symlink_without_following_it() {
-    let (dir, paths, cache) = local_cache().await;
+    let (dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     let outside = dir.path().join("outside-metadata-target");
     fs::write(&outside, b"outside").await.unwrap();
-    let metadata_tmp = paths
-        .workspace_image_cache_metadata(&key)
-        .with_file_name(format!("metadata.json.tmp.{run_id}"));
+    let metadata_tmp = cache.entry_paths(&key).tmp_metadata(run_id);
     std::os::unix::fs::symlink(&outside, &metadata_tmp).unwrap();
 
     cache
@@ -213,7 +214,7 @@ async fn write_metadata_replaces_stale_tmp_symlink_without_following_it() {
         .unwrap();
 
     assert_eq!(fs::read(&outside).await.unwrap(), b"outside");
-    let metadata_path = paths.workspace_image_cache_metadata(&key);
+    let metadata_path = cache.entry_paths(&key).metadata().to_path_buf();
     let metadata_file_type = fs::symlink_metadata(&metadata_path)
         .await
         .unwrap()
@@ -231,10 +232,10 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let image_size = b"old image".len() as u64;
     let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", image_size);
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"old image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -278,7 +279,7 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
 
     assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
     assert!(
-        !paths.workspace_image_cache_entry_dir(&key).exists(),
+        !cache.entry_paths(&key).entry_dir().to_path_buf().exists(),
         "invalid entry should be removed while the entry lock is held"
     );
 
@@ -299,7 +300,7 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
             .unwrap()
     );
 
-    let metadata_path = paths.workspace_image_cache_metadata(&key);
+    let metadata_path = cache.entry_paths(&key).metadata().to_path_buf();
     let metadata = cache.read_metadata_file(&metadata_path).await.unwrap();
     let serialized_metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(metadata_path).await.unwrap()).unwrap();
@@ -322,10 +323,10 @@ async fn metadata_validation_rejects_replaced_current_image() {
         "/workspace",
         b"old image".len() as u64,
     );
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"old image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -352,15 +353,17 @@ async fn metadata_validation_rejects_replaced_current_image() {
         )
         .await
         .unwrap();
-    let replacement = paths
-        .workspace_image_cache_entry_dir(&key)
+    let replacement = cache
+        .entry_paths(&key)
+        .entry_dir()
+        .to_path_buf()
         .join("replacement.ext4");
     fs::write(&replacement, b"new image").await.unwrap();
     fs::rename(&replacement, &current).await.unwrap();
 
     let err = cache
         .read_valid_metadata(
-            &paths.workspace_image_cache_metadata(&key),
+            cache.entry_paths(&key).metadata(),
             TEST_PROFILE_NAME,
             "sess-1",
             "/workspace",
@@ -388,12 +391,12 @@ async fn metadata_validation_rejects_symlink_current_image() {
         "/workspace",
         b"image".len() as u64,
     );
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
     let target = dir.path().join("target.ext4");
     fs::write(&target, b"image").await.unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     std::os::unix::fs::symlink(&target, &current).unwrap();
     let current_target_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -423,7 +426,7 @@ async fn metadata_validation_rejects_symlink_current_image() {
 
     let err = cache
         .read_valid_metadata(
-            &paths.workspace_image_cache_metadata(&key),
+            cache.entry_paths(&key).metadata(),
             TEST_PROFILE_NAME,
             "sess-1",
             "/workspace",
@@ -441,7 +444,7 @@ async fn metadata_validation_rejects_symlink_current_image() {
     let freed = cache.gc(false).await.unwrap();
 
     assert!(freed > 0);
-    assert!(!paths.workspace_image_cache_entry_dir(&key).exists());
+    assert!(!cache.entry_paths(&key).entry_dir().to_path_buf().exists());
     assert!(
         target.exists(),
         "GC must remove the symlink, not its target"

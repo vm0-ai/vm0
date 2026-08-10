@@ -75,20 +75,24 @@ pub(crate) fn blocking_write_path(dir: &Path, name: &str) -> std::path::PathBuf 
     dir.join(format!("{name}{BLOCKING_WRITE_SUFFIX}"))
 }
 
-pub(crate) fn blocking_write_started_path(path: &Path) -> std::path::PathBuf {
+fn blocking_write_started_path(path: &Path) -> std::path::PathBuf {
     path_with_suffix(path, ".started")
 }
 
-pub(crate) fn blocking_write_release_path(path: &Path) -> std::path::PathBuf {
+fn blocking_write_release_path(path: &Path) -> std::path::PathBuf {
     path_with_suffix(path, ".release")
 }
 
 pub(crate) fn release_blocking_write(path: &Path) {
-    UnixStream::connect(blocking_write_release_path(path)).expect("release blocked write helper");
+    std::fs::write(blocking_write_release_path(path), b"").expect("release blocked write helper");
 }
 
 pub(crate) fn blocking_write_pid_path(path: &Path) -> std::path::PathBuf {
     path_with_suffix(path, ".pid")
+}
+
+fn blocking_write_failed_path(path: &Path) -> std::path::PathBuf {
+    path_with_suffix(path, ".failed")
 }
 
 pub(crate) fn pid_alive(pid: u32) -> bool {
@@ -154,6 +158,28 @@ pub(crate) async fn wait_for_path(path: &Path, timeout: Duration) {
     wait_for_path_result(path, timeout)
         .await
         .unwrap_or_else(|error| panic!("timed out waiting for path {path:?}: {error}"));
+}
+
+pub(crate) async fn wait_for_blocking_write(path: &Path, timeout: Duration) -> io::Result<()> {
+    let started_path = blocking_write_started_path(path);
+    let failed_path = blocking_write_failed_path(path);
+    tokio::time::timeout(timeout, async {
+        tokio::select! {
+            result = wait_for_path_event(&started_path) => result,
+            result = wait_for_path_event(&failed_path) => {
+                result?;
+                let message = tokio::fs::read_to_string(&failed_path).await?;
+                Err(io::Error::other(message))
+            }
+        }
+    })
+    .await
+    .map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::TimedOut,
+            "blocking write readiness timed out",
+        )
+    })?
 }
 
 pub(crate) async fn run_exec(
