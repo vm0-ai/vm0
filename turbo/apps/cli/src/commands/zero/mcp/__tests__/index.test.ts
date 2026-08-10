@@ -49,7 +49,7 @@ interface McpServerOptions {
   readonly callResult?: CallToolResult;
   readonly callResponse?: () => Response;
   readonly listResponse?: (requestId: RequestId) => Response;
-  readonly deleteResponse?: () => Response;
+  readonly deleteResponse?: () => Response | Promise<Response>;
 }
 
 function processExit(): never {
@@ -788,6 +788,43 @@ describe("zero mcp command", () => {
     const errors = outputText(consoleError);
     expect(errors).toContain("MCP session cleanup did not complete");
     expect(errors).not.toContain("cleanup failed");
+  });
+
+  it("preserves the primary failure when cleanup reaches the deadline", async () => {
+    stubConnectorList();
+    stubMcpServer({
+      era: "legacy",
+      pages: [
+        [
+          {
+            name: "search",
+            inputSchema: { type: "object" },
+          },
+        ],
+      ],
+      deleteResponse: async () => {
+        await delay(2_000);
+        return new HttpResponse(null, { status: 204 });
+      },
+    });
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "zero",
+        "call",
+        "_acme-mcp",
+        "missing",
+        "--input",
+        "{}",
+        "--timeout",
+        "1s",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    const errors = outputText(consoleError);
+    expect(errors).toContain('MCP tool "missing" was not found');
+    expect(errors).not.toContain("timed out");
   });
 
   it("rejects repeated pagination cursors", async () => {

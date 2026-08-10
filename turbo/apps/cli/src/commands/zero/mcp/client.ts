@@ -221,7 +221,7 @@ async function runMcpOperation<T>(
     | { readonly ok: true; readonly value: T }
     | {
         readonly ok: false;
-        readonly error: unknown;
+        readonly error: Error;
       };
   try {
     await client.connect(
@@ -233,18 +233,17 @@ async function runMcpOperation<T>(
       value: await operation(client, deadlineAt, deadlineController.signal),
     };
   } catch (error) {
-    outcome = { ok: false, error };
+    outcome = {
+      ok: false,
+      error: safeMcpError(error, deadlineController.signal, timeoutSeconds),
+    };
   }
 
   const cleanupWarning = await closeMcpClient(client, transport);
   clearTimeout(timer);
 
   if (!outcome.ok) {
-    throw safeMcpError(
-      outcome.error,
-      deadlineController.signal,
-      timeoutSeconds,
-    );
+    throw outcome.error;
   }
   return { value: outcome.value, cleanupWarning };
 }
