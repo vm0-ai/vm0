@@ -47,13 +47,13 @@ import {
   type OrgMember,
 } from "../../../../signals/external/org-members.ts";
 import {
+  managedUsagePackSelection,
   memberUsageSelections$,
   MINIMUM_USAGE_PACK_USD,
   selectedUsagePackPlan$,
   setMemberUsageSelection$,
   setMemberUsageSelections$,
   setSelectedUsagePackPlan$,
-  USAGE_PACKS_USD,
   usagePackSubscriptionChangePreview$,
   usagePackPricingPageRef$,
   type MemberUsageSelection,
@@ -62,6 +62,10 @@ import {
 } from "../../../../signals/zero-page/settings/usage-pack-pricing-state.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { planProImg, planTeamImg } from "../../platform-assets.ts";
+import {
+  parseUsagePackOption,
+  usagePackOptionLabel,
+} from "./usage-pack-options.ts";
 
 interface UsagePackPlan {
   readonly tier: UsagePackPlanTier;
@@ -212,37 +216,6 @@ function usagePackCatalogItem(
   return item;
 }
 
-function usagePackDiscountPercent(item: UsagePackCatalogItem): number {
-  return Math.round((item.bonusCredits / item.totalCredits) * 100);
-}
-
-function usageSelectionLabel(
-  selection: MemberUsageSelection,
-  catalog: readonly UsagePackCatalogItem[],
-): string {
-  const item = usagePackCatalogItem(catalog, selection);
-  return i18n.t(
-    ($) => {
-      return $.billing.plans.usagePacks.packOption;
-    },
-    {
-      credits: formatLocalizedNumber(item.totalCredits),
-      discount: usagePackDiscountPercent(item),
-      price: formatUsd(item.priceUsd, 0),
-    },
-  );
-}
-
-function parseUsageSelection(value: string): MemberUsageSelection {
-  const pack = USAGE_PACKS_USD.find((candidate) => {
-    return String(candidate) === value;
-  });
-  if (pack === undefined) {
-    throw new Error(`Unknown member usage selection: ${value}`);
-  }
-  return pack;
-}
-
 function memberUsageSelection(
   selections: Readonly<Record<string, MemberUsageSelection>>,
   memberId: string,
@@ -273,20 +246,6 @@ function memberUsageTotals(
     },
     { bonusCredits: 0, totalCredits: 0, totalUsd: 0 },
   );
-}
-
-type ManagedUsagePackAllocation =
-  UsagePackManagementResponse["allocations"][number];
-
-function managedUsagePackSelection(
-  allocation: ManagedUsagePackAllocation,
-): UsagePackUsd {
-  const pendingChange = allocation.pendingChange;
-  return pendingChange?.kind === "downgrade" &&
-    pendingChange.status === "scheduled" &&
-    pendingChange.targetUsagePackUsd !== null
-    ? pendingChange.targetUsagePackUsd
-    : allocation.usagePackUsd;
 }
 
 function managedMemberUsageTotals(
@@ -410,7 +369,7 @@ function MemberUsageRow({
         <Select
           value={String(selection)}
           onValueChange={(value) => {
-            onSelect(parseUsageSelection(value));
+            onSelect(parseUsagePackOption(value, catalog));
           }}
         >
           <SelectTrigger
@@ -424,14 +383,15 @@ function MemberUsageRow({
           >
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
             {catalog.map((pack) => {
               return (
                 <SelectItem
                   key={pack.usagePackUsd}
                   value={String(pack.usagePackUsd)}
+                  className="whitespace-nowrap"
                 >
-                  {usageSelectionLabel(pack.usagePackUsd, catalog)}
+                  {usagePackOptionLabel(pack)}
                 </SelectItem>
               );
             })}

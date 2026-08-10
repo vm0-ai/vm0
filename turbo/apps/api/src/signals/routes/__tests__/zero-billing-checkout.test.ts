@@ -19,6 +19,7 @@ import {
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isStaffOrg } from "@vm0/core/staff-org";
 import {
   webhookClerkContract,
   webhookStripeContract,
@@ -4152,6 +4153,33 @@ describe("usage pack allocation management", () => {
       [200],
     );
     expect(legacy.body.message).toContain("legacy@example.test");
+  });
+
+  it("honors the invitation feature switch for a non-staff org", async () => {
+    const fixture = createOrgFixture();
+    expect(isStaffOrg(fixture.orgId)).toBeFalsy();
+    authenticateOrg(fixture);
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      ).purchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: "non-staff@example.test",
+          role: "member",
+          usagePackUsd: 20,
+          successUrl: `${APP_ORIGIN}/settings?invitation=success`,
+          cancelUrl: `${APP_ORIGIN}/settings`,
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("creates no Clerk invitation when invitation checkout expires", async () => {

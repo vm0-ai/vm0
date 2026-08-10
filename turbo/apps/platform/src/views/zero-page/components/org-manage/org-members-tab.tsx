@@ -38,7 +38,10 @@ import {
   orgRoleSchema,
   type OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
-import { usagePackUsdSchema } from "@vm0/api-contracts/contracts/zero-billing";
+import type {
+  UsagePackManagementResponse,
+  UsagePackUsd,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import {
   orgMembers$,
   orgPendingInvitations$,
@@ -62,6 +65,7 @@ import {
   setInviteDialogOpen$,
   inviteRole$,
   setInviteRole$,
+  memberUsagePackManagement$,
   invitationUsagePackCatalog$,
   inviteUsagePackUsd$,
   setInviteUsagePackUsd$,
@@ -79,8 +83,59 @@ import {
   acceptRequest$,
   rejectRequest$,
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
+import { openSettingsMemberUsagePacks$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
+import { formatUsd } from "../../../../i18n/format.ts";
+import {
+  parseUsagePackOption,
+  usagePackOptionLabel,
+} from "./usage-pack-options.ts";
 
-const ROW_GRID = "grid grid-cols-[1fr_6rem_5.5rem_2rem] gap-x-4 items-center";
+const ROW_GRID = "grid gap-x-4 items-center";
+
+function memberRowGrid(showUsagePack: boolean): string {
+  return cn(
+    ROW_GRID,
+    showUsagePack
+      ? "grid-cols-[minmax(0,1fr)_6rem_7rem_5.5rem_2rem]"
+      : "grid-cols-[minmax(0,1fr)_6rem_5.5rem_2rem]",
+  );
+}
+
+function MembersTableHeader({ showUsagePack }: { showUsagePack: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className={cn(
+        memberRowGrid(showUsagePack),
+        "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
+      )}
+    >
+      <div>
+        {t(($) => {
+          return $.settings.workspace.members.user;
+        })}
+      </div>
+      <div>
+        {t(($) => {
+          return $.settings.workspace.members.joined;
+        })}
+      </div>
+      {showUsagePack && (
+        <div>
+          {t(($) => {
+            return $.settings.workspace.members.usagePack;
+          })}
+        </div>
+      )}
+      <div>
+        {t(($) => {
+          return $.settings.workspace.members.role;
+        })}
+      </div>
+      <div />
+    </div>
+  );
+}
 
 function displayName(m: OrgMember): string {
   const parts = [m.firstName, m.lastName].filter(Boolean);
@@ -98,6 +153,7 @@ export function OrgMembersTab() {
   const requestsLoadable = useLoadable(orgMembershipRequests$);
   const userLoadable = useLoadable(user$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const usagePackManagementLoadable = useLoadable(memberUsagePackManagement$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
 
@@ -112,6 +168,16 @@ export function OrgMembersTab() {
     requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
   const currentUserId =
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
+  const usagePackManagement =
+    usagePackManagementLoadable.state === "hasData"
+      ? usagePackManagementLoadable.data
+      : null;
+  const showUsagePack = usagePackManagement !== null;
+  const usagePackByMemberId = new Map(
+    usagePackManagement?.allocations.map((allocation) => {
+      return [allocation.memberId, allocation.usagePackUsd] as const;
+    }),
+  );
   const isLoading = membersLoadable.state === "loading";
 
   const adminCount = members.filter((m) => {
@@ -165,36 +231,14 @@ export function OrgMembersTab() {
       </div>
 
       <div className="overflow-hidden rounded-xl bg-card zero-border">
-        <div
-          className={cn(
-            ROW_GRID,
-            "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
-          )}
-        >
-          <div>
-            {t(($) => {
-              return $.settings.workspace.members.user;
-            })}
-          </div>
-          <div>
-            {t(($) => {
-              return $.settings.workspace.members.joined;
-            })}
-          </div>
-          <div>
-            {t(($) => {
-              return $.settings.workspace.members.role;
-            })}
-          </div>
-          <div />
-        </div>
+        <MembersTableHeader showUsagePack={showUsagePack} />
         <div className="h-0 zero-border-t mx-5" />
 
         {isLoading && (
           <>
-            <MemberRowSkeleton />
-            <MemberRowSkeleton />
-            <MemberRowSkeleton />
+            <MemberRowSkeleton showUsagePack={showUsagePack} />
+            <MemberRowSkeleton showUsagePack={showUsagePack} />
+            <MemberRowSkeleton showUsagePack={showUsagePack} />
           </>
         )}
 
@@ -229,7 +273,10 @@ export function OrgMembersTab() {
               return (
                 <div key={req.id}>
                   {i > 0 && <div className="h-0 zero-border-t mx-5" />}
-                  <MembershipRequestRow request={req} />
+                  <MembershipRequestRow
+                    request={req}
+                    showUsagePack={showUsagePack}
+                  />
                 </div>
               );
             })}
@@ -249,6 +296,9 @@ export function OrgMembersTab() {
                   isCurrentUser={m.userId === currentUserId}
                   isAdmin={isAdmin}
                   isOnlyAdmin={adminCount < 2}
+                  showUsagePack={showUsagePack}
+                  usagePackManagement={usagePackManagement}
+                  usagePackUsd={usagePackByMemberId.get(m.userId) ?? null}
                 />
               </div>
             );
@@ -263,7 +313,11 @@ export function OrgMembersTab() {
                   membershipRequests.length > 0) && (
                   <div className="h-0 zero-border-t mx-5" />
                 )}
-                <PendingInvitationRow invitation={inv} isAdmin={isAdmin} />
+                <PendingInvitationRow
+                  invitation={inv}
+                  isAdmin={isAdmin}
+                  showUsagePack={showUsagePack}
+                />
               </div>
             );
           })}
@@ -414,7 +468,7 @@ function InviteDialog() {
                 value={String(usagePackUsd)}
                 onValueChange={(value) => {
                   return setUsagePackUsd(
-                    usagePackUsdSchema.parse(Number(value)),
+                    parseUsagePackOption(value, usagePacks),
                   );
                 }}
                 disabled={sending}
@@ -422,18 +476,15 @@ function InviteDialog() {
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
                   {usagePacks.map((usagePack) => {
                     return (
                       <SelectItem
                         key={usagePack.usagePackUsd}
                         value={String(usagePack.usagePackUsd)}
+                        className="whitespace-nowrap"
                       >
-                        ${usagePack.priceUsd} ·{" "}
-                        {usagePack.totalCredits.toLocaleString()}{" "}
-                        {t(($) => {
-                          return $.billing.plans.usagePacks.totalCredits;
-                        })}
+                        {usagePackOptionLabel(usagePack)}
                       </SelectItem>
                     );
                   })}
@@ -488,11 +539,17 @@ function MemberRow({
   isCurrentUser,
   isAdmin,
   isOnlyAdmin,
+  showUsagePack,
+  usagePackManagement,
+  usagePackUsd,
 }: {
   member: OrgMember;
   isCurrentUser: boolean;
   isAdmin: boolean;
   isOnlyAdmin: boolean;
+  showUsagePack: boolean;
+  usagePackManagement: UsagePackManagementResponse | null;
+  usagePackUsd: UsagePackUsd | null;
 }) {
   const { i18n, t } = useTranslation();
   const name = displayName(member);
@@ -502,7 +559,7 @@ function MemberRow({
     isAdmin && isCurrentUser && member.role === "admin" && !isOnlyAdmin;
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5")}>
+    <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
         <MemberAvatar
           imageUrl={member.imageUrl}
@@ -533,6 +590,18 @@ function MemberRow({
       <div className="text-[13px] text-muted-foreground tabular-nums">
         {formatDate(member.joinedAt, i18n.resolvedLanguage ?? i18n.language)}
       </div>
+      {showUsagePack && (
+        <div className="text-[13px] text-muted-foreground tabular-nums">
+          {usagePackUsd === null
+            ? "—"
+            : t(
+                ($) => {
+                  return $.billing.plans.pricePerMonth;
+                },
+                { price: formatUsd(usagePackUsd, 0) },
+              )}
+        </div>
+      )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <ShieldCheck
@@ -553,14 +622,57 @@ function MemberRow({
         </span>
       </div>
       <div className="flex justify-end">
-        {canManage && <MemberActions member={member} />}
-        {canSelfDemote && <SelfDemoteAction email={member.email} />}
+        {canManage && (
+          <MemberActions
+            member={member}
+            usagePackManagement={usagePackManagement}
+          />
+        )}
+        {isAdmin &&
+          isCurrentUser &&
+          (canSelfDemote || usagePackManagement !== null) && (
+            <SelfDemoteAction
+              canSelfDemote={canSelfDemote}
+              email={member.email}
+              usagePackManagement={usagePackManagement}
+            />
+          )}
       </div>
     </div>
   );
 }
 
-function SelfDemoteAction({ email }: { email: string }) {
+function AdjustUsagePackMenuItem({
+  management,
+}: {
+  management: UsagePackManagementResponse;
+}) {
+  const { t } = useTranslation();
+  const openMemberUsagePacks = useSet(openSettingsMemberUsagePacks$);
+  return (
+    <DropdownMenuItem
+      className="whitespace-nowrap"
+      onSelect={(event) => {
+        event.preventDefault();
+        return openMemberUsagePacks(management);
+      }}
+    >
+      {t(($) => {
+        return $.billing.plans.usagePacks.configurePackages;
+      })}
+    </DropdownMenuItem>
+  );
+}
+
+function SelfDemoteAction({
+  canSelfDemote,
+  email,
+  usagePackManagement,
+}: {
+  canSelfDemote: boolean;
+  email: string;
+  usagePackManagement: UsagePackManagementResponse | null;
+}) {
   const { t } = useTranslation();
   const open = useGet(selfDemoteDialogOpen$);
   const setOpen = useSet(setSelfDemoteDialogOpen$);
@@ -599,20 +711,25 @@ function SelfDemoteAction({ email }: { email: string }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-48"
+          className="w-max min-w-48 max-w-[calc(100vw-2rem)]"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
         >
-          <DropdownMenuItem
-            onSelect={() => {
-              setOpen(true);
-            }}
-          >
-            {t(($) => {
-              return $.settings.workspace.members.selfDemote.action;
-            })}
-          </DropdownMenuItem>
+          {usagePackManagement && (
+            <AdjustUsagePackMenuItem management={usagePackManagement} />
+          )}
+          {canSelfDemote && (
+            <DropdownMenuItem
+              onSelect={() => {
+                setOpen(true);
+              }}
+            >
+              {t(($) => {
+                return $.settings.workspace.members.selfDemote.action;
+              })}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -666,7 +783,13 @@ function SelfDemoteAction({ email }: { email: string }) {
   );
 }
 
-function MemberActions({ member }: { member: OrgMember }) {
+function MemberActions({
+  member,
+  usagePackManagement,
+}: {
+  member: OrgMember;
+  usagePackManagement: UsagePackManagementResponse | null;
+}) {
   const { t } = useTranslation();
   const newRole: OrgRole = member.role === "admin" ? "member" : "admin";
   const removeTarget = useGet(removeMemberDialogTarget$);
@@ -710,11 +833,14 @@ function MemberActions({ member }: { member: OrgMember }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-48"
+          className="w-max min-w-48 max-w-[calc(100vw-2rem)]"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
         >
+          {usagePackManagement && (
+            <AdjustUsagePackMenuItem management={usagePackManagement} />
+          )}
           <DropdownMenuItem
             onClick={() => {
               return detach(
@@ -802,9 +928,11 @@ function MemberActions({ member }: { member: OrgMember }) {
 function PendingInvitationRow({
   invitation,
   isAdmin,
+  showUsagePack,
 }: {
   invitation: OrgPendingInvitation;
   isAdmin: boolean;
+  showUsagePack: boolean;
 }) {
   const { i18n, t } = useTranslation();
   const initial = invitation.email.charAt(0).toUpperCase();
@@ -820,7 +948,7 @@ function PendingInvitationRow({
   };
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5")}>
+    <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
           {initial}
@@ -835,6 +963,9 @@ function PendingInvitationRow({
           i18n.resolvedLanguage ?? i18n.language,
         )}
       </div>
+      {showUsagePack && (
+        <div className="text-[13px] text-muted-foreground">—</div>
+      )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <Clock size={12} className="text-amber-500" />
@@ -944,7 +1075,13 @@ function PendingInvitationRow({
   );
 }
 
-function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
+function MembershipRequestRow({
+  request,
+  showUsagePack,
+}: {
+  request: OrgMembershipRequest;
+  showUsagePack: boolean;
+}) {
   const { i18n, t } = useTranslation();
   const name = [request.firstName, request.lastName].filter(Boolean).join(" ");
   const initial = (name || request.email).charAt(0).toUpperCase();
@@ -963,7 +1100,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
   };
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5")}>
+    <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
         <MemberAvatar
           imageUrl={request.imageUrl}
@@ -984,6 +1121,9 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
       <div className="text-[13px] text-muted-foreground tabular-nums">
         {formatDate(request.createdAt, i18n.resolvedLanguage ?? i18n.language)}
       </div>
+      {showUsagePack && (
+        <div className="text-[13px] text-muted-foreground">—</div>
+      )}
       <div>
         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <UserPlus size={12} className="text-blue-500" />
@@ -1041,9 +1181,11 @@ function MemberAvatar({
   );
 }
 
-function MemberRowSkeleton() {
+function MemberRowSkeleton({ showUsagePack }: { showUsagePack: boolean }) {
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5 animate-pulse")}>
+    <div
+      className={cn(memberRowGrid(showUsagePack), "py-3 px-5 animate-pulse")}
+    >
       <div className="flex items-center gap-3">
         <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/50" />
         <div className="flex flex-col gap-1">
@@ -1052,6 +1194,7 @@ function MemberRowSkeleton() {
         </div>
       </div>
       <div className="h-4 w-20 rounded bg-muted/30" />
+      {showUsagePack && <div className="h-4 w-16 rounded bg-muted/30" />}
       <div className="h-5 w-14 rounded bg-muted/30" />
       <div />
     </div>

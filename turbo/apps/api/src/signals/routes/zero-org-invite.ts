@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isStaffOrg } from "@vm0/core/staff-org";
 
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { env, optionalEnv } from "../../lib/env";
@@ -43,9 +42,6 @@ async function usagePackInvitationsEnabled(
   orgId: string,
   userId: string,
 ): Promise<boolean> {
-  if (!isStaffOrg(orgId)) {
-    return false;
-  }
   const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
   return isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
     orgId,
