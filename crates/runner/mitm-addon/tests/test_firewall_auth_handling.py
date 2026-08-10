@@ -4,9 +4,12 @@ import asyncio
 import json
 import os
 import urllib.error
+from collections.abc import Callable
+from typing import Literal
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy import http
 
 import auth
 import auth_base_forwarder
@@ -26,7 +29,6 @@ from tests.aws_sigv4_helpers import (
     resolved_aws_sigv4_credentials,
 )
 from tests.firewall_auth_helpers import (
-    apply_requestheaders_auth_without_upstream_admission,
     firewall_auth_success,
     handle_firewall_request_without_upstream_admission,
 )
@@ -36,10 +38,38 @@ from url_utils import get_trusted_authority
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
 _MISSING_FIELD = object()
+type HookPhase = Literal["request", "requestheaders"]
 
 
 def _fail_if_current_firewall_authorization_is_revalidated() -> bool:
     raise AssertionError("current firewall authorization guard must not run")
+
+
+def _allow_current_firewall_authorization() -> bool:
+    return True
+
+
+async def _run_firewall_auth_phase(
+    hook_phase: HookPhase,
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    vm_info: dict,
+    *,
+    revalidate: Callable[[], bool] = _allow_current_firewall_authorization,
+) -> auth.FirewallAuthHandlingResult | auth.FirewallHeaderPhaseAuthResult:
+    if hook_phase == "request":
+        return await auth.handle_firewall_request(
+            flow,
+            allow,
+            vm_info,
+            revalidate_current_firewall_authorization=revalidate,
+        )
+    return await auth.try_apply_stream_safe_firewall_auth_for_requestheaders(
+        flow,
+        allow,
+        vm_info,
+        revalidate_current_firewall_authorization=revalidate,
+    )
 
 
 def _allow(
@@ -188,48 +218,13 @@ class TestHandleFirewallRequest:
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall https://api.github.com: api.github.com" in log_text
 
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
     async def test_empty_auth_config_preserves_existing_authorization(
-        self, real_flow, mitm_ctx, tmp_path
-    ):
-        flow = real_flow(
-            with_response=False,
-            host="api.cloudflare.com",
-            path="/client/v4/pages/assets/check-missing",
-            method="POST",
-        )
-        flow.request.headers["Authorization"] = "Bearer upload-jwt"
-        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
-        api_entry = _api_entry(
-            base="https://api.cloudflare.com/client",
-            auth_config={},
-            api_id="run-1:1",
-        )
-        vm_info = _vm_info(tmp_path, include_encrypted_secrets=False)
-        allow = _allow(
-            api_entry,
-            name="cloudflare",
-            permission="page.write",
-            rule="POST /v4/pages/assets/check-missing",
-            rel_path="/v4/pages/assets/check-missing",
-        )
-        mock_get_firewall_headers = AsyncMock()
-
-        with (
-            patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
-            mitm_ctx(),
-        ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
-
-        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
-        mock_get_firewall_headers.assert_not_called()
-        assert flow.request.headers["Authorization"] == "Bearer upload-jwt"
-        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-        assert flow.metadata[metadata_keys.FIREWALL_NAME] == "cloudflare"
-        assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "page.write"
-        assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
-
-    async def test_empty_auth_config_requestheaders_preserves_authorization_without_auth_resolution(
-        self, real_flow, mitm_ctx, tmp_path
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
     ):
         flow = real_flow(
             with_response=False,
@@ -258,13 +253,14 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
             mitm_ctx(),
         ):
-            result = await apply_requestheaders_auth_without_upstream_admission(
-                flow,
-                allow,
-                vm_info,
-            )
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
 
-        assert result is auth.FirewallHeaderPhaseAuthResult.APPLIED
+        expected_result = (
+            auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+            if hook_phase == "request"
+            else auth.FirewallHeaderPhaseAuthResult.APPLIED
+        )
+        assert result is expected_result
         mock_get_firewall_headers.assert_not_called()
         assert flow.request.headers["Authorization"] == "Bearer upload-jwt"
         assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
@@ -272,8 +268,13 @@ class TestHandleFirewallRequest:
         assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "page.write"
         assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
 
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
     async def test_billable_only_auth_does_not_require_upstream_admission(
-        self, real_flow, mitm_ctx, tmp_path
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
     ):
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry(auth_config={})
@@ -281,21 +282,92 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
         token_meta = _token_meta(headers={})
 
-        with (
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            mitm_ctx(),
-        ):
-            result = await auth.handle_firewall_request(
+        get_firewall_headers = AsyncMock(return_value=token_meta)
+
+        with patch.object(auth, "get_firewall_headers", get_firewall_headers), mitm_ctx():
+            result = await _run_firewall_auth_phase(
+                hook_phase,
                 flow,
                 allow,
                 vm_info,
-                revalidate_current_firewall_authorization=(
-                    _fail_if_current_firewall_authorization_is_revalidated
-                ),
+                revalidate=_fail_if_current_firewall_authorization_is_revalidated,
             )
 
-        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        expected_result = (
+            auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+            if hook_phase == "request"
+            else auth.FirewallHeaderPhaseAuthResult.APPLIED
+        )
+        assert result is expected_result
+        get_firewall_headers.assert_awaited_once()
         assert flow.response is None
+
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
+    @pytest.mark.parametrize(
+        ("method", "scheme", "include_encrypted_secrets", "status", "error_code"),
+        [
+            pytest.param("TRACE", "https", True, 403, "unsafe_auth_method", id="unsafe-method"),
+            pytest.param("GET", "http", True, 403, "insecure_transport", id="insecure-transport"),
+            pytest.param("GET", "https", False, 502, "auth_unavailable", id="missing-secret"),
+        ],
+    )
+    async def test_policy_failures_have_phase_specific_effects(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
+        method: str,
+        scheme: str,
+        include_encrypted_secrets: bool,
+        status: int,
+        error_code: str,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.github.com",
+            method=method,
+            scheme=scheme,
+        )
+        flow.metadata.update(
+            {
+                metadata_keys.VM_RUN_ID: "test-run",
+                "preexisting": "keep",
+            }
+        )
+        original_metadata = dict(flow.metadata)
+        original_url = flow.request.url
+        original_headers = flow.request.headers.fields
+        api_entry = _api_entry()
+        vm_info = _vm_info(
+            tmp_path,
+            include_encrypted_secrets=include_encrypted_secrets,
+        )
+        allow = _allow(api_entry)
+        get_firewall_headers = AsyncMock()
+
+        with patch.object(auth, "get_firewall_headers", get_firewall_headers), mitm_ctx():
+            result = await _run_firewall_auth_phase(
+                hook_phase,
+                flow,
+                allow,
+                vm_info,
+                revalidate=_fail_if_current_firewall_authorization_is_revalidated,
+            )
+
+        get_firewall_headers.assert_not_called()
+        if hook_phase == "requestheaders":
+            assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
+            assert flow.response is None
+            assert flow.metadata == original_metadata
+            assert flow.request.url == original_url
+            assert flow.request.headers.fields == original_headers
+            return
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == status
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == error_code
 
     async def test_auth_cache_identity_tracks_request_auth_inputs(
         self, real_flow, mitm_ctx, tmp_path
@@ -443,8 +515,14 @@ class TestHandleFirewallRequest:
         assert first_cache_key.api_id == second_cache_key.api_id == "run-1:0"
         assert first_cache_key.auth_identity != second_cache_key.auth_identity
 
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
     async def test_standard_auth_filters_unsafe_resolved_headers(
-        self, real_flow, headers, mitm_ctx, tmp_path
+        self,
+        real_flow,
+        headers,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
     ):
         flow = _firewall_flow(
             real_flow,
@@ -498,9 +576,14 @@ class TestHandleFirewallRequest:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
 
-        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        expected_result = (
+            auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+            if hook_phase == "request"
+            else auth.FirewallHeaderPhaseAuthResult.APPLIED
+        )
+        assert result is expected_result
         header_names = {name.lower() for name, _value in flow.request.headers.items(multi=True)}
         assert flow.request.headers["Host"] == "api.github.com"
         assert "connection" not in header_names
@@ -575,6 +658,166 @@ class TestHandleFirewallRequest:
             in flow.request.headers["authorization"]
         )
         assert "evil.example.com" not in flow.request.headers["authorization"]
+
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
+    async def test_stream_safe_aws_sigv4_applies_in_both_phases(
+        self,
+        headers,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host=STS_HOST,
+            path="/",
+            method="POST",
+            request_headers=headers(
+                ("Host", STS_HOST),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+                ("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"),
+                (
+                    "Authorization",
+                    aws_sigv4_authorization(signed_headers="host;x-amz-content-sha256;x-amz-date"),
+                ),
+            ),
+        )
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = get_trusted_authority(flow).url
+        api_entry = _api_entry(
+            base="https://sts.amazonaws.com",
+            auth_config={
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                }
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry, rule="POST /", rel_path="/")
+        token_meta = _token_meta()
+        token_meta["aws_sigv4"] = resolved_aws_sigv4_credentials()
+        get_firewall_headers = AsyncMock(return_value=token_meta)
+
+        with patch.object(auth, "get_firewall_headers", get_firewall_headers), mitm_ctx():
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+
+        expected_result = (
+            auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+            if hook_phase == "request"
+            else auth.FirewallHeaderPhaseAuthResult.APPLIED
+        )
+        assert result is expected_result
+        get_firewall_headers.assert_awaited_once()
+        assert flow.request.headers["x-amz-content-sha256"] == "UNSIGNED-PAYLOAD"
+        assert flow.request.headers["x-amz-security-token"] == RESOLVED_AWS_SESSION_TOKEN
+        assert "Credential=AKIDEXAMPLE/" in flow.request.headers["authorization"]
+
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
+    async def test_unexpected_resolved_auth_base_fails_closed_in_both_phases(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
+    ):
+        flow = _firewall_flow(real_flow)
+        flow.metadata["preexisting"] = "keep"
+        original_metadata = dict(flow.metadata)
+        original_url = flow.request.url
+        original_headers = flow.request.headers.fields
+        api_entry = _api_entry()
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        token_meta = _token_meta(headers={"Authorization": "Bearer token"})
+        token_meta["base"] = "https://unexpected.example.com"
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+
+        if hook_phase == "requestheaders":
+            assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
+            assert flow.response is None
+            assert flow.metadata == original_metadata
+            assert flow.request.url == original_url
+            assert flow.request.headers.fields == original_headers
+            return
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+
+    @pytest.mark.parametrize("hook_phase", ["request", "requestheaders"])
+    async def test_missing_resolved_aws_sigv4_fails_closed_in_both_phases(
+        self,
+        headers,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        hook_phase: HookPhase,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host=STS_HOST,
+            method="POST",
+            request_headers=headers(
+                ("Host", STS_HOST),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+                ("X-Amz-Content-Sha256", "UNSIGNED-PAYLOAD"),
+                (
+                    "Authorization",
+                    aws_sigv4_authorization(signed_headers="host;x-amz-content-sha256;x-amz-date"),
+                ),
+            ),
+        )
+        flow.metadata.update(
+            {
+                metadata_keys.VM_RUN_ID: "test-run",
+                metadata_keys.ORIGINAL_URL: get_trusted_authority(flow).url,
+                "preexisting": "keep",
+            }
+        )
+        original_metadata = dict(flow.metadata)
+        original_url = flow.request.url
+        original_headers = flow.request.headers.fields
+        api_entry = _api_entry(
+            base="https://sts.amazonaws.com",
+            auth_config={
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                }
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry, rule="POST /", rel_path="/")
+        token_meta = _token_meta()
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await _run_firewall_auth_phase(hook_phase, flow, allow, vm_info)
+
+        if hook_phase == "requestheaders":
+            assert result is auth.FirewallHeaderPhaseAuthResult.FALLBACK
+            assert flow.response is None
+            assert flow.metadata == original_metadata
+            assert flow.request.url == original_url
+            assert flow.request.headers.fields == original_headers
+            return
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
 
     @pytest.mark.parametrize(
         "resolved_headers",
