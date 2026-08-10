@@ -885,11 +885,11 @@ describe("zero mcp command", () => {
   });
 
   it("rejects discovery above 2,000 tools", async () => {
-    const tools = Array.from({ length: 2_001 }, (_, index) => {
+    const tools = Array.from({ length: 2_001 }, (_, index): Tool => {
       return {
         name: `tool-${index}`,
-        inputSchema: { type: "object" as const },
-      } satisfies Tool;
+        inputSchema: { type: "object" },
+      };
     });
     stubConnectorList();
     stubMcpServer({ era: "modern", pages: [tools] });
