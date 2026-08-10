@@ -74,7 +74,7 @@ import {
 import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
-import { clearConnectorAccountState } from "./connector-account-state.service";
+import { reconcileConnectorAccountState } from "./connector-account-state.service";
 import {
   replaceConnectorConnection,
   type StoredConnectorConnectionRow as StoredConnectorRow,
@@ -1649,6 +1649,7 @@ async function loadExistingConnectorIdentity(
   signal: AbortSignal,
 ): Promise<{
   readonly authMethod: string;
+  readonly externalEmail: string | null;
   readonly externalId: string | null;
   readonly id: string;
   readonly storageVersion: number;
@@ -1656,6 +1657,7 @@ async function loadExistingConnectorIdentity(
   const [existingConnector] = await db
     .select({
       authMethod: connectors.authMethod,
+      externalEmail: connectors.externalEmail,
       externalId: connectors.externalId,
       id: connectors.id,
       storageVersion: connectors.storageVersion,
@@ -1736,11 +1738,18 @@ async function commitConnectorTokenConnection(
         )
       : null;
 
-  if (
-    existingConnector !== null &&
-    existingConnector.externalId !== args.userInfo.id
-  ) {
-    await clearConnectorAccountState(args.db, existingConnector.id, signal);
+  if (existingConnector !== null) {
+    await reconcileConnectorAccountState(
+      args.db,
+      {
+        connectorId: existingConnector.id,
+        previousPrincipalId: existingConnector.externalId,
+        nextPrincipalId: args.userInfo.id,
+        previousEmail: existingConnector.externalEmail,
+        nextEmail: args.userInfo.email,
+      },
+      signal,
+    );
   }
   const connectorRow = await replaceConnectorConnection(
     args.db,

@@ -5,36 +5,56 @@ import { googleWorkspaceEventSubscriptionStates } from "@vm0/db/schema/google-wo
 import { mailDrafts } from "@vm0/db/schema/mail-draft";
 import { eq } from "drizzle-orm";
 
+import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 
 /**
- * Removes state whose authority belongs to one external account while keeping
- * the logical connector row and durable product configuration intact.
+ * Reconciles account-bound state while keeping the logical connector row and
+ * durable product configuration intact.
  */
-export async function clearConnectorAccountState(
+export async function reconcileConnectorAccountState(
   db: Db,
-  connectorId: string,
+  args: {
+    readonly connectorId: string;
+    readonly previousPrincipalId: string | null;
+    readonly nextPrincipalId: string;
+    readonly previousEmail: string | null;
+    readonly nextEmail: string | null;
+  },
   signal: AbortSignal,
 ): Promise<void> {
+  if (args.previousPrincipalId === args.nextPrincipalId) {
+    if (args.nextEmail !== null && args.previousEmail !== args.nextEmail) {
+      await db
+        .update(gmailWatchStates)
+        .set({ emailAddress: args.nextEmail, updatedAt: nowDate() })
+        .where(eq(gmailWatchStates.connectorId, args.connectorId));
+      signal.throwIfAborted();
+    }
+    return;
+  }
+
   await db
     .delete(gmailWatchStates)
-    .where(eq(gmailWatchStates.connectorId, connectorId));
+    .where(eq(gmailWatchStates.connectorId, args.connectorId));
   signal.throwIfAborted();
   await db
     .delete(googleCalendarWatchStates)
-    .where(eq(googleCalendarWatchStates.connectorId, connectorId));
+    .where(eq(googleCalendarWatchStates.connectorId, args.connectorId));
   signal.throwIfAborted();
   await db
     .delete(googleFormsWatchStates)
-    .where(eq(googleFormsWatchStates.connectorId, connectorId));
+    .where(eq(googleFormsWatchStates.connectorId, args.connectorId));
   signal.throwIfAborted();
   await db
     .delete(googleWorkspaceEventSubscriptionStates)
-    .where(eq(googleWorkspaceEventSubscriptionStates.connectorId, connectorId));
+    .where(
+      eq(googleWorkspaceEventSubscriptionStates.connectorId, args.connectorId),
+    );
   signal.throwIfAborted();
   await db
     .update(mailDrafts)
     .set({ connectorId: null })
-    .where(eq(mailDrafts.connectorId, connectorId));
+    .where(eq(mailDrafts.connectorId, args.connectorId));
   signal.throwIfAborted();
 }

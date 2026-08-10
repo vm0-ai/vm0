@@ -668,9 +668,10 @@ describe("POST /api/webhooks/gmail", () => {
       id: initialConnection.id,
       externalEmail: renamedGmailEmail,
     });
+    expect(watch.calls).toBe(1);
     const sameAccountEvent = await postGmailWebhook(
       gmailPushBody({
-        emailAddress: gmailEmail,
+        emailAddress: renamedGmailEmail,
         historyId: 101,
         messageId: "pubsub-same-account",
       }),
