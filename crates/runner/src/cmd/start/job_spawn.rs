@@ -63,6 +63,7 @@ pub(super) struct JobProfile {
 /// Shared state passed to each spawned job task.
 #[derive(Clone)]
 pub(super) struct SpawnContext {
+    pub(super) runner_id: String,
     pub(super) provider: Arc<dyn JobProvider>,
     pub(super) exec_config: Arc<ExecutorConfig>,
     pub(super) idle_pool: SharedIdlePool,
@@ -241,6 +242,7 @@ impl ExecutorInvocation {
 struct FinalizationPhase {
     run_id: RunId,
     sandbox_id: SandboxId,
+    runner_id: String,
     completion_auth: CompletionAuth,
     active_lease: BudgetLease,
     reuse_result: SandboxReuseResult,
@@ -277,6 +279,7 @@ impl FinalizationPhase {
         let Self {
             run_id,
             sandbox_id,
+            runner_id,
             completion_auth,
             active_lease,
             reuse_result,
@@ -351,6 +354,8 @@ impl FinalizationPhase {
             FinalizeContext {
                 run_id,
                 sandbox_id,
+                runner_id,
+                reuse_result,
                 profile_name,
                 reuse_key,
                 cli_agent_session_id,
@@ -621,6 +626,7 @@ pub(super) async fn run_job(
         .unwrap_or_default();
 
     let provider = Arc::clone(&ctx.provider);
+    let runner_id = ctx.runner_id.clone();
     let exec_config = Arc::clone(&ctx.exec_config);
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
@@ -687,6 +693,7 @@ pub(super) async fn run_job(
     let finalization = FinalizationPhase {
         run_id,
         sandbox_id,
+        runner_id,
         completion_auth,
         active_lease,
         reuse_result,
@@ -958,6 +965,7 @@ mod tests {
             FinalizationPhase {
                 run_id,
                 sandbox_id,
+                runner_id: "runner-test".into(),
                 completion_auth: CompletionAuth::local(),
                 active_lease,
                 reuse_result: SandboxReuseResult::PoolMiss,

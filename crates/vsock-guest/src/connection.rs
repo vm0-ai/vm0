@@ -8,8 +8,9 @@ use std::time::{Duration, Instant};
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
 use vsock_proto::{
     self, BorrowedRawMessage, DecodeWithError, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY,
-    MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
+    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
+    MSG_WRITE_FILE, MSG_WRITE_FILES,
 };
 
 use crate::error::to_io_error;
@@ -21,6 +22,7 @@ use crate::exec_operation::{
 use crate::file_write_worker::{FileWriteKind, FileWriteSubmitError, FileWriteWorker};
 use crate::handlers::{MessageOutcome, handle_basic_message};
 use crate::log::log;
+use crate::memory_snapshot::read_memory_snapshot;
 use crate::process_containment::{ProcessContainmentMode, verify_exec_process_containment_empty};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
@@ -126,6 +128,7 @@ fn is_real_host_work_message(msg_type: u8) -> bool {
             | MSG_WRITE_FILES
             | MSG_QUIESCE_OPERATIONS
             | MSG_RESUME_OPERATIONS
+            | MSG_MEMORY_SNAPSHOT
     )
 }
 
@@ -230,6 +233,38 @@ fn handle_quiesce_operations(
     }
 }
 
+fn handle_memory_snapshot(
+    seq: u32,
+    payload: &[u8],
+    operation_state: &OperationState,
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    if !validate_empty_control_payload(
+        seq,
+        "memory_snapshot payload must be empty",
+        payload,
+        writer,
+    )? {
+        return Ok(());
+    }
+    if !operation_state.is_quiesced() {
+        return send_error_response(seq, "guest operations are not fully quiesced", writer);
+    }
+    match read_memory_snapshot() {
+        Ok(snapshot) => {
+            let payload = snapshot.encode_payload();
+            let response = vsock_proto::encode(MSG_MEMORY_SNAPSHOT_RESULT, seq, &payload)
+                .map_err(to_io_error)?;
+            writer.write_frame(&response)
+        }
+        Err(error) => send_error_response(
+            seq,
+            &format!("failed to read guest memory snapshot: {error}"),
+            writer,
+        ),
+    }
+}
+
 fn handle_resume_operations(
     seq: u32,
     payload: &[u8],
@@ -290,6 +325,7 @@ impl ConnectionDispatcher {
             MSG_WRITE_FILES => self.handle_file_write(msg, FileWriteKind::Files)?,
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
+            MSG_MEMORY_SNAPSHOT => self.handle_memory_snapshot(msg)?,
             _ => return self.handle_basic_message(msg),
         }
 
@@ -446,6 +482,10 @@ impl ConnectionDispatcher {
 
     fn handle_resume_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         handle_resume_operations(msg.seq, msg.payload, &self.operation_state, &self.writer)
+    }
+
+    fn handle_memory_snapshot(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        handle_memory_snapshot(msg.seq, msg.payload, &self.operation_state, &self.writer)
     }
 
     fn handle_basic_message(&self, msg: BorrowedRawMessage<'_>) -> io::Result<DispatchOutcome> {

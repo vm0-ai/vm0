@@ -3,8 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use vsock_proto::{
-    ExecTermination, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
-    MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    ExecTermination, MSG_EXEC_START, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS,
+    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MemorySnapshot,
 };
 
 use super::support::{
@@ -226,6 +227,174 @@ async fn quiesce_operations_sends_request_and_accepts_empty_ack() {
     await_mock_guest(guest_task).await;
 }
 
+fn memory_snapshot() -> MemorySnapshot {
+    MemorySnapshot {
+        mem_total_bytes: 1,
+        mem_free_bytes: 2,
+        mem_available_bytes: 3,
+        buffers_bytes: 4,
+        cached_bytes: 5,
+        anon_pages_bytes: 6,
+        mapped_bytes: 7,
+        dirty_bytes: 8,
+        writeback_bytes: 9,
+        shmem_bytes: 10,
+        slab_bytes: 11,
+        slab_reclaimable_bytes: 12,
+        slab_unreclaimable_bytes: 13,
+        unevictable_bytes: 14,
+        kernel_stack_bytes: 15,
+        page_tables_bytes: 16,
+        swap_total_bytes: 17,
+        swap_free_bytes: 18,
+    }
+}
+
+#[tokio::test]
+async fn memory_snapshot_sends_empty_request_and_decodes_fixed_response() {
+    let (host_stream, guest) = make_pair();
+    let expected = memory_snapshot();
+
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
+
+        let request = guest.expect_message(MSG_MEMORY_SNAPSHOT).await;
+        assert!(request.payload.is_empty());
+        guest
+            .send_response(
+                MSG_MEMORY_SNAPSHOT_RESULT,
+                request.seq,
+                &expected.encode_payload(),
+            )
+            .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    assert_eq!(
+        host.memory_snapshot(Duration::from_secs(2)).await.unwrap(),
+        expected
+    );
+    await_mock_guest(guest_task).await;
+}
+
+#[tokio::test]
+async fn memory_snapshot_surfaces_guest_error() {
+    let (host_stream, guest) = make_pair();
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
+
+        let request = guest.expect_message(MSG_MEMORY_SNAPSHOT).await;
+        guest
+            .send_error_response(request.seq, "guest operations are not fully quiesced")
+            .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let error = host
+        .memory_snapshot(Duration::from_secs(2))
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::Other);
+    assert_eq!(error.to_string(), "guest operations are not fully quiesced");
+    await_mock_guest(guest_task).await;
+}
+
+#[tokio::test]
+async fn memory_snapshot_rejects_wrong_response_type() {
+    let (host_stream, guest) = make_pair();
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
+
+        let request = guest.expect_message(MSG_MEMORY_SNAPSHOT).await;
+        guest
+            .send_empty_response(MSG_OPERATIONS_QUIESCED, request.seq)
+            .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let error = host
+        .memory_snapshot(Duration::from_secs(2))
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        error
+            .to_string()
+            .contains("unexpected lifecycle response type")
+    );
+    await_mock_guest(guest_task).await;
+}
+
+#[tokio::test]
+async fn memory_snapshot_rejects_truncated_and_trailing_responses() {
+    let payload = memory_snapshot().encode_payload();
+    for malformed in [payload[..143].to_vec(), [&payload[..], &[0]].concat()] {
+        let (host_stream, guest) = make_pair();
+        let guest_task = tokio::spawn(async move {
+            let mut guest = MockGuest::new(guest);
+            guest.complete_handshake().await;
+
+            let request = guest.expect_message(MSG_MEMORY_SNAPSHOT).await;
+            guest
+                .send_response(MSG_MEMORY_SNAPSHOT_RESULT, request.seq, &malformed)
+                .await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let error = host
+            .memory_snapshot(Duration::from_secs(2))
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("exactly 144 bytes"));
+        await_mock_guest(guest_task).await;
+    }
+}
+
+#[tokio::test]
+async fn memory_snapshot_timeout_removes_pending_and_ignores_late_response() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.memory_snapshot(Duration::from_millis(100)).await })
+    };
+
+    let first = guest.expect_message(MSG_MEMORY_SNAPSHOT).await;
+    let error = tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .expect("memory snapshot should respect its response timeout")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    assert!(is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
+
+    guest
+        .send_response(
+            MSG_MEMORY_SNAPSHOT_RESULT,
+            first.seq,
+            &memory_snapshot().encode_payload(),
+        )
+        .await;
+    let second_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.memory_snapshot(Duration::from_secs(2)).await })
+    };
+    let second = guest.expect_message(MSG_MEMORY_SNAPSHOT).await;
+    guest
+        .send_response(
+            MSG_MEMORY_SNAPSHOT_RESULT,
+            second.seq,
+            &memory_snapshot().encode_payload(),
+        )
+        .await;
+    assert_eq!(second_task.await.unwrap().unwrap(), memory_snapshot());
+}
+
 #[tokio::test]
 async fn resume_operations_sends_request_and_accepts_empty_ack() {
     let (host_stream, guest) = make_pair();
@@ -271,6 +440,21 @@ async fn lifecycle_request_bypasses_normal_operation_fence() {
         .await;
 
     quiesce_task.await.unwrap().unwrap();
+
+    let expected = memory_snapshot();
+    let snapshot_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.memory_snapshot(Duration::from_secs(2)).await })
+    };
+    let msg = guest.expect_message(MSG_MEMORY_SNAPSHOT).await;
+    guest
+        .send_response(
+            MSG_MEMORY_SNAPSHOT_RESULT,
+            msg.seq,
+            &expected.encode_payload(),
+        )
+        .await;
+    assert_eq!(snapshot_task.await.unwrap().unwrap(), expected);
 }
 
 #[tokio::test]

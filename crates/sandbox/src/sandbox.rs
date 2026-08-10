@@ -11,7 +11,7 @@ use crate::types::{
 };
 
 /// Eligibility result after a sandbox successfully reaches the parked state.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SandboxParkOutcome {
     /// The parked sandbox may be admitted to an idle pool for later reuse.
     Reusable,
@@ -32,19 +32,108 @@ pub struct SandboxFinalExecParkOutcome {
 }
 
 /// Stable reason why a validly parked sandbox cannot be reused.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SandboxParkNonReusableReason {
     /// The guest retained too much memory after the bounded park-time reclaim.
-    SevereMemoryRetention,
+    SevereMemoryRetention(Box<SevereMemoryRetentionDiagnostics>),
 }
 
 impl SandboxParkNonReusableReason {
     /// Stable low-cardinality value for lifecycle logs and cleanup context.
-    pub const fn as_str(self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::SevereMemoryRetention => "severe_memory_retention",
+            Self::SevereMemoryRetention(_) => "severe_memory_retention",
         }
     }
+}
+
+/// Aggregate guest memory counters captured after severe balloon retention.
+///
+/// Values are content-free byte counts from Linux `/proc/meminfo` at the
+/// quiesced lifecycle boundary immediately before the VM is paused.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GuestMemorySnapshot {
+    /// Total memory visible to the guest.
+    pub mem_total_bytes: u64,
+    /// Completely unused memory.
+    pub mem_free_bytes: u64,
+    /// Estimated memory available for starting new applications.
+    pub mem_available_bytes: u64,
+    /// Block-device buffer memory.
+    pub buffers_bytes: u64,
+    /// Filesystem page-cache memory.
+    pub cached_bytes: u64,
+    /// Anonymous userspace pages.
+    pub anon_pages_bytes: u64,
+    /// File-backed pages mapped into processes.
+    pub mapped_bytes: u64,
+    /// Dirty pages waiting to be written.
+    pub dirty_bytes: u64,
+    /// Pages actively being written back.
+    pub writeback_bytes: u64,
+    /// Shared-memory pages.
+    pub shmem_bytes: u64,
+    /// Total kernel slab memory.
+    pub slab_bytes: u64,
+    /// Reclaimable kernel slab memory.
+    pub slab_reclaimable_bytes: u64,
+    /// Unreclaimable kernel slab memory.
+    pub slab_unreclaimable_bytes: u64,
+    /// Memory that cannot be reclaimed or swapped.
+    pub unevictable_bytes: u64,
+    /// Kernel stack memory.
+    pub kernel_stack_bytes: u64,
+    /// Page-table memory.
+    pub page_tables_bytes: u64,
+    /// Total configured swap.
+    pub swap_total_bytes: u64,
+    /// Unused configured swap.
+    pub swap_free_bytes: u64,
+}
+
+/// Terminal evidence attached to a severe memory-retention park result.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SevereMemoryRetentionDiagnostics {
+    /// Balloon target requested by the provider, in MiB.
+    pub requested_target_mib: u32,
+    /// First target reported by Firecracker, in MiB.
+    pub first_observed_target_mib: Option<u32>,
+    /// Final target reported by Firecracker, in MiB.
+    pub observed_target_mib: Option<u32>,
+    /// Whether Firecracker reported the requested target at least once.
+    pub target_observed: bool,
+    /// First reported actual balloon size, in MiB.
+    pub first_actual_mib: Option<u32>,
+    /// Final reported actual balloon size, in MiB.
+    pub actual_mib: Option<u32>,
+    /// Maximum reported actual balloon size, in MiB.
+    pub max_actual_mib: Option<u32>,
+    /// Final difference between requested and actual size, in MiB.
+    pub deficit_mib: Option<u32>,
+    /// Change from first to final actual size, in MiB.
+    pub actual_delta_mib: Option<i64>,
+    /// Elapsed settle time in milliseconds.
+    pub elapsed_ms: u64,
+    /// Number of Firecracker statistics samples observed.
+    pub sample_count: u32,
+    /// Final guest free memory reported by Firecracker, in bytes.
+    pub reported_free_memory_bytes: Option<i64>,
+    /// Final guest available memory reported by Firecracker, in bytes.
+    pub reported_available_memory_bytes: Option<i64>,
+    /// Final guest total memory reported by Firecracker, in bytes.
+    pub reported_total_memory_bytes: Option<i64>,
+    /// Final cumulative guest swap-in reported by Firecracker, in bytes.
+    pub reported_swap_in_bytes: Option<i64>,
+    /// Final cumulative guest swap-out reported by Firecracker, in bytes.
+    pub reported_swap_out_bytes: Option<i64>,
+    /// Final cumulative major page-fault count reported by Firecracker.
+    pub reported_major_faults: Option<i64>,
+    /// Final cumulative minor page-fault count reported by Firecracker.
+    pub reported_minor_faults: Option<i64>,
+    /// Final disk-cache memory reported by Firecracker, in bytes.
+    pub reported_disk_caches_bytes: Option<i64>,
+    /// Terminal guest counters, absent when the diagnostic request failed.
+    pub guest_memory_snapshot: Option<GuestMemorySnapshot>,
 }
 
 /// Fixed low-cardinality stages on the sandbox start critical path.

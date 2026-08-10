@@ -13,7 +13,49 @@ use sandbox_mock::MockLifecycleGate;
 
 fn severe_memory_retention() -> sandbox::SandboxParkOutcome {
     sandbox::SandboxParkOutcome::NonReusable(
-        sandbox::SandboxParkNonReusableReason::SevereMemoryRetention,
+        sandbox::SandboxParkNonReusableReason::SevereMemoryRetention(Box::new(
+            sandbox::SevereMemoryRetentionDiagnostics {
+                requested_target_mib: 3584,
+                first_observed_target_mib: Some(3584),
+                observed_target_mib: Some(3584),
+                target_observed: true,
+                first_actual_mib: Some(2048),
+                actual_mib: Some(2448),
+                max_actual_mib: Some(2448),
+                deficit_mib: Some(1136),
+                actual_delta_mib: Some(400),
+                elapsed_ms: 5000,
+                sample_count: 9,
+                reported_free_memory_bytes: Some(8 * 1024 * 1024),
+                reported_available_memory_bytes: Some(8 * 1024 * 1024),
+                reported_total_memory_bytes: Some(4_i64 * 1024 * 1024 * 1024),
+                reported_swap_in_bytes: Some(11),
+                reported_swap_out_bytes: Some(12),
+                reported_major_faults: Some(13),
+                reported_minor_faults: Some(14),
+                reported_disk_caches_bytes: Some(15),
+                guest_memory_snapshot: Some(sandbox::GuestMemorySnapshot {
+                    mem_total_bytes: 1,
+                    mem_free_bytes: 2,
+                    mem_available_bytes: 3,
+                    buffers_bytes: 4,
+                    cached_bytes: 5,
+                    anon_pages_bytes: 6,
+                    mapped_bytes: 7,
+                    dirty_bytes: 8,
+                    writeback_bytes: 9,
+                    shmem_bytes: 10,
+                    slab_bytes: 11,
+                    slab_reclaimable_bytes: 12,
+                    slab_unreclaimable_bytes: 13,
+                    unevictable_bytes: 14,
+                    kernel_stack_bytes: 15,
+                    page_tables_bytes: 16,
+                    swap_total_bytes: 17,
+                    swap_free_bytes: 18,
+                }),
+            },
+        )),
     )
 }
 

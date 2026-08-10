@@ -6,8 +6,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::time::{self, Instant};
 use vsock_proto::{
-    MSG_ERROR, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS,
-    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, RawMessage,
+    MSG_ERROR, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK, MemorySnapshot, RawMessage,
 };
 
 use crate::operation_tracker::{
@@ -534,6 +535,26 @@ impl VsockHost {
             timeout,
         )
         .await
+    }
+
+    /// Read aggregate guest memory counters after operations are fully quiesced.
+    ///
+    /// This is a lifecycle request, so it remains available while a
+    /// [`NormalOperationFence`](crate::NormalOperationFence) is held. The
+    /// guest rejects it unless operation admission is fenced and no operations
+    /// remain pending.
+    pub async fn memory_snapshot(&self, timeout: Duration) -> io::Result<MemorySnapshot> {
+        let response = self.request(MSG_MEMORY_SNAPSHOT, &[], timeout).await?;
+        if response.msg_type == MSG_ERROR {
+            return Err(lifecycle_error_from_response(&response));
+        }
+        if response.msg_type != MSG_MEMORY_SNAPSHOT_RESULT {
+            return Err(protocol_invalid_data(format!(
+                "unexpected lifecycle response type: expected 0x{MSG_MEMORY_SNAPSHOT_RESULT:02X}, got 0x{:02X}",
+                response.msg_type,
+            )));
+        }
+        vsock_proto::decode_memory_snapshot(&response.payload).map_err(protocol_invalid_data)
     }
 
     /// Resume guest operations after a failed or aborted quiesce attempt.

@@ -1532,6 +1532,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let mut current_mode = startup_mode;
     let spawn_ctx = SpawnContext {
+        runner_id: runner.id.clone(),
         provider: Arc::clone(&provider_state.provider),
         exec_config: Arc::clone(&exec_config),
         idle_pool: Arc::clone(&shared.idle_pool),
