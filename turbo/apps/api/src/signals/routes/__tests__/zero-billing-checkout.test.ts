@@ -2233,6 +2233,10 @@ describe("usage pack allocation management", () => {
   });
 
   it("replaces an unconfirmed package change preview", async () => {
+    mockNow(new Date("2035-01-16T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
