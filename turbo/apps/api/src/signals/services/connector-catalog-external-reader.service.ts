@@ -6,6 +6,7 @@ import type {
   PublicConnectorCatalogAuthMethodSummary,
   PublicConnectorCatalogConnection,
   PublicConnectorCatalogConnectionStatus,
+  PublicConnectorCatalogDetail,
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogListResponse,
