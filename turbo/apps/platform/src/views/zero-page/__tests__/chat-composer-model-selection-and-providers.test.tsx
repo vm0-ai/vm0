@@ -338,12 +338,14 @@ describe("chat composer models", () => {
       targetSpeed: "Fast",
       notice: "Fast mode is temporarily enabled for this run",
       expectedServiceTier: "priority" as const,
+      expectedZapIcon: true,
     },
     {
       defaultServiceTier: "priority" as const,
       targetSpeed: "Standard",
       notice: "Fast mode is temporarily disabled for this run",
       expectedServiceTier: null,
+      expectedZapIcon: false,
     },
   ])(
     "offers to make a temporary $targetSpeed run speed the default",
@@ -352,6 +354,7 @@ describe("chat composer models", () => {
       targetSpeed,
       notice,
       expectedServiceTier,
+      expectedZapIcon,
     }) => {
       const user = userEvent.setup({ delay: null });
       const codexProvider = buildProvider({
@@ -406,8 +409,19 @@ describe("chat composer models", () => {
       await expectComposerModel("GPT 5.6 Sol");
       click(await findComposerModel("GPT 5.6 Sol"));
       const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-      click(buttonContainingText(targetSpeed, runSpeed));
+      const runSpeedButton = buttonContainingText(targetSpeed, runSpeed);
+      expect(runSpeedButton.querySelector("svg.lucide-zap") !== null).toBe(
+        expectedZapIcon,
+      );
+      click(runSpeedButton);
       await user.keyboard("{Escape}");
+
+      const modelTrigger = await findComposerModel("GPT 5.6 Sol");
+      await waitFor(() => {
+        expect(modelTrigger.querySelector("svg.lucide-zap") !== null).toBe(
+          expectedZapIcon,
+        );
+      });
 
       await expect(screen.findByText(notice)).resolves.toBeInTheDocument();
       await user.click(buttonContainingText("Set as default", document.body));
