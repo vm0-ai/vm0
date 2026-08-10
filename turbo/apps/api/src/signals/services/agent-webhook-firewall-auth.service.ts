@@ -862,6 +862,13 @@ async function getSecretValue(args: {
     });
     return values.get(args.name) ?? null;
   }
+  // Rollout fallback: a run admitted before `PersonalModelProviderAccounts` was
+  // enabled for its user carries no exact-account `sourceId`, so it keeps
+  // resolving through the org/user `secrets` lookup below. Surface: existing
+  // runner and sandbox instances, up to 2 hours (`JOB_TIMEOUT` in
+  // `crates/runner/src/executor/mod.rs`). Remove the `sourceId`-less
+  // model-provider path once the switch is GA and every pre-feature run has
+  // drained.
   if (args.type === "model-provider" && args.sourceId) {
     const [row] = await args.db
       .select({ encryptedValue: modelProviderAccountSecrets.encryptedValue })

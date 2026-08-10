@@ -349,7 +349,15 @@ interface ClaudeCodeTokenEndpointRecorder {
   readonly usage: Headers[];
 }
 
-export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
+export function mockClaudeCodeTokenEndpoint(
+  options: {
+    readonly accountEmail?: string;
+    readonly organizationName?: string;
+  } = {},
+): ClaudeCodeTokenEndpointRecorder {
+  const accountEmail = options.accountEmail ?? "claude.user@example.com";
+  const organizationName =
+    options.organizationName ?? "Claude User's Organization";
   const recorded: ClaudeCodeTokenEndpointRecorder = {
     token: [],
     profile: [],
@@ -372,12 +380,12 @@ export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
       recorded.profile.push(request.headers);
       return HttpResponse.json({
         account: {
-          email: "claude.user@example.com",
+          email: accountEmail,
           has_claude_max: false,
           has_claude_pro: true,
         },
         organization: {
-          name: "Claude User's Organization",
+          name: organizationName,
           organization_type: "claude_pro",
           rate_limit_tier: "default_claude_ai",
         },

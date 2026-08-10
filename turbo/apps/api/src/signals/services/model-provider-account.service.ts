@@ -284,7 +284,15 @@ async function hydrateSeededCodexIdentity(args: {
     .where(eq(modelProviderAccounts.id, args.account.id));
 }
 
-/** Lazily expands the legacy singleton into the first concrete account. */
+/**
+ * Rollout fallback. Lazily expands the legacy singleton personal provider into
+ * the first concrete account on read, so a user who already connected a
+ * subscription before `PersonalModelProviderAccounts` sees it as an account.
+ * Surface: DB/API, observed maximum exposure ~102 minutes for the deploy skew,
+ * plus a read-time backfill tail over rows written before this PR. Remove once
+ * every pre-feature personal provider has a `model_provider_accounts` row and
+ * the seeding query returns zero candidates in production.
+ */
 export async function ensurePersonalModelProviderAccount(args: {
   readonly db: Db;
   readonly provider: ProviderRow;
@@ -484,6 +492,15 @@ async function upsertLegacySecret(
   return row.id;
 }
 
+/**
+ * Rollout fallback. Keeps the pre-account `secrets` row and `model_providers`
+ * row in sync with the active account so the credential path that predates
+ * `PersonalModelProviderAccounts` still resolves. Surface: DB/API, observed
+ * maximum exposure ~102 minutes, and additionally the whole time the switch can
+ * still be turned back off for a user. Remove together with the legacy
+ * single-secret read path once the switch is GA and every personal provider row
+ * has been seeded into `model_provider_accounts`.
+ */
 async function mirrorAccountToLegacy(
   db: Db,
   args: {

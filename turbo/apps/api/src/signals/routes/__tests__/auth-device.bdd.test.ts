@@ -721,6 +721,109 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     );
   });
 
+  it("adds, switches, and deduplicates concrete Claude Code accounts by email and workspace", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    const completeClaudeAccount = async (mutation: {
+      readonly mode: "add" | "reconnect";
+      readonly modelProviderId?: string;
+    }) => {
+      const started = await authDevice.requestClaudeCodeStart(
+        member,
+        "personal",
+        [200],
+        mutation,
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected Claude Code device auth to start");
+      }
+      const state = new URL(started.body.browserUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error("Missing state in Claude Code browser URL");
+      }
+      const completed = await authDevice.requestClaudeCodeComplete(
+        member,
+        started.body.sessionToken,
+        `claude_code_test#${state}`,
+        [200],
+      );
+      if (completed.status !== 200) {
+        throw new Error("Expected Claude Code device auth to complete");
+      }
+      return completed.body;
+    };
+
+    mockClaudeCodeTokenEndpoint({
+      accountEmail: "first@example.com",
+      organizationName: "First Workspace",
+    });
+    const first = await completeClaudeAccount({ mode: "add" });
+    expect(first.provider.isActive).toBeTruthy();
+    const firstAccountId = first.provider.id;
+
+    // A different email is a different identity, so it is added rather than
+    // deduplicated onto the first account.
+    mockClaudeCodeTokenEndpoint({
+      accountEmail: "second@example.com",
+      organizationName: "Second Workspace",
+    });
+    const second = await completeClaudeAccount({ mode: "add" });
+    expect(second.provider.isActive).toBeFalsy();
+    const secondAccountId = second.provider.id;
+    expect(secondAccountId).not.toBe(firstAccountId);
+
+    await support.activatePersonalModelProviderAccount(member, secondAccountId);
+
+    const bothConnected = await support.listPersonalModelProviders(
+      member,
+      [200],
+    );
+    if (!("modelProviders" in bothConnected.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(bothConnected.body.modelProviders).toHaveLength(2);
+    expect(bothConnected.body.modelProviders[0]).toMatchObject({
+      id: secondAccountId,
+      isActive: true,
+      accountEmail: "second@example.com",
+      workspaceName: "Second Workspace",
+    });
+
+    // Re-adding the same email and workspace matches the existing identity and
+    // updates it in place instead of creating a third account.
+    mockClaudeCodeTokenEndpoint({
+      accountEmail: "FIRST@example.com",
+      organizationName: "First Workspace",
+    });
+    const readded = await completeClaudeAccount({ mode: "add" });
+    expect(readded.provider.id).toBe(firstAccountId);
+    expect(readded.created).toBeFalsy();
+
+    const afterDedup = await support.listPersonalModelProviders(member, [200]);
+    if (!("modelProviders" in afterDedup.body)) {
+      throw new Error("Expected personal model provider list response");
+    }
+    expect(afterDedup.body.modelProviders).toHaveLength(2);
+    expect(
+      afterDedup.body.modelProviders.find((provider) => {
+        return provider.id === firstAccountId;
+      }),
+    ).toMatchObject({
+      accountEmail: "first@example.com",
+      workspaceName: "First Workspace",
+      isActive: false,
+    });
+
+    await support.deletePersonalModelProvider(
+      member,
+      "claude-code-oauth-token",
+      [204],
+    );
+  });
+
   it("completes org-scope Claude Code device auth with a pasted code fragment", async () => {
     const calls = mockClaudeCodeTokenEndpoint();
     const admin = bdd.user();
