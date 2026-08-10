@@ -17,9 +17,9 @@ import {
 import { nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
-  claimCustomConnectorOAuthState,
+  claimConnectorOAuthState,
   readCustomConnectorOAuthState,
-  type StoredOAuthState,
+  type StoredCustomConnectorOAuthState,
 } from "../services/connector-oauth-state.service";
 import {
   customConnectorOAuthStateMatchesDefinition,
@@ -173,7 +173,7 @@ function callbackRedirectResponse(
 }
 
 function validCustomFeishuState(
-  storedState: StoredOAuthState,
+  storedState: StoredCustomConnectorOAuthState,
 ): FeishuCustomConnectorOAuthContext | null {
   const context = parseValidCustomConnectorOAuthState(storedState);
   if (
@@ -727,7 +727,7 @@ const completeClaimedCustomFeishuOAuth$ = command(
     args: {
       readonly db: Db;
       readonly query: FeishuOAuthCallbackQuery & { readonly state: string };
-      readonly state: StoredOAuthState;
+      readonly state: StoredCustomConnectorOAuthState;
       readonly context: FeishuCustomConnectorOAuthContext;
     },
     signal: AbortSignal,
@@ -880,9 +880,9 @@ const completeCustomFeishuOAuth$ = command(
       return redirectResponse(appCallbackUrl(query));
     }
 
-    const claimed = await claimCustomConnectorOAuthState(
+    const claimed = await claimConnectorOAuthState(
       db,
-      { state: query.state },
+      { state: query.state, target: { kind: "custom" } },
       signal,
     );
     signal.throwIfAborted();

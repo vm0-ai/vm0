@@ -9,7 +9,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   dispatchStrapiWebhook$,
   STRAPI_WEBHOOK_BODY_LIMIT_BYTES,
-} from "../services/strapi-workflow-event.service";
+} from "../services/strapi-automation-event.service";
 
 function errorResponse(message: string, status: 400 | 401 | 403 | 404 | 413) {
   const code = {

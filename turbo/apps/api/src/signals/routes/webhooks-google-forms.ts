@@ -4,7 +4,7 @@ import { webhookGoogleFormsContract } from "@vm0/api-contracts/contracts/webhook
 import { now } from "../../lib/time";
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
-import { dispatchGoogleFormsPubSubPush$ } from "../services/google-forms-workflow-event.service";
+import { dispatchGoogleFormsPubSubPush$ } from "../services/google-forms-automation-event.service";
 
 function jsonError(message: string, status: 400 | 401 | 429 | 503): Response {
   return Response.json({ error: message }, { status });

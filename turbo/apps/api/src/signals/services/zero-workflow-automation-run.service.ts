@@ -78,7 +78,7 @@ export const runWorkflowAutomationNow$ = command(
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         ...(admission.kind === "inserted"
           ? {
-              workflowEventLaunch: {
+              automationEventLaunch: {
                 eventId: admission.eventId,
                 apiStartTime: args.apiStartTime,
                 timing,

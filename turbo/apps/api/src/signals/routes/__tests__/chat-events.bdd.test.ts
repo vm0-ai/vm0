@@ -3243,6 +3243,29 @@ describe("CHAT-02: model-first provider policies", () => {
     expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
       "priority",
     );
+    const fastMessages = await waitForThreadMessages(
+      actor,
+      fast.threadId,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.runId === fast.runId;
+        });
+      },
+    );
+    const fastUserMessage = userMessages(fastMessages.events).find(
+      (event): event is PromptMessage => {
+        return event.eventType === "input.prompt" && event.runId === fast.runId;
+      },
+    )?.userMessage;
+    expect(
+      fastUserMessage?.parts.find((part) => {
+        return part.type === "model";
+      }),
+    ).toStrictEqual({
+      type: "model",
+      selectedModel: "gpt-5.6-sol",
+      serviceTier: "priority",
+    });
     const fastClaim = await claimChatRun(runnerGroup, fast.runId);
     const environment = claimEnvironment(fastClaim.claim);
     expect(fastClaim.claim.cliAgentType).toBe("codex");
@@ -3325,6 +3348,30 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(
       (await readThreadProjection(actor, standard.threadId)).serviceTier,
     ).toBeNull();
+    const standardMessages = await waitForThreadMessages(
+      actor,
+      standard.threadId,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.runId === standard.runId;
+        });
+      },
+    );
+    const standardUserMessage = userMessages(standardMessages.events).find(
+      (event): event is PromptMessage => {
+        return (
+          event.eventType === "input.prompt" && event.runId === standard.runId
+        );
+      },
+    )?.userMessage;
+    expect(
+      standardUserMessage?.parts.find((part) => {
+        return part.type === "model";
+      }),
+    ).toStrictEqual({
+      type: "model",
+      selectedModel: "gpt-5.5",
+    });
     const { claim: standardClaim } = await claimChatRun(
       runnerGroup,
       standard.runId,
