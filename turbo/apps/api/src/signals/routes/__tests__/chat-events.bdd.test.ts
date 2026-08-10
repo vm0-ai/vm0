@@ -3178,6 +3178,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected entitled chat actor to have an org");
     }
     const actorWithOrg = { ...actor, orgId };
+    await seedVm0ManagedModelKey("gpt-5.6-sol");
 
     await api.updateOrgModelPolicies(actor, [
       {

@@ -512,6 +512,13 @@
       "when": 1786356506954,
       "tag": "0880_regular_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 881,
+      "version": "7",
+      "when": 1786364327097,
+      "tag": "0881_add_gpt_5_6_fast_pricing",
+      "breakpoints": true
     }
   ]
 }
