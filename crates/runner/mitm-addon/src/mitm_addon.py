@@ -81,6 +81,7 @@ from auth import (
     mark_aws_sigv4_request_length_required,
     mark_aws_sigv4_request_too_large,
     prepare_firewall_metadata,
+    release_aws_sigv4_request_inspection,
     try_apply_stream_safe_firewall_auth_for_requestheaders,
 )
 from body_limits import STREAM_BUFFER_LIMIT
@@ -935,6 +936,7 @@ def _admit_buffered_aws_sigv4_request(
                 firewall_base=firewall_base,
                 reason=body_check.reason,
             )
+        release_aws_sigv4_request_inspection(flow)
         request_classification.pop_cached_classification(flow)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         flow.kill()
@@ -952,6 +954,7 @@ def _admit_buffered_aws_sigv4_request(
             proxy_log_path=proxy_log_path,
             firewall_base=firewall_base,
         )
+        release_aws_sigv4_request_inspection(flow)
         request_classification.pop_cached_classification(flow)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         flow.kill()
@@ -1286,12 +1289,14 @@ async def request(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
+        release_aws_sigv4_request_inspection(flow)
         request_classification.pop_cached_classification(flow)
         return
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
+        release_aws_sigv4_request_inspection(flow)
         request_classification.pop_cached_classification(flow)
         return
 
@@ -1456,6 +1461,7 @@ async def request(flow: http.HTTPFlow) -> None:
         terminal_usage.release_tracked_flow(flow)
         raise
     finally:
+        release_aws_sigv4_request_inspection(flow)
         request_classification.pop_cached_classification(flow)
 
 
@@ -1615,6 +1621,7 @@ def _release_terminal_flow_state(
     request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
+    release_aws_sigv4_request_inspection(flow)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
     connector_diagnostics.release_flow_state(flow)

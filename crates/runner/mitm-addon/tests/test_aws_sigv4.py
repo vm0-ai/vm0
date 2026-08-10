@@ -10,6 +10,7 @@ from aws_sigv4 import (
     AwsSigV4Credentials,
     AwsSigV4SigningError,
     hash_request_body,
+    inspect_request,
     request_requires_body_for_signing,
     sign_request,
 )
@@ -312,6 +313,74 @@ def test_sign_request_splits_input_url_once(
         )
 
     urlsplit.assert_called_once_with(url)
+
+
+def test_sign_request_reuses_matching_inspection_without_changing_output() -> None:
+    url = f"https://{STS_HOST}/?Action=GetCallerIdentity"
+    headers = _header_auth_headers()
+    inspection = inspect_request(url=url, headers=headers)
+
+    prepared_result = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=b"request-body",
+        credentials=_credentials(),
+        inspection=inspection,
+    )
+    ordinary_result = sign_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        body=b"request-body",
+        credentials=_credentials(),
+    )
+
+    assert prepared_result == ordinary_result
+
+
+@pytest.mark.parametrize(
+    ("changed_url", "changed_headers"),
+    [
+        pytest.param(
+            f"https://{STS_HOST}/?Action=GetCallerIdentity&Version=2011-06-15",
+            _header_auth_headers(),
+            id="query",
+        ),
+        pytest.param(
+            f"https://{STS_HOST}/?Action=GetCallerIdentity",
+            _header_auth_headers(
+                authorization=aws_sigv4_authorization(service="iam"),
+            ),
+            id="authorization",
+        ),
+    ],
+)
+def test_sign_request_reinspects_changed_representation(
+    changed_url: str,
+    changed_headers: list[tuple[str, str]],
+) -> None:
+    original_url = f"https://{STS_HOST}/?Action=GetCallerIdentity"
+    original_headers = _header_auth_headers()
+    inspection = inspect_request(url=original_url, headers=original_headers)
+
+    prepared_result = sign_request(
+        method="POST",
+        url=changed_url,
+        headers=changed_headers,
+        body=b"request-body",
+        credentials=_credentials(),
+        inspection=inspection,
+    )
+    ordinary_result = sign_request(
+        method="POST",
+        url=changed_url,
+        headers=changed_headers,
+        body=b"request-body",
+        credentials=_credentials(),
+    )
+
+    assert prepared_result == ordinary_result
 
 
 def test_presigned_query_preserves_ordinary_pairs() -> None:
