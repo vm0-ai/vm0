@@ -4,8 +4,12 @@ use std::time::Duration;
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use futures_util::FutureExt;
-use guest_contracts::session_history_identity::SessionHistorySidecarExportMetadata;
-use sandbox::{CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use guest_contracts::session_history_identity::{
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
+    SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
+};
+use sandbox::{CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
 use shell_quote::quote_shell_arg;
 use tokio::fs;
 use tracing::warn;
@@ -272,16 +276,52 @@ async fn export_session_history_sidecar(
         }
     };
     if !helper_exec_succeeded(&result) {
-        warn!(
-            run_id = %promotion.run_id(),
-            sandbox_id = %promotion.sandbox_id(),
-            profile_name = promotion.profile_name(),
-            reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
-            reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
-            reason,
-            error = %format_helper_exec_failure("session history sidecar export", &result),
-            "workspace image cache session history sidecar export failed"
-        );
+        let known_failure = match result.termination {
+            ExecTermination::Exited {
+                exit_code: SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+            } => Some((
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+                "source-history",
+                SessionHistorySidecarIoErrorClass::Unknown,
+            )),
+            ExecTermination::Exited {
+                exit_code: SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE,
+            } => Some((
+                SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE,
+                "output-write",
+                serde_json::from_slice::<SessionHistorySidecarExportFailure>(&result.stdout)
+                    .map_or(SessionHistorySidecarIoErrorClass::Unknown, |failure| {
+                        failure.io_error_class
+                    }),
+            )),
+            _ => None,
+        };
+        if let Some((helper_exit_code, failure_stage, io_error_class)) = known_failure {
+            warn!(
+                run_id = %promotion.run_id(),
+                sandbox_id = %promotion.sandbox_id(),
+                profile_name = promotion.profile_name(),
+                reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
+                reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
+                reason,
+                helper_exit_code,
+                failure_stage,
+                io_error_class = io_error_class.as_str(),
+                error = %format!("session history sidecar export failed (exit code {helper_exit_code})"),
+                "workspace image cache session history sidecar export failed"
+            );
+        } else {
+            warn!(
+                run_id = %promotion.run_id(),
+                sandbox_id = %promotion.sandbox_id(),
+                profile_name = promotion.profile_name(),
+                reuse_key_fingerprint = %crate::paths::short_digest(promotion.reuse_key()),
+                reuse_key_kind = crate::types::reuse_key_kind(promotion.reuse_key()),
+                reason,
+                error = %format_helper_exec_failure("session history sidecar export", &result),
+                "workspace image cache session history sidecar export failed"
+            );
+        }
         cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
             .await;
         return None;

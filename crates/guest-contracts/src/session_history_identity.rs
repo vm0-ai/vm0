@@ -33,6 +33,11 @@ pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ: i32 = 7;
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH: i32 = 8;
 /// Guest helper exit code for local history exceeding the guest verification budget.
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE: i32 = 9;
+/// Guest helper exit code for sidecar output create or write failure.
+///
+/// Exit code 10 previously represented sidecar export unavailability and
+/// remains reserved for that historical meaning.
+pub const SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE: i32 = 11;
 /// Framework that owns a final session-history file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -69,6 +74,43 @@ pub struct SessionHistorySidecarExportMetadata {
     pub representation: SessionHistorySidecarRepresentation,
     /// Exact byte length of the exported sidecar file.
     pub encoded_size: u64,
+}
+
+/// Safe low-cardinality I/O class emitted for a sidecar output failure.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionHistorySidecarIoErrorClass {
+    /// A required filesystem object was not found.
+    NotFound,
+    /// Filesystem permissions rejected the operation.
+    PermissionDenied,
+    /// The filesystem had no storage space available.
+    StorageFull,
+    /// The filesystem quota was exhausted.
+    QuotaExceeded,
+    /// The I/O failure has no more specific safe class.
+    Unknown,
+}
+
+impl SessionHistorySidecarIoErrorClass {
+    /// Return the stable telemetry label for this class.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotFound => "not-found",
+            Self::PermissionDenied => "permission-denied",
+            Self::StorageFull => "storage-full",
+            Self::QuotaExceeded => "quota-exceeded",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Safe metadata printed when sidecar output creation or writing fails.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionHistorySidecarExportFailure {
+    /// Low-cardinality class of the output I/O failure.
+    pub io_error_class: SessionHistorySidecarIoErrorClass,
 }
 
 /// Run-private final session-history identity metadata.
@@ -382,9 +424,25 @@ mod tests {
                 SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
                 SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
                 SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+                SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE,
             ],
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
         );
+    }
+
+    #[test]
+    fn sidecar_export_failure_round_trips_json() {
+        let failure = SessionHistorySidecarExportFailure {
+            io_error_class: SessionHistorySidecarIoErrorClass::StorageFull,
+        };
+
+        let json = serde_json::to_vec(&failure).unwrap();
+
+        assert_eq!(
+            serde_json::from_slice::<SessionHistorySidecarExportFailure>(&json).unwrap(),
+            failure
+        );
+        assert_eq!(failure.io_error_class.as_str(), "storage-full");
     }
 
     fn valid_identity() -> FinalSessionHistoryIdentity {
