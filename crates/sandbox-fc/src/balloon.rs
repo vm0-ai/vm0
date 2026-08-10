@@ -481,6 +481,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tick_advances_pending_inflate_to_more_aggressive_candidate() {
+        // The 700 MiB target is ahead of actual but behind the 756 MiB
+        // actual-relative candidate, so the controller should advance it.
+        let stats = r#"{"target_mib":700,"actual_mib":500,"target_pages":179200,"actual_pages":128000,"free_memory":1073741824,"available_memory":1073741824}"#;
+        let patch = run_tick_with_mock(stats, 1536)
+            .await
+            .expect("expected PATCH advancing pending inflation");
+        assert_eq!(patch_amount_mib(&patch), 756);
+    }
+
+    #[tokio::test]
     async fn tick_reverses_pending_deflate_on_high_free_memory() {
         // A target below actual means deflation is in flight. A new inflate
         // signal should cross the actual size immediately: 500 + 256 = 756.
@@ -530,6 +541,17 @@ mod tests {
             patch.is_none(),
             "should preserve the pending zero target from unpark"
         );
+    }
+
+    #[tokio::test]
+    async fn tick_advances_pending_deflate_to_more_aggressive_candidate() {
+        // The 400 MiB target is below actual but above the 372 MiB
+        // actual-relative candidate, so the controller should advance it.
+        let stats = r#"{"target_mib":400,"actual_mib":500,"target_pages":102400,"actual_pages":128000,"free_memory":52428800,"available_memory":134217728}"#;
+        let patch = run_tick_with_mock(stats, 1536)
+            .await
+            .expect("expected PATCH advancing pending deflation");
+        assert_eq!(patch_amount_mib(&patch), 372);
     }
 
     #[tokio::test]
