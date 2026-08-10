@@ -7,8 +7,6 @@ const TIKTOK_ADS_AUTHORIZATION_URL =
   "https://business-api.tiktok.com/portal/auth";
 const TIKTOK_ADS_TOKEN_URL =
   "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/";
-const TIKTOK_ADS_REFRESH_URL =
-  "https://business-api.tiktok.com/open_api/v1.3/oauth2/refresh_token/";
 
 interface TikTokAdsUserInfo {
   id: string;
@@ -18,16 +16,8 @@ interface TikTokAdsUserInfo {
 
 interface TikTokAdsTokenResult {
   accessToken: string;
-  refreshToken: string;
-  expiresIn?: number;
   scopes: string[];
   userInfo: TikTokAdsUserInfo;
-}
-
-interface TikTokAdsRefreshResult {
-  accessToken: string;
-  refreshToken?: string;
-  expiresIn?: number;
 }
 
 const tiktokAdsTokenResponseSchema = z
@@ -38,8 +28,6 @@ const tiktokAdsTokenResponseSchema = z
     data: z
       .object({
         access_token: z.string().optional(),
-        refresh_token: z.string().optional(),
-        expires_in: z.number().optional(),
         advertiser_ids: z.array(z.union([z.string(), z.number()])).optional(),
       })
       .passthrough()
@@ -121,53 +109,10 @@ export async function exchangeTikTokAdsCode(
   if (!data.data?.access_token) {
     throw new Error("No access token in TikTok Ads response");
   }
-  if (!data.data.refresh_token) {
-    throw new Error("No refresh token in TikTok Ads response");
-  }
 
   return {
     accessToken: data.data.access_token,
-    refreshToken: data.data.refresh_token,
-    expiresIn: data.data.expires_in,
     scopes: authCodeGrant.scopes,
     userInfo: userInfoFromAdvertiserIds(data.data.advertiser_ids),
-  };
-}
-
-export async function refreshTikTokAdsToken(
-  clientId: string,
-  clientSecret: string,
-  refreshToken: string,
-  signal: AbortSignal,
-): Promise<TikTokAdsRefreshResult> {
-  const response = await fetch(TIKTOK_ADS_REFRESH_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      app_id: clientId,
-      secret: clientSecret,
-      refresh_token: refreshToken,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    await throwOAuthError("TikTok Ads", "refresh", response);
-  }
-
-  const data = tiktokAdsTokenResponseSchema.parse(await response.json());
-  throwTikTokAdsApiError(data, "token refresh");
-
-  if (!data.data?.access_token) {
-    throw new Error("No access token in TikTok Ads refresh response");
-  }
-
-  return {
-    accessToken: data.data.access_token,
-    refreshToken: data.data.refresh_token,
-    expiresIn: data.data.expires_in,
   };
 }

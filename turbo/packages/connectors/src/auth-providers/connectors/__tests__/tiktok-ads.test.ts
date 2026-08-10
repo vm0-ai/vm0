@@ -7,7 +7,6 @@ import {
 import {
   buildTikTokAdsAuthorizationUrl,
   exchangeTikTokAdsCode,
-  refreshTikTokAdsToken,
 } from "../tiktok-ads/oauth";
 import { tiktokAdsProvider } from "../tiktok-ads/provider";
 import { server } from "../../__tests__/test-server";
@@ -15,8 +14,6 @@ import { authCodeGrantFixture } from "./auth-code-grant-fixture";
 
 const TOKEN_URL =
   "https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/";
-const REFRESH_URL =
-  "https://business-api.tiktok.com/open_api/v1.3/oauth2/refresh_token/";
 const testAuthClient = {
   clientRegistration: "static",
   clientType: "confidential",
@@ -48,7 +45,7 @@ describe("connector/providers/tiktok-ads", () => {
   });
 
   describe("exchangeTikTokAdsCode", () => {
-    it("exchanges auth_code for access and refresh tokens", async () => {
+    it("exchanges auth_code for a long-lived access token", async () => {
       const handler = http.post(TOKEN_URL, async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
           app_id: "client-id",
@@ -58,9 +55,8 @@ describe("connector/providers/tiktok-ads", () => {
         return HttpResponse.json({
           data: {
             access_token: "access-token",
-            refresh_token: "refresh-token",
-            expires_in: 86_400,
             advertiser_ids: ["1234567890"],
+            scope: [1, 2, 3],
           },
           request_id: "request-id",
         });
@@ -75,8 +71,6 @@ describe("connector/providers/tiktok-ads", () => {
       );
 
       expect(result.accessToken).toBe("access-token");
-      expect(result.refreshToken).toBe("refresh-token");
-      expect(result.expiresIn).toBe(86_400);
       expect(result.userInfo.id).toBe("1234567890");
       expect(result.userInfo.username).toBe("1234567890");
     });
@@ -103,7 +97,7 @@ describe("connector/providers/tiktok-ads", () => {
 
     it("throws when no access token is returned", async () => {
       const handler = http.post(TOKEN_URL, () => {
-        return HttpResponse.json({ data: { refresh_token: "refresh-token" } });
+        return HttpResponse.json({ data: { advertiser_ids: ["1234567890"] } });
       });
       server.use(handler);
 
@@ -115,39 +109,6 @@ describe("connector/providers/tiktok-ads", () => {
           "test-code",
         ),
       ).rejects.toThrow("No access token in TikTok Ads response");
-    });
-  });
-
-  describe("refreshTikTokAdsToken", () => {
-    it("refreshes an access token with the stored refresh token", async () => {
-      const handler = http.post(REFRESH_URL, async ({ request }) => {
-        await expect(request.json()).resolves.toStrictEqual({
-          app_id: "client-id",
-          secret: "client-secret",
-          refresh_token: "current-refresh-token",
-        });
-        return HttpResponse.json({
-          data: {
-            access_token: "refreshed-access-token",
-            refresh_token: "refreshed-refresh-token",
-            expires_in: 86_400,
-          },
-        });
-      });
-      server.use(handler);
-
-      await expect(
-        refreshTikTokAdsToken(
-          "client-id",
-          "client-secret",
-          "current-refresh-token",
-          new AbortController().signal,
-        ),
-      ).resolves.toStrictEqual({
-        accessToken: "refreshed-access-token",
-        refreshToken: "refreshed-refresh-token",
-        expiresIn: 86_400,
-      });
     });
   });
 
@@ -164,33 +125,34 @@ describe("connector/providers/tiktok-ads", () => {
       expect(url).toContain("business-api.tiktok.com/portal/auth");
     });
 
-    it("keeps the existing refresh token when refresh does not rotate it", async () => {
-      const handler = http.post(REFRESH_URL, () => {
+    it("stores only the long-lived access token", async () => {
+      const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({
           data: {
-            access_token: "provider-refreshed-token",
-            expires_in: 86_400,
+            access_token: "provider-access-token",
+            advertiser_ids: ["1234567890"],
           },
         });
       });
       server.use(handler);
 
       await expect(
-        tiktokAdsProvider.access.refresh(
-          {
-            authClient: testAuthClient,
-            inputs: {
-              refreshToken: "current-refresh-token",
-            },
-          },
-          new AbortController().signal,
-        ),
+        tiktokAdsProvider.grant.exchangeCode({
+          authCodeGrant: authCodeGrant(),
+          authClient: testAuthClient,
+          code: "test-code",
+          redirectUri: "https://example.com/callback",
+        }),
       ).resolves.toStrictEqual({
         outputs: {
-          accessToken: "provider-refreshed-token",
-          refreshToken: "current-refresh-token",
+          accessToken: "provider-access-token",
         },
-        expiresIn: 86_400,
+        scopes: [],
+        userInfo: {
+          id: "1234567890",
+          username: "1234567890",
+          email: null,
+        },
       });
     });
   });

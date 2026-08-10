@@ -1081,7 +1081,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeProviderEntry("vercel", "oauth", vercelProvider),
   authCodeProviderEntry("webflow", "oauth", webflowProvider),
   authCodeRefreshProviderEntry("meta-ads", "oauth", metaAdsProvider),
-  authCodeRefreshProviderEntry("tiktok-ads", "oauth", tiktokAdsProvider),
+  authCodeProviderEntry("tiktok-ads", "oauth", tiktokAdsProvider),
   authCodeRefreshProviderEntry("x", "oauth", xProvider),
   authCodeRefreshProviderEntry("xero", "oauth", xeroProvider),
   authCodeRefreshTokenRevokeProviderEntry("youtube", "oauth", youtubeProvider),
