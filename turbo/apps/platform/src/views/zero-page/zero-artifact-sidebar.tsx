@@ -144,7 +144,7 @@ function ArtifactSidebarWithThreadContext({
   thread,
 }: ArtifactSidebarProps) {
   const loadable = useLastLoadable(thread.artifacts$);
-  const agentId = useGet(thread.agentId$);
+  const agentId = thread.agentId;
   const eventGroups = useLastResolved(thread.eventImageGroups$, {
     equalityFn: equalEventImageGroups,
   });

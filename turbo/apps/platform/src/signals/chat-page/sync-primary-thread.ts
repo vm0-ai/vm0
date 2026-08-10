@@ -3,10 +3,29 @@ import { currentChatAgentId$, setChatAgentId$ } from "../agent-chat.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { resetSignal } from "../utils.ts";
-import { threadMeta } from "./chat-thread-event-sourcing.ts";
+import { threadMeta, type ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import { i18n } from "../../i18n/index.ts";
 
 const resetSyncPrimarySignal$ = resetSignal();
+
+const beginPrimaryThreadSync$ = command(
+  ({ set }, parentSignal: AbortSignal): AbortSignal => {
+    const signal = set(resetSyncPrimarySignal$, parentSignal);
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.chat.documentTitle;
+      }),
+    );
+    return signal;
+  },
+);
+
+export const syncMissingPrimaryThread$ = command(
+  ({ set }, parentSignal: AbortSignal): void => {
+    set(beginPrimaryThreadSync$, parentSignal);
+  },
+);
 
 /**
  * Drives the document title, the global agent context, and the Ably
@@ -21,25 +40,12 @@ const resetSyncPrimarySignal$ = resetSignal();
 export const syncPrimaryThread$ = command(
   async (
     { get, set },
-    threadId: string,
+    meta: ThreadMeta,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    const signal = set(resetSyncPrimarySignal$, parentSignal);
-
-    // Initial title, set synchronously so the document tab updates on the
-    // very first frame after the pane switch.
-    set(
-      updateDocumentTitle$,
-      i18n.t(($) => {
-        return $.chat.documentTitle;
-      }),
-    );
-
+    const signal = set(beginPrimaryThreadSync$, parentSignal);
+    const threadId = meta.id;
     const threadMeta$ = threadMeta(threadId);
-    const meta = get(threadMeta$);
-    if (!meta) {
-      return;
-    }
 
     const currentAgentId = await get(currentChatAgentId$);
     signal.throwIfAborted();

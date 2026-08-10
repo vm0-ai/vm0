@@ -23,21 +23,28 @@ import {
 import { createCachedChatPanelSignals$ } from "./create-chat-thread.ts";
 import { createChatEventSignals } from "./chat-event-signals.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
+import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import {
-  initialLocalChatThreadEventsLoaded$,
-  initialRemoteChatThreadEventsSynced$,
-  threadMeta,
-} from "./chat-thread-event-sourcing.ts";
-import {
+  type ChatThreadPaneState,
+  currentLeftPane$,
   currentLeftThread$,
+  currentRightPane$,
   currentRightThread$,
-  setCurrentLeftThread$,
-  setCurrentRightThread$,
+  setCurrentLeftPane$,
+  setCurrentRightPane$,
 } from "./chat-thread-pane-state.ts";
-import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
+import {
+  syncMissingPrimaryThread$,
+  syncPrimaryThread$,
+} from "./sync-primary-thread.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
-export { currentLeftThread$, currentRightThread$ };
+export {
+  currentLeftPane$,
+  currentLeftThread$,
+  currentRightPane$,
+  currentRightThread$,
+};
 
 const L = logger("ChatPanes");
 
@@ -60,7 +67,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
     set(currentRightThread.sidebar.close$);
   }
   set(resetRightSetupSignal$);
-  set(setCurrentRightThread$, null);
+  set(setCurrentRightPane$, null);
   const next = new URLSearchParams(get(searchParams$));
   if (next.has(SIDEBAR_PARAM)) {
     next.delete(SIDEBAR_PARAM);
@@ -69,7 +76,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
 });
 
 interface PaneSpec {
-  setPaneThread$: Command<void, [ChatPanelSignals | null]>;
+  setPane$: Command<void, [ChatThreadPaneState]>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
   onReady$?: Command<void, [AbortSignal]>;
 }
@@ -179,62 +186,46 @@ const resolvePaneThread$ = command(
   },
 );
 
-const waitForThreadMetaResolution$ = command(
-  async ({ get }, threadId: string, signal: AbortSignal): Promise<void> => {
-    if (get(threadMeta(threadId))) {
-      return;
-    }
-
-    await get(initialLocalChatThreadEventsLoaded$);
-    signal.throwIfAborted();
-
-    if (get(threadMeta(threadId))) {
-      return;
-    }
-
-    await get(initialRemoteChatThreadEventsSynced$);
-    signal.throwIfAborted();
+const beginPaneSetup$ = command(
+  ({ get, set }, spec: PaneSpec, parentSignal: AbortSignal): AbortSignal => {
+    const signal = set(spec.resetSetupSignal$, parentSignal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        // A non-chat page must never inherit this pane on re-entry.
+        // Chat-to-chat setup keeps the reference so the outer thread section
+        // can preserve its established DOM identity until replacement.
+        if (get(activeRoute$) !== "chat") {
+          set(spec.setPane$, null);
+        }
+      },
+      { once: true },
+    );
+    return signal;
   },
 );
 
 const setupPaneThread$ = command(
   async (
-    { get, set },
+    { set },
     spec: PaneSpec,
-    threadId: string,
+    meta: ThreadMeta,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    const signal = set(spec.resetSetupSignal$, parentSignal);
-    signal.addEventListener(
-      "abort",
-      () => {
-        // A non-chat page must never inherit this aborted panel on re-entry.
-        // Chat-to-chat setup keeps the reference so the outer thread section
-        // can preserve its established DOM identity until replacement.
-        if (get(activeRoute$) !== "chat") {
-          set(spec.setPaneThread$, null);
-        }
-      },
-      { once: true },
-    );
+    const signal = set(beginPaneSetup$, spec, parentSignal);
+    const threadId = meta.id;
 
     L.debug("setupPaneThread$ start", { threadId });
-    await set(waitForThreadMetaResolution$, threadId, signal);
-    signal.throwIfAborted();
-
     const chatEvents = createChatEventSignals(threadId);
     const { thread, isNew } = set(
       createCachedChatPanelSignals$,
       chatEvents,
+      meta.agentId,
       signal,
     );
-    set(spec.setPaneThread$, thread);
+    set(spec.setPane$, { kind: "thread", thread });
     if (spec.onReady$) {
       set(spec.onReady$, signal);
-    }
-
-    if (!get(thread.threadMeta$)) {
-      return;
     }
 
     await set(
@@ -248,21 +239,55 @@ const setupPaneThread$ = command(
   },
 );
 
+const setupPaneNotFound$ = command(
+  (
+    { set },
+    spec: PaneSpec,
+    threadId: string,
+    parentSignal: AbortSignal,
+  ): void => {
+    const signal = set(beginPaneSetup$, spec, parentSignal);
+    set(spec.setPane$, { kind: "not-found", threadId });
+    if (spec.onReady$) {
+      set(spec.onReady$, signal);
+    }
+  },
+);
+
 export const setupLeftThread$ = command(
+  async (
+    { set },
+    meta: ThreadMeta,
+    parentSignal: AbortSignal,
+  ): Promise<void> => {
+    await Promise.all([
+      set(syncPrimaryThread$, meta, parentSignal),
+      set(
+        setupPaneThread$,
+        {
+          setPane$: setCurrentLeftPane$,
+          resetSetupSignal$: resetLeftSetupSignal$,
+          onReady$: hideAppSkeleton$,
+        },
+        meta,
+        parentSignal,
+      ),
+    ]);
+  },
+);
+
+export const setupLeftThreadNotFound$ = command(
   async (
     { set },
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    await set(waitForThreadMetaResolution$, threadId, parentSignal);
-    parentSignal.throwIfAborted();
-
     await Promise.all([
-      set(syncPrimaryThread$, threadId, parentSignal),
+      set(syncMissingPrimaryThread$, parentSignal),
       set(
-        setupPaneThread$,
+        setupPaneNotFound$,
         {
-          setPaneThread$: setCurrentLeftThread$,
+          setPane$: setCurrentLeftPane$,
           resetSetupSignal$: resetLeftSetupSignal$,
           onReady$: hideAppSkeleton$,
         },
@@ -276,13 +301,31 @@ export const setupLeftThread$ = command(
 export const setupRightThread$ = command(
   async (
     { set },
-    threadId: string,
+    meta: ThreadMeta,
     parentSignal: AbortSignal,
   ): Promise<void> => {
     await set(
       setupPaneThread$,
       {
-        setPaneThread$: setCurrentRightThread$,
+        setPane$: setCurrentRightPane$,
+        resetSetupSignal$: resetRightSetupSignal$,
+      },
+      meta,
+      parentSignal,
+    );
+  },
+);
+
+export const setupRightThreadNotFound$ = command(
+  async (
+    { set },
+    threadId: string,
+    parentSignal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      setupPaneNotFound$,
+      {
+        setPane$: setCurrentRightPane$,
         resetSetupSignal$: resetRightSetupSignal$,
       },
       threadId,

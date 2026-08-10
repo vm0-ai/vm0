@@ -94,6 +94,7 @@ import {
   isVisualAttachment,
   shouldExcludeVisualAttachmentsForModel,
 } from "../../signals/chat-page/resolve-draft-attachments.ts";
+import { agents$ } from "../../signals/agent.ts";
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
@@ -103,7 +104,6 @@ import type {
   ZeroAvatarVideoAvatar,
   ZeroAvatarVideoVoice,
 } from "@vm0/api-contracts/contracts/zero-avatar-video";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
@@ -247,7 +247,6 @@ interface ComposerConnectorReadState {
     readonly PlatformConnectorCatalogStatusItem[]
   >;
   readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
-  readonly agent: Loadable<ZeroAgentResponse>;
   readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
@@ -7496,14 +7495,6 @@ function ComposerTemporaryModelNoticeSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function loadableDataOrNull<T>(loadable: Loadable<T>): T | null {
-  return loadable.state === "hasData" ? loadable.data : null;
-}
-
-function nullToUndefined<T>(value: T | null): T | undefined {
-  return value === null ? undefined : value;
-}
-
 function equalComposerConnectorAuthorizationState(
   left: ComposerConnectorAuthorizationState,
   right: ComposerConnectorAuthorizationState,
@@ -7521,7 +7512,6 @@ function useComposerConnectorReadState(
   return {
     catalogItems: useLastLoadable(allConnectorCatalogItems$),
     customConnectors: useLastLoadable(customConnectors$),
-    agent: useLoadable(signals.agent$),
     authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
       equalityFn: equalComposerConnectorAuthorizationState,
     }),
@@ -7529,26 +7519,26 @@ function useComposerConnectorReadState(
 }
 
 function matchingAuthorizedConnectorSlugs(
-  agent: Loadable<ZeroAgentResponse>,
+  agentId: string,
   authorization: Loadable<ComposerConnectorAuthorizationState>,
 ): readonly ConnectorSlug[] | null {
-  if (agent.state !== "hasData" || authorization.state !== "hasData") {
+  if (authorization.state !== "hasData") {
     return null;
   }
-  if (authorization.data.agentId !== agent.data.agentId) {
+  if (authorization.data.agentId !== agentId) {
     return null;
   }
   return authorization.data.enabledConnectorSlugs;
 }
 
 function matchingAuthorizedCustomConnectorIds(
-  agent: Loadable<ZeroAgentResponse>,
+  agentId: string,
   authorization: Loadable<ComposerConnectorAuthorizationState>,
 ): readonly string[] | null {
-  if (agent.state !== "hasData" || authorization.state !== "hasData") {
+  if (authorization.state !== "hasData") {
     return null;
   }
-  if (authorization.data.agentId !== agent.data.agentId) {
+  if (authorization.data.agentId !== agentId) {
     return null;
   }
   return authorization.data.enabledCustomConnectorIds;
@@ -7694,6 +7684,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
 function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const connectorReadState = useComposerConnectorReadState(signals);
+  const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
   const storedComputerUseHostId = useGet(signals.computer.computerUseHostId$);
@@ -7738,7 +7729,6 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
   const customConnectorsLoadable = connectorReadState.customConnectors;
-  const agentLoadable = connectorReadState.agent;
   const authorizationLoadable = connectorReadState.authorization;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
@@ -7757,16 +7747,18 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const optimisticConnected = useGet(justConnectedSlugs$);
   const savingConnectorSlug = connectorUi.savingConnectorSlug;
   const savingCustomConnectorId = connectorUi.savingCustomConnectorId;
-  const agent = loadableDataOrNull(agentLoadable);
-  const agentRecordId = agent?.agentId ?? null;
-  const displayName = agent?.displayName ?? "";
+  const agentRecordId = signals.agentId;
+  const displayName =
+    agents.find((agent) => {
+      return agent.id === agentRecordId;
+    })?.displayName ?? "";
 
   const authorizedConnectors = matchingAuthorizedConnectorSlugs(
-    agentLoadable,
+    agentRecordId,
     authorizationLoadable,
   );
   const authorizedCustomConnectors = matchingAuthorizedCustomConnectorIds(
-    agentLoadable,
+    agentRecordId,
     authorizationLoadable,
   );
 
@@ -7876,7 +7868,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
           {
             connectorLabel: connector.label,
             connectorIcon: connector.icon,
-            agentId: nullToUndefined(agentRecordId),
+            agentId: agentRecordId,
           },
           pageSignal,
         );
@@ -7895,7 +7887,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
             authMethod,
             options: {
               connectorLabel: connector.label,
-              agentId: nullToUndefined(agentRecordId),
+              agentId: agentRecordId,
             },
           },
           pageSignal,
@@ -7958,7 +7950,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
       {selectedConnectorSlug && (
         <ConnectModal
           selectedConnectorSlug={selectedConnectorSlug}
-          agentId={nullToUndefined(agentRecordId)}
+          agentId={agentRecordId}
           onClose={() => {
             return updateConnectorUi({ selectedConnectorSlug: null });
           }}
