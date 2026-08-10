@@ -47,7 +47,7 @@ import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.servic
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
-const log = logger("api:google-forms-workflow-event");
+const log = logger("api:google-forms-automation-event");
 
 const GOOGLE_FORMS_ACCESS_TOKEN_ENVIRONMENT_NAME = "GOOGLE_FORMS_TOKEN";
 const GOOGLE_FORMS_API_BASE = "https://forms.googleapis.com/v1/forms";

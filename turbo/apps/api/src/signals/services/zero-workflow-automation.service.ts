@@ -85,25 +85,25 @@ import {
   ensureGmailWatchForUser,
   hasEnabledGmailConsumer,
   resolveGmailLabelForUser,
-} from "./gmail-workflow-event.service";
+} from "./gmail-automation-event.service";
 import {
   ensureGoogleCalendarWatchForUser,
   hasEnabledGoogleCalendarConsumer,
-} from "./google-calendar-workflow-event.service";
+} from "./google-calendar-automation-event.service";
 import {
   ensureGoogleFormsWatchForUser,
   hasEnabledGoogleFormsConsumer,
   prepareGoogleFormsResponseEventConfigForPersist,
-} from "./google-forms-workflow-event.service";
-import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-workflow-event.service";
-import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
+} from "./google-forms-automation-event.service";
+import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-automation-event.service";
+import { prepareGithubLabelEventConfigForPersist } from "./github-label-automation-event.service";
 import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
 import { prepareGithubWorkflowRunEventConfigForPersist } from "./github-workflow-run-event.service";
 import {
   prepareNotionChildPageEventConfigForPersist,
   prepareNotionDatabaseItemEventConfigForPersist,
   prepareNotionPageContentUpdatedEventConfigForPersist,
-} from "./notion-workflow-event.service";
+} from "./notion-automation-event.service";
 import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
 import { googleFormsWorkflowAutomationCreationEnabledForOwner } from "./google-forms-workflow-automation-feature-switch.service";
 import {

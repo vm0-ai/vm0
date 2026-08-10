@@ -4,7 +4,7 @@ import { webhookGoogleCalendarContract } from "@vm0/api-contracts/contracts/webh
 import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
 import { now } from "../../lib/time";
-import { dispatchGoogleCalendarWebhook$ } from "../services/google-calendar-workflow-event.service";
+import { dispatchGoogleCalendarWebhook$ } from "../services/google-calendar-automation-event.service";
 
 function jsonError(message: string, status: 400 | 401 | 429 | 503): Response {
   return Response.json({ error: message }, { status });
