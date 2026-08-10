@@ -956,9 +956,9 @@ test("send a message through the deployed runner", async ({ page }) => {
   const composer = page.locator(".zero-composer");
   const modelPicker = composer.getByRole("combobox");
   await modelPicker.click();
-  await page.getByRole("option", { name: /Claude Sonnet 4\.6/ }).click();
+  await page.getByRole("option", { name: /GPT 5\.6 Luna/ }).click();
   await expect(
-    composer.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    composer.getByRole("combobox", { name: "GPT 5.6 Luna" }),
   ).toBeVisible();
 
   const editor = composer.getByRole("textbox", { name: "Message" });

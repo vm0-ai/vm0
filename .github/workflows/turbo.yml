@@ -1040,41 +1040,6 @@ jobs:
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
-      - name: Use Stripe CLI webhook secret for PR API preview
-        # Staging uses its standing Stripe Dashboard webhook endpoint; only PR
-        # previews should trust Stripe CLI webhooks.
-        if: |
-          needs.prepare.outputs.job-ref != 'staging' && (
-            needs.prepare.outputs.api-changed == 'true' ||
-            needs.prepare.outputs.cli-changed == 'true' ||
-            needs.prepare.outputs.platform-changed == 'true' ||
-            needs.prepare.outputs.crates-changed == 'true' ||
-            needs.prepare.outputs.ci-changed == 'true' ||
-            needs.prepare.outputs.e2e-changed == 'true'
-          )
-        run: |
-          set -euo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
-          bash e2e/scripts/ensure-stripe-cli.sh
-
-          stripe_webhook_secret="$(stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret 2>/dev/null)"
-          echo "::add-mask::$stripe_webhook_secret"
-          if [[ "$stripe_webhook_secret" != whsec_* ]]; then
-            echo "Stripe CLI did not return a webhook signing secret" >&2
-            exit 1
-          fi
-
-          if grep -q '^STRIPE_WEBHOOK_SECRET=' "$API_ENV_FILE"; then
-            sed -i "s|^STRIPE_WEBHOOK_SECRET=.*|STRIPE_WEBHOOK_SECRET=${stripe_webhook_secret}|" "$API_ENV_FILE"
-          else
-            printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$stripe_webhook_secret" >> "$API_ENV_FILE"
-          fi
-
-          echo "Configured API preview to trust Stripe CLI webhooks"
-        env:
-          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-
       - name: Build Worker secret shards
         id: worker-secrets
         env:
