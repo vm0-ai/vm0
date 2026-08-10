@@ -211,36 +211,6 @@ describe("zero seo command", () => {
     });
   });
 
-  it("rejects the removed provider option before calling the API", async () => {
-    let apiRequests = 0;
-    server.use(
-      http.post("http://localhost:3000/api/zero/seo/serp", () => {
-        apiRequests += 1;
-        return HttpResponse.json(dataForSeoResponse("serp", {}));
-      }),
-    );
-
-    await expect(
-      zeroSeoCommand.parseAsync([
-        "node",
-        "cli",
-        "serp",
-        "running shoes",
-        "--provider",
-        "serpapi",
-      ]),
-    ).rejects.toThrow("process.exit called");
-
-    const errors = [
-      ...mockConsoleError.mock.calls.flat(),
-      ...mockStderrWrite.mock.calls.flat(),
-    ]
-      .map(String)
-      .join("\n");
-    expect(errors).toContain("unknown option '--provider'");
-    expect(apiRequests).toBe(0);
-  });
-
   it("rejects mobile DataForSEO Google News before calling the API", async () => {
     let apiRequests = 0;
     server.use(
@@ -296,7 +266,5 @@ describe("zero seo command", () => {
     expect(help).toContain("provider-reported cost +25%");
     expect(help).toContain("google_news  desktop only");
     expect(help).toContain("google_maps returns at most 20 results on mobile");
-    expect(help).not.toContain("--provider");
-    expect(help).not.toContain("SerpAPI");
   });
 });

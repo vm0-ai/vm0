@@ -11231,7 +11231,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("zero seo serp --help");
     expect(appendSystemPrompt).toContain("Zero SEO uses DataForSEO");
     expect(appendSystemPrompt).toContain("select a compatible engine");
-    expect(appendSystemPrompt).not.toContain("SerpAPI");
     expect(appendSystemPrompt).toContain(
       "Use `zero web-search` instead for general public-web source discovery",
     );

@@ -234,6 +234,7 @@ describe("zero SEO routes", () => {
     const actor = await seedActor();
     configureProviders();
     const beforeCredits = await credits(actor);
+    context.mocks.axiomLogging.warn.mockClear();
     server.use(
       http.post(
         `${DATAFORSEO_BASE_URL}/v3/serp/google/organic/live/advanced`,
@@ -269,6 +270,26 @@ describe("zero SEO routes", () => {
     expectApiError(response.body);
     expect(response.body.error.code).toBe("SEO_PROVIDER_ERROR");
     await expect(credits(actor)).resolves.toBe(beforeCredits);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "DataForSEO API request failed",
+      expect.objectContaining({
+        operation: "serp",
+        endpoint: "/v3/serp/google/organic/live/advanced",
+        httpStatus: 401,
+        httpStatusText: "Unauthorized",
+        providerStatusCode: 40_100,
+        providerStatusMessage:
+          "You are not authorized. Check your login and password.",
+      }),
+    );
+    const warningCalls = JSON.stringify(
+      context.mocks.axiomLogging.warn.mock.calls,
+    );
+    expect(warningCalls).not.toContain("technical seo");
+    expect(warningCalls).not.toContain("test-dataforseo-login");
+    expect(warningCalls).not.toContain("test-dataforseo-password");
+    expect(warningCalls).not.toContain("Basic ");
   });
 
   it("maps DataForSEO operations and bills the reported cost with a 25% markup", async () => {
