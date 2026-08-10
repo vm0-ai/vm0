@@ -612,34 +612,74 @@ function mockKeyboardThreadScrollLayout({
   currentScrollHeight = () => {
     return 1200;
   },
+  includeCurrentLeadingEvent = false,
 }: {
   readonly currentThreadTop: () => number;
   readonly currentScrollHeight?: () => number;
-}): void {
+  readonly includeCurrentLeadingEvent?: boolean;
+}): {
+  readonly beginPartialCurrentThreadReturn: () => void;
+  readonly publishCurrentThreadTarget: () => Promise<void>;
+} {
   mockKeyboardNavigationThreads();
+  let partialCurrentThreadReturn = false;
+  let currentThreadTargetPublished = true;
+  const currentThreadEvents = normalizeMockChatEvents([
+    ...(includeCurrentLeadingEvent
+      ? [
+          {
+            id: `${KEYBOARD_CURRENT_THREAD_ID}-cached-leading-message`,
+            threadId: KEYBOARD_CURRENT_THREAD_ID,
+            role: "assistant" as const,
+            content: "Current thread cached leading note",
+            createdAt: "2026-05-31T23:59:00Z",
+          },
+        ]
+      : []),
+    {
+      id: `${KEYBOARD_CURRENT_THREAD_ID}-message`,
+      threadId: KEYBOARD_CURRENT_THREAD_ID,
+      role: "assistant",
+      content: "Current thread launch note",
+      createdAt: "2026-06-01T00:00:00Z",
+    },
+  ]);
+  const previousThreadEvents = normalizeMockChatEvents([
+    {
+      id: `${KEYBOARD_PREV_THREAD_ID}-message`,
+      threadId: KEYBOARD_PREV_THREAD_ID,
+      role: "assistant",
+      content: "Previous thread launch note",
+      createdAt: "2026-06-01T00:00:00Z",
+    },
+  ]);
+  const eventsByThreadId = new Map<string, readonly ChatEvent[]>([
+    [KEYBOARD_CURRENT_THREAD_ID, currentThreadEvents],
+    [KEYBOARD_PREV_THREAD_ID, previousThreadEvents],
+  ]);
   context.mocks.api(
     chatThreadEventsContract.list,
     ({ params, query, respond }) => {
-      if (query.beforeSeqId !== undefined || query.sinceSeqId !== undefined) {
-        return respond(200, { events: [] });
-      }
-      const contentByThreadId = new Map([
-        [KEYBOARD_CURRENT_THREAD_ID, "Current thread launch note"],
-        [KEYBOARD_PREV_THREAD_ID, "Previous thread launch note"],
-      ]);
-      const content = contentByThreadId.get(params.threadId);
+      const events = eventsByThreadId.get(params.threadId) ?? [];
+      const filteredEvents = events.filter((event) => {
+        if (
+          params.threadId === KEYBOARD_CURRENT_THREAD_ID &&
+          partialCurrentThreadReturn &&
+          event.id === `${KEYBOARD_CURRENT_THREAD_ID}-message` &&
+          !currentThreadTargetPublished
+        ) {
+          return false;
+        }
+        if (query.beforeSeqId !== undefined) {
+          return event.seqId < query.beforeSeqId;
+        }
+        if (query.sinceSeqId !== undefined) {
+          return event.seqId > query.sinceSeqId;
+        }
+        return true;
+      });
       return respond(200, {
-        events: content
-          ? normalizeMockChatEvents([
-              {
-                id: `${params.threadId}-message`,
-                threadId: params.threadId,
-                role: "assistant",
-                content,
-                createdAt: "2026-06-01T00:00:00Z",
-              },
-            ]).map(chatEventResponse)
-          : [],
+        events: filteredEvents.map(chatEventResponse),
       });
     },
   );
@@ -677,6 +717,21 @@ function mockKeyboardThreadScrollLayout({
       ],
     ]),
   );
+  return {
+    beginPartialCurrentThreadReturn: () => {
+      partialCurrentThreadReturn = true;
+      currentThreadTargetPublished = false;
+    },
+    publishCurrentThreadTarget: async () => {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+      currentThreadTargetPublished = true;
+      context.mocks.ably.trigger(
+        `chatThreadMessageCreated:${KEYBOARD_CURRENT_THREAD_ID}`,
+      );
+    },
+  };
 }
 
 describe("chat scroll position", () => {
@@ -1486,6 +1541,67 @@ describe("chat scroll position", () => {
     ).resolves.toBeInTheDocument();
 
     click(linkByText("Current keyboard thread"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+        -20,
+      );
+      expect(chatScrollContainer().scrollTop).toBe(420);
+    });
+  });
+
+  it("waits for the returned thread DOM to commit before restoring its anchor", async () => {
+    installImmediateAnimationFrames();
+    const { beginPartialCurrentThreadReturn, publishCurrentThreadTarget } =
+      mockKeyboardThreadScrollLayout({
+        currentThreadTop: () => {
+          return 400;
+        },
+        includeCurrentLeadingEvent: true,
+      });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
+    });
+
+    const currentContainer = await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      return chatScrollContainer();
+    });
+    await waitFor(() => {
+      expect(currentContainer.scrollTop).toBe(900);
+    });
+    scrollTo(currentContainer, 420);
+    expect(viewportOffsetTop(`${KEYBOARD_CURRENT_THREAD_ID}-message`)).toBe(
+      -20,
+    );
+    await waitFor(() => {
+      expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
+    });
+
+    click(linkByText("Previous keyboard thread"));
+    await expect(
+      screen.findByText("Previous thread launch note"),
+    ).resolves.toBeInTheDocument();
+
+    beginPartialCurrentThreadReturn();
+    click(linkByText("Current keyboard thread"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread cached leading note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText("Current thread launch note"),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector("[data-scroll-to-bottom]")).not.toBeNull();
+    });
+    await publishCurrentThreadTarget();
 
     await waitFor(() => {
       expect(

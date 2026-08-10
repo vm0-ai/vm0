@@ -22,6 +22,7 @@ import { activeThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
 import {
   createChatThreadScrollSignals,
+  type ReadyScrollAfterRenderRequest,
   type ThreadScrollPosition,
 } from "./chat-thread-scroll.ts";
 import {
@@ -2118,6 +2119,29 @@ function createChatThreadMessagePipeline({
     chatEvents,
     visibleRenderedChatGroups$: renderWindow.visibleRenderedChatGroups$,
   });
+  const readyScrollAfterRenderRequest$ = computed(
+    async (get): Promise<ReadyScrollAfterRenderRequest | null> => {
+      const request = get(effects.scroll.pendingScrollAfterRenderRequest$);
+      if (request === null) {
+        return null;
+      }
+      const renderedGroups = await get(renderWindow.visibleRenderedChatGroups$);
+      const currentRequest = get(
+        effects.scroll.pendingScrollAfterRenderRequest$,
+      );
+      if (currentRequest?.revision !== request.revision) {
+        return null;
+      }
+      return {
+        request,
+        renderedEventKeys: renderedGroups.flatMap((group) => {
+          return group.events.map((event) => {
+            return `${event.id}:${event.isQueued ? "queued" : "active"}`;
+          });
+        }),
+      };
+    },
+  );
 
   const loadMoreRenderedChatGroups$ = command(
     async ({ set }, signal: AbortSignal): Promise<boolean> => {
@@ -2145,6 +2169,7 @@ function createChatThreadMessagePipeline({
     ...projections,
     ...resources.publicSignals,
     ...renderWindow,
+    readyScrollAfterRenderRequest$,
     loadMoreRenderedChatGroups$,
   };
 }
@@ -3518,6 +3543,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     latestAssistantTextCreatedAt$: events.latestAssistantTextCreatedAt$,
     visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: events.visibleRenderedChatGroupsReady$,
+    readyScrollAfterRenderRequest$: events.readyScrollAfterRenderRequest$,
     chatSkeletonVisible$: events.chatSkeletonVisible$,
     assistantErrorRecovery$: events.assistantErrorRecovery$,
     retryAssistantError$: events.retryAssistantError$,
@@ -3796,6 +3822,7 @@ function createChatPanelSignalsWithDraft(
     threadSettledInServer$,
     scrollContainerOnRef$: messages.scroll.scrollContainerOnRef$,
     scrollContentOnRef$: messages.scroll.scrollContentOnRef$,
+    scrollCommitOnRef$: messages.scroll.scrollCommitOnRef$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
     awayFromBottom$: messages.scroll.awayFromBottom$,
     scrollTo$: messages.scroll.scrollTo$,

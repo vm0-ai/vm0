@@ -6,15 +6,22 @@ import { onRef } from "../utils.ts";
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD_PX = 10;
 const SCROLL_ANCHOR_ATTRIBUTE = "data-chat-scroll-anchor-event-id";
+const SCROLL_COMMIT_REVISION_ATTRIBUTE = "data-chat-scroll-commit-revision";
+const SCROLL_COMMIT_TO_TAIL_ATTRIBUTE = "data-chat-scroll-commit-to-tail";
 
 export interface ThreadScrollPosition {
   readonly targetEventId: string;
   readonly viewportOffsetTop: number;
 }
 
-interface ScrollAfterRenderRequest {
+export interface ScrollAfterRenderRequest {
   readonly revision: number;
   readonly position: ThreadScrollPosition | null;
+}
+
+export interface ReadyScrollAfterRenderRequest {
+  readonly request: ScrollAfterRenderRequest;
+  readonly renderedEventKeys: readonly string[];
 }
 
 export interface ChatThreadScrollSignals {
@@ -26,6 +33,11 @@ export interface ChatThreadScrollSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
+  readonly scrollCommitOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  readonly pendingScrollAfterRenderRequest$: Computed<ScrollAfterRenderRequest | null>;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
   readonly readRenderedThreadScrollPosition$: Command<
@@ -67,6 +79,23 @@ function scrollAnchorForEvent(
   return container.querySelector<HTMLElement>(
     `[${SCROLL_ANCHOR_ATTRIBUTE}="${eventId}"]`,
   );
+}
+
+function scrollContainerForCommitMarker(marker: HTMLElement): HTMLElement {
+  const container = marker.closest("[data-scroll-container]");
+  if (!(container instanceof HTMLElement)) {
+    throw new Error("Chat scroll commit marker has no scroll container");
+  }
+  return container;
+}
+
+function scrollRenderRevision(marker: HTMLElement): number {
+  const value = marker.getAttribute(SCROLL_COMMIT_REVISION_ATTRIBUTE);
+  const revision = Number(value);
+  if (value === null || revision < 1 || !Number.isSafeInteger(revision)) {
+    throw new Error("Chat scroll commit marker has no valid revision");
+  }
+  return revision;
 }
 
 function applyScrollTop(
@@ -256,6 +285,7 @@ function createScrollNavigationSignals(
   threadId: string,
   scroll: InternalScrollSignals,
   runtime: ScrollRuntime,
+  pendingScrollAfterRenderRequest$: Computed<ScrollAfterRenderRequest | null>,
 ) {
   const scrollTo$ = command(({ get }, position: ThreadScrollPosition) => {
     const container = get(scroll.scrollContainer$);
@@ -308,22 +338,26 @@ function createScrollNavigationSignals(
     if (!container) {
       throw new Error("Chat scroll container is not mounted");
     }
-    if (position && scrollToPosition(runtime, container, position)) {
-      runtime.initialized = true;
-      return;
+    if (position) {
+      if (scrollToPosition(runtime, container, position)) {
+        runtime.initialized = true;
+        return;
+      }
+      if (get(pendingScrollAfterRenderRequest$) !== null) {
+        // Event rendering can replace the content between ResizeObserver's
+        // notification and this restore. The commit marker owns that pending
+        // batch, so keep the anchor until React acknowledges its final DOM.
+        L.debug("resize scroll restore waiting for render commit", {
+          threadId,
+          targetEventId: position.targetEventId,
+        });
+        return;
+      }
+      L.debug("resize scroll restore target no longer rendered", {
+        threadId,
+        targetEventId: position.targetEventId,
+      });
     }
-    // Either the thread is following the tail, or the event it anchors to has
-    // left the DOM — a queued message moves into the thinking indicator, which
-    // renders no anchor. Holding a position nothing renders would freeze the
-    // thread where it stands and every later resize would try again, so the
-    // thread goes back to following the tail.
-    L.debug("resize scroll restore fell back to the tail", {
-      threadId,
-      targetEventId: position?.targetEventId ?? null,
-      anchorRendered:
-        position !== null &&
-        scrollAnchorForEvent(container, position.targetEventId) !== null,
-    });
     set(scrollToBottom$);
   });
 
@@ -374,61 +408,65 @@ function createScrollNavigationSignals(
   };
 }
 
-/**
- * Commits the scroll that belongs to a rendered batch of events: one frame
- * after the events change, either back to the bottom or onto the anchor the
- * reader is holding.
- */
+/** Commits scroll only when React acknowledges the matching event batch. */
 function createRenderScrollSignals(
   threadId: string,
   scroll: InternalScrollSignals,
   runtime: ScrollRuntime,
 ) {
-  const commitScrollAfterRender$ = command(
-    ({ get, set }, request: ScrollAfterRenderRequest): void => {
-      if (request.revision !== runtime.latestRenderRequestRevision) {
-        L.debug("stale render scroll ignored", {
-          revision: request.revision,
-          currentRevision: runtime.latestRenderRequestRevision,
-        });
-        return;
+  const internalPendingRequest$ = state<ScrollAfterRenderRequest | null>(null);
+  const pendingScrollAfterRenderRequest$ = computed((get) => {
+    return get(internalPendingRequest$);
+  });
+  const clearPendingRequest$ = command(
+    ({ get, set }, revision: number): void => {
+      if (get(internalPendingRequest$)?.revision === revision) {
+        set(internalPendingRequest$, null);
       }
-      const container = get(scroll.scrollContainer$);
-      if (!container) {
-        L.debug("render scroll skipped without container", {
+    },
+  );
+  const scrollCommitOnRef$ = onRef(
+    command(({ get, set }, marker: HTMLElement, signal: AbortSignal): void => {
+      signal.throwIfAborted();
+      const revision = scrollRenderRevision(marker);
+      const request = get(pendingScrollAfterRenderRequest$);
+      if (!request || request.revision !== revision) {
+        L.debug("stale render scroll commit ignored", {
           threadId,
-          revision: request.revision,
+          revision,
+          currentRevision: request?.revision ?? null,
         });
         return;
       }
+      const container = scrollContainerForCommitMarker(marker);
       if (scrollAnchors(container).length === 0) {
-        L.debug("render scroll skipped without messages", {
+        L.debug("render scroll commit waiting for messages", {
           threadId,
-          revision: request.revision,
+          revision,
         });
         return;
       }
-      if (
+      if (marker.hasAttribute(SCROLL_COMMIT_TO_TAIL_ATTRIBUTE)) {
+        set(scroll.clearThreadScrollPosition$);
+        applyScrollTop(runtime, container, container.scrollHeight);
+      } else if (
         !request.position ||
         !scrollToPosition(runtime, container, request.position)
       ) {
-        // The batch either follows the tail, or it carries a position whose
-        // event this render does not show: sending while a run is active
-        // queues the message, and a queued message moves into the thinking
-        // indicator, which renders no anchor. Nothing can hold that position,
-        // so the thread follows the tail rather than staying put.
-        set(scroll.clearThreadScrollPosition$);
-        applyScrollTop(runtime, container, container.scrollHeight);
+        throw new Error(
+          `Chat scroll target is not rendered: ${request.position?.targetEventId ?? "none"}`,
+        );
       }
       runtime.initialized = true;
+      set(clearPendingRequest$, revision);
       L.debug("render scroll committed", {
         threadId,
-        revision: request.revision,
+        revision,
         targetEventId: request.position?.targetEventId ?? null,
         viewportOffsetTop: request.position?.viewportOffsetTop ?? null,
         scrollTop: container.scrollTop,
       });
-    },
+    }),
   );
   const autoScroll$ = command(
     (
@@ -451,17 +489,16 @@ function createRenderScrollSignals(
         targetEventId: position?.targetEventId ?? null,
         viewportOffsetTop: position?.viewportOffsetTop ?? null,
       });
-      animationFrame(
-        () => {
-          set(commitScrollAfterRender$, request);
-        },
-        { signal },
-      );
+      set(internalPendingRequest$, request);
       return Promise.resolve();
     },
   );
 
-  return { autoScroll$ };
+  return {
+    autoScroll$,
+    pendingScrollAfterRenderRequest$,
+    scrollCommitOnRef$,
+  };
 }
 
 type ScrollNavigationSignals = ReturnType<typeof createScrollNavigationSignals>;
@@ -586,8 +623,13 @@ export function createChatThreadScrollSignals(
     programmaticScrollTop: null,
   };
   const scroll = createInternalScrollSignals(threadId);
-  const navigation = createScrollNavigationSignals(threadId, scroll, runtime);
   const render = createRenderScrollSignals(threadId, scroll, runtime);
+  const navigation = createScrollNavigationSignals(
+    threadId,
+    scroll,
+    runtime,
+    render.pendingScrollAfterRenderRequest$,
+  );
   const scrollContainerOnRef$ = createScrollContainerOnRef(
     threadId,
     scroll,
@@ -599,6 +641,8 @@ export function createChatThreadScrollSignals(
   return {
     scrollContainerOnRef$,
     scrollContentOnRef$,
+    scrollCommitOnRef$: render.scrollCommitOnRef$,
+    pendingScrollAfterRenderRequest$: render.pendingScrollAfterRenderRequest$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
     readRenderedThreadScrollPosition$: scroll.readRenderedThreadScrollPosition$,
