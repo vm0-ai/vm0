@@ -51,7 +51,7 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
   readUsageStorageCounts$,
-} from "./helpers/zero-usage-insight";
+} from "./helpers/usage-state";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);

@@ -1,16 +1,16 @@
 import { command } from "ccstate";
 import type {
-  TestUsageInsightStateActionBody,
-  TestUsageInsightStateActionResponse,
-  TestUsageInsightStateFixture,
-} from "@vm0/api-contracts/contracts/test-usage-insight-state";
+  TestUsageStateActionBody,
+  TestUsageStateActionResponse,
+  TestUsageStateFixture,
+} from "@vm0/api-contracts/contracts/test-usage-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
-import { testUsageInsightStateRoutes } from "../../test-usage-insight-state";
+import { testUsageStateRoutes } from "../../test-usage-state";
 
-const USAGE_INSIGHT_STATE_ROUTE = "/api/test/usage-insight-state";
+const USAGE_STATE_ROUTE = "/api/test/usage-state";
 
-export interface UsageInsightFixture {
+export interface UsageStateFixture {
   readonly orgId: string;
   readonly userId: string;
 }
@@ -88,14 +88,14 @@ interface UsageAllowanceWindowState {
   readonly allocationCount: number;
 }
 
-function requestUsageInsightState(
+function requestUsageState(
   signal: AbortSignal,
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal,
-    routes: testUsageInsightStateRoutes,
+    routes: testUsageStateRoutes,
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -110,18 +110,14 @@ function dateToWire(value: Date | null | undefined): string | null | undefined {
   return value.toISOString();
 }
 
-function fixtureFromWire(
-  fixture: TestUsageInsightStateFixture,
-): UsageInsightFixture {
+function fixtureFromWire(fixture: TestUsageStateFixture): UsageStateFixture {
   return {
     orgId: fixture.org_id,
     userId: fixture.user_id,
   };
 }
 
-function fixtureToWire(
-  fixture: UsageInsightFixture,
-): TestUsageInsightStateFixture {
+function fixtureToWire(fixture: UsageStateFixture): TestUsageStateFixture {
   return {
     org_id: fixture.orgId,
     user_id: fixture.userId,
@@ -141,11 +137,11 @@ function expectOk(response: Response, operation: string): void {
 
 async function postAction(
   signal: AbortSignal,
-  body: TestUsageInsightStateActionBody,
-): Promise<TestUsageInsightStateActionResponse> {
-  const response = await requestUsageInsightState(
+  body: TestUsageStateActionBody,
+): Promise<TestUsageStateActionResponse> {
+  const response = await requestUsageState(
     signal,
-    `${USAGE_INSIGHT_STATE_ROUTE}/action`,
+    `${USAGE_STATE_ROUTE}/action`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -153,33 +149,25 @@ async function postAction(
     },
   );
   signal.throwIfAborted();
-  await expectOk(response, `usage insight action ${body.action}`);
+  await expectOk(response, `usage state action ${body.action}`);
   signal.throwIfAborted();
-  const result = await readJson<TestUsageInsightStateActionResponse>(response);
+  const result = await readJson<TestUsageStateActionResponse>(response);
   signal.throwIfAborted();
   return result;
 }
 
-export const seedUsageInsightFixture$ = command(
-  async (
-    _,
-    _input: void,
-    signal: AbortSignal,
-  ): Promise<UsageInsightFixture> => {
+export const seedUsageStateFixture$ = command(
+  async (_, _input: void, signal: AbortSignal): Promise<UsageStateFixture> => {
     const response = await postAction(signal, { action: "seed-fixture" });
     if (!response.fixture) {
-      throw new Error("seedUsageInsightFixture$: response missing fixture");
+      throw new Error("seedUsageStateFixture$: response missing fixture");
     }
     return fixtureFromWire(response.fixture);
   },
 );
 
-export const deleteUsageInsightFixture$ = command(
-  async (
-    _,
-    fixture: UsageInsightFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
+export const deleteUsageStateFixture$ = command(
+  async (_, fixture: UsageStateFixture, signal: AbortSignal): Promise<void> => {
     await postAction(signal, {
       action: "delete-fixture",
       fixture: fixtureToWire(fixture),
@@ -497,31 +485,6 @@ export const readUsageCompactionStorageCounts$ = command(
       processedRaw: response.processed_raw_count,
       hourly: response.hourly_count,
     };
-  },
-);
-
-export const readInsightsDailyPermissions$ = command(
-  async (
-    _,
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly date: string;
-    },
-    signal: AbortSignal,
-  ): Promise<readonly Record<string, unknown>[]> => {
-    const response = await postAction(signal, {
-      action: "read-insights-daily-permissions",
-      org_id: args.orgId,
-      user_id: args.userId,
-      date: args.date,
-    });
-    if (response.insights_daily_permissions === undefined) {
-      throw new Error(
-        "readInsightsDailyPermissions$: response missing permissions",
-      );
-    }
-    return response.insights_daily_permissions;
   },
 );
 

@@ -25,14 +25,9 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
-  zeroInsightsContract,
-  type InsightsResponse,
-} from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import {
   zeroUsageRecordContract,
@@ -70,9 +65,7 @@ import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../../zero-built-in-generation";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
-import { zeroInsightsRoutes } from "../../zero-insights";
 import { zeroMapsRoutes } from "../../zero-maps";
-import { zeroUsageInsightRoutes } from "../../zero-usage-insight";
 import { zeroUsageMembersRoutes } from "../../zero-usage-members";
 import { zeroUsageRecordRoutes } from "../../zero-usage-record";
 import { zeroUsageRunsRoutes } from "../../zero-usage-runs";
@@ -567,36 +560,6 @@ export function createBillingMediaApi(context: TestContext) {
         }),
         [200],
       );
-    },
-
-    async readUsageInsight(
-      actor: ApiTestUser,
-      query: {
-        readonly range: "today" | "yesterday" | "day" | "7d" | "28d" | "30d";
-        readonly date?: string;
-        readonly groupBy: "source" | "agent";
-        readonly tz: string;
-      },
-      statuses: readonly (200 | 400 | 401 | 500)[],
-    ) {
-      const client = setupApp({ context, routes: zeroUsageInsightRoutes })(
-        zeroUsageInsightContract,
-      );
-      return await accept(
-        client.get({ headers: authenticate(actor), query }),
-        statuses,
-      );
-    },
-
-    async readInsights(actor: ApiTestUser): Promise<InsightsResponse> {
-      const client = setupApp({ context, routes: zeroInsightsRoutes })(
-        zeroInsightsContract,
-      );
-      const response = await accept(
-        client.get({ headers: authenticate(actor), query: { days: 7 } }),
-        [200],
-      );
-      return response.body;
     },
 
     async readModelRankings() {

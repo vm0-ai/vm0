@@ -13,11 +13,6 @@ export {
   type ExpansionResult,
 } from "./variable-expander";
 export {
-  triggerSourceToBucket,
-  SOURCE_BUCKET_COLORS,
-  type SourceBucket,
-} from "./usage-source-bucket";
-export {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   type PresentationTemplateItem,
 } from "./presentation-template-items";
@@ -334,7 +329,6 @@ export {
   zeroBillingRedeemContract,
   zeroUsageMembersContract,
   zeroUsageRunsContract,
-  zeroUsageInsightContract,
   zeroTeamContract,
   teamComposeItemSchema,
   zeroIntegrationsSlackContract,
@@ -361,7 +355,6 @@ export {
   zeroComputerUseHostCommandsContract,
   zeroComputerUseHostsContract,
   zeroComputerUseWriteCommandContract,
-  zeroInsightsContract,
   pushSubscriptionsContract,
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,
@@ -601,11 +594,6 @@ export {
   type ZeroUsageRunsContract,
   type UsageRun,
   type UsageRunsResponse,
-  type ZeroUsageInsightContract,
-  type UsageInsightResponse,
-  type UsageInsightBucket,
-  type UsageInsightAutomationRow,
-  type UsageInsightChatRow,
   type ZeroTeamContract,
   type TeamComposeItem,
   type ZeroIntegrationsSlackContract,
@@ -643,9 +631,6 @@ export {
   type ZeroComputerUseHostCommandsContract,
   type ZeroComputerUseHostsContract,
   type ZeroComputerUseWriteCommandContract,
-  type ZeroInsightsContract,
-  type InsightsResponse,
-  type DayInsight,
   type PushSubscriptionsContract,
   type ZeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,

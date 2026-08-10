@@ -24,7 +24,6 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  cronAggregateInsightsContract,
   cronAggregateUsageContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
@@ -66,7 +65,6 @@ import {
 } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
 import { cliAuthRoutes } from "../../cli-auth";
-import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
 import { cronProcessUsageEventsRoutes } from "../../cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "../../cron-reconcile-billing-entitlements";
@@ -155,7 +153,6 @@ const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
 const runRoutes = [
   ...cliAuthRoutes,
-  ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
@@ -1241,12 +1238,6 @@ export function createRunsApi(context: TestContext) {
         }),
         [401],
       );
-      const aggregateInsights = await accept(
-        runApp(context)(cronAggregateInsightsContract).aggregate({
-          headers,
-        }),
-        [401],
-      );
       const processUsageEvents = await accept(
         runApp(context)(cronProcessUsageEventsContract).process({
           headers,
@@ -1262,7 +1253,6 @@ export function createRunsApi(context: TestContext) {
 
       return {
         aggregateUsage,
-        aggregateInsights,
         processUsageEvents,
         telegramCleanup,
       };

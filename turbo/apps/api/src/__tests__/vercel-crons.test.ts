@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  cronAggregateInsightsContract,
   cronAggregateModelStatsContract,
   cronAggregateUsageContract,
   cronBrowserReconcileContract,
@@ -93,10 +92,6 @@ const expectedVercelCrons = [
   {
     path: cronAggregateUsageContract.aggregate.path,
     schedule: "5 0 * * *",
-  },
-  {
-    path: cronAggregateInsightsContract.aggregate.path,
-    schedule: "0 * * * *",
   },
   {
     path: cronCompactChatThreadSnapshotsContract.compact.path,

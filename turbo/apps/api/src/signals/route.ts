@@ -2,7 +2,6 @@ import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
-import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "./routes/cron-project-chat-event-search";
@@ -100,7 +99,6 @@ import { zeroSeoRoutes } from "./routes/zero-seo";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
-import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
@@ -183,7 +181,6 @@ import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
-import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { zeroUsageRunsRoutes } from "./routes/zero-usage-runs";
@@ -229,7 +226,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentPiTranscriptRoutes,
   ...webhooksAgentStorageRoutes,
   ...connectorsSlugCallbackRoutes,
-  ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
@@ -297,7 +293,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
-  ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
   ...zeroImageShareXRoutes,
   ...zeroAvatarVideoRoutes,
@@ -390,7 +385,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
-  ...zeroUsageInsightRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,
   ...zeroUsageRunsRoutes,

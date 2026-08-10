@@ -460,8 +460,8 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
   });
 });
 
-describe("BILL-02: usage, insights, attribution, and model stats reads", () => {
-  it("chains empty scoped usage, insights, rankings, and attribution through visible APIs", async () => {
+describe("BILL-02: usage, attribution, and model stats reads", () => {
+  it("chains empty scoped usage, rankings, and attribution through visible APIs", async () => {
     const { api, admin, member } = testActors();
     await completeVisibleOnboarding(admin);
 
@@ -492,33 +492,6 @@ describe("BILL-02: usage, insights, attribution, and model stats reads", () => {
     const usageRecord = await api.readUsageRecord(admin);
     expect(usageRecord.body.pagination.total).toBe(0);
     expect(usageRecord.body.rows).toStrictEqual([]);
-
-    const usageInsight = await api.readUsageInsight(
-      admin,
-      { range: "today", groupBy: "source", tz: "UTC" },
-      [200],
-    );
-    if (usageInsight.status !== 200) {
-      throw new Error(
-        `Expected usage insight to be readable, got ${usageInsight.status}`,
-      );
-    }
-    expect(usageInsight.body.grandTotalCredits).toBe(0);
-    expect(usageInsight.body.grandTotalTokens).toBe(0);
-
-    const invalidInsight = await api.readUsageInsight(
-      admin,
-      { range: "today", groupBy: "source", tz: "Invalid/Timezone" },
-      [400],
-    );
-    expectApiError(invalidInsight.body);
-    expect(invalidInsight.body.error.message).toBe(
-      "Invalid timezone: Invalid/Timezone",
-    );
-
-    const insights = await api.readInsights(admin);
-    expect(insights.totalCredits).toBe(0);
-    expect(insights.totalRuns).toBe(0);
 
     const modelRankings = await api.readModelRankings();
     expect(modelRankings.body.period).toBe("week");

@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { cronCompactUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
-import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
@@ -11,11 +10,10 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { holdUsageEventCompactionLockFixture } from "../../../test-fixtures/usage-event-compaction";
 import { nowDate } from "../../../lib/time";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   attachUsageAllowance$,
   deleteUsageData$,
-  deleteUsageInsightFixture$,
+  deleteUsageStateFixture$,
   deleteRun$,
   insertUsageEvent$,
   materializeHourlyUsage$,
@@ -25,19 +23,14 @@ import {
   seedCompose$,
   seedRun$,
   seedUsageOverflowGrain$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+  seedUsageStateFixture$,
+  type UsageStateFixture,
+} from "./helpers/usage-state";
 import { cronCompactUsageEventsRoutes } from "../cron-compact-usage-events";
-import { zeroUsageInsightRoutes } from "../zero-usage-insight";
 
-const TEST_APP_ROUTES = Object.freeze([
-  ...cronCompactUsageEventsRoutes,
-  ...zeroUsageInsightRoutes,
-]);
+const TEST_APP_ROUTES = Object.freeze([...cronCompactUsageEventsRoutes]);
 
 const context = testContext();
-const mocks = createZeroRouteMocks(context);
 const store = createStore();
 const CRON_SECRET = "test-compact-usage-events-secret";
 const RAW_SEED_LIMIT = 500;
@@ -48,24 +41,18 @@ function cronClient() {
   );
 }
 
-function usageInsightClient() {
-  return setupApp({ context, routes: zeroUsageInsightRoutes })(
-    zeroUsageInsightContract,
-  );
-}
-
 function cronHeaders(secret = CRON_SECRET) {
   return { authorization: `Bearer ${secret}` };
 }
 
-async function seedFixture(): Promise<UsageInsightFixture> {
+async function seedFixture(): Promise<UsageStateFixture> {
   const fixture = await store.set(
-    seedUsageInsightFixture$,
+    seedUsageStateFixture$,
     undefined,
     context.signal,
   );
   onTestFinished(async () => {
-    await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+    await store.set(deleteUsageStateFixture$, fixture, context.signal);
   });
   return fixture;
 }
@@ -74,7 +61,7 @@ async function compactUsage() {
   return await accept(cronClient().compact({ headers: cronHeaders() }), [200]);
 }
 
-async function readStorage(fixture: UsageInsightFixture) {
+async function readStorage(fixture: UsageStateFixture) {
   return await store.set(
     readUsageCompactionStorageCounts$,
     { scope: "organization", id: fixture.orgId },
@@ -105,7 +92,7 @@ async function seedCompactionBatch(
 
 // Fill the global cron seed so parallel test files cannot contribute rows.
 async function seedZeroUsageEvents(
-  fixture: UsageInsightFixture,
+  fixture: UsageStateFixture,
   args: {
     readonly processedAt: Date;
     readonly count: number;
@@ -158,7 +145,7 @@ async function releaseUsageCompactionLockGate(
   await gate.done;
 }
 
-async function seedRunContext(fixture: UsageInsightFixture): Promise<{
+async function seedRunContext(fixture: UsageStateFixture): Promise<{
   readonly runId: string;
   readonly chatThreadId: string;
 }> {
@@ -268,21 +255,6 @@ describe("usage event compaction cron", () => {
         context.signal,
       ),
     ).resolves.not.toBe(usageEventId);
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const insight = await accept(
-      usageInsightClient().get({
-        headers: { authorization: "Bearer clerk-session" },
-        query: {
-          range: "day",
-          date: "1800-01-01",
-          groupBy: "source",
-          tz: "UTC",
-        },
-      }),
-      [200],
-    );
-    expect(insight.body.grandTotalCredits).toBe(7);
   });
 
   it("retains seven days of processed events and explicit diagnostic holds", async () => {

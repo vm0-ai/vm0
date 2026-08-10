@@ -29,11 +29,11 @@ import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
-  deleteUsageInsightFixture$,
+  deleteUsageStateFixture$,
   seedCompose$,
   seedRun$,
-  seedUsageInsightFixture$,
-} from "./helpers/zero-usage-insight";
+  seedUsageStateFixture$,
+} from "./helpers/usage-state";
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
@@ -2809,12 +2809,12 @@ describe("RUN-04: agent run telemetry families", () => {
 
   it("drops invalid persisted reuse outcomes independently", async () => {
     const fixture = await store.set(
-      seedUsageInsightFixture$,
+      seedUsageStateFixture$,
       undefined,
       context.signal,
     );
     onTestFinished(async () => {
-      await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+      await store.set(deleteUsageStateFixture$, fixture, context.signal);
     });
     const compose = await store.set(seedCompose$, fixture, context.signal);
     const actor = bdd.user(fixture);

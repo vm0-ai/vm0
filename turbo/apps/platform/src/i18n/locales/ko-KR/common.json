@@ -440,8 +440,6 @@
         "agents": "에이전트",
         "artifacts": "아티팩트",
         "connectors": "커넥터",
-        "insights": "인사이트",
-        "insightsAndUsage": "인사이트 및 사용량",
         "newChat": "새 채팅",
         "settings": "설정",
         "workflows": "워크플로",
@@ -2491,94 +2489,6 @@
       "degraded": "실시간 업데이트에 문제가 발생했습니다. 페이지를 새로고침하세요."
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "다음 달",
-      "previousMonth": "이전 달"
-    },
-    "cards": {
-      "agents": "에이전트",
-      "agentsRan_one": "{{agents}}이(가) {{runs}} 실행함",
-      "agentsRan_other": "{{agents}}이(가) {{runs}} 실행함",
-      "allowed": "허용됨",
-      "allowedSummary_one": "{{permissions}} 권한 내에서 {{calls}} 호출됨",
-      "allowedSummary_other": "{{permissions}} 권한 내에서 {{calls}} 호출됨",
-      "automations": "자동화",
-      "automationsUsed_one": "{{automations}}이(가) {{credits}} 사용함",
-      "automationsUsed_other": "{{automations}}이(가) {{credits}} 사용함",
-      "balance": "잔액",
-      "byAgent": "{{agent}}별",
-      "chats": "채팅",
-      "chatsUsed_one": "{{chats}}이(가) {{credits}} 사용함",
-      "chatsUsed_other": "{{chats}}이(가) {{credits}} 사용함",
-      "clickToOpen": "열려면 클릭",
-      "consumedToday": "오늘 사용됨",
-      "moreAutomations_one": "+{{value}}개 자동화 더 보기",
-      "moreAutomations_other": "+{{value}}개 자동화 더 보기",
-      "moreChats_one": "+{{value}}개 채팅 더 보기",
-      "moreChats_other": "+{{value}}개 채팅 더 보기",
-      "protected": "보호됨",
-      "protectedSummary_one": "{{permissions}} 권한에서 {{calls}} 보호됨",
-      "protectedSummary_other": "{{permissions}} 권한에서 {{calls}} 보호됨",
-      "rejected_one": "{{value}}개 거부됨",
-      "rejected_other": "{{value}}개 거부됨",
-      "rejectedOf": "{{total}} 중 {{denied}} 거부됨",
-      "services": "서비스",
-      "servicesReceived_one": "{{services}}이(가) {{calls}} 받음",
-      "servicesReceived_other": "{{services}}이(가) {{calls}} 받음",
-      "team": "팀",
-      "teamCreditUsage": "팀 크레딧 사용량",
-      "untitled": "(제목 없음)",
-      "yourCreditUsage": "내 크레딧 사용량"
-    },
-    "common": {
-      "loadMore": "더 보기",
-      "showLess": "간략히 보기"
-    },
-    "page": {
-      "description": "에이전트가 무엇에 접근하는지, 크레딧이 어떻게 사용되는지, 어떤 권한을 사용하는지 모니터링하고 이상 징후를 확인하세요.",
-      "documentTitle": "인사이트 및 사용량",
-      "empty": "에이전트를 실행하여 인사이트를 확인하세요.",
-      "emptyRange": "이 기간에 활동이 없습니다.",
-      "lastUpdated": "마지막 업데이트 — {{date}}",
-      "loadError": "네트워크 활동을 불러올 수 없습니다.",
-      "title": "인사이트"
-    },
-    "range": {
-      "custom": "사용자 지정 기간",
-      "last28Days": "최근 28일",
-      "last30Days": "최근 30일",
-      "last7Days": "최근 7일",
-      "today": "오늘",
-      "yesterday": "어제"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}}개의 요청이 권한 규칙에 의해 차단되었습니다. 중요한 내용이 차단되지 않았는지 검토하세요.",
-      "blocked_other": "{{blocked}}개의 요청이 권한 규칙에 의해 차단되었습니다. 중요한 내용이 차단되지 않았는지 검토하세요.",
-      "blockedCaption": "{{calls}} · {{blocked}} 차단됨",
-      "busy_one": "바쁜 하루 — {{agentCount}}명의 에이전트가 {{runs}} 실행했습니다. 네트워크가 열심히 작동 중입니다.",
-      "busy_other": "바쁜 하루 — {{agentCount}}명의 에이전트가 {{runs}} 실행했습니다. 네트워크가 열심히 작동 중입니다.",
-      "distributed_one": "{{agents}} 활성, 총 {{credits}} 사용. 균형 잡힌 작업 부하입니다.",
-      "distributed_other": "{{agents}} 활성, 총 {{credits}} 사용. 균형 잡힌 작업 부하입니다.",
-      "highTraffic_one": "{{callCount}}개의 서비스 호출, {{services}} 서비스. 트래픽이 많은 날입니다.",
-      "highTraffic_other": "{{callCount}}개의 서비스 호출, {{services}} 서비스. 트래픽이 많은 날입니다.",
-      "light_one": "활동 적음 — 단지 {{runs}} 실행과 {{calls}} 호출. 조용한 하루입니다.",
-      "light_other": "활동 적음 — 단지 {{runs}} 실행과 {{calls}} 호출. 조용한 하루입니다.",
-      "quietCaption": "{{runs}} · 조용한 하루",
-      "smooth": "오늘 {{runs}} 실행과 {{callCount}} 서비스 호출. 모든 것이 원활히 작동 중입니다."
-    },
-    "units": {
-      "agent_one": "{{value}} 에이전트",
-      "agent_other": "{{value}} 에이전트",
-      "call_one": "{{value}} 호출",
-      "call_other": "{{value}} 호출",
-      "run_one": "{{value}} 실행",
-      "run_other": "{{value}} 실행",
-      "service_one": "{{value}} 서비스",
-      "service_other": "{{value}} 서비스"
-    }
-  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "구독 취소",
@@ -4603,34 +4513,6 @@
     "tryOkou": "Okou 사용해 보기"
   },
   "usage": {
-    "automations": {
-      "empty": "이 기간에 사용된 자동화가 없습니다",
-      "more_one": "+{{value}}개의 자동화 더 보기",
-      "more_other": "+{{value}}개의 자동화 더 보기",
-      "summary_one": "{{automations}}개 자동화가 {{credits}} 크레딧을 사용했습니다",
-      "summary_other": "{{automations}}개 자동화가 {{credits}} 크레딧을 사용했습니다",
-      "title": "자동화"
-    },
-    "chart": {
-      "ariaLabel": "크레딧 합계",
-      "credits": "크레딧",
-      "groupBy": {
-        "agent": "에이전트",
-        "source": "출처"
-      },
-      "noUsage": "사용 내역 없음",
-      "showDetails": "{{date}} 사용 내역 보기"
-    },
-    "chats": {
-      "clickToOpen": "열려면 클릭",
-      "empty": "이 기간에 채팅이 없습니다",
-      "more_one": "+{{value}}개의 채팅 더 보기",
-      "more_other": "+{{value}}개의 채팅 더 보기",
-      "summary_one": "{{chats}}개 채팅이 {{credits}} 크레딧을 사용했습니다",
-      "summary_other": "{{chats}}개 채팅이 {{credits}} 크레딧을 사용했습니다",
-      "title": "채팅",
-      "untitled": "(제목 없음)"
-    },
     "displayNames": {
       "finance": "금융",
       "imageRecognize": "이미지 인식",
@@ -4649,19 +4531,10 @@
       "other": "기타",
       "video": "비디오"
     },
-    "page": {
-      "description": "채팅, 자동화, 채널 전반의 크레딧 사용량입니다.",
-      "loadError": "사용량 정보를 불러오지 못했습니다. 나중에 다시 시도해 주세요.",
-      "title": "사용량"
-    },
     "range": {
-      "ariaLabel": "날짜 범위",
       "billingPeriod": "청구 기간",
       "last24Hours": "지난 24시간",
-      "last28Days": "지난 28일",
-      "last30Days": "지난 30일",
       "last7Days": "지난 7일",
-      "selectedDay": "선택한 날짜",
       "today": "오늘",
       "yesterday": "어제"
     },
@@ -4683,16 +4556,12 @@
       "email": "이메일",
       "github": "GitHub",
       "other": "기타",
-      "others": "기타",
       "phone": "전화",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "알 수 없음"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}}개 자동화",
-      "automation_other": "{{value}}개 자동화",
       "chat_one": "{{value}}개 채팅",
       "chat_other": "{{value}}개 채팅",
       "credit_one": "{{value}} 크레딧",

@@ -454,8 +454,6 @@
         "agents": "Agents",
         "artifacts": "Artéfacts",
         "connectors": "Connecteurs",
-        "insights": "Insights",
-        "insightsAndUsage": "Insights et utilisation",
         "newChat": "Nouveau chat",
         "settings": "Paramètres",
         "workflows": "Workflows",
@@ -2536,112 +2534,6 @@
       "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page."
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "Mois prochain",
-      "previousMonth": "Mois précédent"
-    },
-    "cards": {
-      "agents": "Agents",
-      "agentsRan_one": "{{agents}} a exécuté {{runs}}",
-      "agentsRan_many": "{{agents}} a exécuté {{runs}}",
-      "agentsRan_other": "{{agents}} a exécuté {{runs}}",
-      "allowed": "Autorisé",
-      "allowedSummary_one": "{{calls}} effectués dans le cadre des {{permissions}} autorisées",
-      "allowedSummary_many": "{{calls}} effectués dans le cadre des autorisations {{permissions}} accordées",
-      "allowedSummary_other": "{{calls}} effectués dans le cadre des autorisations {{permissions}} accordées",
-      "automations": "Automatisations",
-      "automationsUsed_one": "{{automations}} ont utilisé {{credits}}",
-      "automationsUsed_many": "{{automations}} ont utilisé {{credits}}",
-      "automationsUsed_other": "{{automations}} ont utilisé {{credits}}",
-      "balance": "Solde",
-      "byAgent": "par {{agent}}",
-      "chats": "Discussions",
-      "chatsUsed_one": "{{chats}} ont utilisé {{credits}}",
-      "chatsUsed_many": "{{chats}} ont utilisé {{credits}}",
-      "chatsUsed_other": "{{chats}} ont utilisé {{credits}}",
-      "clickToOpen": "Cliquez pour ouvrir",
-      "consumedToday": "consommé aujourd'hui",
-      "moreAutomations_one": "+{{value}} automatisation supplémentaire",
-      "moreAutomations_many": "+{{value}} automatisations supplémentaires",
-      "moreAutomations_other": "+{{value}} automatisations supplémentaires",
-      "moreChats_one": "+{{value}} discussion supplémentaire",
-      "moreChats_many": "+{{value}} discussions supplémentaires",
-      "moreChats_other": "+{{value}} discussions supplémentaires",
-      "protected": "Protégé",
-      "protectedSummary_one": "{{calls}} protégés dans le cadre de l'autorisation {{permissions}}",
-      "protectedSummary_many": "{{calls}} protégés dans le cadre des autorisations {{permissions}}",
-      "protectedSummary_other": "{{calls}} protégés dans le cadre des autorisations {{permissions}}",
-      "rejected_one": "{{value}} rejeté",
-      "rejected_many": "{{value}} rejeté",
-      "rejected_other": "{{value}} rejeté",
-      "rejectedOf": "{{denied}} sur {{total}} rejeté",
-      "services": "Services",
-      "servicesReceived_one": "{{services}} a reçu {{calls}}",
-      "servicesReceived_many": "{{services}} a reçu {{calls}}",
-      "servicesReceived_other": "{{services}} a reçu {{calls}}",
-      "team": "Équipe",
-      "teamCreditUsage": "Utilisation des crédits de l'équipe",
-      "untitled": "(sans titre)",
-      "yourCreditUsage": "Votre utilisation des crédits"
-    },
-    "common": {
-      "loadMore": "Charger plus",
-      "showLess": "Afficher moins"
-    },
-    "page": {
-      "description": "Surveillez ce à quoi vos agents accèdent, comment les crédits sont dépensés, quelles permissions ils utilisent et repérez tout ce qui est inhabituel.",
-      "documentTitle": "Informations et utilisation",
-      "empty": "Exécutez un agent pour voir les informations ici.",
-      "emptyRange": "Aucune activité dans cette plage de temps.",
-      "lastUpdated": "Dernière mise à jour — {{date}}",
-      "loadError": "Impossible de charger l'activité réseau.",
-      "title": "Insights"
-    },
-    "range": {
-      "custom": "Plage personnalisée",
-      "last28Days": "28 derniers jours",
-      "last30Days": "30 derniers jours",
-      "last7Days": "7 derniers jours",
-      "today": "Aujourd'hui",
-      "yesterday": "Hier"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} requête a été bloquée par vos règles d'autorisation. Vérifiez-la pour vous assurer que rien d'important n'est retenu.",
-      "blocked_many": "{{blocked}} requêtes ont été bloquées par vos règles d'autorisation. Vérifiez-les pour vous assurer que rien d'important n'est retenu.",
-      "blocked_other": "{{blocked}} requêtes ont été bloquées par vos règles d'autorisation. Vérifiez-les pour vous assurer que rien d'important n'est retenu.",
-      "blockedCaption": "{{calls}} · {{blocked}} bloqué",
-      "busy_one": "Une journée chargée — {{agentCount}} agents ont complété {{runs}}. Votre réseau travaille dur.",
-      "busy_many": "Une journée chargée — {{agentCount}} agents ont complété {{runs}}. Votre réseau travaille dur.",
-      "busy_other": "Une journée chargée — {{agentCount}} agents ont complété {{runs}}. Votre réseau travaille dur.",
-      "distributed_one": "{{agents}} actifs, utilisant {{credits}} au total. Une charge de travail bien répartie.",
-      "distributed_many": "{{agents}} actifs, utilisant {{credits}} au total. Une charge de travail bien répartie.",
-      "distributed_other": "{{agents}} actifs, utilisant {{credits}} au total. Une charge de travail bien répartie.",
-      "highTraffic_one": "{{callCount}} appels de service à travers {{services}}. Journée à fort trafic.",
-      "highTraffic_many": "{{callCount}} appels de service sur {{services}}. Journée à fort trafic.",
-      "highTraffic_other": "{{callCount}} appels de service sur {{services}}. Journée à fort trafic.",
-      "light_one": "Activité légère — seulement {{runs}} et {{calls}}. Une journée tranquille.",
-      "light_many": "Activité légère — seulement {{runs}} et {{calls}}. Une journée tranquille.",
-      "light_other": "Activité légère — seulement {{runs}} et {{calls}}. Une journée tranquille.",
-      "quietCaption": "{{runs}} · une journée tranquille",
-      "smooth": "{{runs}} et {{callCount}} appels de service aujourd'hui. Tout fonctionne parfaitement."
-    },
-    "units": {
-      "agent_one": "{{value}} agent",
-      "agent_many": "{{value}} agents",
-      "agent_other": "{{value}} agents",
-      "call_one": "{{value}} appel",
-      "call_many": "{{value}} appels",
-      "call_other": "{{value}} appels",
-      "run_one": "{{value}} exécution",
-      "run_many": "{{value}} exécutions",
-      "run_other": "{{value}} exécutions",
-      "service_one": "{{value}} service",
-      "service_many": "{{value}} services",
-      "service_other": "{{value}} services"
-    }
-  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Se désabonner",
@@ -4674,38 +4566,6 @@
     "tryOkou": "Essayer Okou"
   },
   "usage": {
-    "automations": {
-      "empty": "Aucune automatisation utilisée pendant cette période",
-      "more_one": "+{{value}} automatisation supplémentaire",
-      "more_many": "+{{value}} automatisations supplémentaires",
-      "more_other": "+{{value}} automatisations supplémentaires",
-      "summary_one": "{{automations}} ont utilisé {{credits}}",
-      "summary_many": "{{automations}} ont utilisé {{credits}}",
-      "summary_other": "{{automations}} ont utilisé {{credits}}",
-      "title": "Automatisations"
-    },
-    "chart": {
-      "ariaLabel": "Totaux des crédits",
-      "credits": "crédits",
-      "groupBy": {
-        "agent": "Agent",
-        "source": "Source"
-      },
-      "noUsage": "Aucune utilisation",
-      "showDetails": "Afficher les détails d'utilisation pour {{date}}"
-    },
-    "chats": {
-      "clickToOpen": "Cliquez pour ouvrir",
-      "empty": "Pas de discussions pendant cette période",
-      "more_one": "+{{value}} discussion de plus",
-      "more_many": "+{{value}} discussions de plus",
-      "more_other": "+{{value}} discussions de plus",
-      "summary_one": "{{chats}} a utilisé {{credits}}",
-      "summary_many": "{{chats}} a utilisé {{credits}}",
-      "summary_other": "{{chats}} a utilisé {{credits}}",
-      "title": "Discussions",
-      "untitled": "(sans titre)"
-    },
     "displayNames": {
       "finance": "Finance",
       "imageRecognize": "Reconnaissance d'images",
@@ -4724,19 +4584,10 @@
       "other": "Autre",
       "video": "Vidéos"
     },
-    "page": {
-      "description": "Votre consommation de crédits à travers les discussions, les automatisations et les canaux.",
-      "loadError": "Échec du chargement des informations sur l'utilisation. Veuillez réessayer plus tard.",
-      "title": "Utilisation"
-    },
     "range": {
-      "ariaLabel": "Plage de dates",
       "billingPeriod": "Période de facturation",
       "last24Hours": "Dernières 24 heures",
-      "last28Days": "Derniers 28 jours",
-      "last30Days": "Derniers 30 jours",
       "last7Days": "Derniers 7 jours",
-      "selectedDay": "Jour sélectionné",
       "today": "Aujourd'hui",
       "yesterday": "Hier"
     },
@@ -4758,17 +4609,12 @@
       "email": "Email",
       "github": "GitHub",
       "other": "Autre",
-      "others": "Autres",
       "phone": "Téléphone",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "Inconnu"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} automatisation",
-      "automation_many": "{{value}} automatisations",
-      "automation_other": "{{value}} automatisations",
       "chat_one": "{{value}} chat",
       "chat_many": "{{value}} chats",
       "chat_other": "{{value}} chats",

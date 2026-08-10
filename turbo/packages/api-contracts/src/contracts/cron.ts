@@ -219,22 +219,6 @@ const cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema = z.object({
   failed: z.number(),
 });
 
-const cronAggregateInsightsSkippedResponseSchema = z.object({
-  users: z.number(),
-  skipped: z.literal(true),
-});
-
-const cronAggregateInsightsAggregatedResponseSchema = z.object({
-  users: z.number(),
-  windows: z.number(),
-  networkRows: z.number(),
-});
-
-const cronAggregateInsightsResponseSchema = z.union([
-  cronAggregateInsightsSkippedResponseSchema,
-  cronAggregateInsightsAggregatedResponseSchema,
-]);
-
 const storagePresignedUrlRefreshResultSchema = z.object({
   due: z.number(),
   refreshed: z.number(),
@@ -544,19 +528,6 @@ export const cronExecuteMorningBriefsContract = c.router({
   },
 });
 
-export const cronAggregateInsightsContract = c.router({
-  aggregate: {
-    method: "GET",
-    path: "/api/cron/aggregate-insights",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronAggregateInsightsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Aggregate daily usage insights",
-  },
-});
-
 export const cronAggregateModelStatsContract = c.router({
   aggregate: {
     method: "GET",
@@ -593,8 +564,6 @@ export type CronMonitorChatEventQueueContract =
   typeof cronMonitorChatEventQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
-export type CronAggregateInsightsContract =
-  typeof cronAggregateInsightsContract;
 export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
 export type CronRefreshStoragePresignedUrlsContract =
@@ -636,7 +605,6 @@ export {
   cronRenewGoogleFormsWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
-  cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronRefreshStoragePresignedUrlsResponseSchema,
 };

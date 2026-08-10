@@ -10,7 +10,6 @@ import {
   ChevronRight,
   PanelLeftClose,
   Plug,
-  Sparkles,
   Search,
 } from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -326,41 +325,8 @@ function CollapsedNavList() {
 }
 
 function CollapsedFooter() {
-  const activeId = useGet(activeRoute$);
-  const onSelect = useNavSelect();
-  const { t } = useTranslation();
-  const insightsLabel = t(($) => {
-    return $.appShell.sidebar.navigation.insightsAndUsage;
-  });
   return (
     <div className="flex w-full shrink-0 flex-col items-center gap-1 pb-2 pt-1">
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              pathname="/insights"
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                  return;
-                }
-                e.preventDefault();
-                onSelect("insights");
-              }}
-              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                activeId === "insights"
-                  ? "bg-state-selected text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-state-hover"
-              }`}
-              aria-label={insightsLabel}
-            >
-              <Sparkles size={16} className="shrink-0 opacity-70" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <p className="text-xs">{insightsLabel}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
       <AccountDropdownContainer collapsed />
     </div>
   );
@@ -586,51 +552,8 @@ function ExpandedFooter() {
           },
         )}
         <div className="h-px bg-border/30 mx-1 my-1" />
-        <ExpandedFooterAccountInsights />
-      </div>
-    </div>
-  );
-}
-
-function ExpandedFooterAccountInsights() {
-  const activeId = useGet(activeRoute$);
-  const onSelect = useNavSelect();
-  const { t } = useTranslation();
-  const insightsLabel = t(($) => {
-    return $.appShell.sidebar.navigation.insightsAndUsage;
-  });
-  return (
-    <div className="flex items-center gap-1">
-      <div className="flex-1 min-w-0">
         <AccountDropdownContainer />
       </div>
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              pathname="/insights"
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                  return;
-                }
-                e.preventDefault();
-                onSelect("insights");
-              }}
-              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                activeId === "insights"
-                  ? "bg-state-selected text-sidebar-foreground"
-                  : "text-sidebar-foreground hover:bg-state-hover"
-              }`}
-              aria-label={insightsLabel}
-            >
-              <Sparkles size={16} className="shrink-0 opacity-70" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p className="text-xs">{insightsLabel}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
     </div>
   );
 }
@@ -790,16 +713,6 @@ function LabeledNavRail() {
         })}
       </nav>
       <div className="flex w-full shrink-0 flex-col items-center gap-2 pt-1">
-        <LabeledRailLink
-          id="insights"
-          navPath="/insights"
-          label={t(($) => {
-            return $.appShell.sidebar.navigation.insights;
-          })}
-          icon={Sparkles as NavIcon}
-          isActive={activeId === "insights"}
-          onSelect={onSelect}
-        />
         <AccountDropdownContainer collapsed />
       </div>
     </aside>
