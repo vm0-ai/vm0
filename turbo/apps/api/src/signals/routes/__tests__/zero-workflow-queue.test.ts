@@ -341,7 +341,7 @@ async function pendingWorkflowAutomationIds(
   );
 }
 
-async function pendingWorkflowEventForAutomation(
+async function pendingAutomationEventForAutomation(
   threadId: string,
   automationId: string,
 ) {
@@ -927,7 +927,7 @@ describe("workflow queue", () => {
     const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
     mockNow(firedAt);
     await executeDueWorkflowAutomations(created.body.id);
-    const pendingTick = await pendingWorkflowEventForAutomation(
+    const pendingTick = await pendingAutomationEventForAutomation(
       webhookAutomation.threadId,
       created.body.id,
     );
@@ -950,8 +950,8 @@ describe("workflow queue", () => {
       automationId: created.body.id,
       triggerBrief: admittedTriggerBrief,
       workflowName: WORKFLOW_NAME,
-      workflowEventType: "schedule",
-      workflowEventPayload: expect.objectContaining({
+      automationEventType: "schedule",
+      automationEventPayload: expect.objectContaining({
         automationId: created.body.id,
         trigger: "schedule",
         firedAt: new Date(firedAt).toISOString(),
@@ -1434,7 +1434,7 @@ describe("workflow queue", () => {
     expect(claimed.enabled).toBeTruthy();
     expect(claimed.nextRunAt).toBeNull();
 
-    const queuedEvent = await pendingWorkflowEventForAutomation(
+    const queuedEvent = await pendingAutomationEventForAutomation(
       created.body.chatThreadId,
       created.body.id,
     );

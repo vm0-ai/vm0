@@ -1,9 +1,8 @@
-import { zeroWorkflowEventTypeSchema } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroAutomationEventTypeSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import { z } from "zod";
 
-export const workflowAutomationEventTypeSchema = zeroWorkflowEventTypeSchema.or(
-  z.enum(["schedule", "manual"]),
-);
+export const workflowAutomationEventTypeSchema =
+  zeroAutomationEventTypeSchema.or(z.enum(["schedule", "manual"]));
 
 export type WorkflowAutomationEventType = z.infer<
   typeof workflowAutomationEventTypeSchema

@@ -111,7 +111,7 @@ export interface WorkflowQueueDrainResult {
   readonly result: RunWorkflowAutomationResult;
 }
 
-interface WorkflowEventLaunch {
+interface AutomationEventLaunch {
   readonly eventId: string;
   readonly apiStartTime: number;
   readonly timing: ApiDispatchTimingCollector;
@@ -122,7 +122,7 @@ interface DrainWorkflowQueueArgs {
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
-  readonly workflowEventLaunch?: WorkflowEventLaunch;
+  readonly automationEventLaunch?: AutomationEventLaunch;
 }
 
 const CONTINUE_DRAIN = Symbol("continue-workflow-queue-drain");
@@ -139,11 +139,11 @@ async function publishQueueEventChanged(
   signal.throwIfAborted();
 }
 
-async function consumeInvalidWorkflowEvent(
+async function consumeInvalidAutomationEvent(
   db: Db,
   event: PendingWorkflowQueueEvent,
   conflictMessage: string,
-  launchHint: WorkflowEventLaunch | undefined,
+  launchHint: AutomationEventLaunch | undefined,
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
   const consumed = await rejectWorkflowQueueEvent(db, {
@@ -169,7 +169,7 @@ async function handleWorkflowLaunchResult(
   db: Db,
   event: PendingWorkflowQueueEvent,
   result: RunWorkflowAutomationResult,
-  launchHint: WorkflowEventLaunch | undefined,
+  launchHint: AutomationEventLaunch | undefined,
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
   if (result.kind === "ok") {
@@ -246,11 +246,11 @@ export const drainWorkflowQueueForThread$ = command(
           eventId: event.id,
           automationId: event.automationId,
         });
-        const step = await consumeInvalidWorkflowEvent(
+        const step = await consumeInvalidAutomationEvent(
           db,
           event,
           "Workflow automation no longer exists",
-          args.workflowEventLaunch,
+          args.automationEventLaunch,
           signal,
         );
         if (step !== CONTINUE_DRAIN) {
@@ -273,11 +273,11 @@ export const drainWorkflowQueueForThread$ = command(
           eventId: event.id,
           automationId: event.automationId,
         });
-        const step = await consumeInvalidWorkflowEvent(
+        const step = await consumeInvalidAutomationEvent(
           db,
           event,
           "Workflow queue event payload is unreadable",
-          args.workflowEventLaunch,
+          args.automationEventLaunch,
           signal,
         );
         if (step !== CONTINUE_DRAIN) {
@@ -293,11 +293,11 @@ export const drainWorkflowQueueForThread$ = command(
       );
       signal.throwIfAborted();
       if (autonomyBudget.kind === "invalid") {
-        const step = await consumeInvalidWorkflowEvent(
+        const step = await consumeInvalidAutomationEvent(
           db,
           event,
           autonomyBudget.message,
-          args.workflowEventLaunch,
+          args.automationEventLaunch,
           signal,
         );
         if (step !== CONTINUE_DRAIN) {
@@ -307,8 +307,8 @@ export const drainWorkflowQueueForThread$ = command(
       }
 
       const launchHint =
-        args.workflowEventLaunch?.eventId === event.id
-          ? args.workflowEventLaunch
+        args.automationEventLaunch?.eventId === event.id
+          ? args.automationEventLaunch
           : undefined;
       const result = await set(
         launchQueuedWorkflowAutomation$,
