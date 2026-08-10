@@ -24,6 +24,7 @@ import {
   readRunAutonomyBudgetFixture,
   readWorkflowAutomationAutonomyFixture,
   setRunAutonomyBudgetFixture,
+  setWorkflowAutomationAutonomyBudgetFixture,
 } from "./helpers/runtime-state";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import {
@@ -4222,6 +4223,25 @@ describe("zero workflow automations", () => {
     await expect(
       readWorkflowAutomationAutonomyFixture(context, derivedAutomation.body.id),
     ).resolves.toMatchObject({ autonomyBudget: 1, enabled: true });
+
+    await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: derivedAutomation.body.id },
+      }),
+      [200],
+    );
+    await setRunAutonomyBudgetFixture(context, exhaustedRun.body.runId, 5);
+    await accept(
+      automationsClient().enable({
+        headers: { authorization: `Bearer ${exhaustedToken}` },
+        params: { id: derivedAutomation.body.id },
+      }),
+      [200],
+    );
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, derivedAutomation.body.id),
+    ).resolves.toMatchObject({ autonomyBudget: 4, enabled: true });
     await setRunAutonomyBudgetFixture(context, exhaustedRun.body.runId, 0);
 
     const blocked = await accept(
@@ -4238,7 +4258,7 @@ describe("zero workflow automations", () => {
     await runs.requestCancelRun(actor, exhaustedRun.body.runId, [200]);
   });
 
-  it("derives manual run budgets and rejects exhausted Zero callers", async () => {
+  it("derives manual run budgets from the source and rejects exhausted Zero callers", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { actor, workflowId } = await setupFixture();
     const automation = await accept(
@@ -4250,6 +4270,11 @@ describe("zero workflow automations", () => {
         },
       }),
       [201],
+    );
+    await setWorkflowAutomationAutonomyBudgetFixture(
+      context,
+      automation.body.id,
+      0,
     );
     const sourceRun = await accept(
       automationsClient().run({
@@ -4269,7 +4294,7 @@ describe("zero workflow automations", () => {
     await runs.requestCancelRun(actor, sourceRun.body.runId, [200]);
     await flushWaitUntilForTest();
 
-    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 1);
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 2);
     const childRun = await accept(
       automationsClient().run({
         headers: { authorization: `Bearer ${sourceToken}` },
@@ -4278,11 +4303,14 @@ describe("zero workflow automations", () => {
       [201],
     );
     if (!childRun.body.runId) {
-      throw new Error("Expected a budget-one caller to start a child run");
+      throw new Error("Expected a budget-two caller to start a child run");
     }
     await expect(
       readRunAutonomyBudgetFixture(context, childRun.body.runId),
-    ).resolves.toBe(0);
+    ).resolves.toBe(1);
+    await expect(
+      readWorkflowAutomationAutonomyFixture(context, automation.body.id),
+    ).resolves.toMatchObject({ autonomyBudget: 0 });
     await runs.requestCancelRun(actor, childRun.body.runId, [200]);
     await flushWaitUntilForTest();
 

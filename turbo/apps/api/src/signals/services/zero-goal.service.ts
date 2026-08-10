@@ -273,7 +273,7 @@ async function reactivateGoal(
   tx: Pick<Db, "update">,
   args: {
     readonly goal: GoalRow;
-    readonly autonomyBudgetCeiling: number;
+    readonly autonomyBudget: number;
     readonly objective?: string;
     readonly objectiveBrief?: string;
     readonly updatedAt: Date;
@@ -288,10 +288,7 @@ async function reactivateGoal(
       ...(args.objectiveBrief === undefined
         ? {}
         : { objectiveBrief: args.objectiveBrief }),
-      autonomyBudget: Math.min(
-        args.goal.autonomyBudget,
-        args.autonomyBudgetCeiling,
-      ),
+      autonomyBudget: args.autonomyBudget,
     })
     .where(eq(threadGoals.id, args.goal.id))
     .returning(threadGoalColumns());
@@ -645,7 +642,7 @@ export async function resumeCurrentGoal(
     }
     const row = await reactivateGoal(tx, {
       goal: current,
-      autonomyBudgetCeiling: reactivationBudget.autonomyBudget,
+      autonomyBudget: reactivationBudget.autonomyBudget,
       updatedAt: resumedAt,
     });
     await appendGoalOpenMarker(tx, {
@@ -720,7 +717,7 @@ export async function editCurrentGoal(
 
     const row = await reactivateGoal(tx, {
       goal: current,
-      autonomyBudgetCeiling: replacementBudget.autonomyBudget,
+      autonomyBudget: replacementBudget.autonomyBudget,
       objective: args.objective,
       objectiveBrief,
       updatedAt: editedAt,
