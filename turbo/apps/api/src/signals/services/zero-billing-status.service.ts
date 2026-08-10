@@ -20,7 +20,6 @@ import {
 } from "drizzle-orm";
 
 import { pgIntegerDecoder } from "../../lib/db-structured-result";
-import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
@@ -167,6 +166,7 @@ interface BillingStatusResponse {
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
     canReduce?: boolean;
+    canChangeInApp?: boolean;
   }[];
   usageAllowance: UsageAllowanceStatus | null;
   concurrencyLimit: number;
@@ -565,7 +565,6 @@ function billingStatusResponse(args: {
   orgId: string;
   org: BillingOrgRow | undefined;
   canBuyConcurrency: boolean;
-  canReduceConcurrency: boolean;
   canBuyCredits: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
@@ -636,10 +635,11 @@ function billingStatusResponse(args: {
           currentPeriodEnd:
             subscription.currentPeriodEnd?.toISOString() ?? null,
           cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-          ...(args.canReduceConcurrency &&
-          subscription.quantity > 1 &&
-          !subscription.cancelAtPeriodEnd
+          ...(subscription.quantity > 1 && !subscription.cancelAtPeriodEnd
             ? { canReduce: true as const }
+            : {}),
+          ...(!subscription.cancelAtPeriodEnd
+            ? { canChangeInApp: true as const }
             : {}),
         };
       },
@@ -725,8 +725,6 @@ export function zeroBillingStatus(
       orgId,
       org: org[0],
       canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
-      canReduceConcurrency:
-        env("STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID") !== undefined,
       canBuyCredits: capabilities?.canBuyCredits ?? false,
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
