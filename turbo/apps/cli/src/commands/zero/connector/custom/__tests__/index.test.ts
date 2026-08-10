@@ -41,6 +41,29 @@ describe("zero connector custom readers", () => {
     expect(output).toContain("http");
   });
 
+  it("keeps HTTP routing details in status for an older kind-less response", async () => {
+    const connector = customConnector();
+    server.use(
+      http.get(
+        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}`,
+        () => {
+          return HttpResponse.json({ ...connector, kind: undefined });
+        },
+      ),
+    );
+
+    await customConnectorCommand.parseAsync([
+      "node",
+      "zero",
+      "status",
+      CONNECTOR_ID,
+    ]);
+
+    const output = consoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("Kind:             http");
+    expect(output).toContain("Prefixes:         https://api.acme.test/v1/");
+  });
+
   it("shows an MCP connector endpoint without HTTP routing fields", async () => {
     const connector = {
       kind: "mcp",
