@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { ConnectorOauthCallbackResult } from "@vm0/api-contracts/contracts/connectors-slug-callback";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -20,6 +21,7 @@ import {
   parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
+  type OAuthTokenResult,
 } from "../services/custom-connector-oauth2.service";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { addUserCustomConnector } from "../services/user-connectors.service";
@@ -178,6 +180,29 @@ async function authorizeCustomConnectorAgent(
   }
 }
 
+async function persistCustomConnectorOAuth2Connection(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly storageVersion: number;
+    readonly token: OAuthTokenResult;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const connectionStorage = storeCustomConnectorOAuth2Connection(args, signal);
+  await commitConnectorRuntimeMutation(connectionStorage, () => {
+    return {
+      db: args.db,
+      scope: { orgId: args.orgId, userId: args.userId },
+      targets: [{ kind: "custom", customConnectorId: args.connectorId }],
+    };
+  });
+  await publishCustomUserInvalidation(args.userId, signal);
+}
+
 const completeOAuth2Callback$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
@@ -263,26 +288,18 @@ const completeOAuth2Callback$ = command(
           signal,
         );
         signal.throwIfAborted();
-        const connectionStorage = storeCustomConnectorOAuth2Connection({
-          db: set(writeDb$),
-          orgId: claimed.state.orgId,
-          userId: claimed.state.userId,
-          connectorId: connector.id,
-          storageVersion: connector.storageVersion,
-          token,
-          featureContext,
-        });
-        await commitConnectorRuntimeMutation(connectionStorage, () => {
-          return {
+        await persistCustomConnectorOAuth2Connection(
+          {
             db: set(writeDb$),
-            scope: {
-              orgId: claimed.state.orgId,
-              userId: claimed.state.userId,
-            },
-            targets: [{ kind: "custom", customConnectorId: connector.id }],
-          };
-        });
-        await publishCustomUserInvalidation(claimed.state.userId, signal);
+            orgId: claimed.state.orgId,
+            userId: claimed.state.userId,
+            connectorId: connector.id,
+            storageVersion: connector.storageVersion,
+            token,
+            featureContext,
+          },
+          signal,
+        );
         return true;
       })(),
     );

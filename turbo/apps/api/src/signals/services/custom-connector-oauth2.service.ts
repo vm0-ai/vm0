@@ -4,7 +4,7 @@ import { isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
 
 import { command } from "ccstate";
-import { and, eq, exists, isNotNull } from "drizzle-orm";
+import { and, eq, exists } from "drizzle-orm";
 import { z } from "zod";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
@@ -57,6 +57,7 @@ import {
   customConnectorMcpDisabledResponse,
   isCustomConnectorMcpEnabled,
 } from "./custom-connector-mcp-feature.service";
+import { replaceConnectorConnection } from "./connector-connection-write.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
@@ -761,16 +762,20 @@ export async function lockCustomConnectorOAuth2CredentialContract(args: {
   }
 }
 
-export async function storeCustomConnectorOAuth2Connection(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId: string;
-  readonly storageVersion: number;
-  readonly token: OAuthTokenResult;
-  readonly featureContext: FeatureSwitchContext;
-}): Promise<void> {
+export async function storeCustomConnectorOAuth2Connection(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorId: string;
+    readonly storageVersion: number;
+    readonly token: OAuthTokenResult;
+    readonly featureContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<void> {
   const encrypted = await encryptTokenValues(args);
+  signal.throwIfAborted();
   await args.db.transaction(async (tx) => {
     await lockCustomConnectorOAuth2CredentialContract({
       db: tx,
@@ -778,43 +783,30 @@ export async function storeCustomConnectorOAuth2Connection(args: {
       connectorId: args.connectorId,
       storageVersion: args.storageVersion,
     });
-    const [connection] = await tx
-      .insert(connectors)
-      .values({
-        customConnectorId: args.connectorId,
+    signal.throwIfAborted();
+    await replaceConnectorConnection(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
         authMethod: "oauth",
         storageVersion: args.storageVersion,
         tokenExpiresAt: args.token.expiresAt,
-        userId: args.userId,
-        orgId: args.orgId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          connectors.orgId,
-          connectors.userId,
-          connectors.customConnectorId,
-        ],
-        targetWhere: isNotNull(connectors.customConnectorId),
-        set: {
-          authMethod: "oauth",
-          storageVersion: args.storageVersion,
-          tokenExpiresAt: args.token.expiresAt,
-          needsReconnect: false,
-          reconnectReason: null,
-          updatedAt: nowDate(),
+        target: {
+          kind: "custom",
+          customConnectorId: args.connectorId,
         },
-      })
-      .returning({ id: connectors.id });
-    if (!connection) {
-      throw new Error("Expected custom connector OAuth connection");
-    }
-    await tx.delete(secrets).where(eq(secrets.connectorId, connection.id));
-    await tx.insert(secrets).values(
-      connectionTokenRows({
-        ...args,
-        connectionId: connection.id,
-        encrypted,
-      }),
+        writeCredentials: async ({ db, connectorId }) => {
+          await db.insert(secrets).values(
+            connectionTokenRows({
+              ...args,
+              connectionId: connectorId,
+              encrypted,
+            }),
+          );
+        },
+      },
+      signal,
     );
   });
 }

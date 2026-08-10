@@ -402,15 +402,18 @@ async function persistFeishuOAuthConnection(
     if (!connection.connected) {
       return connection;
     }
-    await storeCustomConnectorOAuth2Connection({
-      db: tx,
-      orgId: args.state.orgId,
-      userId: args.state.userId,
-      connectorId: args.connector.id,
-      storageVersion: args.connector.storageVersion,
-      token: args.token,
-      featureContext: args.featureContext,
-    });
+    await storeCustomConnectorOAuth2Connection(
+      {
+        db: tx,
+        orgId: args.state.orgId,
+        userId: args.state.userId,
+        connectorId: args.connector.id,
+        storageVersion: args.connector.storageVersion,
+        token: args.token,
+        featureContext: args.featureContext,
+      },
+      signal,
+    );
     signal.throwIfAborted();
     if (!args.installation.tenantKey && args.userInfo.tenantKey) {
       await tx

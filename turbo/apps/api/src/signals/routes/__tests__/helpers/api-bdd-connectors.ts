@@ -325,6 +325,9 @@ interface TestOAuthAuthCodeProviderOptions {
   readonly scope?: string;
   readonly tokenError?: boolean;
   readonly userinfoError?: boolean;
+  readonly userId?: string;
+  readonly username?: string;
+  readonly email?: string;
 }
 
 interface TestOAuthAuthCodeProviderRecorder {
@@ -373,9 +376,9 @@ export function mockTestOAuthAuthCodeProvider(
         );
       }
       return HttpResponse.json({
-        id: "bdd-test-oauth-user",
-        username: "bdd-test-oauth",
-        email: "bdd-test-oauth@example.test",
+        id: options.userId ?? "bdd-test-oauth-user",
+        username: options.username ?? "bdd-test-oauth",
+        email: options.email ?? "bdd-test-oauth@example.test",
       });
     }),
   );
