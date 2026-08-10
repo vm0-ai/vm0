@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.539.0](https://github.com/vm0-ai/vm0/compare/core-v8.538.2...core-v8.539.0) (2026-08-10)
+
+
+### Features
+
+* add bounded connector discovery ([#26142](https://github.com/vm0-ai/vm0/issues/26142)) ([16bf8c7](https://github.com/vm0-ai/vm0/commit/16bf8c7429e3ec81c3b3e489e212bf3c52ee0a03))
+* show fast mode in integration footers ([#26070](https://github.com/vm0-ai/vm0/issues/26070)) ([cdf21d6](https://github.com/vm0-ai/vm0/commit/cdf21d62819bc7accd86d94d5022941f49a04194))
+
+
+### Bug Fixes
+
+* use dataforseo exclusively for zero seo ([#26159](https://github.com/vm0-ai/vm0/issues/26159)) ([6e43dc6](https://github.com/vm0-ai/vm0/commit/6e43dc6a35b1f9a656e868353ec6f8b1272731f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.307.0
+
 ## [8.538.2](https://github.com/vm0-ai/vm0/compare/core-v8.538.1...core-v8.538.2) (2026-08-10)
 
 

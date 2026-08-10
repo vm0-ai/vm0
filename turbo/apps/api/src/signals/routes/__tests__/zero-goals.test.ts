@@ -401,13 +401,18 @@ describe("zero goals", () => {
     );
     expect(admittedContext).toMatchObject({
       contextType: "goal",
-      contextId: null,
+      contextId: goal.goalId,
     });
     expect(claimedContext).toMatchObject({
       contextType: "goal",
-      contextId: null,
+      contextId: goal.goalId,
     });
     expect(state.runIds).toHaveLength(1);
+    expect(state.runs).toContainEqual({
+      id: goalRunId,
+      runGroupId: goal.goalId,
+      goalId: goal.goalId,
+    });
 
     await api.requestCancelRun(actor, goalRunId, [200]);
     await api.requestCancelRun(actor, origin.runId, [200]);
@@ -487,7 +492,7 @@ describe("zero goals", () => {
       readChatEventContextFixture(admission.eventId),
     ).resolves.toMatchObject({
       contextType: "goal",
-      contextId: null,
+      contextId: goal.goalId,
     });
     await expect(
       chat.getThreadEvent(fixture.actor, fixture.threadId, admission.eventId),

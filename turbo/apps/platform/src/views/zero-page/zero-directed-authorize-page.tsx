@@ -8,7 +8,6 @@ import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
-  allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
   connectFlowConnectorSlug$,
@@ -18,6 +17,7 @@ import {
   justConnectedSlugs$,
   pollingOAuthAuthCodeConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   directedAuthorizeSlug$,
@@ -113,9 +113,9 @@ function useDirectedAuthorizeParams(): {
 
 function useDirectedAuthorizeCatalogState(connectorSlug: ConnectorSlug | null) {
   const justConnected = useGet(justConnectedSlugs$);
-  const allLoadable = useLastLoadable(allConnectorCatalogItems$);
+  const allLoadable = useLastLoadable(connectorCatalogStatus$);
   const catalogLoaded = allLoadable.state === "hasData";
-  const allData = catalogLoaded ? allLoadable.data : [];
+  const allData = catalogLoaded ? allLoadable.data.connectors : [];
   const item = connectorSlug
     ? allData.find((connector) => {
         return connector.slug === connectorSlug;
@@ -378,6 +378,38 @@ function runDirectedAuthorize(
   }
 }
 
+function DirectedAuthorizeConnectModal({
+  open,
+  item,
+  agentId,
+  reloadAuthorization,
+  handleAuthorizeSuccess,
+  close,
+}: {
+  open: boolean;
+  item: PlatformConnectorCatalogStatusItem | null | undefined;
+  agentId: string;
+  reloadAuthorization: () => void;
+  handleAuthorizeSuccess: () => Promise<void>;
+  close: () => void;
+}) {
+  if (!open || !item) {
+    return null;
+  }
+
+  return (
+    <ConnectModal
+      item={item}
+      agentId={agentId}
+      onSuccess={async () => {
+        reloadAuthorization();
+        await handleAuthorizeSuccess();
+      }}
+      onClose={close}
+    />
+  );
+}
+
 function DirectedAuthorizeCard() {
   const params = useDirectedAuthorizeParams();
   const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
@@ -479,19 +511,16 @@ function DirectedAuthorizeCard() {
         canAuthorize={canAuthorize}
         onAuthorize={handleAuthorize}
       />
-      {connectModalOpen && (
-        <ConnectModal
-          selectedConnectorSlug={connectorSlug}
-          agentId={agentId}
-          onSuccess={async () => {
-            reloadAuthorization();
-            await handleAuthorizeSuccess();
-          }}
-          onClose={() => {
-            setDirectedAuthorizeConnectModalKey(null);
-          }}
-        />
-      )}
+      <DirectedAuthorizeConnectModal
+        open={connectModalOpen}
+        item={item}
+        agentId={agentId}
+        reloadAuthorization={reloadAuthorization}
+        handleAuthorizeSuccess={handleAuthorizeSuccess}
+        close={() => {
+          setDirectedAuthorizeConnectModalKey(null);
+        }}
+      />
     </>
   );
 }

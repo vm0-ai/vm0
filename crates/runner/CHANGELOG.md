@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.11...runner-rs-v0.162.12) (2026-08-10)
+
+
+### Refactoring
+
+* **connectors:** unify runtime wakeup discovery ([#26156](https://github.com/vm0-ai/vm0/issues/26156)) ([5ef4127](https://github.com/vm0-ai/vm0/commit/5ef41272d6ee5ecf1b7898e6fa6a743e83ccd922))
+
 ## [0.162.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.10...runner-rs-v0.162.11) (2026-08-10)
 
 

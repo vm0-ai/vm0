@@ -523,8 +523,15 @@
     {
       "idx": 882,
       "version": "7",
-      "when": 1786365243348,
-      "tag": "0882_open_richard_fisk",
+      "when": 1786365253783,
+      "tag": "0882_nasty_hobgoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 883,
+      "version": "7",
+      "when": 1786366859577,
+      "tag": "0883_burly_bloodscream",
       "breakpoints": true
     }
   ]

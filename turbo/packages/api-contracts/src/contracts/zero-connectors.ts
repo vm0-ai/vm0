@@ -35,7 +35,7 @@ export const zeroConnectorsMainContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "List all connectors (zero proxy)",
+    summary: "List the current user's connector connections",
   },
 });
 
@@ -284,7 +284,7 @@ export type ConnectorSearchResponse = z.infer<
 
 /**
  * Zero contract for GET /api/zero/connectors/search
- * Returns all available connectors with optional keyword search
+ * Returns up to 100 featured connectors or slug/label search results.
  */
 export const zeroConnectorsSearchContract = c.router({
   search: {
@@ -298,7 +298,7 @@ export const zeroConnectorsSearchContract = c.router({
       403: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Search available connectors by slug",
+    summary: "Search available connectors by slug or label",
   },
 });
 
