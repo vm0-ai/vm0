@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.720.0](https://github.com/vm0-ai/vm0/compare/app-v0.719.1...app-v0.720.0) (2026-08-10)
+
+
+### Features
+
+* add bounded connector discovery ([#26142](https://github.com/vm0-ai/vm0/issues/26142)) ([16bf8c7](https://github.com/vm0-ai/vm0/commit/16bf8c7429e3ec81c3b3e489e212bf3c52ee0a03))
+* **billing:** confirm concurrency changes in app ([#26116](https://github.com/vm0-ai/vm0/issues/26116)) ([b3be142](https://github.com/vm0-ai/vm0/commit/b3be1427c62066feebf8c0123111c9a418e4a153))
+
+
+### Bug Fixes
+
+* **app:** brand page metadata by hostname ([#26127](https://github.com/vm0-ai/vm0/issues/26127)) ([d9d6820](https://github.com/vm0-ai/vm0/commit/d9d6820c9417a5b7f27e6536aac3f3bdeee8d68a))
+* **connectors:** separate custom connector selection from connection readiness ([#26125](https://github.com/vm0-ai/vm0/issues/26125)) ([31ae0cc](https://github.com/vm0-ai/vm0/commit/31ae0cc11b26d369cceb4b99acc3b121d1a2977b))
+* **platform:** use lightning icon for fast mode ([#26138](https://github.com/vm0-ai/vm0/issues/26138)) ([85f24bf](https://github.com/vm0-ai/vm0/commit/85f24bfc9e2c95c2928c0d0b8eb4c93aec143f8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.307.0
+    * @vm0/connectors bumped to 1.204.5
+    * @vm0/core bumped to 8.539.0
+
 ## [0.719.1](https://github.com/vm0-ai/vm0/compare/app-v0.719.0...app-v0.719.1) (2026-08-10)
 
 

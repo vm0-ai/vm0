@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.417.0](https://github.com/vm0-ai/vm0/compare/api-v1.416.1...api-v1.417.0) (2026-08-10)
+
+
+### Features
+
+* add bounded connector discovery ([#26142](https://github.com/vm0-ai/vm0/issues/26142)) ([16bf8c7](https://github.com/vm0-ai/vm0/commit/16bf8c7429e3ec81c3b3e489e212bf3c52ee0a03))
+* **billing:** confirm concurrency changes in app ([#26116](https://github.com/vm0-ai/vm0/issues/26116)) ([b3be142](https://github.com/vm0-ai/vm0/commit/b3be1427c62066feebf8c0123111c9a418e4a153))
+* show fast mode in integration footers ([#26070](https://github.com/vm0-ai/vm0/issues/26070)) ([cdf21d6](https://github.com/vm0-ai/vm0/commit/cdf21d62819bc7accd86d94d5022941f49a04194))
+
+
+### Bug Fixes
+
+* **connectors:** separate custom connector selection from connection readiness ([#26125](https://github.com/vm0-ai/vm0/issues/26125)) ([31ae0cc](https://github.com/vm0-ai/vm0/commit/31ae0cc11b26d369cceb4b99acc3b121d1a2977b))
+* use dataforseo exclusively for zero seo ([#26159](https://github.com/vm0-ai/vm0/issues/26159)) ([6e43dc6](https://github.com/vm0-ai/vm0/commit/6e43dc6a35b1f9a656e868353ec6f8b1272731f9))
+* use long-lived tiktok ads access tokens ([#26161](https://github.com/vm0-ai/vm0/issues/26161)) ([b1d81d8](https://github.com/vm0-ai/vm0/commit/b1d81d84eaf5e7f3509011318bbda1fb7e6899b6))
+
+
+### Refactoring
+
+* **chat:** dual-write canonical event fields ([#26149](https://github.com/vm0-ai/vm0/issues/26149)) ([9fe7e96](https://github.com/vm0-ai/vm0/commit/9fe7e9604910669d4ee30cc0c84c6ed119f406d1))
+* **connectors:** unify runtime wakeup discovery ([#26156](https://github.com/vm0-ai/vm0/issues/26156)) ([5ef4127](https://github.com/vm0-ai/vm0/commit/5ef41272d6ee5ecf1b7898e6fa6a743e83ccd922))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.307.0
+    * @vm0/connectors bumped to 1.204.5
+    * @vm0/core bumped to 8.539.0
+    * @vm0/db bumped to 1.187.0
+    * @vm0/pi-agent-runtime bumped to 1.3.30
+
 ## [1.416.1](https://github.com/vm0-ai/vm0/compare/api-v1.416.0...api-v1.416.1) (2026-08-10)
 
 
