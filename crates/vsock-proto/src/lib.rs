@@ -20,9 +20,12 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types are continuous and grouped by protocol domain:
-//! connection lifecycle, operation gates, file operations, exec operations, and
-//! the generic protocol error sentinel at `0xFF`.
+//! Non-error message types currently occupy the contiguous range `0x00..=0x13`
+//! in allocation order. Existing values are stable wire assignments: do not
+//! renumber or reuse them. Allocate new non-error messages at the next unused
+//! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
+//! reserved for generic protocol errors. Changing an existing assignment
+//! requires an explicit, versioned host/guest protocol migration.
 //!
 //! | Type | Direction | Name              | Payload |
 //! |------|-----------|-------------------|---------|
