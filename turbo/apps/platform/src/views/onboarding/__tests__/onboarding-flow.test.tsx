@@ -22,6 +22,11 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import {
+  PRESENTATION_LANDING_PROMPT,
+  PRESENTATION_ONBOARDING_PATH,
+  PRESENTATION_SHOWCASE_URL,
+} from "../../../__tests__/presentation-onboarding-fixture.ts";
 import { pathname } from "../../../signals/location.ts";
 import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
@@ -30,14 +35,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
-
-const PRESENTATION_LANDING_PROMPT =
-  "/gen presentation with template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, " +
-  "a playful habit-building app for remote teams introducing a shared 30-day wellness challenge. Present it to people and culture leaders " +
-  "with cover, agenda, launch story, audience pain points, product vision, feature tour, rollout timeline, activation moments, team, early metrics, " +
-  "testimonials, pricing, and next steps. Make it saturated, joyful, idea-led, and structured.";
-const PRESENTATION_SHOWCASE_URL =
-  "https://cdn.vm0.io/artifacts/example/playful-launch-presentation.html";
 
 function templateTypeFromUserMessage(
   document: UserMessageDocument | undefined,
@@ -524,18 +521,10 @@ describe("onboarding flow", () => {
       },
     });
     mockOnboardingNeeded();
-    const params = new URLSearchParams({
-      prompt: PRESENTATION_LANDING_PROMPT,
-      showcase: PRESENTATION_SHOWCASE_URL,
-      vm0_source: "presentation",
-      landing_host: "www.vm0.ai",
-      landing_path: "/en/presentation",
-      source_type: "direct",
-    });
 
     detachedSetupPage({
       context,
-      path: `/onboarding?${params.toString()}`,
+      path: PRESENTATION_ONBOARDING_PATH,
     });
 
     await expect(

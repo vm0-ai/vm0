@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { PRESENTATION_ONBOARDING_URL } from "../../../__tests__/presentation-onboarding-fixture.ts";
 import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -333,7 +334,7 @@ describe("app auth pages", () => {
   });
 
   it("renders the app-hosted sign-in route with an allowed redirect URL", async () => {
-    const redirectUrl = "https://app.vm0.ai/_/skeleton";
+    const redirectUrl = PRESENTATION_ONBOARDING_URL;
     const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
@@ -436,7 +437,7 @@ describe("app auth pages", () => {
   });
 
   it("renders the app-hosted sign-up route with an allowed redirect URL", async () => {
-    const redirectUrl = "https://app.vm0.ai/prompt";
+    const redirectUrl = PRESENTATION_ONBOARDING_URL;
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
     setBrowserUrl(`https://app.vm0.ai${path}`);
 
