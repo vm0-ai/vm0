@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 
 import {
   DEFAULT_SKILLS_BRANCH,
@@ -11,7 +11,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi } from "./helpers/api-bdd";
 import {
@@ -394,6 +394,8 @@ describe("GET /api/cron/sync-skills", () => {
   beforeEach(() => {
     mockGitTreesByCommit.clear();
     mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
+    mockOptionalEnv("GITHUB_APP_ID", undefined);
+    mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockImplementation(successfulS3Response);
   });
@@ -482,6 +484,79 @@ describe("GET /api/cron/sync-skills", () => {
     expect(alphaArchiveSize).toBeGreaterThan(0);
     expect(s3CallsByName("CopyObjectCommand")).toHaveLength(2);
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
+  });
+
+  it("authenticates tree requests as the repository installation", async () => {
+    const commitSha = newCommitSha();
+    const sourceSkills = createFullSkillTree([EXTRA_SKILLS.alphaSkill]);
+    await seedCurrentSeedSkillVersions();
+    setupMswHandlers(commitSha, sourceSkills);
+    const { privateKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    });
+    mockOptionalEnv("GITHUB_APP_ID", "123456");
+    mockOptionalEnv(
+      "GITHUB_APP_PRIVATE_KEY",
+      privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    );
+    server.use(
+      http.get(
+        "https://api.github.com/repos/vm0-ai/vm0-skills/installation",
+        ({ request }) => {
+          expect(request.headers.get("authorization")).toMatch(
+            /^Bearer [^.]+\.[^.]+\.[^.]+$/,
+          );
+          return HttpResponse.json({ id: 987_654 });
+        },
+      ),
+      http.post(
+        "https://api.github.com/app/installations/987654/access_tokens",
+        async ({ request }) => {
+          expect(request.headers.get("authorization")).toMatch(
+            /^Bearer [^.]+\.[^.]+\.[^.]+$/,
+          );
+          await expect(request.json()).resolves.toStrictEqual({
+            repositories: ["vm0-skills"],
+            permissions: { contents: "read" },
+          });
+          return HttpResponse.json({
+            token: "github-installation-token",
+            expires_at: "2026-08-10T07:00:00Z",
+          });
+        },
+      ),
+      http.get(
+        "https://api.github.com/repos/vm0-ai/vm0-skills/git/trees/:commitSha",
+        ({ params, request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer github-installation-token",
+          );
+          const treeCommitSha = String(params.commitSha);
+          return HttpResponse.json({
+            sha: treeCommitSha,
+            truncated: false,
+            tree: sourceSkills.flatMap((skill) => {
+              return skill.files.map((file) => {
+                return {
+                  path: `${skill.name}/${file.path}`,
+                  type: "blob",
+                  sha: mockGitBlobSha(file.content),
+                  size: Buffer.byteLength(file.content),
+                };
+              });
+            }),
+          });
+        },
+      ),
+    );
+
+    const response = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.failed).toBe(0);
+    expect(response.body.commitSha).toBe(commitSha);
   });
 
   it("mounts only the current default seed skills in claimed runs", async () => {

@@ -25,7 +25,7 @@ import { eq, inArray, like } from "drizzle-orm";
 import { pack, type Headers as TarHeaders, type Pack } from "tar-stream";
 import { z } from "zod";
 
-import { env } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -37,6 +37,7 @@ import {
   uploadS3ObjectStream,
 } from "../external/s3";
 import { createDeferredPromise, settle, tapError } from "../utils";
+import { getGithubRepositoryInstallationAccessToken } from "./github-app.service";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
@@ -166,11 +167,18 @@ async function fetchHeadCommitSha(signal: AbortSignal): Promise<string> {
 
 async function fetchGitTree(
   commitSha: string,
+  accessToken: string | undefined,
   signal: AbortSignal,
 ): Promise<GitTreeSnapshot> {
   const response = await fetch(
     `${GITHUB_API_BASE}/git/trees/${commitSha}?recursive=1`,
-    { headers: GITHUB_API_HEADERS, signal },
+    {
+      headers: {
+        ...GITHUB_API_HEADERS,
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      signal,
+    },
   );
   if (!response.ok) {
     throw new Error(`Failed to fetch skills git tree: ${response.status}`);
@@ -858,9 +866,10 @@ function isUsableBaseCommitSha(commitSha: string): boolean {
 async function buildSkillTreeSyncPlan(
   existing: readonly StoredSkillSource[],
   headSha: string,
+  accessToken: string | undefined,
   signal: AbortSignal,
 ): Promise<SkillTreeSyncPlan> {
-  const currentTree = await fetchGitTree(headSha, signal);
+  const currentTree = await fetchGitTree(headSha, accessToken, signal);
   signal.throwIfAborted();
   const baseCommitShas = new Set(
     existing.flatMap((skill) => {
@@ -872,7 +881,7 @@ async function buildSkillTreeSyncPlan(
   const [baseCommitSha] = baseCommitShas;
   const previousTreeResult =
     baseCommitShas.size === 1 && baseCommitSha
-      ? await settle(fetchGitTree(baseCommitSha, signal), signal)
+      ? await settle(fetchGitTree(baseCommitSha, accessToken, signal), signal)
       : undefined;
   if (previousTreeResult && !previousTreeResult.ok) {
     log.warn("Failed to fetch previous skills tree; checking all skills", {
@@ -902,6 +911,28 @@ async function buildSkillTreeSyncPlan(
     changedSkills,
     sourceSkillNames: new Set(currentTree.skillFiles.keys()),
   };
+}
+
+async function githubApiAccessToken(
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const appId = optionalEnv("GITHUB_APP_ID");
+  const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
+  if (!appId && !privateKey) {
+    return undefined;
+  }
+  if (!appId || !privateKey) {
+    throw new Error("GitHub App credentials must be configured together");
+  }
+  return await getGithubRepositoryInstallationAccessToken(
+    {
+      appId,
+      privateKey,
+      owner: DEFAULT_SKILLS_OWNER,
+      repository: DEFAULT_SKILLS_REPO,
+    },
+    signal,
+  );
 }
 
 async function markSkillsSyncComplete(
@@ -952,8 +983,10 @@ export const syncSkills$ = command(
       };
     }
 
+    const accessToken = await githubApiAccessToken(signal);
+    signal.throwIfAborted();
     const { currentTree, changedSkills, sourceSkillNames } =
-      await buildSkillTreeSyncPlan(existing, headSha, signal);
+      await buildSkillTreeSyncPlan(existing, headSha, accessToken, signal);
 
     let synced = 0;
     let skipped = 0;
