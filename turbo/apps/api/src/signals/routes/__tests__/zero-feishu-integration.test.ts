@@ -1774,6 +1774,48 @@ describe("Feishu integration", () => {
     });
     expect(welcome?.msgType).toBe("interactive");
 
+    await accept(
+      client.disconnectInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId },
+      }),
+      [200],
+    );
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requireValue(
+          member.orgId,
+          "Expected Feishu member to have an organization",
+        ),
+        userId: member.userId,
+        customConnectorId: managedConnector.id,
+      }),
+    ).resolves.toMatchObject({ connector: null });
+    const disconnectedConnectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(disconnectedConnectorList.body.connectors).toMatchObject([
+      {
+        id: managedConnector.id,
+        connected: false,
+      },
+    ]);
+    const disconnectedMemberStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(disconnectedMemberStatus.body.installations).toMatchObject([
+      {
+        id: installationId,
+        isConnected: false,
+      },
+    ]);
+
     mocks.clerk.session(admin.userId, admin.orgId, admin.orgRole);
     await accept(
       client.removeInstallation({
