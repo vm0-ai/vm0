@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.8...runner-rs-v0.162.9) (2026-08-10)
+
+
+### Bug Fixes
+
+* **mitm-addon:** reject non-list custom connector apis ([#26114](https://github.com/vm0-ai/vm0/issues/26114)) ([cb75f7e](https://github.com/vm0-ai/vm0/commit/cb75f7e81a13ee39e7ca4603509ba6a6e61b63a9))
+
 ## [0.162.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.7...runner-rs-v0.162.8) (2026-08-10)
 
 
