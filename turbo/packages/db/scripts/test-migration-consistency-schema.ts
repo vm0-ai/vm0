@@ -33,9 +33,14 @@ import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import { zeroRunsBeforeCodexServiceTier } from "../src/rollout-compat/zero-run-before-codex-service-tier";
+import { agentRuns } from "../src/schema/agent-run";
 import { chatEvents } from "../src/schema/chat-event";
+import { runnerJobQueue } from "../src/schema/runner-job-queue";
+import { zeroRuns } from "../src/schema/zero-run";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -5230,6 +5235,200 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log();
 }
 
+const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0879_sturdy_peter_quill";
+const ZERO_RUN_CODEX_TIER_MIGRATION = "0880_regular_piledriver";
+
+async function validateZeroRunCodexTierExpansion(): Promise<void> {
+  console.log("=== Validate zero-run Codex tier expansion ===\n");
+  const testDb = "migration_zero_run_codex_tier_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000087701",
+    regularSessionId: "00000000-0000-4000-8000-000000087702",
+    atomicSessionId: "00000000-0000-4000-8000-000000087703",
+    regularRunId: "00000000-0000-4000-8000-000000087704",
+    atomicRunId: "00000000-0000-4000-8000-000000087705",
+    postExpansionLegacySessionId: "00000000-0000-4000-8000-000000087706",
+    postExpansionLegacyRunId: "00000000-0000-4000-8000-000000087707",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const database = drizzle(client);
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'codex-tier-user', 'codex-tier-agent', 'codex-tier-org')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id", "user_id", "org_id", "agent_compose_id"
+          ) VALUES
+            ($1, 'codex-tier-user', 'codex-tier-org', $4),
+            ($2, 'codex-tier-user', 'codex-tier-org', $4),
+            ($3, 'codex-tier-user', 'codex-tier-org', $4)
+        `,
+        [
+          fixture.regularSessionId,
+          fixture.atomicSessionId,
+          fixture.postExpansionLegacySessionId,
+          fixture.composeId,
+        ],
+      );
+
+      // Match insertLaunchRunRows: the production agent_runs insert followed
+      // by the rollout-safe zero_runs insert target.
+      await database.insert(agentRuns).values({
+        id: fixture.regularRunId,
+        userId: "codex-tier-user",
+        orgId: "codex-tier-org",
+        sessionId: fixture.regularSessionId,
+        status: "pending",
+        prompt: "regular migration compatibility",
+      });
+      await database.insert(zeroRunsBeforeCodexServiceTier).values({
+        id: fixture.regularRunId,
+        triggerSource: "web",
+        selectedModel: "gpt-5.6-sol",
+      });
+
+      // Match the atomic pending launch statement: both run rows and the
+      // runner queue row are data-modifying CTEs in one Drizzle query.
+      const insertedRun = database.$with("inserted_launch_run").as(
+        database
+          .insert(agentRuns)
+          .values({
+            id: fixture.atomicRunId,
+            userId: "codex-tier-user",
+            orgId: "codex-tier-org",
+            sessionId: fixture.atomicSessionId,
+            status: "pending",
+            prompt: "atomic migration compatibility",
+          })
+          .returning({ id: agentRuns.id, createdAt: agentRuns.createdAt }),
+      );
+      const returnedRunId = sql`(SELECT ${insertedRun.id} FROM ${insertedRun})`;
+      const insertedZeroRun = database.$with("inserted_launch_zero_run").as(
+        database.insert(zeroRunsBeforeCodexServiceTier).values({
+          id: returnedRunId,
+          triggerSource: "web",
+          selectedModel: "gpt-5.6-sol",
+        }),
+      );
+      const insertedQueue = database.$with("inserted_launch_runner_job").as(
+        database
+          .insert(runnerJobQueue)
+          .values({
+            runId: returnedRunId,
+            runnerGroup: "vm0/migration-codex-tier",
+            profile: "vm0/default",
+            executionContext: {},
+            expiresAt: sql`now() + interval '1 hour'`,
+          })
+          .returning({ runId: runnerJobQueue.runId }),
+      );
+      const [atomicResult] = await database
+        .with(insertedRun, insertedZeroRun, insertedQueue)
+        .select({ runId: insertedRun.id })
+        .from(insertedRun)
+        .innerJoin(insertedQueue, eq(insertedQueue.runId, insertedRun.id));
+      assert.equal(atomicResult?.runId, fixture.atomicRunId);
+
+      const rolloutSafeTier = sql<string | null>`
+        to_jsonb(${zeroRuns}) ->> 'codex_service_tier'
+      `;
+      const runIds = [fixture.regularRunId, fixture.atomicRunId];
+      const beforeExpansion = await database
+        .select({
+          id: zeroRuns.id,
+          selectedModel: zeroRuns.selectedModel,
+          codexServiceTier: rolloutSafeTier,
+        })
+        .from(zeroRuns)
+        .where(inArray(zeroRuns.id, runIds))
+        .orderBy(zeroRuns.id);
+      assert.deepEqual(beforeExpansion, [
+        {
+          id: fixture.regularRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
+        {
+          id: fixture.atomicRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
+      ]);
+
+      await applyMigrationsUpToTag(client, ZERO_RUN_CODEX_TIER_MIGRATION);
+      // Match the outgoing API's old statement shape against the expanded DB.
+      await database.insert(agentRuns).values({
+        id: fixture.postExpansionLegacyRunId,
+        userId: "codex-tier-user",
+        orgId: "codex-tier-org",
+        sessionId: fixture.postExpansionLegacySessionId,
+        status: "pending",
+        prompt: "post-expansion legacy migration compatibility",
+      });
+      await database.insert(zeroRunsBeforeCodexServiceTier).values({
+        id: fixture.postExpansionLegacyRunId,
+        triggerSource: "web",
+        selectedModel: "gpt-5.6-sol",
+      });
+      await database
+        .update(zeroRuns)
+        .set({ codexServiceTier: "fast" })
+        .where(eq(zeroRuns.id, fixture.regularRunId));
+      const afterExpansion = await database
+        .select({
+          id: zeroRuns.id,
+          selectedModel: zeroRuns.selectedModel,
+          codexServiceTier: rolloutSafeTier,
+        })
+        .from(zeroRuns)
+        .where(
+          inArray(zeroRuns.id, [...runIds, fixture.postExpansionLegacyRunId]),
+        )
+        .orderBy(zeroRuns.id);
+      assert.deepEqual(afterExpansion, [
+        {
+          id: fixture.regularRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: "fast",
+        },
+        {
+          id: fixture.atomicRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
+        {
+          id: fixture.postExpansionLegacyRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ old-schema writes before and after expansion plus rollout-safe reads remain legal\n",
+  );
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -5256,6 +5455,7 @@ async function main(): Promise<void> {
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
+    await validateZeroRunCodexTierExpansion();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -5318,6 +5518,9 @@ async function main(): Promise<void> {
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
       );
       console.log("   ✅ Legacy Teams message file scope is backfilled");
+      console.log(
+        "   ✅ Zero-run Codex tier readers survive the pre-expansion schema",
+      );
       console.log("   ✅ Permanent trigger and function inventories match");
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",

@@ -1,6 +1,6 @@
 {
-  "id": "b5dd07ca-bf98-420c-ad7f-32a1b3672a50",
-  "prevId": "90bc87a0-c5fe-4540-80d1-82f14137c3d8",
+  "id": "892c66f4-8099-4d37-b402-989c52c2f30a",
+  "prevId": "b5dd07ca-bf98-420c-ad7f-32a1b3672a50",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4638,6 +4638,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "context_type": {
           "name": "context_type",

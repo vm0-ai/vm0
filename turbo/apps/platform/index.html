@@ -1,7 +1,12 @@
 <!doctype html>
-<html lang="en-US" translate="no">
+<html
+  lang="en-US"
+  translate="no"
+  data-app-brand-name="VM0"
+  data-app-head-managed="true"
+>
   <head>
-    <title>Zero</title>
+    <title>AI Agents for Real Work — Your Trustworthy AI Teammate | VM0</title>
     <meta charset="UTF-8" />
     <meta name="vm0-api-origin" content="" />
     <style>
@@ -713,7 +718,24 @@
           },
         };
 
-        window.__vm0PreBundleCopy = copyByLocale[locale];
+        var selectedCopy = copyByLocale[locale];
+        var brandName = document.documentElement.dataset.appBrandName;
+        if (brandName !== "VM0" && brandName !== "Okou") {
+          throw new Error("Invalid app brand name");
+        }
+        var browserUpgradeTargets = [
+          "browser",
+          "chrome",
+          "chromium",
+          "ios",
+          "safari",
+        ];
+        for (var i = 0; i < browserUpgradeTargets.length; i += 1) {
+          var target = selectedCopy.browserUpgrade[browserUpgradeTargets[i]];
+          target.description = target.description.replace(/Zero/g, brandName);
+        }
+
+        window.__vm0PreBundleCopy = selectedCopy;
         document.documentElement.lang = locale;
         if (cacheKey) localStorage.setItem(cacheKey, locale);
       })();
@@ -931,31 +953,37 @@
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
-    <meta name="apple-mobile-web-app-title" content="Zero" />
+    <meta name="application-name" content="VM0" />
+    <meta name="apple-mobile-web-app-title" content="VM0" />
     <meta
       name="description"
-      content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
+      content="VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Zero" />
-    <meta property="og:title" content="Zero — Your AI coworker from vm0" />
+    <meta property="og:site_name" content="VM0" />
+    <meta property="og:title" content="VM0 - Your Trustworthy AI Teammate" />
     <meta
       property="og:description"
-      content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
+      content="VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web."
     />
     <meta
       property="og:image"
       content="https://static.vm0.io/web/og-image.png"
     />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Zero — Your AI coworker from vm0" />
+    <meta
+      property="og:image:alt"
+      content="VM0 - Your Trustworthy AI Teammate"
+    />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@vm0_ai" />
-    <meta name="twitter:title" content="Zero — Your AI coworker from vm0" />
+    <meta name="twitter:site" content="@okou_ai" />
+    <meta name="twitter:creator" content="@okou_ai" />
+    <meta name="twitter:title" content="VM0 - Your Trustworthy AI Teammate" />
     <meta
       name="twitter:description"
-      content="Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools."
+      content="VM0 is an AI agent that connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web."
     />
     <meta
       name="twitter:image"
@@ -963,6 +991,8 @@
     />
     <script>
       (function () {
+        if (document.documentElement.dataset.appHeadManaged === "true") return;
+
         var copy = window.__vm0PreBundleCopy.metadata;
         var metadata = [
           ['meta[name="description"]', copy.description],
