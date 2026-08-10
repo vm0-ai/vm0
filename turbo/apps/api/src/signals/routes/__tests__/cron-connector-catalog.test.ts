@@ -7121,16 +7121,31 @@ describe("connector catalog rejection and latest-valid retention", () => {
     const privateError =
       `credential=${PRIVATE_VALUE} bucket=${bucket} key=${ACTIVE_KEY} ` +
       "url=https://signed.example.test/private";
-    context.mocks.s3.send.mockRejectedValue(new Error(privateError));
+    const cause = Object.assign(new Error("private network detail"), {
+      code: "ETIMEDOUT",
+    });
+    const sourceError = Object.assign(new Error(privateError, { cause }), {
+      $metadata: { httpStatusCode: 503 },
+    });
+    context.mocks.s3.send.mockRejectedValue(sourceError);
     const response = await syncCatalog();
     const logged = JSON.stringify(context.mocks.axiomLogging.warn.mock.calls);
 
     expectRejectedBeforeAcceptance(response.body, "source-unavailable");
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Connector catalog source read failed",
+      expect.objectContaining({
+        operation: "active-pointer",
+        errorChain: [{ name: "Error" }, { name: "Error", code: "ETIMEDOUT" }],
+        httpStatusCode: 503,
+      }),
+    );
     for (const privateText of [
       PRIVATE_VALUE,
       bucket,
       ACTIVE_KEY,
       "signed.example.test",
+      "private network detail",
     ]) {
       expect(JSON.stringify(response.body)).not.toContain(privateText);
       expect(logged).not.toContain(privateText);

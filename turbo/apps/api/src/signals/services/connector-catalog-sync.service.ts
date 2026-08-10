@@ -114,6 +114,16 @@ interface RejectedCandidate {
   readonly failureCode: ConnectorCatalogSyncFailureCode;
 }
 
+interface SourceErrorIdentity {
+  readonly name?: string;
+  readonly code?: string;
+}
+
+interface SourceErrorDiagnostics {
+  readonly errorChain: readonly SourceErrorIdentity[];
+  readonly httpStatusCode?: number;
+}
+
 type CandidateCommitResult =
   | "accepted"
   | "retry"
@@ -530,6 +540,63 @@ function classifySyncFailure(error: unknown): ConnectorCatalogSyncFailureCode {
     return "object-too-large";
   }
   return "source-unavailable";
+}
+
+function sourceErrorRecord(
+  value: unknown,
+): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+}
+
+function sourceErrorString(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+): string | undefined {
+  const value = safeSync(() => {
+    return record[key];
+  });
+  return "ok" in value && typeof value.ok === "string" ? value.ok : undefined;
+}
+
+function sourceErrorDiagnostics(error: unknown): SourceErrorDiagnostics {
+  const errorChain: SourceErrorIdentity[] = [];
+  const seen = new Set<object>();
+  let current = sourceErrorRecord(error);
+  while (current && !seen.has(current) && errorChain.length < 5) {
+    seen.add(current);
+    const name = sourceErrorString(current, "name");
+    const code =
+      sourceErrorString(current, "code") ??
+      sourceErrorString(current, "Code") ??
+      sourceErrorString(current, "errno");
+    errorChain.push({ ...(name ? { name } : {}), ...(code ? { code } : {}) });
+    const cause = safeSync(() => {
+      return current?.cause;
+    });
+    current = "ok" in cause ? sourceErrorRecord(cause.ok) : undefined;
+  }
+
+  const root = sourceErrorRecord(error);
+  const metadata = sourceErrorRecord(root?.$metadata);
+  const httpStatusCode = metadata?.httpStatusCode;
+  return {
+    errorChain,
+    ...(typeof httpStatusCode === "number" ? { httpStatusCode } : {}),
+  };
+}
+
+function logSourceReadFailure(
+  operation: "active-pointer" | "catalog-artifact",
+  sourceId: string,
+  error: unknown,
+): void {
+  log.warn("Connector catalog source read failed", {
+    sourceId,
+    operation,
+    ...sourceErrorDiagnostics(error),
+  });
 }
 
 function cacheableRejectedCandidate(
@@ -964,6 +1031,14 @@ async function loadPointerForSync(
   );
   signal.throwIfAborted();
   if (!downloaded.ok) {
+    const failureCode = classifySyncFailure(downloaded.error);
+    if (failureCode === "source-unavailable") {
+      logSourceReadFailure(
+        "active-pointer",
+        runtime.source.sourceId,
+        downloaded.error,
+      );
+    }
     const pointerObservation =
       downloaded.error instanceof S3ObjectSizeLimitError &&
       downloaded.error.etag !== null
@@ -972,7 +1047,7 @@ async function loadPointerForSync(
     return await rejectSyncAttempt(
       runtime,
       baseline,
-      classifySyncFailure(downloaded.error),
+      failureCode,
       { pointerObservation },
       signal,
     );
@@ -1018,10 +1093,18 @@ async function loadCandidateForSync(
   );
   signal.throwIfAborted();
   if (!result.ok) {
+    const failureCode = classifySyncFailure(result.error);
+    if (failureCode === "source-unavailable") {
+      logSourceReadFailure(
+        "catalog-artifact",
+        runtime.source.sourceId,
+        result.error,
+      );
+    }
     return await rejectSyncAttempt(
       runtime,
       baseline,
-      classifySyncFailure(result.error),
+      failureCode,
       { pointerObservation },
       signal,
     );
