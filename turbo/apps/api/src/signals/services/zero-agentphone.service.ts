@@ -16,7 +16,7 @@ import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
 import { agentphoneUserAgentPreferences } from "@vm0/db/schema/agentphone-user-agent-preference";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { chatEvents } from "@vm0/db/schema/chat-event";
-import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
+import { and, desc, eq, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { env } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
@@ -55,7 +55,10 @@ import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.servic
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTypeIn,
+  chatInputPromptDispatchCondition,
+} from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import {
   updateUserModelPreference$,
@@ -1566,14 +1569,10 @@ async function agentPhoneMessageDispatchState(
       .from(chatEvents)
       .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
       .where(
-        and(
-          eq(chatEvents.chatThreadId, args.chatThreadId),
-          chatEventTypeIn(["input.prompt"]),
-          or(
-            eq(chatEvents.id, args.chatEventId),
-            eq(chatEvents.revokesEventId, args.chatEventId),
-          ),
-        ),
+        chatInputPromptDispatchCondition({
+          eventId: args.chatEventId,
+          chatThreadId: args.chatThreadId,
+        }),
       )
       .limit(1),
     db

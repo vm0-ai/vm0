@@ -86,7 +86,7 @@ import {
 } from "./zero-chat-user-message.service";
 import {
   chatEventTextCondition,
-  legacyRunOwnedChatEventCondition,
+  legacyRunOwnedChatEventForRunCondition,
 } from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
@@ -158,6 +158,11 @@ type ChatThreadDetailRow = {
 };
 
 function effectiveChatEventRunId() {
+  // Keep the public v3 row contract on legacy interrupt semantics while the
+  // canonical storage pointer rolls out: DB/API skew has an observed maximum
+  // of about 102 minutes, and old web/app clients can remain for about two
+  // days. Remove this mask when canonical readers/versioned clients replace
+  // the v3 projection. Follow-up: #26158.
   return sql`CASE
     WHEN ${chatEvents.eventType} = 'control.interrupt' THEN NULL
     ELSE ${chatEvents.runId}
@@ -890,11 +895,10 @@ function loadZeroChatThreadArtifactRows(
               .select({ id: chatEvents.id })
               .from(chatEvents)
               .where(
-                and(
-                  eq(chatEvents.runId, runUploadedFiles.runId),
-                  eq(chatEvents.chatThreadId, args.threadId),
-                  legacyRunOwnedChatEventCondition(),
-                ),
+                legacyRunOwnedChatEventForRunCondition({
+                  runId: runUploadedFiles.runId,
+                  chatThreadId: args.threadId,
+                }),
               ),
           ),
         ),

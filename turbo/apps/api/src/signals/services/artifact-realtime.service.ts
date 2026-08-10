@@ -1,11 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { legacyRunOwnedChatEventCondition } from "./zero-chat-event-type.service";
+import { legacyRunOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
 
 /**
  * Fire the user-level "artifact catalog changed" signal. The artifacts page
@@ -53,7 +53,7 @@ export async function publishArtifactsChangedForRun(
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
-    .where(and(eq(chatEvents.runId, runId), legacyRunOwnedChatEventCondition()))
+    .where(legacyRunOwnedChatEventForRunCondition({ runId }))
     .limit(1);
   signal.throwIfAborted();
 

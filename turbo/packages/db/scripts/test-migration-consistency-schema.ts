@@ -5112,6 +5112,7 @@ async function validateChatEventContractionFinalization(): Promise<void> {
           chatThreadId: fixture.threadId,
           eventType: "output.message",
           content: "Current ORM insert",
+          payload: { content: "Current ORM insert" },
           seqId: 4,
         })
         .returning({ id: chatEvents.id });
@@ -5120,6 +5121,7 @@ async function validateChatEventContractionFinalization(): Promise<void> {
         currentInsertSql.sql,
         /active_input_sequence|goal_event|attach_files|generation_template|recommended_followups/u,
       );
+      assert.match(currentInsertSql.sql, /"payload"/u);
       assert.deepEqual(await currentInsert, [{ id: fixture.currentInsertId }]);
       await assertChatEventsAppendOnlyProtection(
         client,

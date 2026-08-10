@@ -1,6 +1,9 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
-import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
+import {
+  isValidChatEventRevocation,
+  type ChatEventType,
+} from "@vm0/api-contracts/contracts/chat-events";
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -15,7 +18,11 @@ import {
   chatEventTerminalPredicate,
   chatEvents,
 } from "@vm0/db/schema/chat-event";
-import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
+import type {
+  ChatEventPayload,
+  ChatEventUsagePayload,
+  ChatEventUserMessage,
+} from "@vm0/db/jsonb-contracts/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
@@ -24,12 +31,61 @@ import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { eq, sql } from "drizzle-orm";
+import {
+  bigint,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type {
   WorkflowAutomationEventPayload,
   WorkflowAutomationEventType,
 } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
+
+// Drizzle emits every column declared by an insert table, even when a value is
+// omitted. This runtime-only table shape keeps pre-0880 INSERT statements from
+// naming payload during the DB/API rollout window (observed maximum: about 102
+// minutes); it is intentionally outside the generated DB schema export. Remove
+// it with the capability probe after 0880 is guaranteed everywhere and
+// rollback closes. Follow-up: #26158.
+const chatEventsBeforePayload = pgTable("chat_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  chatThreadId: uuid("chat_thread_id").notNull(),
+  runId: uuid("run_id"),
+  usagePayload: jsonb("usage_payload").$type<ChatEventUsagePayload>(),
+  revokesEventId: uuid("revokes_event_id"),
+  interruptsRunId: uuid("interrupts_run_id"),
+  runGroupId: uuid("run_group_id"),
+  eventType: text("event_type").$type<ChatEventType>().notNull(),
+  contextType: text("context_type").$type<
+    | "web"
+    | "slack"
+    | "feishu"
+    | "teams"
+    | "telegram"
+    | "github"
+    | "agentphone"
+    | "automation"
+    | "goal"
+    | "morning_brief"
+    | "agent_run"
+  >(),
+  contextId: uuid("context_id"),
+  content: text("content"),
+  userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
+  thinking: text("thinking"),
+  error: text("error"),
+  runEventSequenceNumber: integer("run_event_sequence_number"),
+  runEventId: text("run_event_id"),
+  seqId: bigint("seq_id", { mode: "number" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 type ChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Tx;
@@ -961,8 +1017,43 @@ function canonicalChatEventPayload(
   return Object.keys(payload).length === 0 ? null : payload;
 }
 
+async function chatEventPayloadSchemaAvailable(
+  tx: ChatEventWriteTransaction,
+): Promise<boolean> {
+  // A new API can deploy before migration 0880 during the DB/API rollout
+  // window (observed maximum: about 102 minutes). Keep legacy-only writes
+  // legal until the column exists; remove this probe after 0880 is guaranteed
+  // everywhere and rollback closes. Follow-up: #26158.
+  const [state] = await tx
+    .select({
+      available: sql`
+        EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_attribute
+          WHERE attrelid = to_regclass('chat_events')
+            AND attname = 'payload'
+            AND NOT attisdropped
+        )
+      `.mapWith(pgBooleanDecoder),
+    })
+    .from(sql`(SELECT 1) AS schema_probe`)
+    .limit(1);
+  return state?.available ?? false;
+}
+
+/**
+ * Build the transitional storage row at the central persistence boundary.
+ * Once migration 0880 is present, payload is written alongside every legacy
+ * leaf; interrupt and goal pointers likewise keep their canonical and legacy
+ * columns in sync. The legacy writes protect the deployed v3 API/Platform and
+ * old clients while readers remain authoritative on the old columns. Remove
+ * these dual writes only after canonical readers land and the relevant DB/API
+ * (observed maximum: about 102 minutes) and client (about two days) rollback
+ * windows close. Follow-up: #26158.
+ */
 function persistedChatEventValues(
   values: NewChatEvent,
+  payloadSchemaAvailable: boolean,
   overrides?: Partial<
     Pick<ChatEventInsert, "id" | "contextType" | "contextId">
   >,
@@ -996,13 +1087,17 @@ function persistedChatEventValues(
     values.eventType === "input.budget"
       ? { content: null }
       : {}),
-    payload: canonicalChatEventPayload({
-      content,
-      userMessage,
-      thinking,
-      error,
-      usagePayload,
-    }),
+    ...(payloadSchemaAvailable
+      ? {
+          payload: canonicalChatEventPayload({
+            content,
+            userMessage,
+            thinking,
+            error,
+            usagePayload,
+          }),
+        }
+      : {}),
     ...canonicalInterruptRunId,
     ...canonicalGoalContext,
   };
@@ -1083,8 +1178,9 @@ export async function insertChatEvent(
 ): Promise<ChatEventCommandResult | null> {
   const eventId = values.id ?? randomUUID();
   const displayContext = newDisplayContext(eventId, values);
+  const payloadSchemaAvailable = await chatEventPayloadSchemaAvailable(tx);
   const [valueWithSeqId] = await addSeqIdsToEvents(tx, [
-    persistedChatEventValues(values, {
+    persistedChatEventValues(values, payloadSchemaAvailable, {
       id: eventId,
       ...displayContextPointer(displayContext),
     }),
@@ -1093,35 +1189,40 @@ export async function insertChatEvent(
     throw new Error("chat event seq_id was not assigned");
   }
 
-  const query = tx.insert(chatEvents).values(valueWithSeqId);
+  const insertTable = payloadSchemaAvailable
+    ? chatEvents
+    : chatEventsBeforePayload;
+  const query = tx.insert(insertTable).values(valueWithSeqId);
   const rows =
     conflict === "any"
       ? await query.onConflictDoNothing().returning({
-          id: chatEvents.id,
-          createdAt: chatEvents.createdAt,
-          seqId: chatEvents.seqId,
+          id: insertTable.id,
+          createdAt: insertTable.createdAt,
+          seqId: insertTable.seqId,
         })
       : conflict === "id"
-        ? await query.onConflictDoNothing({ target: chatEvents.id }).returning({
-            id: chatEvents.id,
-            createdAt: chatEvents.createdAt,
-            seqId: chatEvents.seqId,
-          })
+        ? await query
+            .onConflictDoNothing({ target: insertTable.id })
+            .returning({
+              id: insertTable.id,
+              createdAt: insertTable.createdAt,
+              seqId: insertTable.seqId,
+            })
         : conflict === "run-lifecycle"
           ? await query
               .onConflictDoNothing({
-                target: chatEvents.runId,
-                where: chatEventTerminalPredicate(chatEvents.eventType),
+                target: insertTable.runId,
+                where: chatEventTerminalPredicate(insertTable.eventType),
               })
               .returning({
-                id: chatEvents.id,
-                createdAt: chatEvents.createdAt,
-                seqId: chatEvents.seqId,
+                id: insertTable.id,
+                createdAt: insertTable.createdAt,
+                seqId: insertTable.seqId,
               })
           : await query.returning({
-              id: chatEvents.id,
-              createdAt: chatEvents.createdAt,
-              seqId: chatEvents.seqId,
+              id: insertTable.id,
+              createdAt: insertTable.createdAt,
+              seqId: insertTable.seqId,
             });
 
   if (rows.length === 0) {
@@ -1153,21 +1254,25 @@ export async function insertChatEvents(
     return [];
   }
 
+  const payloadSchemaAvailable = await chatEventPayloadSchemaAvailable(tx);
   const valuesWithSeqIds = await addSeqIdsToEvents(
     tx,
     values.map((value) => {
-      return persistedChatEventValues(value);
+      return persistedChatEventValues(value, payloadSchemaAvailable);
     }),
   );
+  const insertTable = payloadSchemaAvailable
+    ? chatEvents
+    : chatEventsBeforePayload;
   return await tx
-    .insert(chatEvents)
+    .insert(insertTable)
     .values([...valuesWithSeqIds])
     .onConflictDoNothing()
     .returning({
-      id: chatEvents.id,
-      createdAt: chatEvents.createdAt,
-      seqId: chatEvents.seqId,
-      sequenceNumber: chatEvents.runEventSequenceNumber,
+      id: insertTable.id,
+      createdAt: insertTable.createdAt,
+      seqId: insertTable.seqId,
+      sequenceNumber: insertTable.runEventSequenceNumber,
     });
 }
 
@@ -1225,12 +1330,17 @@ export async function replaceLoadedChatEvent(
     replacementId,
     replacement,
   );
+  const payloadSchemaAvailable = await chatEventPayloadSchemaAvailable(tx);
+  const insertTable = payloadSchemaAvailable
+    ? chatEvents
+    : chatEventsBeforePayload;
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
-    .insert(chatEvents)
+    .insert(insertTable)
     .values({
       ...persistedChatEventValues(
         { ...replacement, createdAt },
+        payloadSchemaAvailable,
         {
           id: replacementId,
           ...contextPointer,
@@ -1241,9 +1351,9 @@ export async function replaceLoadedChatEvent(
     })
     .onConflictDoNothing()
     .returning({
-      id: chatEvents.id,
-      createdAt: chatEvents.createdAt,
-      seqId: chatEvents.seqId,
+      id: insertTable.id,
+      createdAt: insertTable.createdAt,
+      seqId: insertTable.seqId,
     });
   const inserted = rows[0];
   if (!inserted) {

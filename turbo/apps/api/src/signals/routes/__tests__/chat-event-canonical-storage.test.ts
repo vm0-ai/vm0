@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import {
+  insertChatEventAgainstPrePayloadSchemaFixture,
   insertCanonicalChatEventWritesFixture,
   isLegacyVisibleChatEventFixture,
   readCanonicalChatEventStorageFixture,
+  readCanonicalRunIdCollisionSafetyFixture,
 } from "../../../test-fixtures/chat-events";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -79,6 +81,19 @@ describe("canonical chat event storage", () => {
     await expect(
       isLegacyVisibleChatEventFixture(fixture.single.interruptId),
     ).resolves.toBeFalsy();
+    await expect(
+      readCanonicalRunIdCollisionSafetyFixture({
+        chatThreadId: thread.id,
+        interruptEventId: fixture.single.interruptId,
+        runId: fixture.single.interruptTargetRunId,
+      }),
+    ).resolves.toStrictEqual({
+      rawRunIdCollisionExists: true,
+      artifactLookupMatchedInterrupt: false,
+      threadScopedArtifactLookupMatchedInterrupt: false,
+      feishuDispatchMatchedInterrupt: false,
+      threadScopedDispatchMatchedInterrupt: false,
+    });
 
     expect(row(fixture.single.goalContextEventId)).toMatchObject({
       payload: { content: "goal output" },
@@ -134,5 +149,36 @@ describe("canonical chat event storage", () => {
       contextType: null,
       contextId: null,
     });
+  });
+
+  it("keeps central legacy writes legal before migration 0880", async () => {
+    await expect(
+      insertChatEventAgainstPrePayloadSchemaFixture(),
+    ).resolves.toStrictEqual([
+      {
+        content: "pre-payload compatibility",
+        error: null,
+        eventType: "goal.open",
+        seqId: 1,
+      },
+      {
+        content: "pre-payload batch compatibility",
+        error: null,
+        eventType: "output.message",
+        seqId: 2,
+      },
+      {
+        content: null,
+        error: null,
+        eventType: "input.prompt",
+        seqId: 3,
+      },
+      {
+        content: null,
+        error: "pre-payload replacement compatibility",
+        eventType: "input.rejected",
+        seqId: 4,
+      },
+    ]);
   });
 });

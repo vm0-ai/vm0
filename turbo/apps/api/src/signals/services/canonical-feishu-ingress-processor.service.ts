@@ -32,7 +32,7 @@ import {
 } from "./integration-model-route.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { chatInputPromptDispatchCondition } from "./zero-chat-event-type.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import {
@@ -416,15 +416,7 @@ async function notifyQueuedFeishuRun(
     .select({ status: agentRuns.status })
     .from(chatEvents)
     .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
-    .where(
-      and(
-        chatEventTypeIn(["input.prompt"]),
-        or(
-          eq(chatEvents.id, args.ingressId),
-          eq(chatEvents.revokesEventId, args.ingressId),
-        ),
-      ),
-    )
+    .where(chatInputPromptDispatchCondition({ eventId: args.ingressId }))
     .limit(1);
   signal.throwIfAborted();
   if (run?.status !== "queued") {

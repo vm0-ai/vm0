@@ -149,7 +149,11 @@ function encodeArchiveLine(line: ChatEventRow): Buffer {
 /**
  * One archived chat event, one NDJSON line. Fields are listed explicitly so
  * that a chat_events schema change forces a conscious decision here instead
- * of silently changing the persisted archive shape.
+ * of silently changing the persisted archive shape. Canonical interrupt and
+ * goal pointers are masked back to the v3 contract for old web/app clients
+ * (about two days) and existing R2 v3 archives; DB/API skew has an observed
+ * maximum of about 102 minutes. Remove these masks only with the canonical
+ * reader/v4 archive cutover. Follow-up: #26158.
  */
 export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
   const hasCanonicalGoalContext =
