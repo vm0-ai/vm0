@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.539.1](https://github.com/vm0-ai/vm0/compare/core-v8.539.0...core-v8.539.1) (2026-08-10)
+
+
+### Refactoring
+
+* remove insights and usage dashboards ([#26154](https://github.com/vm0-ai/vm0/issues/26154)) ([6deb1df](https://github.com/vm0-ai/vm0/commit/6deb1df698bde525de6d9b53a7b2557c932ed49a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.308.0
+
 ## [8.539.0](https://github.com/vm0-ai/vm0/compare/core-v8.538.2...core-v8.539.0) (2026-08-10)
 
 

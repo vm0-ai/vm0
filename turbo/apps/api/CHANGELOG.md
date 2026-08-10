@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.418.0](https://github.com/vm0-ai/vm0/compare/api-v1.417.0...api-v1.418.0) (2026-08-10)
+
+
+### Features
+
+* **api:** add durable active-input delivery state ([#26162](https://github.com/vm0-ai/vm0/issues/26162)) ([7a97e41](https://github.com/vm0-ai/vm0/commit/7a97e41c622fcd91fd6ec47e687a49873dc11b55))
+* **connectors:** add streamable http mcp management ([#26124](https://github.com/vm0-ai/vm0/issues/26124)) ([78b7538](https://github.com/vm0-ai/vm0/commit/78b7538bbdf8a2ac3a754b791c51703257a0fd77))
+
+
+### Refactoring
+
+* remove insights and usage dashboards ([#26154](https://github.com/vm0-ai/vm0/issues/26154)) ([6deb1df](https://github.com/vm0-ai/vm0/commit/6deb1df698bde525de6d9b53a7b2557c932ed49a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.308.0
+    * @vm0/connectors bumped to 1.204.6
+    * @vm0/core bumped to 8.539.1
+    * @vm0/db bumped to 1.188.0
+    * @vm0/pi-agent-runtime bumped to 1.3.31
+
 ## [1.417.0](https://github.com/vm0-ai/vm0/compare/api-v1.416.1...api-v1.417.0) (2026-08-10)
 
 
