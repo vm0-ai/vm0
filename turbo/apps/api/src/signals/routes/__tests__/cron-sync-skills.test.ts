@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import { createBddApi } from "./helpers/api-bdd";
 import {
   createRunsApi,
@@ -547,6 +548,7 @@ describe("GET /api/cron/sync-skills", () => {
       visibility: "private",
     });
 
+    await installApiTestConnectorCatalog();
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
       prompt: "inspect default seed skill mounts",
