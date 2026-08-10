@@ -78,10 +78,11 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
-const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
     "analytics.enabled=false",
     "features.plugins=false",
     "features.apps=false",
+    "features.goals=false",
 ];
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];

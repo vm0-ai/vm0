@@ -12,10 +12,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const CODEX_FIXED_STARTUP_CONFIGS: [&str; 3] = [
+const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
     "analytics.enabled=false",
     "features.plugins=false",
     "features.apps=false",
+    "features.goals=false",
 ];
 
 #[tokio::test]
