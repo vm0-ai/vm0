@@ -108,6 +108,7 @@ describe("GET /api/zero/connectors", () => {
       [200],
     );
     expect(nonStaff.body.configuredConnectorSlugs).toContain("aws");
+    expect(nonStaff.body.configuredConnectorSlugs).toContain("quickbooks");
     expect(nonStaff.body.configuredConnectorSlugs).not.toContain("test-oauth");
     expect(nonStaff.body.configuredConnectorSlugs).toContain("nintendo-store");
     expect(nonStaff.body.configuredConnectorSlugs).toContain(
