@@ -1,7 +1,4 @@
-import { instrument, type ResolveConfigFn } from "@microlabs/otel-cf-workers";
-
 import { singleton } from "./lib/singleton";
-import { resolveRuntimeEnv } from "./lib/worker-env";
 import { WORKER_CRON_ROUTES } from "./worker-crons";
 
 const MAX_CONCURRENT_CRON_ROUTES = 6;
@@ -115,57 +112,35 @@ async function dispatchCronSchedule(
   }
 }
 
-const traceConfig: ResolveConfigFn<WorkerBindings> = (bindings) => {
-  const runtimeEnv = resolveRuntimeEnv(bindings);
-  return {
-    exporter: {
-      url: "https://api.axiom.co/v1/traces",
-      headers: {
-        authorization: `Bearer ${runtimeEnv.AXIOM_TOKEN_TELEMETRY}`,
-        "x-axiom-dataset": `vm0-traces-${runtimeEnv.AXIOM_DATASET_SUFFIX}`,
+export default {
+  async fetch(request, bindings, executionContext): Promise<Response> {
+    await installRuntimeEnv(bindings);
+    const runtime = await loadRuntime();
+    return await runtime.runInvocation(
+      executionContext,
+      {
+        kind: "fetch",
+        requestId: requestId(request),
+        workerVersion: bindings.CF_VERSION_METADATA?.id,
       },
-    },
-    service: {
-      name: "vm0-api",
-      version: runtimeEnv.GIT_COMMIT_SHA,
-    },
-    fetch: { includeTraceContext: false },
-    handlers: { fetch: { acceptTraceContext: false } },
-  };
-};
-
-export default instrument(
-  {
-    async fetch(request, bindings, executionContext): Promise<Response> {
-      await installRuntimeEnv(bindings);
-      const runtime = await loadRuntime();
-      return await runtime.runInvocation(
-        executionContext,
-        {
-          kind: "fetch",
-          requestId: requestId(request),
-          workerVersion: bindings.CF_VERSION_METADATA?.id,
-        },
-        async () => {
-          return await runtime.app.fetch(request);
-        },
-      );
-    },
-    async scheduled(controller, bindings, executionContext): Promise<void> {
-      await installRuntimeEnv(bindings);
-      const runtime = await loadRuntime();
-      await runtime.runInvocation(
-        executionContext,
-        {
-          kind: "scheduled",
-          requestId: requestId(),
-          workerVersion: bindings.CF_VERSION_METADATA?.id,
-        },
-        async () => {
-          await dispatchCronSchedule(runtime, controller.cron);
-        },
-      );
-    },
-  } satisfies WorkerHandler,
-  traceConfig,
-);
+      async () => {
+        return await runtime.app.fetch(request);
+      },
+    );
+  },
+  async scheduled(controller, bindings, executionContext): Promise<void> {
+    await installRuntimeEnv(bindings);
+    const runtime = await loadRuntime();
+    await runtime.runInvocation(
+      executionContext,
+      {
+        kind: "scheduled",
+        requestId: requestId(),
+        workerVersion: bindings.CF_VERSION_METADATA?.id,
+      },
+      async () => {
+        await dispatchCronSchedule(runtime, controller.cron);
+      },
+    );
+  },
+} satisfies WorkerHandler;
