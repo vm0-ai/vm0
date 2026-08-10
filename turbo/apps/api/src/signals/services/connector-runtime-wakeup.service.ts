@@ -106,11 +106,7 @@ async function publishConnectorRuntimeSyncWakeupsInner(
     }
   }
 
-  let failedWakeupCount = 0;
-  let firstFailure:
-    | { readonly wakeup: ConnectorRuntimeWakeup; readonly error: unknown }
-    | undefined;
-  await Promise.all(
+  const outcomes = await Promise.all(
     wakeups.map(async (wakeup) => {
       const outcome = await settle(
         publishConnectorRuntimeSyncToRunnerGroup(
@@ -119,12 +115,19 @@ async function publishConnectorRuntimeSyncWakeupsInner(
           wakeup.target,
         ),
       );
-      if (!outcome.ok) {
-        failedWakeupCount += 1;
-        firstFailure ??= { wakeup, error: outcome.error };
-      }
+      return { wakeup, outcome };
     }),
   );
+  let failedWakeupCount = 0;
+  let firstFailure:
+    | { readonly wakeup: ConnectorRuntimeWakeup; readonly error: unknown }
+    | undefined;
+  for (const { wakeup, outcome } of outcomes) {
+    if (!outcome.ok) {
+      failedWakeupCount += 1;
+      firstFailure ??= { wakeup, error: outcome.error };
+    }
+  }
 
   if (firstFailure) {
     L.warn("Failed to publish connector runtime sync wakeups", {
