@@ -465,8 +465,9 @@ export function zeroConnectorList(args: {
       connectors: connectorList.map((connector) => {
         return connector.response;
       }),
-      // Keep the field during the stale-client window without returning the
-      // full catalog. Remove it after deployed clients stop requiring it.
+      // Old web/app clients may require this response field for up to ~2 days.
+      // Keep it empty during PR #26142's version-skew window, then remove it
+      // together with connectorListResponseSchema through #26165.
       configuredConnectorSlugs: [],
       connectorProvidedBindings,
     };
