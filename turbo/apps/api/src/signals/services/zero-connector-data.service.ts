@@ -72,9 +72,9 @@ import {
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
-import { cleanupGmailWatchesForConnector } from "./gmail-workflow-event.service";
-import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-workflow-event.service";
-import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-workflow-event.service";
+import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.service";
+import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
+import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
 
 type StoredConnectorRow = {
   readonly id: string;

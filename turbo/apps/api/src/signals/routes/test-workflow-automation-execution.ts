@@ -4,8 +4,8 @@ import { command } from "ccstate";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { executeDueNotionWorkflowEventsForAutomation$ } from "../services/notion-workflow-event.service";
-import { executeDueStrapiWorkflowEventsForAutomation$ } from "../services/strapi-workflow-event.service";
+import { executeDueNotionAutomationEventsForAutomation$ } from "../services/notion-automation-event.service";
+import { executeDueStrapiAutomationEventsForAutomation$ } from "../services/strapi-automation-event.service";
 import { executeDueWorkflowAutomationsForAutomation$ } from "../services/zero-workflow-automation-poller.service";
 import {
   isTestEndpointAllowed,
@@ -33,12 +33,12 @@ const executeTestWorkflowAutomation$ = command(
       signal,
     );
     const notion = await set(
-      executeDueNotionWorkflowEventsForAutomation$,
+      executeDueNotionAutomationEventsForAutomation$,
       automationId,
       signal,
     );
     const strapi = await set(
-      executeDueStrapiWorkflowEventsForAutomation$,
+      executeDueStrapiAutomationEventsForAutomation$,
       automationId,
       signal,
     );
