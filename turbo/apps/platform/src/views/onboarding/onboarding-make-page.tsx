@@ -57,6 +57,7 @@ function PromptOnboarding() {
   const searchParams = useGet(searchParams$);
   const pageSignal = useGet(pageSignal$);
   const { runPrompt } = useOnboardingNavigation();
+  const template = searchParams.get("template")?.trim() || undefined;
   const connectorSlugs = (searchParams.get("connector") ?? "")
     .split(",")
     .map((value) => {
@@ -68,7 +69,7 @@ function PromptOnboarding() {
     const redeemCode = searchParams.get("redeemCode")?.trim() || null;
     const completeAndRun = async (): Promise<void> => {
       await complete(redeemCode, pageSignal);
-      runPrompt(draft.prompt);
+      runPrompt(draft.prompt, template);
     };
     detach(completeAndRun(), Reason.DomCallback);
   };
