@@ -34,6 +34,11 @@ interface ChatMessage {
   readonly text: string;
 }
 
+type FeedbackNotePart = Extract<
+  UserMessagePart,
+  { readonly type: "feedback" }
+>["note"][number];
+
 /**
  * Parts that read as one sentence with their neighbours, so they concatenate
  * without a separator the way the chat UI renders them inline.
@@ -49,6 +54,23 @@ function inlinePartText(part: UserMessagePart): string | null {
     return `[Agent: ${part.nameSnapshot}]`;
   }
   return null;
+}
+
+function feedbackNotePartText(part: FeedbackNotePart): string {
+  switch (part.type) {
+    case "text": {
+      return part.text;
+    }
+    case "chat_thread": {
+      return `[Chat thread: ${part.titleSnapshot}]`;
+    }
+    case "agent": {
+      return `[Agent: ${part.nameSnapshot}]`;
+    }
+    case "template": {
+      return `[Template: ${part.titleSnapshot}]`;
+    }
+  }
 }
 
 /**
@@ -72,12 +94,7 @@ function blockPartText(part: UserMessagePart): string | null {
     return `[Morning brief: ${part.briefDate}]`;
   }
   if (part.type === "feedback") {
-    const note = part.note
-      .map((notePart) => {
-        return inlinePartText(notePart) ?? blockPartText(notePart) ?? "";
-      })
-      .join("")
-      .trim();
+    const note = part.note.map(feedbackNotePartText).join("").trim();
     return `[Feedback on "${part.quote}"] ${note}`.trim();
   }
   return null;

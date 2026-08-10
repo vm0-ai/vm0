@@ -73,6 +73,7 @@ import {
   githubAutomationFilterValueLabel,
   gmailAutomationSummary,
   gmailAutomationTitle,
+  labelInitials,
   workflowTitle,
 } from "../workflows-page/workflow-shared.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../signals/chat-page/workflow-prompt-action";
@@ -604,14 +605,6 @@ export function automationTypeLabel(
   });
 }
 
-function agentInitials(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
-  }
-  return (words[0]?.slice(0, 2) || "??").toUpperCase();
-}
-
 function WorkflowAgentAvatar({
   agent,
   label,
@@ -633,7 +626,7 @@ function WorkflowAgentAvatar({
   }
   return (
     <span className={cn("inline-flex items-center justify-center", className)}>
-      {agentInitials(label)}
+      {labelInitials(label)}
     </span>
   );
 }

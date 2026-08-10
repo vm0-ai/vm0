@@ -489,6 +489,63 @@ describe("zero chat messages command", () => {
     expect(output).not.toContain("(no message text)");
   });
 
+  it("renders every feedback note part from the contract", async () => {
+    server.use(
+      http.get(EVENTS_URL, () => {
+        return HttpResponse.json({
+          events: [
+            {
+              id: "00000000-0000-4000-8000-000000000031",
+              threadId: THREAD_ID,
+              eventType: "input.prompt",
+              content: null,
+              userMessage: {
+                version: 1,
+                parts: [
+                  {
+                    type: "feedback",
+                    quote: "Original answer",
+                    note: [
+                      { type: "text", text: "Compare " },
+                      {
+                        type: "chat_thread",
+                        threadId: SOURCE_THREAD_ID,
+                        titleSnapshot: "Source thread",
+                      },
+                      {
+                        type: "agent",
+                        agentId: "00000000-0000-4000-8000-000000000032",
+                        nameSnapshot: "Iris",
+                      },
+                      {
+                        type: "template",
+                        titleSnapshot: "Launch deck",
+                        template: {
+                          type: "illustration",
+                          selection: { illustrationStyleId: "editorial" },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              runId: RUN_ID,
+              seqId: 1,
+              createdAt: "2026-07-29T10:00:00.000Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "messages"]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(
+      '[Feedback on "Original answer"] Compare [Chat thread: Source thread][Agent: Iris][Template: Launch deck]',
+    );
+  });
+
   it("guides to send when the thread has no messages", async () => {
     server.use(
       http.get(EVENTS_URL, () => {

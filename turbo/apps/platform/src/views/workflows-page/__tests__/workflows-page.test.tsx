@@ -42,6 +42,7 @@ import {
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
 import { i18n } from "../../../i18n/index.ts";
+import { labelInitials } from "../workflow-shared.tsx";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -66,6 +67,17 @@ type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
 afterEach(() => {
   toast.dismiss();
+});
+
+describe("workflow label initials", () => {
+  it("uses the first two non-empty words", () => {
+    expect(labelInitials("  Research   Assistant  ")).toBe("RA");
+  });
+
+  it("uses up to two characters for a single word", () => {
+    expect(labelInitials("Zero")).toBe("ZE");
+    expect(labelInitials(" ")).toBe("??");
+  });
 });
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {

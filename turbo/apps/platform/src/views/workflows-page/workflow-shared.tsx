@@ -23,6 +23,20 @@ export function workflowTitle(workflow: {
   return workflow.displayName ?? workflow.name;
 }
 
+export function labelInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return words
+      .slice(0, 2)
+      .map((word) => {
+        return word.charAt(0);
+      })
+      .join("")
+      .toUpperCase();
+  }
+  return (words[0]?.slice(0, 2) || "??").toUpperCase();
+}
+
 export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(path);
 }

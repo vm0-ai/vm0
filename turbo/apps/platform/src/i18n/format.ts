@@ -1,8 +1,7 @@
-import { i18n } from "./index.ts";
-import { DEFAULT_LOCALE } from "./resources.ts";
+import { currentLocale } from "./index.ts";
 
 export function resolvedAppLocale(): string {
-  return i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_LOCALE;
+  return currentLocale();
 }
 
 export function formatAppNumber(

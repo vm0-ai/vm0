@@ -570,6 +570,34 @@ describe("Desktop renderer bridge integration", () => {
     expect(developerTools.subscribe).toHaveBeenCalled();
   });
 
+  it("opens runtime error details from the first captured error", async () => {
+    const baseState = createComputerUseState({ status: "error" });
+    installDesktopBridges({
+      computerUseState: {
+        ...baseState,
+        host: {
+          ...baseState.host,
+          errorLog: [
+            {
+              id: "runtime-error-1",
+              source: "heartbeat",
+              message: "Heartbeat failed",
+              occurredAt: "2026-06-22T00:00:00.000Z",
+              hostId: "host_test",
+              status: "error",
+            },
+          ],
+        },
+      },
+      developerToolsState: { available: true, enabled: true },
+    });
+    renderDesktopApp();
+
+    fireEvent.click(await screen.findByLabelText("Show error details"));
+
+    expect(await screen.findAllByText("Heartbeat failed")).toHaveLength(2);
+  });
+
   it("delegates signed-out account actions to the auth bridge", async () => {
     const { auth } = installDesktopBridges({
       authState: signedOutAuthState,

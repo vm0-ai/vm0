@@ -23,7 +23,7 @@ function initial(name: string): string {
   // Prefer the first alphabetic char, else fall back to the first grapheme
   // (emoji / digit / non-latin) so we never render a blank avatar.
   const firstLetter = trimmed.match(/\p{L}/u)?.[0];
-  return (firstLetter ?? trimmed[0] ?? "?").toUpperCase();
+  return (firstLetter ?? trimmed.charAt(0)).toUpperCase();
 }
 
 export function CustomConnectorIcon({
