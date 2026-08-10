@@ -76,7 +76,10 @@ import {
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
 import { latestRunFinishEventSubquery } from "./zero-chat-thread-read-state-query";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  chatThreadServiceTierFromCodex,
+} from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import {
@@ -1387,6 +1390,7 @@ export const createChatThread$ = command(
       readonly modelProviderType: string | null;
       readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
       readonly selectedModel: string | null;
+      readonly codexServiceTier: CodexServiceTier | null;
     },
     signal: AbortSignal,
   ): Promise<{ id: string; createdAt: Date }> => {
@@ -1406,6 +1410,7 @@ export const createChatThread$ = command(
           modelProviderType: args.modelProviderType,
           modelProviderCredentialScope: args.modelProviderCredentialScope,
           selectedModel: args.selectedModel,
+          codexServiceTier: args.codexServiceTier,
         })
         .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
       if (!createdThread) {
@@ -1420,7 +1425,7 @@ export const createChatThread$ = command(
         eventId: args.eventId,
         title: args.title ?? null,
         selectedModel: args.selectedModel,
-        serviceTier: null,
+        serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
         computerUseHostId: null,
         cloudBrowserEnabled: false,
         createdAt: createdThread.createdAt,

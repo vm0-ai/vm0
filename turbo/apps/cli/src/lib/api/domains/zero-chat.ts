@@ -10,6 +10,7 @@ import {
   chatThreadModelSelectionContract,
   chatThreadRenameContract,
   chatSearchContract,
+  type ChatThreadServiceTier,
   type ChatThreadMetadata,
   type ChatThreadSnapshotProjection,
   type ChatSearchResponse,
@@ -36,6 +37,7 @@ interface ZeroChatThreadCreateResult {
   readonly threadId: string;
   readonly title: string | null;
   readonly selectedModel: string | null;
+  readonly serviceTier: ChatThreadServiceTier | null | undefined;
 }
 
 interface ZeroChatEventSendResult {
@@ -119,6 +121,7 @@ export async function createZeroChatThread(options: {
   agentId: string;
   title: string;
   model?: string;
+  serviceTier?: ChatThreadServiceTier | null;
 }): Promise<ZeroChatThreadCreateResult> {
   const config = await getClientConfig();
   const client = initClient(chatThreadsContract, config);
@@ -129,6 +132,9 @@ export async function createZeroChatThread(options: {
       ...(options.model === undefined
         ? {}
         : { model: requireSupportedModel(options.model) }),
+      ...(options.serviceTier === undefined
+        ? {}
+        : { serviceTier: options.serviceTier }),
     },
   });
   if (result.status === 201) {
@@ -136,6 +142,7 @@ export async function createZeroChatThread(options: {
       threadId: result.body.id,
       title: result.body.title,
       selectedModel: result.body.selectedModel,
+      serviceTier: result.body.serviceTier,
     };
   }
   handleError(result, "Failed to create chat thread");

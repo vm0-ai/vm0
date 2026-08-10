@@ -38,7 +38,7 @@ describe("zero chat create command", () => {
     vi.unstubAllEnvs();
   });
 
-  it("creates a thread under this chat's agent and inherits the run model", async () => {
+  it("creates a thread under this chat's agent and inherits run settings", async () => {
     server.use(
       http.get(metadataUrl(CURRENT_THREAD_ID), () => {
         return HttpResponse.json({
@@ -46,6 +46,7 @@ describe("zero chat create command", () => {
           agentId: AGENT_ID,
           title: "Current chat",
           selectedModel: "claude-sonnet-5",
+          serviceTier: "priority",
         });
       }),
       http.post(CREATE_URL, async ({ request }) => {
@@ -63,6 +64,7 @@ describe("zero chat create command", () => {
             title: "Deep dive on P2",
             createdAt: "2026-07-30T10:00:00.000Z",
             selectedModel: "claude-sonnet-5",
+            serviceTier: "priority",
           },
           { status: 201 },
         );
@@ -83,12 +85,13 @@ describe("zero chat create command", () => {
         threadId: NEW_THREAD_ID,
         title: "Deep dive on P2",
         selectedModel: "claude-sonnet-5",
+        serviceTier: "priority",
         agentId: AGENT_ID,
       },
     );
   });
 
-  it("guides to the first send with an explicit agent and model", async () => {
+  it("guides to the first send with an explicit agent, model, and priority", async () => {
     server.use(
       http.post(CREATE_URL, async ({ request }) => {
         const body = (await request.json()) as Record<string, unknown>;
@@ -96,6 +99,7 @@ describe("zero chat create command", () => {
           agentId: OTHER_AGENT_ID,
           title: "Launch plan",
           model: "claude-sonnet-5",
+          serviceTier: "priority",
         });
         return HttpResponse.json(
           {
@@ -103,6 +107,7 @@ describe("zero chat create command", () => {
             title: "Launch plan",
             createdAt: "2026-07-30T10:00:00.000Z",
             selectedModel: "claude-sonnet-5",
+            serviceTier: "priority",
           },
           { status: 201 },
         );
@@ -118,6 +123,7 @@ describe("zero chat create command", () => {
       OTHER_AGENT_ID,
       "--model",
       "claude-sonnet-5",
+      "--priority",
     ]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
@@ -125,9 +131,80 @@ describe("zero chat create command", () => {
     expect(output).toContain(`Thread: ${NEW_THREAD_ID}`);
     expect(output).toContain("Title:  Launch plan");
     expect(output).toContain("Model:  claude-sonnet-5");
+    expect(output).toContain("Priority: enabled");
     expect(output).toContain(`Agent:  ${OTHER_AGENT_ID}`);
     expect(output).toContain(
       `zero chat send --thread-id ${NEW_THREAD_ID} --text "<message>"`,
+    );
+  });
+
+  it("can explicitly use standard priority", async () => {
+    server.use(
+      http.post(CREATE_URL, async ({ request }) => {
+        expect(await request.json()).toStrictEqual({
+          agentId: OTHER_AGENT_ID,
+          title: "Standard thread",
+          model: "claude-sonnet-5",
+          serviceTier: null,
+        });
+        return HttpResponse.json(
+          {
+            id: NEW_THREAD_ID,
+            title: "Standard thread",
+            createdAt: "2026-07-30T10:00:00.000Z",
+            selectedModel: "claude-sonnet-5",
+            serviceTier: null,
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await zeroChatCommand.parseAsync([
+      "node",
+      "cli",
+      "create",
+      "Standard thread",
+      "--agent",
+      OTHER_AGENT_ID,
+      "--model",
+      "claude-sonnet-5",
+      "--no-priority",
+    ]);
+
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+      "Priority: disabled",
+    );
+  });
+
+  it("reports unknown priority while an older API is serving the CLI", async () => {
+    server.use(
+      http.post(CREATE_URL, () => {
+        return HttpResponse.json(
+          {
+            id: NEW_THREAD_ID,
+            title: "Rollout thread",
+            createdAt: "2026-07-30T10:00:00.000Z",
+            selectedModel: "claude-sonnet-5",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await zeroChatCommand.parseAsync([
+      "node",
+      "cli",
+      "create",
+      "Rollout thread",
+      "--agent",
+      OTHER_AGENT_ID,
+      "--model",
+      "claude-sonnet-5",
+    ]);
+
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+      "Priority: (unknown)",
     );
   });
 

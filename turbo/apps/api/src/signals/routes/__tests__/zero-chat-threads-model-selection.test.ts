@@ -143,6 +143,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
       agentId: fixture.agentId,
       title: "Launch plan",
       selectedModel: "claude-sonnet-5",
+      serviceTier: null,
     });
   });
 

@@ -5,26 +5,21 @@ import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { writeDb$, type Db } from "../external/db";
+import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../../lib/time";
-import { badRequestMessage, notFound } from "../../lib/error";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { notFound } from "../../lib/error";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "../services/zero-chat-thread-event.service";
 import {
-  isCodexFastServiceTierSupported,
-  resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
-  type ModelFirstPin,
+  validateCodexServiceTier,
 } from "../services/zero-model-selection.service";
 import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
 import type { RouteEntry } from "../route-entry";
@@ -38,50 +33,6 @@ function modelFirstSelection(selectedModel: string) {
     modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
     selectedModel,
   };
-}
-
-async function validateCodexServiceTierPatch(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly pin: ModelFirstPin;
-  readonly codexServiceTier: "fast" | null | undefined;
-}) {
-  if (params.codexServiceTier !== "fast") {
-    return undefined;
-  }
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    params.db,
-    params.orgId,
-    params.userId,
-  );
-  if (!isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)) {
-    return badRequestMessage(
-      "Codex fast mode is not enabled for this workspace",
-    );
-  }
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelPin: params.pin,
-    requestedModelProvider: undefined,
-  });
-  if (providerAdmission.error) {
-    return providerAdmission.error;
-  }
-  if (
-    isCodexFastServiceTierSupported({
-      selectedModel: params.pin.selectedModel,
-      effectiveModelProvider: providerAdmission.effectiveModelProvider,
-      codexFastModeEnabled: true,
-    })
-  ) {
-    return undefined;
-  }
-  return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
-  );
 }
 
 const updateModelSelectionInner$ = command(
@@ -115,12 +66,12 @@ const updateModelSelectionInner$ = command(
     if ("status" in pin) {
       return pin;
     }
-    const codexServiceTierError = await validateCodexServiceTierPatch({
+    const codexServiceTierError = await validateCodexServiceTier({
       db: writeDb,
       orgId: auth.orgId,
       userId: auth.userId,
       pin,
-      codexServiceTier: body.data.codexServiceTier,
+      codexServiceTier: body.data.codexServiceTier ?? null,
     });
     signal.throwIfAborted();
     if (codexServiceTierError) {

@@ -674,3 +674,51 @@ export function isCodexFastServiceTierSupported(params: {
     isCodexFastModeModel(params.selectedModel)
   );
 }
+
+export async function validateCodexServiceTier(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly pin: ModelFirstPin;
+  readonly codexServiceTier: "fast" | null;
+}): Promise<
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof insufficientCredits>
+  | undefined
+> {
+  if (params.codexServiceTier !== "fast") {
+    return undefined;
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    params.db,
+    params.orgId,
+    params.userId,
+  );
+  if (!isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)) {
+    return badRequestMessage(
+      "Codex fast mode is not enabled for this workspace",
+    );
+  }
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelPin: params.pin,
+    requestedModelProvider: undefined,
+  });
+  if (providerAdmission.error) {
+    return providerAdmission.error;
+  }
+  if (
+    isCodexFastServiceTierSupported({
+      selectedModel: params.pin.selectedModel,
+      effectiveModelProvider: providerAdmission.effectiveModelProvider,
+      codexFastModeEnabled: true,
+    })
+  ) {
+    return undefined;
+  }
+  return badRequestMessage(
+    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+  );
+}

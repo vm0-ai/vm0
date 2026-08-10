@@ -226,6 +226,7 @@ async function loadWorkflowAutomationThreadModel(
   return {
     id: modelId,
     label: getModelDisplayName(modelId),
+    serviceTier: thread.serviceTier,
   };
 }
 
