@@ -149,20 +149,34 @@ function encodeArchiveLine(line: ChatEventRow): Buffer {
 /**
  * One archived chat event, one NDJSON line. Fields are listed explicitly so
  * that a chat_events schema change forces a conscious decision here instead
- * of silently changing the persisted archive shape.
+ * of silently changing the persisted archive shape. Canonical interrupt and
+ * goal pointers are masked back to the v3 contract for old web/app clients
+ * (about two days) and existing R2 v3 archives; DB/API skew has an observed
+ * maximum of about 102 minutes. Remove these masks only with the canonical
+ * reader/v4 archive cutover. Follow-up: #26158.
  */
 export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
+  const hasCanonicalGoalContext =
+    row.contextType === "goal" && row.contextId !== null;
+  const legacyGoalInputContext =
+    row.runGroupId === null ||
+    row.eventType === "input.goal" ||
+    row.eventType === "input.prompt" ||
+    row.eventType === "input.rejected";
   return {
     id: row.id,
     chatThreadId: row.chatThreadId,
-    runId: row.runId,
+    runId: row.eventType === "control.interrupt" ? null : row.runId,
     usagePayload: row.usagePayload,
     revokesEventId: row.revokesEventId,
     interruptsRunId: row.interruptsRunId,
     runGroupId: row.runGroupId,
     eventType: row.eventType,
-    contextType: row.contextType,
-    contextId: row.contextId,
+    contextType:
+      hasCanonicalGoalContext && !legacyGoalInputContext
+        ? null
+        : row.contextType,
+    contextId: hasCanonicalGoalContext ? null : row.contextId,
     content: row.content,
     userMessage: row.userMessage,
     thinking: row.thinking,

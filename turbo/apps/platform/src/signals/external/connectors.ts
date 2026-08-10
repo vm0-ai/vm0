@@ -1,13 +1,18 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import {
   zeroConnectorsMainContract,
   zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
+import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
 
 /**
  * Reload trigger for connector signals.
@@ -53,6 +58,49 @@ export const connectorCatalogStatusBySlug$ = computed(async (get) => {
     }),
   );
 });
+
+export function relatedConnectorCatalog(
+  keyword$: Computed<string>,
+): Computed<Promise<PublicConnectorCatalogStatusResponse>> {
+  return computed(async (get) => {
+    const featureStates = get(featureSwitch$);
+    if (!featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
+      return await get(connectorCatalogStatus$);
+    }
+
+    get(connectorsReloadVersion$);
+    const keyword = get(keyword$).trim();
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroConnectorCatalogContract);
+    const result = await accept(
+      client.discovery({ query: keyword ? { keyword } : {} }),
+      [200],
+    );
+    return result.body;
+  });
+}
+
+export function connectorCatalogItemBySlug(
+  connectorSlug: ConnectorSlug,
+): Computed<Promise<PlatformConnectorCatalogStatusItem | null>> {
+  return computed(async (get) => {
+    get(connectorsReloadVersion$);
+    const featureStates = get(featureSwitch$);
+    if (!featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
+      return (
+        (await get(connectorCatalogStatusBySlug$)).get(connectorSlug) ?? null
+      );
+    }
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroConnectorCatalogContract);
+    const result = await accept(
+      client.get({ params: { connectorSlug } }),
+      [200, 404],
+    );
+    return result.status === 200 ? result.body.connector : null;
+  });
+}
 
 /**
  * Trigger a reload of connectors data.

@@ -953,6 +953,22 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async listThreadEventRows(
+      actor: ApiTestUser,
+      threadId: string,
+      sinceSeqId = 0,
+    ) {
+      const response = await accept(
+        threadEventsClient().rows({
+          headers: authenticate(context, actor),
+          params: { threadId },
+          query: { sinceSeqId },
+        }),
+        [200],
+      );
+      return response.body.rows;
+    },
+
     async getThreadEvent(
       actor: ApiTestUser,
       threadId: string,
