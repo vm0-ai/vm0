@@ -3520,7 +3520,7 @@ describe("connectors page", () => {
     expect(screen.queryByText("Connect Acme Search")).not.toBeInTheDocument();
   });
 
-  it("selects permissions before authorizing a custom connector from settings", async () => {
+  it("selects and edits permissions for a custom connector from settings", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000035";
     const supportAgentId = "c0000000-0000-4000-a000-000000000036";
     const connector = customConnector({
@@ -3667,11 +3667,52 @@ describe("connectors page", () => {
 
     click(
       within(accessDialog).getByLabelText(
+        "Manage Acme Search permissions for Support",
+      ),
+    );
+    const editedPermission = await screen.findByText("messages:send-as-user");
+    const editedPermissionRow = editedPermission.parentElement?.parentElement;
+    const editedPermissionDrawer = editedPermission.closest('[role="dialog"]');
+    if (
+      !(editedPermissionRow instanceof HTMLElement) ||
+      !(editedPermissionDrawer instanceof HTMLElement)
+    ) {
+      throw new Error("Custom connector permission drawer not found");
+    }
+    expect(buttonByText("Allow", editedPermissionRow)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    click(buttonByText("Deny", editedPermissionRow));
+    click(buttonByText("Apply", editedPermissionDrawer));
+
+    await waitFor(() => {
+      expect(updates[1]).toStrictEqual({
+        agentId: supportAgentId,
+        body: {
+          grants: [
+            {
+              customConnectorId: connector.id,
+              permissionNames: [],
+            },
+          ],
+          operation: "add",
+        },
+      });
+      expect(
+        within(accessDialog).getByLabelText(
+          "Revoke Acme Search access for Support",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    click(
+      within(accessDialog).getByLabelText(
         "Revoke Acme Search access for Support",
       ),
     );
     await waitFor(() => {
-      expect(updates[1]).toStrictEqual({
+      expect(updates[2]).toStrictEqual({
         agentId: supportAgentId,
         body: {
           enabledIds: [connector.id],
