@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.537.0](https://github.com/vm0-ai/vm0/compare/core-v8.536.0...core-v8.537.0) (2026-08-10)
+
+
+### Features
+
+* **runs:** accept unattended trigger sources ([#26024](https://github.com/vm0-ai/vm0/issues/26024)) ([2795cfb](https://github.com/vm0-ai/vm0/commit/2795cfb6432db3ebd3ff9cff04b06ed257e22c14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.304.0
+
 ## [8.536.0](https://github.com/vm0-ai/vm0/compare/core-v8.535.2...core-v8.536.0) (2026-08-10)
 
 
