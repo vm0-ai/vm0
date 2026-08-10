@@ -2014,6 +2014,104 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(member, agent.agentId);
   });
 
+  it("removes OAuth tokens when manual credentials replace the connection", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+    });
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const oauthDefinition = {
+      displayName: "BDD OAuth to Manual Connector",
+      prefixTemplates: ["https://oauth-to-manual.example.test/v1/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth" as const,
+      oauthConfig: {
+        providerAdapter: "standard" as const,
+        clientId: "oauth-to-manual-client-id",
+        clientSecret: "oauth-to-manual-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post" as const,
+        pkceMethod: "none" as const,
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    };
+    const created = await connectorsApi.createCustomConnector(
+      admin,
+      oauthDefinition,
+    );
+    const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+      admin,
+      created.id,
+    );
+    await connectorsApi.completeCustomConnectorOAuth2Callback({
+      code: "oauth-to-manual-code",
+      state: stateFromAuthorizationUrl(authorizationUrl),
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({ connected: true, storageVersion: 1 });
+
+    const manual = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        displayName: oauthDefinition.displayName,
+        prefixTemplates: oauthDefinition.prefixTemplates,
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+      },
+    );
+    expect(manual).toMatchObject({ connected: false, storageVersion: 2 });
+    await connectorsApi.setCustomConnectorValues(admin, created.id, [
+      { key: "api_key", kind: "secret", value: "manual-api-key" },
+    ]);
+
+    const oauthAgain = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      oauthDefinition,
+    );
+    expect(oauthAgain).toMatchObject({ connected: false, storageVersion: 3 });
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: created.id,
+      authMethod: "oauth",
+      storageVersion: 3,
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
   it("keeps OAuth callback state scoped to its Builtin or Custom target", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     mockGitHubConnectorOAuth();

@@ -11,8 +11,9 @@ import {
 } from "./zero-custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
+  customConnectorDefinitionHasUsableConnection,
   loadCurrentCustomConnectorValueMarkers,
-  loadUsableCustomConnectorConnectionIds,
+  loadUsableCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
 
 export function zeroCustomConnectorList(args: {
@@ -41,13 +42,16 @@ export function zeroCustomConnectorList(args: {
         .where(eq(orgCustomConnectors.orgId, args.orgId))
         .orderBy(orgCustomConnectors.displayName),
       loadCurrentCustomConnectorValueMarkers(db, args),
-      loadUsableCustomConnectorConnectionIds(db, args),
+      loadUsableCustomConnectorConnections(db, args),
     ]);
     return connectorRows.map((row) => {
       return serialiseCustomConnector({
         row: normaliseCustomConnectorRow(row.connector, row.oauthConfig),
         valueMarkers: markers,
-        usableConnection: usableConnections.has(row.connector.id),
+        usableConnection: customConnectorDefinitionHasUsableConnection({
+          usableConnections,
+          definition: row.connector,
+        }),
       });
     });
   });

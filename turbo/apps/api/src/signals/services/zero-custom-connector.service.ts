@@ -62,9 +62,10 @@ import {
 } from "./custom-connector-credential-storage.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
+  customConnectorDefinitionHasUsableConnection,
   loadCustomConnectorCredentialAccesses,
   loadCurrentCustomConnectorValueMarkers,
-  loadUsableCustomConnectorConnectionIds,
+  loadUsableCustomConnectorConnections,
   type CustomConnectorCredentialAccess,
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
@@ -79,7 +80,10 @@ import {
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
-import { connectorLocalConnectionState } from "./connector-credential-storage-write.service";
+import {
+  connectorLocalConnectionState,
+  deleteConnectorOwnedCredentialRows,
+} from "./connector-credential-storage-write.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -702,7 +706,10 @@ export function customConnectorValueMarkerKey(marker: {
 }
 
 function configuredValueMarkerKeys(
-  markers: readonly ValueMarker[],
+  markers: readonly {
+    readonly kind: CustomConnectorFieldKind;
+    readonly key: string;
+  }[],
 ): readonly string[] {
   return [
     ...new Set(
@@ -728,9 +735,12 @@ function configuredFieldKeys(args: {
     .sort();
 }
 
-function computeMissingRequiredFields(args: {
+export function customConnectorMissingRequiredFieldKeys(args: {
   readonly fields: readonly CustomConnectorField[];
-  readonly markers: readonly ValueMarker[];
+  readonly markers: readonly {
+    readonly kind: CustomConnectorFieldKind;
+    readonly key: string;
+  }[];
 }): readonly string[] {
   const configured = new Set(configuredValueMarkerKeys(args.markers));
   return args.fields
@@ -764,7 +774,7 @@ export function serialiseCustomConnector(args: {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
     return marker.connectorId === args.row.id;
   });
-  const missingRequiredFields = computeMissingRequiredFields({
+  const missingRequiredFields = customConnectorMissingRequiredFieldKeys({
     fields: args.row.fields,
     markers: connectorMarkers,
   });
@@ -2548,7 +2558,7 @@ export function getCustomConnectorResponse(args: {
         orgId: args.orgId,
         userId: args.userId,
       }),
-      loadUsableCustomConnectorConnectionIds(db, {
+      loadUsableCustomConnectorConnections(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
@@ -2556,7 +2566,10 @@ export function getCustomConnectorResponse(args: {
     return serialiseCustomConnector({
       row: connector,
       valueMarkers: markers,
-      usableConnection: usableConnections.has(connector.id),
+      usableConnection: customConnectorDefinitionHasUsableConnection({
+        usableConnections,
+        definition: connector,
+      }),
     });
   });
 }
@@ -2715,6 +2728,7 @@ interface SetCustomConnectorValuesArgs {
 
 interface CustomConnectorValueWriteState {
   readonly connector: CustomConnectorRow;
+  readonly memberConnectorId: string | null;
   readonly replacingStoredValues: boolean;
   readonly establishesCurrentCredentials: boolean;
   readonly runtimeRecovered: boolean;
@@ -2798,6 +2812,7 @@ async function prepareCustomConnectorValueWrite(args: {
 
   const [storedConnector] = await args.tx
     .select({
+      id: connectors.id,
       authMethod: connectors.authMethod,
       storageVersion: connectors.storageVersion,
     })
@@ -2811,15 +2826,9 @@ async function prepareCustomConnectorValueWrite(args: {
     )
     .for("update")
     .limit(1);
-  const supplied = new Set(
-    currentValues.map((value) => {
-      return customConnectorValueMarkerKey(value);
-    }),
-  );
-  const missingRequired = connector.fields.filter((field) => {
-    return (
-      field.required && !supplied.has(customConnectorValueMarkerKey(field))
-    );
+  const missingRequired = customConnectorMissingRequiredFieldKeys({
+    fields: connector.fields,
+    markers: currentValues,
   });
   const replacingIncompatibleValues =
     storedConnector !== undefined &&
@@ -2832,17 +2841,16 @@ async function prepareCustomConnectorValueWrite(args: {
     replacingIncompatibleValues || replacingUnversionedValues;
   if (replacingStoredValues && missingRequired.length > 0) {
     return badRequestMessage(
-      `All required fields must be provided when restoring this connector: ${missingRequired
-        .map((field) => {
-          return field.key;
-        })
-        .join(", ")}`,
+      `All required fields must be provided when restoring this connector: ${missingRequired.join(
+        ", ",
+      )}`,
     );
   }
   const establishesCurrentCredentials =
     storedConnector !== undefined || missingRequired.length === 0;
   return {
     connector,
+    memberConnectorId: storedConnector?.id ?? null,
     replacingStoredValues,
     establishesCurrentCredentials,
     runtimeRecovered:
@@ -2960,6 +2968,13 @@ async function persistCustomConnectorValues(
   }
   if (state.replacingStoredValues) {
     await deleteCustomConnectorStoredValues(args.tx, args.request, signal);
+  }
+  if (state.memberConnectorId) {
+    await deleteConnectorOwnedCredentialRows(
+      args.tx,
+      { connectorId: state.memberConnectorId },
+      signal,
+    );
   }
   if (state.establishesCurrentCredentials) {
     await upsertCustomConnectorValueParent({

@@ -7,6 +7,7 @@ import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-s
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
+import { alias } from "drizzle-orm/pg-core";
 
 import { nowDate } from "../../lib/time";
 import type { ReadonlyDb } from "../external/db";
@@ -14,6 +15,16 @@ import { connectorCredentialStatusForAccess } from "./connector-credential-statu
 
 const LEGACY_SECRET_KEY = "secret";
 const OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
+const OAUTH_REFRESH_TOKEN_SECRET_NAME = "refresh_token";
+
+const customConnectorAccessTokenSecret = alias(
+  secrets,
+  "custom_connector_access_token_secret",
+);
+const customConnectorRefreshTokenSecret = alias(
+  secrets,
+  "custom_connector_refresh_token_secret",
+);
 
 interface CustomConnectorCredentialValueMarker {
   readonly connectorId: string;
@@ -37,6 +48,12 @@ interface CustomConnectorStoredConnection {
   readonly definitionAuthMethod: OrgCustomConnectorAuthMode;
   readonly definitionStorageVersion: number;
   readonly oauthAccessTokenId: string | null;
+  readonly oauthRefreshTokenId: string | null;
+}
+
+interface UsableCustomConnectorConnection {
+  readonly authMode: OrgCustomConnectorAuthMode;
+  readonly storageVersion: number;
 }
 
 export type CustomConnectorCredentialAccess =
@@ -78,7 +95,8 @@ async function loadCustomConnectorStoredConnections(
       tokenExpiresAt: connectors.tokenExpiresAt,
       definitionAuthMethod: orgCustomConnectors.authMode,
       definitionStorageVersion: orgCustomConnectors.storageVersion,
-      oauthAccessTokenId: secrets.id,
+      oauthAccessTokenId: customConnectorAccessTokenSecret.id,
+      oauthRefreshTokenId: customConnectorRefreshTokenSecret.id,
     })
     .from(connectors)
     .innerJoin(
@@ -89,10 +107,23 @@ async function loadCustomConnectorStoredConnections(
       ),
     )
     .leftJoin(
-      secrets,
+      customConnectorAccessTokenSecret,
       and(
-        eq(secrets.connectorId, connectors.id),
-        eq(secrets.name, OAUTH_ACCESS_TOKEN_SECRET_NAME),
+        eq(customConnectorAccessTokenSecret.connectorId, connectors.id),
+        eq(
+          customConnectorAccessTokenSecret.name,
+          OAUTH_ACCESS_TOKEN_SECRET_NAME,
+        ),
+      ),
+    )
+    .leftJoin(
+      customConnectorRefreshTokenSecret,
+      and(
+        eq(customConnectorRefreshTokenSecret.connectorId, connectors.id),
+        eq(
+          customConnectorRefreshTokenSecret.name,
+          OAUTH_REFRESH_TOKEN_SECRET_NAME,
+        ),
       ),
     )
     .where(
@@ -129,7 +160,7 @@ function customConnectorStoredConnectionIsUsable(
         ? connection.tokenExpiresAt
         : null,
     now,
-    isRefreshable: connection.definitionAuthMethod === "oauth",
+    isRefreshable: connection.oauthRefreshTokenId !== null,
   });
   return (
     credentialStatus === "available" &&
@@ -309,24 +340,41 @@ export async function loadCurrentCustomConnectorValueMarkers(
   return markers;
 }
 
-export async function loadUsableCustomConnectorConnectionIds(
+export async function loadUsableCustomConnectorConnections(
   db: Pick<ReadonlyDb, "select">,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds?: readonly string[];
   },
-): Promise<ReadonlySet<string>> {
+): Promise<ReadonlyMap<string, UsableCustomConnectorConnection>> {
   if (args.connectorIds?.length === 0) {
-    return new Set();
+    return new Map();
   }
   const rows = await loadCustomConnectorStoredConnections(db, args);
   const now = nowDate();
-  return new Set(
-    rows.flatMap((row) => {
-      return customConnectorStoredConnectionIsUsable(row, now)
-        ? [row.customConnectorId]
-        : [];
-    }),
+  const usableConnections = new Map<string, UsableCustomConnectorConnection>();
+  for (const row of rows) {
+    if (customConnectorStoredConnectionIsUsable(row, now)) {
+      usableConnections.set(row.customConnectorId, {
+        authMode: row.definitionAuthMethod,
+        storageVersion: row.definitionStorageVersion,
+      });
+    }
+  }
+  return usableConnections;
+}
+
+export function customConnectorDefinitionHasUsableConnection(args: {
+  readonly usableConnections: ReadonlyMap<
+    string,
+    UsableCustomConnectorConnection
+  >;
+  readonly definition: CustomConnectorCredentialDefinition;
+}): boolean {
+  const connection = args.usableConnections.get(args.definition.id);
+  return (
+    connection?.authMode === args.definition.authMode &&
+    connection.storageVersion === args.definition.storageVersion
   );
 }

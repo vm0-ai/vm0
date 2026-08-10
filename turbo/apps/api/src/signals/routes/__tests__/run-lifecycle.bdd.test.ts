@@ -9097,6 +9097,96 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
   });
 
+  it("admits an unrefreshable custom OAuth token only until it expires", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 30,
+      initialRefreshToken: null,
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const connectedAt = now();
+    mockNow(connectedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Unrefreshable OAuth API",
+      prefixTemplates: ["https://unrefreshable-oauth.example.test/api/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "unrefreshable-runtime-client-id",
+        clientSecret: "unrefreshable-runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+    );
+    const oauthState = new URL(authorizationUrl).searchParams.get("state");
+    if (!oauthState) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "unrefreshable-runtime-authorization-code",
+      state: oauthState,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    await expect(
+      connectors.readCustomConnector(actor, custom.id),
+    ).resolves.toMatchObject({ connected: true });
+
+    const target = expect.objectContaining({
+      kind: "custom",
+      customConnectorId: custom.id,
+    });
+    const currentRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the current unrefreshable custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const currentClaim = await api.claimRunnerJob(currentRun.runId);
+    expect(currentClaim.connectorRuntimeTargets).toContainEqual(target);
+    expect(provider.tokenBodies).toHaveLength(1);
+    await api.requestCancelRun(actor, currentRun.runId, [200]);
+
+    mockNow(connectedAt + 31_000);
+    await expect(
+      connectors.readCustomConnector(actor, custom.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+    const expiredRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use the expired unrefreshable custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const expiredClaim = await api.claimRunnerJob(expiredRun.runId);
+    expect(expiredClaim.connectorRuntimeTargets).not.toContainEqual(target);
+    expect(provider.tokenBodies).toHaveLength(1);
+
+    await api.requestCancelRun(actor, expiredRun.runId, [200]);
+    await connectors.deleteCustomConnector(actor, custom.id);
+  });
+
   it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,

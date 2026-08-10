@@ -197,6 +197,7 @@ import {
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorManualAuthReferencesMemberField,
+  customConnectorMissingRequiredFieldKeys,
   customConnectorPrefixTemplateVariableKeys,
   customConnectorValueMarkerKey,
   decryptCustomConnectorValues,
@@ -4197,12 +4198,10 @@ function customConnectorRuntimeCredentialsAreComplete(
   );
   return (
     (row.connector.authMode !== "oauth" || oauthConnected) &&
-    row.connector.fields.every((field) => {
-      return (
-        !field.required ||
-        valueMarkers.has(customConnectorValueMarkerKey(field))
-      );
-    })
+    customConnectorMissingRequiredFieldKeys({
+      fields: row.connector.fields,
+      markers: row.values,
+    }).length === 0
   );
 }
 
