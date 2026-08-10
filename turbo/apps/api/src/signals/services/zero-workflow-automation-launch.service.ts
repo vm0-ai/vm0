@@ -595,7 +595,7 @@ export const launchQueuedWorkflowAutomation$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
-        triggerSource: args.triggerSource ?? "workflow-schedule",
+        triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
         computerUseHostId: computerUseHostGrant?.hostId,
         modelProviderId: modelPin.modelProviderId ?? undefined,

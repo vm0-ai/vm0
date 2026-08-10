@@ -4,6 +4,7 @@ import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
 import {
   usagePackAllocationChanges,
   usagePackAllocations,
+  usagePackInvitationPurchases,
   usagePackInvoiceFulfillments,
   usagePackSubscriptions,
 } from "@vm0/db/schema/usage-pack-subscription";
@@ -27,6 +28,7 @@ const usagePackUsdSchema = z.union([
   z.literal(200),
 ]);
 type UsagePackUsd = z.infer<typeof usagePackUsdSchema>;
+type UsagePackCreditGrantRow = typeof usagePackCreditGrants.$inferSelect;
 
 const seedAllocationSchema = z
   .object({
@@ -115,6 +117,25 @@ const readStateSchema = z.object({
       nextRecurringAmountCents: z.number().int().nonnegative().nullable(),
       effectiveAt: nullableDateSchema,
       stripeInvoiceId: z.string().nullable(),
+    }),
+  ),
+  invitationPurchases: z.array(
+    z.object({
+      id: z.string().uuid(),
+      normalizedEmail: z.string(),
+      status: z.string(),
+      allocationId: z.string().uuid().nullable(),
+      expectedAmountCents: z.number().int().positive(),
+      amountPaidCents: z.number().int().nonnegative().nullable(),
+      purchasedCredits: z.number().int().nonnegative(),
+      bonusCredits: z.number().int().nonnegative(),
+      stripeCheckoutSessionId: z.string().nullable(),
+      stripePaymentIntentId: z.string().nullable(),
+      stripeRefundId: z.string().nullable(),
+      refundAttempt: z.number().int().positive(),
+      clerkInvitationId: z.string().nullable(),
+      acceptedUserId: z.string().nullable(),
+      currentPeriodEnd: z.iso.datetime(),
     }),
   ),
   grants: z.array(
@@ -234,6 +255,7 @@ interface UsagePackRelatedStateRows {
   readonly allocations: (typeof usagePackAllocations.$inferSelect)[];
   readonly fulfillments: { readonly invoiceId: string }[];
   readonly changes: (typeof usagePackAllocationChanges.$inferSelect)[];
+  readonly invitationPurchases: (typeof usagePackInvitationPurchases.$inferSelect)[];
 }
 
 async function readUsagePackRelatedStateRows(
@@ -241,41 +263,72 @@ async function readUsagePackRelatedStateRows(
   usagePackSubscriptionId: string | undefined,
 ): Promise<UsagePackRelatedStateRows> {
   if (!usagePackSubscriptionId) {
-    return { allocations: [], fulfillments: [], changes: [] };
+    return {
+      allocations: [],
+      fulfillments: [],
+      changes: [],
+      invitationPurchases: [],
+    };
   }
-  const [allocations, fulfillments, changes] = await Promise.all([
-    db
-      .select()
-      .from(usagePackAllocations)
-      .where(
-        eq(
-          usagePackAllocations.usagePackSubscriptionId,
-          usagePackSubscriptionId,
-        ),
-      )
-      .orderBy(asc(usagePackAllocations.id)),
-    db
-      .select({ invoiceId: usagePackInvoiceFulfillments.stripeInvoiceId })
-      .from(usagePackInvoiceFulfillments)
-      .where(
-        eq(
-          usagePackInvoiceFulfillments.usagePackSubscriptionId,
-          usagePackSubscriptionId,
-        ),
-      )
-      .orderBy(asc(usagePackInvoiceFulfillments.stripeInvoiceId)),
-    db
-      .select()
-      .from(usagePackAllocationChanges)
-      .where(
-        eq(
-          usagePackAllocationChanges.usagePackSubscriptionId,
-          usagePackSubscriptionId,
-        ),
-      )
-      .orderBy(asc(usagePackAllocationChanges.createdAt)),
-  ]);
-  return { allocations, fulfillments, changes };
+  const [allocations, fulfillments, changes, invitationPurchases] =
+    await Promise.all([
+      db
+        .select()
+        .from(usagePackAllocations)
+        .where(
+          eq(
+            usagePackAllocations.usagePackSubscriptionId,
+            usagePackSubscriptionId,
+          ),
+        )
+        .orderBy(asc(usagePackAllocations.id)),
+      db
+        .select({ invoiceId: usagePackInvoiceFulfillments.stripeInvoiceId })
+        .from(usagePackInvoiceFulfillments)
+        .where(
+          eq(
+            usagePackInvoiceFulfillments.usagePackSubscriptionId,
+            usagePackSubscriptionId,
+          ),
+        )
+        .orderBy(asc(usagePackInvoiceFulfillments.stripeInvoiceId)),
+      db
+        .select()
+        .from(usagePackAllocationChanges)
+        .where(
+          eq(
+            usagePackAllocationChanges.usagePackSubscriptionId,
+            usagePackSubscriptionId,
+          ),
+        )
+        .orderBy(asc(usagePackAllocationChanges.createdAt)),
+      db
+        .select()
+        .from(usagePackInvitationPurchases)
+        .where(
+          eq(
+            usagePackInvitationPurchases.usagePackSubscriptionId,
+            usagePackSubscriptionId,
+          ),
+        )
+        .orderBy(asc(usagePackInvitationPurchases.createdAt)),
+    ]);
+  return { allocations, fulfillments, changes, invitationPurchases };
+}
+
+function remainingCreditsByUser(
+  grants: readonly UsagePackCreditGrantRow[],
+): readonly { readonly userId: string; readonly amount: number }[] {
+  const totals = new Map<string, number>();
+  for (const grant of grants) {
+    totals.set(
+      grant.userId,
+      (totals.get(grant.userId) ?? 0) + grant.remainingAmount,
+    );
+  }
+  return [...totals].map(([userId, amount]) => {
+    return { userId, amount };
+  });
 }
 
 async function readUsagePackState(
@@ -304,7 +357,7 @@ async function readUsagePackState(
         )
         .limit(1)
     : [];
-  const { allocations, fulfillments, changes } =
+  const { allocations, fulfillments, changes, invitationPurchases } =
     await readUsagePackRelatedStateRows(db, subscription?.id);
   const grants = await db
     .select()
@@ -320,13 +373,6 @@ async function readUsagePackState(
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
   signal.throwIfAborted();
-  const remainingCreditsByUser = new Map<string, number>();
-  for (const grant of grants) {
-    remainingCreditsByUser.set(
-      grant.userId,
-      (remainingCreditsByUser.get(grant.userId) ?? 0) + grant.remainingAmount,
-    );
-  }
 
   return {
     subscriptionCount,
@@ -367,6 +413,25 @@ async function readUsagePackState(
         stripeInvoiceId: change.stripeInvoiceId,
       };
     }),
+    invitationPurchases: invitationPurchases.map((purchase) => {
+      return {
+        id: purchase.id,
+        normalizedEmail: purchase.normalizedEmail,
+        status: purchase.status,
+        allocationId: purchase.allocationId,
+        expectedAmountCents: purchase.expectedAmountCents,
+        amountPaidCents: purchase.amountPaidCents,
+        purchasedCredits: purchase.purchasedCredits,
+        bonusCredits: purchase.bonusCredits,
+        stripeCheckoutSessionId: purchase.stripeCheckoutSessionId,
+        stripePaymentIntentId: purchase.stripePaymentIntentId,
+        stripeRefundId: purchase.stripeRefundId,
+        refundAttempt: purchase.refundAttempt,
+        clerkInvitationId: purchase.clerkInvitationId,
+        acceptedUserId: purchase.acceptedUserId,
+        currentPeriodEnd: purchase.currentPeriodEnd.toISOString(),
+      };
+    }),
     grants: grants.map((grant) => {
       return {
         userId: grant.userId,
@@ -378,9 +443,7 @@ async function readUsagePackState(
     fulfillmentInvoiceIds: fulfillments.map((row) => {
       return row.invoiceId;
     }),
-    remainingCredits: [...remainingCreditsByUser].map(([userId, amount]) => {
-      return { userId, amount };
-    }),
+    remainingCredits: remainingCreditsByUser(grants),
     org: org
       ? {
           tier: org.tier,

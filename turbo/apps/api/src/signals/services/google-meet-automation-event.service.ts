@@ -36,7 +36,7 @@ import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
-const log = logger("api:google-meet-workflow-event");
+const log = logger("api:google-meet-automation-event");
 
 const GOOGLE_MEET_ACCESS_TOKEN_ENVIRONMENT_NAME = "GOOGLE_MEET_TOKEN";
 const GOOGLE_WORKSPACE_EVENTS_API_BASE =
@@ -1486,7 +1486,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
               },
               automationContext: runInput.context,
               apiStartTime: args.apiStartTime,
-              triggerSource: "workflow-event",
+              triggerSource: "automation-event",
               triggerBrief: runInput.triggerBrief,
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,
               timing: timing.collectorForRunStart(),

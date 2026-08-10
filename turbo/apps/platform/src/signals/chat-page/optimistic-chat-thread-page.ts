@@ -503,6 +503,9 @@ const sendNewThreadMessage$ = command(
     const annotatedUserMessage = withSelectedModelAnnotation(
       userMessage,
       resolvedModelSelection.selectedModel,
+      resolvedModelSelection.codexServiceTier === "fast"
+        ? "priority"
+        : undefined,
     );
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();

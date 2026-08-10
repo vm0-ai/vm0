@@ -38,6 +38,7 @@ import {
   orgRoleSchema,
   type OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
+import { usagePackUsdSchema } from "@vm0/api-contracts/contracts/zero-billing";
 import {
   orgMembers$,
   orgPendingInvitations$,
@@ -61,6 +62,9 @@ import {
   setInviteDialogOpen$,
   inviteRole$,
   setInviteRole$,
+  invitationUsagePackCatalog$,
+  inviteUsagePackUsd$,
+  setInviteUsagePackUsd$,
   selfDemoteDialogOpen$,
   setSelfDemoteDialogOpen$,
   removeMemberDialogTarget$,
@@ -276,6 +280,14 @@ function InviteDialog() {
   const setOpen = useSet(setInviteDialogOpen$);
   const role = useGet(inviteRole$);
   const setRole = useSet(setInviteRole$);
+  const usagePackUsd = useGet(inviteUsagePackUsd$);
+  const setUsagePackUsd = useSet(setInviteUsagePackUsd$);
+  const catalogLoadable = useLoadable(invitationUsagePackCatalog$);
+  const usagePacks =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  const requiresUsagePack = usagePacks !== null;
+  const usagePackContextLoading = catalogLoadable.state === "loading";
+  const usagePackContextError = catalogLoadable.state === "hasError";
   const [loadable, doInvite] = useLoadableSet(inviteMember$);
   const sending = loadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
@@ -287,7 +299,15 @@ function InviteDialog() {
   const setTouched = useSet(setInviteTouched$);
 
   const handleSend = () => {
-    detach(doInvite(trimmed, role, pageSignal), Reason.DomCallback);
+    detach(
+      doInvite(
+        trimmed,
+        role,
+        requiresUsagePack ? usagePackUsd : null,
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -298,6 +318,7 @@ function InviteDialog() {
           setOpen(v);
           if (!v) {
             setRole(orgRoleSchema.parse("member"));
+            setUsagePackUsd(20);
           }
         }
       }}
@@ -382,6 +403,44 @@ function InviteDialog() {
               </SelectContent>
             </Select>
           </div>
+          {usagePacks && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">
+                {t(($) => {
+                  return $.billing.plans.usagePacks.memberPackages;
+                })}
+              </label>
+              <Select
+                value={String(usagePackUsd)}
+                onValueChange={(value) => {
+                  return setUsagePackUsd(
+                    usagePackUsdSchema.parse(Number(value)),
+                  );
+                }}
+                disabled={sending}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {usagePacks.map((usagePack) => {
+                    return (
+                      <SelectItem
+                        key={usagePack.usagePackUsd}
+                        value={String(usagePack.usagePackUsd)}
+                      >
+                        ${usagePack.priceUsd} ·{" "}
+                        {usagePack.totalCredits.toLocaleString()}{" "}
+                        {t(($) => {
+                          return $.billing.plans.usagePacks.totalCredits;
+                        })}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -396,14 +455,27 @@ function InviteDialog() {
               return $.settings.shared.cancel;
             })}
           </Button>
-          <Button size="sm" disabled={!isValid || sending} onClick={handleSend}>
+          <Button
+            size="sm"
+            disabled={
+              !isValid ||
+              sending ||
+              usagePackContextLoading ||
+              usagePackContextError
+            }
+            onClick={handleSend}
+          >
             {sending
               ? t(($) => {
                   return $.settings.workspace.members.invite.progress;
                 })
-              : t(($) => {
-                  return $.settings.workspace.members.invite.send;
-                })}
+              : requiresUsagePack
+                ? t(($) => {
+                    return $.chat.actions.continue;
+                  })
+                : t(($) => {
+                    return $.settings.workspace.members.invite.send;
+                  })}
           </Button>
         </DialogFooter>
       </DialogContent>

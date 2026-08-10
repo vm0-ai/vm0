@@ -145,7 +145,7 @@ async function postStrapiEvent(args: {
   return { status: response.status, body: await response.json() };
 }
 
-async function pendingWorkflowEvents(threadId: string) {
+async function pendingAutomationEvents(threadId: string) {
   const events = await workflows.readThreadEvents(threadId);
   const revokedIds = new Set(
     events.flatMap((event) => {
@@ -576,7 +576,7 @@ describe("Strapi integration", () => {
       executed: 1,
     });
     await expect(
-      pendingWorkflowEvents(automation.body.chatThreadId),
+      pendingAutomationEvents(automation.body.chatThreadId),
     ).resolves.toHaveLength(1);
   });
 });

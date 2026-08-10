@@ -922,7 +922,7 @@ describe("POST /api/webhooks/gmail", () => {
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
           workflow_event_source: "gmail",
-          trigger_source: "workflow-event",
+          trigger_source: "automation-event",
           zero_run_origin: "workflow_automation",
           span_kind: "nested",
         }),

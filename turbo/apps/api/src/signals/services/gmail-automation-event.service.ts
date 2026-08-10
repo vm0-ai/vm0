@@ -9,7 +9,7 @@ import {
   gmailNewMessageEventConfigSchema,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
-  type GmailWorkflowEventConfig,
+  type GmailAutomationEventConfig,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   gmailProcessedEvents,
@@ -45,7 +45,7 @@ import type { WorkflowAutomationContext } from "./workflow-automation-context.se
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
-const log = logger("api:gmail-workflow-event");
+const log = logger("api:gmail-automation-event");
 
 const GMAIL_ACCESS_TOKEN_ENVIRONMENT_NAME = "GMAIL_TOKEN";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -1607,7 +1607,7 @@ interface GmailEventAutomationRow {
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
-  readonly config: GmailWorkflowEventConfig;
+  readonly config: GmailAutomationEventConfig;
 }
 
 type GmailRunStarter = (args: {
@@ -1826,7 +1826,7 @@ async function insertGmailProcessedEvent(
 function gmailTriggerContext(args: {
   readonly workflowName: string;
   readonly automationId: string;
-  readonly automationConfig: GmailWorkflowEventConfig;
+  readonly automationConfig: GmailAutomationEventConfig;
   readonly emailAddress: string;
   readonly message: GmailMessageContext;
 }): WorkflowAutomationContext {
@@ -1864,7 +1864,7 @@ function gmailTriggerContext(args: {
 }
 
 function buildGmailWorkflowAutomationBrief(args: {
-  readonly automationConfig: GmailWorkflowEventConfig;
+  readonly automationConfig: GmailAutomationEventConfig;
   readonly message: {
     readonly messageId: string;
     readonly threadId: string | null;
@@ -2434,7 +2434,7 @@ const startGmailWorkflowRun$ = command(
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         triggerBrief: runInput.triggerBrief,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),

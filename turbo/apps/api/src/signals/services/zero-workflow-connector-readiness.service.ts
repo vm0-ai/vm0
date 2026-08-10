@@ -10,7 +10,7 @@ import {
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
   zeroWorkflowAutomations,
-  type ZeroWorkflowEventType,
+  type ZeroAutomationEventType,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -61,7 +61,7 @@ interface AutomationConnectorDependency {
 }
 
 function automationConnectorDependency(
-  eventType: ZeroWorkflowEventType,
+  eventType: ZeroAutomationEventType,
 ): AutomationConnectorDependency | null {
   switch (eventType) {
     case "gmail-new-message":

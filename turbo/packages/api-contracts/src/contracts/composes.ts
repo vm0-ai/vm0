@@ -54,6 +54,7 @@ export const ZERO_CAPABILITIES = [
   "image-recognition:write",
   "translation:write",
   "finance:read",
+  "seo:read",
   "computer-use:write",
   "browser:read",
   "browser:write",
@@ -183,6 +184,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "finance:read": {
       group: "Finance",
       label: "Use managed finance services",
+    },
+    "seo:read": {
+      group: "SEO",
+      label: "Use managed SEO services",
     },
     "computer-use:write": {
       group: "Computer Use",

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.162.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.10...runner-rs-v0.162.11) (2026-08-10)
+
+
+### Bug Fixes
+
+* install noto fonts in sandbox images ([#26113](https://github.com/vm0-ai/vm0/issues/26113)) ([d561785](https://github.com/vm0-ai/vm0/commit/d56178597c6afa8149336c924196836a58ad5898))
+
+
+### Performance Improvements
+
+* **python:** bound and reuse sigv4 request inspection ([#26141](https://github.com/vm0-ai/vm0/issues/26141)) ([7c1d422](https://github.com/vm0-ai/vm0/commit/7c1d42257d37c9b213d4ed25cee57de0aeb87617))
+
+## [0.162.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.9...runner-rs-v0.162.10) (2026-08-10)
+
+
+### Bug Fixes
+
+* **mitm-addon:** distinguish repeated-slash diagnostic bases ([#26100](https://github.com/vm0-ai/vm0/issues/26100)) ([0a8bb82](https://github.com/vm0-ai/vm0/commit/0a8bb821545d23bede3ae075e711baa1c648dccb))
+* **runner:** frame rootfs hash inputs ([#26122](https://github.com/vm0-ai/vm0/issues/26122)) ([8c38ec3](https://github.com/vm0-ai/vm0/commit/8c38ec3dbd7d48d04e4e5b06607393305c82d850))
+
+
+### Refactoring
+
+* **python:** centralize synthetic json framing ([#26117](https://github.com/vm0-ai/vm0/issues/26117)) ([b5e9b13](https://github.com/vm0-ai/vm0/commit/b5e9b13e9bc887836faf617eff3887070428b317))
+
+## [0.162.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.8...runner-rs-v0.162.9) (2026-08-10)
+
+
+### Bug Fixes
+
+* **mitm-addon:** reject non-list custom connector apis ([#26114](https://github.com/vm0-ai/vm0/issues/26114)) ([cb75f7e](https://github.com/vm0-ai/vm0/commit/cb75f7e81a13ee39e7ca4603509ba6a6e61b63a9))
+
 ## [0.162.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.7...runner-rs-v0.162.8) (2026-08-10)
 
 

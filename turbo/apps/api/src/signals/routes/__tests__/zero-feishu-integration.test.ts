@@ -966,6 +966,71 @@ describe("Feishu integration", () => {
     return { firstMessageId, mainSessionId };
   }
 
+  it("removes only the deleted user's Feishu connection mapping", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const survivor = fixture.actor;
+    await connectFixtureUser(fixture, survivor, "ou_feishu_survivor");
+
+    const doomed = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: survivor.orgId,
+      orgRole: "org:member",
+    });
+    await enableFeishuIntegration(doomed);
+    await connectFixtureUser(fixture, doomed, "ou_feishu_doomed");
+
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    mocks.clerk.session(doomed.userId, doomed.orgId, "org:member");
+    const connectedBeforeDeletion = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectedBeforeDeletion.body).toMatchObject({
+      isConnected: true,
+      connectedUserName: "Feishu User",
+    });
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [{ publicUserData: { userId: survivor.userId } }],
+      },
+    );
+    webhooksApi.configureClerkWebhookSecret();
+    webhooksApi.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: { id: doomed.userId },
+    });
+    const response = await webhooksApi.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    mocks.clerk.session(doomed.userId, doomed.orgId, "org:member");
+    const deletedUserStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(deletedUserStatus.body.isConnected).toBeFalsy();
+
+    mocks.clerk.session(survivor.userId, survivor.orgId, "org:admin");
+    const survivorStatus = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(survivorStatus.body).toMatchObject({
+      isConnected: true,
+      connectedUserName: "Feishu User",
+      installations: [expect.objectContaining({ id: fixture.installationId })],
+    });
+  });
+
   it("rejects configuration API access when the feature switch is disabled", async () => {
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -2936,11 +3001,10 @@ describe("Feishu integration", () => {
     );
   });
 
-  it("resumes Feishu DM sessions across messages and quoted replies", async () => {
+  it("resumes Feishu DM sessions across messages", async () => {
     const fixture = await setupFeishuRunFixture();
     const { actor, runnerGroup, appId, callbackUrl } = fixture;
-    const { firstMessageId, mainSessionId } =
-      await startFeishuDmSession(fixture);
+    const { mainSessionId } = await startFeishuDmSession(fixture);
 
     await postEvent(
       callbackUrl,
@@ -2959,6 +3023,24 @@ describe("Feishu integration", () => {
       history: `bdd continued feishu history ${followUpRun.id}`,
       assistantText: "Continued Feishu DM answer",
     });
+
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resumes quoted Feishu DM replies without opening a thread", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    const { firstMessageId, mainSessionId } =
+      await startFeishuDmSession(fixture);
 
     const quotedReplyMessageId = `om_${randomUUID()}`;
     await postEvent(

@@ -179,6 +179,14 @@ export interface StripePaymentIntent {
   readonly customer?: StripeRef;
   readonly payment_method?: StripeRef;
   readonly metadata?: Record<string, string> | null;
+  readonly status: string;
+  readonly amount_received: number;
+  readonly currency: string;
+}
+
+export interface StripeRefund {
+  readonly id: string;
+  readonly status: string | null;
 }
 
 export interface StripeInvoiceLine {
@@ -249,6 +257,7 @@ export interface StripeCheckoutSession {
   readonly subscription: StripeRef;
   readonly customer: StripeRef;
   readonly metadata: Record<string, string> | null;
+  readonly payment_intent?: StripeRef;
   readonly setup_intent?:
     | string
     | {
@@ -259,6 +268,8 @@ export interface StripeCheckoutSession {
   readonly amount_subtotal?: number | null;
   readonly amount_total?: number | null;
   readonly payment_status?: string | null;
+  readonly currency?: string | null;
+  readonly expires_at?: number;
 }
 
 export interface StripeCoupon {
@@ -426,13 +437,19 @@ export interface StripeCheckoutSessionCreateParams {
   readonly customer?: string;
   readonly currency?: string;
   readonly line_items?: {
-    readonly price: string;
+    readonly price?: string;
+    readonly price_data?: {
+      readonly currency: string;
+      readonly product: string;
+      readonly unit_amount: number;
+    };
     readonly quantity?: number;
   }[];
   readonly allow_promotion_codes?: boolean;
   readonly discounts?: { readonly coupon: string }[];
   readonly success_url?: string;
   readonly cancel_url?: string;
+  readonly expires_at?: number;
   readonly metadata?: StripeMetadataParam;
   readonly subscription_data?: {
     readonly metadata?: StripeMetadataParam;
@@ -452,12 +469,25 @@ export interface StripeCheckoutSessionCreateParams {
 export interface StripeCheckoutSessionsApi {
   create(
     params: StripeCheckoutSessionCreateParams,
+    options?: StripeRequestOptions,
   ): Promise<StripeCheckoutSession>;
   retrieve(
     id: string,
     params?: { expand?: string[] },
   ): Promise<StripeCheckoutSession>;
   expire(id: string): Promise<StripeCheckoutSession>;
+}
+
+export interface StripeRefundsApi {
+  retrieve(id: string): Promise<StripeRefund>;
+  create(
+    params: {
+      readonly payment_intent: string;
+      readonly amount: number;
+      readonly metadata?: StripeMetadataParam;
+    },
+    options?: StripeRequestOptions,
+  ): Promise<StripeRefund>;
 }
 
 export interface StripePaymentMethodsApi {
@@ -488,6 +518,7 @@ export interface StripeClient {
   readonly invoiceItems: StripeInvoiceItemsApi;
   readonly checkout: { readonly sessions: StripeCheckoutSessionsApi };
   readonly paymentMethods: StripePaymentMethodsApi;
+  readonly refunds: StripeRefundsApi;
   readonly billingPortal: StripeBillingPortalApi;
 }
 
@@ -603,30 +634,42 @@ export type StripeWebhookEvent =
       readonly kind: "payment_intent.succeeded";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
       readonly object: StripePaymentIntent;
     }
   | {
       readonly kind: "checkout.session.paid";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
+      readonly object: StripeCheckoutSession;
+    }
+  | {
+      readonly kind: "checkout.session.failed";
+      readonly id: string;
+      readonly type: string;
+      readonly created: number;
       readonly object: StripeCheckoutSession;
     }
   | {
       readonly kind: "invoice.paid";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
       readonly object: StripeInvoice;
     }
   | {
       readonly kind: "customer.subscription.created";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
       readonly object: StripeSubscription;
     }
   | {
       readonly kind: "customer.subscription.updated";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
       readonly object: StripeSubscription;
       readonly previousAttributes?: StripeSubscriptionPreviousAttributes;
     }
@@ -634,24 +677,28 @@ export type StripeWebhookEvent =
       readonly kind: "customer.subscription.deleted";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
       readonly object: StripeSubscription;
     }
   | {
       readonly kind: "subscription_schedule.released";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
       readonly object: StripeSubscriptionSchedule;
     }
   | {
       readonly kind: "subscription_schedule.ended";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
       readonly object: StripeSubscriptionSchedule;
     }
   | {
       readonly kind: "unhandled";
       readonly id: string;
       readonly type: string;
+      readonly created: number;
     };
 
 type StripeWebhookEventConstructor = (
@@ -695,7 +742,7 @@ export function constructStripeBillingWebhookEvent(
   secret: string,
 ): StripeWebhookEvent {
   const event = stripeSdk().webhooks.constructEvent(rawBody, signature, secret);
-  const envelope = { id: event.id, type: event.type };
+  const envelope = { id: event.id, type: event.type, created: event.created };
 
   switch (event.type) {
     case "payment_intent.succeeded": {
@@ -709,6 +756,14 @@ export function constructStripeBillingWebhookEvent(
     case "checkout.session.async_payment_succeeded": {
       return {
         kind: "checkout.session.paid",
+        ...envelope,
+        object: event.data.object,
+      };
+    }
+    case "checkout.session.async_payment_failed":
+    case "checkout.session.expired": {
+      return {
+        kind: "checkout.session.failed",
         ...envelope,
         object: event.data.object,
       };

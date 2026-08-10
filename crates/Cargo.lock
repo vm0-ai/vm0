@@ -1349,7 +1349,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.6.17"
+version = "0.6.18"
 dependencies = [
  "chrono",
  "clap",
@@ -2576,7 +2576,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.162.8"
+version = "0.162.11"
 dependencies = [
  "ably-subscriber",
  "api-contracts",

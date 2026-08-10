@@ -972,7 +972,9 @@ function createVoiceSegmentSession(
       }
     },
     startSilenceTimeout(): void {
-      silenceTimer.start();
+      if (!currentSegmentHasVoice) {
+        silenceTimer.start();
+      }
     },
     async stopAndTranscribe(stopSignal: AbortSignal): Promise<void> {
       stopped = true;

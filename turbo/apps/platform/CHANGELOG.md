@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.719.1](https://github.com/vm0-ai/vm0/compare/app-v0.719.0...app-v0.719.1) (2026-08-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.306.1
+    * @vm0/core bumped to 8.538.2
+
+## [0.719.0](https://github.com/vm0-ai/vm0/compare/app-v0.718.0...app-v0.719.0) (2026-08-10)
+
+
+### Features
+
+* **chat:** persist fast mode in user messages ([#26109](https://github.com/vm0-ai/vm0/issues/26109)) ([9ccbee2](https://github.com/vm0-ai/vm0/commit/9ccbee23ae65d2c8f5653678d2e4131fa0548a0e))
+* require usage pack payment when inviting members ([#25527](https://github.com/vm0-ai/vm0/issues/25527)) ([070ff0e](https://github.com/vm0-ai/vm0/commit/070ff0ec08040bad52437e9b41dace350e806a62))
+
+
+### Performance Improvements
+
+* **platform:** eliminate idle animation paints ([#26123](https://github.com/vm0-ai/vm0/issues/26123)) ([9c2e984](https://github.com/vm0-ai/vm0/commit/9c2e984e8e4fe8f4d98dd9928bb8a73d64106fa8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.306.0
+    * @vm0/core bumped to 8.538.1
+
+## [0.718.0](https://github.com/vm0-ai/vm0/compare/app-v0.717.0...app-v0.718.0) (2026-08-10)
+
+
+### Features
+
+* animate connector catalog count ([#26083](https://github.com/vm0-ai/vm0/issues/26083)) ([78ab60d](https://github.com/vm0-ai/vm0/commit/78ab60d7622cf6174b4c1b206bf22cc0d9f6b190))
+
+
+### Bug Fixes
+
+* **app:** preserve sampled voice before silence timeout ([#26098](https://github.com/vm0-ai/vm0/issues/26098)) ([2b2af9f](https://github.com/vm0-ai/vm0/commit/2b2af9f050d8a74683caa416c8e6f5e97d589768))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.305.0
+    * @vm0/core bumped to 8.538.0
+
 ## [0.717.0](https://github.com/vm0-ai/vm0/compare/app-v0.716.0...app-v0.717.0) (2026-08-10)
 
 

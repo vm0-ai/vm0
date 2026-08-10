@@ -429,6 +429,7 @@ const userMessageModelPartSchema = z
   .object({
     type: z.literal("model"),
     selectedModel: z.string().min(1),
+    serviceTier: chatThreadServiceTierSchema.optional(),
   })
   .strict();
 

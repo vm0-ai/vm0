@@ -28,7 +28,7 @@ import type { WorkflowAutomationContext } from "./workflow-automation-context.se
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
-const log = logger("api:github-workflow-event");
+const log = logger("api:github-label-automation-event");
 
 type GithubInstallationRecord = typeof githubInstallations.$inferSelect;
 type GithubWorkflowSubjectKind = "issue" | "pull_request";
@@ -58,7 +58,7 @@ interface GithubInstallationRef {
   readonly id: number;
 }
 
-interface GithubLabelWorkflowEventPayload {
+interface GithubLabelAutomationEventPayload {
   readonly action: string;
   readonly issue: GithubIssueLike;
   readonly label: GithubLabel | undefined;
@@ -78,7 +78,7 @@ interface GithubLabelEventAutomationRow {
 type GithubWorkflowRunStartArgs = {
   readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
-  readonly payload: GithubLabelWorkflowEventPayload;
+  readonly payload: GithubLabelAutomationEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
   readonly timing: AutomationEventRunTiming;
@@ -356,7 +356,7 @@ async function insertGithubProcessedEvent(args: {
   readonly db: Db;
   readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
-  readonly payload: GithubLabelWorkflowEventPayload;
+  readonly payload: GithubLabelAutomationEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
 }): Promise<string | null> {
   const [processed] = await args.db
@@ -390,7 +390,7 @@ function githubSubjectUrl(args: {
 function githubLabelTriggerContext(args: {
   readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
-  readonly payload: GithubLabelWorkflowEventPayload;
+  readonly payload: GithubLabelAutomationEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
 }): WorkflowAutomationContext {
@@ -436,7 +436,7 @@ async function dispatchGithubAutomationEvent(args: {
   readonly db: Db;
   readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
-  readonly payload: GithubLabelWorkflowEventPayload;
+  readonly payload: GithubLabelAutomationEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
   readonly timing: AutomationEventRunTiming;
@@ -489,7 +489,7 @@ const startGithubWorkflowRun$ = command(
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },
@@ -565,7 +565,7 @@ const dispatchMatchedGithubAutomations$ = command(
       readonly automations: readonly GithubLabelEventAutomationRow[];
       readonly labelNames: readonly string[];
       readonly deliveryId: string;
-      readonly payload: GithubLabelWorkflowEventPayload;
+      readonly payload: GithubLabelAutomationEventPayload;
       readonly subjectKind: GithubWorkflowSubjectKind;
       readonly apiStartTime: number;
       readonly sourceTiming: AutomationEventSourceTiming;
@@ -646,7 +646,7 @@ export const dispatchGithubLabelWorkflowAutomations$ = command(
     { set },
     args: {
       readonly deliveryId: string;
-      readonly payload: GithubLabelWorkflowEventPayload;
+      readonly payload: GithubLabelAutomationEventPayload;
       readonly subjectKind: GithubWorkflowSubjectKind;
       readonly apiStartTime: number;
       readonly backgroundScheduledAt?: number;

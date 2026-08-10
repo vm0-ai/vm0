@@ -35,7 +35,7 @@ import type {
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
 
-const log = logger("api:strapi-workflow-event");
+const log = logger("api:strapi-automation-event");
 
 export const STRAPI_WEBHOOK_BODY_LIMIT_BYTES = 1_000_000;
 const STRAPI_PUBLISH_QUIET_WINDOW_MS = 45_000;
@@ -656,7 +656,7 @@ async function processPendingEvent(
       },
       automationContext: context,
       apiStartTime: now(),
-      triggerSource: "workflow-event",
+      triggerSource: "automation-event",
       triggerBrief: `Strapi published ${args.pending.uid} ${args.pending.documentId} (${args.pending.locales.length} locale${args.pending.locales.length === 1 ? "" : "s"})`,
       coalescePendingScheduleRun: false,
       persistSourceTransition: async (tx) => {
@@ -685,7 +685,7 @@ type ExecuteDueStrapiResult = {
   readonly skipped: number;
 };
 
-async function executeDueStrapiWorkflowEvents(
+async function executeDueStrapiAutomationEvents(
   args: {
     readonly db: Db;
     readonly automationId?: string;
@@ -758,9 +758,9 @@ async function executeDueStrapiWorkflowEvents(
   return { executed, skipped };
 }
 
-export const executeDueStrapiWorkflowEvents$ = command(
+export const executeDueStrapiAutomationEvents$ = command(
   async ({ set }, signal: AbortSignal): Promise<ExecuteDueStrapiResult> => {
-    return await executeDueStrapiWorkflowEvents(
+    return await executeDueStrapiAutomationEvents(
       {
         db: set(writeDb$),
         startRun: (input, childSignal) => {
@@ -772,13 +772,13 @@ export const executeDueStrapiWorkflowEvents$ = command(
   },
 );
 
-export const executeDueStrapiWorkflowEventsForAutomation$ = command(
+export const executeDueStrapiAutomationEventsForAutomation$ = command(
   async (
     { set },
     automationId: string,
     signal: AbortSignal,
   ): Promise<ExecuteDueStrapiResult> => {
-    return await executeDueStrapiWorkflowEvents(
+    return await executeDueStrapiAutomationEvents(
       {
         db: set(writeDb$),
         automationId,

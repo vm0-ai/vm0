@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { cronRenewGoogleFormsWatchesContract } from "@vm0/api-contracts/contracts/cron";
 
 import type { RouteEntry } from "../route-entry";
-import { renewGoogleFormsWatches$ } from "../services/google-forms-workflow-event.service";
+import { renewGoogleFormsWatches$ } from "../services/google-forms-automation-event.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const renewGoogleFormsWatchesRoute$ = command(

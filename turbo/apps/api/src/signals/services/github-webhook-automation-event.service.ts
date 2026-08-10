@@ -12,8 +12,8 @@ import {
   type GithubPullRequestReviewSubmittedEventConfig,
   type GithubWorkflowJobCompletedEventConfig,
   type GithubWorkflowRunConclusion,
-  type GithubWorkflowEventConfig,
-  type ZeroWorkflowEventType,
+  type GithubAutomationEventConfig,
+  type ZeroAutomationEventType,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import {
@@ -156,7 +156,7 @@ export interface GithubIssueCommentEventPayload {
 }
 
 type GithubWebhookAutomationEventType = Extract<
-  ZeroWorkflowEventType,
+  ZeroAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
   | "github-pull-request-review-submitted"
@@ -164,7 +164,7 @@ type GithubWebhookAutomationEventType = Extract<
 >;
 
 type GithubWebhookAutomationEventConfig = Extract<
-  GithubWorkflowEventConfig,
+  GithubAutomationEventConfig,
   | { readonly event: "deployment_status_created" }
   | { readonly event: "issue_comment_created" }
   | { readonly event: "pull_request_review_submitted" }
@@ -810,7 +810,7 @@ const startGithubWebhookAutomation$ = command(
         },
         automationContext: context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },

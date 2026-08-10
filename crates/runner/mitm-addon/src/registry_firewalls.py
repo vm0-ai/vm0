@@ -306,7 +306,10 @@ def resolve_firewall_entries(
             custom_connector_id = _custom_connector_id(entry)
             if custom_connector_id is not None:
                 resolved_firewall["customConnectorId"] = custom_connector_id
-                for api in resolved_firewall.get("apis", []):
+                raw_apis = resolved_firewall.get("apis")
+                if not isinstance(raw_apis, list):
+                    raise FirewallEntryResolutionError("inline firewall apis must be a list")
+                for api in raw_apis:
                     if isinstance(api, dict):
                         api["customConnectorId"] = custom_connector_id
             resolved.append(resolved_firewall)
