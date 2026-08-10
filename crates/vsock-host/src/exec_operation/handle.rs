@@ -840,7 +840,11 @@ impl ExecControlHandle {
         .await
     }
 
-    async fn control_owned_with_write_observer(
+    /// Send owned exec-control data and return the raw outcome.
+    ///
+    /// This is the owned-data counterpart to
+    /// [`Self::control_with_write_observer`].
+    pub async fn control_owned_with_write_observer(
         &self,
         message_id: String,
         payload: Vec<u8>,
