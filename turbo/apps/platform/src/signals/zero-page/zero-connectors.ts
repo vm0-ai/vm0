@@ -83,6 +83,14 @@ const relatedConnectorCatalogKeyword$ = computed(() => {
   return "";
 });
 
+const composerRelatedCatalog$ = relatedConnectorCatalog(
+  relatedConnectorCatalogKeyword$,
+);
+
+const composerRelatedCatalogItems$ = computed(async (get) => {
+  return (await get(composerRelatedCatalog$)).connectors;
+});
+
 interface AgentCustomConnectorAuthorizationRequestBroker {
   load(params: {
     readonly createClient: ZeroClientFactory;
@@ -326,16 +334,10 @@ export function createComposerConnectorSignals(
   const addDialogKeyword$ = computed((get) => {
     return get(ui.connectorUiState$).addDialogSearch;
   });
-  const relatedCatalog$ = relatedConnectorCatalog(
-    relatedConnectorCatalogKeyword$,
-  );
   const searchedCatalog$ = relatedConnectorCatalog(addDialogKeyword$);
-  const relatedCatalogItems$ = computed(async (get) => {
-    return (await get(relatedCatalog$)).connectors;
-  });
   const addDialogCatalogItems$ = computed(async (get) => {
     if (!get(addDialogKeyword$).trim()) {
-      return await get(relatedCatalogItems$);
+      return await get(composerRelatedCatalogItems$);
     }
     return (await get(searchedCatalog$)).connectors;
   });
@@ -353,7 +355,7 @@ export function createComposerConnectorSignals(
   );
 
   return {
-    relatedCatalogItems$,
+    relatedCatalogItems$: composerRelatedCatalogItems$,
     addDialogCatalogItems$,
     connectorAuthorization$: createConnectorAuthorizationSignal(agentId),
     setConnectorAuthorization$: createConnectorAuthorizationCommand(agentId),
