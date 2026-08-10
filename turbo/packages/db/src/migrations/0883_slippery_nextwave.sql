@@ -1,5 +1,4 @@
-ALTER TABLE "insights_daily" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "usage_daily" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
-DROP TABLE "insights_daily" CASCADE;--> statement-breakpoint
-DROP TABLE "usage_daily" CASCADE;--> statement-breakpoint
+-- Keep the retired daily tables through this release so the outgoing API's
+-- readers and writers remain legal after the migration. Drop them in a later
+-- migration after the previous API release has fully drained.
 DROP INDEX "idx_agent_runs_completed_org_user";
