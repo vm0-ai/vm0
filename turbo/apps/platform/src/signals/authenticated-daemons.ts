@@ -11,6 +11,7 @@ import { setupUserPreferenceRealtime$ } from "./external/user-model-preference.t
 import { subscribePermissionUpdate$ } from "./permission-allow/permission-allow-signals.ts";
 import { setupRealtime$ } from "./realtime.ts";
 import { setupBillingRealtime$ } from "./zero-page/billing.ts";
+import { migrateCodexFastModeLocalDefault$ } from "./zero-page/codex-fast-local-default.ts";
 import { subscribeCustomConnectorListChanged$ } from "./zero-page/settings/custom-connectors.ts";
 
 /** Start user-scoped background services after Clerk has resolved. */
@@ -31,6 +32,7 @@ export const setupAuthenticatedDaemons$ = command(
       set(subscribePermissionUpdate$, signal),
       set(setupBillingRealtime$, signal),
       set(setupUserPreferenceRealtime$, signal),
+      set(migrateCodexFastModeLocalDefault$, signal),
       set(setupChatEventBackgroundSync$, signal),
       set(subscribeCustomConnectorListChanged$, signal),
     ]);

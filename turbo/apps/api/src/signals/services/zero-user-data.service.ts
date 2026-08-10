@@ -10,7 +10,10 @@ import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,
 } from "@vm0/api-contracts/contracts/zero-user-model-preference";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  isCodexFastModeModel,
+  isSupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
 import type {
   SecretResponse,
   SecretType,
@@ -155,6 +158,7 @@ export function userModelPreference({
     const [row] = await db
       .select({
         selectedModel: orgMembersMetadata.selectedModel,
+        codexServiceTier: orgMembersMetadata.codexServiceTier,
         updatedAt: orgMembersMetadata.updatedAt,
       })
       .from(orgMembersMetadata)
@@ -169,8 +173,15 @@ export function userModelPreference({
     const selectedModel = isSupportedRunModel(row?.selectedModel)
       ? row.selectedModel
       : null;
+    const codexServiceTier =
+      selectedModel &&
+      isCodexFastModeModel(selectedModel) &&
+      row?.codexServiceTier === "fast"
+        ? "fast"
+        : null;
     return {
       selectedModel,
+      codexServiceTier,
       updatedAt: selectedModel ? (row?.updatedAt.toISOString() ?? null) : null,
     };
   });
@@ -319,7 +330,11 @@ export const updateUserModelPreference$ = command(
     if (args.preference.selectedModel === null) {
       await writeDb
         .update(orgMembersMetadata)
-        .set({ selectedModel: null, updatedAt: nowDate() })
+        .set({
+          selectedModel: null,
+          codexServiceTier: null,
+          updatedAt: nowDate(),
+        })
         .where(
           and(
             eq(orgMembersMetadata.orgId, args.orgId),
@@ -327,9 +342,18 @@ export const updateUserModelPreference$ = command(
           ),
         );
       signal.throwIfAborted();
-      return { selectedModel: null, updatedAt: null };
+      return {
+        selectedModel: null,
+        codexServiceTier: null,
+        updatedAt: null,
+      };
     }
 
+    const codexServiceTier =
+      args.preference.codexServiceTier === "fast" &&
+      isCodexFastModeModel(args.preference.selectedModel)
+        ? "fast"
+        : null;
     const updatedAt = nowDate();
     await writeDb
       .insert(orgMembersMetadata)
@@ -337,6 +361,7 @@ export const updateUserModelPreference$ = command(
         orgId: args.orgId,
         userId: args.userId,
         selectedModel: args.preference.selectedModel,
+        codexServiceTier,
         createdAt: updatedAt,
         updatedAt,
       })
@@ -344,6 +369,7 @@ export const updateUserModelPreference$ = command(
         target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
         set: {
           selectedModel: args.preference.selectedModel,
+          codexServiceTier,
           updatedAt,
         },
       });

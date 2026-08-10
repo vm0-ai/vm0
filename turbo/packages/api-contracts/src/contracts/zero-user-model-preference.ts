@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
 import { apiErrorSchema } from "./errors";
+import { codexServiceTierSchema } from "./chat-threads";
 import { supportedRunModelSchema } from "./model-providers";
 
 const c = initContract();
 
 export const userModelPreferenceResponseSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
+  codexServiceTier: codexServiceTierSchema.nullable().default(null),
   updatedAt: z.string().nullable(),
 });
 
@@ -16,6 +18,7 @@ export type UserModelPreferenceResponse = z.infer<
 
 export const updateUserModelPreferenceRequestSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
+  codexServiceTier: codexServiceTierSchema.nullable().optional(),
 });
 
 export type UpdateUserModelPreferenceRequest = z.infer<

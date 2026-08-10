@@ -1174,6 +1174,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async updateUserModelPreference(
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
+      codexServiceTier?: "fast" | null,
     ): Promise<void> {
       const client = setupApp({
         context,
@@ -1182,7 +1183,10 @@ export function createBddIntegrationApi(context: TestContext) {
       await accept(
         client.update({
           headers: authenticate(context, routeMocks, actor),
-          body: { selectedModel },
+          body: {
+            selectedModel,
+            ...(codexServiceTier === undefined ? {} : { codexServiceTier }),
+          },
         }),
         [200],
       );

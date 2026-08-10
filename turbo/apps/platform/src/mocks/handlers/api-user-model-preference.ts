@@ -7,20 +7,27 @@ import { mockApi } from "../msw-contract.ts";
 
 let mockUserModelPreference: UserModelPreferenceResponse = {
   selectedModel: null,
+  codexServiceTier: null,
   updatedAt: null,
 };
 
 export function resetMockUserModelPreference(): void {
   mockUserModelPreference = {
     selectedModel: null,
+    codexServiceTier: null,
     updatedAt: null,
   };
 }
 
 export function setMockUserModelPreference(
-  preference: UserModelPreferenceResponse,
+  preference: Omit<UserModelPreferenceResponse, "codexServiceTier"> & {
+    readonly codexServiceTier?: UserModelPreferenceResponse["codexServiceTier"];
+  },
 ): void {
-  mockUserModelPreference = preference;
+  mockUserModelPreference = {
+    ...preference,
+    codexServiceTier: preference.codexServiceTier ?? null,
+  };
 }
 
 export const apiUserModelPreferenceHandlers = [
@@ -30,6 +37,7 @@ export const apiUserModelPreferenceHandlers = [
   mockApi(zeroUserModelPreferenceContract.update, ({ body, respond }) => {
     mockUserModelPreference = {
       selectedModel: body.selectedModel,
+      codexServiceTier: body.codexServiceTier ?? null,
       updatedAt: nowDate().toISOString(),
     };
     return respond(200, mockUserModelPreference);

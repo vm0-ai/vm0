@@ -48,7 +48,10 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
-import { resolveIntegrationModelRouteForUser$ } from "./integration-model-route.service";
+import {
+  resolveIntegrationModelRouteForUser$,
+  type IntegrationModelRoutePin,
+} from "./integration-model-route.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
   updateUserModelPreference$,
@@ -61,8 +64,15 @@ import {
   findSlackChatThreadRoute,
   slackSessionThreadTs,
 } from "./slack-chat-ingress.service";
+
 import { processCanonicalSlackIngress$ } from "./canonical-slack-ingress-processor.service";
 import { onRejection, safeJsonParse, tapError } from "../utils";
+
+function codexServiceTierForIntegrationRoute(
+  route: IntegrationModelRoutePin | undefined,
+): IntegrationModelRoutePin["codexServiceTier"] {
+  return route?.codexServiceTier ?? null;
+}
 
 const L = logger("ZeroSlackWebhooks");
 const AGENT_PICKER_MAX_OPTIONS = 100;
@@ -799,6 +809,9 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
         ? { agentComposeId: effectiveCompose.composeId }
         : {}),
       selectedModel: mainDirectMessageModelRoute?.selectedModel ?? null,
+      codexServiceTier: codexServiceTierForIntegrationRoute(
+        mainDirectMessageModelRoute,
+      ),
     });
     const routeKey = {
       connectionId: args.connection.id,
@@ -848,6 +861,7 @@ const resolveConnectedSlackAgentRouteAdmission$ = command(
       orgId: args.orgId,
       agentComposeId: effectiveCompose.composeId,
       selectedModel: modelRoute?.selectedModel ?? null,
+      codexServiceTier: codexServiceTierForIntegrationRoute(modelRoute),
       currentTime: nowDate(),
     });
     signal.throwIfAborted();

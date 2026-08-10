@@ -222,7 +222,10 @@ import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
-import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
+import {
+  applyCodexFastModeDefault,
+  resolveModelFirstUserDefaultSelection,
+} from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -7425,18 +7428,26 @@ function ComposerTemporaryModelNotice({
   const selection = useLastResolved(signals.model.modelSelection$);
   const policies = useLastResolved(orgModelPolicies$);
   const userPreference = useLastResolved(userModelPreference$);
+  const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const [updateLoadable, updatePreference] = useLoadableSet(
     updateUserModelPreference$,
   );
   const pageSignal = useGet(pageSignal$);
-  const defaultSelection = resolveModelFirstUserDefaultSelection({
-    userPreference,
+  const defaultSelection = applyCodexFastModeDefault({
+    selection: resolveModelFirstUserDefaultSelection({
+      userPreference,
+      policies,
+    }),
     policies,
+    codexFastModeEnabled,
+    codexFastModeDefault: userPreference?.codexServiceTier === "fast",
   });
   if (
     !selection ||
     !defaultSelection ||
-    selection.selectedModel === defaultSelection.selectedModel
+    (selection.selectedModel === defaultSelection.selectedModel &&
+      (selection.codexServiceTier ?? null) ===
+        (defaultSelection.codexServiceTier ?? null))
   ) {
     return null;
   }
@@ -7447,7 +7458,14 @@ function ComposerTemporaryModelNotice({
       return;
     }
     detach(
-      updatePreference({ selectedModel: selection.selectedModel }, pageSignal),
+      updatePreference(
+        {
+          selectedModel: selection.selectedModel,
+          codexServiceTier:
+            selection.codexServiceTier === "fast" ? "fast" : null,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };

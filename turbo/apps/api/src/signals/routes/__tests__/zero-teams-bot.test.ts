@@ -2006,7 +2006,7 @@ describe("POST /api/zero/teams/bot", () => {
     );
   });
 
-  it("applies agent and model switches to existing Teams chat threads", async () => {
+  it("rebinds agent switches while keeping existing Teams thread models pinned", async () => {
     const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
     const supportAgent = await authOrgApi.createAgent(actor, {
       displayName: "Teams switched agent",
@@ -2138,8 +2138,32 @@ describe("POST /api/zero/teams/bot", () => {
     expect(switchedModelClaim.appendSystemPrompt).toContain(
       "Your name is Teams switched agent.",
     );
-    expect(switchedModelClaim.modelUsageProvider).toBe("gpt-5.6-sol");
+    expect(switchedModelClaim.modelUsageProvider).toBe("claude-sonnet-4-6");
     await runsApi.requestCancelRun(actor, switchedModelRunId, [200]);
+    await completeCancelledRun(
+      switchedModelRunId,
+      switchedModelClaim.sandboxToken,
+    );
+
+    const newChatResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-new-chat-after-model-switch",
+        text: "run in a new chat after model switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(newChatResponse.status).toBe(200);
+    await readTeamsBotResponseAndFlush(newChatResponse);
+    const newChatRunId = await runIdForPrompt(
+      actor,
+      "run in a new chat after model switch",
+    );
+    await runsApi.heartbeatRunner(runnerGroup);
+    const newChatClaim = await runsApi.claimRunnerJob(newChatRunId);
+    expect(newChatClaim.modelUsageProvider).toBe("gpt-5.6-sol");
+    await runsApi.requestCancelRun(actor, newChatRunId, [200]);
+    await completeCancelledRun(newChatRunId, newChatClaim.sandboxToken);
   });
 
   it("replies when a connected Teams run is queued", async () => {

@@ -40,7 +40,6 @@ import {
   featureSwitch$,
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
-import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
 import { logger } from "../log.ts";
 import {
   runOptionsFromModelProviderSelection,
@@ -199,7 +198,6 @@ function resolveNewThreadModelSelection(
   args: {
     readonly policies: OrgModelPoliciesResponse | null | undefined;
     readonly userPreference: UserModelPreferenceResponse | null | undefined;
-    readonly codexFastModeDefault: boolean;
     readonly codexFastModeEnabled: boolean;
   },
 ): ModelProviderSelection | null {
@@ -220,25 +218,22 @@ function resolveNewThreadModelSelection(
     }),
     policies: args.policies,
     codexFastModeEnabled: args.codexFastModeEnabled,
-    codexFastModeDefault: args.codexFastModeDefault,
+    codexFastModeDefault: args.userPreference?.codexServiceTier === "fast",
   });
 }
 
 const resolveCurrentNewThreadModelSelection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const [modelSelection, policies, userPreference, codexFastModeDefault] =
-      await Promise.all([
-        get(chatPageModelSelection$),
-        get(orgModelPolicies$),
-        get(userModelPreference$),
-        get(codexFastModeLocalDefault$),
-      ]);
+    const [modelSelection, policies, userPreference] = await Promise.all([
+      get(chatPageModelSelection$),
+      get(orgModelPolicies$),
+      get(userModelPreference$),
+    ]);
     signal.throwIfAborted();
     const featureSwitches = get(featureSwitch$);
     const resolved = resolveNewThreadModelSelection(modelSelection, {
       policies,
       userPreference,
-      codexFastModeDefault,
       codexFastModeEnabled:
         featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
     });
@@ -407,13 +402,10 @@ const startNewChatThreadCreate$ = command(
     signal.throwIfAborted();
     const userPreference = await get(userModelPreference$);
     signal.throwIfAborted();
-    const codexFastModeDefault = await get(codexFastModeLocalDefault$);
-    signal.throwIfAborted();
     const featureSwitches = get(featureSwitch$);
     const modelSelection = resolveNewThreadModelSelection(null, {
       policies,
       userPreference,
-      codexFastModeDefault,
       codexFastModeEnabled:
         featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
     });

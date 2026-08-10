@@ -25,7 +25,6 @@ import {
   configureChatPageSelectedModel$,
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
-  updateCodexFastModeDefaultForSelection$,
 } from "./zero-chat-page.ts";
 import {
   newThreadComputerAccess$,
@@ -52,9 +51,16 @@ const setModelSelection$ = command(
     const explicitDefaultActionEnabled =
       get(featureSwitch$)[FeatureSwitchKey.NewChatDefaultModelAction] ?? false;
     if (!explicitDefaultActionEnabled && isSupportedRunModel(selectedModel)) {
-      await set(updateUserModelPreference$, { selectedModel }, signal);
+      await set(
+        updateUserModelPreference$,
+        {
+          selectedModel,
+          codexServiceTier:
+            selection?.codexServiceTier === "fast" ? "fast" : null,
+        },
+        signal,
+      );
     }
-    await set(updateCodexFastModeDefaultForSelection$, selection, signal);
   },
 );
 

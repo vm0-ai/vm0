@@ -1,4 +1,5 @@
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   slackChatIngress,
   type SlackChatIngressStatus,
@@ -7,7 +8,10 @@ import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  chatThreadServiceTierFromCodex,
+} from "./zero-chat-thread-event.service";
 
 interface SlackChatThreadRouteKey {
   readonly connectionId: string;
@@ -29,9 +33,11 @@ export function slackSessionThreadTs(args: {
   readonly threadTs?: string;
   readonly agentComposeId?: string;
   readonly selectedModel?: string | null;
+  readonly codexServiceTier?: CodexServiceTier | null;
 }): string {
   if (args.channelType === "dm" && !args.threadTs && args.agentComposeId) {
-    return `${SLACK_DIRECT_MESSAGE_THREAD_TS}:${args.agentComposeId}:${args.selectedModel ?? "default"}`;
+    const fastSuffix = args.codexServiceTier === "fast" ? ":fast" : "";
+    return `${SLACK_DIRECT_MESSAGE_THREAD_TS}:${args.agentComposeId}:${args.selectedModel ?? "default"}${fastSuffix}`;
   }
   return args.threadTs ?? args.messageTs;
 }
@@ -92,6 +98,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly codexServiceTier: CodexServiceTier | null;
     readonly currentTime: Date;
   },
 ): Promise<SlackChatThreadRouteBinding> {
@@ -107,6 +114,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
         userId: args.userId,
         agentComposeId: args.agentComposeId,
         selectedModel: args.selectedModel,
+        codexServiceTier: args.codexServiceTier,
         title: null,
         lastReadAt: args.currentTime,
         lastMessageAt: args.currentTime,
@@ -158,6 +166,7 @@ export async function ensureCanonicalSlackChatThreadRoute(
       agentComposeId: args.agentComposeId,
       title: null,
       selectedModel: args.selectedModel,
+      serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
       createdAt: thread.createdAt,
     });
     return route;

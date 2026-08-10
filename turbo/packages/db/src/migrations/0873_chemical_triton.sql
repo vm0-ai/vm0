@@ -1,0 +1,1 @@
+ALTER TABLE "org_members_metadata" ADD COLUMN "codex_service_tier" varchar(20);

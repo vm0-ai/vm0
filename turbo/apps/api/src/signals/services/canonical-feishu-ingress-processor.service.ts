@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { feishuChatIngress } from "@vm0/db/schema/feishu-chat-ingress";
@@ -81,14 +82,16 @@ function canonicalThreadId(args: {
   readonly message: FeishuInboundMessage;
   readonly agentId: string;
   readonly selectedModel: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
 }): string {
   const { message } = args;
   const replyThreadId =
     message.rootId ?? message.threadId ?? message.parentId ?? null;
   if (message.chatType === "p2p") {
+    const fastSuffix = args.codexServiceTier === "fast" ? ":fast" : "";
     return message.threadId
       ? `thread:${message.threadId}`
-      : `direct-message:${args.agentId}:${args.selectedModel ?? "default"}`;
+      : `direct-message:${args.agentId}:${args.selectedModel ?? "default"}${fastSuffix}`;
   }
   return replyThreadId ?? message.messageId;
 }
@@ -328,6 +331,7 @@ async function persistCanonicalFeishuIngress(
     readonly message: FeishuInboundMessage;
     readonly agentId: string;
     readonly selectedModel: string | null;
+    readonly codexServiceTier: CodexServiceTier | null;
     readonly reactionId: string | undefined;
     readonly launchContext: CanonicalFeishuLaunchContext;
   },
@@ -337,6 +341,7 @@ async function persistCanonicalFeishuIngress(
     message: args.message,
     agentId: args.agentId,
     selectedModel: args.selectedModel,
+    codexServiceTier: args.codexServiceTier,
   });
   const route = await ensureFeishuChatThreadRoute(args.db, {
     connectionId: args.connection.id,
@@ -346,6 +351,7 @@ async function persistCanonicalFeishuIngress(
     orgId: args.installation.orgId,
     agentComposeId: args.agentId,
     selectedModel: args.selectedModel,
+    codexServiceTier: args.codexServiceTier,
     currentTime: args.ingress.createdAt,
   });
   signal.throwIfAborted();
@@ -570,7 +576,6 @@ async function processClaimedIngress(
     signal,
   );
   signal.throwIfAborted();
-  const selectedModel = modelRoute?.selectedModel ?? null;
   const reactionId =
     ingress.reactionId ??
     (await addFeishuThinkingReaction(
@@ -602,7 +607,8 @@ async function processClaimedIngress(
     connection,
     message,
     agentId: effectiveAgent.agent.id,
-    selectedModel,
+    selectedModel: modelRoute?.selectedModel ?? null,
+    codexServiceTier: modelRoute?.codexServiceTier ?? null,
     reactionId,
     launchContext: canonicalFeishuLaunchContext({
       message,

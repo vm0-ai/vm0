@@ -23,10 +23,13 @@ import {
   createBddIntegrationApi,
   telegramLoginAuth,
 } from "./helpers/api-bdd-integrations";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 /*
 helper gap:
@@ -45,12 +48,46 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const integrations = createBddIntegrationApi(context);
+const misc = createMiscRoutesApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const callbackStore = createStore();
 const TELEGRAM_BOT_ID = 99_887_766;
 const TELEGRAM_BOT_TOKEN = `${TELEGRAM_BOT_ID}:bdd-token`;
 const TELEGRAM_OFFICIAL_WEBHOOK_SECRET = "telegram-official-bdd-secret";
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_slack_fast_mode",
+      account_id: "ws_acct_bdd_slack_fast_mode",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_slack_fast_mode",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Slack Fast Mode" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
+}
 
 interface SlackEphemeralBody {
   readonly response_type: "ephemeral";
@@ -2918,7 +2955,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
   });
 
-  it("pins model choices to canonical Slack threads", async () => {
+  it("pins model and service-tier choices to canonical Slack threads", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
@@ -2927,6 +2964,38 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const runnerGroup = runs.configureRunnerGroup();
     await runs.grantProEntitlement(actor);
     await integrations.configureSlackRunModelPolicies(actor);
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    const policies = await misc.listModelPolicies(actor);
+    await misc.updateModelPolicies(
+      actor,
+      policies.policies.map((policy) => {
+        return policy.model === "gpt-5.6-sol"
+          ? {
+              ...policy,
+              defaultProviderType: "codex-oauth-token" as const,
+              credentialScope: "member" as const,
+              modelProviderId: null,
+            }
+          : policy;
+      }),
+      [200],
+    );
+    if (!actor.orgId) {
+      throw new Error("Expected canonical Slack actor to belong to an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.CodexFastMode]: true },
+    );
     const slackUserId = uniqueSlackUserId();
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
@@ -2941,7 +3010,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
         channelId,
       }),
     );
-    await integrations.updateUserModelPreference(actor, "gpt-5.6-sol");
+    await integrations.updateUserModelPreference(actor, "gpt-5.6-sol", "fast");
+    await expect(
+      integrations.readUserModelPreference(actor),
+    ).resolves.toMatchObject({
+      selectedModel: "gpt-5.6-sol",
+      codexServiceTier: "fast",
+    });
     const gptThreadTs = "3100.000100";
     await integrations.postSlackEvent(teamId, {
       type: "app_mention",
@@ -2954,8 +3029,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const gptClaim = await runs.claimRunnerJob(gptRunId);
     expect(gptClaim.cliAgentType).toBe("codex");
     expect(gptClaim.environment).toMatchObject({
-      OPENAI_API_KEY: expect.stringMatching(/.+/),
       OPENAI_MODEL: "gpt-5.6-sol",
+      CHATGPT_ACCESS_TOKEN: expect.stringMatching(/.+/),
+      VM0_CODEX_SERVICE_TIER: "fast",
     });
     await completeSlackTriggeredRun({
       runId: gptRunId,
@@ -2969,6 +3045,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
     }
 
     await integrations.updateUserModelPreference(actor, "claude-sonnet-5");
+    await expect(
+      integrations.readUserModelPreference(actor),
+    ).resolves.toMatchObject({
+      selectedModel: "claude-sonnet-5",
+      codexServiceTier: null,
+    });
     await integrations.postSlackEvent(teamId, {
       type: "app_mention",
       user: slackUserId,
@@ -2982,6 +3064,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(continuationClaim.cliAgentType).toBe("codex");
     expect(continuationClaim.environment).toMatchObject({
       OPENAI_MODEL: "gpt-5.6-sol",
+      VM0_CODEX_SERVICE_TIER: "fast",
     });
     expect(continuationClaim.resumeSession?.sessionId).toBe(
       `bdd-slack-cli-${gptRunId}`,
@@ -2993,7 +3076,25 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const continuationRun = await runs.readRun(actor, continuationRunId);
     expect(continuationRun.result?.agentSessionId).toBe(gptSessionId);
-  });
+
+    const claudeThreadTs = "3100.000300";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "use the new default",
+      ts: claudeThreadTs,
+      channel: channelId,
+    });
+    const claudeRunId = await pollSlackRun(runnerGroup);
+    const claudeClaim = await runs.claimRunnerJob(claudeRunId);
+    expect(claudeClaim.cliAgentType).toBe("claude-code");
+    expect(claudeClaim.environment?.VM0_CODEX_SERVICE_TIER).toBeUndefined();
+    await completeSlackTriggeredRun({
+      runId: claudeRunId,
+      sandboxToken: claudeClaim.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+  }, 90_000);
 
   it("prompts disconnected Slack users and filters non-actionable messages", async () => {
     const actor = bdd.user();

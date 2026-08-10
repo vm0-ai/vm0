@@ -9,6 +9,7 @@ import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 import type {
   ModelProviderType,
   OrgModelPoliciesResponse,
+  UpdateOrgModelPolicy,
   UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -612,7 +613,7 @@ export function createMiscRoutesApi(context: TestContext) {
 
     async updateModelPolicies(
       actor: ApiTestUser,
-      policies: OrgModelPoliciesResponse["policies"],
+      policies: readonly UpdateOrgModelPolicy[],
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(

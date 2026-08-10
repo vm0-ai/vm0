@@ -1,4 +1,7 @@
 import { command } from "ccstate";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   getFrameworkForType,
   getVm0ConcreteProviderType,
@@ -6,7 +9,10 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { SupportedFramework } from "@vm0/core/frameworks";
 
+import { writeDb$ } from "../external/db";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
+import { isCodexFastServiceTierSupported } from "./zero-model-selection.service";
 import { userModelPreference } from "./zero-user-data.service";
 
 export interface IntegrationModelRoutePin {
@@ -14,6 +20,7 @@ export interface IntegrationModelRoutePin {
   readonly modelProviderId: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope;
   readonly selectedModel: string;
+  readonly codexServiceTier: CodexServiceTier | null;
   readonly cliAgentType: SupportedFramework;
 }
 
@@ -54,12 +61,33 @@ export const resolveIntegrationModelRouteForUser$ = command(
       return undefined;
     }
 
+    const codexFastModeEnabled =
+      preference.codexServiceTier === "fast"
+        ? isFeatureEnabled(
+            FeatureSwitchKey.CodexFastMode,
+            await loadUserFeatureSwitchContext(
+              set(writeDb$),
+              args.orgId,
+              args.userId,
+            ),
+          )
+        : false;
+    signal.throwIfAborted();
+    const codexServiceTier = isCodexFastServiceTierSupported({
+      selectedModel: routePolicy.model,
+      effectiveModelProvider: routePolicy.defaultProviderType,
+      codexFastModeEnabled,
+    })
+      ? "fast"
+      : null;
+
     return {
       modelProviderType: routePolicy.defaultProviderType,
       modelProviderId:
         routePolicy.modelProviderSurfaceId ?? routePolicy.modelProviderId,
       modelProviderCredentialScope: routePolicy.credentialScope,
       selectedModel: routePolicy.model,
+      codexServiceTier,
       cliAgentType: getFrameworkForType(
         routePolicy.defaultProviderType === "vm0"
           ? getVm0ConcreteProviderType(routePolicy.model)

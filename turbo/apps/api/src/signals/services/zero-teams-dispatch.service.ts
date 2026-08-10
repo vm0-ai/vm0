@@ -1203,13 +1203,15 @@ function teamsSessionThreadId(args: {
   readonly activity: TeamsMessageActivity;
   readonly agentId: string;
   readonly selectedModel: string | null;
+  readonly codexServiceTier: "fast" | null;
 }): string {
   const { activity } = args;
   if (
     activity.conversationType === "personal" &&
     !isTeamsThreadReply(activity)
   ) {
-    return `${TEAMS_DIRECT_MESSAGE_THREAD_ID}:${args.agentId}:${args.selectedModel ?? "default"}`;
+    const fastSuffix = args.codexServiceTier === "fast" ? ":fast" : "";
+    return `${TEAMS_DIRECT_MESSAGE_THREAD_ID}:${args.agentId}:${args.selectedModel ?? "default"}${fastSuffix}`;
   }
   return activity.threadId;
 }
@@ -1606,6 +1608,7 @@ async function persistTeamsChatMessage(
     activity: args.activity,
     agentId: args.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
+    codexServiceTier: args.modelRoute?.codexServiceTier ?? null,
   });
   const route = await ensureTeamsChatThreadRoute(args.db, {
     connectionId: args.connection.id,
@@ -1615,6 +1618,7 @@ async function persistTeamsChatMessage(
     orgId: args.installation.orgId,
     agentComposeId: args.composeId,
     selectedModel: args.modelRoute?.selectedModel ?? null,
+    codexServiceTier: args.modelRoute?.codexServiceTier ?? null,
     currentTime,
   });
   signal.throwIfAborted();

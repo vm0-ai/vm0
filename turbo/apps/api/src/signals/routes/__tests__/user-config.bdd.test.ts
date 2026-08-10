@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -10,7 +11,9 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { expectApiError } from "./helpers/api-bdd";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 Round-5 cluster auth-03 (AUTH-01/AUTH-03): user-owned configuration plus the
@@ -24,6 +27,7 @@ api-bdd-computer-use precedent).
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const cfg = createUserConfigBddApi(context);
+const misc = createMiscRoutesApi(context);
 
 afterEach(() => {
   clearMockNow();
@@ -35,6 +39,39 @@ function shortId(): string {
 
 function slug(prefix: string): string {
   return `${prefix}-${shortId()}`;
+}
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function codexAuthJson(): string {
+  const accessExp = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: accessExp }),
+      refresh_token: "rt_bdd_user_model_preference",
+      account_id: "ws_acct_bdd_user_model_preference",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_user_model_preference",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD User Model Preference" },
+        },
+        exp: accessExp,
+      }),
+    },
+  });
 }
 
 async function onboardAdmin(
@@ -303,12 +340,17 @@ describe("AUTH-03 user model preference", () => {
     await onboardAdmin(admin, { slug: slug("bdd-uc-b2") });
 
     const defaults = await cfg.readModelPreference(admin);
-    expect(defaults).toStrictEqual({ selectedModel: null, updatedAt: null });
+    expect(defaults).toStrictEqual({
+      selectedModel: null,
+      codexServiceTier: null,
+      updatedAt: null,
+    });
 
     const updated = await cfg.updateModelPreference(admin, {
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
     expect(updated.selectedModel).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
+    expect(updated.codexServiceTier).toBeNull();
     expect(updated.updatedAt).toStrictEqual(expect.any(String));
     const readUpdated = await cfg.readModelPreference(admin);
     expect(readUpdated).toStrictEqual(updated);
@@ -316,9 +358,103 @@ describe("AUTH-03 user model preference", () => {
     const cleared = await cfg.updateModelPreference(admin, {
       selectedModel: null,
     });
-    expect(cleared).toStrictEqual({ selectedModel: null, updatedAt: null });
+    expect(cleared).toStrictEqual({
+      selectedModel: null,
+      codexServiceTier: null,
+      updatedAt: null,
+    });
     const readCleared = await cfg.readModelPreference(admin);
-    expect(readCleared).toStrictEqual({ selectedModel: null, updatedAt: null });
+    expect(readCleared).toStrictEqual({
+      selectedModel: null,
+      codexServiceTier: null,
+      updatedAt: null,
+    });
+  });
+
+  it("persists Codex fast mode only for an eligible model route and clears it on model switches", async () => {
+    const admin = api.user();
+    await onboardAdmin(admin, { slug: slug("bdd-uc-fast") });
+    await misc.upsertPersonalModelProvider(
+      admin,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await misc.updateModelPolicies(
+      admin,
+      [
+        {
+          model: "gpt-5.6-sol",
+          isDefault: true,
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+          modelProviderId: null,
+        },
+        {
+          model: "claude-sonnet-5",
+          isDefault: false,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ],
+      [200],
+    );
+
+    const disabled = await cfg.requestUpdateModelPreference(
+      admin,
+      { selectedModel: "gpt-5.6-sol", codexServiceTier: "fast" },
+      [400],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.message).toBe(
+      "Codex fast mode is not enabled for this workspace",
+    );
+
+    if (!admin.orgId) {
+      throw new Error("Expected user config actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...admin, orgId: admin.orgId },
+      {
+        [FeatureSwitchKey.CodexFastMode]: true,
+      },
+    );
+
+    const fast = await cfg.updateModelPreference(admin, {
+      selectedModel: "gpt-5.6-sol",
+      codexServiceTier: "fast",
+    });
+    expect(fast).toMatchObject({
+      selectedModel: "gpt-5.6-sol",
+      codexServiceTier: "fast",
+    });
+    await expect(cfg.readModelPreference(admin)).resolves.toStrictEqual(fast);
+
+    const switched = await cfg.updateModelPreference(admin, {
+      selectedModel: "claude-sonnet-5",
+    });
+    expect(switched).toMatchObject({
+      selectedModel: "claude-sonnet-5",
+      codexServiceTier: null,
+    });
+
+    const unsupported = await cfg.requestUpdateModelPreference(
+      admin,
+      { selectedModel: "claude-sonnet-5", codexServiceTier: "fast" },
+      [400],
+    );
+    expectApiError(unsupported.body);
+    expect(unsupported.body.error.message).toBe(
+      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+    );
+    await expect(cfg.readModelPreference(admin)).resolves.toStrictEqual(
+      switched,
+    );
   });
 
   it("rejects contract-invalid model preference bodies and unauthenticated access", async () => {

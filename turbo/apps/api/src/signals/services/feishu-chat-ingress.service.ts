@@ -1,4 +1,5 @@
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   feishuChatIngress,
   type FeishuChatIngressStatus,
@@ -8,7 +9,10 @@ import { feishuOrgEvents } from "@vm0/db/schema/feishu-org-event";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
-import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
+import {
+  appendChatThreadEvent,
+  chatThreadServiceTierFromCodex,
+} from "./zero-chat-thread-event.service";
 
 interface FeishuChatThreadRouteKey {
   readonly connectionId: string;
@@ -56,6 +60,7 @@ export async function ensureFeishuChatThreadRoute(
     readonly orgId: string;
     readonly agentComposeId: string;
     readonly selectedModel: string | null;
+    readonly codexServiceTier: CodexServiceTier | null;
     readonly currentTime: Date;
   },
 ): Promise<FeishuChatThreadRouteBinding> {
@@ -71,6 +76,7 @@ export async function ensureFeishuChatThreadRoute(
         userId: args.userId,
         agentComposeId: args.agentComposeId,
         selectedModel: args.selectedModel,
+        codexServiceTier: args.codexServiceTier,
         title: null,
         lastReadAt: args.currentTime,
         lastMessageAt: args.currentTime,
@@ -128,6 +134,7 @@ export async function ensureFeishuChatThreadRoute(
       agentComposeId: args.agentComposeId,
       title: null,
       selectedModel: args.selectedModel,
+      serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
       createdAt: thread.createdAt,
     });
     return route;

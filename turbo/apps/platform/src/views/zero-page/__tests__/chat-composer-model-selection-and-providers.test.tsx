@@ -131,7 +131,11 @@ describe("chat composer models", () => {
     });
     context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
       preferenceRequestCount += 1;
-      return respond(200, { selectedModel: null, updatedAt: null });
+      return respond(200, {
+        selectedModel: null,
+        codexServiceTier: null,
+        updatedAt: null,
+      });
     });
     mockAgent();
 
@@ -186,7 +190,11 @@ describe("chat composer models", () => {
         if (blockModelRequests) {
           await withSignal(pendingModelRequests.promise);
         }
-        return respond(200, { selectedModel: null, updatedAt: null });
+        return respond(200, {
+          selectedModel: null,
+          codexServiceTier: null,
+          updatedAt: null,
+        });
       },
     );
     mockAgent();
@@ -246,6 +254,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     let preference: UserModelPreferenceResponse = {
       selectedModel: "kimi-k2.7-code",
+      codexServiceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     };
     const updatedModels: UserModelPreferenceResponse["selectedModel"][] = [];
@@ -262,6 +271,7 @@ describe("chat composer models", () => {
         await preferenceUpdate.promise;
         preference = {
           selectedModel: body.selectedModel,
+          codexServiceTier: body.codexServiceTier ?? null,
           updatedAt: "2026-03-10T00:01:00Z",
         };
         return respond(200, preference);
@@ -345,6 +355,7 @@ describe("chat composer models", () => {
         updatedModel = body.selectedModel;
         return respond(200, {
           selectedModel: body.selectedModel,
+          codexServiceTier: body.codexServiceTier ?? null,
           updatedAt: "2026-03-10T00:01:00Z",
         });
       },
@@ -514,7 +525,7 @@ describe("chat composer models", () => {
     ).resolves.not.toHaveLength(0);
   });
 
-  it("remembers Codex fast mode for new chats in the current browser account", async () => {
+  it("persists Codex fast mode in the user model preference for new chats", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000923",
@@ -542,6 +553,17 @@ describe("chat composer models", () => {
           codexServiceTier?: "fast" | null;
         }
       | undefined;
+    let preference: UserModelPreferenceResponse = {
+      selectedModel: "gpt-5.5",
+      codexServiceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    };
+    let preferenceUpdate:
+      | {
+          selectedModel: string | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
@@ -554,6 +576,21 @@ describe("chat composer models", () => {
       }),
     ]);
     context.mocks.data.personalModelProviders([codexProvider]);
+    context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+      return respond(200, preference);
+    });
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        preferenceUpdate = body;
+        preference = {
+          selectedModel: body.selectedModel,
+          codexServiceTier: body.codexServiceTier ?? null,
+          updatedAt: "2026-03-10T00:01:00Z",
+        };
+        return respond(200, preference);
+      },
+    );
     mockAgent();
     mockChatLifecycle(context, {
       onModelSelectionUpdate: (body) => {
@@ -578,12 +615,18 @@ describe("chat composer models", () => {
         "aria-pressed",
         "true",
       );
+      expect(preferenceUpdate).toStrictEqual({
+        selectedModel: "gpt-5.5",
+        codexServiceTier: "fast",
+      });
     });
     await user.keyboard("{Escape}");
     await waitFor(() => {
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
-    act(() => {
+    await act(async () => {
+      context.store.set(reloadUserModelPreference$);
+      await context.store.get(userModelPreference$);
       context.store.set(resetChatPageModelSelection$);
     });
 
@@ -605,6 +648,164 @@ describe("chat composer models", () => {
         codexServiceTier: "fast",
       });
     });
+  });
+
+  it("offers a same-model Codex Fast change as an atomic default update", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000935",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let preferenceUpdate:
+      | {
+          selectedModel: string | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000936",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    context.mocks.data.userModelPreference({
+      selectedModel: "gpt-5.5",
+      codexServiceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.api(
+      zeroUserModelPreferenceContract.update,
+      ({ body, respond }) => {
+        preferenceUpdate = body;
+        return respond(200, {
+          selectedModel: body.selectedModel,
+          codexServiceTier: body.codexServiceTier ?? null,
+          updatedAt: "2026-03-10T00:01:00Z",
+        });
+      },
+    );
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.CodexFastMode]: true,
+        [FeatureSwitchKey.NewChatDefaultModelAction]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(await findComposerModel("GPT 5.5"));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    click(buttonContainingText("Fast", runSpeed));
+    await waitFor(() => {
+      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    await user.keyboard("{Escape}");
+
+    await expect(
+      screen.findByText("Temporarily switched to GPT 5.5"),
+    ).resolves.toBeInTheDocument();
+    await user.click(buttonContainingText("Set as default", document.body));
+    await waitFor(() => {
+      expect(preferenceUpdate).toStrictEqual({
+        selectedModel: "gpt-5.5",
+        codexServiceTier: "fast",
+      });
+    });
+  });
+
+  it("migrates a valid legacy browser Codex fast default to the server preference", async () => {
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000933",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let preference: UserModelPreferenceResponse = {
+      selectedModel: "gpt-5.6-sol",
+      codexServiceTier: null,
+      updatedAt: "2026-03-10T00:00:00Z",
+    };
+    let preferenceUpdate:
+      | {
+          selectedModel: string | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
+    act(() => {
+      context.store.set(
+        setCodexFastModeDefaultStorageForTest$,
+        JSON.stringify({ "test-user-123:org_default": true }),
+      );
+    });
+
+    try {
+      context.mocks.data.orgModelPolicies([
+        buildModelPolicy({
+          id: "00000000-0000-4000-a000-000000000934",
+          model: "gpt-5.6-sol",
+          modelLabel: "GPT 5.6 Sol",
+          isDefault: true,
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+        }),
+      ]);
+      context.mocks.data.personalModelProviders([codexProvider]);
+      context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
+        return respond(200, preference);
+      });
+      context.mocks.api(
+        zeroUserModelPreferenceContract.update,
+        ({ body, respond }) => {
+          preferenceUpdate = body;
+          preference = {
+            selectedModel: body.selectedModel,
+            codexServiceTier: body.codexServiceTier ?? null,
+            updatedAt: "2026-03-10T00:01:00Z",
+          };
+          return respond(200, preference);
+        },
+      );
+      mockAgent();
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+        path: `/agents/${AGENT_ID}/chat`,
+      });
+
+      await waitFor(() => {
+        expect(preferenceUpdate).toStrictEqual({
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: "fast",
+        });
+      });
+      await waitFor(async () => {
+        await expect(
+          context.store.get(codexFastModeLocalDefault$),
+        ).resolves.toBeFalsy();
+      });
+    } finally {
+      act(() => {
+        context.store.set(clearCodexFastModeDefaultStorageForTest$);
+      });
+    }
   });
 
   it("does not apply a remembered Codex fast mode default when the switch is off", async () => {
@@ -1263,7 +1464,11 @@ describe("chat composer models", () => {
           preferenceReloadStarted = true;
           await withSignal(pendingPreferenceReload.promise);
         }
-        return respond(200, { selectedModel: null, updatedAt: null });
+        return respond(200, {
+          selectedModel: null,
+          codexServiceTier: null,
+          updatedAt: null,
+        });
       },
     );
     mockAgent();
@@ -1370,6 +1575,7 @@ describe("chat composer models", () => {
       preferenceRequestStarted = true;
       return respond(200, {
         selectedModel: "claude-opus-4-7",
+        codexServiceTier: null,
         updatedAt: "2026-03-10T00:00:00Z",
       });
     });
