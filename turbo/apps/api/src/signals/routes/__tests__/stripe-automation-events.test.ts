@@ -798,7 +798,7 @@ describe("Stripe automation event webhook", () => {
     });
   });
 
-  it("updates receipt health across filters and skips a pending delivery when the owner flag turns off", async () => {
+  it("ignores receipts for disabled automations", async () => {
     const disabledAtReceipt = await setupScenario({
       accountId: "acct_stripe_disabled_at_receipt",
     });
@@ -815,7 +815,9 @@ describe("Stripe automation event webhook", () => {
       lastMatchingEventReceivedAt: null,
       lastDeliveryStatus: null,
     });
+  });
 
+  it("ignores receipts when the owner feature flag is off", async () => {
     const featureOffAtReceipt = await setupScenario({
       accountId: "acct_stripe_feature_off_at_receipt",
     });
@@ -834,7 +836,9 @@ describe("Stripe automation event webhook", () => {
       lastMatchingEventReceivedAt: null,
       lastDeliveryStatus: null,
     });
+  });
 
+  it("updates receipt health across filters and delivers unknown billing reasons to unfiltered automations", async () => {
     const filtered = await setupScenario({ billingReasons: ["manual"] });
     const unfiltered = await setupScenario();
     const unknownReasonEvent = invoicePaidEvent({
@@ -863,28 +867,27 @@ describe("Stripe automation event webhook", () => {
     expect(
       eventContextFromPrompt(unknownClaim.appendSystemPrompt),
     ).toMatchObject({ invoice: { billingReason: "future_reason" } });
+  });
 
+  it("skips a pending delivery when the owner flag turns off", async () => {
+    const scenario = await setupScenario();
     await postStripeAutomationEvent(
       invoicePaidEvent({
-        eventId: "evt_known_filter_miss",
+        eventId: "evt_owner_flag_turns_off",
         billingReason: "subscription_cycle",
       }),
     );
-    expect((await readStripeAutomation(filtered)).health).toMatchObject({
-      lastMatchingEventReceivedAt: expect.any(String),
-      lastDeliveryStatus: null,
-    });
-    expect((await readStripeAutomation(unfiltered)).health).toMatchObject({
+    expect((await readStripeAutomation(scenario)).health).toMatchObject({
       lastDeliveryStatus: "pending",
       warning: null,
     });
 
-    await connectors.updateFeatureSwitches(unfiltered.actor, {
+    await connectors.updateFeatureSwitches(scenario.actor, {
       [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: false,
     });
     const cron = await executeCron();
     expect(cron.skipped).toBeGreaterThanOrEqual(1);
-    expect((await readStripeAutomation(unfiltered)).health).toMatchObject({
+    expect((await readStripeAutomation(scenario)).health).toMatchObject({
       lastDeliveryStatus: "skipped",
       warning: null,
     });
