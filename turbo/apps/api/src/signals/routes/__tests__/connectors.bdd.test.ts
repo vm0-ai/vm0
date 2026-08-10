@@ -3486,6 +3486,18 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
 
+    const hybrid = await connectorsApi.requestCreateCustomConnectorRaw(admin, {
+      ...manualMcpConnectorBody({
+        displayName: "Hybrid MCP",
+        endpoint: "https://hybrid-mcp.example.test/server",
+      }),
+      prefixTemplates: ["https://api.example.test/"],
+    });
+    expect(hybrid.status).toBe(400);
+    await expect(hybrid.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+
     for (const endpoint of [
       "http://mcp.example.test/server",
       "https://user@mcp.example.test/server",
