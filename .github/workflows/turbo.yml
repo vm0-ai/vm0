@@ -1204,7 +1204,7 @@ jobs:
           curl "${API_DEPLOYMENT_URL}/health" \
             -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
             -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
-            --fail \
+            --fail-with-body \
             --show-error \
             --silent \
             --max-time 20 \
