@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.721.0](https://github.com/vm0-ai/vm0/compare/app-v0.720.0...app-v0.721.0) (2026-08-10)
+
+
+### Features
+
+* **connectors:** add streamable http mcp management ([#26124](https://github.com/vm0-ai/vm0/issues/26124)) ([78b7538](https://github.com/vm0-ai/vm0/commit/78b7538bbdf8a2ac3a754b791c51703257a0fd77))
+
+
+### Refactoring
+
+* remove insights and usage dashboards ([#26154](https://github.com/vm0-ai/vm0/issues/26154)) ([6deb1df](https://github.com/vm0-ai/vm0/commit/6deb1df698bde525de6d9b53a7b2557c932ed49a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.308.0
+    * @vm0/connectors bumped to 1.204.6
+    * @vm0/core bumped to 8.539.1
+
 ## [0.720.0](https://github.com/vm0-ai/vm0/compare/app-v0.719.1...app-v0.720.0) (2026-08-10)
 
 

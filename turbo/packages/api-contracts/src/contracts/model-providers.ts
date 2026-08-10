@@ -1346,6 +1346,11 @@ export const modelProviderSubscriptionUsageSchema = z.object({
  */
 export const modelProviderResponseSchema = z.object({
   id: z.uuid(),
+  // Present for concrete personal subscription accounts. `id` is the exact
+  // credential identity pinned to a run, while `modelProviderId` is the
+  // logical model route retained for compatibility with existing settings.
+  modelProviderId: z.uuid().optional(),
+  isActive: z.boolean().optional(),
   type: modelProviderTypeSchema,
   framework: modelProviderFrameworkSchema,
   secretName: z.string().nullable(), // Legacy single-secret (deprecated for multi-auth)

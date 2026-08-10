@@ -11078,6 +11078,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "runtime-only and will not persist, sync back, or affect future runs",
       "Create or update a durable workflow with `zero workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`",
       "`--dir <path>` uploads supplementary files only and must not contain a `SKILL.md`",
+      "- New web chat threads:",
+      "The command creates an empty thread and does not start a run",
+      "- Web chat messaging:",
+      "that target run's lifetime is independent of the current run",
+      "- Cross-thread chat run completion:",
+      "repeated reads are polling and do not provide a terminal-status event",
+      "It watches the thread, not one run ID",
+      "A matching completion starts a new run in the workflow's automation thread rather than resuming the current run",
+      "the automation remains enabled for future matching completions until disabled or removed",
       "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
@@ -11113,6 +11122,12 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ]) {
       expect(appendSystemPrompt).toContain(toolHint);
     }
+    expect(appendSystemPrompt.indexOf("- New web chat threads:")).toBeLessThan(
+      appendSystemPrompt.indexOf("- Web chat messaging:"),
+    );
+    expect(appendSystemPrompt.indexOf("- Web chat messaging:")).toBeLessThan(
+      appendSystemPrompt.indexOf("- Cross-thread chat run completion:"),
+    );
     expect(appendSystemPrompt).toContain("zero upgrade pro");
     expect(appendSystemPrompt).not.toContain("zero chat queued");
     expect(appendSystemPrompt).not.toContain(

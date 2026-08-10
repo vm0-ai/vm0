@@ -5,8 +5,11 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  activatePersonalModelProviderAccount$,
+  deletePersonalModelProviderAccount$,
   deletePersonalModelProvider$,
   personalModelProviders$,
+  resetPersonalCodexAccountSubscriptionUsage$ as resetPersonalCodexAccountSubscriptionUsageRequest$,
   resetPersonalCodexSubscriptionUsage$ as resetPersonalCodexSubscriptionUsageRequest$,
 } from "../../external/personal-model-providers.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -19,6 +22,7 @@ const internalPersonalActionPromise$ = state<Promise<unknown> | null>(null);
 const internalSettingsCodexResetDialog$ = state({
   open: false,
   resetCredits: null as number | null,
+  accountId: null as string | null,
 });
 const internalAccountMenuCodexResetDialog$ = state({
   open: false,
@@ -38,7 +42,14 @@ export const accountMenuCodexResetDialog$ = computed((get) => {
 });
 
 export const setSettingsCodexResetDialog$ = command(
-  ({ set }, dialog: { open: boolean; resetCredits: number | null }) => {
+  (
+    { set },
+    dialog: {
+      open: boolean;
+      resetCredits: number | null;
+      accountId: string | null;
+    },
+  ) => {
     set(internalSettingsCodexResetDialog$, dialog);
   },
 );
@@ -56,6 +67,9 @@ export const setAccountMenuCodexResetDialog$ = command(
 export const personalConfiguredProviders$ = computed(async (get) => {
   const { modelProviders } = await get(personalModelProviders$);
   return [...modelProviders].sort((a, b) => {
+    if (a.type === b.type && a.isActive !== b.isActive) {
+      return a.isActive ? -1 : 1;
+    }
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
 });
@@ -85,6 +99,46 @@ export const disconnectPersonalOAuthCredential$ = command(
       set(internalPersonalActionPromise$, null);
     });
 
+    await promise;
+    signal.throwIfAborted();
+  },
+);
+
+export const activatePersonalOAuthCredentialAccount$ = command(
+  async ({ set }, id: string, signal: AbortSignal) => {
+    const promise = (async () => {
+      await set(activatePersonalModelProviderAccount$, id, signal);
+      signal.throwIfAborted();
+      toast.success(
+        i18n.t(($) => {
+          return $.settings.models.toasts.accountSwitched;
+        }),
+      );
+    })();
+    set(internalPersonalActionPromise$, promise);
+    signal.addEventListener("abort", () => {
+      set(internalPersonalActionPromise$, null);
+    });
+    await promise;
+    signal.throwIfAborted();
+  },
+);
+
+export const deletePersonalOAuthCredentialAccount$ = command(
+  async ({ set }, id: string, signal: AbortSignal) => {
+    const promise = (async () => {
+      await set(deletePersonalModelProviderAccount$, id, signal);
+      signal.throwIfAborted();
+      toast.success(
+        i18n.t(($) => {
+          return $.settings.models.toasts.accountRemoved;
+        }),
+      );
+    })();
+    set(internalPersonalActionPromise$, promise);
+    signal.addEventListener("abort", () => {
+      set(internalPersonalActionPromise$, null);
+    });
     await promise;
     signal.throwIfAborted();
   },
@@ -144,6 +198,55 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
       set(internalPersonalActionPromise$, null);
     });
 
+    const result = await promise;
+    signal.throwIfAborted();
+    return result;
+  },
+);
+
+export const resetPersonalCodexAccountSubscriptionUsage$ = command(
+  async ({ set }, id: string, signal: AbortSignal) => {
+    const promise = (async () => {
+      const result = await set(
+        resetPersonalCodexAccountSubscriptionUsageRequest$,
+        { id, idempotencyKey: crypto.randomUUID() },
+        signal,
+      );
+      signal.throwIfAborted();
+
+      switch (result.outcome) {
+        case "reset":
+        case "alreadyRedeemed": {
+          toast.success(
+            i18n.t(($) => {
+              return $.settings.models.toasts.reset;
+            }),
+          );
+          break;
+        }
+        case "nothingToReset": {
+          toast.info(
+            i18n.t(($) => {
+              return $.settings.models.toasts.resetUnneeded;
+            }),
+          );
+          break;
+        }
+        case "noCredit": {
+          toast.error(
+            i18n.t(($) => {
+              return $.settings.models.toasts.resetUnavailable;
+            }),
+          );
+          break;
+        }
+      }
+      return result;
+    })();
+    set(internalPersonalActionPromise$, promise);
+    signal.addEventListener("abort", () => {
+      set(internalPersonalActionPromise$, null);
+    });
     const result = await promise;
     signal.throwIfAborted();
     return result;

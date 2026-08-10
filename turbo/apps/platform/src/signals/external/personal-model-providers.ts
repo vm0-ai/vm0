@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProviderAccountsByIdContract,
   type ResetPersonalModelProviderSubscriptionUsageResponse,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
@@ -43,6 +44,68 @@ export const deletePersonalModelProvider$ = command(
     set(internalReloadPersonalModelProviders$, (x) => {
       return x + 1;
     });
+  },
+);
+
+export const activatePersonalModelProviderAccount$ = command(
+  async ({ get, set }, id: string, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroPersonalModelProviderAccountsByIdContract);
+    const result = await accept(
+      client.activate({
+        params: { id },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalReloadPersonalModelProviders$, (x) => {
+      return x + 1;
+    });
+    return result.body;
+  },
+);
+
+export const deletePersonalModelProviderAccount$ = command(
+  async ({ get, set }, id: string, signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroPersonalModelProviderAccountsByIdContract);
+    await accept(
+      client.delete({
+        params: { id },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(internalReloadPersonalModelProviders$, (x) => {
+      return x + 1;
+    });
+  },
+);
+
+export const resetPersonalCodexAccountSubscriptionUsage$ = command(
+  async (
+    { get, set },
+    args: { readonly id: string; readonly idempotencyKey: string },
+    signal: AbortSignal,
+  ): Promise<ResetPersonalModelProviderSubscriptionUsageResponse> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroPersonalModelProviderAccountsByIdContract);
+    const result = await accept(
+      client.resetSubscriptionUsage({
+        params: { id: args.id },
+        body: { idempotencyKey: args.idempotencyKey },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalReloadPersonalModelProviders$, (x) => {
+      return x + 1;
+    });
+    return result.body;
   },
 );
 

@@ -683,6 +683,9 @@ export const resumeSessionSchema = z.union([
 export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider", "platform-secret"]),
   sourceUserId: z.string().optional(),
+  // Exact credential owner for sources that support multiple credentials.
+  // Older runner payloads omit this and retain the singleton lookup path.
+  sourceId: z.uuid().optional(),
   metadataKey: z.string().optional(),
 });
 

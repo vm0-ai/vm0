@@ -4141,12 +4141,18 @@
         "title": "Koneksi penyedia"
       },
       "personal": {
+        "accountFallback": "Akun {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "Aktif",
+        "addAccount": "Tambah akun",
         "claudeDescription": "Hubungkan dengan login Claude Code untuk rute model berbasis Claude.",
         "claudeTitle": "OAuth Claude Code",
         "codexDescription": "Hubungkan dengan login perangkat Codex untuk rute model berbasis Codex.",
         "codexTitle": "ChatGPT (Codex)",
         "description": "Hanya digunakan di eksekusi Anda, dengan kredensial Anda sendiri.",
+        "noAccounts": "Belum ada akun terhubung.",
+        "reconnectAccount": "Hubungkan ulang",
+        "removeAccount": "Hapus",
         "sectionTitle": "Pribadi",
         "status": {
           "connected": "Terhubung",
@@ -4155,7 +4161,8 @@
           "left": "Sisa {{percent}}",
           "stale": "Perhatian",
           "week": "Minggu"
-        }
+        },
+        "useAccount": "Gunakan"
       },
       "picker": {
         "balancedUse": "Penggunaan seimbang",
@@ -4238,6 +4245,8 @@
         "codexTitle": "Sesi ChatGPT perlu disambungkan ulang"
       },
       "toasts": {
+        "accountRemoved": "Akun dihapus",
+        "accountSwitched": "Akun aktif diganti",
         "disconnected": "{{provider}} terputus",
         "policiesUpdated": "Pengaturan provider model diperbarui",
         "reset": "Penggunaan Codex direset",

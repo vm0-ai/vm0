@@ -7,6 +7,7 @@ import { modelProviderResponseSchema } from "./model-providers";
 const c = initContract();
 
 export const claudeCodeDeviceAuthScopeSchema = z.enum(["org", "personal"]);
+export const claudeCodeDeviceAuthModeSchema = z.enum(["add", "reconnect"]);
 
 const claudeCodeDeviceAuthStartResponseSchema = z.object({
   sessionToken: z.string(),
@@ -37,7 +38,11 @@ export const zeroClaudeCodeDeviceAuthContract = c.router({
     method: "POST",
     path: "/api/zero/model-providers/claude-code/device-auth/sessions",
     headers: authHeadersSchema,
-    body: z.object({ scope: claudeCodeDeviceAuthScopeSchema }),
+    body: z.object({
+      scope: claudeCodeDeviceAuthScopeSchema,
+      mode: claudeCodeDeviceAuthModeSchema.optional(),
+      modelProviderId: z.uuid().optional(),
+    }),
     responses: {
       200: claudeCodeDeviceAuthStartResponseSchema,
       400: apiErrorSchema,
@@ -83,6 +88,9 @@ export const zeroClaudeCodeDeviceAuthContract = c.router({
 
 export type ClaudeCodeDeviceAuthScope = z.infer<
   typeof claudeCodeDeviceAuthScopeSchema
+>;
+export type ClaudeCodeDeviceAuthMode = z.infer<
+  typeof claudeCodeDeviceAuthModeSchema
 >;
 export type ZeroClaudeCodeDeviceAuthContract =
   typeof zeroClaudeCodeDeviceAuthContract;

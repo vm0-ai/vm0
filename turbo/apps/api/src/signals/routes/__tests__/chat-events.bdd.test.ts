@@ -54,6 +54,11 @@ import {
   type ApiTestUser,
   type ApiTestUserOptions,
 } from "./helpers/api-bdd";
+import {
+  createAuthDeviceApiActions,
+  mockCodexDeviceAuthProvider,
+} from "./helpers/api-bdd-auth-device";
+import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
@@ -134,6 +139,8 @@ const chatCallbacks = createChatCallbacksApi(context);
 const connectors = createConnectorBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
+const authDevice = createAuthDeviceApiActions(context);
+const authDeviceSupport = createAuthDeviceSupportApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
@@ -4229,6 +4236,176 @@ describe("CHAT-02: run-level model overrides", () => {
       "claude-opus-4-6",
     );
     await cancelChatRun(actor, third.runId);
+  }, 90_000);
+
+  it("pins switched Codex accounts without rotating the thread session", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    const firewall = createFirewallApi(context);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "chat-codex-account-a",
+      workspaceName: "Chat Account A",
+    });
+    const startedA = await authDevice.requestCodexStart(
+      actor,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedA.status !== 200) {
+      throw new Error("Expected Codex account A auth to start");
+    }
+    const completedA = await authDevice.requestCodexComplete(
+      actor,
+      startedA.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedA.body) ||
+      completedA.body.status !== "complete"
+    ) {
+      throw new Error("Expected Codex account A auth to complete");
+    }
+    const accountAId = completedA.body.provider.id;
+
+    mockCodexDeviceAuthProvider({
+      tokenScope: "personal",
+      accountId: "chat-codex-account-b",
+      workspaceName: "Chat Account B",
+    });
+    const startedB = await authDevice.requestCodexStart(
+      actor,
+      "personal",
+      [200],
+      { mode: "add" },
+    );
+    if (startedB.status !== 200) {
+      throw new Error("Expected Codex account B auth to start");
+    }
+    const completedB = await authDevice.requestCodexComplete(
+      actor,
+      startedB.body.sessionToken,
+      [200],
+    );
+    if (
+      !("status" in completedB.body) ||
+      completedB.body.status !== "complete"
+    ) {
+      throw new Error("Expected Codex account B auth to complete");
+    }
+    const accountBId = completedB.body.provider.id;
+
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "gpt-5.6-luna",
+        isDefault: false,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start with account A",
+      model: "gpt-5.6-luna",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    expect(
+      firstClaim.claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toMatchObject({ sourceId: accountAId });
+
+    await authDeviceSupport.activatePersonalModelProviderAccount(
+      actor,
+      accountBId,
+    );
+    if (!firstClaim.claim.encryptedSecrets) {
+      throw new Error("Expected account A run to carry encrypted secrets");
+    }
+    const firstResolved = await firewall.requestFirewallAuth(
+      { authorization: `Bearer ${firstClaim.claim.sandboxToken}` },
+      {
+        encryptedSecrets: firstClaim.claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.CHATGPT_ACCESS_TOKEN }}`,
+          "ChatGPT-Account-ID": `\${{ secrets.CHATGPT_ACCOUNT_ID }}`,
+        },
+        secretConnectorMap: firstClaim.claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          firstClaim.claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (firstResolved.status !== 200) {
+      throw new Error("Expected account A firewall auth to resolve");
+    }
+    expect(firstResolved.body.headers["ChatGPT-Account-ID"]).toBe(
+      "chat-codex-account-a",
+    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+    await flushWaitUntilForTest();
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue with account B",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    expect(
+      secondClaim.claim.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,
+    ).toMatchObject({ sourceId: accountBId });
+    if (!secondClaim.claim.encryptedSecrets) {
+      throw new Error("Expected account B run to carry encrypted secrets");
+    }
+    const secondResolved = await firewall.requestFirewallAuth(
+      { authorization: `Bearer ${secondClaim.claim.sandboxToken}` },
+      {
+        encryptedSecrets: secondClaim.claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.CHATGPT_ACCESS_TOKEN }}`,
+          "ChatGPT-Account-ID": `\${{ secrets.CHATGPT_ACCOUNT_ID }}`,
+        },
+        secretConnectorMap: secondClaim.claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          secondClaim.claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (secondResolved.status !== 200) {
+      throw new Error("Expected account B firewall auth to resolve");
+    }
+    expect(secondResolved.body.headers["ChatGPT-Account-ID"]).toBe(
+      "chat-codex-account-b",
+    );
+    expect(secondResolved.body.headers.Authorization).not.toBe(
+      firstResolved.body.headers.Authorization,
+    );
+
+    await cancelChatRun(actor, second.runId);
+    await authDeviceSupport.deletePersonalModelProvider(
+      actor,
+      "codex-oauth-token",
+      [204],
+    );
   }, 90_000);
 
   it("resumes the CLI session across same-family model switches", async () => {

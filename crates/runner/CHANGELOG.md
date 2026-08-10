@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.12...runner-rs-v0.162.13) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** accept valid templated firewall catalog bases ([#26168](https://github.com/vm0-ai/vm0/issues/26168)) ([3d97908](https://github.com/vm0-ai/vm0/commit/3d97908f90ab5ecf8ab58b685f419529a3ccb46d))
+
 ## [0.162.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.11...runner-rs-v0.162.12) (2026-08-10)
 
 

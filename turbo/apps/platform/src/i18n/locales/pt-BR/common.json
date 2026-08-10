@@ -4191,12 +4191,18 @@
         "title": "Conexões de provedor"
       },
       "personal": {
+        "accountFallback": "Conta {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "Ativa",
+        "addAccount": "Adicionar conta",
         "claudeDescription": "Conecte o login do Claude Code para usar rotas de modelos baseadas no Claude.",
         "claudeTitle": "OAuth do Claude Code",
         "codexDescription": "Conecte o login do dispositivo do Codex para usar rotas de modelos baseadas no Codex.",
         "codexTitle": "ChatGPT (Codex)",
         "description": "Usados somente nas suas execuções, com suas próprias credenciais.",
+        "noAccounts": "Nenhuma conta conectada.",
+        "reconnectAccount": "Reconectar",
+        "removeAccount": "Remover",
         "sectionTitle": "Pessoal",
         "status": {
           "connected": "Conectado",
@@ -4205,7 +4211,8 @@
           "left": "{{percent}} restante",
           "stale": "Atenção",
           "week": "Semana"
-        }
+        },
+        "useAccount": "Usar"
       },
       "picker": {
         "balancedUse": "Uso equilibrado",
@@ -4289,6 +4296,8 @@
         "codexTitle": "A sessão do ChatGPT precisa ser reconectada"
       },
       "toasts": {
+        "accountRemoved": "Conta removida",
+        "accountSwitched": "Conta ativa alterada",
         "disconnected": "{{provider}} desconectado",
         "policiesUpdated": "Configurações dos provedores de modelo atualizadas",
         "reset": "Uso do Codex redefinido",
