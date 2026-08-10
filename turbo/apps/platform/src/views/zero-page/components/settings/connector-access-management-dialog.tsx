@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { SlidersHorizontal, Loader2, Search, X } from "lucide-react";
@@ -17,10 +17,12 @@ import {
   cn,
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type {
+  CustomConnectorHttpResponse,
+  CustomConnectorPermissionBundleResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { agents$ } from "../../../../signals/agent.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { applyUserPermissionGrants$ } from "../../../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../../../signals/user-permission-grants.ts";
@@ -37,9 +39,17 @@ import {
   type ConnectorAgentAccessRow,
 } from "../../../../signals/zero-page/settings/connector-access-management.ts";
 import {
-  customConnectorAuthorizedAgentsById$,
+  customConnectorAgentAuthorizations$,
   setCustomConnectorAgentAuthorization$,
+  type CustomConnectorAgentAuthorization,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
+import {
+  closeCustomConnectorPermissions$,
+  customConnectorPermissionBundle$,
+  customConnectorPermissionDraft$,
+  openCustomConnectorPermissions$,
+  type CustomConnectorPermissionDraft,
+} from "../../../../signals/zero-page/settings/custom-connector-permissions.ts";
 import {
   savePermissionDraftPolicies,
   type ApplyUserPermissionGrants,
@@ -50,6 +60,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
+import { CustomConnectorPermissionsDrawer } from "./custom-connector-permissions-drawer.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
 import { i18n } from "../../../../i18n/index.ts";
 
@@ -129,14 +140,14 @@ function ConnectorAccessSearch({
 function AgentAccessRow({
   row,
   connectorLabel,
-  metadata,
+  hasPermissions,
   saving,
   onToggle,
   onManage,
 }: {
   readonly row: ConnectorAgentAccessRow;
   readonly connectorLabel: string;
-  readonly metadata: PlatformConnectorPermissionMetadata | null;
+  readonly hasPermissions: boolean;
   readonly saving: boolean;
   readonly onToggle: (
     row: ConnectorAgentAccessRow,
@@ -146,7 +157,7 @@ function AgentAccessRow({
 }) {
   const { t } = useTranslation();
   const name = agentName(row.agent);
-  const canManage = row.authorized && (metadata?.permissionCount ?? 0) > 0;
+  const canManage = row.authorized && hasPermissions;
 
   return (
     <div className="flex items-center gap-2 px-1 py-4">
@@ -216,7 +227,7 @@ function AgentAccessRow({
 function AgentAccessList({
   rows,
   connectorLabel,
-  metadata,
+  hasPermissions,
   savingAgentId,
   search,
   onToggle,
@@ -224,7 +235,7 @@ function AgentAccessList({
 }: {
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly connectorLabel: string;
-  readonly metadata: PlatformConnectorPermissionMetadata | null;
+  readonly hasPermissions: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onToggle: (
@@ -259,7 +270,7 @@ function AgentAccessList({
             key={row.agent.id}
             row={row}
             connectorLabel={connectorLabel}
-            metadata={metadata}
+            hasPermissions={hasPermissions}
             saving={savingAgentId === row.agent.id}
             onToggle={onToggle}
             onManage={onManage}
@@ -288,7 +299,7 @@ function ConnectorAccessDialog({
   headerIcon,
   rows,
   rowsLoaded,
-  metadata,
+  hasPermissions,
   savingAgentId,
   search,
   onSearchChange,
@@ -300,7 +311,7 @@ function ConnectorAccessDialog({
   readonly headerIcon: ReactNode;
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
-  readonly metadata: PlatformConnectorPermissionMetadata | null;
+  readonly hasPermissions: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
@@ -357,7 +368,7 @@ function ConnectorAccessDialog({
             <AgentAccessList
               rows={rows}
               connectorLabel={connectorLabel}
-              metadata={metadata}
+              hasPermissions={hasPermissions}
               savingAgentId={savingAgentId}
               search={search}
               onToggle={onToggle}
@@ -502,7 +513,7 @@ export function ConnectorAccessManagementDialog({
         headerIcon={<ConnectorIcon icon={metadata?.icon} size={22} />}
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoadable.state === "hasData"}
-        metadata={metadata}
+        hasPermissions={(metadata?.permissionCount ?? 0) > 0}
         savingAgentId={savingAgentId}
         search={search}
         onSearchChange={setSearch}
@@ -525,109 +536,238 @@ export function ConnectorAccessManagementDialog({
   );
 }
 
-export function CustomConnectorAccessManagementDialog({
+function customConnectorAccessRows(
+  authorizations: readonly CustomConnectorAgentAuthorization[],
+  connectorId: string,
+): readonly ConnectorAgentAccessRow[] {
+  return authorizations.map(({ agent, access }) => {
+    return {
+      agent,
+      authorized: access.enabledIds.includes(connectorId),
+      grants: [],
+    };
+  });
+}
+
+function customConnectorPermissionNamesByAgentId(
+  authorizations: readonly CustomConnectorAgentAuthorization[],
+  connectorId: string,
+): ReadonlyMap<string, readonly string[]> {
+  return new Map(
+    authorizations.map(({ agent, access }) => {
+      return [
+        agent.id,
+        access.grants?.find((grant) => {
+          return grant.customConnectorId === connectorId;
+        })?.permissionNames ?? [],
+      ] as const;
+    }),
+  );
+}
+
+function CustomConnectorAccessPermissionsDrawer({
+  draft,
+  agent,
   connector,
+  bundle,
+  loading,
+  loadError,
   onClose,
 }: {
-  readonly connector: CustomConnectorResponse;
-  readonly onClose: () => void;
+  readonly draft: CustomConnectorPermissionDraft | null;
+  readonly agent: TeamComposeItem | undefined;
+  readonly connector: CustomConnectorHttpResponse;
+  readonly bundle: CustomConnectorPermissionBundleResponse | null;
+  readonly loading: boolean;
+  readonly loadError: boolean;
+  readonly onClose: (draft: CustomConnectorPermissionDraft) => void;
 }) {
-  const { t } = useTranslation();
-  const agentsLoadable = useLastLoadable(agents$);
-  const authorizedAgentsByIdLoadable = useLastLoadable(
-    customConnectorAuthorizedAgentsById$,
+  if (!draft || !agent) {
+    return null;
+  }
+  return (
+    <CustomConnectorPermissionsDrawer
+      agentId={draft.agentId}
+      connectorId={connector.id}
+      connectorName={connector.displayName}
+      agentName={agentName(agent)}
+      bundle={bundle}
+      loading={loading}
+      loadError={loadError}
+      onClose={() => {
+        onClose(draft);
+      }}
+    />
   );
+}
+
+function useCustomConnectorAuthorization(
+  connector: CustomConnectorHttpResponse,
+  onPermissionRequired: (row: ConnectorAgentAccessRow) => void,
+) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
-  const search = useGet(connectorAccessManagementSearch$);
   const pendingSavingAgentId = useGet(connectorAccessManagementSavingAgentId$);
-  const setSearch = useSet(setConnectorAccessManagementSearch$);
   const setSavingAgentId = useSet(setConnectorAccessManagementSavingAgentId$);
   const [authorizationLoadable, setAuthorization] = useLoadableSet(
     setCustomConnectorAgentAuthorization$,
   );
-  const rowsLoaded =
-    agentsLoadable.state === "hasData" &&
-    authorizedAgentsByIdLoadable.state === "hasData";
-  const authorizedAgentIds = new Set(
-    authorizedAgentsByIdLoadable.state === "hasData"
-      ? (authorizedAgentsByIdLoadable.data.get(connector.id) ?? []).map(
-          (agent) => {
-            return agent.id;
-          },
-        )
-      : [],
-  );
-  const rows: readonly ConnectorAgentAccessRow[] =
-    agentsLoadable.state === "hasData"
-      ? agentsLoadable.data.map((agent) => {
-          return {
-            agent,
-            authorized: authorizedAgentIds.has(agent.id),
-            grants: [],
-          };
-        })
-      : [];
   const savingAgentId =
     authorizationLoadable.state === "loading" ? pendingSavingAgentId : null;
 
+  const saveAuthorization = (
+    row: ConnectorAgentAccessRow,
+    authorized: boolean,
+  ) => {
+    if (savingAgentId !== null) {
+      return;
+    }
+    if (authorized && connector.permissionBundleRef) {
+      onPermissionRequired(row);
+      return;
+    }
+    setSavingAgentId(row.agent.id);
+    detach(
+      withCleanup(
+        (async () => {
+          await setAuthorization(
+            {
+              agentId: row.agent.id,
+              connectorId: connector.id,
+              authorized,
+            },
+            pageSignal,
+          );
+          toast.success(
+            t(
+              ($) => {
+                return $.connectors.access.accessUpdated;
+              },
+              { connector: connector.displayName },
+            ),
+          );
+        })(),
+        () => {
+          setSavingAgentId(null);
+        },
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  return {
+    savingAgentId,
+    saveAuthorization,
+    clearSavingAgentId: () => {
+      setSavingAgentId(null);
+    },
+  };
+}
+
+export function CustomConnectorAccessManagementDialog({
+  connector,
+  onClose,
+}: {
+  readonly connector: CustomConnectorHttpResponse;
+  readonly onClose: () => void;
+}) {
+  const authorizationsLoadable = useLastLoadable(
+    customConnectorAgentAuthorizations$,
+  );
+  const permissionDraft = useGet(customConnectorPermissionDraft$);
+  const permissionBundleLoadable = useLoadable(
+    customConnectorPermissionBundle$,
+  );
+  const search = useGet(connectorAccessManagementSearch$);
+  const setSearch = useSet(setConnectorAccessManagementSearch$);
+  const openPermissions = useSet(openCustomConnectorPermissions$);
+  const closePermissions = useSet(closeCustomConnectorPermissions$);
+  const rowsLoaded = authorizationsLoadable.state === "hasData";
+  const authorizations =
+    authorizationsLoadable.state === "hasData"
+      ? authorizationsLoadable.data
+      : [];
+  const rows = customConnectorAccessRows(authorizations, connector.id);
+  const permissionNamesByAgentId = customConnectorPermissionNamesByAgentId(
+    authorizations,
+    connector.id,
+  );
+  const activePermissionDraft =
+    permissionDraft?.surface === "access-management" &&
+    permissionDraft.connectorId === connector.id
+      ? permissionDraft
+      : null;
+  const permissionAgent = activePermissionDraft
+    ? rows.find((row) => {
+        return row.agent.id === activePermissionDraft.agentId;
+      })?.agent
+    : undefined;
+
+  const openAgentPermissions = (row: ConnectorAgentAccessRow) => {
+    openPermissions({
+      surface: "access-management",
+      agentId: row.agent.id,
+      connectorId: connector.id,
+      initiallyAuthorized: row.authorized,
+      permissionNames: permissionNamesByAgentId.get(row.agent.id) ?? [],
+    });
+  };
+  const { savingAgentId, saveAuthorization, clearSavingAgentId } =
+    useCustomConnectorAuthorization(connector, openAgentPermissions);
+
   const close = () => {
+    if (activePermissionDraft) {
+      closePermissions({
+        surface: "access-management",
+        agentId: activePermissionDraft.agentId,
+        connectorId: activePermissionDraft.connectorId,
+      });
+    }
     setSearch("");
-    setSavingAgentId(null);
+    clearSavingAgentId();
     onClose();
   };
 
   return (
-    <ConnectorAccessDialog
-      onClose={close}
-      connectorLabel={connector.displayName}
-      headerIcon={
-        <CustomConnectorIcon
-          id={connector.id}
-          displayName={connector.displayName}
-          size={22}
-        />
-      }
-      rows={filterRows(rows, search)}
-      rowsLoaded={rowsLoaded}
-      metadata={null}
-      savingAgentId={savingAgentId}
-      search={search}
-      onSearchChange={setSearch}
-      onToggle={(row, authorized) => {
-        if (savingAgentId !== null) {
-          return;
+    <>
+      <ConnectorAccessDialog
+        onClose={close}
+        connectorLabel={connector.displayName}
+        headerIcon={
+          <CustomConnectorIcon
+            id={connector.id}
+            displayName={connector.displayName}
+            size={22}
+          />
         }
-        setSavingAgentId(row.agent.id);
-        detach(
-          withCleanup(
-            (async () => {
-              await setAuthorization(
-                {
-                  agentId: row.agent.id,
-                  connectorId: connector.id,
-                  authorized,
-                },
-                pageSignal,
-              );
-              toast.success(
-                t(
-                  ($) => {
-                    return $.connectors.access.accessUpdated;
-                  },
-                  { connector: connector.displayName },
-                ),
-              );
-            })(),
-            () => {
-              setSavingAgentId(null);
-            },
-          ),
-          Reason.DomCallback,
-        );
-      }}
-      onManage={() => {
-        return undefined;
-      }}
-    />
+        rows={filterRows(rows, search)}
+        rowsLoaded={rowsLoaded}
+        hasPermissions={Boolean(connector.permissionBundleRef)}
+        savingAgentId={savingAgentId}
+        search={search}
+        onSearchChange={setSearch}
+        onToggle={saveAuthorization}
+        onManage={openAgentPermissions}
+      />
+      <CustomConnectorAccessPermissionsDrawer
+        draft={activePermissionDraft}
+        agent={permissionAgent}
+        connector={connector}
+        bundle={
+          permissionBundleLoadable.state === "hasData"
+            ? permissionBundleLoadable.data
+            : null
+        }
+        loading={permissionBundleLoadable.state === "loading"}
+        loadError={permissionBundleLoadable.state === "hasError"}
+        onClose={(draft) => {
+          closePermissions({
+            surface: "access-management",
+            agentId: draft.agentId,
+            connectorId: draft.connectorId,
+          });
+        }}
+      />
+    </>
   );
 }

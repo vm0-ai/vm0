@@ -1853,12 +1853,6 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "किसी एजेंट द्वारा उपयोग नहीं किया गया",
-        "usedBy": "{{agents}} द्वारा प्रयुक्त",
-        "usedByOverflow_one": "{{agents}} +{{value}} द्वारा प्रयुक्त",
-        "usedByOverflow_other": "{{agents}} +{{value}} द्वारा प्रयुक्त"
-      },
       "connect": {
         "apiAuthentication": "API प्रमाणीकरण",
         "apiDescription": "प्रोवाइडर द्वारा जारी API रहस्य दर्ज करें।",

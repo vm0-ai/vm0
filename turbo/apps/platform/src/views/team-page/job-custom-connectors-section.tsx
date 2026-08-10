@@ -7,130 +7,116 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
-import { SlidersHorizontal } from "lucide-react";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@vm0/ui";
 import {
   isHttpCustomConnectorResponse,
   type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { LoadingSwitch } from "../components/loading-switch.tsx";
+import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
   agentCustomConnectorToggleSaving$,
   agentCustomConnectorGrants$,
-  agentCustomConnectorPermissionBundle$,
   agentAddedCustomConnectors$,
-  closeCustomConnectorPermissions$,
-  customConnectorPermissionDraft$,
-  openCustomConnectorPermissions$,
   toggleAgentCustomConnector$,
 } from "../../signals/zero-page/job-detail/custom-connectors.ts";
+import {
+  closeCustomConnectorPermissions$,
+  customConnectorPermissionBundle$,
+  customConnectorPermissionDraft$,
+  openCustomConnectorPermissions$,
+} from "../../signals/zero-page/settings/custom-connector-permissions.ts";
 import { agentDetail$ } from "../../signals/zero-page/job-detail/detail.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { CustomConnectorIcon } from "../zero-page/components/settings/custom-connector-icon.tsx";
-import { CustomConnectorPermissionsDrawer } from "./custom-connector-permissions-drawer.tsx";
+import { ConnectorPermissionRow } from "../zero-page/components/settings/connector-permission-row.tsx";
+import { CustomConnectorPermissionsDrawer } from "../zero-page/components/settings/custom-connector-permissions-drawer.tsx";
 
-function CustomConnectorPermissionRow({
+function JobCustomConnectorRow({
   connector,
   enabled,
   loading,
-  disabled,
-  showManage,
+  agentId,
+  grants,
+  grantsLoading,
   isLast,
   onToggle,
-  onManage,
 }: {
-  connector: CustomConnectorHttpResponse;
-  enabled: boolean;
-  loading: boolean;
-  disabled: boolean;
-  showManage: boolean;
-  isLast: boolean;
-  onToggle: (checked: boolean) => void;
-  onManage: () => void;
+  readonly connector: CustomConnectorHttpResponse;
+  readonly enabled: boolean;
+  readonly loading: boolean;
+  readonly agentId: string | undefined;
+  readonly grants: readonly AgentCustomConnectorGrant[] | null;
+  readonly grantsLoading: boolean;
+  readonly isLast: boolean;
+  readonly onToggle: (id: string, checked: boolean) => void;
 }) {
-  const { t } = useTranslation("agents");
   const { t: tCommon } = useTranslation();
+  const openPermissions = useSet(openCustomConnectorPermissions$);
+  const permissionNames =
+    grants?.find((grant) => {
+      return grant.customConnectorId === connector.id;
+    })?.permissionNames ?? [];
+
+  const openPermissionDrawer = (initiallyAuthorized: boolean) => {
+    if (!agentId) {
+      return;
+    }
+    openPermissions({
+      surface: "agent-detail",
+      agentId,
+      connectorId: connector.id,
+      initiallyAuthorized,
+      permissionNames,
+    });
+  };
+
   return (
-    <div
-      className={
-        isLast
-          ? "flex items-center gap-3 px-5 py-4"
-          : "flex items-center gap-3 px-5 py-4 border-b border-border/50"
+    <ConnectorPermissionRow
+      icon={
+        <CustomConnectorIcon
+          id={connector.id}
+          displayName={connector.displayName}
+          size={20}
+        />
       }
-    >
-      <CustomConnectorIcon
-        id={connector.id}
-        displayName={connector.displayName}
-        size={20}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-foreground">
-          {connector.displayName}
-        </div>
-        <div className="truncate text-xs text-muted-foreground font-mono">
+      label={connector.displayName}
+      description={
+        <span className="font-mono">
           {connector.prefixes[0]}
-          {!connector.hasSecret &&
-            t(($) => {
-              return $.authorization.customConnectors.noSecretSuffix;
-            })}
-        </div>
-      </div>
-      {showManage ? (
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={onManage}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-                aria-label={tCommon(
-                  ($) => {
-                    return $.connectors.card.managePermissionsFor;
-                  },
-                  { connector: connector.displayName },
-                )}
-              >
-                <SlidersHorizontal size={15} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <p className="text-xs">
-                {tCommon(($) => {
-                  return $.connectors.card.managePermissions;
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : null}
-      <LoadingSwitch
-        checked={enabled}
-        loading={loading}
-        disabled={disabled}
-        onCheckedChange={onToggle}
-        ariaLabel={t(
-          ($) => {
-            return $.authorization.customConnectors.authorize;
-          },
-          { connectorName: connector.displayName },
-        )}
-      />
-      {!connector.hasSecret && (
-        <span className="sr-only">
-          {t(($) => {
-            return $.authorization.customConnectors.noSecret;
-          })}
+          {!connector.connected
+            ? ` — ${tCommon(($) => {
+                return $.connectors.catalog.filters.notConnected;
+              })}`
+            : null}
         </span>
-      )}
-    </div>
+      }
+      enabled={enabled}
+      loading={
+        loading || (Boolean(connector.permissionBundleRef) && grantsLoading)
+      }
+      disabled={Boolean(connector.permissionBundleRef) && grants === null}
+      showManage={
+        enabled &&
+        Boolean(connector.permissionBundleRef) &&
+        grants !== null &&
+        agentId !== undefined
+      }
+      isLast={isLast}
+      onToggle={(checked) => {
+        if (checked && connector.permissionBundleRef) {
+          if (grants !== null && agentId) {
+            openPermissionDrawer(false);
+          }
+          return;
+        }
+        onToggle(connector.id, checked);
+      }}
+      onManage={() => {
+        openPermissionDrawer(enabled);
+      }}
+    />
   );
 }
 
@@ -145,10 +131,9 @@ export function JobCustomConnectorsSection() {
   const pageSignal = useGet(pageSignal$);
   const saving = useGet(agentCustomConnectorToggleSaving$);
   const permissionDraft = useGet(customConnectorPermissionDraft$);
-  const openPermissions = useSet(openCustomConnectorPermissions$);
   const closePermissions = useSet(closeCustomConnectorPermissions$);
   const permissionBundleLoadable = useLoadable(
-    agentCustomConnectorPermissionBundle$,
+    customConnectorPermissionBundle$,
   );
   const grantsLoadable = useLastLoadable(agentCustomConnectorGrants$);
   const detail = useLastResolved(agentDetail$);
@@ -177,7 +162,10 @@ export function JobCustomConnectorsSection() {
   };
 
   const activePermissionDraft =
-    permissionDraft?.agentId === detail?.agentId ? permissionDraft : null;
+    permissionDraft?.surface === "agent-detail" &&
+    permissionDraft.agentId === detail?.agentId
+      ? permissionDraft
+      : null;
   const permissionTargetConnector = activePermissionDraft
     ? httpConnectors.find((connector) => {
         return connector.id === activePermissionDraft.connectorId;
@@ -202,41 +190,20 @@ export function JobCustomConnectorsSection() {
           return $.authorization.customConnectors.description;
         })}
       </div>
-      {httpConnectors.map((c, i) => {
-        const enabled = addedSet.has(c.id);
+      {httpConnectors.map((connector, index) => {
         return (
-          <CustomConnectorPermissionRow
-            key={c.id}
-            connector={c}
-            enabled={enabled}
+          <JobCustomConnectorRow
+            key={connector.id}
+            connector={connector}
+            enabled={addedSet.has(connector.id)}
             loading={saving}
-            disabled={!c.hasSecret && !enabled}
-            showManage={
-              c.hasSecret &&
-              c.permissionBundleRef !== null &&
-              c.permissionBundleRef !== undefined &&
-              grantsLoadable.state === "hasData" &&
-              detail?.agentId !== undefined
+            agentId={detail?.agentId}
+            grants={
+              grantsLoadable.state === "hasData" ? grantsLoadable.data : null
             }
-            isLast={i === httpConnectors.length - 1}
-            onToggle={(checked) => {
-              return handleToggle(c.id, checked);
-            }}
-            onManage={() => {
-              if (!detail?.agentId) {
-                return;
-              }
-              openPermissions({
-                agentId: detail.agentId,
-                connectorId: c.id,
-                permissionNames:
-                  grantsLoadable.state === "hasData"
-                    ? (grantsLoadable.data.find((grant) => {
-                        return grant.customConnectorId === c.id;
-                      })?.permissionNames ?? [])
-                    : [],
-              });
-            }}
+            grantsLoading={grantsLoadable.state === "loading"}
+            isLast={index === httpConnectors.length - 1}
+            onToggle={handleToggle}
           />
         );
       })}
@@ -256,6 +223,7 @@ export function JobCustomConnectorsSection() {
           loadError={permissionBundleLoadable.state === "hasError"}
           onClose={() => {
             closePermissions({
+              surface: "agent-detail",
               agentId: permissionTarget.draft.agentId,
               connectorId: permissionTarget.draft.connectorId,
             });

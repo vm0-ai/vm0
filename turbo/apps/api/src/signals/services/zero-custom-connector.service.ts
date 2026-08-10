@@ -3159,7 +3159,6 @@ const authorizeProposalAgent$ = command(
       return notFound("Custom connector not found");
     }
     if (
-      added.status === "customConnectorsNotConfigured" ||
       added.status === "customConnectorPermissionSelectionRequired" ||
       added.status === "invalidCustomConnectorPermissions"
     ) {
