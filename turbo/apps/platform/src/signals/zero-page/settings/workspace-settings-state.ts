@@ -178,14 +178,22 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
 // Billing sub-page
 // ---------------------------------------------------------------------------
 
-const internalBillingSubPage$ = state(false);
+const internalBillingSubPage$ = state<"plans" | "migration" | null>(null);
 
 export const billingSubPage$ = computed((get) => {
-  return get(internalBillingSubPage$);
+  return get(internalBillingSubPage$) !== null;
+});
+
+export const billingMigrationSubPage$ = computed((get) => {
+  return get(internalBillingSubPage$) === "migration";
 });
 
 export const setBillingSubPage$ = command(({ set }, value: boolean) => {
-  set(internalBillingSubPage$, value);
+  set(internalBillingSubPage$, value ? "plans" : null);
+});
+
+export const openBillingMigrationSubPage$ = command(({ set }) => {
+  set(internalBillingSubPage$, "migration");
 });
 
 // ---------------------------------------------------------------------------

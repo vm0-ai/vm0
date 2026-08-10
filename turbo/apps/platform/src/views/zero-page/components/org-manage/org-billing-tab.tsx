@@ -81,7 +81,9 @@ import {
 import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
   billingSubPage$,
+  billingMigrationSubPage$,
   buyCreditsScrollRef$,
+  openBillingMigrationSubPage$,
   setBillingSubPage$,
   lockedTarget$,
   selectedTarget$,
@@ -2242,6 +2244,7 @@ function BillingPricingPage({
   currentTier,
   migration,
   migrationLoading,
+  migrationOpen,
   onBack,
   onRestore,
   periodEnd,
@@ -2251,6 +2254,7 @@ function BillingPricingPage({
   readonly currentTier: BillingTier;
   readonly migration: UsagePackMigrationStateResponse | null;
   readonly migrationLoading: boolean;
+  readonly migrationOpen: boolean;
   readonly onBack: () => void;
   readonly onRestore: () => void;
   readonly periodEnd: string | null | undefined;
@@ -2269,10 +2273,18 @@ function BillingPricingPage({
           role="status"
           className="h-80 animate-pulse rounded-xl bg-muted/40"
         />
-      ) : migration && migrationInProgress ? (
+      ) : migrationOpen && migration && migrationInProgress ? (
         <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
-      ) : migration ? (
+      ) : migrationOpen && migration ? (
         <UsagePackMigrationPage tier={migration.tier} onBack={onBack} />
+      ) : migration ? (
+        <PricingPage
+          currentTier={currentTier}
+          scheduledChange={scheduledChange}
+          periodEnd={periodEnd}
+          onBack={onBack}
+          onRestore={onRestore}
+        />
       ) : usagePackPlansEnabled ? (
         <UsagePackPricingPage
           checkoutAllowed={usagePackCheckoutAllowed}
@@ -2315,10 +2327,15 @@ export function OrgBillingTab() {
   const paymentMethodManagementEnabled =
     featureSwitches[FeatureSwitchKey.PaymentMethodManagement];
   const pricingOpen = useGet(billingSubPage$);
+  const migrationOpen = useGet(billingMigrationSubPage$);
   const setBillingSubPage = useSet(setBillingSubPage$);
+  const openMigrationPage = useSet(openBillingMigrationSubPage$);
   const buyCreditsScrollRef = useSet(buyCreditsScrollRef$);
-  const setPricingOpen = (v: boolean) => {
-    return setBillingSubPage(v);
+  const closeBillingSubPage = () => {
+    return setBillingSubPage(false);
+  };
+  const openPricingPage = () => {
+    return setBillingSubPage(true);
   };
   const pageSignal = useGet(pageSignal$);
   const reloadBilling = useSet(reloadBillingStatus$);
@@ -2394,12 +2411,11 @@ export function OrgBillingTab() {
         currentTier={currentTier}
         migration={migration}
         migrationLoading={migrationLoading}
+        migrationOpen={migrationOpen}
         scheduledChange={scheduledChange}
         periodEnd={periodEnd}
         usagePackCheckoutAllowed={canStartUsagePackCheckout(status)}
-        onBack={() => {
-          return setPricingOpen(false);
-        }}
+        onBack={closeBillingSubPage}
         onRestore={handleRestore}
       />
     );
@@ -2457,9 +2473,7 @@ export function OrgBillingTab() {
                   hasScheduledChange={hasScheduledChange}
                   currentTier={currentTier}
                   loading={loading}
-                  onUpgrade={() => {
-                    return setPricingOpen(true);
-                  }}
+                  onUpgrade={openPricingPage}
                   onDowngrade={handleDowngrade}
                   onRestore={handleRestore}
                 />
@@ -2532,9 +2546,7 @@ export function OrgBillingTab() {
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-state-hover"
-                onClick={() => {
-                  return setPricingOpen(true);
-                }}
+                onClick={openPricingPage}
               >
                 <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
                   {t(($) => {
@@ -2551,9 +2563,7 @@ export function OrgBillingTab() {
 
       <UsagePackMigrationAvailability
         migration={migration}
-        onOpen={() => {
-          return setPricingOpen(true);
-        }}
+        onOpen={openMigrationPage}
       />
       {showBuyCredits && (
         <div ref={buyCreditsScrollRef}>

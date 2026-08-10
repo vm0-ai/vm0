@@ -803,7 +803,7 @@ describe("organization billing settings", () => {
     expect(migrationCalls).toBe(0);
   });
 
-  it("waits for legacy migration state before showing usage pack pricing", async () => {
+  it("keeps legacy pricing visible and offers migration separately", async () => {
     const migrationReady = createDeferredPromise<void>(context.signal);
     context.mocks.data.org({
       id: "org_1",
@@ -870,6 +870,20 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
 
     migrationReady.resolve(undefined);
+
+    await screen.findByText("Compare plans");
+    expect(screen.getByText("$200")).toBeInTheDocument();
+    expect(buttonByText("Current plan")).toBeDisabled();
+    expect(
+      screen.queryByRole("heading", { name: "Choose a plan" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Configure member packages" }),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Back"));
+    await screen.findByText("Move to member packages");
+    click(buttonByText("Configure packages"));
 
     await screen.findByRole("heading", {
       name: "Configure member packages",
