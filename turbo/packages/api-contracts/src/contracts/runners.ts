@@ -206,7 +206,7 @@ export const connectorRuntimeTargetRegistrationSchema = z.discriminatedUnion(
   ],
 );
 
-function connectorRuntimeTargetKey(
+export function connectorRuntimeTargetKey(
   target: z.infer<typeof connectorRuntimeTargetRegistrationSchema>,
 ): string {
   return target.kind === "builtin"

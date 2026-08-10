@@ -20,7 +20,7 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
-import { publishCustomConnectorRuntimeSyncWakeups } from "./custom-connector-runtime-wakeup.service";
+import { publishConnectorRuntimeSyncWakeups } from "./connector-runtime-wakeup.service";
 import {
   loadCurrentCustomConnectorOAuthConnectionIds,
   loadCurrentCustomConnectorValueMarkers,
@@ -1011,18 +1011,20 @@ export async function updateUserCustomConnectors(
     committed.result.status === "updated" &&
     !options.deferRuntimeWakeupUntilOuterCommit
   ) {
-    await publishCustomConnectorRuntimeSyncWakeups({
+    await publishConnectorRuntimeSyncWakeups({
       db,
       scope: {
         orgId: args.orgId,
         userId: args.userId,
         agentId: args.agentId,
       },
-      customConnectorIds: [
+      targets: [
         ...committed.previousIds,
         ...committed.result.enabledIds,
         ...enabledIds,
-      ],
+      ].map((customConnectorId) => {
+        return { kind: "custom" as const, customConnectorId };
+      }),
     });
   }
   return committed.result;
