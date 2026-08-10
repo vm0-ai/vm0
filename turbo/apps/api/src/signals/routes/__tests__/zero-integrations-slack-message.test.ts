@@ -9,7 +9,6 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { updateZeroRunModelSelection$ } from "./helpers/zero-telegram";
 import {
   seedSlackOrgConnection$,
   seedSlackOrgInstallation$,
@@ -386,18 +385,9 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(response.body.error.message).toContain("No Slack connection found");
   });
 
-  it("appends the originating run's Fast model to the agent footer", async () => {
+  it("appends 'Sent via' footer when agent is resolvable from run", async () => {
     const { orgId, userId } = await seedWithInstallation();
     const { runId } = await seedAgentRun({ orgId, userId });
-    await store.set(
-      updateZeroRunModelSelection$,
-      {
-        runId,
-        selectedModel: "gpt-5.6-sol",
-        codexServiceTier: "fast",
-      },
-      context.signal,
-    );
     const token = zeroToken({ userId, orgId, runId });
 
     const client = setupApp({
@@ -430,9 +420,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(blocks[blocks.length - 2]!.type).toBe("divider");
     const footerCtx = blocks[blocks.length - 1]!;
     expect(footerCtx.type).toBe("context");
-    expect(footerCtx.elements![0]!.text).toBe(
-      "Sent via My Assistant · GPT 5.6 Sol Fast",
-    );
+    expect(footerCtx.elements![0]!.text).toBe("Sent via My Assistant");
   });
 
   it("appends user attribution footer when run is user-triggered (not scheduled)", async () => {
