@@ -697,10 +697,15 @@ export const startConcurrencyCheckout$ = command(
   },
 );
 
-export const previewConcurrencySubscriptionChange$ = command(
+interface ConcurrencySubscriptionChangePreviewArgs {
+  readonly subscriptionId: string;
+  readonly quantity: number;
+}
+
+const loadConcurrencySubscriptionChangePreview$ = command(
   async (
-    { get, set },
-    args: { readonly subscriptionId: string; readonly quantity: number },
+    { get },
+    args: ConcurrencySubscriptionChangePreviewArgs,
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
@@ -714,6 +719,22 @@ export const previewConcurrencySubscriptionChange$ = command(
       [200],
     );
     signal.throwIfAborted();
+    return result.body;
+  },
+);
+
+export const previewConcurrencySubscriptionChange$ = command(
+  async (
+    { set },
+    args: ConcurrencySubscriptionChangePreviewArgs,
+    signal: AbortSignal,
+  ) => {
+    const preview = await set(
+      loadConcurrencySubscriptionChangePreview$,
+      args,
+      signal,
+    );
+    signal.throwIfAborted();
     set(internalConcurrencyConfirmDialog$, (dialog) => {
       if (
         !dialog ||
@@ -722,7 +743,40 @@ export const previewConcurrencySubscriptionChange$ = command(
       ) {
         return dialog;
       }
-      return { ...dialog, preview: result.body };
+      return { ...dialog, preview };
+    });
+  },
+);
+
+export const openConcurrencyChangeReview$ = command(
+  async (
+    { set },
+    args: {
+      readonly subscriptionId: string;
+      readonly currentQuantity: number;
+      readonly targetQuantity: number;
+      readonly canReduce: boolean;
+    },
+    signal: AbortSignal,
+  ) => {
+    const preview = await set(
+      loadConcurrencySubscriptionChangePreview$,
+      {
+        subscriptionId: args.subscriptionId,
+        quantity: args.targetQuantity,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    set(internalConcurrencyConfirmDialog$, {
+      action: "change",
+      subscriptionId: args.subscriptionId,
+      currentQuantity: args.currentQuantity,
+      canReduce: args.canReduce,
+      canChangeInApp: true,
+      changeMode: "quantity",
+      targetQuantity: args.targetQuantity,
+      preview,
     });
   },
 );

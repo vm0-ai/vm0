@@ -44,6 +44,7 @@ import {
 import { useOpenThreadArtifacts } from "./thread-sidebar.tsx";
 import { ChatShortcutHelpDialog } from "./chat-shortcut-help-dialog.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { ConcurrencyConfirmDialog } from "./components/org-manage/org-billing-tab.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -328,6 +329,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
     <div className="zero-app zero-viewport-shell flex w-full bg-background">
       <SettingsDialogMount />
       <ChatShortcutHelpDialog />
+      <ConcurrencyConfirmDialog />
       <QueueDrawer />
       <ZeroSidebar />
       <div

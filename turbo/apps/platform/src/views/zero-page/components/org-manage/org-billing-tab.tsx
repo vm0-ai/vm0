@@ -1926,7 +1926,7 @@ function ConcurrencyConfirmDialogContent({
   );
 }
 
-function ConcurrencyConfirmDialog() {
+export function ConcurrencyConfirmDialog() {
   const dialog = useGet(concurrencyConfirmDialog$);
   const close = useSet(closeConcurrencyConfirmDialog$);
   return (
@@ -2111,7 +2111,6 @@ function ConcurrencyBillingSection({
         ) : null}
       </div>
       <ConcurrencyPurchaseDialog />
-      <ConcurrencyConfirmDialog />
     </section>
   );
 }
