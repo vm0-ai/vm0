@@ -92,10 +92,14 @@ DECLARE
   batch_last_id uuid;
   last_id uuid;
   demoted_head_count bigint;
+  updated_thread_ids uuid[];
+  updated_seq_ids bigint[];
 BEGIN
   LOOP
     batch_last_id := NULL;
     demoted_head_count := NULL;
+    updated_thread_ids := NULL;
+    updated_seq_ids := NULL;
 
     WITH batch AS (
       SELECT "candidate"."id"
@@ -128,29 +132,61 @@ BEGIN
         "target"."id",
         "target"."chat_thread_id",
         "target"."seq_id"
-    ), demoted_heads AS (
-      UPDATE "chat_event_snapshots" AS "snapshot"
-      SET "is_head" = false
-      WHERE "snapshot"."is_head"
-        AND EXISTS (
-          SELECT 1
-          FROM updated
-          WHERE "updated"."chat_thread_id" = "snapshot"."chat_thread_id"
-            AND "updated"."seq_id" <= "snapshot"."last_seq_id"
-        )
-      RETURNING "snapshot"."id"
     )
     SELECT
-      "updated"."id",
-      "demotion"."count"
-    INTO batch_last_id, demoted_head_count
-    FROM updated
-    CROSS JOIN (
-      SELECT count(*)::bigint AS "count"
-      FROM demoted_heads
-    ) AS "demotion"
-    ORDER BY "updated"."id" DESC
-    LIMIT 1;
+      (array_agg("updated"."id" ORDER BY "updated"."id" DESC))[1],
+      array_agg(
+        "updated"."chat_thread_id"
+        ORDER BY "updated"."id"
+      ),
+      array_agg("updated"."seq_id" ORDER BY "updated"."id")
+    INTO batch_last_id, updated_thread_ids, updated_seq_ids
+    FROM updated;
+
+    IF batch_last_id IS NOT NULL THEN
+      -- Snapshot publication reads event bytes before its short head-swap
+      -- transaction. If that transaction wins the old-head row lock, the
+      -- first UPDATE below can recheck and skip the old row while its new head
+      -- remains invisible to that statement snapshot. Keep the updated rows
+      -- in arrays and retry with fresh statement snapshots until no covering
+      -- head remains. Once a visible head is demoted, any publisher built from
+      -- that expected parent loses its guarded swap after this batch commits.
+      LOOP
+        UPDATE "chat_event_snapshots" AS "snapshot"
+        SET "is_head" = false
+        WHERE "snapshot"."is_head"
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(updated_thread_ids, updated_seq_ids)
+              AS "updated"("chat_thread_id", "seq_id")
+            WHERE "updated"."chat_thread_id" = "snapshot"."chat_thread_id"
+              AND "updated"."seq_id" <= "snapshot"."last_seq_id"
+          );
+        GET DIAGNOSTICS demoted_head_count = ROW_COUNT;
+
+        IF demoted_head_count > 0 THEN
+          CONTINUE;
+        END IF;
+
+        -- This separate statement sees a replacement head committed while
+        -- the UPDATE above was waiting on its expected parent.
+        PERFORM 1
+        FROM "chat_event_snapshots" AS "snapshot"
+        WHERE "snapshot"."is_head"
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(updated_thread_ids, updated_seq_ids)
+              AS "updated"("chat_thread_id", "seq_id")
+            WHERE "updated"."chat_thread_id" = "snapshot"."chat_thread_id"
+              AND "updated"."seq_id" <= "snapshot"."last_seq_id"
+          )
+        LIMIT 1;
+
+        IF NOT FOUND THEN
+          EXIT;
+        END IF;
+      END LOOP;
+    END IF;
 
     COMMIT;
 

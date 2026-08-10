@@ -5420,41 +5420,93 @@ const CHAT_RUN_SERVICE_TIER_PREVIOUS_MIGRATION = "0880_regular_piledriver";
 const CHAT_RUN_SERVICE_TIER_MIGRATION =
   "0881_backfill_chat_run_service_tier_annotations";
 
-async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
-  console.log("=== Validate chat-run service tier annotation backfill ===\n");
-  const testDb = "migration_chat_run_service_tier_annotation_test";
-  const testDbUrl = createTestDbUrl(testDb);
-  const fixture = {
-    composeId: "00000000-0000-4000-8000-000000088101",
-    sessionId: "00000000-0000-4000-8000-000000088102",
-    affectedThreadId: "00000000-0000-4000-8000-000000088103",
-    unaffectedThreadId: "00000000-0000-4000-8000-000000088104",
-    tailThreadId: "00000000-0000-4000-8000-000000088105",
-    fastRunId: "00000000-0000-4000-8000-000000088106",
-    annotatedFastRunId: "00000000-0000-4000-8000-000000088107",
-    standardRunId: "00000000-0000-4000-8000-000000088108",
-    modelLessFastRunId: "00000000-0000-4000-8000-000000088109",
-    tailFastRunId: "00000000-0000-4000-8000-000000088110",
-    fastEventId: "00000000-0000-4000-8000-000000088111",
-    annotatedFastEventId: "00000000-0000-4000-8000-000000088112",
-    standardEventId: "00000000-0000-4000-8000-000000088113",
-    modelLessFastEventId: "00000000-0000-4000-8000-000000088114",
-    tailFastEventId: "00000000-0000-4000-8000-000000088115",
-    tailPrefixEventId: "00000000-0000-4000-8000-000000088116",
-    affectedSnapshotId: "00000000-0000-4000-8000-000000088121",
-    unaffectedSnapshotId: "00000000-0000-4000-8000-000000088122",
-    tailSnapshotId: "00000000-0000-4000-8000-000000088123",
-    orgId: "chat-run-service-tier-org",
-    userId: "chat-run-service-tier-user",
-  } as const;
+const CHAT_RUN_SERVICE_TIER_FIXTURE = {
+  composeId: "00000000-0000-4000-8000-000000088101",
+  sessionId: "00000000-0000-4000-8000-000000088102",
+  affectedThreadId: "00000000-0000-4000-8000-000000088103",
+  unaffectedThreadId: "00000000-0000-4000-8000-000000088104",
+  tailThreadId: "00000000-0000-4000-8000-000000088105",
+  fastRunId: "00000000-0000-4000-8000-000000088106",
+  annotatedFastRunId: "00000000-0000-4000-8000-000000088107",
+  standardRunId: "00000000-0000-4000-8000-000000088108",
+  modelLessFastRunId: "00000000-0000-4000-8000-000000088109",
+  tailFastRunId: "00000000-0000-4000-8000-000000088110",
+  fastEventId: "00000000-0000-4000-8000-000000088111",
+  annotatedFastEventId: "00000000-0000-4000-8000-000000088112",
+  standardEventId: "00000000-0000-4000-8000-000000088113",
+  modelLessFastEventId: "00000000-0000-4000-8000-000000088114",
+  tailFastEventId: "00000000-0000-4000-8000-000000088115",
+  tailPrefixEventId: "00000000-0000-4000-8000-000000088116",
+  affectedSnapshotId: "00000000-0000-4000-8000-000000088121",
+  unaffectedSnapshotId: "00000000-0000-4000-8000-000000088122",
+  tailSnapshotId: "00000000-0000-4000-8000-000000088123",
+  concurrentSnapshotId: "00000000-0000-4000-8000-000000088124",
+  orgId: "chat-run-service-tier-org",
+  userId: "chat-run-service-tier-user",
+} as const;
 
-  const migrationSql = await fs.readFile(
-    path.join(
-      MIGRATIONS_DIR,
-      "0881_backfill_chat_run_service_tier_annotations.sql",
-    ),
-    "utf8",
-  );
+const CHAT_RUN_SERVICE_TIER_MESSAGES = {
+  fast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run" },
+      { type: "model", selectedModel: "gpt-5.6-sol" },
+    ],
+  },
+  expectedFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run" },
+      {
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      },
+    ],
+  },
+  annotatedFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "already annotated fast run" },
+      {
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      },
+    ],
+  },
+  standard: {
+    version: 1,
+    parts: [
+      { type: "text", text: "standard run" },
+      { type: "model", selectedModel: "gpt-5.6-sol" },
+    ],
+  },
+  modelLessFast: {
+    version: 1,
+    parts: [{ type: "text", text: "fast run without a model part" }],
+  },
+  tailFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run in the postgres tail" },
+      { type: "model", selectedModel: "gpt-5.6-sol" },
+    ],
+  },
+  expectedTailFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run in the postgres tail" },
+      {
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      },
+    ],
+  },
+} as const;
+
+function assertChatRunServiceTierMigrationShape(migrationSql: string): void {
   assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
   assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/u);
   assert.doesNotMatch(
@@ -5472,59 +5524,413 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
     migrationSql,
     /"updated"\."seq_id" <= "snapshot"\."last_seq_id"/u,
   );
+  assert.equal(
+    (
+      migrationSql.match(/unnest\(updated_thread_ids, updated_seq_ids\)/gu) ??
+      []
+    ).length,
+    2,
+  );
+}
 
-  const fastMessage = {
-    version: 1,
-    parts: [
-      { type: "text", text: "fast run" },
-      { type: "model", selectedModel: "gpt-5.6-sol" },
+async function seedChatRunServiceTierOwners(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES ($1, $2, 'chat-run-service-tier', $3)
+    `,
+    [fixture.composeId, fixture.userId, fixture.orgId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id", "user_id", "org_id", "agent_compose_id"
+      )
+      VALUES ($1, $2, $3, $4)
+    `,
+    [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_threads" (
+        "id",
+        "user_id",
+        "agent_compose_id",
+        "title",
+        "last_chat_event_seq_id"
+      )
+      VALUES
+        ($1, $4, $5, 'affected snapshot', 2),
+        ($2, $4, $5, 'unaffected snapshot', 2),
+        ($3, $4, $5, 'postgres tail snapshot', 2)
+    `,
+    [
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
+      fixture.userId,
+      fixture.composeId,
     ],
-  };
-  const annotatedFastMessage = {
-    version: 1,
-    parts: [
-      { type: "text", text: "already annotated fast run" },
-      {
-        type: "model",
-        selectedModel: "gpt-5.6-sol",
-        serviceTier: "priority",
-      },
+  );
+}
+
+async function seedChatRunServiceTierRuns(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "session_id", "status", "prompt", "org_id"
+      )
+      VALUES
+        ($1, $6, $7, 'running', 'fast run', $8),
+        ($2, $6, $7, 'running', 'annotated fast run', $8),
+        ($3, $6, $7, 'running', 'standard run', $8),
+        ($4, $6, $7, 'running', 'model-less fast run', $8),
+        ($5, $6, $7, 'running', 'tail fast run', $8)
+    `,
+    [
+      fixture.fastRunId,
+      fixture.annotatedFastRunId,
+      fixture.standardRunId,
+      fixture.modelLessFastRunId,
+      fixture.tailFastRunId,
+      fixture.userId,
+      fixture.sessionId,
+      fixture.orgId,
     ],
-  };
-  const standardMessage = {
-    version: 1,
-    parts: [
-      { type: "text", text: "standard run" },
-      { type: "model", selectedModel: "gpt-5.6-sol" },
+  );
+  await client.query(
+    `
+      INSERT INTO "zero_runs" (
+        "id", "trigger_source", "selected_model", "codex_service_tier",
+        "chat_thread_id"
+      )
+      VALUES
+        ($1, 'web', 'gpt-5.6-sol', 'fast', $6),
+        ($2, 'web', 'gpt-5.6-sol', 'fast', $6),
+        ($3, 'web', 'gpt-5.6-sol', NULL, $7),
+        ($4, 'web', 'gpt-5.6-sol', 'fast', $7),
+        ($5, 'web', 'gpt-5.6-sol', 'fast', $8)
+    `,
+    [
+      fixture.fastRunId,
+      fixture.annotatedFastRunId,
+      fixture.standardRunId,
+      fixture.modelLessFastRunId,
+      fixture.tailFastRunId,
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
     ],
-  };
-  const modelLessFastMessage = {
-    version: 1,
-    parts: [{ type: "text", text: "fast run without a model part" }],
-  };
-  const tailFastMessage = {
-    version: 1,
-    parts: [
-      { type: "text", text: "fast run in the postgres tail" },
-      { type: "model", selectedModel: "gpt-5.6-sol" },
+  );
+}
+
+async function seedChatRunServiceTierEvents(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const messages = CHAT_RUN_SERVICE_TIER_MESSAGES;
+  await client.query(
+    `
+      INSERT INTO "chat_events" (
+        "id", "chat_thread_id", "run_id", "event_type", "context_type",
+        "user_message", "seq_id"
+      )
+      VALUES
+        ($1, $7, $10, 'input.prompt', 'web', $15::jsonb, 1),
+        ($2, $7, $11, 'input.prompt', 'web', $16::jsonb, 2),
+        ($3, $8, $12, 'input.prompt', 'web', $17::jsonb, 1),
+        ($4, $8, $13, 'input.prompt', 'web', $18::jsonb, 2),
+        ($5, $9, NULL, 'output.message', NULL, NULL, 1),
+        ($6, $9, $14, 'input.prompt', 'web', $19::jsonb, 2)
+    `,
+    [
+      fixture.fastEventId,
+      fixture.annotatedFastEventId,
+      fixture.standardEventId,
+      fixture.modelLessFastEventId,
+      fixture.tailPrefixEventId,
+      fixture.tailFastEventId,
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
+      fixture.fastRunId,
+      fixture.annotatedFastRunId,
+      fixture.standardRunId,
+      fixture.modelLessFastRunId,
+      fixture.tailFastRunId,
+      JSON.stringify(messages.fast),
+      JSON.stringify(messages.annotatedFast),
+      JSON.stringify(messages.standard),
+      JSON.stringify(messages.modelLessFast),
+      JSON.stringify(messages.tailFast),
     ],
-  };
-  const expectedFastMessage = {
-    ...fastMessage,
-    parts: fastMessage.parts.map((part) => {
-      return part.type === "model"
-        ? { ...part, serviceTier: "priority" }
-        : part;
-    }),
-  };
-  const expectedTailFastMessage = {
-    ...tailFastMessage,
-    parts: tailFastMessage.parts.map((part) => {
-      return part.type === "model"
-        ? { ...part, serviceTier: "priority" }
-        : part;
-    }),
-  };
+  );
+}
+
+async function seedChatRunServiceTierSnapshots(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "chat_event_snapshots" (
+        "id", "chat_thread_id", "last_seq_id", "archive_schema_version",
+        "object_key", "is_head"
+      )
+      VALUES
+        ($1, $4, 2, 3, 'migration/affected.ndjson.gz', true),
+        ($2, $5, 2, 3, 'migration/unaffected.ndjson.gz', true),
+        ($3, $6, 1, 3, 'migration/tail.ndjson.gz', true)
+    `,
+    [
+      fixture.affectedSnapshotId,
+      fixture.unaffectedSnapshotId,
+      fixture.tailSnapshotId,
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
+    ],
+  );
+}
+
+async function seedChatRunServiceTierFixture(client: Client): Promise<void> {
+  await seedChatRunServiceTierOwners(client);
+  await seedChatRunServiceTierRuns(client);
+  await seedChatRunServiceTierEvents(client);
+  await seedChatRunServiceTierSnapshots(client);
+}
+
+async function waitForPostgresBlock(
+  observer: Client,
+  blockedPid: number,
+  blockerPid: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const result = await observer.query<{ blocked: boolean }>(
+      `
+        SELECT $2::integer = ANY(pg_blocking_pids($1::integer)) AS "blocked"
+      `,
+      [blockedPid, blockerPid],
+    );
+    if (result.rows[0]?.blocked) {
+      return;
+    }
+    await observer.query(`SELECT pg_sleep(0.01)`);
+  }
+  assert.fail("migration did not wait for the concurrent snapshot publisher");
+}
+
+async function databaseBackendPid(client: Client): Promise<number> {
+  const result = await client.query<{ pid: number }>(
+    `SELECT pg_backend_pid() AS "pid"`,
+  );
+  const pid = result.rows[0]?.pid;
+  assert.ok(pid);
+  return pid;
+}
+
+async function applyBackfillWhileSnapshotPublisherWins(
+  client: Client,
+  testDbUrl: string,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const publisher = new Client({ connectionString: testDbUrl });
+  await publisher.connect();
+  let transactionOpen = false;
+  try {
+    const migrationPid = await databaseBackendPid(client);
+    const publisherPid = await databaseBackendPid(publisher);
+    await publisher.query("BEGIN");
+    transactionOpen = true;
+    const demoted = await publisher.query(
+      `
+        UPDATE "chat_event_snapshots"
+        SET "is_head" = false
+        WHERE "id" = $1 AND "is_head"
+        RETURNING "id"
+      `,
+      [fixture.affectedSnapshotId],
+    );
+    assert.equal(demoted.rowCount, 1);
+    await publisher.query(
+      `
+        INSERT INTO "chat_event_snapshots" (
+          "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
+          "archive_schema_version", "object_key", "is_head"
+        )
+        VALUES ($1, $2, $3, 2, 3, 'migration/concurrent.ndjson.gz', true)
+      `,
+      [
+        fixture.concurrentSnapshotId,
+        fixture.affectedThreadId,
+        fixture.affectedSnapshotId,
+      ],
+    );
+
+    const migrationPromise = applyMigrationsUpToTag(
+      client,
+      CHAT_RUN_SERVICE_TIER_MIGRATION,
+    );
+    try {
+      await waitForPostgresBlock(publisher, migrationPid, publisherPid);
+      await publisher.query("COMMIT");
+      transactionOpen = false;
+      await migrationPromise;
+    } catch (error) {
+      if (transactionOpen) {
+        await publisher.query("ROLLBACK");
+        transactionOpen = false;
+      }
+      await migrationPromise.catch(() => {
+        return undefined;
+      });
+      throw error;
+    }
+  } finally {
+    if (transactionOpen) {
+      await publisher.query("ROLLBACK");
+    }
+    await publisher.end();
+  }
+}
+
+async function chatEventsRejectFunctionDefinition(
+  client: Client,
+): Promise<string> {
+  const result = await client.query<{ definition: string }>(`
+    SELECT pg_get_functiondef(
+      'public.reject_chat_event_source_update()'::regprocedure
+    ) AS "definition"
+  `);
+  const definition = result.rows[0]?.definition;
+  assert.ok(definition);
+  return definition;
+}
+
+async function assertChatRunServiceTierMessages(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const messages = CHAT_RUN_SERVICE_TIER_MESSAGES;
+  const result = await client.query<{ id: string; userMessage: unknown }>(
+    `
+      SELECT "id", "user_message" AS "userMessage"
+      FROM "chat_events"
+      WHERE "id" IN ($1, $2, $3, $4, $5)
+      ORDER BY "id"
+    `,
+    [
+      fixture.fastEventId,
+      fixture.annotatedFastEventId,
+      fixture.standardEventId,
+      fixture.modelLessFastEventId,
+      fixture.tailFastEventId,
+    ],
+  );
+  assert.deepEqual(result.rows, [
+    { id: fixture.fastEventId, userMessage: messages.expectedFast },
+    { id: fixture.annotatedFastEventId, userMessage: messages.annotatedFast },
+    { id: fixture.standardEventId, userMessage: messages.standard },
+    { id: fixture.modelLessFastEventId, userMessage: messages.modelLessFast },
+    { id: fixture.tailFastEventId, userMessage: messages.expectedTailFast },
+  ]);
+}
+
+async function assertChatRunServiceTierSnapshotHeads(
+  client: Client,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const result = await client.query<{ id: string; isHead: boolean }>(
+    `
+      SELECT "id", "is_head" AS "isHead"
+      FROM "chat_event_snapshots"
+      WHERE "id" IN ($1, $2, $3, $4)
+      ORDER BY "id"
+    `,
+    [
+      fixture.affectedSnapshotId,
+      fixture.unaffectedSnapshotId,
+      fixture.tailSnapshotId,
+      fixture.concurrentSnapshotId,
+    ],
+  );
+  assert.deepEqual(result.rows, [
+    { id: fixture.affectedSnapshotId, isHead: false },
+    { id: fixture.unaffectedSnapshotId, isHead: true },
+    { id: fixture.tailSnapshotId, isHead: true },
+    { id: fixture.concurrentSnapshotId, isHead: false },
+  ]);
+}
+
+async function assertChatRunServiceTierMigrationCleanup(
+  client: Client,
+  strictRejectFunctionDefinition: string,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const artifacts = await client.query<{
+    annotationFunctionPresent: boolean;
+    backfillProcedurePresent: boolean;
+  }>(`
+    SELECT
+      to_regprocedure(
+        'public.annotate_chat_event_priority_0881(jsonb)'
+      ) IS NOT NULL AS "annotationFunctionPresent",
+      to_regprocedure(
+        'public.backfill_chat_run_service_tier_annotations_0881()'
+      ) IS NOT NULL AS "backfillProcedurePresent"
+  `);
+  assert.deepEqual(artifacts.rows, [
+    { annotationFunctionPresent: false, backfillProcedurePresent: false },
+  ]);
+  assert.equal(
+    await chatEventsRejectFunctionDefinition(client),
+    strictRejectFunctionDefinition,
+  );
+  await assertChatEventsAppendOnlyProtection(client, fixture.fastEventId);
+}
+
+async function rerunChatRunServiceTierMigration(
+  client: Client,
+  migrationSql: string,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  for (const statement of statements) {
+    await client.query(statement);
+  }
+  const remaining = await client.query<{ count: string }>(`
+    SELECT count(*)::text AS "count"
+    FROM "chat_events" AS "event"
+    INNER JOIN "zero_runs" AS "run" ON "run"."id" = "event"."run_id"
+    WHERE "run"."codex_service_tier" = 'fast'
+      AND "event"."user_message" IS NOT NULL
+      AND jsonb_typeof("event"."user_message" -> 'parts') = 'array'
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements("event"."user_message" -> 'parts') AS "part"
+        WHERE "part" ->> 'type' = 'model'
+          AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
+      )
+  `);
+  assert.deepEqual(remaining.rows, [{ count: "0" }]);
+  await assertChatEventsAppendOnlyProtection(client, fixture.fastEventId);
+}
+
+async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
+  console.log("=== Validate chat-run service tier annotation backfill ===\n");
+  const testDb = "migration_chat_run_service_tier_annotation_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const migrationSql = await fs.readFile(
+    path.join(
+      MIGRATIONS_DIR,
+      "0881_backfill_chat_run_service_tier_annotations.sql",
+    ),
+    "utf8",
+  );
+  assertChatRunServiceTierMigrationShape(migrationSql);
 
   await createDatabase(testDb);
   try {
@@ -5535,299 +5941,27 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
-      await client.query(
-        `
-          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-          VALUES ($1, $2, 'chat-run-service-tier', $3)
-        `,
-        [fixture.composeId, fixture.userId, fixture.orgId],
-      );
-      await client.query(
-        `
-          INSERT INTO "agent_sessions" (
-            "id", "user_id", "org_id", "agent_compose_id"
-          )
-          VALUES ($1, $2, $3, $4)
-        `,
-        [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_threads" (
-            "id",
-            "user_id",
-            "agent_compose_id",
-            "title",
-            "last_chat_event_seq_id"
-          )
-          VALUES
-            ($1, $4, $5, 'affected snapshot', 2),
-            ($2, $4, $5, 'unaffected snapshot', 2),
-            ($3, $4, $5, 'postgres tail snapshot', 2)
-        `,
-        [
-          fixture.affectedThreadId,
-          fixture.unaffectedThreadId,
-          fixture.tailThreadId,
-          fixture.userId,
-          fixture.composeId,
-        ],
-      );
-      await client.query(
-        `
-          INSERT INTO "agent_runs" (
-            "id",
-            "user_id",
-            "session_id",
-            "status",
-            "prompt",
-            "org_id"
-          )
-          VALUES
-            ($1, $6, $7, 'running', 'fast run', $8),
-            ($2, $6, $7, 'running', 'annotated fast run', $8),
-            ($3, $6, $7, 'running', 'standard run', $8),
-            ($4, $6, $7, 'running', 'model-less fast run', $8),
-            ($5, $6, $7, 'running', 'tail fast run', $8)
-        `,
-        [
-          fixture.fastRunId,
-          fixture.annotatedFastRunId,
-          fixture.standardRunId,
-          fixture.modelLessFastRunId,
-          fixture.tailFastRunId,
-          fixture.userId,
-          fixture.sessionId,
-          fixture.orgId,
-        ],
-      );
-      await client.query(
-        `
-          INSERT INTO "zero_runs" (
-            "id",
-            "trigger_source",
-            "selected_model",
-            "codex_service_tier",
-            "chat_thread_id"
-          )
-          VALUES
-            ($1, 'web', 'gpt-5.6-sol', 'fast', $6),
-            ($2, 'web', 'gpt-5.6-sol', 'fast', $6),
-            ($3, 'web', 'gpt-5.6-sol', NULL, $7),
-            ($4, 'web', 'gpt-5.6-sol', 'fast', $7),
-            ($5, 'web', 'gpt-5.6-sol', 'fast', $8)
-        `,
-        [
-          fixture.fastRunId,
-          fixture.annotatedFastRunId,
-          fixture.standardRunId,
-          fixture.modelLessFastRunId,
-          fixture.tailFastRunId,
-          fixture.affectedThreadId,
-          fixture.unaffectedThreadId,
-          fixture.tailThreadId,
-        ],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_events" (
-            "id",
-            "chat_thread_id",
-            "run_id",
-            "event_type",
-            "context_type",
-            "user_message",
-            "seq_id"
-          )
-          VALUES
-            ($1, $7, $10, 'input.prompt', 'web', $15::jsonb, 1),
-            ($2, $7, $11, 'input.prompt', 'web', $16::jsonb, 2),
-            ($3, $8, $12, 'input.prompt', 'web', $17::jsonb, 1),
-            ($4, $8, $13, 'input.prompt', 'web', $18::jsonb, 2),
-            ($5, $9, NULL, 'output.message', NULL, NULL, 1),
-            ($6, $9, $14, 'input.prompt', 'web', $19::jsonb, 2)
-        `,
-        [
-          fixture.fastEventId,
-          fixture.annotatedFastEventId,
-          fixture.standardEventId,
-          fixture.modelLessFastEventId,
-          fixture.tailPrefixEventId,
-          fixture.tailFastEventId,
-          fixture.affectedThreadId,
-          fixture.unaffectedThreadId,
-          fixture.tailThreadId,
-          fixture.fastRunId,
-          fixture.annotatedFastRunId,
-          fixture.standardRunId,
-          fixture.modelLessFastRunId,
-          fixture.tailFastRunId,
-          JSON.stringify(fastMessage),
-          JSON.stringify(annotatedFastMessage),
-          JSON.stringify(standardMessage),
-          JSON.stringify(modelLessFastMessage),
-          JSON.stringify(tailFastMessage),
-        ],
-      );
-      await client.query(
-        `
-          INSERT INTO "chat_event_snapshots" (
-            "id",
-            "chat_thread_id",
-            "last_seq_id",
-            "archive_schema_version",
-            "object_key",
-            "is_head"
-          )
-          VALUES
-            ($1, $4, 2, 3, 'migration/affected.ndjson.gz', true),
-            ($2, $5, 2, 3, 'migration/unaffected.ndjson.gz', true),
-            ($3, $6, 1, 3, 'migration/tail.ndjson.gz', true)
-        `,
-        [
-          fixture.affectedSnapshotId,
-          fixture.unaffectedSnapshotId,
-          fixture.tailSnapshotId,
-          fixture.affectedThreadId,
-          fixture.unaffectedThreadId,
-          fixture.tailThreadId,
-        ],
-      );
+      await seedChatRunServiceTierFixture(client);
 
-      const strictRejectFunction = await client.query<{
-        definition: string;
-      }>(`
-        SELECT pg_get_functiondef(
-          'public.reject_chat_event_source_update()'::regprocedure
-        ) AS "definition"
-      `);
       const strictRejectFunctionDefinition =
-        strictRejectFunction.rows[0]?.definition;
-      assert.ok(strictRejectFunctionDefinition);
+        await chatEventsRejectFunctionDefinition(client);
 
-      await applyMigrationsUpToTag(client, CHAT_RUN_SERVICE_TIER_MIGRATION);
+      await applyBackfillWhileSnapshotPublisherWins(client, testDbUrl);
 
-      const messages = await client.query<{
-        id: string;
-        userMessage: unknown;
-      }>(
-        `
-          SELECT "id", "user_message" AS "userMessage"
-          FROM "chat_events"
-          WHERE "id" IN ($1, $2, $3, $4, $5)
-          ORDER BY "id"
-        `,
-        [
-          fixture.fastEventId,
-          fixture.annotatedFastEventId,
-          fixture.standardEventId,
-          fixture.modelLessFastEventId,
-          fixture.tailFastEventId,
-        ],
-      );
-      assert.deepEqual(messages.rows, [
-        { id: fixture.fastEventId, userMessage: expectedFastMessage },
-        {
-          id: fixture.annotatedFastEventId,
-          userMessage: annotatedFastMessage,
-        },
-        { id: fixture.standardEventId, userMessage: standardMessage },
-        {
-          id: fixture.modelLessFastEventId,
-          userMessage: modelLessFastMessage,
-        },
-        { id: fixture.tailFastEventId, userMessage: expectedTailFastMessage },
-      ]);
+      await assertChatRunServiceTierMessages(client);
 
-      const snapshotHeads = await client.query<{
-        id: string;
-        isHead: boolean;
-      }>(
-        `
-          SELECT "id", "is_head" AS "isHead"
-          FROM "chat_event_snapshots"
-          WHERE "id" IN ($1, $2, $3)
-          ORDER BY "id"
-        `,
-        [
-          fixture.affectedSnapshotId,
-          fixture.unaffectedSnapshotId,
-          fixture.tailSnapshotId,
-        ],
-      );
-      assert.deepEqual(snapshotHeads.rows, [
-        { id: fixture.affectedSnapshotId, isHead: false },
-        { id: fixture.unaffectedSnapshotId, isHead: true },
-        { id: fixture.tailSnapshotId, isHead: true },
-      ]);
+      await assertChatRunServiceTierSnapshotHeads(client);
 
-      const migrationArtifacts = await client.query<{
-        annotationFunctionPresent: boolean;
-        backfillProcedurePresent: boolean;
-      }>(`
-        SELECT
-          to_regprocedure(
-            'public.annotate_chat_event_priority_0881(jsonb)'
-          ) IS NOT NULL AS "annotationFunctionPresent",
-          to_regprocedure(
-            'public.backfill_chat_run_service_tier_annotations_0881()'
-          ) IS NOT NULL AS "backfillProcedurePresent"
-      `);
-      assert.deepEqual(migrationArtifacts.rows, [
-        {
-          annotationFunctionPresent: false,
-          backfillProcedurePresent: false,
-        },
-      ]);
-
-      const restoredRejectFunction = await client.query<{
-        definition: string;
-      }>(`
-        SELECT pg_get_functiondef(
-          'public.reject_chat_event_source_update()'::regprocedure
-        ) AS "definition"
-      `);
-      assert.equal(
-        restoredRejectFunction.rows[0]?.definition,
+      await assertChatRunServiceTierMigrationCleanup(
+        client,
         strictRejectFunctionDefinition,
       );
-      await assertChatEventsAppendOnlyProtection(client, fixture.fastEventId);
-
-      const migrationStatements = migrationSql
-        .split("--> statement-breakpoint")
-        .map((statement) => {
-          return statement.trim();
-        })
-        .filter((statement) => {
-          return statement.length > 0;
-        });
-      for (const statement of migrationStatements) {
-        await client.query(statement);
-      }
-
-      const rowsStillMissingPriority = await client.query<{ count: string }>(`
-        SELECT count(*)::text AS "count"
-        FROM "chat_events" AS "event"
-        INNER JOIN "zero_runs" AS "run" ON "run"."id" = "event"."run_id"
-        WHERE "run"."codex_service_tier" = 'fast'
-          AND "event"."user_message" IS NOT NULL
-          AND jsonb_typeof("event"."user_message" -> 'parts') = 'array'
-          AND EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements(
-              "event"."user_message" -> 'parts'
-            ) AS "part"
-            WHERE "part" ->> 'type' = 'model'
-              AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
-          )
-      `);
-      assert.deepEqual(rowsStillMissingPriority.rows, [{ count: "0" }]);
-      await assertChatEventsAppendOnlyProtection(client, fixture.fastEventId);
+      await rerunChatRunServiceTierMigration(client, migrationSql);
 
       console.log("   ✅ proven fast runs receive priority annotations");
       console.log("   ✅ standard and model-less messages remain unchanged");
       console.log(
-        "   ✅ only snapshot heads covering changed rows are demoted",
+        "   ✅ a concurrently published covering snapshot head is demoted",
       );
       console.log(
         "   ✅ backfill is batched, retryable, and restores append-only protection\n",
