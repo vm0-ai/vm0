@@ -149,9 +149,8 @@ function publicConnectorStatusItem(
 function mockConnectorCatalogStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: [...connectors] });
-  });
+  // Register the dynamic slug route first so the subsequently registered
+  // static /status route takes precedence in runtime MSW handlers.
   context.mocks.api(zeroConnectorCatalogContract.get, ({ params, respond }) => {
     const connector = connectors.find((candidate) => {
       return candidate.slug === params.connectorSlug;
@@ -161,6 +160,9 @@ function mockConnectorCatalogStatus(
       : respond(404, {
           error: { message: "Connector not found", code: "NOT_FOUND" },
         });
+  });
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [...connectors] });
   });
 }
 
