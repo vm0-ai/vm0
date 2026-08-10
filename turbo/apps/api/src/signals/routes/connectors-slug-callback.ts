@@ -25,7 +25,7 @@ import { optionalEnv } from "../../lib/env";
 import {
   claimConnectorOAuthState,
   getConnectorOAuthStateStatus,
-  type StoredOAuthState,
+  type StoredBuiltinOAuthState,
 } from "../services/connector-oauth-state.service";
 import { authorizeConnectedConnector$ } from "../services/connected-connector-authorization.service";
 import {
@@ -90,14 +90,14 @@ type CompleteOpenIdCallbackInput = {
 type ResolveCallbackStateInput = {
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly storedState: StoredOAuthState;
+  readonly storedState: StoredBuiltinOAuthState;
   readonly resolver: ConnectorActionResolver;
 };
 
 type ResolveOpenIdCallbackStateInput = {
   readonly origin: string;
   readonly connectorSlug: ConnectorSlug;
-  readonly storedState: StoredOAuthState;
+  readonly storedState: StoredBuiltinOAuthState;
   readonly resolver: ConnectorActionResolver;
 };
 
@@ -135,7 +135,7 @@ type ResolvedOpenIdCallbackState =
 type ClaimedCallbackState =
   | {
       readonly ok: true;
-      readonly storedState: StoredOAuthState;
+      readonly storedState: StoredBuiltinOAuthState;
     }
   | {
       readonly ok: false;
@@ -307,7 +307,10 @@ async function claimStoredOAuthStateForCallback(
 ): Promise<ClaimedCallbackState> {
   const storedStateResolution = await claimConnectorOAuthState(
     args.db,
-    { state: args.state, connectorSlug: args.connectorSlug },
+    {
+      state: args.state,
+      target: { kind: "builtin", connectorSlug: args.connectorSlug },
+    },
     signal,
   );
   if (storedStateResolution.kind === "invalid") {

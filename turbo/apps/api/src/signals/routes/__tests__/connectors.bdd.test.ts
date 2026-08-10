@@ -1755,6 +1755,149 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(member, agent.agentId);
   });
 
+  it("keeps OAuth callback state scoped to its Builtin or Custom target", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    mockGitHubConnectorOAuth();
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+    });
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const owner = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    const peer = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    const host = uniqueSlug("oauth-state").slice(1);
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD OAuth State Connector",
+      prefixTemplates: [`https://${host}.example.test/v1/`],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "bdd-oauth-state-client-id",
+        clientSecret: "bdd-oauth-state-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+
+    const customAuthorizationUrl =
+      await connectorsApi.startCustomConnectorOAuth2(owner, connector.id);
+    const customState = stateFromAuthorizationUrl(customAuthorizationUrl);
+    const wrongBuiltinCallback = await connectorsApi.completeOauthCallback(
+      "github",
+      { code: "wrong-source-code", state: customState },
+    );
+    expectConnectorErrorRedirect(wrongBuiltinCallback, {
+      connectorSlug: "github",
+      message: "Invalid state - please try again",
+    });
+
+    const customSuccess =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "custom-success-code",
+        state: customState,
+      });
+    expect(customSuccess.body).toStrictEqual({
+      status: "success",
+      username: null,
+    });
+    const ownerConnectors = await connectorsApi.listCustomConnectors(owner);
+    expect(
+      ownerConnectors.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({ connected: true });
+    const peerConnectors = await connectorsApi.listCustomConnectors(peer);
+    expect(
+      peerConnectors.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({ connected: false });
+
+    const customReplay =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "custom-replay-code",
+        state: customState,
+      });
+    expect(customReplay.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+
+    const builtinAuthorization = await connectorsApi.startOauth(
+      peer,
+      "github",
+      "oauth",
+    );
+    const builtinState = stateFromAuthorizationUrl(
+      builtinAuthorization.authorizationUrl,
+    );
+    const wrongCustomCallback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "wrong-custom-source-code",
+        state: builtinState,
+      });
+    expect(wrongCustomCallback.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+
+    const builtinSuccess = await connectorsApi.completeOauthCallback("github", {
+      code: "github-correct-source-code",
+      state: builtinState,
+    });
+    expect(redirectLocation(builtinSuccess).pathname).toBe(
+      "/connector/success",
+    );
+    await expect(
+      connectorsApi.readConnectorBySlug(peer, "github"),
+    ).resolves.toMatchObject({
+      slug: "github",
+      connectionStatus: "connected",
+    });
+
+    const expiringAuthorizationUrl =
+      await connectorsApi.startCustomConnectorOAuth2(peer, connector.id);
+    const expiringState = stateFromAuthorizationUrl(expiringAuthorizationUrl);
+    mockNow(now() + 16 * 60 * 1000);
+    const expired =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "expired-custom-code",
+        state: expiringState,
+      });
+    clearMockNow();
+    expect(expired.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+    const peerAfterExpiry = await connectorsApi.listCustomConnectors(peer);
+    expect(
+      peerAfterExpiry.find((candidate) => {
+        return candidate.id === connector.id;
+      }),
+    ).toMatchObject({ connected: false });
+
+    await connectorsApi.deleteConnectorBySlug(peer, "github");
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+  });
+
   it("updates OAuth settings and preserves member OAuth data as incompatible", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);

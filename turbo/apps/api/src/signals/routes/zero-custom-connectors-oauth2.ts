@@ -9,8 +9,8 @@ import { setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
-  claimCustomConnectorOAuthState,
-  type StoredOAuthState,
+  claimConnectorOAuthState,
+  type StoredCustomConnectorOAuthState,
 } from "../services/connector-oauth-state.service";
 import { validateConnectorAuthorizationTarget$ } from "../services/connected-connector-authorization.service";
 import {
@@ -121,7 +121,7 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-function validateClaimedState(storedState: StoredOAuthState):
+function validateClaimedState(storedState: StoredCustomConnectorOAuthState):
   | {
       readonly ok: true;
       readonly context: NonNullable<
@@ -139,7 +139,7 @@ function validateClaimedState(storedState: StoredOAuthState):
 async function authorizeCustomConnectorAgent(
   args: {
     readonly db: Db;
-    readonly state: StoredOAuthState;
+    readonly state: StoredCustomConnectorOAuthState;
     readonly connectorId: string;
   },
   signal: AbortSignal,
@@ -183,9 +183,9 @@ const completeOAuth2Callback$ = command(
     if (!query.state) {
       return callbackError(origin, "Missing OAuth state");
     }
-    const claimed = await claimCustomConnectorOAuthState(
+    const claimed = await claimConnectorOAuthState(
       set(writeDb$),
-      { state: query.state },
+      { state: query.state, target: { kind: "custom" } },
       signal,
     );
     signal.throwIfAborted();
