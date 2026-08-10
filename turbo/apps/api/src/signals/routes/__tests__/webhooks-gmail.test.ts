@@ -658,12 +658,16 @@ describe("POST /api/webhooks/gmail", () => {
     );
     expect(watch.calls).toBe(1);
 
-    await connectGmail(actor, gmailEmail, "gmail-account-one");
+    const renamedGmailEmail = `renamed-${gmailEmail}`;
+    await connectGmail(actor, renamedGmailEmail, "gmail-account-one");
     const sameAccountConnection = await connectorsApi.readConnectorBySlug(
       actor,
       "gmail",
     );
-    expect(sameAccountConnection.id).toBe(initialConnection.id);
+    expect(sameAccountConnection).toMatchObject({
+      id: initialConnection.id,
+      externalEmail: renamedGmailEmail,
+    });
     const sameAccountEvent = await postGmailWebhook(
       gmailPushBody({
         emailAddress: gmailEmail,
