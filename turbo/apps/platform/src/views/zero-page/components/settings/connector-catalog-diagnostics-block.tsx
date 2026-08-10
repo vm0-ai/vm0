@@ -504,11 +504,7 @@ export function ConnectorCatalogDiagnosticsBlock() {
     >
       <div className="shrink-0">
         <div className="flex h-7 w-7 items-center justify-center">
-          <Database
-            size={22}
-            strokeWidth={1.5}
-            className="text-muted-foreground"
-          />
+          <Database size={22} className="text-muted-foreground" />
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">

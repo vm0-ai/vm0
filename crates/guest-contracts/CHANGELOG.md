@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.7.0...guest-contracts-v0.7.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** preserve sidecar export failure causes ([#25999](https://github.com/vm0-ai/vm0/issues/25999)) ([76c5c0a](https://github.com/vm0-ai/vm0/commit/76c5c0a8470eecbce17615134b3a6f6c306a98a9))
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.6.1...guest-contracts-v0.7.0) (2026-08-09)
 
 

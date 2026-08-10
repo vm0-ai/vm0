@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { agentById, currentAgentId$ } from "../agent.ts";
+import { currentAgentId$ } from "../agent.ts";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
@@ -96,7 +96,6 @@ function createAgentComposerSignalsWithDraft(
   agentId: string,
   agentDraft: EnsuredAgentDraft,
 ) {
-  const agent$ = agentById(agentId);
   const submitMessage$ = command(
     async (
       { get, set },
@@ -140,7 +139,7 @@ function createAgentComposerSignalsWithDraft(
   );
 
   return createComposerSignals({
-    agent$,
+    agentId,
     draft: {
       signals: agentDraft.draft,
       save$: agentDraft.queueDraftSync$,
@@ -159,7 +158,7 @@ function createAgentComposerSignalsWithDraft(
     cancelRun$: noOpAction$,
     cancellationRecoveryPending$: idle$,
     removeQueuedMessage$: noOpEventAction$,
-    removeWorkflowEvent$: noOpEventAction$,
+    removeAutomationEvent$: noOpEventAction$,
     cancelActiveGoal$: noOpAction$,
     openActiveGoal$: noOp$,
   });

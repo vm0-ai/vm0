@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.162.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.4...runner-rs-v0.162.5) (2026-08-10)
+
+
+### Bug Fixes
+
+* **python:** lint annotation-only metadata subscripts ([#26004](https://github.com/vm0-ai/vm0/issues/26004)) ([3ef3077](https://github.com/vm0-ai/vm0/commit/3ef307722af77d85af87ea21fe03cf1796670fdc))
+* **runner:** preserve sidecar export failure causes ([#25999](https://github.com/vm0-ai/vm0/issues/25999)) ([76c5c0a](https://github.com/vm0-ai/vm0/commit/76c5c0a8470eecbce17615134b3a6f6c306a98a9))
+
+## [0.162.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.3...runner-rs-v0.162.4) (2026-08-10)
+
+
+### Documentation
+
+* **python:** document catalog cache lifecycle ([#25988](https://github.com/vm0-ai/vm0/issues/25988)) ([56acb90](https://github.com/vm0-ai/vm0/commit/56acb90b0b3cd796186859ff3c2085c0805f6734))
+
+
+### Refactoring
+
+* **python:** centralize usage counter ownership ([#25987](https://github.com/vm0-ai/vm0/issues/25987)) ([bde3f23](https://github.com/vm0-ai/vm0/commit/bde3f23548737c9293bc8c4697db1c5059a1d74f))
+
 ## [0.162.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.2...runner-rs-v0.162.3) (2026-08-10)
 
 

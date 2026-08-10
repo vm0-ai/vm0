@@ -368,8 +368,8 @@ class TestRunnerUsageFlushSignal:
 
         def flush_usage_events(*, trigger: str) -> int:
             assert trigger == "runner"
-            usage.counters.increment_pending_reports()
-            usage.counters.decrement_pending_reports()
+            pending_report = usage.counters.admit_pending_report()
+            pending_report.release()
             flushed.set()
             return 0
 
@@ -584,7 +584,7 @@ class TestRunnerUsageFlushSignal:
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):
         snapshotted = threading.Event()
-        usage.counters.increment_pending_reports()
+        pending_report = usage.counters.admit_pending_report()
         runner_usage_flush_files.write_usage_flush_request()
 
         original_write_pending_snapshot = usage.write_pending_snapshot
@@ -617,6 +617,7 @@ class TestRunnerUsageFlushSignal:
             reports=1,
             flush_request_id="request-1",
         )
+        pending_report.release()
 
     def test_jsonl_watcher_acknowledges_flush_request(
         self, runner_usage_flush_files: RunnerUsageFlushFiles

@@ -7,7 +7,6 @@ import {
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
@@ -80,12 +79,6 @@ function resolveMacControlLineNavigation(
 interface ComposerSuggestionRange {
   readonly start: number;
   readonly end: number;
-}
-
-function resolvedAgentId(
-  agent: ZeroAgentResponse | undefined,
-): string | undefined {
-  return agent?.agentId;
 }
 
 interface ComposerSuggestionCaretVirtualRef {
@@ -307,7 +300,7 @@ function useComposerSuggestionMenu({
   const insertWorkflow = useSet(composer.workflow.insertWorkflow$);
   const insertAgent = useSet(composer.suggestion.insertAgent$);
   const insertChatThread = useSet(composer.suggestion.insertChatThread$);
-  const currentAgentId = resolvedAgentId(useLastResolved(composer.agent$));
+  const currentAgentId = composer.agentId;
   const workflowsLoadable = useLastLoadable(composer.workflow.workflows$);
   const workflows = buildComposerSlashWorkflows({
     agentId: currentAgentId,

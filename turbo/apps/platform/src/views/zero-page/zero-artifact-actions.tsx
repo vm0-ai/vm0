@@ -328,7 +328,7 @@ export function ArtifactShareButton({
         title={publicAttachmentUrl(url)}
         className={iconButtonClassName(className)}
       >
-        <Share size={iconSize} strokeWidth={1.5} />
+        <Share size={iconSize} />
       </a>
     </ArtifactActionTooltip>
   );
@@ -434,7 +434,7 @@ function GoogleDriveDisabledMenuItem({
       className={muted ? "text-muted-foreground" : ""}
       disabled
     >
-      <BrandGoogleDrive size={14} strokeWidth={1.5} />
+      <BrandGoogleDrive size={14} />
       {text}
     </ArtifactDownloadMenuItem>
   );
@@ -531,7 +531,7 @@ function GoogleDriveMenuItem({
   if (googleDriveReady) {
     return (
       <ArtifactDownloadMenuItem onClick={syncOrConnect}>
-        <BrandGoogleDrive size={14} strokeWidth={1.5} />
+        <BrandGoogleDrive size={14} />
         {t(($) => {
           return $.artifacts.googleDrive.upload;
         })}
@@ -550,7 +550,7 @@ function GoogleDriveMenuItem({
             }
             onClick={syncOrConnect}
           >
-            <BrandGoogleDrive size={14} strokeWidth={1.5} />
+            <BrandGoogleDrive size={14} />
             {t(($) => {
               return $.artifacts.googleDrive.connect;
             })}
@@ -608,9 +608,9 @@ function ArtifactDownloadTrigger({
       )}
     >
       {downloadPending ? (
-        <Loader2 size={iconSize} strokeWidth={1.5} className="animate-spin" />
+        <Loader2 size={iconSize} className="animate-spin" />
       ) : (
-        <Download size={iconSize} strokeWidth={1.5} />
+        <Download size={iconSize} />
       )}
     </button>
   );
@@ -737,7 +737,7 @@ export function ArtifactDownloadMenu({
             });
           }}
         >
-          <Download size={14} strokeWidth={1.5} />
+          <Download size={14} />
           {t(($) => {
             return $.artifacts.actions.download;
           })}

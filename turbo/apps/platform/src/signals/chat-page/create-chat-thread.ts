@@ -56,7 +56,6 @@ import {
   type UserMessageInputDocument,
   type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   chatEventCompatibilityRole,
   foldLatestChatUsageByRunId,
@@ -69,14 +68,12 @@ import type { ModelProviderSelection } from "../../views/zero-page/components/mo
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { agentById } from "../agent.ts";
 import {
   codexFastModeEnabled$,
   featureSwitch$,
   imageRecognitionAvailable$,
 } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
-import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -676,49 +673,8 @@ function createComputerUseHostSelection(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Sub-factory: agent info
-// ---------------------------------------------------------------------------
-
-function createAgentInfoSignals(threadMeta$: Computed<ThreadMeta | null>) {
-  // agentId$ is read by avatar and pinned UI on first paint.
-  // Resolving it via threadMeta$ avoids blocking the avatar render on the
-  // chat-threads/:id round-trip, even though the agentId rarely changes
-  // for a given thread.
-  const agentId$ = computed((get): string | null => {
-    return get(threadMeta$)?.agentId ?? null;
-  });
-
-  const agent$ = computed(async (get): Promise<ZeroAgentResponse> => {
-    const agentId = get(agentId$);
-    if (!agentId) {
-      throw new Error("Chat thread requires an active agent");
-    }
-    return await get(agentById(agentId));
-  });
-
-  const agentDisplayName$ = computed(async (get): Promise<string | null> => {
-    return (await get(agent$)).displayName ?? null;
-  });
-
-  const agentPinned$ = computed(async (get): Promise<boolean | null> => {
-    const agentId = await get(agentId$);
-    if (!agentId) {
-      return null;
-    }
-    const ids = await get(pinnedAgentIds$);
-    return ids.includes(agentId);
-  });
-
-  return { agent$, agentId$, agentDisplayName$, agentPinned$ };
-}
-
-function createThreadOwnedSignals(
-  threadId: string,
-  threadMeta$: Computed<ThreadMeta | null>,
-) {
+function createThreadOwnedSignals(threadId: string) {
   return {
-    ...createAgentInfoSignals(threadMeta$),
     headerAutomations: createHeaderAutomationSignals(threadId),
     ...createThreadUIState(),
   };
@@ -2585,8 +2541,8 @@ function sendRuntimeOptions(
 }
 
 interface SendMessageDeps {
-  threadId: string;
-  agentId$: Computed<string | null>;
+  readonly threadId: string;
+  readonly agentId: string;
   modelSelectionForSend$: Command<
     Promise<ModelProviderSelection | null>,
     [AbortSignal]
@@ -2693,7 +2649,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
 }
 
 function createSendMessage(deps: SendMessageDeps) {
-  const { threadId, agentId$, modelSelectionForSend$ } = deps;
+  const { threadId, agentId, modelSelectionForSend$ } = deps;
   const performSendMessage$ = createPerformSendMessage(deps);
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -2706,11 +2662,6 @@ function createSendMessage(deps: SendMessageDeps) {
     ): Promise<boolean> => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
       if (get(optimisticCreateUnsettled$)) {
-        return false;
-      }
-      const agentId = get(agentId$);
-      if (!agentId) {
-        L.debug("sendMessage$ no agentId, abort", { threadId });
         return false;
       }
       const modelSelection = await set(modelSelectionForSend$, signal);
@@ -2730,8 +2681,8 @@ function createSendMessage(deps: SendMessageDeps) {
 }
 
 interface QueueMessageDeps {
-  threadId: string;
-  agentId$: Computed<string | null>;
+  readonly threadId: string;
+  readonly agentId: string;
   modelSelectionForSend$: Command<
     Promise<ModelProviderSelection | null>,
     [AbortSignal]
@@ -2748,7 +2699,7 @@ interface QueueMessageDeps {
 function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
-    agentId$,
+    agentId,
     modelSelectionForSend$,
     draft,
     cancelDraftSync$,
@@ -2769,11 +2720,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ optimistic thread create unsettled, abort", {
           threadId,
         });
-        return false;
-      }
-      const agentId = get(agentId$);
-      if (!agentId) {
-        L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return false;
       }
       const modelSelection = await set(modelSelectionForSend$, signal);
@@ -2836,8 +2782,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
 }
 
 interface RecallMessageDeps {
-  threadId: string;
-  agentId$: Computed<string | null>;
+  readonly threadId: string;
+  readonly agentId: string;
   chatEvents$: Computed<ChatEvent[]>;
   draft: DraftSignals;
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
@@ -2848,7 +2794,7 @@ interface RecallMessageDeps {
 }
 
 function createRecallMessage(deps: RecallMessageDeps) {
-  const { agentId$, chatEvents$, draft, queueDraftSync$, sendEvent$ } = deps;
+  const { agentId, chatEvents$, draft, queueDraftSync$, sendEvent$ } = deps;
 
   return command(async ({ get, set }, eventId: string, signal: AbortSignal) => {
     const event = queuedEventsFromChatEvents(get(chatEvents$)).find(
@@ -2859,11 +2805,6 @@ function createRecallMessage(deps: RecallMessageDeps) {
     if (!event || event.eventType !== "input.prompt") {
       return;
     }
-    const agentId = get(agentId$);
-    if (!agentId) {
-      return;
-    }
-
     const userMessage = event.userMessage;
     const templatePart = userMessage.parts.find((part) => {
       return part.type === "template";
@@ -2894,7 +2835,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
 }
 
 function createSkipAutomationEvent({
-  agentId$,
+  agentId,
   chatEvents$,
   sendEvent$,
 }: RecallMessageDeps) {
@@ -2912,8 +2853,7 @@ function createSkipAutomationEvent({
           );
         },
       );
-      const agentId = get(agentId$);
-      if (!event || !agentId) {
+      if (!event) {
         return;
       }
 
@@ -2952,12 +2892,12 @@ function createThreadMessageActions(deps: MessageCommandsDeps) {
 
 function createCancelRunWithQueuedRecall({
   threadId,
-  agentId$,
+  agentId,
   chatEvents$,
   sendEvent$,
 }: {
-  threadId: string;
-  agentId$: Computed<string | null>;
+  readonly threadId: string;
+  readonly agentId: string;
   chatEvents$: Computed<ChatEvent[]>;
   sendEvent$: Command<
     Promise<SendChatEventResult>,
@@ -2973,11 +2913,6 @@ function createCancelRunWithQueuedRecall({
       });
       return;
     }
-    const agentId = get(agentId$);
-    if (!agentId) {
-      return;
-    }
-
     const chatEvents = get(chatEvents$);
     const queuedEvents = queuedEventsFromChatEvents(chatEvents).filter(
       (event) => {
@@ -3606,7 +3541,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
 
 interface CreateChatThreadComposerSignalsOptions {
   readonly chatEvents: ChatEventSignals;
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly agentId: string;
   readonly draft: DraftSignals;
   readonly queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   readonly modelSelection: ReturnType<typeof createModelSelection>;
@@ -3619,8 +3554,7 @@ interface CreateChatThreadComposerSignalsOptions {
 
 interface ChatThreadComposerContext {
   readonly threadMeta$: Computed<ThreadMeta | null>;
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
-  readonly agentId$: Computed<string | null>;
+  readonly agentId: string;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
 }
 
@@ -3685,7 +3619,7 @@ function createThreadPendingActionSignals(
       await set(messageActions.recallMessage$, eventId, signal);
     },
   );
-  const removeWorkflowEvent$ = command(
+  const removeAutomationEvent$ = command(
     async ({ set }, eventId: string, signal: AbortSignal): Promise<void> => {
       await set(messageActions.skipAutomationEvent$, eventId, signal);
     },
@@ -3700,7 +3634,7 @@ function createThreadPendingActionSignals(
   });
   return {
     removeQueuedMessage$,
-    removeWorkflowEvent$,
+    removeAutomationEvent$,
     cancelActiveGoal$,
     openActiveGoal$,
   };
@@ -3722,7 +3656,7 @@ function createChatThreadComposerSignals(
     },
   );
   return createComposerSignals({
-    agent$: options.agent$,
+    agentId: options.agentId,
     draft: {
       signals: options.draft,
       save$: options.queueDraftSync$,
@@ -3761,7 +3695,7 @@ function createThreadComposerSignalsWithContext(
     createDraftSync(threadId, draft);
   const messageActions = createThreadMessageActions({
     threadId,
-    agentId$: context.agentId$,
+    agentId: context.agentId,
     modelSelectionForSend$,
     chatEvents$: chatEvents.chatEvents$,
     draft,
@@ -3772,7 +3706,7 @@ function createThreadComposerSignalsWithContext(
   });
   return createChatThreadComposerSignals({
     chatEvents,
-    agent$: context.agent$,
+    agentId: context.agentId,
     draft,
     queueDraftSync$,
     modelSelection,
@@ -3789,18 +3723,17 @@ function createThreadComposerSignalsWithContext(
  */
 export function createThreadComposerSignals(
   threadId: string,
+  agentId: string,
   chatEvents: ChatEventSignals,
 ): ComposerSignals {
   const threadMeta$ = createThreadMeta(threadId);
-  const agent = createAgentInfoSignals(threadMeta$);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
   return createThreadComposerSignalsWithContext(
     threadId,
     chatEvents,
     {
       threadMeta$,
-      agent$: agent.agent$,
-      agentId$: agent.agentId$,
+      agentId,
       cancellationRecoveryPending$: cancellationRecovery.pending$,
     },
     createDraftSignals(),
@@ -3809,6 +3742,7 @@ export function createThreadComposerSignals(
 
 function createChatPanelSignalsWithDraft(
   chatEvents: ChatEventSignals,
+  agentId: string,
   draft: DraftSignals,
   signal: AbortSignal,
 ): ChatPanelSignals {
@@ -3819,15 +3753,14 @@ function createChatPanelSignalsWithDraft(
   const threadTitle = createThreadTitleParts(threadMeta$);
   const threadSettledInServer$ = createThreadSettledInServer(threadId);
   const container = createChatThreadContainerSignals();
-  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
+  const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
   const composer = createThreadComposerSignalsWithContext(
     threadId,
     chatEvents,
     {
       threadMeta$,
-      agent$: threadOwned.agent$,
-      agentId$: threadOwned.agentId$,
+      agentId,
       cancellationRecoveryPending$: cancellationRecovery.pending$,
     },
     draft,
@@ -3855,6 +3788,7 @@ function createChatPanelSignalsWithDraft(
   });
   return {
     threadId,
+    agentId,
     signal,
     threadDraft$,
     threadMeta$,
@@ -3891,20 +3825,32 @@ function createChatPanelSignalsWithDraft(
  */
 export function createChatPanelSignals(
   chatEvents: ChatEventSignals,
+  agentId: string,
   signal: AbortSignal,
 ): ChatPanelSignals {
   return createChatPanelSignalsWithDraft(
     chatEvents,
+    agentId,
     createDraftSignals(),
     signal,
   );
 }
 
 export const createCachedChatPanelSignals$ = command(
-  ({ set }, chatEvents: ChatEventSignals, signal: AbortSignal) => {
+  (
+    { set },
+    chatEvents: ChatEventSignals,
+    agentId: string,
+    signal: AbortSignal,
+  ) => {
     const { draft, isNew } = set(ensureDraft$, chatEvents.threadId);
     return {
-      thread: createChatPanelSignalsWithDraft(chatEvents, draft, signal),
+      thread: createChatPanelSignalsWithDraft(
+        chatEvents,
+        agentId,
+        draft,
+        signal,
+      ),
       isNew,
     };
   },

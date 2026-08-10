@@ -83,9 +83,7 @@ export function AgentDialogSearch({
       <div className="relative w-full">
         <Search
           size={16}
-          strokeWidth={2}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          data-stroke
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
         />
         <Input
           type="text"
@@ -109,7 +107,7 @@ export function AgentDialogSearch({
               return $.sidebar.clearSearch;
             })}
           >
-            <X size={14} strokeWidth={2} data-stroke />
+            <X size={14} />
           </button>
         )}
       </div>
@@ -204,7 +202,7 @@ function AgentCommandSearch({
               return $.sidebar.clearSearch;
             })}
           >
-            <X size={14} strokeWidth={2} data-stroke />
+            <X size={14} />
           </button>
         )}
       </div>
@@ -405,7 +403,7 @@ function PinnedAgentCommandItem({
                 return $.sidebar.unpin;
               }),
               disabled,
-              icon: <PinOff size={16} strokeWidth={2} data-stroke />,
+              icon: <PinOff size={16} />,
               onSelect: onUnpin,
             }}
           />
@@ -557,7 +555,7 @@ function UnpinnedAgentsCommandSection({
                     return $.sidebar.pin;
                   }),
                   disabled,
-                  icon: <Pin size={16} strokeWidth={2} data-stroke />,
+                  icon: <Pin size={16} />,
                   onSelect: () => {
                     return onTogglePin(agent.id);
                   },
@@ -874,11 +872,7 @@ function UnifiedAgentCommandItem({
                     return pinned ? $.sidebar.unpin : $.sidebar.pin;
                   }),
                   disabled: saving,
-                  icon: pinned ? (
-                    <PinOff size={16} strokeWidth={2} data-stroke />
-                  ) : (
-                    <Pin size={16} strokeWidth={2} data-stroke />
-                  ),
+                  icon: pinned ? <PinOff size={16} /> : <Pin size={16} />,
                   onSelect: () => {
                     return onTogglePin(agentId);
                   },

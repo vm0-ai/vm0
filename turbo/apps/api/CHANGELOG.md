@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.411.7](https://github.com/vm0-ai/vm0/compare/api-v1.411.6...api-v1.411.7) (2026-08-10)
+
+
+### Bug Fixes
+
+* **stripe:** wire automation webhook endpoint ([#25998](https://github.com/vm0-ai/vm0/issues/25998)) ([7f33387](https://github.com/vm0-ai/vm0/commit/7f333874b936877225564b5785177bea08f01bdb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.3
+
+## [1.411.6](https://github.com/vm0-ai/vm0/compare/api-v1.411.5...api-v1.411.6) (2026-08-10)
+
+
+### Bug Fixes
+
+* **api:** restrict PiLoop to DeepSeek V4 Flash ([#25991](https://github.com/vm0-ai/vm0/issues/25991)) ([5a008eb](https://github.com/vm0-ai/vm0/commit/5a008eb7c154342e33b779b6449ef3649149dc5b))
+
+
+### Refactoring
+
+* remove quickbooks connector feature switch ([#25986](https://github.com/vm0-ai/vm0/issues/25986)) ([15ed1bb](https://github.com/vm0-ai/vm0/commit/15ed1bb92c990a668c7f1b590f2e2e6abbfb6bd4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.535.1
+    * @vm0/db bumped to 1.182.5
+
 ## [1.411.5](https://github.com/vm0-ai/vm0/compare/api-v1.411.4...api-v1.411.5) (2026-08-10)
 
 

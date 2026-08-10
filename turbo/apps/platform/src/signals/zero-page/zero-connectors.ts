@@ -2,7 +2,6 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
@@ -164,23 +163,11 @@ function initialComposerConnectorUiState(): ComposerConnectorUiState {
   };
 }
 
-function createAgentIdSignal(
-  agent$: Computed<Promise<ZeroAgentResponse>>,
-): Computed<Promise<string>> {
-  return computed(async (get): Promise<string> => {
-    return (await get(agent$)).agentId;
-  });
-}
-
 function createConnectorAuthorizationSignal(
-  agentId$: Computed<Promise<string>>,
+  agentId: string,
 ): Computed<Promise<ComposerConnectorAuthorizationState>> {
-  const authorizations$ = computed(async (get) => {
-    const agentId = await get(agentId$);
-    return await get(agentConnectorAuthorizations({ agentId }));
-  });
+  const authorizations$ = agentConnectorAuthorizations({ agentId });
   const customAuthorizations$ = computed(async (get) => {
-    const agentId = await get(agentId$);
     const reloadGeneration = get(customConnectorAuthorizationReloadVersion$);
     return await get(agentCustomConnectorAuthorizationRequestBroker$).load({
       createClient: get(zeroClient$),
@@ -203,7 +190,7 @@ function createConnectorAuthorizationSignal(
 }
 
 function createBuiltinConnectorAuthorizationCommand(
-  agentId$: Computed<Promise<string>>,
+  agentId: string,
 ): Command<Promise<void>, [ConnectorSlug, boolean, AbortSignal]> {
   return command(
     async (
@@ -212,7 +199,6 @@ function createBuiltinConnectorAuthorizationCommand(
       authorized: boolean,
       signal: AbortSignal,
     ): Promise<void> => {
-      const agentId = await get(agentId$);
       signal.throwIfAborted();
       const client = get(zeroClient$)(zeroUserConnectorsContract);
       await withCleanup(
@@ -239,7 +225,7 @@ function createBuiltinConnectorAuthorizationCommand(
 }
 
 function createCustomConnectorAuthorizationCommand(
-  agentId$: Computed<Promise<string>>,
+  agentId: string,
 ): Command<Promise<void>, [string, boolean, AbortSignal]> {
   return command(
     async (
@@ -248,7 +234,6 @@ function createCustomConnectorAuthorizationCommand(
       authorized: boolean,
       signal: AbortSignal,
     ): Promise<void> => {
-      const agentId = await get(agentId$);
       signal.throwIfAborted();
       const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
       await withCleanup(
@@ -272,12 +257,12 @@ function createCustomConnectorAuthorizationCommand(
 }
 
 function createConnectorAuthorizationCommand(
-  agentId$: Computed<Promise<string>>,
+  agentId: string,
 ): ComposerConnectorSignals["setConnectorAuthorization$"] {
   const setBuiltinAuthorization$ =
-    createBuiltinConnectorAuthorizationCommand(agentId$);
+    createBuiltinConnectorAuthorizationCommand(agentId);
   const setCustomAuthorization$ =
-    createCustomConnectorAuthorizationCommand(agentId$);
+    createCustomConnectorAuthorizationCommand(agentId);
   return command(
     async (
       { set },
@@ -323,9 +308,8 @@ function createConnectorUiSignals(): Pick<
 }
 
 export function createComposerConnectorSignals(
-  agent$: Computed<Promise<ZeroAgentResponse>>,
+  agentId: string,
 ): ComposerConnectorSignals {
-  const agentId$ = createAgentIdSignal(agent$);
   const ui = createConnectorUiSignals();
   const connectorPermissionMetadata$ = computed(async (get) => {
     const connectorSlug = get(ui.connectorUiState$).permissionConnectorSlug;
@@ -336,14 +320,13 @@ export function createComposerConnectorSignals(
   });
   const connectorPermissionGrants$ = computed(
     async (get): Promise<readonly PlatformUserPermissionGrant[]> => {
-      const agentId = await get(agentId$);
       return await get(userPermissionGrantsByAgent({ agentId }));
     },
   );
 
   return {
-    connectorAuthorization$: createConnectorAuthorizationSignal(agentId$),
-    setConnectorAuthorization$: createConnectorAuthorizationCommand(agentId$),
+    connectorAuthorization$: createConnectorAuthorizationSignal(agentId),
+    setConnectorAuthorization$: createConnectorAuthorizationCommand(agentId),
     ...ui,
     connectorPermissionMetadata$,
     connectorPermissionGrants$,

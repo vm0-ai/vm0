@@ -70,7 +70,7 @@ function LoadingCard() {
         role="status"
         className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12"
       >
-        <Loader2 size={20} className="animate-spin text-muted-foreground" />
+        <Loader2 size={20} className="animate-spin" />
         <span className="sr-only">
           {t(($) => {
             return $.reportError.loading;

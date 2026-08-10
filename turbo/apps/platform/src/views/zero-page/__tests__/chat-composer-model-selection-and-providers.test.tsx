@@ -11,6 +11,7 @@ import {
   type ChatThreadEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -2383,6 +2384,68 @@ describe("chat composer models", () => {
       expect(screen.getByLabelText("Remove Slack")).toBeInTheDocument();
       expectTextBefore("GitHub", "Slack");
     });
+  });
+
+  it("keeps connector display stable without reloading the agent on same-agent navigation", async () => {
+    let agentRequestCount = 0;
+
+    mockOrgModelRoutes("claude-sonnet-4-6");
+    mockAgent();
+    mockManyConnectedConnectors();
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "First Scout thread" },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Second Scout thread",
+      },
+    ]);
+    context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+      agentRequestCount += 1;
+      return respond(200, {
+        agentId: params.id,
+        ownerId: "test-user-123",
+        displayName: "Scout",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledConnectorSlugs: ["github"] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledIds: [] });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const initialConnectorButton = within(
+      await screen.findByLabelText("Chat thread"),
+    ).getByLabelText("Connectors");
+    await waitFor(() => {
+      expect(initialConnectorButton.querySelector("img")).not.toBeNull();
+    });
+    const settledAgentRequestCount = agentRequestCount;
+
+    await navigateToChatThread(OTHER_AGENT_THREAD_ID);
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText("Chat thread")).getByText(
+          "Second Scout thread",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(agentRequestCount).toBe(settledAgentRequestCount);
+
+    const nextConnectorButton = within(
+      screen.getByLabelText("Chat thread"),
+    ).getByLabelText("Connectors");
+    expect(nextConnectorButton.querySelector("img")).not.toBeNull();
   });
 
   it("keeps connector access resolved across same-agent chat navigation", async () => {

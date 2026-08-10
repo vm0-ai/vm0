@@ -191,6 +191,41 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
     )
 
 
+def test_registered_flow_metadata_guard_flags_annotated_direct_metadata_assignment(
+    tmp_path,
+):
+    source_path = tmp_path / "annotated_direct_metadata_assignment.py"
+    _write_python_source(source_path, "annotated_direct_metadata_assignment.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "annotated_direct_metadata_assignment.expected.txt"
+    )
+
+
+def test_registered_flow_metadata_guard_tracks_keyword_only_default_aliases(tmp_path):
+    source_path = tmp_path / "keyword_only_default_aliases.py"
+    _write_python_source(source_path, "keyword_only_default_aliases.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "keyword_only_default_aliases.expected.txt"
+    )
+
+
+def test_registered_flow_metadata_guard_flags_annotation_only_subscript_targets(tmp_path):
+    source_path = tmp_path / "annotation_only_subscript_targets.py"
+    _write_python_source(source_path, "annotation_only_subscript_targets.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "annotation_only_subscript_targets.expected.txt"
+    )
+
+
 def test_registered_flow_metadata_guard_flags_match_or_pattern_keys(tmp_path):
     source_path = tmp_path / "match_or_pattern_keys.py"
     _write_python_source(source_path, "match_or_pattern_keys.base.py.txt")

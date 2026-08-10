@@ -281,7 +281,7 @@ function ArtifactDialogSplitViewButton({ onClick }: { onClick: () => void }) {
       })}
       onClick={onClick}
     >
-      <Columns2 size={18} strokeWidth={1.8} />
+      <Columns2 size={18} />
     </DialogIconButton>
   );
 }
@@ -307,11 +307,7 @@ function ArtifactDialogFullscreenButton({
       }
       onClick={onClick}
     >
-      {fullscreen ? (
-        <Minimize2 size={18} strokeWidth={1.8} />
-      ) : (
-        <Maximize2 size={18} strokeWidth={1.8} />
-      )}
+      {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
     </DialogIconButton>
   );
 }
@@ -410,7 +406,7 @@ function artifactDialogMetadataFromItem(params: {
 function ArtifactDialogLoadingBody() {
   return (
     <div className="flex h-full items-center justify-center p-6 text-muted-foreground">
-      <Loader2 size={20} strokeWidth={1.8} className="animate-spin" />
+      <Loader2 size={20} className="animate-spin" />
     </div>
   );
 }
@@ -536,7 +532,7 @@ function ArtifactDialogImageZoomControls({
           return $.artifacts.actions.resetZoom;
         })}
       >
-        <RotateCcw size={15} strokeWidth={1.8} />
+        <RotateCcw size={15} />
       </button>
     </div>
   );
@@ -567,7 +563,7 @@ function ArtifactDialogImageNavigationControls({
           data-testid="artifact-dialog-previous-image"
           className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
-          <ChevronLeft size={22} strokeWidth={1.8} />
+          <ChevronLeft size={22} />
         </button>
       )}
       {navigation.onNext && (
@@ -583,7 +579,7 @@ function ArtifactDialogImageNavigationControls({
           data-testid="artifact-dialog-next-image"
           className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
-          <ChevronRight size={22} strokeWidth={1.8} />
+          <ChevronRight size={22} />
         </button>
       )}
     </>
@@ -867,7 +863,7 @@ function ArtifactDialogBody({
       <ArtifactDialogStage centered>
         <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
-            <FileMusic size={28} strokeWidth={1.6} />
+            <FileMusic size={28} />
           </span>
           <p className="max-w-full truncate text-sm text-muted-foreground">
             {filename}
@@ -1043,7 +1039,7 @@ function ArtifactPreviewDialogThreadResolver({
   thread: ChatPanelSignals;
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
-  const agentId = useGet(thread.agentId$);
+  const agentId = thread.agentId;
   const eventGroups = useLastResolved(thread.eventImageGroups$, {
     equalityFn: equalEventImageGroups,
   });
@@ -1249,7 +1245,7 @@ function ArtifactPreviewDialogActions({
           closeLightboxWithDialogExit(rootSignal);
         }}
       >
-        <X size={18} strokeWidth={1.8} />
+        <X size={18} />
       </DialogIconButton>
     </div>
   );
@@ -1591,11 +1587,7 @@ function ComposerImagePreviewButton({
         title={filename}
         className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
       >
-        <Image
-          size={20}
-          strokeWidth={1.5}
-          className="text-muted-foreground m-auto h-full"
-        />
+        <Image size={20} className="text-muted-foreground m-auto h-full" />
       </button>
     );
   }
@@ -1623,9 +1615,9 @@ function ComposerImagePreviewButton({
           className="absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground"
         >
           {currentImageStatus === "loading" ? (
-            <Loader2 size={14} strokeWidth={1.8} className="animate-spin" />
+            <Loader2 size={14} className="animate-spin" />
           ) : (
-            <Image size={16} strokeWidth={1.5} />
+            <Image size={16} />
           )}
         </span>
       )}
@@ -1723,7 +1715,7 @@ function AttachmentChip({
               )
         }
       >
-        <X size={9} strokeWidth={2.5} />
+        <X size={9} />
       </button>
     </div>
   );

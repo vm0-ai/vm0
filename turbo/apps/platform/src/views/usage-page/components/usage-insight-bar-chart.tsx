@@ -653,7 +653,6 @@ function ChartSvg({
           x2={tooltip.x}
           y2={CHART_PADDING.top + scales.drawH}
           stroke="hsl(var(--muted-foreground))"
-          strokeWidth={1}
           strokeDasharray="3,3"
           opacity={0.5}
         />

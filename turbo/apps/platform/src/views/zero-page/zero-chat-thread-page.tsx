@@ -304,9 +304,10 @@ import {
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
 import {
-  currentLeftThread$,
-  currentRightThread$,
+  currentLeftPane$,
+  currentRightPane$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
+import type { ChatThreadPaneState } from "../../signals/chat-page/chat-thread-pane-state.ts";
 import {
   focusChatThreadContainer$,
   setChatKeyboardScrollRoot$,
@@ -506,7 +507,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
             })}
             aria-pressed={open}
           >
-            <Package size={17} strokeWidth={1.5} />
+            <Package size={17} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -609,7 +610,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
               openBrowserSidebar(thread.threadId);
             }}
           >
-            <Globe size={18} strokeWidth={1.5} />
+            <Globe size={18} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -715,7 +716,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                     return $.chat.sharing.start;
                   })}
                 >
-                  <Share2 size={18} strokeWidth={1.5} />
+                  <Share2 size={18} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
@@ -850,7 +851,7 @@ function ChatThreadEmojiMenuButton({
                     {emoji}
                   </span>
                 ) : (
-                  <SmilePlus size={18} strokeWidth={1.75} aria-hidden="true" />
+                  <SmilePlus size={18} aria-hidden="true" />
                 )}
               </button>
             </PopoverTrigger>
@@ -1212,9 +1213,9 @@ function ChatImagePreviewLink({
           )}
         >
           {imageStatus === "loading" ? (
-            <Loader2 size={18} strokeWidth={1.8} className="animate-spin" />
+            <Loader2 size={18} className="animate-spin" />
           ) : (
-            <Image size={18} strokeWidth={1.5} />
+            <Image size={18} />
           )}
         </span>
       )}
@@ -1313,7 +1314,7 @@ function ChatVideoPreviewButton({
       )}
       <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-          <Play size={17} strokeWidth={1.8} />
+          <Play size={17} />
         </span>
       </span>
     </button>
@@ -1880,7 +1881,7 @@ function HeaderWorkflowAutomationCard({
           {t(($) => {
             return $.chat.actions.view;
           })}
-          <ArrowUpRight size={12} strokeWidth={1.5} />
+          <ArrowUpRight size={12} />
         </Link>
       </div>
       <WorkflowAutomationCard
@@ -1921,7 +1922,7 @@ function HeaderWorkflowAutomationCard({
               {running ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : (
-                <Play size={13} strokeWidth={1.5} />
+                <Play size={13} />
               )}
               {running
                 ? t(($) => {
@@ -2627,12 +2628,42 @@ function ChatThread({
   );
 }
 
-function ChatThreadArea({
-  leftThread,
-  rightThread,
+function MissingChatThread({ threadId }: { threadId: string }) {
+  const { t } = useTranslation();
+  return (
+    <section
+      aria-label={t(($) => {
+        return $.chat.thread.ariaLabel;
+      })}
+      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
+      data-chat-thread-container-id={threadId}
+      tabIndex={-1}
+    >
+      <ChatThreadNotFound />
+    </section>
+  );
+}
+
+function ChatThreadPane({
+  isMain,
+  pane,
 }: {
-  leftThread: ChatPanelSignals | null;
-  rightThread: ChatPanelSignals | null;
+  isMain?: boolean;
+  pane: Exclude<ChatThreadPaneState, null>;
+}) {
+  return pane.kind === "thread" ? (
+    <ChatThread isMain={isMain} thread={pane.thread} />
+  ) : (
+    <MissingChatThread threadId={pane.threadId} />
+  );
+}
+
+function ChatThreadArea({
+  leftPane,
+  rightPane,
+}: {
+  leftPane: ChatThreadPaneState;
+  rightPane: ChatThreadPaneState;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
 
@@ -2641,11 +2672,11 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && <ChatThread isMain thread={leftThread} />}
-      {rightThread && (
+      {leftPane && <ChatThreadPane isMain pane={leftPane} />}
+      {rightPane && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread thread={rightThread} />
+          <ChatThreadPane pane={rightPane} />
         </>
       )}
     </div>
@@ -2663,8 +2694,8 @@ function ThreadAutomationsSidebarSlot({
 
 export function ZeroChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
+  const leftPane = useGet(currentLeftPane$);
+  const rightPane = useGet(currentRightPane$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   return (
     <>
@@ -2687,7 +2718,7 @@ export function ZeroChatThreadPage() {
           ) : null
         }
       >
-        <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
+        <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
       <ChatConnectorActionConnectModal />
@@ -3572,11 +3603,7 @@ function CompletedWorkFoldRow({
         onClick={onToggle}
         className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-state-hover"
       >
-        <Hourglass
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <Hourglass aria-hidden size={14} className="shrink-0" />
         <span className="text-[13px]">{label}</span>
         <ChevronRight
           aria-hidden
@@ -3785,11 +3812,7 @@ function RunGroupFoldRow({
           embedded && "mt-1.5",
         )}
       >
-        <Icon
-          aria-hidden
-          size={14}
-          className="shrink-0 text-muted-foreground/70"
-        />
+        <Icon aria-hidden size={14} className="shrink-0" />
         <span className="min-w-0 truncate whitespace-nowrap text-[13px]">
           {label}
         </span>
@@ -3983,7 +4006,7 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
                   );
                 }}
               >
-                <Copy size={16} strokeWidth={1.7} />
+                <Copy size={16} />
                 {t(($) => {
                   return $.chat.sharing.copyLink;
                 })}
@@ -4034,9 +4057,9 @@ function ChatThreadBottomBar({ thread }: { thread: ChatPanelSignals }) {
               }}
             >
               {creating ? (
-                <Loader2 size={16} strokeWidth={1.7} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" />
               ) : (
-                <Share2 size={16} strokeWidth={1.7} />
+                <Share2 size={16} />
               )}
               {t(($) => {
                 return $.chat.sharing.create;
@@ -4086,22 +4109,22 @@ function RecommendedFollowupIcon({
   followup: RecommendedFollowup;
 }) {
   if (followup.kind !== "generate") {
-    return <MessageCircle size={14} strokeWidth={1.8} />;
+    return <MessageCircle size={14} />;
   }
 
   if (followup.generationType === "image") {
-    return <Image size={14} strokeWidth={1.8} />;
+    return <Image size={14} />;
   }
   if (followup.generationType === "video") {
-    return <Video size={14} strokeWidth={1.8} />;
+    return <Video size={14} />;
   }
   if (followup.generationType === "presentation") {
-    return <ChartLine size={14} strokeWidth={1.8} />;
+    return <ChartLine size={14} />;
   }
   if (followup.generationType === "website") {
-    return <LinkIcon size={14} strokeWidth={1.8} />;
+    return <LinkIcon size={14} />;
   }
-  return <Package size={14} strokeWidth={1.8} />;
+  return <Package size={14} />;
 }
 
 function recommendedFollowupShownKey(
@@ -4221,7 +4244,6 @@ function RecommendedFollowupList({
             </span>
             <ArrowUpRight
               size={14}
-              strokeWidth={1.8}
               className={cn(
                 "shrink-0 text-muted-foreground/60 opacity-0 transition-all group-hover:text-foreground group-hover:opacity-100",
                 showFollowupCards && "hidden",
@@ -4320,12 +4342,7 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId: string }) {
         <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
           {goalLoadable.state === "loading" ? (
             <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
-              <Loader2
-                size={16}
-                strokeWidth={1.7}
-                className="animate-spin"
-                aria-hidden="true"
-              />
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
               <span>
                 {t(($) => {
                   return $.chat.queue.loadingGoal;
@@ -6237,9 +6254,7 @@ function assistantRecoveryResetText(
 }
 
 function AssistantRecoveryActionSpinner({ loading }: { loading: boolean }) {
-  return loading ? (
-    <Loader2 size={14} strokeWidth={1.75} className="animate-spin" />
-  ) : null;
+  return loading ? <Loader2 size={14} className="animate-spin" /> : null;
 }
 
 function AssistantRecoveryActions({
@@ -6340,9 +6355,9 @@ function AssistantErrorRecoveryCard({
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
           {recovery.kind === "usage-limit" ? (
-            <Clock size={17} strokeWidth={1.75} />
+            <Clock size={17} />
           ) : (
-            <AlertCircle size={17} strokeWidth={1.75} />
+            <AlertCircle size={17} />
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -6372,11 +6387,7 @@ function AssistantErrorRecoveryCard({
           </p>
           {resetText && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              <Clock
-                size={14}
-                strokeWidth={1.75}
-                className="text-muted-foreground"
-              />
+              <Clock size={14} className="text-muted-foreground" />
               {resetText}
             </div>
           )}
@@ -6405,7 +6416,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
           borderRadius: "12px",
         }}
       >
-        <Hand size={14} strokeWidth={1.75} className="shrink-0" />
+        <Hand size={14} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.errors.runCancelled;
@@ -6535,7 +6546,7 @@ function AssistantErrorContent({
 
 function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
-  const agentId = useGet(thread.agentId$) ?? "";
+  const agentId = thread.agentId;
   return (
     <Link
       pathname="/agents/:agentId"
@@ -6994,11 +7005,7 @@ function UserMessageActions({
           return $.chat.actions.copyMessage;
         })}
       >
-        {copied ? (
-          <Check size={18} strokeWidth={1.5} />
-        ) : (
-          <Copy size={18} strokeWidth={1.5} />
-        )}
+        {copied ? <Check size={18} /> : <Copy size={18} />}
       </button>
     </div>
   );
@@ -7072,7 +7079,7 @@ function MessageAnnotation({
         className={className}
         title={part.workflowName}
       >
-        <Route size={15} strokeWidth={1.8} className="shrink-0" />
+        <Route size={15} className="shrink-0" />
         <span className="min-w-0 truncate">{part.workflowName}</span>
       </div>
     );
@@ -7085,7 +7092,7 @@ function MessageAnnotation({
         })}
         className={className}
       >
-        <Target size={15} strokeWidth={1.8} className="shrink-0" />
+        <Target size={15} className="shrink-0" />
         <span>
           {t(($) => {
             return $.chat.queue.goal;
@@ -7102,7 +7109,7 @@ function MessageAnnotation({
         })}
         className={className}
       >
-        <Sunrise size={15} strokeWidth={1.8} className="shrink-0" />
+        <Sunrise size={15} className="shrink-0" />
         <span>
           {t(($) => {
             return $.settings.preferences.morningBrief.title;
@@ -7191,7 +7198,7 @@ function SourceMessageAnnotation({
   const content = (
     <>
       {part.kind === "slack" ? (
-        <BrandSlack size={15} strokeWidth={1.8} className="shrink-0" />
+        <BrandSlack size={15} className="shrink-0" />
       ) : (
         <img
           src={annotationIconImgs[part.kind]}
@@ -7204,7 +7211,7 @@ function SourceMessageAnnotation({
         <>
           <span className="shrink-0">·</span>
           <span className="min-w-0 truncate">{openLabel}</span>
-          <ArrowUpRight size={12} strokeWidth={1.5} className="shrink-0" />
+          <ArrowUpRight size={12} className="shrink-0" />
         </>
       ) : null}
     </>
@@ -7321,7 +7328,7 @@ function UserMessageTemplateReference({
         spec === null ? label : `${label} · ${videoTemplateSpecText(spec)}`
       }
     >
-      <SwatchBook size={13} strokeWidth={1.7} className="shrink-0" />
+      <SwatchBook size={13} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
       {spec !== null && <SentVideoTemplateSpec spec={spec} />}
     </span>
@@ -7424,7 +7431,7 @@ function UserMessageChatThreadReference({
       className={STRUCTURED_INLINE_LINK_REFERENCE_CLASS}
       title={title}
     >
-      <MessageCircle size={13} strokeWidth={1.7} className="shrink-0" />
+      <MessageCircle size={13} className="shrink-0" />
       <span className="min-w-0 truncate">{title}</span>
     </Link>
   );
@@ -8310,7 +8317,7 @@ function UsageChip({
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground/70 hover:bg-state-hover hover:text-foreground transition-colors duration-150"
           aria-label={`${ariaLabel} ${total}`}
         >
-          <Coins size={17} strokeWidth={1.5} />
+          <Coins size={17} />
           <span>{total}</span>
         </button>
       </PopoverTrigger>
@@ -8399,7 +8406,7 @@ function PagedGroupPrimaryActions({
                   return $.chat.run.viewLogs;
                 })}
               >
-                <ChartLine size={18} strokeWidth={1.5} />
+                <ChartLine size={18} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -8422,11 +8429,7 @@ function PagedGroupPrimaryActions({
                   return $.chat.actions.copyMessage;
                 })}
               >
-                {copied ? (
-                  <Check size={18} strokeWidth={1.5} />
-                ) : (
-                  <Copy size={18} strokeWidth={1.5} />
-                )}
+                {copied ? <Check size={18} /> : <Copy size={18} />}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">

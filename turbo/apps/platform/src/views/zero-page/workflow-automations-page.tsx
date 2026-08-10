@@ -712,7 +712,7 @@ export function AutomationListIcon({
       )}
       aria-hidden="true"
     >
-      <Icon size={compact ? 16 : 28} strokeWidth={1.6} />
+      <Icon size={compact ? 16 : 28} />
     </span>
   );
 }
@@ -807,7 +807,7 @@ function WorkflowSelectionStep({
         onClick={onCreateWorkflow}
       >
         <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground">
-          <MessageCircle size={16} strokeWidth={1.6} />
+          <MessageCircle size={16} />
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-foreground">

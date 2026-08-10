@@ -264,7 +264,7 @@ function InviteButton() {
       tabIndex={isAdmin ? undefined : -1}
       data-testid="invite-button"
     >
-      <UserPlus size={14} strokeWidth={1.5} />
+      <UserPlus size={14} />
       {t(($) => {
         return $.chat.agentPage.invitePeople;
       })}
@@ -304,7 +304,7 @@ function PinPill() {
               return $.sidebar.pin;
             })}
           >
-            <Pin size={12} strokeWidth={2} data-stroke />
+            <Pin size={12} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
@@ -401,9 +401,7 @@ function SuggestedPromptButton({
     >
       <ArrowUpRight
         size={14}
-        strokeWidth={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-        data-stroke
       />
       <p className="text-sm font-semibold text-foreground pr-5">{item.title}</p>
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
@@ -449,9 +447,7 @@ function IdeasUseCasesButton() {
     >
       <ArrowUpRight
         size={14}
-        strokeWidth={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-        data-stroke
       />
       <p className="text-sm font-semibold text-foreground pr-5">
         {t(($) => {
@@ -469,7 +465,7 @@ function IdeasUseCasesButton() {
             return $.ideation.entry.viewAll;
           })}
         </span>
-        <ArrowUpRight size={14} strokeWidth={2} data-stroke />
+        <ArrowUpRight size={14} />
       </div>
     </button>
   );

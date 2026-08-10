@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.27](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.26...vsock-proto-v0.18.27) (2026-08-10)
+
+
+### Documentation
+
+* **vsock-proto:** clarify message type invariants ([#26001](https://github.com/vm0-ai/vm0/issues/26001)) ([ecdb01a](https://github.com/vm0-ai/vm0/commit/ecdb01a6d8e8e9e7eac7bda3e96e76d5a4c6b21c))
+
 ## [0.18.26](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.25...vsock-proto-v0.18.26) (2026-08-07)
 
 

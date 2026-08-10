@@ -276,9 +276,9 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
           className="absolute inset-0 flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground"
         >
           {imageStatus === "loading" ? (
-            <Loader2 size={18} strokeWidth={1.8} className="animate-spin" />
+            <Loader2 size={18} className="animate-spin" />
           ) : (
-            <Image size={18} strokeWidth={1.5} />
+            <Image size={18} />
           )}
         </span>
       )}

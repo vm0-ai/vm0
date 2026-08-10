@@ -197,7 +197,7 @@ function CatalogFiltersPopover({
           size="sm"
           className="h-9 gap-2 rounded-full bg-background px-3 shadow-none"
         >
-          <SlidersHorizontal size={15} strokeWidth={1.7} />
+          <SlidersHorizontal size={15} />
           {t(($) => {
             return $.artifacts.templates.filters.title;
           })}
@@ -392,12 +392,7 @@ function AvatarTemplateMedia({
           className="h-full w-full object-cover"
         />
       ) : (
-        <User
-          size={40}
-          strokeWidth={1.4}
-          className="text-muted-foreground"
-          aria-hidden="true"
-        />
+        <User size={40} className="text-muted-foreground" aria-hidden="true" />
       )}
     </div>
   );
@@ -432,7 +427,7 @@ function AvatarTemplateCardContent({
             className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
             aria-hidden="true"
           >
-            <Check size={13} strokeWidth={2.2} />
+            <Check size={13} />
           </span>
         )}
       </div>
@@ -676,6 +671,50 @@ function AvatarVoiceFilters({
   );
 }
 
+function AvatarVoicePickerToolbar({
+  signals,
+  avatar,
+}: {
+  readonly signals: ComposerSignals;
+  readonly avatar: ZeroAvatarVideoAvatar;
+}) {
+  const { t } = useTranslation();
+  const clearVoiceSelection = useSet(
+    signals.template.clearAvatarTemplateVoiceSelection$,
+  );
+
+  return (
+    <div
+      data-avatar-voice-toolbar=""
+      className="flex w-full items-center gap-3"
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0"
+        aria-label={t(($) => {
+          return $.artifacts.templates.backToAvatars;
+        })}
+        onClick={() => {
+          clearVoiceSelection();
+        }}
+      >
+        <ArrowLeft className="size-4" />
+      </Button>
+      <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+        {t(
+          ($) => {
+            return $.artifacts.templates.chooseVoice;
+          },
+          { title: avatar.name },
+        )}
+      </h3>
+      <AvatarVoiceFilters signals={signals} />
+    </div>
+  );
+}
+
 function AvatarTemplateSkeletonGrid({
   aspectRatio,
 }: {
@@ -813,12 +852,10 @@ function VoicePreviewControl({
       >
         <Play
           size={17}
-          strokeWidth={1.9}
           className="ml-0.5 group-data-[playing=true]/voice:hidden"
         />
         <Pause
           size={17}
-          strokeWidth={1.9}
           className="hidden group-data-[playing=true]/voice:block"
         />
       </button>
@@ -935,7 +972,7 @@ function AvatarVoiceCard({
                 className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
                 aria-hidden="true"
               >
-                <Check size={13} strokeWidth={2.2} />
+                <Check size={13} />
               </span>
             )}
           </div>
@@ -1105,19 +1142,16 @@ function AvatarVoicePickerContent({
   signals,
   avatar,
   value,
-  onBack,
   onSelect,
 }: {
   readonly signals: ComposerSignals;
   readonly avatar: ZeroAvatarVideoAvatar;
   readonly value: GenerationTemplateRequest | undefined;
-  readonly onBack: () => void;
   readonly onSelect: (
     avatar: ZeroAvatarVideoAvatar,
     voice: ZeroAvatarVideoVoice,
   ) => void;
 }) {
-  const { t } = useTranslation();
   const aspectRatio = useGet(
     signals.template.avatarTemplateFilters$,
   ).aspectRatio;
@@ -1127,29 +1161,6 @@ function AvatarVoicePickerContent({
       data-avatar-voice-picker=""
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
-      <div className="mb-4 flex shrink-0 items-center gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          aria-label={t(($) => {
-            return $.artifacts.templates.backToAvatars;
-          })}
-          onClick={onBack}
-        >
-          <ArrowLeft className="size-4" />
-        </Button>
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-          {t(
-            ($) => {
-              return $.artifacts.templates.chooseVoice;
-            },
-            { title: avatar.name },
-          )}
-        </h3>
-        <AvatarVoiceFilters signals={signals} />
-      </div>
       <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden md:grid-cols-[minmax(210px,0.72fr)_minmax(0,1.55fr)] md:grid-rows-1">
         <div
           className={cn(
@@ -1252,9 +1263,8 @@ function AvatarCatalogPickerContent({
 }
 
 /**
- * Avatar catalog filters, rendered by the template dialog into the header row
- * that already reserves space for the close button. Returns null on the voice
- * step, which carries its own back/title/filters row.
+ * Avatar picker toolbar, rendered by the template dialog into the header row
+ * that already reserves space for the close button.
  */
 export function AvatarTemplatePickerToolbar({
   signals,
@@ -1265,7 +1275,9 @@ export function AvatarTemplatePickerToolbar({
     signals.template.selectedAvatarTemplateForVoice$,
   );
   if (selectedAvatar) {
-    return null;
+    return (
+      <AvatarVoicePickerToolbar signals={signals} avatar={selectedAvatar} />
+    );
   }
   return <AvatarCatalogFilters signals={signals} />;
 }
@@ -1300,9 +1312,6 @@ export function AvatarTemplatePickerContent({
         signals={signals}
         avatar={selectedAvatar}
         value={value}
-        onBack={() => {
-          clearVoiceSelection();
-        }}
         onSelect={(avatar, voice) => {
           clearVoiceSelection();
           onSelect(avatar, voice, aspectRatio);

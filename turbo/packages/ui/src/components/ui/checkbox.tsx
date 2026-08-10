@@ -47,7 +47,6 @@ const Checkbox = React.forwardRef<
           className="h-3.5 w-3.5"
           style={{
             stroke: "hsl(var(--on-filled))",
-            strokeWidth: 2.5,
           }}
         />
       </CheckboxPrimitive.Indicator>

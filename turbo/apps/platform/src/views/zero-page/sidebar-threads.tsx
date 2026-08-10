@@ -134,9 +134,9 @@ function SessionStateIndicator({
       aria-label={t(($) => {
         return $.chat.sidebar.draft;
       })}
-      className="flex items-center justify-center text-sidebar-foreground/50"
+      className="flex items-center justify-center text-sidebar-foreground"
     >
-      <Pencil size={16} strokeWidth={2} data-stroke />
+      <Pencil className="opacity-35" size={16} />
     </span>
   );
 }
@@ -226,21 +226,14 @@ function ChatThreadMenu({
                 >
                   {usePinnedIndicatorTrigger ? (
                     <>
-                      <Pin
-                        size={16}
-                        strokeWidth={2}
-                        className="md:hidden"
-                        data-stroke
-                      />
+                      <Pin size={16} className="md:hidden opacity-70" />
                       <Ellipsis
                         size={16}
-                        strokeWidth={2}
-                        className="hidden md:block"
-                        data-stroke
+                        className="hidden md:block opacity-70"
                       />
                     </>
                   ) : (
-                    <Ellipsis size={16} strokeWidth={2} data-stroke />
+                    <Ellipsis className="opacity-70" size={16} />
                   )}
                 </span>
               </TooltipTrigger>
@@ -258,19 +251,14 @@ function ChatThreadMenu({
           <DropdownMenuItem onSelect={handleTogglePin}>
             {isPinned ? (
               <>
-                <PinOff
-                  size={16}
-                  strokeWidth={2}
-                  className="mr-2"
-                  data-stroke
-                />
+                <PinOff size={16} className="mr-2" />
                 {t(($) => {
                   return $.chat.sidebar.unpin;
                 })}
               </>
             ) : (
               <>
-                <Pin size={16} strokeWidth={2} className="mr-2" data-stroke />
+                <Pin size={16} className="mr-2" />
                 {t(($) => {
                   return $.chat.sidebar.pin;
                 })}
@@ -278,7 +266,7 @@ function ChatThreadMenu({
             )}
           </DropdownMenuItem>
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
-            <Pencil size={16} strokeWidth={2} className="mr-2" data-stroke />
+            <Pencil size={16} className="mr-2" />
             {t(($) => {
               return $.chat.sidebar.rename;
             })}
@@ -289,7 +277,7 @@ function ChatThreadMenu({
             }}
             className="text-destructive focus:text-destructive"
           >
-            <Trash size={16} strokeWidth={2} className="mr-2" data-stroke />
+            <Trash size={16} className="mr-2" />
             {t(($) => {
               return $.chat.sidebar.delete;
             })}
@@ -332,9 +320,9 @@ function ChatThreadSideDecorator({
                 aria-label={t(($) => {
                   return $.chat.sidebar.pinned;
                 })}
-                className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
+                className="hidden items-center justify-center text-sidebar-foreground group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
-                <Pin size={16} strokeWidth={2} data-stroke />
+                <Pin className="opacity-50" size={16} />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -669,7 +657,7 @@ function ChatThreadsListMenuTooltip() {
     <Tooltip>
       <TooltipTrigger asChild>
         <span>
-          <Ellipsis size={16} strokeWidth={2} data-stroke />
+          <Ellipsis className="opacity-70" size={16} />
         </span>
       </TooltipTrigger>
       <TooltipContent side="bottom">
@@ -720,14 +708,12 @@ function ChatThreadsTitle() {
         return setCollapsed(!collapsed);
       }}
     >
-      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground group-hover:text-sidebar-foreground transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <ChevronRight
+            className={`opacity-35 ${collapsed ? "" : "rotate-90"}`}
             size={12}
-            strokeWidth={2}
-            className={collapsed ? "" : "rotate-90"}
-            data-stroke
           />
         </span>
       </span>
@@ -761,7 +747,7 @@ function ChatThreadsTitle() {
                 }}
                 disabled={!currentChatAgentId || newChatDisabled}
               >
-                <Plus size={16} strokeWidth={2} className="mr-2" data-stroke />
+                <Plus size={16} className="mr-2" />
                 {t(($) => {
                   return $.chat.newChat;
                 })}
@@ -774,9 +760,7 @@ function ChatThreadsTitle() {
               >
                 <Check
                   size={16}
-                  strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
-                  data-stroke
                 />
                 {t(($) => {
                   return $.chat.sidebar.allChats;
@@ -789,9 +773,7 @@ function ChatThreadsTitle() {
               >
                 <Check
                   size={16}
-                  strokeWidth={2}
                   className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
-                  data-stroke
                 />
                 {t(($) => {
                   return $.chat.sidebar.unreadOnly;

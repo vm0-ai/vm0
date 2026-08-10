@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.66.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.2...guest-agent-v0.66.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** preserve sidecar export failure causes ([#25999](https://github.com/vm0-ai/vm0/issues/25999)) ([76c5c0a](https://github.com/vm0-ai/vm0/commit/76c5c0a8470eecbce17615134b3a6f6c306a98a9))
+
+## [0.66.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.1...guest-agent-v0.66.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** disable codex native goals ([#25981](https://github.com/vm0-ai/vm0/issues/25981)) ([17338ff](https://github.com/vm0-ai/vm0/commit/17338ffd1ab2b28ab76ac463f76bade20d2dee72))
+
 ## [0.66.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.0...guest-agent-v0.66.1) (2026-08-09)
 
 ## [0.66.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.65.7...guest-agent-v0.66.0) (2026-08-09)
