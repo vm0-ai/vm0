@@ -50,7 +50,7 @@ interface DrainChatThreadQueueInput {
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
-  readonly workflowEventLaunch?: {
+  readonly automationEventLaunch?: {
     readonly eventId: string;
     readonly apiStartTime: number;
     readonly timing: ApiDispatchTimingCollector;
@@ -159,8 +159,8 @@ export const drainChatThreadQueueForThread$ = command(
         apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
-        ...(input.workflowEventLaunch
-          ? { workflowEventLaunch: input.workflowEventLaunch }
+        ...(input.automationEventLaunch
+          ? { automationEventLaunch: input.automationEventLaunch }
           : {}),
       },
       signal,

@@ -66,7 +66,7 @@ function sandboxOperationEventsForRun(
   });
 }
 
-async function pendingWorkflowEventCount(threadId: string): Promise<number> {
+async function pendingAutomationEventCount(threadId: string): Promise<number> {
   const events = await wf.readThreadEvents(threadId);
   const revokedIds = new Set(
     events.flatMap((event) => {
@@ -593,7 +593,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       throw new Error("Expected the automation to have a chat thread");
     }
     await expect(
-      pendingWorkflowEventCount(created.body.chatThreadId),
+      pendingAutomationEventCount(created.body.chatThreadId),
     ).resolves.toBe(3);
 
     for (const runId of [admittedRunId]) {

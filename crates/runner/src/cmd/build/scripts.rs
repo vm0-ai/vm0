@@ -593,6 +593,45 @@ wait
     }
 
     #[test]
+    fn template_installs_and_verifies_noto_fonts() {
+        for package in [
+            "fonts-noto-core",
+            "fonts-noto-cjk",
+            "fonts-noto-color-emoji",
+        ] {
+            assert!(
+                template_build_installs_apt_package(package),
+                "build-template.sh should install {package}"
+            );
+        }
+
+        for (path, name) in [
+            (
+                "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                "Noto Sans",
+            ),
+            (
+                "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+                "Noto Sans Arabic",
+            ),
+            (
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "Noto Sans CJK",
+            ),
+            (
+                "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+                "Noto Color Emoji",
+            ),
+        ] {
+            let check = format!(r#"check_bin "{path}" "{name}""#);
+            assert!(
+                VERIFY_SCRIPT.contains(&check),
+                "verify-rootfs.sh should verify {name} is present in sandbox images"
+            );
+        }
+    }
+
+    #[test]
     fn template_installs_and_verifies_pgvector() {
         assert!(
             template_build_installs_apt_package("postgresql-18-pgvector"),

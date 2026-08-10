@@ -9,7 +9,7 @@ import {
   gmailNewMessageEventConfigSchema,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
-  type GmailWorkflowEventConfig,
+  type GmailAutomationEventConfig,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   gmailProcessedEvents,
@@ -1607,7 +1607,7 @@ interface GmailEventAutomationRow {
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
-  readonly config: GmailWorkflowEventConfig;
+  readonly config: GmailAutomationEventConfig;
 }
 
 type GmailRunStarter = (args: {
@@ -1826,7 +1826,7 @@ async function insertGmailProcessedEvent(
 function gmailTriggerContext(args: {
   readonly workflowName: string;
   readonly automationId: string;
-  readonly automationConfig: GmailWorkflowEventConfig;
+  readonly automationConfig: GmailAutomationEventConfig;
   readonly emailAddress: string;
   readonly message: GmailMessageContext;
 }): WorkflowAutomationContext {
@@ -1864,7 +1864,7 @@ function gmailTriggerContext(args: {
 }
 
 function buildGmailWorkflowAutomationBrief(args: {
-  readonly automationConfig: GmailWorkflowEventConfig;
+  readonly automationConfig: GmailAutomationEventConfig;
   readonly message: {
     readonly messageId: string;
     readonly threadId: string | null;
