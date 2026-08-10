@@ -1428,12 +1428,16 @@ function ManagedSubscriptionOrderSummary({
           return $.billing.plans.usagePacks.orderSummary;
         })}
       </h4>
-      <ManagedSubscriptionComparison
-        currentTotals={currentTotals}
-        management={management}
-        plan={plan}
-        totals={totals}
-      />
+      {hasConfigurationChange ? (
+        <ManagedSubscriptionComparison
+          currentTotals={currentTotals}
+          management={management}
+          plan={plan}
+          totals={totals}
+        />
+      ) : (
+        <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
+      )}
       {hasDowngrade && management.currentPeriodEnd && (
         <ManagedSubscriptionDowngradeNotice
           currentPeriodEnd={management.currentPeriodEnd}

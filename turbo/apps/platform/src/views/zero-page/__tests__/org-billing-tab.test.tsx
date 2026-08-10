@@ -768,11 +768,11 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    const comparison = within(orderSummary).getByRole("table", {
-      name: "Current and new subscription comparison",
-    });
-    expect(within(comparison).getByText("Current")).toBeInTheDocument();
-    expect(within(comparison).getByText("New")).toBeInTheDocument();
+    expect(
+      within(orderSummary).queryByRole("table", {
+        name: "Current and new subscription comparison",
+      }),
+    ).not.toBeInTheDocument();
     expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
     click(packageSelect);
     click(
@@ -780,6 +780,11 @@ describe("organization billing settings", () => {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
+    const comparison = within(orderSummary).getByRole("table", {
+      name: "Current and new subscription comparison",
+    });
+    expect(within(comparison).getByText("Current")).toBeInTheDocument();
+    expect(within(comparison).getByText("New")).toBeInTheDocument();
     expect(
       within(comparison).getByRole("row", {
         name: /Member packages \$20 \$50/u,
