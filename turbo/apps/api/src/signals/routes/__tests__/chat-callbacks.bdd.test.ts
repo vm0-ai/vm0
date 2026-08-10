@@ -1253,6 +1253,19 @@ describe("CHAT-02: completed chat callback", () => {
         });
       })
       .toBe(true);
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.objectContaining({
+        action: "arm",
+        predecessorRunId: first.runId,
+        intentId: queued.id,
+        runnerIdentity: expect.objectContaining({ heartbeatGeneration: 1 }),
+        eventClass: "prompt",
+        decidedAt: expect.any(String),
+        expiresAt: expect.any(String),
+      }),
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
       null,
@@ -1287,6 +1300,8 @@ describe("CHAT-02: completed chat callback", () => {
       "ANTHROPIC_API_KEY",
     );
 
+    const autoClaim = await claimChatRunJob(runnerGroup, claimed.runId);
+    expect(autoClaim.immediateSuccessorIntentId).toBe(queued.id);
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
@@ -1733,6 +1748,10 @@ describe("CHAT-02: completed chat callback", () => {
       return message.id === duplicateProbeQueued.id;
     });
     expect(duplicateProbeStillQueued?.runId).toBeUndefined();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.anything(),
+    );
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
@@ -1794,6 +1813,22 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     if (!goalContinuation.runId) {
       throw new Error("Expected goal continuation run id");
     }
+    if (!goalContinuation.revokesEventId) {
+      throw new Error("Expected a durable goal queue event identity");
+    }
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.objectContaining({
+        action: "arm",
+        predecessorRunId: first.runId,
+        intentId: goalContinuation.revokesEventId,
+        runnerIdentity: expect.objectContaining({ heartbeatGeneration: 1 }),
+        eventClass: "goal",
+        decidedAt: expect.any(String),
+        expiresAt: expect.any(String),
+      }),
+    );
     await expectGoalDrainPreCreateTiming({
       runId: goalContinuation.runId,
       forbiddenValues: [
@@ -1829,6 +1864,9 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     );
     expect(continuationClaim.resumeSession?.sessionId).toBe(
       cliAgentSessionIdForChatRun(first.runId),
+    );
+    expect(continuationClaim.immediateSuccessorIntentId).toBe(
+      goalContinuation.revokesEventId,
     );
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);
     await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
@@ -2012,6 +2050,25 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       contextId: admittedContext?.contextId,
     });
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.objectContaining({
+        action: "arm",
+        predecessorRunId: first.runId,
+        intentId: goalEventId,
+        eventClass: "goal",
+      }),
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.objectContaining({
+        action: "revoke",
+        predecessorRunId: first.runId,
+        intentId: goalEventId,
+        eventClass: "goal",
+      }),
+    );
   }, 90_000);
 
   it("revokes a goal invalidated while a failing launch resolves", async () => {

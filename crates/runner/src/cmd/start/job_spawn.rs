@@ -84,6 +84,8 @@ pub(super) struct SpawnContext {
     pub(super) budget: Arc<ResourceBudget>,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    pub(super) immediate_successor_intents:
+        crate::immediate_successor_intent::ImmediateSuccessorIntents,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
@@ -263,6 +265,7 @@ struct FinalizationPhase {
     cancel: RunCancellationHandle,
     cleanup_state: RunCleanupState,
     active_run_reuse: ActiveRunReusePublisher,
+    immediate_successor_intents: crate::immediate_successor_intent::ImmediateSuccessorIntents,
     #[cfg(test)]
     outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
@@ -300,6 +303,7 @@ impl FinalizationPhase {
             cancel,
             cleanup_state,
             active_run_reuse,
+            immediate_successor_intents,
             #[cfg(test)]
             outer_job_panic,
             #[cfg(test)]
@@ -373,6 +377,7 @@ impl FinalizationPhase {
                 status,
                 reuse_state_notify: Arc::clone(&reuse_state_notify),
                 active_run_reuse: active_run_reuse.clone(),
+                immediate_successor_intents,
                 workspace_cache_snapshot,
                 parking_gate,
                 network_log_drain,
@@ -714,6 +719,7 @@ pub(super) async fn run_job(
         cancel: job_cancel.clone(),
         cleanup_state: cleanup_state_for_body.clone(),
         active_run_reuse,
+        immediate_successor_intents: ctx.immediate_successor_intents.clone(),
         #[cfg(test)]
         outer_job_panic,
         #[cfg(test)]
@@ -859,6 +865,10 @@ mod tests {
     };
     use crate::idle_reuse_preparation::mock_sandbox_ready_for_idle_reuse;
     use crate::ids::RunId;
+    use crate::immediate_successor_intent::{
+        ImmediateSuccessorIntentNotification, ImmediateSuccessorIntents,
+        ImmediateSuccessorReceiveOutcome,
+    };
     use crate::resource_budget::ResourceBudget;
     use crate::restored_session_identity::RestoredSessionIdentity;
     use crate::run_cancellation::RunCancellationRegistry;
@@ -911,6 +921,7 @@ mod tests {
         parking_gate: ParkingGate,
         reuse_state_notify: Arc<tokio::sync::Notify>,
         active_runs: ActiveRuns,
+        immediate_successor_intents: ImmediateSuccessorIntents,
         active_run_guards: std::sync::Mutex<Vec<ActiveRunGuard>>,
     }
 
@@ -935,6 +946,7 @@ mod tests {
 
             let reuse_state_notify = Arc::new(tokio::sync::Notify::new());
             let active_runs = ActiveRuns::new(Arc::clone(&reuse_state_notify));
+            let immediate_successor_intents = ImmediateSuccessorIntents::default();
             Self {
                 _dir: dir,
                 status,
@@ -942,6 +954,7 @@ mod tests {
                 parking_gate,
                 reuse_state_notify,
                 active_runs,
+                immediate_successor_intents,
                 active_run_guards: std::sync::Mutex::new(Vec::new()),
             }
         }
@@ -986,6 +999,7 @@ mod tests {
                 cancel: RunCancellationHandle::new(),
                 cleanup_state,
                 active_run_reuse,
+                immediate_successor_intents: self.immediate_successor_intents.clone(),
                 outer_job_panic: None,
                 test_observer: StartLoopTestObserver::default(),
             }
@@ -1091,6 +1105,29 @@ mod tests {
         let fixture = FinalizationTelemetryFixture::new().await;
         let (_budget, lease) = test_budget_lease();
         let run_id = RunId::new_v4();
+        let intent_id = uuid::Uuid::new_v4();
+        let runner_id = "00000000-0000-4000-8000-000000000005";
+        let decided_at = chrono::Utc::now();
+        let notification: ImmediateSuccessorIntentNotification =
+            serde_json::from_value(serde_json::json!({
+                "action": "arm",
+                "predecessorRunId": run_id,
+                "intentId": intent_id,
+                "runnerIdentity": {
+                    "runnerId": runner_id,
+                    "heartbeatGeneration": 7
+                },
+                "eventClass": "prompt",
+                "decidedAt": decided_at.to_rfc3339(),
+                "expiresAt": (decided_at + chrono::Duration::milliseconds(1500)).to_rfc3339()
+            }))
+            .unwrap();
+        assert_eq!(
+            fixture
+                .immediate_successor_intents
+                .receive(notification, runner_id, 7),
+            ImmediateSuccessorReceiveOutcome::Armed
+        );
         let sandbox_id = SandboxId::new_v4();
         let cleanup_state = RunCleanupState::new();
         let identity = RestoredSessionIdentity::claude_code_for_test("history-hash-a");
@@ -1123,6 +1160,16 @@ mod tests {
             "runner_host_reuse_preparation",
             "runner_host_physical_park",
             "runner_host_idle_publication",
+        ] {
+            assert_telemetry_action(&finalized.telemetry, action);
+        }
+        for action in [
+            "runner_immediate_successor_intent_received",
+            "runner_immediate_successor_event_prompt",
+            "runner_immediate_successor_received_before_finalization",
+            "runner_immediate_successor_decision_to_receipt",
+            "runner_immediate_successor_deadline_remaining_at_receipt",
+            "runner_immediate_successor_predicted_prepared_hold",
         ] {
             assert_telemetry_action(&finalized.telemetry, action);
         }

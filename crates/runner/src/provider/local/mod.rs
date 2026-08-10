@@ -164,6 +164,7 @@ impl JobProvider for LocalProvider {
         let environment_merge = merge_local_environments(req.environment, req.secret_environment);
         let context = ExecutionContext {
             run_id,
+            immediate_successor_intent_id: None,
             reuse_key: req.reuse_key,
             prompt: req.prompt,
             append_system_prompt: None,

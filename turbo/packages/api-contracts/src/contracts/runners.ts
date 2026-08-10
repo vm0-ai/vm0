@@ -99,6 +99,18 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
+export const immediateSuccessorIntentSignalSchema = z
+  .object({
+    action: z.enum(["arm", "revoke"]),
+    predecessorRunId: z.uuid(),
+    intentId: z.uuid(),
+    runnerIdentity: runnerProcessIdentitySchema,
+    eventClass: z.enum(["prompt", "goal", "automation"]),
+    decidedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
  * runner is not an exclusive assignee; another runner with a better compatible
@@ -818,6 +830,9 @@ const storedExecutionContextObjectSchema = z.object({
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
   apiStartTime: apiStartTimeSchema.optional(),
+  // Durable queue-event identity used only to correlate an advisory early
+  // successor signal with the eventual claimed job.
+  immediateSuccessorIntentId: z.uuid().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
   // Firewall entries for proxy-side token replacement. Built-ins stay compact;
@@ -920,6 +935,8 @@ const executionContextObjectSchema = z.object({
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
   apiStartTime: apiStartTimeSchema.optional(),
+  // Optional during mixed API/runner deployment and for non-queue-first runs.
+  immediateSuccessorIntentId: z.uuid().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
   // Firewall entries for proxy-side token replacement. Built-ins stay compact;
@@ -1148,6 +1165,9 @@ export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
+export type ImmediateSuccessorIntentSignal = z.infer<
+  typeof immediateSuccessorIntentSignalSchema
+>;
 export type RunnerPreferenceClaimState = z.infer<
   typeof runnerPreferenceClaimStateSchema
 >;

@@ -84,6 +84,7 @@ const enqueueGoalContinuation$ = command(
     args: {
       readonly db: Db;
       readonly goal: GoalBootstrap;
+      readonly immediateSuccessorPredecessorRunId?: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
@@ -120,6 +121,8 @@ const enqueueGoalContinuation$ = command(
       drainChatThreadQueueForThread$,
       {
         chatThreadId: args.goal.threadId,
+        immediateSuccessorPredecessorRunId:
+          args.immediateSuccessorPredecessorRunId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
@@ -191,6 +194,7 @@ export const continueGoalIfIdle$ = command(
           threadId: goal.chatThreadId,
           objectiveBrief: goal.objectiveBrief,
         },
+        immediateSuccessorPredecessorRunId: args.runId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,

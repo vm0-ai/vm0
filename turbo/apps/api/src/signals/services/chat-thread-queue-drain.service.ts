@@ -47,6 +47,7 @@ type QueueDrainSweepCandidate =
 interface DrainChatThreadQueueInput {
   readonly apiStartTime?: number;
   readonly chatThreadId: string;
+  readonly immediateSuccessorPredecessorRunId?: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
@@ -135,6 +136,8 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         apiStartTime,
+        immediateSuccessorPredecessorRunId:
+          input.immediateSuccessorPredecessorRunId,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         timing: input.timing,
       },
@@ -146,6 +149,8 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         apiStartTime,
+        immediateSuccessorPredecessorRunId:
+          input.immediateSuccessorPredecessorRunId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
       },
@@ -157,6 +162,8 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         apiStartTime,
+        immediateSuccessorPredecessorRunId:
+          input.immediateSuccessorPredecessorRunId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         ...(input.automationEventLaunch
@@ -195,6 +202,7 @@ export const drainChatThreadQueueForRun$ = command(
       drainChatThreadQueueForThread$,
       {
         chatThreadId: run.chatThreadId,
+        immediateSuccessorPredecessorRunId: input.runId,
         apiStartTime: input.apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
       },

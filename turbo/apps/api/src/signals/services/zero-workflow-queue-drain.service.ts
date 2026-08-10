@@ -20,6 +20,10 @@ import {
   type PendingWorkflowQueueEvent,
 } from "./workflow-chat-event-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import {
+  scheduleImmediateSuccessorIntent,
+  type ImmediateSuccessorIntentHandle,
+} from "./immediate-successor-intent.service";
 import { buildWorkflowAutomationQueuedLaunchMaterial } from "./workflow-automation-queued-launch-context.service";
 import {
   launchQueuedWorkflowAutomation$,
@@ -120,9 +124,34 @@ interface AutomationEventLaunch {
 interface DrainWorkflowQueueArgs {
   readonly apiStartTime: number;
   readonly chatThreadId: string;
+  readonly immediateSuccessorPredecessorRunId?: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
   readonly automationEventLaunch?: AutomationEventLaunch;
+}
+
+function prepareWorkflowImmediateSuccessor(args: {
+  readonly db: Db;
+  readonly drain: DrainWorkflowQueueArgs;
+  readonly event: PendingWorkflowQueueEvent;
+  readonly target: DequeueTarget;
+}): {
+  readonly launchHint: AutomationEventLaunch | undefined;
+  readonly intent: ImmediateSuccessorIntentHandle | undefined;
+} {
+  const launchHint =
+    args.drain.automationEventLaunch?.eventId === args.event.id
+      ? args.drain.automationEventLaunch
+      : undefined;
+  const intent = scheduleImmediateSuccessorIntent({
+    db: args.db,
+    predecessorRunId: args.drain.immediateSuccessorPredecessorRunId,
+    chatThreadId: args.event.chatThreadId,
+    orgId: args.target.automation.orgId,
+    intentId: args.event.id,
+    eventClass: "automation",
+  });
+  return { launchHint, intent };
 }
 
 const CONTINUE_DRAIN = Symbol("continue-workflow-queue-drain");
@@ -166,12 +195,18 @@ async function consumeInvalidAutomationEvent(
 }
 
 async function handleWorkflowLaunchResult(
-  db: Db,
-  event: PendingWorkflowQueueEvent,
-  result: RunWorkflowAutomationResult,
-  launchHint: AutomationEventLaunch | undefined,
+  args: {
+    readonly db: Db;
+    readonly event: PendingWorkflowQueueEvent;
+    readonly result: RunWorkflowAutomationResult;
+    readonly launchHint: AutomationEventLaunch | undefined;
+    readonly immediateSuccessorIntent:
+      | ImmediateSuccessorIntentHandle
+      | undefined;
+  },
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
+  const { db, event, result, launchHint, immediateSuccessorIntent } = args;
   if (result.kind === "ok") {
     await publishQueueEventChanged(event, signal);
     return { eventId: event.id, result };
@@ -195,6 +230,7 @@ async function handleWorkflowLaunchResult(
     if (!consumed) {
       return null;
     }
+    immediateSuccessorIntent?.revoke();
     await publishQueueEventChanged(event, signal);
     return launchHint ? { eventId: event.id, result } : CONTINUE_DRAIN;
   }
@@ -208,6 +244,7 @@ async function handleWorkflowLaunchResult(
   if (!failed) {
     return null;
   }
+  immediateSuccessorIntent?.revoke();
   log.warn("Workflow queue event rejected after run creation failure", {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
@@ -306,10 +343,8 @@ export const drainWorkflowQueueForThread$ = command(
         continue;
       }
 
-      const launchHint =
-        args.automationEventLaunch?.eventId === event.id
-          ? args.automationEventLaunch
-          : undefined;
+      const { launchHint, intent: immediateSuccessorIntent } =
+        prepareWorkflowImmediateSuccessor({ db, drain: args, event, target });
       const result = await set(
         launchQueuedWorkflowAutomation$,
         {
@@ -321,6 +356,9 @@ export const drainWorkflowQueueForThread$ = command(
               launchMaterial.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
+          immediateSuccessorIntentId: immediateSuccessorIntent
+            ? event.id
+            : undefined,
           apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime,
           prompt: launchMaterial.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
@@ -339,10 +377,7 @@ export const drainWorkflowQueueForThread$ = command(
       signal.throwIfAborted();
 
       const step = await handleWorkflowLaunchResult(
-        db,
-        event,
-        result,
-        launchHint,
+        { db, event, result, launchHint, immediateSuccessorIntent },
         signal,
       );
       if (step !== CONTINUE_DRAIN) {

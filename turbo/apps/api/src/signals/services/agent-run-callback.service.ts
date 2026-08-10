@@ -139,6 +139,7 @@ const dispatchInternalCallback$ = command(
                 drainChatThreadQueueForThread$,
                 {
                   chatThreadId,
+                  immediateSuccessorPredecessorRunId: input.envelope.runId,
                   dispatchFailedCallbacks: dispatchFailedRunCallbacks,
                   timing,
                 },

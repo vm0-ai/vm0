@@ -112,6 +112,7 @@ interface WorkflowAutomationLaunchArgs {
 
 interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArgs {
   readonly queueEventId: string;
+  readonly immediateSuccessorIntentId?: string;
 }
 
 interface WorkflowAutomationRunInput {
@@ -595,6 +596,7 @@ export const launchQueuedWorkflowAutomation$ = command(
             : {}),
         },
         apiStartTime: args.apiStartTime,
+        immediateSuccessorIntentId: args.immediateSuccessorIntentId,
         triggerSource: args.triggerSource ?? "automation-schedule",
         chatThreadId,
         computerUseHostId: computerUseHostGrant?.hostId,

@@ -9,6 +9,7 @@ use guest_contracts::epoch_milliseconds::{
 use tracing::warn;
 
 use crate::guest_timezone::GuestTimezoneAssumption;
+use crate::immediate_successor_intent::ImmediateSuccessorIntentObservation;
 use crate::telemetry::{JobTelemetry, RunnerStartupPath};
 use crate::types::{ExecutionContext, SandboxReuseResult, WorkspaceReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
@@ -122,6 +123,7 @@ pub(crate) struct RunnerPreSpawnTiming {
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
     exact_reuse_speculation: Option<ExactReuseSpeculationTiming>,
+    immediate_successor_intent: Option<ImmediateSuccessorIntentObservation>,
 }
 
 #[derive(Clone, Copy)]
@@ -157,11 +159,19 @@ impl RunnerPreSpawnTiming {
             phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
             exact_reuse_speculation: None,
+            immediate_successor_intent: None,
         }
     }
 
     pub(crate) fn record_exact_reuse_speculation(&mut self, timing: ExactReuseSpeculationTiming) {
         self.exact_reuse_speculation = Some(timing);
+    }
+
+    pub(crate) fn observe_immediate_successor_intent(
+        &mut self,
+        observation: Option<ImmediateSuccessorIntentObservation>,
+    ) {
+        self.immediate_successor_intent = observation;
     }
 
     pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
@@ -243,6 +253,14 @@ impl RunnerPreSpawnTiming {
                 };
                 telemetry.record(action_type, Duration::ZERO, true, None);
             }
+        }
+        if let Some(observation) = self.immediate_successor_intent.as_ref() {
+            let snapshot = observation.snapshot();
+            let idle_unpark = self
+                .phase_durations
+                .get(RunnerPreSpawnPhase::IdleUnpark)
+                .unwrap_or_default();
+            snapshot.record_claim(telemetry, idle_unpark);
         }
     }
 }

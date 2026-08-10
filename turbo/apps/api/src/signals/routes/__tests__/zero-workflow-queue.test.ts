@@ -824,6 +824,11 @@ describe("workflow queue", () => {
 
     const first = await postWorkflowWebhook(automation, "first");
     const firstRunId = await expectAcceptedRunId(first, automation.threadId);
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.anything(),
+    );
     // Workflow admission stores no encrypted launch blob. The only data key is
     // for the launched run's execution secrets.
     expect(kms.generateDataKeyCalls).toBe(1);
@@ -851,7 +856,25 @@ describe("workflow queue", () => {
     // Completing the run drains exactly one event into the next run.
     const dequeuedAt = secondApiStartTime + 10_000;
     mockNow(dequeuedAt);
-    await completeRunThroughSandbox(scenario, firstRunId);
+    context.mocks.ably.publish.mockImplementation((eventName: unknown) => {
+      return eventName === "immediate-successor-intent"
+        ? Promise.reject(new Error("intent publish unavailable"))
+        : Promise.resolve(undefined);
+    });
+    const firstClaim = await completeRunThroughSandbox(scenario, firstRunId);
+    expect(firstClaim).not.toHaveProperty("immediateSuccessorIntentId");
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "immediate-successor-intent",
+      expect.objectContaining({
+        action: "arm",
+        predecessorRunId: firstRunId,
+        intentId: secondEvent.id,
+        runnerIdentity: expect.objectContaining({ heartbeatGeneration: 1 }),
+        eventClass: "automation",
+        decidedAt: expect.any(String),
+        expiresAt: expect.any(String),
+      }),
+    );
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
     const secondClaim = await completeRunThroughSandbox(
@@ -859,6 +882,7 @@ describe("workflow queue", () => {
       afterFirst[1]!,
     );
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+    expect(secondClaim.immediateSuccessorIntentId).toBe(secondEvent.id);
   });
 
   it("keeps workflow events queued until cancellation recovery completes", async () => {

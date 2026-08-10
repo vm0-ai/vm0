@@ -80,6 +80,8 @@ impl Job {
 pub struct ExecutionContext {
     pub run_id: RunId,
     #[serde(default)]
+    pub immediate_successor_intent_id: Option<uuid::Uuid>,
+    #[serde(default)]
     pub reuse_key: Option<String>,
     pub prompt: String,
     #[serde(default)]

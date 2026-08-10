@@ -806,6 +806,7 @@ export interface CreateAgentRunArgs {
   readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  readonly immediateSuccessorIntentId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
@@ -5557,6 +5558,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly apiStartTime: number;
+  readonly immediateSuccessorIntentId: string | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
@@ -5621,6 +5623,7 @@ async function buildStoredExecutionContextDraft(args: {
       realAgentInPreview: args.body.realAgentInPreview || undefined,
       captureNetworkBodies: args.body.captureNetworkBodies || undefined,
       apiStartTime: args.apiStartTime,
+      immediateSuccessorIntentId: args.immediateSuccessorIntentId,
       userTimezone: args.userTimezone,
       firewalls: permissions?.firewalls,
       networkPolicies: permissions?.networkPolicies,
@@ -6068,6 +6071,7 @@ interface BuildRunnerJobPayloadInput {
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: SupportedRunModel | undefined;
   readonly apiStartTime: number;
+  readonly immediateSuccessorIntentId: string | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly includeZeroTokenSecret: boolean | undefined;
@@ -7309,6 +7313,7 @@ function buildAtomicLaunchPayload(
     billableFirewalls: args.context.billableFirewalls,
     modelUsageProvider: args.context.modelUsageProvider,
     apiStartTime: args.createArgs.apiStartTime,
+    immediateSuccessorIntentId: args.createArgs.immediateSuccessorIntentId,
     additionalVolumes: args.context.additionalVolumes,
     additionalVolumeSources: args.context.additionalVolumeSources,
     includeZeroTokenSecret: args.createArgs.includeZeroTokenSecret,

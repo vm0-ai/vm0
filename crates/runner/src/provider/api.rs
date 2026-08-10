@@ -38,6 +38,7 @@ use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
+use crate::immediate_successor_intent::ImmediateSuccessorIntents;
 use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
@@ -253,6 +254,7 @@ pub struct ApiProvider {
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
     pi_standby_notifications: PiStandbyNotifications,
+    immediate_successor_intents: ImmediateSuccessorIntents,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -267,6 +269,7 @@ pub struct ApiProviderConfig {
     pub heartbeat_generation: u64,
     pub group: String,
     pub supported_profiles: Vec<String>,
+    pub immediate_successor_intents: ImmediateSuccessorIntents,
 }
 
 impl ApiProvider {
@@ -284,6 +287,7 @@ impl ApiProvider {
             heartbeat_generation,
             group,
             supported_profiles,
+            immediate_successor_intents,
         } = config;
         let api = ApiClient::new(http, token);
         let connector_runtime_sync = ConnectorRuntimeSyncHandle::new(api.clone());
@@ -316,6 +320,7 @@ impl ApiProvider {
             builtin_firewall_catalog_refresh,
             active_input_notifications,
             pi_standby_notifications,
+            immediate_successor_intents,
             cancel,
         })
     }
@@ -477,6 +482,9 @@ impl ApiProvider {
             connector_runtime_sync: self.connector_runtime_sync.clone(),
             active_input_notifications: self.active_input_notifications.clone(),
             pi_standby_notifications: self.pi_standby_notifications.clone(),
+            immediate_successor_intents: self.immediate_successor_intents.clone(),
+            runner_id: self.runner_id.clone(),
+            heartbeat_generation: self.heartbeat_generation,
             provider_cancel: self.cancel.clone(),
         }));
     }
@@ -645,6 +653,7 @@ impl JobProvider for ApiProvider {
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
         let discovery_pi_execution_mode = candidate.pi_execution_mode();
+        let history_generation_run_id = candidate.history_generation_run_id();
         match self
             .api
             .claim(&candidate, &self.runner_id, self.heartbeat_generation)
@@ -720,7 +729,7 @@ impl JobProvider for ApiProvider {
                     claim_pi_execution_mode = ?pi_execution_mode,
                     "job claimed"
                 );
-                Some(claimed)
+                Some(claimed.with_history_generation_run_id(history_generation_run_id))
             }
             Ok(None) => {
                 self.claim_cooldowns.remove(run_id).await;
@@ -1894,6 +1903,7 @@ mod tests {
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             active_input_notifications: ActiveInputNotifications::new(),
             pi_standby_notifications: PiStandbyNotifications::new(),
+            immediate_successor_intents: ImmediateSuccessorIntents::default(),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
         })
