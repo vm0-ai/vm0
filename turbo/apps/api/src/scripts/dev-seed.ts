@@ -567,6 +567,13 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Pro is $10 per 10,000 requests, so one successful request costs 1 credit.
   ...usageGroup("finance", "apidojo", [["request", usd(0.001), 1]]),
 
+  // Managed SEO provider costs with a 25% markup. DataForSEO reports the
+  // actual USD cost per response; SerpAPI Starter costs $25 per 1,000 searches.
+  ...usageGroup("seo", "dataforseo", [
+    ["provider_cost_usd_micros", 1250, 1_000_000],
+  ]),
+  ...usageGroup("seo", "serpapi", [["search", 32, 1]]),
+
   // Perplexity Agent API People Search fixed vm0 product pricing, reviewed
   // 2026-07-23. The $0.020 retail price covers the $0.005 tool invocation,
   // gpt-5-mini model tokens, and operating margin.
