@@ -96,7 +96,7 @@ export function BrowserSessionLoading() {
   return (
     <PanelFrame>
       <div role="status" className="flex flex-1 items-center justify-center">
-        <Loader2 className="animate-spin text-muted-foreground" size={20} />
+        <Loader2 className="animate-spin" size={20} />
         <span className="sr-only">
           {t(($) => {
             return $.browserSession.status.starting;

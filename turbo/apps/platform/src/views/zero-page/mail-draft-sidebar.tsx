@@ -193,11 +193,7 @@ function MailMessageHeader({
                 : "relative top-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400"
             }
           >
-            {active ? (
-              <Pencil size={11} strokeWidth={2} data-stroke />
-            ) : (
-              <CircleCheck size={11} strokeWidth={2} data-stroke />
-            )}
+            {active ? <Pencil size={11} /> : <CircleCheck size={11} />}
             {active
               ? t(($) => {
                   return $.chat.mail.status.draft;
@@ -277,7 +273,7 @@ function AttachmentSummary({
 }) {
   return (
     <div className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-foreground/15 bg-background/80 px-1.5">
-      <Paperclip size={14} className="shrink-0 text-muted-foreground" />
+      <Paperclip size={14} className="shrink-0" />
       <span className="min-w-0 truncate text-xs font-medium">
         {attachment.filename}
       </span>
@@ -409,7 +405,7 @@ function MailMediaAttachmentPreview({
             className="h-full w-full object-contain"
           />
           <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition-colors group-hover:bg-black/30">
-            <Play size={16} strokeWidth={1.8} />
+            <Play size={16} />
           </span>
         </>
       )}

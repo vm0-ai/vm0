@@ -242,7 +242,7 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <User size={15} strokeWidth={1.8} />
+          <User size={15} />
         )}
       </span>
       <span className="min-w-0">
@@ -443,11 +443,7 @@ function PlanFeatureList({ tier }: { readonly tier: UsagePackPlanTier }) {
       {planFeatures(tier).map((feature) => {
         return (
           <li key={feature} className="flex items-center gap-2">
-            <Check
-              size={14}
-              strokeWidth={1.8}
-              className="shrink-0 text-muted-foreground/50"
-            />
+            <Check size={14} className="shrink-0" />
             <span className="text-[13px] text-muted-foreground">{feature}</span>
           </li>
         );
@@ -481,7 +477,7 @@ function PlanSelectionCard({
     >
       {plan.popular && (
         <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
+          <Crown size={12} className="text-amber-500" />
           {i18n.t(($) => {
             return $.billing.plans.popular;
           })}
@@ -581,7 +577,7 @@ function PricingPageHeader({
                 return $.billing.common.back;
               })}
             >
-              <ArrowLeft size={16} strokeWidth={1.8} />
+              <ArrowLeft size={16} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom">

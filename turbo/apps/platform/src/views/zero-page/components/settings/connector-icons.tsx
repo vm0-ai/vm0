@@ -20,7 +20,7 @@ function ConnectorIconFallback({
       })}
       className="inline-flex h-full w-full items-center justify-center text-muted-foreground"
     >
-      <Plug size={size * 0.65} strokeWidth={1.5} aria-hidden="true" />
+      <Plug size={size * 0.65} aria-hidden="true" />
     </span>
   );
 }

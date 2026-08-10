@@ -158,7 +158,7 @@ function Breadcrumb({
         pathname="/agents"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-state-hover hover:text-foreground transition-colors no-underline text-inherit"
       >
-        <Users size={14} strokeWidth={1.5} className="shrink-0" />
+        <Users size={14} className="shrink-0" />
         {t(($) => {
           return $.list.title;
         })}
@@ -317,14 +317,14 @@ function AgentTabNav({
       {/* Desktop: tab list */}
       <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
         <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
-          <Shield size={14} strokeWidth={1.5} />
+          <Shield size={14} />
           {t(($) => {
             return $.detail.tabs.authorization;
           })}
         </TabsTrigger>
         {showProfileAndInstructions && (
           <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
-            <UserCircle size={14} strokeWidth={1.5} />
+            <UserCircle size={14} />
             {t(($) => {
               return $.detail.tabs.profile;
             })}
@@ -332,7 +332,7 @@ function AgentTabNav({
         )}
         {showProfileAndInstructions && (
           <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
-            <FileText size={14} strokeWidth={1.5} />
+            <FileText size={14} />
             {t(($) => {
               return $.detail.tabs.instructions;
             })}
@@ -464,11 +464,7 @@ function ConnectedConnectorPermissions({
           </div>
           {searchActive && (
             <div className="absolute inset-0 flex items-center gap-2 px-5">
-              <Search
-                size={14}
-                strokeWidth={1.5}
-                className="shrink-0 text-muted-foreground"
-              />
+              <Search size={14} className="shrink-0 text-muted-foreground" />
               <input
                 ref={(el) => {
                   return el?.focus();
@@ -500,7 +496,7 @@ function ConnectedConnectorPermissions({
                   return $.authorization.closeSearch;
                 })}
               >
-                <X size={14} strokeWidth={1.5} />
+                <X size={14} />
               </button>
             </div>
           )}
@@ -515,7 +511,7 @@ function ConnectedConnectorPermissions({
                 return $.authorization.findConnectors;
               })}
             >
-              <Search size={14} strokeWidth={1.5} />
+              <Search size={14} />
             </button>
           )}
         </div>
@@ -880,7 +876,7 @@ function AgentHeader({
                         return $.avatar.actions.customize;
                       })}
                     >
-                      <Wand size={12} strokeWidth={1.5} />
+                      <Wand size={12} />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -922,12 +918,7 @@ function AgentHeader({
             { agentName: displayName },
           )}
         >
-          <MessageCircle
-            size={14}
-            strokeWidth={2}
-            className="shrink-0"
-            data-stroke
-          />
+          <MessageCircle size={14} className="shrink-0" />
           <span className="truncate">
             {t(
               ($) => {

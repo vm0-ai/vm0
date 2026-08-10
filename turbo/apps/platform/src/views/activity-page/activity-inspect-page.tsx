@@ -84,7 +84,7 @@ function InspectBreadcrumb({ title }: { title: string }) {
   return (
     <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
       <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5">
-        <ChartLine size={14} strokeWidth={1.5} className="shrink-0" />
+        <ChartLine size={14} className="shrink-0" />
         {t(($) => {
           return $.activity.detail.activity;
         })}
@@ -111,11 +111,7 @@ function InspectEmptyState() {
         })}
       />
       <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <Upload
-          size={48}
-          strokeWidth={1}
-          className="text-muted-foreground/40"
-        />
+        <Upload size={48} className="" />
         <h2 className="text-lg font-semibold text-foreground">
           {t(($) => {
             return $.activity.inspect.noLog.title;
@@ -133,7 +129,7 @@ function InspectEmptyState() {
         )}
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
-            <Upload size={16} strokeWidth={1.5} />
+            <Upload size={16} />
             {t(($) => {
               return $.activity.inspect.noLog.upload;
             })}

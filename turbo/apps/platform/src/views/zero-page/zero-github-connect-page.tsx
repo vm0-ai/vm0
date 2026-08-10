@@ -68,7 +68,7 @@ function GithubMark({
   }
 
   if (state === "loading") {
-    return <Loader2 size={40} className="animate-spin text-muted-foreground" />;
+    return <Loader2 size={40} className="animate-spin" />;
   }
 
   return (

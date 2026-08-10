@@ -154,11 +154,7 @@ function CreateWorkspaceItem() {
         disabled={clerk === null || creatingOrg}
         className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
       >
-        <Plus
-          size={18}
-          strokeWidth={1.5}
-          className="shrink-0 text-muted-foreground"
-        />
+        <Plus size={18} className="shrink-0" />
         <span>
           {creatingOrg
             ? t(($) => {
@@ -359,10 +355,7 @@ export function ZeroOrgSwitcher() {
             <span className="min-w-0 flex-1 text-left text-sm font-semibold leading-tight truncate">
               {orgName}
             </span>
-            <ChevronDown
-              size={16}
-              className="ml-auto shrink-0 text-muted-foreground"
-            />
+            <ChevronDown size={16} className="ml-auto shrink-0" />
           </button>
         </DropdownMenuTrigger>
         <OrgDropdownContent />

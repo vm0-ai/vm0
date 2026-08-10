@@ -71,7 +71,7 @@ function FeedbackToolbar({
           aria-keyshortcuts="c"
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
         >
-          <Copy size={14} strokeWidth={2} data-stroke />
+          <Copy size={14} />
           {t(($) => {
             return $.chat.actions.copy;
           })}
@@ -84,7 +84,7 @@ function FeedbackToolbar({
           aria-keyshortcuts="f"
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
         >
-          <MessageCircle size={14} strokeWidth={2} data-stroke />
+          <MessageCircle size={14} />
           {t(($) => {
             return $.chat.feedback.provide;
           })}

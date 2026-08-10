@@ -157,9 +157,9 @@ function CatalogConnectorCard({
           aria-hidden="true"
         >
           {busy ? (
-            <Loader2 size={16} strokeWidth={1.5} className="animate-spin" />
+            <Loader2 size={16} className="animate-spin" />
           ) : (
-            <Plus size={14} strokeWidth={1.5} />
+            <Plus size={14} />
           )}
         </span>
       </div>
@@ -191,7 +191,7 @@ function ConnectorConnectionStatus({
   if (busy) {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Loader2 size={12} strokeWidth={1.5} className="animate-spin" />
+        <Loader2 size={12} className="animate-spin" />
         {t(($) => {
           return $.connectors.card.connecting;
         })}
@@ -303,7 +303,7 @@ function ConnectionConnectorCard({
                   })}
                   disabled={busy}
                 >
-                  <EllipsisVertical size={14} strokeWidth={1.5} />
+                  <EllipsisVertical size={14} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
@@ -560,7 +560,7 @@ function PermissionConnectorCard({
                       { connector: connector.label },
                     )}
                   >
-                    <SlidersHorizontal size={15} strokeWidth={1.5} />
+                    <SlidersHorizontal size={15} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">

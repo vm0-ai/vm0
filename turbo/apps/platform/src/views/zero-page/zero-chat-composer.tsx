@@ -517,7 +517,6 @@ function ComposerStripRow({
         >
           <Target
             size={16}
-            strokeWidth={1.5}
             className="shrink-0 text-emerald-800"
             aria-hidden="true"
           />
@@ -533,9 +532,9 @@ function ComposerStripRow({
                 aria-label={aboutAriaLabel}
               >
                 {isGoal ? (
-                  <Target size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <Target size={16} aria-hidden="true" />
                 ) : isWorkflowEvent ? (
-                  <Bolt size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <Bolt size={16} aria-hidden="true" />
                 ) : (
                   <ComposerQueueGlyph />
                 )}
@@ -568,7 +567,7 @@ function ComposerStripRow({
         }}
         aria-label={removeAriaLabel}
       >
-        <X size={16} strokeWidth={1.5} />
+        <X size={16} />
       </button>
     </div>
   );
@@ -1050,7 +1049,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
         }}
       >
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-template-preview:scale-105">
-          <Play size={20} strokeWidth={1.8} />
+          <Play size={20} />
         </span>
       </button>
     </div>
@@ -1112,7 +1111,7 @@ function VideoTemplateCard({
         <VideoTemplatePreview item={item} />
         {selected ? (
           <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Check size={14} strokeWidth={2.6} />
+            <Check size={14} />
           </span>
         ) : null}
         <button
@@ -1244,7 +1243,7 @@ function WebsiteTemplateCard({
         <div className={TEMPLATE_TILE_SCRIM} />
         {selected ? (
           <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Check size={14} strokeWidth={2.6} />
+            <Check size={14} />
           </span>
         ) : null}
         <button
@@ -1532,10 +1531,7 @@ function TemplateEmptyPanel() {
   return (
     <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
-        <Search
-          className="mb-4 h-8 w-8 text-muted-foreground/70"
-          strokeWidth={1.7}
-        />
+        <Search className="mb-4 h-8 w-8" />
         <p className="text-sm font-semibold text-muted-foreground">
           {t(($) => {
             return $.artifacts.templates.noMatches;
@@ -3648,7 +3644,7 @@ function TemplatePreviewPage({
             </h3>
             <div className="my-5 border-t border-border" />
             <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Palette size={14} strokeWidth={1.9} />
+              <Palette size={14} />
               <span>
                 {t(($) => {
                   return $.artifacts.templates.theme;
@@ -3826,7 +3822,7 @@ function PptCard({
         <div className={TEMPLATE_TILE_SCRIM} />
         {selected ? (
           <span className="pointer-events-none absolute left-[7px] top-[7px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Check size={14} strokeWidth={2.6} />
+            <Check size={14} />
           </span>
         ) : null}
         <button
@@ -3989,7 +3985,7 @@ function IllustrationTemplateHero({
         hidden
         className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground"
       >
-        <LayoutTemplate size={28} strokeWidth={1.5} />
+        <LayoutTemplate size={28} />
       </div>
     </div>
   );
@@ -4592,7 +4588,7 @@ function TemplatePickerCategoryNav({
               return (
                 <SelectItem key={value} value={value}>
                   <span className="flex items-center gap-2">
-                    <Icon className="h-4 w-4" strokeWidth={1.8} />
+                    <Icon className="h-4 w-4" />
                     {label}
                   </span>
                 </SelectItem>
@@ -4662,7 +4658,6 @@ function TemplatePickerCategoryNav({
                         ? "text-foreground"
                         : "text-gray-700 group-hover:text-gray-800",
                     )}
-                    strokeWidth={1.8}
                   />
                   <span className="truncate">{label}</span>
                 </button>
@@ -4699,10 +4694,7 @@ function TemplatePickerWorkflowSearch({
   return (
     <div className="relative w-56 shrink-0">
       <div className="relative">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          strokeWidth={1.8}
-        />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           aria-label={t(($) => {
             return $.artifacts.templates.searchConnectors;
@@ -5725,7 +5717,7 @@ function TemplatePickerButton({
                 setOpen(true);
               }}
             >
-              <SwatchBook size={18} strokeWidth={1.5} aria-hidden="true" />
+              <SwatchBook size={18} aria-hidden="true" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
@@ -5815,7 +5807,7 @@ function CreateWorkflowPromptButton({
             })}
             onClick={onCreateWorkflowPrompt}
           >
-            <Route size={18} strokeWidth={1.5} aria-hidden="true" />
+            <Route size={18} aria-hidden="true" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
@@ -5867,7 +5859,7 @@ function ConnectorTriggerIcons({
   ].slice(0, 3);
   const hasComputerAccess = hasComputerUse || hasCloudBrowser;
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
-    return <Plug size={18} strokeWidth={1.5} />;
+    return <Plug size={18} />;
   }
   return (
     <span className="flex items-center sm:-space-x-1.5">
@@ -5899,14 +5891,14 @@ function ConnectorTriggerIcons({
       {hasComputerUse && (
         <span className="relative shrink-0">
           <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
-            <Monitor size={16} strokeWidth={1.5} />
+            <Monitor size={16} />
           </span>
         </span>
       )}
       {hasCloudBrowser && (
         <span className="relative shrink-0">
           <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background text-primary zero-border sm:h-7 sm:w-7">
-            <Globe size={16} strokeWidth={1.5} />
+            <Globe size={16} />
           </span>
         </span>
       )}
@@ -5967,7 +5959,7 @@ function CustomConnectorCatalogCard({
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
           aria-hidden="true"
         >
-          <Plus size={14} strokeWidth={1.5} />
+          <Plus size={14} />
         </span>
       </span>
       <span className="block px-5 pb-4 pt-1">
@@ -6097,7 +6089,7 @@ function ComputerUseConnectorMenuSection({
         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover"
       >
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-          <Globe size={16} strokeWidth={1.5} />
+          <Globe size={16} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm text-foreground">
@@ -6168,7 +6160,7 @@ function ComputerUseConnectorMenuSection({
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-state-hover"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                  <Monitor size={16} strokeWidth={1.5} />
+                  <Monitor size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">
@@ -6222,11 +6214,7 @@ function ComputerUseConnectorMenuSection({
         </div>
       ) : (
         <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
-          <Monitor
-            size={16}
-            strokeWidth={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Monitor size={16} className="shrink-0" />
           {t(($) => {
             return $.chat.computerUse.noOnlineComputers;
           })}
@@ -6238,11 +6226,7 @@ function ComputerUseConnectorMenuSection({
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-state-hover"
           onClick={onOpenDownloadDialog}
         >
-          <Plug
-            size={16}
-            strokeWidth={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
+          <Plug size={16} className="shrink-0" />
           {t(($) => {
             return $.chat.computerUse.connectMyComputer;
           })}
@@ -6590,7 +6574,7 @@ function ConnectorsPopoverButton({
                             )}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
                           >
-                            <SlidersHorizontal size={15} strokeWidth={1.5} />
+                            <SlidersHorizontal size={15} />
                           </button>
                         )}
                       <LoadingSwitch
@@ -6639,7 +6623,7 @@ function ConnectorsPopoverButton({
             }}
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-              <Plus size={13} strokeWidth={1.5} />
+              <Plus size={13} />
             </span>
             {t(($) => {
               return $.chat.connectors.addConnectors;
@@ -6725,7 +6709,7 @@ function ComputerUseDownloadDialog({
         <div className="px-6 pb-6 pt-4">
           {downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
-              <AlertTriangle size={16} strokeWidth={1.5} />
+              <AlertTriangle size={16} />
               {t(($) => {
                 return $.chat.computerUse.unsupportedIntelMac;
               })}
@@ -6746,7 +6730,7 @@ function ComputerUseDownloadDialog({
                   onOpenChange(false);
                 }}
               >
-                <Download size={16} strokeWidth={1.5} />
+                <Download size={16} />
                 {t(($) => {
                   return $.chat.computerUse.downloadMacos;
                 })}
@@ -6906,10 +6890,10 @@ function MicButton({ signals }: { signals: ComposerSignals }) {
                     } as CSSProperties
                   }
                 />
-                <Mic size={17} strokeWidth={1.8} className="relative" />
+                <Mic size={17} className="relative" />
               </>
             ) : (
-              <Mic size={18} strokeWidth={1.5} />
+              <Mic size={18} />
             )}
           </button>
         </TooltipTrigger>
@@ -6941,7 +6925,7 @@ function ComposerAttachButton({ signals }: { signals: ComposerSignals }) {
               fileInput?.click();
             }}
           >
-            <Paperclip size={18} strokeWidth={1.5} />
+            <Paperclip size={18} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
@@ -7288,7 +7272,7 @@ function ComposerSendButton({
         return $.chat.actions.send;
       })}
     >
-      <ArrowUp size={18} strokeWidth={2} data-stroke />
+      <ArrowUp size={18} />
     </Button>
   );
 }
@@ -7336,7 +7320,7 @@ function ModelConfigurationWarning({
             aria-label={`${blocker.actionLabel}: ${blocker.message}`}
             className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
           >
-            <AlertTriangle size={15} strokeWidth={1.75} />
+            <AlertTriangle size={15} />
             <span className="hidden sm:inline">{blocker.actionLabel}</span>
           </button>
         </TooltipTrigger>

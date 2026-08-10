@@ -230,11 +230,11 @@ function CollapsedExpandButton() {
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               onClick={onCollapse}
               aria-label={expandLabel}
             >
-              <PanelLeftClose size={18} className="rotate-180" />
+              <PanelLeftClose size={18} className="rotate-180 opacity-50" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
@@ -305,7 +305,7 @@ function CollapsedNavList() {
                       aria-label={label}
                     >
                       <span className="relative inline-flex">
-                        <Icon size={16} className="shrink-0" />
+                        <Icon size={16} className="shrink-0 opacity-70" />
                         {id === "works" && slackScopeMismatch && (
                           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
                         )}
@@ -353,7 +353,7 @@ function CollapsedFooter() {
               }`}
               aria-label={insightsLabel}
             >
-              <Sparkles size={16} className="shrink-0" />
+              <Sparkles size={16} className="shrink-0 opacity-70" />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="right">
@@ -411,11 +411,11 @@ function ExpandedHeader() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-hover transition-colors"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground hover:text-sidebar-foreground hover:bg-state-hover transition-colors"
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
-                <PanelLeftClose size={18} />
+                <PanelLeftClose className="opacity-50" size={18} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -464,10 +464,8 @@ function ExpandedManageSection() {
           })}
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <ChevronRight
+              className={`opacity-35 ${manageCollapsed ? "" : "rotate-90"}`}
               size={12}
-              strokeWidth={2}
-              className={manageCollapsed ? "" : "rotate-90"}
-              data-stroke
             />
           </span>
         </span>
@@ -625,7 +623,7 @@ function ExpandedFooterAccountInsights() {
               }`}
               aria-label={insightsLabel}
             >
-              <Sparkles size={16} className="shrink-0" />
+              <Sparkles size={16} className="shrink-0 opacity-70" />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="top">
@@ -713,7 +711,7 @@ function LabeledRailLink({
             />
           </span>
         ) : (
-          <Icon size={19} className="shrink-0" />
+          <Icon size={19} className="shrink-0 opacity-70" />
         )}
         {showBadge && (
           <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" />
@@ -844,9 +842,9 @@ function ChatListColumn() {
                   openAgentList();
                 }}
                 aria-label={searchLabel}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               >
-                <Search size={17} strokeWidth={1.8} />
+                <Search className="opacity-50" size={17} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -866,9 +864,9 @@ function ChatListColumn() {
                 }}
                 aria-label={newChatLabel}
                 aria-current={isNewChatActive ? "page" : undefined}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground no-underline transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
               >
-                <Edit size={17} strokeWidth={1.8} />
+                <Edit className="opacity-50" size={17} />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">
