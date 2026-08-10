@@ -58,6 +58,7 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 import { scheduleUsagePackMemberRemoval } from "./usage-pack-allocation-change.service";
+import { refundAcceptedUsagePackInvitationForMember } from "./usage-pack-invitation-purchase.service";
 import {
   deleteOrgUsageData,
   deleteUserUsageData,
@@ -940,6 +941,8 @@ async function commitClerkDeletedOrgMembershipCleanup(
 ): Promise<void> {
   const commitSignal = new AbortController().signal;
   await scheduleUsagePackMemberRemoval(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+  await refundAcceptedUsagePackInvitationForMember(db, args, commitSignal);
   commitSignal.throwIfAborted();
   await cleanupOrgMemberResources(db, args, commitSignal);
   commitSignal.throwIfAborted();

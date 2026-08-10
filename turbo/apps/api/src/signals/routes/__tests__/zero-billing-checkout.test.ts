@@ -4357,6 +4357,127 @@ describe("usage pack allocation management", () => {
     );
   });
 
+  it("refunds an accepted invitation package when Clerk removes the member", async () => {
+    const purchase = await beginInvitationPurchase();
+    const invitationId = `inv_removed_${randomUUID()}`;
+    const acceptedUserId = `user_removed_${randomUUID()}`;
+    await payInvitationPurchase(purchase, invitationId);
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    await postClerkInvitationAccepted({
+      purchase,
+      invitationId,
+      userId: acceptedUserId,
+    });
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        purchase.fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 2]]),
+      ),
+    );
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
+      id: "sub_sched_removed_invitation",
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: "sub_sched_removed_invitation",
+    });
+    context.mocks.stripe.refunds.create
+      .mockResolvedValueOnce({
+        id: `re_removed_failed_${randomUUID()}`,
+        status: "failed",
+      })
+      .mockResolvedValueOnce({
+        id: `re_removed_succeeded_${randomUUID()}`,
+        status: "succeeded",
+      });
+    const event = {
+      type: "organizationMembership.deleted",
+      data: {
+        id: `mem_removed_${randomUUID()}`,
+        organization: { id: purchase.fixture.orgId },
+        publicUserData: { userId: acceptedUserId },
+        role: "org:member",
+      },
+    };
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(event);
+      await accept(
+        setupApp({ context, routes: webhooksClerkRoutes })(
+          webhookClerkContract,
+        ).post({ body: JSON.stringify(event) }),
+        [200],
+      );
+      await flushWaitUntilForTest();
+    }
+
+    const removed = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(removed.invitationPurchases[0]).toStrictEqual(
+      expect.objectContaining({
+        status: "refunded",
+        acceptedUserId,
+      }),
+    );
+    expect(
+      removed.allocations.find((allocation) => {
+        return allocation.userId === acceptedUserId;
+      })?.status,
+    ).toBe("active");
+    expect(removed.remainingCredits).toContainEqual({
+      userId: acceptedUserId,
+      amount: 0,
+    });
+    expect(removed.changes).toContainEqual(
+      expect.objectContaining({
+        userId: acceptedUserId,
+        kind: "removal",
+        status: "scheduled",
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(2);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        payment_intent: purchase.paymentIntentId,
+        amount: 1000,
+      }),
+      expect.objectContaining({
+        idempotencyKey: `usage-pack-invitation:${purchase.purchaseId}:refund:1`,
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        payment_intent: purchase.paymentIntentId,
+        amount: 1000,
+      }),
+      expect.objectContaining({
+        idempotencyKey: `usage-pack-invitation:${purchase.purchaseId}:refund:2`,
+      }),
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(
+      "sub_sched_removed_invitation",
+      expect.objectContaining({
+        phases: expect.arrayContaining([
+          expect.objectContaining({
+            start_date: purchase.fixture.billingPeriod.end,
+            items: expect.arrayContaining([
+              { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+            ]),
+          }),
+        ]),
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("reconciles acceptance when the Stripe projection response is lost", async () => {
     const purchase = await beginInvitationPurchase();
     const invitationId = `inv_projection_retry_${randomUUID()}`;
