@@ -53,6 +53,8 @@ mod types;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) use entry::CacheEntryPaths;
 pub(crate) use lifecycle::{
     WorkspaceImageLease, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityFailure,
     WorkspaceImagePromotionOutcome, WorkspaceSessionHistorySidecarEntryGuard,

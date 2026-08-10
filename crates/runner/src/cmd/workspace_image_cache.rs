@@ -318,11 +318,10 @@ mod tests {
 
     use crate::ids::RunId;
     use crate::paths::workspace_image_cache_key;
+    use crate::workspace_image_cache::CacheEntryPaths;
 
     fn tmp_image_path(home: &HomePaths, cache_key: &str, run_id: RunId) -> PathBuf {
-        home.workspace_image_cache_dir()
-            .join(cache_key)
-            .join(format!("current.ext4.tmp.{run_id}"))
+        CacheEntryPaths::new(&home.workspace_image_cache_dir(), cache_key).tmp_image(run_id)
     }
 
     fn test_inspection() -> WorkspaceImageCacheInspection {

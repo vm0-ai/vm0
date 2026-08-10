@@ -68,7 +68,7 @@ async fn publish_test_session_history_sidecar(
 
 #[tokio::test]
 async fn session_history_sidecar_publish_and_probe_hit() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let session_id = "sess-sidecar-hit";
     let history = br#"{"type":"message","content":"hello"}"#;
@@ -84,9 +84,10 @@ async fn session_history_sidecar_publish_and_probe_hit() {
 
     let identity =
         publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
-    let metadata_path = paths
-        .workspace_image_cache_entry_dir(&cache_key)
-        .join("session-history.metadata.json");
+    let metadata_path = cache
+        .entry_paths(&cache_key)
+        .session_history_sidecar_metadata()
+        .to_path_buf();
     let metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
     assert!(metadata.get("historyGenerationRunId").is_none());
@@ -118,7 +119,7 @@ async fn session_history_sidecar_publish_and_probe_hit() {
 
 #[tokio::test]
 async fn session_history_sidecar_rejects_group_writable_source() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let session_id = "sess-sidecar-group-writable";
     let history = br#"{"type":"message","content":"unsafe"}"#;
@@ -155,16 +156,17 @@ async fn session_history_sidecar_rejects_group_writable_source() {
     assert!(error.to_string().contains("group/other writable"));
     assert!(!tmp_path.exists());
     assert!(
-        !paths
-            .workspace_image_cache_entry_dir(&cache_key)
-            .join("session-history.metadata.json")
+        !cache
+            .entry_paths(&cache_key)
+            .session_history_sidecar_metadata()
+            .to_path_buf()
             .exists()
     );
 }
 
 #[tokio::test]
 async fn session_history_sidecar_does_not_publish_non_regular_source() {
-    let (dir, paths, cache) = local_cache().await;
+    let (dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let session_id = "sess-sidecar-symlink-source";
     let history = br#"{"type":"message","content":"outside"}"#;
@@ -200,16 +202,17 @@ async fn session_history_sidecar_does_not_publish_non_regular_source() {
     assert!(!tmp_path.exists());
     assert_eq!(fs::read(&outside).await.unwrap(), history);
     assert!(
-        !paths
-            .workspace_image_cache_entry_dir(&cache_key)
-            .join("session-history.metadata.json")
+        !cache
+            .entry_paths(&cache_key)
+            .session_history_sidecar_metadata()
+            .to_path_buf()
             .exists()
     );
 }
 
 #[tokio::test]
 async fn previous_session_history_sidecar_metadata_remains_restoreable() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let session_id = "sess-sidecar-previous";
     let history = br#"{"type":"message","content":"previous"}"#;
@@ -224,9 +227,10 @@ async fn previous_session_history_sidecar_metadata_remains_restoreable() {
     .await;
     let identity =
         publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
-    let metadata_path = paths
-        .workspace_image_cache_entry_dir(&cache_key)
-        .join("session-history.metadata.json");
+    let metadata_path = cache
+        .entry_paths(&cache_key)
+        .session_history_sidecar_metadata()
+        .to_path_buf();
     let mut metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
     let metadata = metadata.as_object_mut().unwrap();
@@ -304,8 +308,9 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
         let identity =
             publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history)
                 .await;
-        let entry_dir = paths.workspace_image_cache_entry_dir(&cache_key);
-        let metadata_path = entry_dir.join("session-history.metadata.json");
+        let entry_paths = cache.entry_paths(&cache_key);
+        let entry_dir = entry_paths.entry_dir();
+        let metadata_path = entry_paths.session_history_sidecar_metadata().to_path_buf();
         let body_path = cache
             .probe_session_history_sidecar(&cache_key, &identity)
             .await
@@ -490,7 +495,7 @@ async fn session_history_sidecar_preserve_keeps_existing_sidecar() {
 
 #[tokio::test]
 async fn session_history_sidecar_body_rename_failure_preserves_committed_sidecar() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let cache_key = write_current_cache_entry(
         &cache,
@@ -509,9 +514,10 @@ async fn session_history_sidecar_body_rename_failure_preserves_committed_sidecar
         .probe_session_history_sidecar(&cache_key, &identity_a)
         .await
         .unwrap();
-    let metadata_path = paths
-        .workspace_image_cache_entry_dir(&cache_key)
-        .join("session-history.metadata.json");
+    let metadata_path = cache
+        .entry_paths(&cache_key)
+        .session_history_sidecar_metadata()
+        .to_path_buf();
     let metadata_a = fs::read(&metadata_path).await.unwrap();
 
     let replacement_run_id = RunId::new_v4();
@@ -525,8 +531,10 @@ async fn session_history_sidecar_body_rename_failure_preserves_committed_sidecar
         encoded_size: history_b.len() as u64,
         restored_session_identity: identity_b,
     };
-    let blocked_slot = paths
-        .workspace_image_cache_entry_dir(&cache_key)
+    let blocked_slot = cache
+        .entry_paths(&cache_key)
+        .entry_dir()
+        .to_path_buf()
         .join("session-history.second.blob");
     fs::create_dir(&blocked_slot).await.unwrap();
 
@@ -550,7 +558,7 @@ async fn session_history_sidecar_body_rename_failure_preserves_committed_sidecar
 
 #[tokio::test]
 async fn session_history_sidecar_metadata_commit_failure_rolls_back_replacement() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let cache_key = write_current_cache_entry(
         &cache,
@@ -572,8 +580,9 @@ async fn session_history_sidecar_metadata_commit_failure_rolls_back_replacement(
     let body_a = committed_a.path;
     let body_a_identity =
         WorkspaceImageFileIdentity::from_metadata(&fs::symlink_metadata(&body_a).await.unwrap());
-    let entry_dir = paths.workspace_image_cache_entry_dir(&cache_key);
-    let metadata_path = entry_dir.join("session-history.metadata.json");
+    let entry_paths = cache.entry_paths(&cache_key);
+    let entry_dir = entry_paths.entry_dir().to_path_buf();
+    let metadata_path = entry_paths.session_history_sidecar_metadata().to_path_buf();
     let metadata_a = fs::read(&metadata_path).await.unwrap();
 
     let failed_run_id = RunId::new_v4();
@@ -742,7 +751,7 @@ async fn session_history_sidecar_probe_rejects_mismatched_body_identity() {
 
 #[tokio::test]
 async fn session_history_sidecar_counts_toward_gc_candidate_and_inspection() {
-    let (_dir, paths, cache) = local_cache().await;
+    let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let session_id = "sess-sidecar-accounting";
     let history = br#"{"type":"message","content":"accounting"}"#;
@@ -756,10 +765,8 @@ async fn session_history_sidecar_counts_toward_gc_candidate_and_inspection() {
     )
     .await;
     publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
-    let current_allocated = workspace_cache_path_allocated_bytes(
-        &paths.workspace_image_cache_current_image(&cache_key),
-    )
-    .await;
+    let current_allocated =
+        workspace_cache_path_allocated_bytes(cache.entry_paths(&cache_key).current_image()).await;
     let sidecar_allocated = cache
         .session_history_sidecar_allocated_bytes(&cache_key)
         .await;

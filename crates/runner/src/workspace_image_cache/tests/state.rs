@@ -417,10 +417,10 @@ async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
         "/workspace",
         b"old image".len() as u64,
     );
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
@@ -461,10 +461,10 @@ async fn held_workspace_states_reject_unsafe_working_dir_metadata() {
     let cache = WorkspaceImageCache::new(paths.clone());
     let run_id = RunId::new_v4();
     let key = workspace_image_cache_key("sess-1", "/");
-    fs::create_dir_all(paths.workspace_image_cache_entry_dir(&key))
+    fs::create_dir_all(cache.entry_paths(&key).entry_dir().to_path_buf())
         .await
         .unwrap();
-    let current = paths.workspace_image_cache_current_image(&key);
+    let current = cache.entry_paths(&key).current_image().to_path_buf();
     fs::write(&current, b"image").await.unwrap();
     let current_metadata = fs::metadata(&current).await.unwrap();
     cache
