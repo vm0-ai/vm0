@@ -14,7 +14,7 @@ import builtin_host_policy
 import connector_template_syntax
 import matching
 import state_file
-from path_security import has_unsafe_path, has_unsafe_url_path
+from path_security import has_unsafe_url_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
@@ -22,6 +22,12 @@ _CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
 _RESERVED_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
+# Use the shortest valid witness for each URL component so materialization does
+# not push an otherwise satisfiable DNS label past its 63-byte limit.
+_BASE_URL_TEMPLATE_PREFIX_PLACEHOLDER = "https://x.y"
+_BASE_URL_TEMPLATE_HOST_PLACEHOLDER = "x.y"
+_BASE_URL_TEMPLATE_PORT_PLACEHOLDER = "1"
+_BASE_URL_TEMPLATE_PATH_PLACEHOLDER = "x"
 
 
 CatalogFileKey = state_file.StateFileIdentity
@@ -364,25 +370,11 @@ def _validate_api_entry(firewall_name: str, api: dict) -> None:
         raise BuiltinFirewallCatalogCacheError(
             f'catalog cache firewall "{firewall_name}" api base has invalid syntax'
         )
-    if template_syntax_target is not None:
-        if template_syntax_target.startswith("template/"):
-            known_path = template_syntax_target.removeprefix("template")
-        else:
-            known_path = ""
-        if has_unsafe_url_path(template_syntax_target) or has_unsafe_path(known_path):
-            raise BuiltinFirewallCatalogCacheError(
-                f'catalog cache firewall "{firewall_name}" api base has unsafe path'
-            )
-    if (
-        template_syntax_target is not None
-        and ("{" in template_syntax_target or "}" in template_syntax_target)
-        and "://" in template_syntax_target
-        and not matching.firewall_base_config_is_valid(template_syntax_target)
-    ):
+    if template_syntax_target is not None and has_unsafe_url_path(template_syntax_target):
         raise BuiltinFirewallCatalogCacheError(
-            f'catalog cache firewall "{firewall_name}" api base has invalid parameters'
+            f'catalog cache firewall "{firewall_name}" api base has unsafe path'
         )
-    if template_syntax_target is None and not matching.firewall_base_config_is_valid(raw_base):
+    if not matching.firewall_base_config_is_valid(raw_syntax_target):
         raise BuiltinFirewallCatalogCacheError(
             f'catalog cache firewall "{firewall_name}" api base is invalid'
         )
@@ -473,8 +465,56 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
                 f'catalog cache firewall "{firewall_name}" api base template must use vars'
             )
         result.append(raw_base[search_start:start])
-        result.append("template")
+        result.append(
+            _base_url_template_syntax_placeholder(
+                firewall_name,
+                raw_base,
+                start,
+                template_end,
+            )
+        )
         search_start = template_end
+
+
+def _base_url_template_syntax_placeholder(
+    firewall_name: str,
+    raw_base: str,
+    start: int,
+    template_end: int,
+) -> str:
+    prefix = raw_base[:start]
+    suffix = raw_base[template_end:]
+    ends_base_or_starts_path = suffix == "" or suffix.startswith("/")
+
+    if prefix == "" and ends_base_or_starts_path:
+        return _BASE_URL_TEMPLATE_PREFIX_PLACEHOLDER
+    if prefix.endswith("://") and ends_base_or_starts_path:
+        return _BASE_URL_TEMPLATE_HOST_PLACEHOLDER
+    if _base_url_prefix_is_inside_authority(prefix):
+        if prefix.endswith(":") and ends_base_or_starts_path:
+            return _BASE_URL_TEMPLATE_PORT_PLACEHOLDER
+        return _BASE_URL_TEMPLATE_HOST_PLACEHOLDER
+    if _base_url_prefix_is_inside_path(prefix):
+        return _BASE_URL_TEMPLATE_PATH_PLACEHOLDER
+    raise BuiltinFirewallCatalogCacheError(
+        f'catalog cache firewall "{firewall_name}" api base template variable '
+        "is used in an unsupported position"
+    )
+
+
+def _base_url_prefix_is_inside_authority(prefix: str) -> bool:
+    _, delimiter, after_scheme = prefix.partition("://")
+    return delimiter != "" and not any(char in after_scheme for char in "/?#")
+
+
+def _base_url_prefix_is_inside_path(prefix: str) -> bool:
+    _, delimiter, after_scheme = prefix.partition("://")
+    return (
+        delimiter != ""
+        and "?" not in after_scheme
+        and "#" not in after_scheme
+        and "/" in after_scheme
+    )
 
 
 def _warn(message: str) -> None:
