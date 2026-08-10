@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.66.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.3...guest-agent-v0.66.4) (2026-08-10)
+
+
+### Documentation
+
+* **rust:** document pi standby current-run gate ([#26039](https://github.com/vm0-ai/vm0/issues/26039)) ([a1c13c7](https://github.com/vm0-ai/vm0/commit/a1c13c7ee2229ec2a5a74768f5c3e31cfae76ec2))
+
 ## [0.66.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.66.2...guest-agent-v0.66.3) (2026-08-10)
 
 

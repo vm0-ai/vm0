@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.162.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.5...runner-rs-v0.162.6) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** attribute severe balloon retention ([#26038](https://github.com/vm0-ai/vm0/issues/26038)) ([d996ab7](https://github.com/vm0-ai/vm0/commit/d996ab715ff06c03dee96b82f683e577c7e52b89))
+
 ## [0.162.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.4...runner-rs-v0.162.5) (2026-08-10)
 
 
