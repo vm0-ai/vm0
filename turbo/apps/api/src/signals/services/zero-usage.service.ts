@@ -1,31 +1,16 @@
 import { command } from "ccstate";
-import { and, asc, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import type {
   MemberUsage,
   UsageMembersResponse,
 } from "@vm0/api-contracts/contracts/zero-usage";
 import type { UsageRecordRange } from "@vm0/api-contracts/contracts/zero-usage-record";
-import type { UsageRunsResponse } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { clerk$, type ClerkUser } from "../external/clerk";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
-import {
-  buildFinalizedUsageRunTotalsSubquery,
-  getMemberUsageTotals,
-  hasRunUsageTotals,
-  mergedRunCacheTokens,
-  mergedRunCreditsCharged,
-  mergedRunInputTokens,
-  mergedRunModel,
-  mergedRunOutputTokens,
-} from "./zero-usage-reporting-ledger";
+import { getMemberUsageTotals } from "./zero-usage-reporting-ledger";
 import { fixedRangeToPeriod } from "./usage-period";
 
 interface UsageMembersArgs {
@@ -101,139 +86,6 @@ export const zeroUsageMembers$ = command(
         end: period.end.toISOString(),
       },
       members,
-    };
-  },
-);
-
-interface UsageRunsArgs {
-  readonly orgId: string;
-  readonly page: number;
-  readonly pageSize: number;
-  readonly runId?: string;
-  readonly agentId?: string;
-  readonly userIds?: readonly string[];
-  readonly dateFrom?: string;
-  readonly dateTo?: string;
-}
-
-export const zeroUsageRuns$ = command(
-  async (
-    { get, set },
-    args: UsageRunsArgs,
-    signal: AbortSignal,
-  ): Promise<UsageRunsResponse> => {
-    const db = set(writeDb$);
-    const finalizedUsage = buildFinalizedUsageRunTotalsSubquery(db, args.orgId);
-    const conditions = [eq(agentRuns.orgId, args.orgId)];
-
-    if (args.runId) {
-      conditions.push(eq(agentRuns.id, args.runId));
-    }
-    if (args.agentId) {
-      conditions.push(eq(agentComposes.id, args.agentId));
-    }
-    if (args.userIds && args.userIds.length > 0) {
-      conditions.push(inArray(agentRuns.userId, [...args.userIds]));
-    }
-    if (args.dateFrom) {
-      conditions.push(gte(agentRuns.createdAt, new Date(args.dateFrom)));
-    }
-    if (args.dateTo) {
-      conditions.push(lt(agentRuns.createdAt, new Date(args.dateTo)));
-    }
-
-    const [countResult] = await db
-      .select({ total: count() })
-      .from(agentRuns)
-      .leftJoin(finalizedUsage, eq(agentRuns.id, finalizedUsage.runId))
-      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(
-        agentComposes,
-        eq(agentSessions.agentComposeId, agentComposes.id),
-      )
-      .where(and(...conditions, hasRunUsageTotals(finalizedUsage)));
-    signal.throwIfAborted();
-
-    const offset = (args.page - 1) * args.pageSize;
-    const rows = await db
-      .select({
-        runId: agentRuns.id,
-        status: agentRuns.status,
-        createdAt: agentRuns.createdAt,
-        startedAt: agentRuns.startedAt,
-        completedAt: agentRuns.completedAt,
-        userId: agentRuns.userId,
-        prompt: agentRuns.prompt,
-        triggerSource: zeroRuns.triggerSource,
-        agentName: zeroAgents.displayName,
-        inputTokens: mergedRunInputTokens(finalizedUsage),
-        outputTokens: mergedRunOutputTokens(finalizedUsage),
-        cacheTokens: mergedRunCacheTokens(finalizedUsage),
-        creditsCharged: mergedRunCreditsCharged(finalizedUsage),
-        model: mergedRunModel(finalizedUsage),
-      })
-      .from(agentRuns)
-      .leftJoin(finalizedUsage, eq(agentRuns.id, finalizedUsage.runId))
-      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
-      .leftJoin(
-        agentComposes,
-        eq(agentSessions.agentComposeId, agentComposes.id),
-      )
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(and(...conditions, hasRunUsageTotals(finalizedUsage)))
-      .orderBy(desc(agentRuns.createdAt), asc(agentRuns.id))
-      .limit(args.pageSize)
-      .offset(offset);
-    signal.throwIfAborted();
-
-    const uniqueUserIds = [
-      ...new Set(
-        rows.map((row) => {
-          return row.userId;
-        }),
-      ),
-    ];
-    const emailMap = await resolveEmails(
-      get(clerk$),
-      db,
-      uniqueUserIds,
-      signal,
-    );
-
-    return {
-      runs: rows.map((row) => {
-        const startedAt = row.startedAt?.toISOString() ?? null;
-        const completedAt = row.completedAt?.toISOString() ?? null;
-        const durationMs =
-          row.startedAt && row.completedAt
-            ? row.completedAt.getTime() - row.startedAt.getTime()
-            : null;
-
-        return {
-          runId: row.runId,
-          agentName: row.agentName ?? null,
-          memberEmail: emailMap.get(row.userId) ?? "unknown",
-          userId: row.userId,
-          triggerSource: row.triggerSource ?? null,
-          model: row.model ?? "unknown",
-          status: row.status,
-          prompt: row.prompt,
-          startedAt,
-          completedAt,
-          durationMs,
-          inputTokens: row.inputTokens,
-          outputTokens: row.outputTokens,
-          cacheTokens: row.cacheTokens,
-          creditsCharged: row.creditsCharged,
-          createdAt: row.createdAt.toISOString(),
-        };
-      }),
-      pagination: {
-        page: args.page,
-        pageSize: args.pageSize,
-        total: countResult?.total ?? 0,
-      },
     };
   },
 );

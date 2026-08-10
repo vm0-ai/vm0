@@ -11,15 +11,11 @@ import {
 import type { InsightsDailyData } from "@vm0/db/jsonb-contracts/insights-daily";
 
 /**
- * Pre-aggregated daily insights per user within an org.
- * Populated by /api/cron/aggregate-insights from PostgreSQL (runs, credits)
- * and Axiom (network logs, permissions) data sources.
- *
- * Agent runs, services, and permissions are per-user.
- * Credits data (creditsUsed, creditBalance, teamUsage) is org-wide.
- *
- * The `data` column stores a full DayInsight snapshot as JSONB,
- * keeping the schema flexible as new card types are added.
+ * Compatibility-only declaration for the physical table retained by #26154.
+ * The outgoing API and cron jobs can still read and write this table while the
+ * database is ahead of the API for the observed ~102-minute rollout window.
+ * Remove with #26170 once the preceding API release and rollback/drain window
+ * have closed.
  */
 export const insightsDaily = pgTable(
   "insights_daily",

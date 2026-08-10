@@ -2,8 +2,6 @@ import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
 import { connectorsSlugCallbackRoutes } from "./routes/connectors-slug-callback";
-import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
-import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "./routes/cron-project-chat-event-search";
 import { cronSnapshotChatEventsRoutes } from "./routes/cron-snapshot-chat-events";
@@ -40,7 +38,6 @@ import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
-import { usageRoutes } from "./routes/usage";
 import { userExportRoutes } from "./routes/user-export";
 import { webhooksAgentCheckpointsRoutes } from "./routes/webhooks-agent-checkpoints";
 import { webhooksAgentCompleteRoutes } from "./routes/webhooks-agent-complete";
@@ -100,7 +97,6 @@ import { zeroSeoRoutes } from "./routes/zero-seo";
 import { zeroGoalsRoutes } from "./routes/zero-goals";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
-import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
@@ -183,10 +179,8 @@ import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
-import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
-import { zeroUsageRunsRoutes } from "./routes/zero-usage-runs";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
@@ -207,7 +201,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
-  ...usageRoutes,
   ...userExportRoutes,
   ...webhooksClerkRoutes,
   ...webhooksBuiltInGenerationRoutes,
@@ -229,8 +222,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentPiTranscriptRoutes,
   ...webhooksAgentStorageRoutes,
   ...connectorsSlugCallbackRoutes,
-  ...cronAggregateInsightsRoutes,
-  ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...cronSnapshotChatEventsRoutes,
@@ -297,7 +288,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroGoalsRoutes,
   ...zeroHostRoutes,
   ...zeroBuiltInGenerationRoutes,
-  ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
   ...zeroImageShareXRoutes,
   ...zeroAvatarVideoRoutes,
@@ -390,10 +380,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
-  ...zeroUsageInsightRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,
-  ...zeroUsageRunsRoutes,
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,

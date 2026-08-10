@@ -4,20 +4,20 @@ import { describe, it } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { seedOwnedConnectorSecret } from "./helpers/connector-credential-storage-state";
 import {
-  deleteUsageInsightFixture$,
+  deleteUsageStateFixture$,
   insertUsageEvent$,
   materializeHourlyUsage$,
   readUsageStorageCounts$,
-  seedUsageInsightFixture$,
-} from "./helpers/zero-usage-insight";
+  seedUsageStateFixture$,
+} from "./helpers/usage-state";
 
 const context = testContext();
 const store = createStore();
 
-describe("usage insight test state", () => {
+describe("usage state test state", () => {
   it("cascades connector credentials when deleting fixture connectors", async () => {
     const fixture = await store.set(
-      seedUsageInsightFixture$,
+      seedUsageStateFixture$,
       undefined,
       context.signal,
     );
@@ -31,12 +31,12 @@ describe("usage insight test state", () => {
       description: null,
     });
 
-    await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+    await store.set(deleteUsageStateFixture$, fixture, context.signal);
   });
 
   it("moves processed fixture usage to hourly storage", async () => {
     const fixture = await store.set(
-      seedUsageInsightFixture$,
+      seedUsageStateFixture$,
       undefined,
       context.signal,
     );
@@ -74,7 +74,7 @@ describe("usage insight test state", () => {
       ),
     ).resolves.toStrictEqual({ raw: 0, hourly: 1 });
 
-    await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+    await store.set(deleteUsageStateFixture$, fixture, context.signal);
     await expect(
       store.set(
         readUsageStorageCounts$,

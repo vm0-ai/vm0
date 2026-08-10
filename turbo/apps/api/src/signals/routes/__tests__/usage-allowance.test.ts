@@ -204,22 +204,10 @@ async function readOrgCredits(actor: ApiTestUser): Promise<number> {
   return status.credits;
 }
 
-async function readRunCreditsCharged(
-  actor: ApiTestUser,
-  runId: string,
-): Promise<number> {
+async function readVisibleUsageCredits(actor: ApiTestUser): Promise<number> {
   const billing = createBillingMediaApi(context);
-  const response = await billing.readUsageRuns(actor, [200]);
-  if (response.status !== 200) {
-    throw new Error("Expected usage runs read to succeed");
-  }
-  const run = response.body.runs.find((entry) => {
-    return entry.runId === runId;
-  });
-  if (!run) {
-    throw new Error(`Run ${runId} missing from usage runs read`);
-  }
-  return run.creditsCharged;
+  const response = await billing.readUsageRecord(actor);
+  return response.body.totalCredits;
 }
 
 describe("Usage Allowance", () => {
@@ -240,7 +228,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(10);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
   it("settles multiple events and runs against shared allowance windows", async () => {
@@ -267,12 +255,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(70);
-    await expect(readRunCreditsCharged(actor, firstRun.runId)).resolves.toBe(
-      70,
-    );
-    await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
-      50,
-    );
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(120);
     const status = await createRunsApi(context).readBillingStatus(actor);
     if (!status.usageAllowance) {
       throw new Error("Expected usage allowance windows");
@@ -303,7 +286,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(80);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
   it("charges org credits after the short window is exhausted", async () => {
@@ -341,12 +324,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(50);
-    await expect(readRunCreditsCharged(actor, firstRun.runId)).resolves.toBe(
-      100,
-    );
-    await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
-      50,
-    );
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(150);
   });
 
   it("refreshes the short window while continuing the active weekly window", async () => {
@@ -384,9 +362,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
-    await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
-      50,
-    );
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(150);
   });
 
   it("refreshes the weekly window for runs after the weekly window expires", async () => {
@@ -422,9 +398,7 @@ describe("Usage Allowance", () => {
     // A continued weekly window would only have 40 units left (120 - 80), so
     // full coverage of the 50-unit event proves the weekly window refreshed.
     await expect(readOrgCredits(actor)).resolves.toBe(100);
-    await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
-      50,
-    );
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(50);
   });
 
   it("admits vm0 runs with zero org credits when allowance remains", async () => {
@@ -449,7 +423,7 @@ describe("Usage Allowance", () => {
       quantity: 10,
     });
     await processOrgUsageEvents(actor);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(10);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(10);
   });
 
   it("rejects vm0 run admission after allowance is exhausted", async () => {
@@ -563,7 +537,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
   it("applies allowance to non-vm0 runs inside active allowance windows", async () => {
@@ -593,7 +567,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
   it("does not apply newly created allowance to older runs", async () => {
@@ -620,7 +594,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(20);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
   it("applies existing allowance windows after entitlement is canceled for an already created run", async () => {
@@ -653,7 +627,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(100);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
   it("does not apply existing allowance windows after entitlement is canceled", async () => {
@@ -687,7 +661,7 @@ describe("Usage Allowance", () => {
     await processOrgUsageEvents(actor);
 
     await expect(readOrgCredits(actor)).resolves.toBe(20);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+    await expect(readVisibleUsageCredits(actor)).resolves.toBe(80);
   });
 
   it("denies billable firewall auth when the run has no allowance window", async () => {
