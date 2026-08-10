@@ -420,16 +420,15 @@ body {
   --zero-card-border: hsl(var(--border));
   --zero-card-shadow:
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
-  /* Focus layer for the composer: a single very wide, very light veil laid over
-     the resting shadow. Kept under 10% alpha so it reads as depth, not a ring. */
-  --zero-composer-focus-shadow:
-    0 2px 12px hsl(220 12% 50% / 0.04), 0 10px 48px -8px hsl(220 14% 50% / 0.08);
+  /* Static focus veil for the composer. Fading this layer through opacity lets
+     the browser composite it without interpolating the wide blur every frame. */
+  --zero-composer-focus-veil: 0 10px 48px -8px hsl(220 14% 50% / 0.08);
 }
 
 /* A grey veil is invisible on a dark page, so the dark theme casts the same
    shape in black instead. The border step carries the state either way. */
 :where([data-theme="dark"]) .zero-app {
-  --zero-composer-focus-shadow: 0 10px 48px -8px rgb(0 0 0 / 0.45);
+  --zero-composer-focus-veil: 0 10px 48px -8px rgb(0 0 0 / 0.45);
 }
 
 /* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
@@ -689,20 +688,28 @@ body {
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-composer-radius);
   box-shadow: var(--zero-card-shadow);
-  transition:
-    border-color 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Composer is focused: the border steps one stop down the grey ramp and the
-   veil widens. Both revert on blur — there is no persistent active state. */
-.zero-app .zero-composer:focus-within {
-  border-color: hsl(var(--gray-500));
-  box-shadow: var(--zero-composer-focus-shadow);
+/* Keep the finished border and shadow on their own layer so focus animates
+   through compositor-friendly opacity instead of repainting the card. */
+.zero-app .zero-composer::after {
+  content: "";
+  position: absolute;
+  inset: -0.7px;
+  border: 0.7px solid hsl(var(--gray-500));
+  border-radius: inherit;
+  box-shadow: var(--zero-composer-focus-veil);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+.zero-app .zero-composer:focus-within::after {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .zero-app .zero-composer {
+  .zero-app .zero-composer::after {
     transition: none;
   }
 }
