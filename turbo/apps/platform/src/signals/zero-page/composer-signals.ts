@@ -24,8 +24,9 @@ import {
   isUsageEvent,
   lastAssistantCancelledFromGroups,
   queuedEventsFromSemanticEvents,
-  runningModelFromChatEvents,
+  runningModelSelectionFromChatEvents,
   semanticChatEventsFromChatEvents,
+  type ChatRunModelSelection,
 } from "../chat-page/chat-event-state.ts";
 import { messageDocumentToDisplayText } from "./user-message-document-codec.ts";
 import {
@@ -147,7 +148,9 @@ interface ComposerDraftSignals {
 interface ComposerModelSignals extends ComposerModelUiSignals {
   readonly temporaryModelNoticeEnabled$: Computed<boolean>;
   readonly modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
-  readonly runningModel$: Computed<Promise<string | null>>;
+  readonly runningModelSelection$: Computed<
+    Promise<ChatRunModelSelection | null>
+  >;
   readonly selectedModelOauthAvailable$: Computed<Promise<boolean>>;
   readonly setModelSelection$: Command<
     Promise<void>,
@@ -498,7 +501,7 @@ export function createComposerSignals(
       ...ui.model,
       temporaryModelNoticeEnabled$,
       modelSelection$: options.modelSelection$,
-      runningModel$: eventSignals.runningModel$,
+      runningModelSelection$: eventSignals.runningModelSelection$,
       selectedModelOauthAvailable$: options.selectedModelOauthAvailable$,
       setModelSelection$: options.setModelSelection$,
       configureSelectedModel$: options.configureSelectedModel$,
@@ -554,9 +557,13 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   const runIndicatorState$ = computed((get) => {
     return deriveRunIndicatorStateFromChatEvents(get(chatEvents$));
   });
-  const runningModel$ = computed((get): Promise<string | null> => {
-    return Promise.resolve(runningModelFromChatEvents(get(chatEvents$)));
-  });
+  const runningModelSelection$ = computed(
+    (get): Promise<ChatRunModelSelection | null> => {
+      return Promise.resolve(
+        runningModelSelectionFromChatEvents(get(chatEvents$)),
+      );
+    },
+  );
   const sending$ = computed((get): Promise<boolean> => {
     const running = get(runIndicatorState$) !== null;
     const lastAssistantCancelled = lastAssistantCancelledFromGroups(
@@ -607,7 +614,7 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
   return {
     actionsLoading$,
     sending$,
-    runningModel$,
+    runningModelSelection$,
     pendingEvents$,
     activeGoalObjective$,
     hasEvents$,

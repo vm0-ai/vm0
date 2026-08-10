@@ -1,5 +1,6 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import {
   chatEvents,
@@ -326,6 +327,7 @@ type QueueFirstClaimArgs = QueueFirstRunAssociation & {
   readonly admission: QueueFirstRunAdmission;
   readonly runId: string;
   readonly selectedModel: string | null;
+  readonly serviceTier?: ChatThreadServiceTier;
   readonly timing: ApiDispatchTimingCollector;
 };
 
@@ -387,7 +389,11 @@ async function resolveUserQueueFirstClaimSnapshot(
       userMessage:
         args.selectedModel === null
           ? head.userMessage
-          : withRunModelAnnotation(head.userMessage, args.selectedModel),
+          : withRunModelAnnotation(
+              head.userMessage,
+              args.selectedModel,
+              args.serviceTier,
+            ),
       runId: args.runId,
     },
   };
@@ -450,7 +456,11 @@ async function resolveAutomationEventQueueFirstClaimSnapshot(
       userMessage:
         args.selectedModel === null
           ? head.userMessage
-          : withRunModelAnnotation(head.userMessage, args.selectedModel),
+          : withRunModelAnnotation(
+              head.userMessage,
+              args.selectedModel,
+              args.serviceTier,
+            ),
       runId: args.runId,
     },
   };
@@ -517,7 +527,11 @@ async function resolveGoalQueueFirstClaimSnapshot(
       userMessage:
         args.selectedModel === null
           ? userMessage
-          : withRunModelAnnotation(userMessage, args.selectedModel),
+          : withRunModelAnnotation(
+              userMessage,
+              args.selectedModel,
+              args.serviceTier,
+            ),
       runId: args.runId,
       runGroupId: args.goalId,
     },

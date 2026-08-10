@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
-import { useGet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { page$, pageLayout$ } from "../signals/react-router.ts";
 import {
+  appSkeletonOverlayMounted$,
   appSkeletonVisible$,
   bootstrapSkeletonActive$,
+  unmountAppSkeletonOverlay$,
 } from "../signals/app-skeleton.ts";
 import { AppSkeleton } from "./zero-page/app-skeleton.tsx";
 import { SidebarLayout } from "./zero-page/sidebar-layout.tsx";
@@ -27,13 +29,17 @@ function LayoutHost({ children }: { children: ReactNode }) {
 
 export function AppSkeletonOverlay() {
   const page = useGet(page$);
+  const mounted = useGet(appSkeletonOverlayMounted$);
   const skeletonVisible = useGet(appSkeletonVisible$);
   const bootstrapSkeletonActive = useGet(bootstrapSkeletonActive$);
-  return (
-    <AppSkeleton
-      visible={!bootstrapSkeletonActive && (!page || skeletonVisible)}
-    />
-  );
+  const unmountAppSkeletonOverlay = useSet(unmountAppSkeletonOverlay$);
+  const visible = !bootstrapSkeletonActive && (!page || skeletonVisible);
+
+  if (!mounted || bootstrapSkeletonActive) {
+    return null;
+  }
+
+  return <AppSkeleton visible={visible} onHidden={unmountAppSkeletonOverlay} />;
 }
 
 export function Router() {

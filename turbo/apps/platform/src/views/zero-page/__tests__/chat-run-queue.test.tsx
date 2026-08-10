@@ -5,6 +5,7 @@ import {
   chatThreadByIdContract,
   chatThreadsContract,
   type ChatRunOptionsRequest,
+  type ChatThreadServiceTier,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
@@ -39,6 +40,8 @@ const CANCELLATION_RECOVERY_COPY =
 const NEXT_RUN_MODEL_COPY = "Next run will use Claude Opus 4.8";
 const NEXT_RUN_SONNET_MODEL_COPY = "Next run will use Claude Sonnet 4.6";
 const MODEL_CHANGED_COPY = "Model changed to Claude Sonnet 4.6";
+const FAST_MODEL_CHANGED_COPY = "Model changed to GPT 5.6 Sol Fast";
+const NEXT_RUN_FAST_MODEL_COPY = "Next run will use GPT 5.6 Sol Fast";
 const RECONCILED_THREAD_TITLE = "Reconciled thread";
 
 afterEach(async () => {
@@ -100,6 +103,7 @@ function buildProvider(
 function modelAnnotatedMessage(
   text: string,
   selectedModel: string | undefined,
+  serviceTier?: ChatThreadServiceTier,
 ): UserMessageDocument {
   return {
     version: 1,
@@ -107,7 +111,13 @@ function modelAnnotatedMessage(
       { type: "text", text },
       ...(selectedModel === undefined
         ? []
-        : [{ type: "model" as const, selectedModel }]),
+        : [
+            {
+              type: "model" as const,
+              selectedModel,
+              ...(serviceTier === undefined ? {} : { serviceTier }),
+            },
+          ]),
     ],
   };
 }
@@ -228,12 +238,77 @@ function mockActiveRunModelChange(): void {
   });
 }
 
+function mockActiveRunFastSelectionChange({
+  runningModel,
+  runningServiceTier,
+  selectedModel,
+  selectedServiceTier,
+}: {
+  readonly runningModel: "gpt-5.5" | "gpt-5.6-sol";
+  readonly runningServiceTier?: ChatThreadServiceTier;
+  readonly selectedModel: "gpt-5.5" | "gpt-5.6-sol";
+  readonly selectedServiceTier?: ChatThreadServiceTier;
+}): void {
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      model: "gpt-5.6-sol",
+      modelLabel: "GPT 5.6 Sol",
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+    }),
+    buildModelPolicy({
+      model: "gpt-5.5",
+      modelLabel: "GPT 5.5",
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      isDefault: false,
+    }),
+  ]);
+  context.mocks.data.personalModelProviders([
+    buildProvider({
+      id: "00000000-0000-4000-a000-000000000932",
+      type: "codex-oauth-token",
+    }),
+  ]);
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    selectedModel,
+    codexServiceTier: selectedServiceTier === "priority" ? "fast" : null,
+    activeRunIds: ["run-active"],
+    chatEvents: [
+      {
+        id: `${THREAD_ID}-active-user`,
+        role: "user",
+        content: "Start the active run",
+        userMessage: modelAnnotatedMessage(
+          "Start the active run",
+          runningModel,
+          runningServiceTier,
+        ),
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:00Z",
+      },
+      {
+        id: `${THREAD_ID}-active-assistant`,
+        role: "assistant",
+        content: null,
+        runId: "run-active",
+        createdAt: "2026-08-06T10:00:01Z",
+      },
+    ],
+  });
+}
+
 function mockCompletedRunModelHistory({
   previousModel,
   nextModel,
+  previousServiceTier,
+  nextServiceTier,
 }: {
   previousModel: string | undefined;
   nextModel: string | undefined;
+  previousServiceTier?: ChatThreadServiceTier;
+  nextServiceTier?: ChatThreadServiceTier;
 }): void {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
@@ -242,7 +317,11 @@ function mockCompletedRunModelHistory({
         id: `${THREAD_ID}-previous-user`,
         role: "user",
         content: "First prompt",
-        userMessage: modelAnnotatedMessage("First prompt", previousModel),
+        userMessage: modelAnnotatedMessage(
+          "First prompt",
+          previousModel,
+          previousServiceTier,
+        ),
         runId: "run-previous",
         createdAt: "2026-08-06T09:00:00Z",
       },
@@ -257,7 +336,11 @@ function mockCompletedRunModelHistory({
         id: `${THREAD_ID}-next-user`,
         role: "user",
         content: "Second prompt",
-        userMessage: modelAnnotatedMessage("Second prompt", nextModel),
+        userMessage: modelAnnotatedMessage(
+          "Second prompt",
+          nextModel,
+          nextServiceTier,
+        ),
         runId: "run-next",
         createdAt: "2026-08-06T09:01:00Z",
       },
@@ -436,6 +519,54 @@ describe("chat run queue", () => {
     expectTextBefore(NEXT_RUN_MODEL_COPY, "Follow up after the active run");
   });
 
+  it.each([
+    {
+      name: "the target model also changes",
+      runningModel: "gpt-5.5",
+      runningServiceTier: undefined,
+      selectedModel: "gpt-5.6-sol",
+      selectedServiceTier: "priority",
+      expectedCopy: NEXT_RUN_FAST_MODEL_COPY,
+      absentCopy: "Fast mode will be on",
+    },
+    {
+      name: "Fast mode turns on for the same model",
+      runningModel: "gpt-5.6-sol",
+      runningServiceTier: undefined,
+      selectedModel: "gpt-5.6-sol",
+      selectedServiceTier: "priority",
+      expectedCopy: "Fast mode will be on",
+      absentCopy: NEXT_RUN_FAST_MODEL_COPY,
+    },
+    {
+      name: "Fast mode turns off for the same model",
+      runningModel: "gpt-5.6-sol",
+      runningServiceTier: "priority",
+      selectedModel: "gpt-5.6-sol",
+      selectedServiceTier: undefined,
+      expectedCopy: "Fast mode will be off",
+      absentCopy: NEXT_RUN_FAST_MODEL_COPY,
+    },
+  ] as const)(
+    "shows the next-run Fast change when $name",
+    async (selection) => {
+      mockActiveRunFastSelectionChange(selection);
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+        path: CHAT_PATH,
+      });
+
+      const label = await screen.findByText(selection.expectedCopy);
+      expect(label.closest('[role="status"]')).toHaveAttribute(
+        "aria-live",
+        "polite",
+      );
+      expect(screen.queryByText(selection.absentCopy)).not.toBeInTheDocument();
+    },
+  );
+
   it("inserts a model change divider between adjacent runs", async () => {
     mockCompletedRunModelHistory({
       previousModel: "gpt-5.5",
@@ -453,6 +584,53 @@ describe("chat run queue", () => {
     expectTextBefore("First answer", MODEL_CHANGED_COPY);
     expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
   });
+
+  it.each([
+    {
+      name: "includes Fast in a changed model name",
+      previousModel: "gpt-5.5",
+      previousServiceTier: undefined,
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: "priority",
+      expectedCopy: FAST_MODEL_CHANGED_COPY,
+      absentCopy: "Fast mode on",
+    },
+    {
+      name: "marks Fast mode on for the same model",
+      previousModel: "gpt-5.6-sol",
+      previousServiceTier: undefined,
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: "priority",
+      expectedCopy: "Fast mode on",
+      absentCopy: FAST_MODEL_CHANGED_COPY,
+    },
+    {
+      name: "marks Fast mode off for the same model",
+      previousModel: "gpt-5.6-sol",
+      previousServiceTier: "priority",
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: undefined,
+      expectedCopy: "Fast mode off",
+      absentCopy: FAST_MODEL_CHANGED_COPY,
+    },
+  ] as const)(
+    "renders the historical Fast transition when it $name",
+    async (change) => {
+      mockCompletedRunModelHistory(change);
+
+      detachedSetupPage({
+        context,
+        path: CHAT_PATH,
+      });
+
+      await expect(
+        screen.findByText(change.expectedCopy),
+      ).resolves.toBeInTheDocument();
+      expectTextBefore("First answer", change.expectedCopy);
+      expectTextBefore(change.expectedCopy, "Second prompt");
+      expect(screen.queryByText(change.absentCopy)).not.toBeInTheDocument();
+    },
+  );
 
   it("inserts a model change divider before an optimistic run reconciles", async () => {
     const user = userEvent.setup({ delay: null });
@@ -584,6 +762,87 @@ describe("chat run queue", () => {
     expect(screen.getByText(MODEL_CHANGED_COPY)).toBeInTheDocument();
     expectTextBefore("First answer", MODEL_CHANGED_COPY);
     expectTextBefore(MODEL_CHANGED_COPY, "Second prompt");
+  });
+
+  it("annotates an optimistic Fast run and sends the service tier", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sendGate = context.mocks.deferred<void>();
+    let requestUserMessage: UserMessageDocument | undefined;
+    onTestFinished(() => {
+      if (!sendGate.settled()) {
+        sendGate.resolve();
+      }
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000933",
+        type: "codex-oauth-token",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "gpt-5.6-sol",
+      codexServiceTier: "fast",
+      sendGate: sendGate.promise,
+      onSendRequest: ({ userMessage }) => {
+        requestUserMessage = userMessage;
+      },
+      chatEvents: [
+        {
+          id: `${THREAD_ID}-previous-user`,
+          role: "user",
+          content: "First prompt",
+          userMessage: modelAnnotatedMessage("First prompt", "gpt-5.6-sol"),
+          runId: "run-previous",
+          createdAt: "2026-08-06T09:00:00Z",
+        },
+        {
+          id: `${THREAD_ID}-previous-assistant`,
+          role: "assistant",
+          content: "First answer",
+          runId: "run-previous",
+          createdAt: "2026-08-06T09:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: CHAT_PATH,
+    });
+
+    await fill(
+      (await screen.findByPlaceholderText(PLACEHOLDER)) as HTMLTextAreaElement,
+      "Second prompt",
+    );
+    await user.click(screen.getByLabelText("Send"));
+
+    await expect(
+      screen.findByText("Fast mode on"),
+    ).resolves.toBeInTheDocument();
+    expectTextBefore("First answer", "Fast mode on");
+    expectTextBefore("Fast mode on", "Second prompt");
+    await waitFor(() => {
+      expect(
+        requestUserMessage?.parts.find((part) => {
+          return part.type === "model";
+        }),
+      ).toStrictEqual({
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      });
+    });
+    expect(sendGate.settled()).toBeFalsy();
   });
 
   it("keeps a model change pending through a steer before showing the next run divider optimistically", async () => {
@@ -755,6 +1014,13 @@ describe("chat run queue", () => {
       nextModel: "claude-sonnet-4-6",
     },
     {
+      name: "the models and Fast tiers match",
+      previousModel: "gpt-5.6-sol",
+      previousServiceTier: "priority" as const,
+      nextModel: "gpt-5.6-sol",
+      nextServiceTier: "priority" as const,
+    },
+    {
       name: "the previous run has no model",
       previousModel: undefined,
       nextModel: "claude-sonnet-4-6",
@@ -776,6 +1042,8 @@ describe("chat run queue", () => {
       screen.findByText("Second prompt"),
     ).resolves.toBeInTheDocument();
     expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
+    expect(screen.queryByText("Fast mode on")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fast mode off")).not.toBeInTheDocument();
   });
 
   it("keeps an optimistic steer prompt at the bottom until persistence", async () => {

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -53,10 +53,24 @@ describe("app skeleton", () => {
       expect(bootstrapSkeleton).toHaveClass("app-bootstrap-skeleton--hidden");
     });
     expect(bootstrapSkeleton).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByTestId("app-skeleton")).not.toBeInTheDocument();
 
     bootstrapSkeleton.dispatchEvent(new Event("transitionend"));
 
     expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
+  });
+
+  it("unmounts the app skeleton after its fade-out completes", async () => {
+    detachedSetupPage({ context, path: "/_/error" });
+
+    const skeleton = await screen.findByTestId("app-skeleton");
+    await waitFor(() => {
+      expect(skeleton).toHaveClass("opacity-0");
+    });
+
+    fireEvent.transitionEnd(skeleton);
+
+    expect(screen.queryByTestId("app-skeleton")).not.toBeInTheDocument();
   });
 
   it("renders the loading state in the workspace locale", async () => {

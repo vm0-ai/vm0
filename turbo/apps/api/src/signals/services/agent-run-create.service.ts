@@ -833,6 +833,7 @@ export interface CreateAgentRunArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
+  readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
@@ -6794,6 +6795,9 @@ async function claimQueueFirstAssociationForLaunch(args: {
     admission: args.admission,
     runId: args.identity.runId,
     selectedModel: args.createArgs.zeroRunModelPin.selectedModel,
+    ...(args.createArgs.codexServiceTier === "fast"
+      ? { serviceTier: "priority" as const }
+      : {}),
     timing: args.timing,
   });
 }
