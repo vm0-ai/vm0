@@ -210,6 +210,41 @@ def _data_sends(observed: list[commands.Command]) -> list[commands.SendData]:
     ]
 
 
+def test_install_websocket_framing_rejects_incompatible_connection_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IncompatibleWebsocketConnection:
+        pass
+
+    monkeypatch.setattr(websocket, "WebsocketConnection", IncompatibleWebsocketConnection)
+
+    with pytest.raises(
+        RuntimeError,
+        match="mitmproxy WebsocketConnection has an incompatible shape",
+    ):
+        websocket_framing.install_websocket_framing()
+
+    assert websocket.WebsocketConnection is IncompatibleWebsocketConnection
+
+
+def test_install_websocket_framing_preserves_marked_connection_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MarkedWebsocketConnection:
+        pass
+
+    setattr(
+        MarkedWebsocketConnection,
+        websocket_framing._CONNECTION_MARKER_ATTRIBUTE,
+        True,
+    )
+    monkeypatch.setattr(websocket, "WebsocketConnection", MarkedWebsocketConnection)
+
+    websocket_framing.install_websocket_framing()
+
+    assert websocket.WebsocketConnection is MarkedWebsocketConnection
+
+
 @pytest.mark.parametrize(
     ("from_client", "content"),
     [
