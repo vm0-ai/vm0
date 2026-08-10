@@ -60,6 +60,7 @@ const SCHEMA = {
   VM0_DEBUG: z.string().default(""),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   CF_ACCESS_AUD: z.string().min(1).optional(),
+  CF_ACCESS_JWKS: z.string().min(1).optional(),
   CF_ACCESS_TEAM_DOMAIN: z.string().min(1).optional(),
   // Direct origin of the API backend for self-dispatched internal callbacks
   // (`/api/internal/**`). Optional; when unset, production defaults to the API

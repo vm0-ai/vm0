@@ -13,6 +13,7 @@ import {
 import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { z } from "zod";
 import { vi } from "vitest";
 import { createApp } from "../app-factory";
@@ -753,7 +754,10 @@ describe("createApp", () => {
   });
 
   describe("Cloudflare Access assertion", () => {
-    async function requestInWorkerInvocation(path: string): Promise<Response> {
+    async function requestInWorkerInvocation(
+      path: string,
+      headers?: Readonly<Record<string, string>>,
+    ): Promise<Response> {
       const pending: Promise<unknown>[] = [];
       const app = createApp({ routes: TEST_APP_ROUTES });
       const response = await runInvocation(
@@ -764,7 +768,7 @@ describe("createApp", () => {
         },
         { kind: "fetch", requestId: "test-request" },
         async () => {
-          return await app.request(path);
+          return await app.request(path, { headers });
         },
       );
       await Promise.allSettled(pending);
@@ -777,6 +781,52 @@ describe("createApp", () => {
       expect(response.status).toBe(401);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Cloudflare Access assertion required",
+      });
+    });
+
+    it("verifies Access assertions against the deploy-time key set", async () => {
+      const { privateKey, publicKey } = await generateKeyPair("RS256");
+      const publicJwk = await exportJWK(publicKey);
+      const issuer = "https://test.cloudflareaccess.com";
+      const audience = "test-audience";
+      const keyId = "test-key";
+      mockEnv("CF_ACCESS_AUD", audience);
+      mockEnv("CF_ACCESS_TEAM_DOMAIN", issuer);
+      mockEnv(
+        "CF_ACCESS_JWKS",
+        JSON.stringify({
+          keys: [
+            {
+              ...publicJwk,
+              alg: "RS256",
+              kid: keyId,
+              use: "sig",
+            },
+          ],
+        }),
+      );
+
+      async function assertionFor(tokenAudience: string): Promise<string> {
+        return await new SignJWT({})
+          .setProtectedHeader({ alg: "RS256", kid: keyId })
+          .setIssuer(issuer)
+          .setAudience(tokenAudience)
+          .setIssuedAt()
+          .setExpirationTime("5m")
+          .sign(privateKey);
+      }
+
+      const accepted = await requestInWorkerInvocation("/health", {
+        "cf-access-jwt-assertion": await assertionFor(audience),
+      });
+      expect(accepted.status).toBe(200);
+
+      const rejected = await requestInWorkerInvocation("/health", {
+        "cf-access-jwt-assertion": await assertionFor("wrong-audience"),
+      });
+      expect(rejected.status).toBe(401);
+      await expect(rejected.json()).resolves.toStrictEqual({
+        error: "Invalid Cloudflare Access assertion",
       });
     });
 

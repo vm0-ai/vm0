@@ -8,6 +8,7 @@ test("writes every shard and excludes Sentry runtime settings", () => {
     [
       "DATABASE_URL=postgres://example",
       "ENV=preview",
+      'CF_ACCESS_JWKS={"keys":[{"kty":"RSA"}]}',
       "SENTRY_DSN=https://example@sentry.io/1",
       "VERCEL_AUTOMATION_BYPASS_SECRET=vercel-only",
     ].join("\n"),
@@ -17,6 +18,7 @@ test("writes every shard and excludes Sentry runtime settings", () => {
     return Object.entries(JSON.parse(value));
   });
   assert.deepEqual(Object.fromEntries(decoded), {
+    CF_ACCESS_JWKS: '{"keys":[{"kty":"RSA"}]}',
     DATABASE_URL: "postgres://example",
     ENV: "preview",
     VERCEL_AUTOMATION_BYPASS_SECRET: "vercel-only",

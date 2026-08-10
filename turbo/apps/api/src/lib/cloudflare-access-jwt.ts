@@ -1,9 +1,35 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createLocalJWKSet, createRemoteJWKSet, errors, jwtVerify } from "jose";
+import { z } from "zod";
+
+import { settle } from "../signals/utils";
 
 import { env } from "./env";
 import { testOverride } from "./singleton";
 
-const { get: getAccessJwks, set: setAccessJwks } = testOverride<
+const REMOTE_JWKS_TIMEOUT_MS = 15_000;
+
+const accessJwksSchema = z.object({
+  keys: z
+    .array(
+      z.object({
+        kty: z.literal("RSA"),
+        alg: z.literal("RS256"),
+        use: z.literal("sig"),
+        kid: z.string().min(1),
+        e: z.string().min(1),
+        n: z.string().min(1),
+      }),
+    )
+    .min(1),
+});
+
+const { get: getLocalAccessJwks, set: setLocalAccessJwks } = testOverride<
+  ReturnType<typeof createLocalJWKSet> | undefined
+>(() => {
+  return undefined;
+});
+
+const { get: getRemoteAccessJwks, set: setRemoteAccessJwks } = testOverride<
   ReturnType<typeof createRemoteJWKSet> | undefined
 >(() => {
   return undefined;
@@ -32,15 +58,31 @@ function accessIssuer(): string {
   return url.origin;
 }
 
-function accessJwks(): ReturnType<typeof createRemoteJWKSet> {
-  const existing = getAccessJwks();
+function localAccessJwks(): ReturnType<typeof createLocalJWKSet> | undefined {
+  const existing = getLocalAccessJwks();
+  if (existing) {
+    return existing;
+  }
+  const configured = env("CF_ACCESS_JWKS");
+  if (!configured) {
+    return undefined;
+  }
+  const parsed: unknown = JSON.parse(configured);
+  const created = createLocalJWKSet(accessJwksSchema.parse(parsed));
+  setLocalAccessJwks(created);
+  return created;
+}
+
+function remoteAccessJwks(): ReturnType<typeof createRemoteJWKSet> {
+  const existing = getRemoteAccessJwks();
   if (existing) {
     return existing;
   }
   const created = createRemoteJWKSet(
     new URL(`${accessIssuer()}/cdn-cgi/access/certs`),
+    { timeoutDuration: REMOTE_JWKS_TIMEOUT_MS },
   );
-  setAccessJwks(created);
+  setRemoteAccessJwks(created);
   return created;
 }
 
@@ -51,9 +93,20 @@ export async function verifyCloudflareAccessAssertion(
   if (!audience) {
     throw new Error("CF_ACCESS_AUD is required in Cloudflare Workers");
   }
-  await jwtVerify(assertion, accessJwks(), {
+  const options = {
     algorithms: ["RS256"],
     audience,
     issuer: accessIssuer(),
-  });
+  };
+  const localJwks = localAccessJwks();
+  if (localJwks) {
+    const verified = await settle(jwtVerify(assertion, localJwks, options));
+    if (verified.ok) {
+      return;
+    }
+    if (!(verified.error instanceof errors.JWKSNoMatchingKey)) {
+      throw verified.error;
+    }
+  }
+  await jwtVerify(assertion, remoteAccessJwks(), options);
 }

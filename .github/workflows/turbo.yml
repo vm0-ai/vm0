@@ -1079,10 +1079,12 @@ jobs:
         id: worker-secrets
         env:
           API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
+          CF_ACCESS_TEAM_DOMAIN: ${{ vars.CF_ACCESS_TEAM_DOMAIN }}
           TEST_ENDPOINT_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           : "${TEST_ENDPOINT_BYPASS_SECRET:?VERCEL_AUTOMATION_BYPASS_SECRET is required}"
+          : "${CF_ACCESS_TEAM_DOMAIN:?CF_ACCESS_TEAM_DOMAIN variable is required}"
           grep -Fxq 'ENV=preview' "$API_ENV_FILE" || {
             echo "::error::Worker API environment must be preview"
             exit 1
@@ -1103,10 +1105,39 @@ jobs:
             echo "::error::CF_API_PREVIEW_ACCESS_AUD variable is required"
             exit 1
           }
-          grep -q '^CF_ACCESS_TEAM_DOMAIN=.' "$API_ENV_FILE" || {
-            echo "::error::CF_ACCESS_TEAM_DOMAIN variable is required"
+          grep -Fxq "CF_ACCESS_TEAM_DOMAIN=${CF_ACCESS_TEAM_DOMAIN}" "$API_ENV_FILE" || {
+            echo "::error::CF_ACCESS_TEAM_DOMAIN variable is missing or inconsistent"
             exit 1
           }
+
+          case "$CF_ACCESS_TEAM_DOMAIN" in
+            https://*) access_origin="${CF_ACCESS_TEAM_DOMAIN%/}" ;;
+            *) access_origin="https://${CF_ACCESS_TEAM_DOMAIN%/}" ;;
+          esac
+          access_jwks="$(curl \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            "${access_origin}/cdn-cgi/access/certs" | jq -ce '
+              select(
+                (.keys | type) == "array" and
+                (.keys | length) > 0 and
+                all(.keys[];
+                  .kty == "RSA" and
+                  .alg == "RS256" and
+                  .use == "sig" and
+                  ((.kid | type) == "string") and
+                  ((.e | type) == "string") and
+                  ((.n | type) == "string")
+                )
+              ) | {keys}
+            ')"
+          printf 'CF_ACCESS_JWKS=%s\n' "$access_jwks" >> "$API_ENV_FILE"
+
           pnpm --dir turbo --filter api worker:secrets:test
           secrets_file="${RUNNER_TEMP}/vm0-api-worker-secrets.json"
           node turbo/apps/api/scripts/build-worker-secrets.mjs "$API_ENV_FILE" "$secrets_file"
