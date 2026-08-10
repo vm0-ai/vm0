@@ -325,17 +325,18 @@
     "sources": {
       "agent": "エージェント",
       "agentphone": "エージェントフォン",
+      "automationEvent": "オートメーションイベント",
+      "automationSchedule": "オートメーションスケジュール",
       "email": "メール",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "目標",
       "slack": "Slack",
       "teams": "チーム",
       "telegram": "Telegram",
       "test": "テスト",
       "web": "ウェブ",
-      "webhook": "Webhook",
-      "workflowEvent": "ワークフローイベント",
-      "workflowSchedule": "ワークフロースケジュール"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "キャンセルされました",

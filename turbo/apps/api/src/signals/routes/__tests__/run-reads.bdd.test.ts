@@ -303,6 +303,79 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     );
   });
 
+  it("reads legacy and expanded unattended trigger sources from queue and logs", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-trigger-sources");
+    if (!actor.orgId) {
+      throw new Error("Trigger source reads require an org-scoped actor");
+    }
+
+    const triggerSources = [
+      "workflow-schedule",
+      "workflow-event",
+      "automation-schedule",
+      "automation-event",
+      "goal",
+    ] as const;
+    const sourceRuns = [];
+    for (const triggerSource of triggerSources) {
+      const run = await store.set(
+        seedRun$,
+        {
+          orgId: actor.orgId,
+          userId: actor.userId,
+          composeId: compose.composeId,
+          prompt: `${triggerSource} read compatibility`,
+          status: "queued",
+          triggerSource,
+        },
+        context.signal,
+      );
+      sourceRuns.push({ runId: run.runId, triggerSource });
+    }
+
+    const queue = await api.readRunQueue(actor);
+    for (const sourceRun of sourceRuns) {
+      expect(queue.body.queue).toContainEqual(
+        expect.objectContaining(sourceRun),
+      );
+    }
+
+    for (const run of sourceRuns) {
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
+
+    const listed = await reads.requestListLogs(actor, {}, [200]);
+    mustOk(listed, "the trigger source logs list");
+    expect(listed.body.filters.sources).toStrictEqual(
+      expect.arrayContaining([...triggerSources]),
+    );
+
+    for (const sourceRun of sourceRuns) {
+      const detail = await reads.requestReadLogById(
+        actor,
+        sourceRun.runId,
+        [200],
+      );
+      expect(detail.body).toMatchObject({
+        id: sourceRun.runId,
+        triggerSource: sourceRun.triggerSource,
+      });
+
+      const filtered = await reads.requestListLogs(
+        actor,
+        { triggerSource: sourceRun.triggerSource },
+        [200],
+      );
+      mustOk(filtered, `${sourceRun.triggerSource} logs filter`);
+      expect(
+        filtered.body.data.map((entry) => {
+          return entry.id;
+        }),
+      ).toContain(sourceRun.runId);
+    }
+  });
+
   it("lists, reads, and queues direct runs with status, agent, and window filters", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });

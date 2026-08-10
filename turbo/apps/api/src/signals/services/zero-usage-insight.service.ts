@@ -370,6 +370,9 @@ function sourceBucketExpr() {
     WHEN ${inArray(zeroRuns.triggerSource, [
       "workflow-schedule",
       "workflow-event",
+      "automation-schedule",
+      "automation-event",
+      "goal",
     ])} THEN 'automation'
     ELSE 'others'
   END`.mapWith(pgTextDecoder);

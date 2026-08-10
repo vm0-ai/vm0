@@ -339,17 +339,18 @@
     "sources": {
       "agent": "Agent",
       "agentphone": "AgentPhone",
+      "automationEvent": "Événement d'automatisation",
+      "automationSchedule": "Planification d'automatisation",
       "email": "Email",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "Objectif",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "Test",
       "web": "Web",
-      "webhook": "Webhook",
-      "workflowEvent": "Événement de workflow",
-      "workflowSchedule": "Planification de workflow"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "Annulé",

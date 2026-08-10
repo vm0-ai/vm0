@@ -66,14 +66,21 @@ export function getTriggerSourceLabel(source: TriggerSource): string {
         return $.activity.sources.webhook;
       });
     }
-    case "workflow-schedule": {
+    case "workflow-schedule":
+    case "automation-schedule": {
       return i18n.t(($) => {
-        return $.activity.sources.workflowSchedule;
+        return $.activity.sources.automationSchedule;
       });
     }
-    case "workflow-event": {
+    case "workflow-event":
+    case "automation-event": {
       return i18n.t(($) => {
-        return $.activity.sources.workflowEvent;
+        return $.activity.sources.automationEvent;
+      });
+    }
+    case "goal": {
+      return i18n.t(($) => {
+        return $.activity.sources.goal;
       });
     }
   }
