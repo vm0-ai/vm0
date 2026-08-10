@@ -63,8 +63,8 @@ interface ChatEventContextFixture {
   readonly automationId: string | null;
   readonly triggerBrief: string | null;
   readonly workflowName: string | null;
-  readonly workflowEventType: string | null;
-  readonly workflowEventPayload: JsonObject | null;
+  readonly automationEventType: string | null;
+  readonly automationEventPayload: JsonObject | null;
   readonly slackChannelId: string | null;
   readonly slackMessageTs: string | null;
   readonly slackBotUserId: string | null;
@@ -161,8 +161,8 @@ export async function readChatEventContextFixture(
       automationId: chatAutomationContext.automationId,
       triggerBrief: chatAutomationContext.triggerBrief,
       workflowName: chatAutomationContext.workflowName,
-      workflowEventType: chatAutomationContext.eventType,
-      workflowEventPayload: chatAutomationContext.eventPayload,
+      automationEventType: chatAutomationContext.eventType,
+      automationEventPayload: chatAutomationContext.eventPayload,
       slackChannelId: chatSlackContext.channelId,
       slackMessageTs: chatSlackContext.messageTs,
       slackBotUserId: chatSlackContext.botUserId,

@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.416.0](https://github.com/vm0-ai/vm0/compare/api-v1.415.0...api-v1.416.0) (2026-08-10)
+
+
+### Features
+
+* **chat:** persist fast mode in user messages ([#26109](https://github.com/vm0-ai/vm0/issues/26109)) ([9ccbee2](https://github.com/vm0-ai/vm0/commit/9ccbee23ae65d2c8f5653678d2e4131fa0548a0e))
+* require usage pack payment when inviting members ([#25527](https://github.com/vm0-ai/vm0/issues/25527)) ([070ff0e](https://github.com/vm0-ai/vm0/commit/070ff0ec08040bad52437e9b41dace350e806a62))
+* **runs:** write new trigger source values ([#26115](https://github.com/vm0-ai/vm0/issues/26115)) ([fd6f59a](https://github.com/vm0-ai/vm0/commit/fd6f59a029a9c633c7e3ea7b5b314cd7d612114d))
+
+
+### Bug Fixes
+
+* **api:** clean connector state on clerk deletion ([#26119](https://github.com/vm0-ai/vm0/issues/26119)) ([301ca9e](https://github.com/vm0-ai/vm0/commit/301ca9e71e5a7f8ab86b95d9a99955110df3d816))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.306.0
+    * @vm0/core bumped to 8.538.1
+    * @vm0/db bumped to 1.186.0
+    * @vm0/pi-agent-runtime bumped to 1.3.28
+
 ## [1.415.0](https://github.com/vm0-ai/vm0/compare/api-v1.414.0...api-v1.415.0) (2026-08-10)
 
 

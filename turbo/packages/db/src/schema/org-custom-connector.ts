@@ -2,6 +2,7 @@ import {
   bigint,
   boolean,
   check,
+  foreignKey,
   pgTable,
   uuid,
   varchar,
@@ -20,6 +21,9 @@ import type {
   OrgCustomConnectorPrefixTemplates,
   OrgCustomConnectorQueryInjections,
 } from "@vm0/db/jsonb-contracts/org-custom-connector";
+
+import { storageVersions } from "./storage";
+
 export type {
   OrgCustomConnectorField,
   OrgCustomConnectorHeaderInjection,
@@ -76,6 +80,9 @@ export const orgCustomConnectors = pgTable(
     // https://github.com/vm0-ai/vm0/issues/26013 drops it after API drain.
     mcpResource: text("mcp_resource"),
     skillMarkdown: text("skill_markdown"),
+    skillStorageVersionId: varchar("skill_storage_version_id", {
+      length: 64,
+    }),
     storageVersion: bigint("storage_version", { mode: "number" })
       .notNull()
       .default(1),
@@ -91,6 +98,14 @@ export const orgCustomConnectors = pgTable(
         table.slug,
       ),
       unique("idx_org_custom_connectors_id_org").on(table.id, table.orgId),
+      index("idx_org_custom_connectors_skill_storage_version").on(
+        table.skillStorageVersionId,
+      ),
+      foreignKey({
+        name: "fk_org_custom_connectors_skill_storage_version",
+        columns: [table.skillStorageVersionId],
+        foreignColumns: [storageVersions.id],
+      }).onDelete("restrict"),
       check(
         "chk_org_custom_connectors_slug",
         sql`left(${table.slug}, 1) = '_'`,
