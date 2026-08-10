@@ -5217,8 +5217,8 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log();
 }
 
-const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0876_nebulous_vision";
-const ZERO_RUN_CODEX_TIER_MIGRATION = "0877_amusing_ender_wiggin";
+const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0877_add_zero_seo_pricing";
+const ZERO_RUN_CODEX_TIER_MIGRATION = "0878_married_leper_queen";
 
 async function validateZeroRunCodexTierExpansion(): Promise<void> {
   console.log("=== Validate zero-run Codex tier expansion ===\n");
