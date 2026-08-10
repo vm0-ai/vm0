@@ -3865,14 +3865,45 @@ interface BuiltCustomConnectorRuntimeRow {
     ConnectorRuntimeTargetRegistration,
     { readonly kind: "custom" }
   >;
-  readonly skill:
-    | {
-        readonly connectorId: string;
-        readonly connectorSlug: string;
-      }
-    | undefined;
+  readonly skill: CustomConnectorRuntimeContext["skills"][number] | undefined;
   readonly firewall: ExpandedFirewallConfig | undefined;
   readonly permissionPolicy: FirewallPolicy | undefined;
+}
+
+function customConnectorRuntimeSkill(
+  row: CustomConnectorRuntimeDataRows[number],
+): CustomConnectorRuntimeContext["skills"][number] | undefined {
+  return row.connector.skillMarkdown === null
+    ? undefined
+    : {
+        connectorId: row.connector.id,
+        connectorSlug: row.connector.slug,
+      };
+}
+
+function customConnectorRuntimeCredentialsAreComplete(
+  row: CustomConnectorRuntimeDataRows[number],
+): boolean {
+  const valueMarkers = new Set(
+    row.values.map((value) => {
+      return customConnectorValueMarkerKey(value);
+    }),
+  );
+  const oauthConnected = valueMarkers.has(
+    customConnectorValueMarkerKey({
+      kind: "secret",
+      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
+    }),
+  );
+  return (
+    (row.connector.authMode !== "oauth" || oauthConnected) &&
+    row.connector.fields.every((field) => {
+      return (
+        !field.required ||
+        valueMarkers.has(customConnectorValueMarkerKey(field))
+      );
+    })
+  );
 }
 
 function unavailableCustomConnectorRuntimeRow(
@@ -3950,33 +3981,11 @@ async function buildCustomConnectorRuntimeRow(args: {
     ...targetIdentity,
     ...(baseUrlVars === undefined ? {} : { baseUrlVars: { ...baseUrlVars } }),
   };
-  const skill =
-    args.row.connector.skillMarkdown === null
-      ? undefined
-      : {
-          connectorId: args.row.connector.id,
-          connectorSlug: args.row.connector.slug,
-        };
+  const skill = customConnectorRuntimeSkill(args.row);
   const missingRequiredStartedAt = now();
-  const valueMarkers = new Set(
-    args.row.values.map((value) => {
-      return customConnectorValueMarkerKey(value);
-    }),
+  const missingRequired = !customConnectorRuntimeCredentialsAreComplete(
+    args.row,
   );
-  const oauthConnected = valueMarkers.has(
-    customConnectorValueMarkerKey({
-      kind: "secret",
-      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-    }),
-  );
-  const missingRequired =
-    (args.row.connector.authMode === "oauth" && !oauthConnected) ||
-    args.row.connector.fields.some((field) => {
-      return (
-        field.required &&
-        !valueMarkers.has(customConnectorValueMarkerKey(field))
-      );
-    });
   args.stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
   if (missingRequired) {
     args.stats.recordMissingRequiredConnector();
@@ -4092,6 +4101,39 @@ export async function buildCustomConnectorRuntimeContext(
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
   stats.flush(args.timing);
   return result;
+}
+
+async function buildNewRunCustomConnectorRuntimeContext(
+  args: BuildCustomConnectorRuntimeContextArgs,
+): Promise<CustomConnectorRuntimeContext> {
+  // Active targets call the shared builder directly so credential loss does
+  // not remove their pinned firewall. Only new runs apply this admission gate.
+  const context = await buildCustomConnectorRuntimeContext({
+    ...args,
+    rows: args.rows.filter((row) => {
+      return (
+        row.credentialAccess.kind === "current" &&
+        customConnectorRuntimeCredentialsAreComplete(row)
+      );
+    }),
+  });
+  const admittedConnectorIds = new Set(
+    Object.values(context.customConnectorIdByFirewallName),
+  );
+  return {
+    ...context,
+    targets: context.targets.filter((target) => {
+      return (
+        target.kind === "custom" &&
+        target.baseUrlVars !== undefined &&
+        admittedConnectorIds.has(target.customConnectorId)
+      );
+    }),
+    skills: args.rows.flatMap((row) => {
+      const skill = customConnectorRuntimeSkill(row);
+      return skill ? [skill] : [];
+    }),
+  };
 }
 
 interface CustomConnectorRuntimeExecutionState {
@@ -4228,7 +4270,7 @@ async function loadCustomConnectorContext(
     "api_dispatch_prepare_context_build_custom_connector_firewalls",
     "nested",
     async () => {
-      return await buildCustomConnectorRuntimeContext({
+      return await buildNewRunCustomConnectorRuntimeContext({
         rows: refreshedRows,
         featureSwitchContext: args.featureSwitchContext,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,
