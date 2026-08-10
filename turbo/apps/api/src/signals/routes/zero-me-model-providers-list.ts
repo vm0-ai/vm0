@@ -4,11 +4,16 @@ import type {
   ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { refreshPersonalModelProviderSubscriptionUsage$ } from "../services/model-provider-subscription-usage.service";
 import { zeroUserModelProviders } from "../services/zero-model-provider.service";
+import { listPersonalModelProviderAccounts } from "../services/model-provider-account.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 
 function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
@@ -27,7 +32,21 @@ function visibleModelFirstProviders(
 
 const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const result = await get(zeroUserModelProviders(auth.orgId, auth.userId));
+  const featureSwitchContext = await get(
+    userFeatureSwitchContext(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  const result = isFeatureEnabled(
+    FeatureSwitchKey.PersonalModelProviderAccounts,
+    featureSwitchContext,
+  )
+    ? await listPersonalModelProviderAccounts({
+        db: set(writeDb$),
+        orgId: auth.orgId,
+        userId: auth.userId,
+        featureSwitchContext,
+      })
+    : await get(zeroUserModelProviders(auth.orgId, auth.userId));
   signal.throwIfAborted();
   const visible = visibleModelFirstProviders(result);
   const refreshed = await set(

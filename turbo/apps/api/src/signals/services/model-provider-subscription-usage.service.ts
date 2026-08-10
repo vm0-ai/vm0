@@ -5,6 +5,7 @@ import type {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { secrets } from "@vm0/db/schema/secret";
+import { modelProviderAccountSecrets } from "@vm0/db/schema/model-provider-account";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -53,6 +54,7 @@ async function modelProviderSecretValues(
     readonly orgId: string;
     readonly userId: string;
     readonly names: readonly string[];
+    readonly modelProviderAccountId?: string;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
@@ -61,17 +63,33 @@ async function modelProviderSecretValues(
     return new Map();
   }
 
-  const rows = await args.db
-    .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, args.orgId),
-        eq(secrets.userId, args.userId),
-        eq(secrets.type, "model-provider"),
-        inArray(secrets.name, [...args.names]),
-      ),
-    );
+  const rows = args.modelProviderAccountId
+    ? await args.db
+        .select({
+          name: modelProviderAccountSecrets.name,
+          encryptedValue: modelProviderAccountSecrets.encryptedValue,
+        })
+        .from(modelProviderAccountSecrets)
+        .where(
+          and(
+            eq(
+              modelProviderAccountSecrets.modelProviderAccountId,
+              args.modelProviderAccountId,
+            ),
+            inArray(modelProviderAccountSecrets.name, [...args.names]),
+          ),
+        )
+    : await args.db
+        .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
+        .from(secrets)
+        .where(
+          and(
+            eq(secrets.orgId, args.orgId),
+            eq(secrets.userId, args.userId),
+            eq(secrets.type, "model-provider"),
+            inArray(secrets.name, [...args.names]),
+          ),
+        );
 
   const values = new Map<string, string>();
   for (const row of rows) {
@@ -160,6 +178,9 @@ async function refreshCodexProvider(
       orgId: args.orgId,
       userId: args.userId,
       names: CODEX_USAGE_SECRET_NAMES,
+      ...(args.provider.modelProviderId
+        ? { modelProviderAccountId: args.provider.id }
+        : {}),
       featureSwitchContext: args.featureSwitchContext,
     },
     signal,
@@ -199,6 +220,9 @@ async function refreshClaudeCodeProvider(
       orgId: args.orgId,
       userId: args.userId,
       names: [CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME],
+      ...(args.provider.modelProviderId
+        ? { modelProviderAccountId: args.provider.id }
+        : {}),
       featureSwitchContext: args.featureSwitchContext,
     },
     signal,
@@ -307,6 +331,7 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly idempotencyKey: string;
+      readonly modelProviderAccountId?: string;
     },
     signal: AbortSignal,
   ): Promise<
@@ -327,6 +352,7 @@ export const consumePersonalCodexRateLimitResetCredit$ = command(
         orgId: args.orgId,
         userId: args.userId,
         names: CODEX_USAGE_SECRET_NAMES,
+        modelProviderAccountId: args.modelProviderAccountId,
         featureSwitchContext,
       },
       signal,

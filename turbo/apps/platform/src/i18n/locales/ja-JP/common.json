@@ -4141,12 +4141,18 @@
         "title": "プロバイダー接続"
       },
       "personal": {
+        "accountFallback": "アカウント {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "使用中",
+        "addAccount": "アカウントを追加",
         "claudeDescription": "Claudeベースのモデルルートで使用するClaude Codeログインを接続します。",
         "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Codex をサポートするモデル ルートの Codex デバイス ログインを使用して接続します。",
         "codexTitle": "ChatGPT (Codex)",
         "description": "自分の実行でのみ、自分の資格情報を使用して使用されます。",
+        "noAccounts": "接続済みのアカウントはありません。",
+        "reconnectAccount": "再接続",
+        "removeAccount": "削除",
         "sectionTitle": "個人的な",
         "status": {
           "connected": "接続済み",
@@ -4155,7 +4161,8 @@
           "left": "{{percent}} 残り",
           "stale": "注意",
           "week": "週"
-        }
+        },
+        "useAccount": "使用"
       },
       "picker": {
         "balancedUse": "バランスよく使う",
@@ -4238,6 +4245,8 @@
         "codexTitle": "ChatGPTセッションは再接続が必要です"
       },
       "toasts": {
+        "accountRemoved": "アカウントを削除しました",
+        "accountSwitched": "使用するアカウントを切り替えました",
         "disconnected": "{{provider}} が切断されました",
         "policiesUpdated": "モデルプロバイダーの設定が更新されました",
         "reset": "Codex 使用量のリセット",

@@ -1,5 +1,7 @@
 import { command } from "ccstate";
 import { zeroPersonalModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -7,6 +9,9 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isNotFoundResponse, notFound } from "../../lib/error";
 import { consumePersonalCodexRateLimitResetCredit$ } from "../services/model-provider-subscription-usage.service";
 import type { RouteEntry } from "../route-entry";
+import { writeDb$ } from "../external/db";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import { listPersonalModelProviderAccounts } from "../services/model-provider-account.service";
 
 const resetSubscriptionUsageInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -32,12 +37,34 @@ const resetSubscriptionUsageInner$ = command(
       return bodyResult.response;
     }
 
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const accountsEnabled = isFeatureEnabled(
+      FeatureSwitchKey.PersonalModelProviderAccounts,
+      featureSwitchContext,
+    );
+    const activeAccount = accountsEnabled
+      ? (
+          await listPersonalModelProviderAccounts({
+            db: set(writeDb$),
+            orgId: auth.orgId,
+            userId: auth.userId,
+            featureSwitchContext,
+          })
+        ).modelProviders.find((provider) => {
+          return provider.type === params.type && provider.isActive;
+        })
+      : undefined;
+
     const result = await set(
       consumePersonalCodexRateLimitResetCredit$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
         idempotencyKey: bodyResult.data.idempotencyKey,
+        ...(activeAccount ? { modelProviderAccountId: activeAccount.id } : {}),
       },
       signal,
     );

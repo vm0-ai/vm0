@@ -4191,12 +4191,18 @@
         "title": "Connexions aux fournisseurs"
       },
       "personal": {
+        "accountFallback": "Compte {{number}}",
         "actionForProvider": "{{action}} {{provider}}",
+        "activeAccount": "Actif",
+        "addAccount": "Ajouter un compte",
         "claudeDescription": "Se connecter avec la connexion Claude Code pour les routes de modèles soutenues par Claude.",
         "claudeTitle": "OAuth Claude Code",
         "codexDescription": "Connectez-vous avec l'appareil Codex pour les itinéraires de modèles soutenus par Codex.",
         "codexTitle": "ChatGPT (Codex)",
         "description": "Utilisé uniquement dans vos sessions, avec vos propres identifiants.",
+        "noAccounts": "Aucun compte connecté.",
+        "reconnectAccount": "Reconnecter",
+        "removeAccount": "Supprimer",
         "sectionTitle": "Personnel",
         "status": {
           "connected": "Connecté",
@@ -4205,7 +4211,8 @@
           "left": "{{percent}} restant",
           "stale": "Attention",
           "week": "Semaine"
-        }
+        },
+        "useAccount": "Utiliser"
       },
       "picker": {
         "balancedUse": "Utilisation équilibrée",
@@ -4289,6 +4296,8 @@
         "codexTitle": "La session ChatGPT nécessite une reconnexion"
       },
       "toasts": {
+        "accountRemoved": "Compte supprimé",
+        "accountSwitched": "Compte actif changé",
         "disconnected": "{{provider}} déconnecté",
         "policiesUpdated": "Paramètres du fournisseur de modèle mis à jour",
         "reset": "Utilisation de Codex réinitialisée",

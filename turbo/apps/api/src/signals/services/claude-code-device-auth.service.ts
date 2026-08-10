@@ -1,8 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import type { ClaudeCodeDeviceAuthScope } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
+import type {
+  ClaudeCodeDeviceAuthMode,
+  ClaudeCodeDeviceAuthScope,
+} from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -25,6 +30,11 @@ import {
   encryptSecretValue,
 } from "./crypto.utils";
 import { fetchClaudeCodeSubscriptionMetadata } from "./claude-code-usage.service";
+import {
+  upsertPersonalModelProviderAccount,
+  type PersonalProviderAccountMutation,
+} from "./model-provider-account.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 import {
   upsertOrgModelProvider$,
   upsertUserModelProvider$,
@@ -54,6 +64,8 @@ const claudeCodeDeviceAuthProviderStateSchema = z.object({
   version: z.literal(1),
   type: z.literal("claude-code"),
   scope: z.enum(["org", "personal"]),
+  mode: z.enum(["add", "reconnect"]).optional(),
+  modelProviderId: z.string().uuid().optional(),
   state: z.string().min(1),
   codeVerifier: z.string().min(1),
 });
@@ -403,6 +415,8 @@ async function moveSessionToAwaitingApproval(args: {
   readonly writeDb: Db;
   readonly session: ModelProviderAuthSession;
   readonly scope: ClaudeCodeDeviceAuthScope;
+  readonly mode?: ClaudeCodeDeviceAuthMode;
+  readonly modelProviderId?: string;
   readonly state: string;
   readonly codeVerifier: string;
   readonly approvalUrl: string;
@@ -418,6 +432,10 @@ async function moveSessionToAwaitingApproval(args: {
           version: 1,
           type: "claude-code",
           scope: args.scope,
+          ...(args.mode ? { mode: args.mode } : {}),
+          ...(args.modelProviderId
+            ? { modelProviderId: args.modelProviderId }
+            : {}),
           state: args.state,
           codeVerifier: args.codeVerifier,
         },
@@ -555,6 +573,8 @@ export async function startClaudeCodeDeviceAuth(
     readonly orgId: string;
     readonly userId: string;
     readonly scope: ClaudeCodeDeviceAuthScope;
+    readonly mode?: ClaudeCodeDeviceAuthMode;
+    readonly modelProviderId?: string;
   },
   signal: AbortSignal,
 ): Promise<ClaudeCodeDeviceAuthStartResult> {
@@ -591,6 +611,8 @@ export async function startClaudeCodeDeviceAuth(
         writeDb: args.writeDb,
         session,
         scope: args.scope,
+        mode: args.mode,
+        modelProviderId: args.modelProviderId,
         state,
         codeVerifier,
         approvalUrl,
@@ -678,6 +700,19 @@ function isSessionExpired(session: ModelProviderAuthSession): boolean {
   return session.expiresAt.getTime() <= nowDate().getTime();
 }
 
+function personalAccountMutation(args: {
+  readonly mode: ClaudeCodeDeviceAuthMode | undefined;
+  readonly modelProviderId: string | undefined;
+}): PersonalProviderAccountMutation {
+  if (args.mode === "add") {
+    return { kind: "add" };
+  }
+  if (args.mode === "reconnect" && args.modelProviderId) {
+    return { kind: "reconnect", accountId: args.modelProviderId };
+  }
+  return { kind: "replace-active" };
+}
+
 function toModelProviderResponse(
   provider: ModelProviderInfo,
 ): ModelProviderResponse {
@@ -704,12 +739,14 @@ function toModelProviderResponse(
 
 const importClaudeCodeOAuthToken$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly scope: ClaudeCodeDeviceAuthScope;
       readonly orgId: string;
       readonly userId: string;
       readonly accessToken: string;
+      readonly mode: ClaudeCodeDeviceAuthMode | undefined;
+      readonly modelProviderId: string | undefined;
     },
     signal: AbortSignal,
   ): Promise<{
@@ -726,29 +763,71 @@ const importClaudeCodeOAuthToken$ = command(
     );
     signal.throwIfAborted();
 
-    const result =
-      args.scope === "org"
-        ? await set(
-            upsertOrgModelProvider$,
-            {
-              orgId: args.orgId,
-              type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
-              secret: args.accessToken,
-              metadata,
-            },
-            signal,
-          )
-        : await set(
-            upsertUserModelProvider$,
-            {
-              orgId: args.orgId,
-              userId: args.userId,
-              type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
-              secret: args.accessToken,
-              metadata,
-            },
-            signal,
-          );
+    if (args.scope === "org") {
+      const result = await set(
+        upsertOrgModelProvider$,
+        {
+          orgId: args.orgId,
+          type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
+          secret: args.accessToken,
+          metadata,
+        },
+        signal,
+      );
+      if ("status" in result) {
+        throw new Error(
+          "Claude Code OAuth token import returned an unexpected response",
+        );
+      }
+      return {
+        provider: toModelProviderResponse(result.provider),
+        created: result.created,
+      };
+    }
+
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
+        featureSwitchContext,
+      )
+    ) {
+      const result = await upsertPersonalModelProviderAccount(
+        {
+          db: set(writeDb$),
+          orgId: args.orgId,
+          userId: args.userId,
+          type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
+          authMethod: null,
+          secretValues: {
+            CLAUDE_CODE_OAUTH_TOKEN: args.accessToken,
+          },
+          metadata,
+          mode: personalAccountMutation(args),
+          featureSwitchContext,
+        },
+        signal,
+      );
+      if ("status" in result) {
+        throw new Error(result.body.error.message);
+      }
+      return result;
+    }
+
+    const result = await set(
+      upsertUserModelProvider$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
+        secret: args.accessToken,
+        metadata,
+      },
+      signal,
+    );
     if ("status" in result) {
       throw new Error(
         "Claude Code OAuth token import returned an unexpected response",
@@ -841,6 +920,8 @@ const completeLoadedClaudeCodeDeviceAuth$ = command(
         writeDb,
         session,
         scope: providerState.scope,
+        mode: providerState.mode,
+        modelProviderId: providerState.modelProviderId,
         orgId: args.orgId,
         userId: args.userId,
         authorizationCode,
@@ -859,6 +940,8 @@ const importClaimedClaudeCodeDeviceAuth$ = command(
       readonly writeDb: Db;
       readonly session: ModelProviderAuthSession;
       readonly scope: ClaudeCodeDeviceAuthScope;
+      readonly mode: ClaudeCodeDeviceAuthMode | undefined;
+      readonly modelProviderId: string | undefined;
       readonly orgId: string;
       readonly userId: string;
       readonly authorizationCode: string;
@@ -906,6 +989,8 @@ const importClaimedClaudeCodeDeviceAuth$ = command(
           orgId: args.orgId,
           userId: args.userId,
           accessToken: tokens.value.accessToken,
+          mode: args.mode,
+          modelProviderId: args.modelProviderId,
         },
         signal,
       ),

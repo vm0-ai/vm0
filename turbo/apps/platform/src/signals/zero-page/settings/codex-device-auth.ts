@@ -3,6 +3,7 @@ import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   zeroCodexDeviceAuthContract,
+  type CodexDeviceAuthMode,
   type CodexDeviceAuthScope,
 } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 
@@ -21,7 +22,15 @@ type CodexDeviceAuthDialogMode = "connect" | "reconnect";
 interface CodexDeviceAuthDialogState {
   open: boolean;
   mode: CodexDeviceAuthDialogMode;
+  modelProviderId: string | null;
 }
+
+type OpenCodexDeviceAuthArgs =
+  | CodexDeviceAuthDialogMode
+  | {
+      readonly mode: CodexDeviceAuthDialogMode;
+      readonly modelProviderId?: string;
+    };
 
 type ActiveCodexDeviceAuthFlowState = {
   readonly status: "pending" | "polling";
@@ -49,6 +58,7 @@ function createInitialDialogState(): CodexDeviceAuthDialogState {
   return {
     open: false,
     mode: "connect",
+    modelProviderId: null,
   };
 }
 
@@ -161,13 +171,21 @@ function activeFlowOrExpired(
 }
 
 const startCodexDeviceAuth$ = command(
-  async ({ get }, scope: CodexDeviceAuthScope, signal: AbortSignal) => {
+  async (
+    { get },
+    args: {
+      readonly scope: CodexDeviceAuthScope;
+      readonly mode?: CodexDeviceAuthMode;
+      readonly modelProviderId?: string;
+    },
+    signal: AbortSignal,
+  ) => {
     const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
       apiBase: "api",
     });
     const result = await accept(
       client.start({
-        body: { scope },
+        body: args,
         fetchOptions: { signal },
       }),
       [200],
@@ -320,8 +338,24 @@ function createCodexRunFlow$(
       const requestId = createRequestId(ctx.scope);
       set(ctx.internalFlowState$, { status: "starting", requestId });
 
+      const dialog = get(ctx.internalDialogState$);
+      const startArgs: {
+        readonly scope: CodexDeviceAuthScope;
+        readonly mode?: CodexDeviceAuthMode;
+        readonly modelProviderId?: string;
+      } =
+        ctx.scope === "personal"
+          ? {
+              scope: ctx.scope,
+              mode: dialog.mode === "reconnect" ? "reconnect" : "add",
+              ...(dialog.modelProviderId
+                ? { modelProviderId: dialog.modelProviderId }
+                : {}),
+            }
+          : { scope: ctx.scope };
+
       const started = await tapError(
-        set(startCodexDeviceAuth$, ctx.scope, signal),
+        set(startCodexDeviceAuth$, startArgs, signal),
       );
       signal.throwIfAborted();
 
@@ -390,10 +424,15 @@ function createCodexOpen$(
   return command(
     async (
       { set },
-      mode: CodexDeviceAuthDialogMode,
+      args: OpenCodexDeviceAuthArgs,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      set(ctx.internalDialogState$, { open: true, mode });
+      const normalized = typeof args === "string" ? { mode: args } : args;
+      set(ctx.internalDialogState$, {
+        open: true,
+        mode: normalized.mode,
+        modelProviderId: normalized.modelProviderId ?? null,
+      });
       return await set(run$, signal);
     },
   );

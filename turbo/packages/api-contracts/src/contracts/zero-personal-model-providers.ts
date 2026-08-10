@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   modelProviderListResponseSchema,
+  modelProviderResponseSchema,
   upsertModelProviderRequestSchema,
   upsertModelProviderResponseSchema,
   modelProviderTypeSchema,
@@ -110,3 +111,52 @@ export const zeroPersonalModelProvidersByTypeContract = c.router({
 
 export type ZeroPersonalModelProvidersByTypeContract =
   typeof zeroPersonalModelProvidersByTypeContract;
+
+/** Concrete personal subscription account mutations. */
+export const zeroPersonalModelProviderAccountsByIdContract = c.router({
+  activate: {
+    method: "POST",
+    path: "/api/zero/me/model-provider-accounts/:id/activate",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: z.object({}),
+    responses: {
+      200: modelProviderResponseSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Activate a personal subscription account",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/me/model-provider-accounts/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Delete a personal subscription account",
+  },
+  resetSubscriptionUsage: {
+    method: "POST",
+    path: "/api/zero/me/model-provider-accounts/:id/subscription-reset",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.uuid() }),
+    body: resetPersonalModelProviderSubscriptionUsageRequestSchema,
+    responses: {
+      200: resetPersonalModelProviderSubscriptionUsageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Reset one personal subscription account usage window",
+  },
+});
+
+export type ZeroPersonalModelProviderAccountsByIdContract =
+  typeof zeroPersonalModelProviderAccountsByIdContract;

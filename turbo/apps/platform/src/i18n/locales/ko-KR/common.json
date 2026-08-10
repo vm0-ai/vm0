@@ -4141,12 +4141,18 @@
         "title": "공급자 연결"
       },
       "personal": {
+        "accountFallback": "계정 {{number}}",
         "actionForProvider": "{{provider}} {{action}}",
+        "activeAccount": "활성",
+        "addAccount": "계정 추가",
         "claudeDescription": "Claude 지원 모델 경로를 위한 Claude Code 로그인 연결",
         "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Codex 지원 모델 경로를 위한 Codex 기기 로그인 연결",
         "codexTitle": "ChatGPT (Codex)",
         "description": "본인의 자격 증명으로 실행 시에만 사용됩니다.",
+        "noAccounts": "연결된 계정이 없습니다.",
+        "reconnectAccount": "다시 연결",
+        "removeAccount": "삭제",
         "sectionTitle": "개인",
         "status": {
           "connected": "연결됨",
@@ -4155,7 +4161,8 @@
           "left": "{{percent}} 남음",
           "stale": "주의 필요",
           "week": "주간"
-        }
+        },
+        "useAccount": "사용"
       },
       "picker": {
         "balancedUse": "균형 잡힌 사용",
@@ -4238,6 +4245,8 @@
         "codexTitle": "ChatGPT 세션 재연결 필요"
       },
       "toasts": {
+        "accountRemoved": "계정이 삭제되었습니다",
+        "accountSwitched": "활성 계정이 변경되었습니다",
         "disconnected": "{{provider}} 연결 해제됨",
         "policiesUpdated": "모델 공급자 설정이 업데이트되었습니다.",
         "reset": "Codex 사용량이 재설정되었습니다.",
