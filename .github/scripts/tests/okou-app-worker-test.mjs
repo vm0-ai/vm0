@@ -150,7 +150,7 @@ const [indexTemplate, manifestTemplate, workerModule] = await Promise.all([
 ]);
 const worker = workerModule.default;
 const sharedThreadId = "10000000-0000-4000-8000-000000000001";
-const previewOrigin = "https://pr-25304-api.vm6.ai";
+const previewOrigin = "https://pr-25304-vm0-api-preview.vm0.workers.dev";
 const vm0Description =
   "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
 const okouDescription =

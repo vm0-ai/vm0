@@ -262,14 +262,37 @@ describe("portable platform runtime environment", () => {
 
   it("uses the configured API for an immutable Pages deployment", async () => {
     setBrowserUrl("https://3508a2f5.okou-app.pages.dev/agents");
-    setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
+    setPreviewApiOrigin("https://pr-23364-vm0-api-preview.vm0.workers.dev");
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(
-      "https://pr-23364-api.vm6.ai",
+      "https://pr-23364-vm0-api-preview.vm0.workers.dev",
     );
     expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
-      "https://pr-23364-api.vm6.ai",
+      "https://pr-23364-vm0-api-preview.vm0.workers.dev",
+    );
+  });
+
+  it("uses the configured Worker API from the app preview gateway", async () => {
+    setBrowserUrl("https://pr-23364-app.omby.ai/agents");
+    setPreviewApiOrigin("https://pr-23364-vm0-api-preview.vm0.workers.dev");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-23364-vm0-api-preview.vm0.workers.dev",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-23364-vm0-api-preview.vm0.workers.dev",
+    );
+  });
+
+  it("rejects the retired Vercel API from the app preview gateway", async () => {
+    setBrowserUrl("https://pr-23364-app.omby.ai/agents");
+    setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(() => runtime.apiBase.resolveApiBase()).toThrow(
+      "Invalid Cloudflare Pages preview API origin",
     );
   });
 
@@ -285,7 +308,7 @@ describe("portable platform runtime environment", () => {
 
   it("keeps unrecognized provider hosts on the same origin", async () => {
     setBrowserUrl("https://deployment.pages.dev/agents");
-    setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
+    setPreviewApiOrigin("https://pr-23364-vm0-api-preview.vm0.workers.dev");
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe(

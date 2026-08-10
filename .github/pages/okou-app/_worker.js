@@ -1,7 +1,7 @@
 const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
-  /^https:\/\/(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
+  /^https:\/\/(?:staging|pr-[0-9]+)-vm0-api-preview\.[a-z0-9-]+\.workers\.dev$/u;
 const API_ORIGIN_MARKER_PATTERN =
   /<meta\s+name=["']vm0-api-origin["']\s+content=["']([^"']*)["']\s*\/?>/iu;
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];

@@ -9,7 +9,10 @@ type PlatformHostTarget = PlatformService;
 export { rewritePlatformHostname };
 
 const OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
-const PREVIEW_API_HOSTNAME_PATTERN = /^(?:staging|pr-[0-9]+)-api\.vm6\.ai$/u;
+const OKOU_PREVIEW_APP_HOSTNAME_PATTERN =
+  /^(?:staging|pr-[0-9]+)-app\.omby\.ai$/u;
+const PREVIEW_API_HOSTNAME_PATTERN =
+  /^(?:staging|pr-[0-9]+)-vm0-api-preview\.[a-z0-9-]+\.workers\.dev$/u;
 const PREVIEW_API_ORIGIN_SELECTOR = 'meta[name="vm0-api-origin"]';
 
 function trimTrailingSlash(base: string): string {
@@ -27,7 +30,9 @@ function configuredPreviewApiOrigin(currentOrigin: string): string | null {
   const currentUrl = new URL(currentOrigin);
   if (
     currentUrl.protocol !== "https:" ||
-    !currentUrl.hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) ||
+    currentUrl.port !== "" ||
+    (!currentUrl.hostname.endsWith(OKOU_PAGES_PREVIEW_HOST_SUFFIX) &&
+      !OKOU_PREVIEW_APP_HOSTNAME_PATTERN.test(currentUrl.hostname)) ||
     typeof document === "undefined"
   ) {
     return null;
