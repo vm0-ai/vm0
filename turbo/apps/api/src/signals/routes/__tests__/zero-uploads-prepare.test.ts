@@ -432,6 +432,7 @@ describe("POST /api/zero/uploads/prepare", () => {
         region: "auto",
         forcePathStyle: false,
         requestChecksumCalculation: "WHEN_REQUIRED",
+        responseChecksumValidation: "WHEN_REQUIRED",
       }),
     );
   });
