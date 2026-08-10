@@ -152,17 +152,27 @@ function encodeArchiveLine(line: ChatEventRow): Buffer {
  * of silently changing the persisted archive shape.
  */
 export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
+  const hasCanonicalGoalContext =
+    row.contextType === "goal" && row.contextId !== null;
+  const legacyGoalInputContext =
+    row.runGroupId === null ||
+    row.eventType === "input.goal" ||
+    row.eventType === "input.prompt" ||
+    row.eventType === "input.rejected";
   return {
     id: row.id,
     chatThreadId: row.chatThreadId,
-    runId: row.runId,
+    runId: row.eventType === "control.interrupt" ? null : row.runId,
     usagePayload: row.usagePayload,
     revokesEventId: row.revokesEventId,
     interruptsRunId: row.interruptsRunId,
     runGroupId: row.runGroupId,
     eventType: row.eventType,
-    contextType: row.contextType,
-    contextId: row.contextId,
+    contextType:
+      hasCanonicalGoalContext && !legacyGoalInputContext
+        ? null
+        : row.contextType,
+    contextId: hasCanonicalGoalContext ? null : row.contextId,
     content: row.content,
     userMessage: row.userMessage,
     thinking: row.thinking,

@@ -44,6 +44,7 @@ import {
 import { writeDb$, type Db } from "../external/db";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
 import { inferMimetype } from "./zero-chat-event-shared.service";
+import { legacyRunOwnedChatEventCondition } from "./zero-chat-event-type.service";
 
 const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
 
@@ -217,7 +218,9 @@ async function resolveChatThreadId(
   const [event] = await db
     .select({ chatThreadId: chatEvents.chatThreadId })
     .from(chatEvents)
-    .where(eq(chatEvents.runId, row.runId))
+    .where(
+      and(eq(chatEvents.runId, row.runId), legacyRunOwnedChatEventCondition()),
+    )
     .orderBy(asc(chatEvents.seqId))
     .limit(1);
   signal.throwIfAborted();

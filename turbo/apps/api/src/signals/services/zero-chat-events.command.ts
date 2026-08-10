@@ -1807,7 +1807,6 @@ function appendInterruptUserMessage(params: {
         chatThreadId: params.threadId,
         eventType: "control.interrupt",
         content: null,
-        runId: null,
         interruptsRunId: params.interruptsRunId,
       },
       "any",

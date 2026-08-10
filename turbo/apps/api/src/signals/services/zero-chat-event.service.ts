@@ -15,6 +15,7 @@ import {
   chatEventTerminalPredicate,
   chatEvents,
 } from "@vm0/db/schema/chat-event";
+import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
@@ -32,6 +33,11 @@ import type { Tx } from "../../lib/db-types";
 
 type ChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Tx;
+
+type ChatEventLegacyPayloadLeaves = Pick<
+  ChatEventInsert,
+  "content" | "userMessage" | "thinking" | "error" | "usagePayload"
+>;
 
 type ChatEventIdentity = Pick<
   ChatEventInsert,
@@ -323,7 +329,7 @@ type RunCancelledEvent = ChatEventIdentity & {
   readonly error?: string;
 };
 
-type ControlInterruptEvent = ChatEventIdentity & {
+type ControlInterruptEvent = Omit<ChatEventIdentity, "runId"> & {
   readonly eventType: "control.interrupt";
   readonly content?: null;
   readonly interruptsRunId: string;
@@ -937,12 +943,49 @@ async function insertDisplayContext(
   }
 }
 
+function canonicalChatEventPayload(
+  leaves: ChatEventLegacyPayloadLeaves,
+): ChatEventPayload | null {
+  const { content, userMessage, thinking, error, usagePayload } = leaves;
+  const payload: ChatEventPayload = {
+    ...(content === null || content === undefined ? {} : { content }),
+    ...(userMessage === null || userMessage === undefined
+      ? {}
+      : { userMessage }),
+    ...(thinking === null || thinking === undefined ? {} : { thinking }),
+    ...(error === null || error === undefined ? {} : { error }),
+    ...(usagePayload === null || usagePayload === undefined
+      ? {}
+      : { usage: usagePayload }),
+  };
+  return Object.keys(payload).length === 0 ? null : payload;
+}
+
 function persistedChatEventValues(
   values: NewChatEvent,
   overrides?: Partial<
     Pick<ChatEventInsert, "id" | "contextType" | "contextId">
   >,
 ): PersistedChatEvent {
+  const content = "content" in values ? values.content : undefined;
+  const userMessage = "userMessage" in values ? values.userMessage : undefined;
+  const thinking = "thinking" in values ? values.thinking : undefined;
+  const error = "error" in values ? values.error : undefined;
+  const usagePayload =
+    "usagePayload" in values ? values.usagePayload : undefined;
+  const runGroupId = "runGroupId" in values ? values.runGroupId : undefined;
+  const canonicalInterruptRunId =
+    values.eventType === "control.interrupt"
+      ? { runId: values.interruptsRunId }
+      : {};
+  const canonicalGoalContext = runGroupId
+    ? {
+        runGroupId,
+        contextType: "goal" as const,
+        contextId: runGroupId,
+      }
+    : {};
+
   return {
     ...values,
     ...overrides,
@@ -953,6 +996,15 @@ function persistedChatEventValues(
     values.eventType === "input.budget"
       ? { content: null }
       : {}),
+    payload: canonicalChatEventPayload({
+      content,
+      userMessage,
+      thinking,
+      error,
+      usagePayload,
+    }),
+    ...canonicalInterruptRunId,
+    ...canonicalGoalContext,
   };
 }
 

@@ -1568,6 +1568,7 @@ async function agentPhoneMessageDispatchState(
       .where(
         and(
           eq(chatEvents.chatThreadId, args.chatThreadId),
+          chatEventTypeIn(["input.prompt"]),
           or(
             eq(chatEvents.id, args.chatEventId),
             eq(chatEvents.revokesEventId, args.chatEventId),

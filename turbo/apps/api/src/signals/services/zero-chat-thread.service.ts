@@ -67,6 +67,7 @@ import {
   chatSearchMatchRanges,
 } from "../../lib/chat-search-bigram";
 import {
+  nullableDriverValueDecoder,
   pgBooleanDecoder,
   pgIntegerDecoder,
 } from "../../lib/db-structured-result";
@@ -83,7 +84,10 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import { chatEventTextCondition } from "./zero-chat-event-type.service";
+import {
+  chatEventTextCondition,
+  legacyRunOwnedChatEventCondition,
+} from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
@@ -154,7 +158,10 @@ type ChatThreadDetailRow = {
 };
 
 function effectiveChatEventRunId() {
-  return chatEvents.runId;
+  return sql`CASE
+    WHEN ${chatEvents.eventType} = 'control.interrupt' THEN NULL
+    ELSE ${chatEvents.runId}
+  END`.mapWith(nullableDriverValueDecoder(chatEvents.runId));
 }
 
 const eventColumns = {
@@ -884,6 +891,7 @@ function loadZeroChatThreadArtifactRows(
                 and(
                   eq(chatEvents.runId, runUploadedFiles.runId),
                   eq(chatEvents.chatThreadId, args.threadId),
+                  legacyRunOwnedChatEventCondition(),
                 ),
               ),
           ),
