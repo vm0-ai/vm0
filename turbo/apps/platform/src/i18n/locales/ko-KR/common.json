@@ -1055,6 +1055,11 @@
       "unavailable": "크레딧 잔액을 사용할 수 없습니다.",
       "upgradeDescription": "Pro에는 월간 크레딧이 포함되어 있으며, 추가 크레딧 옵션을 이용할 수 있습니다.",
       "upgradeTitle": "더 많은 크레딧을 위해 Pro로 업그레이드하세요",
+      "usagePack": {
+        "bonus": "보너스",
+        "purchased": "구매",
+        "title": "사용량 팩 크레딧"
+      },
       "used": "사용됨"
     }
   },
@@ -3934,6 +3939,8 @@
         }
       },
       "switchAccount": "계정 전환",
+      "usagePackCreditBalance_one": "{{value}}개 사용량 팩 크레딧",
+      "usagePackCreditBalance_other": "{{value}}개 사용량 팩 크레딧",
       "userFallback": "사용자"
     },
     "buildInfo": {

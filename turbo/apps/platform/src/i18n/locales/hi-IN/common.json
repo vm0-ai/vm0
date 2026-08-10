@@ -1055,6 +1055,11 @@
       "unavailable": "क्रेडिट शेष अनुपलब्ध.",
       "upgradeDescription": "प्रो में मासिक क्रेडिट शामिल है और अतिरिक्त क्रेडिट विकल्प अनलॉक करता है।",
       "upgradeTitle": "अधिक क्रेडिट प्राप्त करने के लिए प्रो में अपग्रेड करें",
+      "usagePack": {
+        "bonus": "बोनस",
+        "purchased": "खरीदे गए",
+        "title": "उपयोग पैक क्रेडिट"
+      },
       "used": "इस्तेमाल किया गया"
     }
   },
@@ -3935,6 +3940,8 @@
         }
       },
       "switchAccount": "खाता स्थानांतरित करें",
+      "usagePackCreditBalance_one": "{{value}} उपयोग पैक क्रेडिट",
+      "usagePackCreditBalance_other": "{{value}} उपयोग पैक क्रेडिट",
       "userFallback": "उपयोगकर्ता"
     },
     "buildInfo": {

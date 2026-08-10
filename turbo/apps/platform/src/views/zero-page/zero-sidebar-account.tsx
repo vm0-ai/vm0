@@ -52,6 +52,7 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
   reloadBillingStatus$,
+  usagePackCreditsAsync$,
 } from "../../signals/zero-page/billing.ts";
 import {
   accountMenuCodexResetDialog$,
@@ -81,6 +82,18 @@ function formatCreditBalance(credits: number): string {
   return i18n.t(
     ($) => {
       return $.settings.accountMenu.creditBalance;
+    },
+    {
+      count: credits,
+      value: formatLocalizedNumber(credits),
+    },
+  );
+}
+
+function formatUsagePackCreditBalance(credits: number): string {
+  return i18n.t(
+    ($) => {
+      return $.settings.accountMenu.usagePackCreditBalance;
     },
     {
       count: credits,
@@ -398,19 +411,53 @@ function AccountSubscriptionsGroup({
   );
 }
 
+function AccountUsagePackCreditGroup({
+  onOpenCreditBalance,
+}: {
+  onOpenCreditBalance: () => void;
+}) {
+  const creditsLoadable = useLastLoadable(usagePackCreditsAsync$);
+  const credits =
+    creditsLoadable.state === "hasData"
+      ? creditsLoadable.data.totalCredits
+      : null;
+  const loading = creditsLoadable.state === "loading" && credits === null;
+  const creditLabel =
+    credits !== null ? formatUsagePackCreditBalance(credits) : null;
+
+  if (!loading && creditLabel === null) {
+    return null;
+  }
+
+  return (
+    <>
+      <CreditBalanceItem
+        creditLabel={creditLabel}
+        loading={loading}
+        onOpenCreditBalance={onOpenCreditBalance}
+        testId="account-menu-usage-pack-credits"
+      />
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
 function CreditBalanceItem({
   creditLabel,
   loading,
   onOpenCreditBalance,
+  testId,
 }: {
   creditLabel: string | null;
   loading: boolean;
   onOpenCreditBalance: () => void;
+  testId?: string;
 }) {
   return (
     <DropdownMenuModalItem
       onModalSelect={onOpenCreditBalance}
       className="gap-3 px-3 py-2.5"
+      data-testid={testId}
     >
       <Coins size={18} className="" />
       <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
@@ -602,6 +649,8 @@ export function AccountDropdown({
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
   const subscriptionsEnabled =
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
+  const usagePackPlansEnabled =
+    features?.[FeatureSwitchKey.UsagePackPlans] ?? false;
   const openSettings = useSet(openSettingsDialogAt$);
   const setPendingSettingsSection = useSet(
     setPendingAccountMenuSettingsSection$,
@@ -724,8 +773,8 @@ export function AccountDropdown({
     if (hidePreferences) {
       return;
     }
-    // Refresh the org credit balance every time the menu opens so the
-    // displayed remaining credit reflects the latest usage.
+    // Refresh credit balances every time the menu opens so the displayed
+    // remaining credits reflect the latest usage.
     reloadBilling();
     if (!subscriptionsEnabled) {
       return;
@@ -772,6 +821,11 @@ export function AccountDropdown({
               subscriptionsEnabled={subscriptionsEnabled}
             />
           )}
+          {!hidePreferences && usagePackPlansEnabled ? (
+            <AccountUsagePackCreditGroup
+              onOpenCreditBalance={handleOpenCreditBalance}
+            />
+          ) : null}
           {!hidePreferences && (
             <UnifiedSettingsGroup
               labEnabled={labEnabled}

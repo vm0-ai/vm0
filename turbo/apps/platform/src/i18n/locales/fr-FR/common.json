@@ -1077,6 +1077,11 @@
       "unavailable": "Solde de crédits indisponible.",
       "upgradeDescription": "Le plan Pro inclut des crédits mensuels et débloque des options de crédit supplémentaires.",
       "upgradeTitle": "Passez au Pro pour obtenir plus de crédits",
+      "usagePack": {
+        "bonus": "Bonus",
+        "purchased": "Achetés",
+        "title": "Crédits du forfait d’utilisation"
+      },
       "used": "Utilisé"
     }
   },
@@ -3984,6 +3989,9 @@
         }
       },
       "switchAccount": "Changer de compte",
+      "usagePackCreditBalance_one": "{{value}} crédit du forfait d’utilisation",
+      "usagePackCreditBalance_many": "{{value}} crédits du forfait d’utilisation",
+      "usagePackCreditBalance_other": "{{value}} crédits du forfait d’utilisation",
       "userFallback": "Utilisateur"
     },
     "buildInfo": {

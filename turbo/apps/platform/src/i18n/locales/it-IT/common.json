@@ -1077,6 +1077,11 @@
       "unavailable": "Saldo del credito non disponibile.",
       "upgradeDescription": "Pro include crediti mensili e sblocca opzioni di credito aggiuntive.",
       "upgradeTitle": "Passa a Pro per ottenere più crediti",
+      "usagePack": {
+        "bonus": "Bonus",
+        "purchased": "Acquistati",
+        "title": "Crediti del pacchetto di utilizzo"
+      },
       "used": "Usato"
     }
   },
@@ -3984,6 +3989,9 @@
         }
       },
       "switchAccount": "Cambia account",
+      "usagePackCreditBalance_one": "{{value}} credito del pacchetto di utilizzo",
+      "usagePackCreditBalance_many": "{{value}} crediti del pacchetto di utilizzo",
+      "usagePackCreditBalance_other": "{{value}} crediti del pacchetto di utilizzo",
       "userFallback": "Utente"
     },
     "buildInfo": {
