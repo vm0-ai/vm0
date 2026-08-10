@@ -67,6 +67,7 @@ import {
   loadCurrentCustomConnectorValueMarkers,
   loadUsableCustomConnectorConnections,
   type CustomConnectorCredentialAccess,
+  type CustomConnectorCredentialValueMarker,
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
@@ -768,11 +769,15 @@ function effectivePermissionBundleRef(
 
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
-  readonly valueMarkers: readonly ValueMarker[];
+  readonly valueMarkers: readonly CustomConnectorCredentialValueMarker[];
   readonly usableConnection: boolean;
 }): CustomConnectorResponse {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
-    return marker.connectorId === args.row.id;
+    return (
+      marker.connectorId === args.row.id &&
+      marker.authMode === args.row.authMode &&
+      marker.storageVersion === args.row.storageVersion
+    );
   });
   const missingRequiredFields = customConnectorMissingRequiredFieldKeys({
     fields: args.row.fields,
@@ -782,12 +787,17 @@ export function serialiseCustomConnector(args: {
     fields: args.row.fields,
     markers: connectorMarkers,
   });
-  const validManualAuth =
+  const validManualHttpAuth =
+    args.row.kind !== "http" ||
     args.row.authMode !== "manual" ||
     customConnectorManualAuthReferencesMemberField(args.row);
+  const usableConnection =
+    args.row.kind === "mcp" && args.row.authMode === "manual"
+      ? true
+      : args.usableConnection;
   const connected =
-    args.usableConnection &&
-    validManualAuth &&
+    usableConnection &&
+    validManualHttpAuth &&
     missingRequiredFields.length === 0;
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
@@ -1398,12 +1408,14 @@ function validateOAuthConfigUpdate(args: {
 }
 
 function validateAuthInjectionReferences(args: {
+  readonly connectorKind: "http" | "mcp";
   readonly authMode: CustomConnectorAuthMode;
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
 }): BadRequestResponse | null {
   if (
+    args.connectorKind === "http" &&
     args.authMode === "manual" &&
     !customConnectorManualAuthReferencesMemberField(args)
   ) {
@@ -1475,6 +1487,7 @@ function validateDefinition(
     );
   }
   const authInjectionError = validateAuthInjectionReferences({
+    connectorKind: input.kind,
     authMode,
     fields,
     headerInjections,

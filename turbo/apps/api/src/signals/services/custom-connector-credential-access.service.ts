@@ -26,8 +26,10 @@ const customConnectorRefreshTokenSecret = alias(
   "custom_connector_refresh_token_secret",
 );
 
-interface CustomConnectorCredentialValueMarker {
+export interface CustomConnectorCredentialValueMarker {
   readonly connectorId: string;
+  readonly authMode: OrgCustomConnectorAuthMode;
+  readonly storageVersion: number;
   readonly kind: "secret" | "variable";
   readonly key: string;
 }
@@ -243,6 +245,8 @@ export async function loadCurrentCustomConnectorValueMarkers(
     db
       .select({
         connectorId: orgCustomConnectorValues.connectorId,
+        authMode: orgCustomConnectors.authMode,
+        storageVersion: orgCustomConnectors.storageVersion,
         kind: orgCustomConnectorValues.kind,
         key: orgCustomConnectorValues.key,
       })
@@ -276,7 +280,11 @@ export async function loadCurrentCustomConnectorValueMarkers(
         ),
       ),
     db
-      .select({ connectorId: orgCustomConnectorSecrets.connectorId })
+      .select({
+        connectorId: orgCustomConnectorSecrets.connectorId,
+        authMode: orgCustomConnectors.authMode,
+        storageVersion: orgCustomConnectors.storageVersion,
+      })
       .from(orgCustomConnectorSecrets)
       .innerJoin(
         orgCustomConnectors,
@@ -314,6 +322,8 @@ export async function loadCurrentCustomConnectorValueMarkers(
         ? [
             {
               connectorId: row.connectorId,
+              authMode: row.authMode,
+              storageVersion: row.storageVersion,
               kind: row.kind,
               key: row.key,
             },
@@ -323,14 +333,16 @@ export async function loadCurrentCustomConnectorValueMarkers(
   );
   const markerKeys = new Set(
     markers.map((marker) => {
-      return `${marker.connectorId}:${marker.kind}:${marker.key}`;
+      return `${marker.connectorId}:${marker.authMode}:${marker.storageVersion}:${marker.kind}:${marker.key}`;
     }),
   );
   for (const row of legacyRows) {
-    const markerKey = `${row.connectorId}:secret:${LEGACY_SECRET_KEY}`;
+    const markerKey = `${row.connectorId}:${row.authMode}:${row.storageVersion}:secret:${LEGACY_SECRET_KEY}`;
     if (!markerKeys.has(markerKey)) {
       markers.push({
         connectorId: row.connectorId,
+        authMode: row.authMode,
+        storageVersion: row.storageVersion,
         kind: "secret",
         key: LEGACY_SECRET_KEY,
       });

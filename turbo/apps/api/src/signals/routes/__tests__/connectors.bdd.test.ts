@@ -3713,6 +3713,28 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorMcp]: true,
     });
+    const publicMcp = await connectorsApi.createCustomConnector(admin, {
+      kind: "mcp",
+      displayName: "BDD Public MCP",
+      endpoint: "https://public-mcp.example.test/server",
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [{ name: "X-Public-Mode", valueTemplate: "readonly" }],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    expect(publicMcp).toMatchObject({ kind: "mcp", connected: true });
+    await expect(
+      connectorsApi.readCustomConnector(admin, publicMcp.id),
+    ).resolves.toMatchObject({ kind: "mcp", connected: true });
+    const listedPublicMcp = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listedPublicMcp.find((connector) => {
+        return connector.id === publicMcp.id;
+      }),
+    ).toMatchObject({ kind: "mcp", connected: true });
+    await connectorsApi.deleteCustomConnector(admin, publicMcp.id);
+
     const agent = await bdd.createAgent(admin, {
       displayName: "BDD MCP Management Agent",
     });
