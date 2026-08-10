@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.536.0](https://github.com/vm0-ai/vm0/compare/core-v8.535.2...core-v8.536.0) (2026-08-10)
+
+
+### Features
+
+* **connectors:** add mcp-aware custom connector readers ([#26035](https://github.com/vm0-ai/vm0/issues/26035)) ([7fdc390](https://github.com/vm0-ai/vm0/commit/7fdc390989eacb3e45a7f0162ce5b7f2e8f9df34))
+* persist user default model priority ([#26028](https://github.com/vm0-ai/vm0/issues/26028)) ([0b66242](https://github.com/vm0-ai/vm0/commit/0b66242b364fa14bc2691fb7b0ec8713c20ab003))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.303.0
+
 ## [8.535.2](https://github.com/vm0-ai/vm0/compare/core-v8.535.1...core-v8.535.2) (2026-08-10)
 
 
