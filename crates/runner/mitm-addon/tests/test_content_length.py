@@ -148,6 +148,7 @@ def test_bounded_content_length_differential(max_value: int):
         ([field_value] for field_value in field_values),
         ([first, second] for first, second in product(field_values, repeat=2)),
         ([first, second, first] for first, second in product(field_values, repeat=2)),
+        ([first, second, "x"] for first, second in product(field_values, repeat=2)),
         ([f"{first},{second}"] for first, second in product(field_values, repeat=2)),
         ([first, f"{second},{first}"] for first, second in product(field_values, repeat=2)),
     )
