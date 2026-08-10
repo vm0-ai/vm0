@@ -554,6 +554,10 @@ async function mutateRunnerJobConnectorPermissionBaseline(
 ): Promise<void> {
   let executionContext: SQL;
   switch (body.mode) {
+    case "legacy-targets": {
+      executionContext = sql`${runnerJobQueue.executionContext} - 'connectorRuntimeCandidateTargets'`;
+      break;
+    }
     case "remove": {
       executionContext = sql`${runnerJobQueue.executionContext} - 'connectorPermissionBaseline'`;
       break;

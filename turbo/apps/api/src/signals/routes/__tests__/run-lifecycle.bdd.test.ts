@@ -10537,6 +10537,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const cases = [
       {
+        mode: "legacy-targets",
+        path: "baseline",
+      },
+      {
         mode: "remove",
         path: "full_missing_baseline",
       },
@@ -10588,6 +10592,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectClaimRouteResponseTimingActions({
         runId: run.runId,
         expectedActionTypes:
+          fallbackCase.mode === "legacy-targets" ||
           fallbackCase.mode === "catalog-mismatch"
             ? [
                 "claim_route_response_network_policy_refresh",
