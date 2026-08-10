@@ -297,10 +297,7 @@ function codexFastModeAvailableForModel(
   const policy = policies.find((candidate) => {
     return candidate.model === selectedModel;
   });
-  return (
-    policy?.routeStatus === "valid" &&
-    policy.defaultProviderType === "codex-oauth-token"
-  );
+  return policy?.routeStatus === "valid";
 }
 
 function selectionWithCodexServiceTier(

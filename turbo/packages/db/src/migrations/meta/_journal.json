@@ -554,6 +554,13 @@
       "when": 1786373828858,
       "tag": "0886_backfill_canonical_chat_event_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 887,
+      "version": "7",
+      "when": 1786375630007,
+      "tag": "0887_add_gpt_5_6_fast_pricing",
+      "breakpoints": true
     }
   ]
 }

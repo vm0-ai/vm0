@@ -366,6 +366,7 @@ describe("zero workflow automation commands", () => {
           id: THREAD_ID,
           title: "Tell a joke",
           selectedModel: MODEL_ID,
+          serviceTier: "priority",
         });
       }),
     );
@@ -504,6 +505,7 @@ describe("zero workflow automation commands", () => {
       expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain(`Thread model: GPT 5.6 Sol (${MODEL_ID})`);
+      expect(logCalls).toContain("Thread priority:  enabled");
       expect(logCalls).toContain("Manage with Zero CLI:");
       expect(logCalls).toContain(`zero workflow edit ${WORKFLOW_ID}`);
       expect(logCalls).toContain('--expr "<cron-expression>" -z <timezone>');

@@ -325,7 +325,6 @@ async function evaluatePersistedChatThreadModel(
     persistRequestedTier: params.persistRequestedCodexServiceTier,
     fastSupported: isCodexFastServiceTierSupported({
       selectedModel: pin.selectedModel,
-      effectiveModelProvider: providerAdmission.effectiveModelProvider,
       codexFastModeEnabled: params.codexFastModeEnabled,
     }),
     selectedModelChanged,

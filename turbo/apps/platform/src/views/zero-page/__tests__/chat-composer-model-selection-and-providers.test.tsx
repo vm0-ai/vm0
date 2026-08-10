@@ -561,14 +561,6 @@ describe("chat composer models", () => {
 
   it("sends Codex fast mode as a run option from the model picker", async () => {
     const user = userEvent.setup({ delay: null });
-    const codexProvider = buildProvider({
-      id: "00000000-0000-4000-a000-000000000912",
-      type: "codex-oauth-token",
-      framework: "codex",
-      secretName: null,
-      authMethod: "auth_json",
-      secretNames: ["CODEX_AUTH_JSON"],
-    });
     let sentBody:
       | {
           model?: string;
@@ -587,11 +579,10 @@ describe("chat composer models", () => {
         model: "gpt-5.6-sol",
         modelLabel: "GPT 5.6 Sol",
         isDefault: true,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
       }),
     ]);
-    context.mocks.data.personalModelProviders([codexProvider]);
     mockAgent();
     mockChatLifecycle(context, {
       onThreadCreate: (body) => {
@@ -731,8 +722,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000924",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -755,7 +746,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.5"));
+    click(await findComposerModel("GPT 5.6 Luna"));
     const runSpeed = await screen.findByRole("group", { name: "Run speed" });
     click(buttonContainingText("Fast", runSpeed));
     await waitFor(() => {
@@ -777,7 +768,7 @@ describe("chat composer models", () => {
       context.store.set(resetChatPageModelSelection$);
     });
 
-    await expectComposerModel("GPT 5.5");
+    await expectComposerModel("GPT 5.6 Luna");
 
     await sendMessageInUI(
       user,
@@ -788,7 +779,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(updatedModelSelection?.modelSelection).toStrictEqual({
         modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.5",
+        selectedModel: "gpt-5.6-luna",
       });
       expect(updatedModelSelection?.codexServiceTier).toBe("fast");
       expect(sentBody?.runOptions).toStrictEqual({
@@ -813,7 +804,7 @@ describe("chat composer models", () => {
         }
       | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-terra",
       serviceTier: "priority",
       updatedAt: "2026-05-08T00:00:00.000Z",
     });
@@ -821,8 +812,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000926",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-terra",
+        modelLabel: "GPT 5.6 Terra",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -844,7 +835,7 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: /^GPT 5\.5$/ }),
+        screen.getByRole("combobox", { name: /^GPT 5\.6 Terra$/ }),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole("group", { name: "Run speed" }),
@@ -867,18 +858,28 @@ describe("chat composer models", () => {
     {
       reason: "the feature switch is off",
       codexFastModeEnabled: false,
+      model: "gpt-5.6-sol" as const,
+      modelLabel: "GPT 5.6 Sol",
       defaultProviderType: "codex-oauth-token" as const,
       credentialScope: "member" as const,
     },
     {
-      reason: "the current model route is not Codex",
+      reason: "the selected model is not GPT 5.6",
       codexFastModeEnabled: true,
+      model: "gpt-5.5" as const,
+      modelLabel: "GPT 5.5",
       defaultProviderType: "vm0" as const,
       credentialScope: "org" as const,
     },
   ])(
     "drops an explicit new-thread Codex Fast tier when $reason",
-    async ({ codexFastModeEnabled, defaultProviderType, credentialScope }) => {
+    async ({
+      codexFastModeEnabled,
+      model,
+      modelLabel,
+      defaultProviderType,
+      credentialScope,
+    }) => {
       const user = userEvent.setup({ delay: null });
       let modelSelectionUpdateCount = 0;
       let sentBody:
@@ -889,8 +890,8 @@ describe("chat composer models", () => {
       context.mocks.data.orgModelPolicies([
         buildModelPolicy({
           id: crypto.randomUUID(),
-          model: "gpt-5.5",
-          modelLabel: "GPT 5.5",
+          model,
+          modelLabel,
           isDefault: true,
           defaultProviderType,
           credentialScope,
@@ -912,7 +913,7 @@ describe("chat composer models", () => {
       );
       act(() => {
         context.store.set(setChatPageModelSelection$, {
-          selectedModel: "gpt-5.5",
+          selectedModel: model,
           codexServiceTier: "fast",
         });
       });
@@ -934,7 +935,7 @@ describe("chat composer models", () => {
         path: `/agents/${AGENT_ID}/chat`,
       });
 
-      const modelPicker = await findComposerModel("GPT 5.5");
+      const modelPicker = await findComposerModel(modelLabel);
       expect(within(modelPicker).queryByText("Fast")).toBeNull();
       await sendMessageInUI(
         user,
@@ -960,7 +961,7 @@ describe("chat composer models", () => {
       secretNames: ["CODEX_AUTH_JSON"],
     });
     context.mocks.data.userModelPreference({
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-luna",
       serviceTier: "priority",
       updatedAt: "2026-05-08T00:00:00.000Z",
     });
@@ -976,8 +977,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000929",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
       }),
@@ -992,12 +993,12 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    await expectComposerModel("GPT 5.5");
+    await expectComposerModel("GPT 5.6 Luna");
     await waitFor(async () => {
       await expect(
         context.store.get(userModelPreference$),
       ).resolves.toStrictEqual({
-        selectedModel: "gpt-5.5",
+        selectedModel: "gpt-5.6-luna",
         serviceTier: "priority",
         updatedAt: "2026-05-08T00:00:00.000Z",
       });
@@ -1097,8 +1098,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000924",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-terra",
+        modelLabel: "GPT 5.6 Terra",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1107,7 +1108,7 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-terra",
       codexServiceTier: "fast",
       onRunCreate: (body) => {
         sentBody = body;
@@ -1121,7 +1122,7 @@ describe("chat composer models", () => {
     });
 
     const modelPicker = await screen.findByRole("combobox", {
-      name: "GPT 5.5",
+      name: "GPT 5.6 Terra",
     });
     const showedFast = within(modelPicker).queryByText("Fast") !== null;
 
@@ -1137,7 +1138,7 @@ describe("chat composer models", () => {
     expect(showedFast).toBeFalsy();
   });
 
-  it("hides a hydrated Codex fast tier when the current route is not Codex", async () => {
+  it("keeps a hydrated Codex fast tier on a built-in route", async () => {
     const user = userEvent.setup({ delay: null });
     let sentBody:
       | {
@@ -1148,8 +1149,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000930",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -1157,7 +1158,7 @@ describe("chat composer models", () => {
     ]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-luna",
       codexServiceTier: "fast",
       onRunCreate: (body) => {
         sentBody = body;
@@ -1171,18 +1172,20 @@ describe("chat composer models", () => {
     });
 
     const modelPicker = await screen.findByRole("combobox", {
-      name: "GPT 5.5",
+      name: "GPT 5.6 Luna",
     });
-    expect(within(modelPicker).queryByText("Fast")).toBeNull();
+    expect(within(modelPicker).getByText("Fast")).toBeInTheDocument();
 
     await sendMessageInUI(
       user,
       screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      "Continue without fast mode",
+      "Continue with fast mode",
     );
 
     await waitFor(() => {
-      expect(sentBody?.runOptions).toBeUndefined();
+      expect(sentBody?.runOptions).toStrictEqual({
+        codexServiceTier: "fast",
+      });
     });
   });
 
@@ -1205,8 +1208,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000919",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1215,7 +1218,7 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     const lifecycle = mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-sol",
       codexServiceTier: "fast",
       onRunCreate: (body) => {
         sentBody = body;
@@ -1229,7 +1232,7 @@ describe("chat composer models", () => {
     });
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: /GPT 5\.5/ }),
+        screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }),
       ).toBeInTheDocument();
     });
 
@@ -1237,7 +1240,7 @@ describe("chat composer models", () => {
     act(() => {
       triggerAblyEvent("threadListChanged");
     });
-    await user.click(screen.getByRole("combobox", { name: /GPT 5\.5/ }));
+    await user.click(screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }));
     const runSpeed = await screen.findByRole("group", { name: "Run speed" });
     await waitFor(() => {
       expect(buttonContainingText("Standard", runSpeed)).toHaveAttribute(
@@ -1289,8 +1292,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000916",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1306,7 +1309,7 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-sol",
       codexServiceTier: "fast",
       onModelSelectionUpdate: (body) => {
         updatedModelSelection = body;
@@ -1322,7 +1325,9 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await user.click(await screen.findByRole("combobox", { name: /GPT 5\.5/ }));
+    await user.click(
+      await screen.findByRole("combobox", { name: /GPT 5\.6 Sol/ }),
+    );
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 5/ }),
     );
@@ -1362,8 +1367,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000921",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1379,7 +1384,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.5"));
+    click(await findComposerModel("GPT 5.6 Luna"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
@@ -1388,7 +1393,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("hides Codex fast mode for non-Codex models", async () => {
+  it("hides Codex fast mode for non-GPT-5.6 models", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000932",
       type: "codex-oauth-token",

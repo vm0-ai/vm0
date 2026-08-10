@@ -135,6 +135,7 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-sol"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "service_tier": "priority",
             "tokens.input": 200_000,
             "tokens.output": 9,
             "tokens.cache_read": 70_000,
@@ -147,10 +148,10 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
 
         assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input.long_context": 200_000,
-            "tokens.output.long_context": 9,
-            "tokens.cache_read.long_context": 70_000,
-            "tokens.cache_creation.long_context": 2_001,
+            "tokens.input.long_context.fast": 200_000,
+            "tokens.output.long_context.fast": 9,
+            "tokens.cache_read.long_context.fast": 70_000,
+            "tokens.cache_creation.long_context.fast": 2_001,
         }
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
             "tokens.input": 200_000,

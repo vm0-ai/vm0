@@ -958,6 +958,7 @@ export function mockChatLifecycle(
       title: null,
       createdAt: "2026-03-10T00:00:00Z",
       selectedModel,
+      serviceTier: body.serviceTier ?? null,
     });
   });
   // Unified chat event endpoint (creates thread + run + association)

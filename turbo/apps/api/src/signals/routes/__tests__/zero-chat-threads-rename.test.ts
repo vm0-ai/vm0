@@ -127,6 +127,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
       agentId: fixture.agentId,
       title: "CLI renamed title",
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      serviceTier: null,
     });
   });
 

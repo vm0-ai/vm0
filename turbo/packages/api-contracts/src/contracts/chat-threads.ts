@@ -802,6 +802,7 @@ const chatThreadMetadataSchema = z.object({
   agentId: z.string().uuid(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
+  serviceTier: chatThreadServiceTierSchema.nullable(),
 });
 
 const chatThreadDraftSchema = z
@@ -823,6 +824,11 @@ const chatThreadCreateBodySchema = z.object({
    * that owns the calling token; callers without a run must send it.
    */
   model: selectedModelRequestSchema.optional(),
+  /**
+   * Priority service tier for the new thread. Omit it to inherit the calling
+   * run's chat thread, use `priority` to enable it, or null for standard.
+   */
+  serviceTier: chatThreadServiceTierSchema.nullable().optional(),
   title: z.string().optional(),
 });
 
@@ -960,6 +966,7 @@ export const chatThreadsContract = c.router({
         createdAt: z.string(),
         /** The model the thread was pinned to. */
         selectedModel: z.string(),
+        serviceTier: chatThreadServiceTierSchema.nullable(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

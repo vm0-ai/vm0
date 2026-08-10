@@ -37,6 +37,7 @@ _CACHED_TOKENS_SUFFIX = ("prompt_tokens_details", "cached_tokens")
 _CHAT_COMPLETIONS_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
     ("model",): ScalarField("string", max_bytes=1024),
+    ("service_tier",): ScalarField("string", max_bytes=1024),
     **{
         (*prefix, field): ScalarField("int", max_bytes=64)
         for prefix in _USAGE_PATHS
@@ -122,6 +123,9 @@ def _usage_snapshot(result: JsonExtractionResult) -> dict | None:
     message_id = result.values.get(("id",))
     if isinstance(message_id, str) and message_id:
         usage["message_id"] = message_id
+    service_tier = result.values.get(("service_tier",))
+    if isinstance(service_tier, str) and service_tier:
+        usage["service_tier"] = service_tier
     return usage
 
 

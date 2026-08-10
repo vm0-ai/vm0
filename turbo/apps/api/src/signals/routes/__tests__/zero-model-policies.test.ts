@@ -965,7 +965,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("stores priority with a Codex user model preference", async () => {
+  it("stores priority with a GPT 5.6 user model preference", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
@@ -981,8 +981,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
       return policy.model === "gpt-5.6-sol"
         ? {
             ...policy,
-            defaultProviderType: "codex-oauth-token" as const,
-            credentialScope: "member" as const,
+            defaultProviderType: "vm0" as const,
+            credentialScope: "org" as const,
             modelProviderId: null,
           }
         : policy;

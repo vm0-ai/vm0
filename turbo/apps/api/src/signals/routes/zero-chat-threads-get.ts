@@ -8,6 +8,7 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
 import { notFound } from "../../lib/error";
+import { chatThreadServiceTierFromCodex } from "../services/zero-chat-thread-event.service";
 import type { RouteEntry } from "../route-entry";
 
 const getInner$ = command(async ({ get }, signal: AbortSignal) => {
@@ -22,6 +23,7 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
       agentId: chatThreads.agentComposeId,
       title: chatThreads.title,
       selectedModel: chatThreads.selectedModel,
+      codexServiceTier: chatThreads.codexServiceTier,
     })
     .from(chatThreads)
     .where(
@@ -34,7 +36,16 @@ const getInner$ = command(async ({ get }, signal: AbortSignal) => {
     return notFound("Chat thread not found");
   }
 
-  return { status: 200 as const, body: thread };
+  return {
+    status: 200 as const,
+    body: {
+      id: thread.id,
+      agentId: thread.agentId,
+      title: thread.title,
+      selectedModel: thread.selectedModel,
+      serviceTier: chatThreadServiceTierFromCodex(thread.codexServiceTier),
+    },
+  };
 });
 
 export const zeroChatThreadGetRoutes: readonly RouteEntry[] = [

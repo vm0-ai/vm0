@@ -157,6 +157,7 @@ class OpenAIResponsesEvent:
 _RESPONSES_RESPONSE_SCALAR_FIELDS = {
     ("id",): ScalarField("string", max_bytes=1024),
     ("model",): ScalarField("string", max_bytes=1024),
+    ("service_tier",): ScalarField("string", max_bytes=1024),
     ("usage", "input_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "output_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=64),
@@ -338,6 +339,10 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
 
+    service_tier = values.get((*prefix, "service_tier"))
+    if isinstance(service_tier, str) and service_tier:
+        target["service_tier"] = service_tier
+
     uncached_input_tokens, cached_tokens, cache_creation_tokens = _partition_input_tokens(
         values.get((*prefix, "usage", "input_tokens")),
         values.get((*prefix, "usage", "input_tokens_details", "cached_tokens")),
@@ -380,8 +385,8 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     Metadata follows usage ownership. When the accumulator already has positive
     usage and the source has no positive usage quantity, source metadata is
     ignored so trailing no-usage events cannot relabel the billed model or
-    ``message_id``. Otherwise non-empty ``model`` and ``message_id`` values from
-    the source are copied.
+    ``message_id``. Otherwise non-empty ``model``, ``message_id``, and
+    ``service_tier`` values from the source are copied.
     """
 
     target_has_positive_quantity = _has_positive_usage_quantity(target)
@@ -403,6 +408,10 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
     message_id = source.get("message_id")
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
+
+    service_tier = source.get("service_tier")
+    if isinstance(service_tier, str) and service_tier:
+        target["service_tier"] = service_tier
 
 
 def _has_response_wrapper_values(values: dict) -> bool:

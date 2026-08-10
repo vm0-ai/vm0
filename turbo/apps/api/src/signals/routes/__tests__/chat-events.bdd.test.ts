@@ -3556,7 +3556,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, followUp.runId);
   }, 90_000);
 
-  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT 5.5 and GPT 5.6 sends", async () => {
+  it("passes Codex fast mode only for feature-enabled GPT 5.6 sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const orgId = actor.orgId;
@@ -3564,29 +3564,21 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected entitled chat actor to have an org");
     }
     const actorWithOrg = { ...actor, orgId };
+    await seedVm0ManagedModelKey("gpt-5.6-sol");
 
-    await misc.upsertPersonalModelProvider(
-      actor,
-      {
-        type: "codex-oauth-token",
-        authMethod: "auth_json",
-        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
-      },
-      [200, 201],
-    );
     await api.updateOrgModelPolicies(actor, [
       {
         model: "gpt-5.6-sol",
         isDefault: true,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
         modelProviderId: null,
       },
       {
         model: "gpt-5.5",
         isDefault: false,
-        defaultProviderType: "codex-oauth-token",
-        credentialScope: "member",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
         modelProviderId: null,
       },
       {
@@ -3657,12 +3649,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(fastClaim.claim.cliAgentType).toBe("codex");
     expect(environment.OPENAI_MODEL).toBe("gpt-5.6-sol");
     expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
-    expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
-      modelProviderSecretPlaceholder(
-        "codex-oauth-token",
-        "CHATGPT_ACCESS_TOKEN",
-      ),
-    );
+    expect(environment.OPENAI_API_KEY).toBeTruthy();
+    expect(environment.CHATGPT_ACCESS_TOKEN).toBeUndefined();
     await cancelChatRun(actor, fast.runId, fastClaim.sandboxHeaders);
     expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
       "priority",
@@ -3677,7 +3665,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expectApiError(invalidFastPatch.body);
     expect(invalidFastPatch.body.error.message).toBe(
-      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+      "Codex fast mode is only available for GPT 5.6 runs",
     );
     expect((await readThreadProjection(actor, fast.threadId)).serviceTier).toBe(
       "priority",
@@ -3772,21 +3760,21 @@ describe("CHAT-02: model-first provider policies", () => {
       actor,
       {
         agentId,
-        prompt: "Claude cannot use Codex fast mode",
+        prompt: "GPT 5.5 cannot use Codex fast mode",
         clientThreadId: rejectedThreadId,
-        model: "claude-sonnet-5",
+        model: "gpt-5.5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+      "Codex fast mode is only available for GPT 5.6 runs",
     );
     await chat.requestReadThread(actor, rejectedThreadId, [404]);
   }, 90_000);
 
-  it("normalizes persisted fast mode after the current provider route changes", async () => {
+  it("preserves persisted fast mode after the current provider route changes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -3815,7 +3803,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.5",
+        model: "gpt-5.6-luna",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -3826,7 +3814,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "start fast before the provider route changes",
-      model: "gpt-5.5",
+      model: "gpt-5.6-luna",
       runOptions: { codexServiceTier: "fast" },
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -3837,7 +3825,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.5",
+        model: "gpt-5.6-luna",
         isDefault: true,
         defaultProviderType: "openai-api-key",
         credentialScope: "org",
@@ -3855,12 +3843,12 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(environment.OPENAI_API_KEY).toBe(
       modelProviderSecretPlaceholder("openai-api-key", "OPENAI_API_KEY"),
     );
-    expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
-    expect(environment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
+    expect(environment.OPENAI_MODEL).toBe("gpt-5.6-luna");
+    expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
     expect(
       (await readThreadProjection(actor, first.threadId)).serviceTier,
-    ).toBeNull();
-    await expectNoThreadModelUpdateEvent(actor, first.threadId, "gpt-5.5");
+    ).toBe("priority");
+    await expectNoThreadModelUpdateEvent(actor, first.threadId, "gpt-5.6-luna");
     await cancelChatRun(actor, followUp.runId);
   }, 90_000);
 

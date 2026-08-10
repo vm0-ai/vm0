@@ -838,7 +838,6 @@ async function resolveExplicitRunConfiguration(params: {
       return validateCodexServiceTier({
         body: params.body,
         modelPin,
-        providerAdmission,
         codexFastModeEnabled: params.codexFastModeEnabled,
       });
     },
@@ -852,7 +851,6 @@ async function resolveExplicitRunConfiguration(params: {
     codexServiceTier: codexServiceTierForRun({
       body: params.body,
       modelPin,
-      providerAdmission,
       codexFastModeEnabled: params.codexFastModeEnabled,
     }),
   };
@@ -2754,7 +2752,6 @@ function codexFastServiceTierRequested(body: NormalSendBody): boolean {
 function validateCodexServiceTier(params: {
   readonly body: NormalSendBody;
   readonly modelPin: ThreadModelPin;
-  readonly providerAdmission: ModelFirstProviderAdmission;
   readonly codexFastModeEnabled: boolean;
 }): ReturnType<typeof badRequestMessage> | undefined {
   if (!codexFastServiceTierRequested(params.body)) {
@@ -2768,27 +2765,24 @@ function validateCodexServiceTier(params: {
   if (
     isCodexFastServiceTierSupported({
       selectedModel: params.modelPin.selectedModel,
-      effectiveModelProvider: params.providerAdmission.effectiveModelProvider,
       codexFastModeEnabled: params.codexFastModeEnabled,
     })
   ) {
     return undefined;
   }
   return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+    "Codex fast mode is only available for GPT 5.6 runs",
   );
 }
 
 function codexServiceTierForRun(params: {
   readonly body: NormalSendBody;
   readonly modelPin: ThreadModelPin;
-  readonly providerAdmission: ModelFirstProviderAdmission;
   readonly codexFastModeEnabled: boolean;
 }): "fast" | undefined {
   return codexFastServiceTierRequested(params.body) &&
     isCodexFastServiceTierSupported({
       selectedModel: params.modelPin.selectedModel,
-      effectiveModelProvider: params.providerAdmission.effectiveModelProvider,
       codexFastModeEnabled: params.codexFastModeEnabled,
     })
     ? "fast"
