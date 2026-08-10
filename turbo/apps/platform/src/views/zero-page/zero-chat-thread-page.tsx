@@ -4470,6 +4470,46 @@ interface ServerThinkingLabel {
   ) => (() => void) | undefined;
 }
 
+function ShimmerText({
+  ariaLabel,
+  children,
+  className,
+  setRef,
+  visualChildren = children,
+}: {
+  readonly ariaLabel?: string;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly setRef?: ServerThinkingLabel["setRef"];
+  readonly visualChildren?: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "zero-shimmer-text-shell h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5",
+        className,
+      )}
+    >
+      <p
+        ref={setRef}
+        className="zero-shimmer-text h-5 w-full overflow-hidden whitespace-nowrap"
+        aria-label={ariaLabel}
+      >
+        {children}
+      </p>
+      <span className="zero-shimmer-window" aria-hidden>
+        <span className="zero-shimmer-highlight">{visualChildren}</span>
+      </span>
+      <span
+        className="zero-shimmer-window zero-shimmer-window-secondary"
+        aria-hidden
+      >
+        <span className="zero-shimmer-highlight">{visualChildren}</span>
+      </span>
+    </div>
+  );
+}
+
 function ThinkingLabel({
   isQueued,
   thinkingLabel,
@@ -4484,11 +4524,24 @@ function ThinkingLabel({
   const pageSignal = useGet(pageSignal$);
 
   if (isQueued) {
+    const waitingIn = t(($) => {
+      return $.chat.run.waitingIn;
+    });
+    const queueEllipsis = t(($) => {
+      return $.chat.run.queueEllipsis;
+    });
     return (
-      <p className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5">
-        {t(($) => {
-          return $.chat.run.waitingIn;
-        })}{" "}
+      <ShimmerText
+        visualChildren={
+          <>
+            {waitingIn}{" "}
+            <span className="underline underline-offset-2">
+              {queueEllipsis}
+            </span>
+          </>
+        }
+      >
+        {waitingIn}{" "}
         <button
           type="button"
           onClick={() => {
@@ -4496,36 +4549,29 @@ function ThinkingLabel({
           }}
           className="cursor-pointer underline underline-offset-2"
         >
-          {t(($) => {
-            return $.chat.run.queueEllipsis;
-          })}
+          {queueEllipsis}
         </button>
-      </p>
+      </ShimmerText>
     );
   }
 
   if (serverThinkingLabel) {
     return (
-      <p
+      <ShimmerText
         key={serverThinkingLabel.id}
-        ref={serverThinkingLabel.setRef}
+        setRef={serverThinkingLabel.setRef}
         className={cn(
-          "zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5",
           "transition-opacity duration-200",
           serverThinkingLabel.fadingOut ? "opacity-0" : "opacity-100",
         )}
-        aria-label={serverThinkingLabel.fullText}
+        ariaLabel={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
-      </p>
+      </ShimmerText>
     );
   }
 
-  return (
-    <p className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5">
-      {thinkingLabel}
-    </p>
-  );
+  return <ShimmerText>{thinkingLabel}</ShimmerText>;
 }
 
 function InlineThinkingRow({

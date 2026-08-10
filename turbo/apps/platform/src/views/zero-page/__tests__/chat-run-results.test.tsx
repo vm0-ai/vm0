@@ -8,7 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { click } from "../../../__tests__/page-helper.ts";
+import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
@@ -704,7 +704,11 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Start queued deployment")).toBeInTheDocument();
-      expect(screen.getByText("queue...")).toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "queue...";
+        }),
+      ).toBeTruthy();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
@@ -714,7 +718,11 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Queued deployment is running now."),
       ).toBeInTheDocument();
-      expect(screen.queryByText("queue...")).not.toBeInTheDocument();
+      expect(
+        queryAllByRoleFast("button").some((button) => {
+          return button.textContent === "queue...";
+        }),
+      ).toBeFalsy();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
   });
