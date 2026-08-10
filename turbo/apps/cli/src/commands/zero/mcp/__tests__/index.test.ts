@@ -526,6 +526,34 @@ describe("zero mcp command", () => {
     });
   });
 
+  it("rejects conflicting input sources before resolving the connector", async () => {
+    const inputPath = join(inputDirectory, "conflicting-input.json");
+    await writeFile(inputPath, "{}", "utf8");
+    let apiCalls = 0;
+    server.use(
+      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
+        apiCalls++;
+        return HttpResponse.json({ connectors: [] });
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync([
+        "node",
+        "zero",
+        "call",
+        "_acme-mcp",
+        "search",
+        "--input",
+        "{}",
+        "--input-file",
+        inputPath,
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(apiCalls).toBe(0);
+  });
+
   it("rejects invalid JSON before opening an MCP connection", async () => {
     stubConnectorList();
     const seen = stubMcpServer({ era: "modern" });
