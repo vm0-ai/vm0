@@ -184,6 +184,7 @@ function enqueueUsagePackInvitationAcceptance(
   signal: AbortSignal,
 ): void {
   waitUntil(
+    "webhooks-clerk:usage-pack-invitation-accepted",
     tapError(
       handleUsagePackInvitationAccepted(db, identity, signal),
       (error) => {
