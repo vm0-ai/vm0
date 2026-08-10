@@ -10,7 +10,7 @@ import { command } from "ccstate";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { now } from "../../lib/time";
+import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import { requestSignal$ } from "../context/hono";
 import { readBoundedResponseText, safeJsonParse, settle } from "../utils";
@@ -22,16 +22,13 @@ import {
 
 const USAGE_KIND = "seo";
 const DATAFORSEO_PROVIDER = "dataforseo";
-const SERPAPI_PROVIDER = "serpapi";
 const DATAFORSEO_BILLING_CATEGORY = "provider_cost_usd_micros";
-const SERPAPI_BILLING_CATEGORY = "search";
 const DATAFORSEO_BASE_URL = "https://api.dataforseo.com";
-const SERPAPI_SEARCH_URL = "https://serpapi.com/search.json";
-const SERPAPI_GOOGLE_MAPS_DEFAULT_ZOOM = 14;
 const PROVIDER_TIMEOUT_MS = 30_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_PROVIDER_ERROR_MESSAGE_CHARS = 4096;
 const MICRO_USD_PER_USD = 1_000_000;
+const L = logger("ZeroSeo");
 
 type SeoRequest =
   | { readonly operation: "serp"; readonly body: ZeroSeoSerpRequest }
@@ -48,24 +45,14 @@ type SeoRequest =
       readonly body: ZeroSeoBacklinksSummaryRequest;
     };
 
-type DataForSeoSerpEngine = Exclude<ZeroSeoEngine, "google_shopping">;
-
-const DATAFORSEO_SERP_PATHS: Readonly<Record<DataForSeoSerpEngine, string>> = {
+const DATAFORSEO_SERP_PATHS: Readonly<Record<ZeroSeoEngine, string>> = {
   google: "/v3/serp/google/organic/live/advanced",
   bing: "/v3/serp/bing/organic/live/advanced",
   google_maps: "/v3/serp/google/maps/live/advanced",
   google_news: "/v3/serp/google/news/live/advanced",
 };
 
-type DataForSeoRequest =
-  | Exclude<SeoRequest, { readonly operation: "serp" }>
-  | {
-      readonly operation: "serp";
-      readonly body: ZeroSeoSerpRequest & {
-        readonly provider: "dataforseo";
-        readonly engine: DataForSeoSerpEngine;
-      };
-    };
+type DataForSeoRequest = SeoRequest;
 
 interface AuthedSeoArgs {
   readonly auth: AuthContext & { readonly orgId: string };
@@ -89,7 +76,7 @@ interface SeoErrorResult {
   readonly error: SeoErrorResponse;
 }
 
-type ProviderBodyResult =
+type DataForSeoFetchResult =
   | SeoErrorResult
   | { readonly kind: "body"; readonly body: unknown };
 
@@ -100,14 +87,6 @@ type DataForSeoBodyResult =
       readonly body: unknown;
       readonly providerCostUsd: number;
       readonly billingQuantity: number;
-    };
-
-type SerpApiBodyResult =
-  | SeoErrorResult
-  | {
-      readonly kind: "body";
-      readonly body: unknown;
-      readonly cached: boolean;
     };
 
 type ZeroSeoCommandResponse =
@@ -127,14 +106,6 @@ const dataForSeoResponseSchema = z.object({
   cost: z.number().finite().nonnegative(),
   tasks_error: z.number().int().nonnegative(),
   tasks: z.array(dataForSeoTaskSchema).max(1),
-});
-
-const serpApiResponseSchema = z.object({
-  search_metadata: z.object({
-    status: z.string(),
-    created_at: z.string().optional(),
-  }),
-  error: z.string().optional(),
 });
 
 function errorBody(message: string, code: string) {
@@ -180,12 +151,29 @@ function parseResponseText(text: string): unknown {
   return parsed === undefined ? text : parsed;
 }
 
-async function fetchProviderJson(
+function dataForSeoProviderStatus(body: unknown): {
+  readonly providerStatusCode?: number;
+  readonly providerStatusMessage?: string;
+} {
+  if (!isRecord(body)) {
+    return {};
+  }
+  return {
+    ...(typeof body.status_code === "number"
+      ? { providerStatusCode: body.status_code }
+      : {}),
+    ...(typeof body.status_message === "string"
+      ? { providerStatusMessage: sanitizedErrorMessage(body.status_message) }
+      : {}),
+  };
+}
+
+async function fetchDataForSeoJson(
   url: URL,
   init: RequestInit,
+  operation: SeoRequest["operation"],
   signal: AbortSignal,
-  providerName: string,
-): Promise<ProviderBodyResult> {
+): Promise<DataForSeoFetchResult> {
   const result = await settle(
     (async () => {
       const response = await fetch(url, {
@@ -200,41 +188,66 @@ async function fetchProviderJson(
         MAX_PROVIDER_RESPONSE_BYTES,
       );
       if (textResult.kind === "too_large") {
+        L.warn("DataForSEO API response exceeded the size limit", {
+          operation,
+          endpoint: url.pathname,
+          maxResponseBytes: MAX_PROVIDER_RESPONSE_BYTES,
+        });
         return errorResult(
           badGateway(
-            `${providerName} SEO response is too large`,
+            "DataForSEO response is too large",
             "SEO_OUTPUT_TOO_LARGE",
           ),
         );
       }
 
       const body = parseResponseText(textResult.text);
+      if (!response.ok) {
+        L.warn("DataForSEO API request failed", {
+          operation,
+          endpoint: url.pathname,
+          httpStatus: response.status,
+          httpStatusText: response.statusText,
+          ...dataForSeoProviderStatus(body),
+        });
+      }
       if (response.status === 429) {
         return errorResult(
           badGateway(
-            `${providerName} is temporarily rate limited`,
+            "DataForSEO is temporarily rate limited",
             "SEO_PROVIDER_RATE_LIMITED",
           ),
         );
       }
       if (!response.ok) {
-        return errorResult(badGateway(`${providerName} SEO request failed`));
+        return errorResult(badGateway("DataForSEO request failed"));
       }
       return { kind: "body" as const, body };
     })(),
   );
 
   if (!result.ok) {
-    if (
+    const timedOut =
       result.error instanceof Error &&
       (result.error.name === "AbortError" ||
-        result.error.name === "TimeoutError")
-    ) {
+        result.error.name === "TimeoutError");
+    L.warn("DataForSEO API request failed", {
+      operation,
+      endpoint: url.pathname,
+      failureKind: timedOut ? "timeout" : "network",
+      ...(result.error instanceof Error
+        ? {
+            errorName: result.error.name,
+            errorMessage: sanitizedErrorMessage(result.error.message),
+          }
+        : {}),
+    });
+    if (timedOut) {
       return errorResult(
-        badGateway(`${providerName} SEO request timed out`, "SEO_TIMEOUT"),
+        badGateway("DataForSEO request timed out", "SEO_TIMEOUT"),
       );
     }
-    return errorResult(badGateway(`${providerName} SEO request failed`));
+    return errorResult(badGateway("DataForSEO request failed"));
   }
   return result.value;
 }
@@ -321,8 +334,9 @@ async function fetchDataForSeo(
   request: DataForSeoRequest,
   signal: AbortSignal,
 ): Promise<DataForSeoBodyResult> {
-  const result = await fetchProviderJson(
-    new URL(dataForSeoPath(request), DATAFORSEO_BASE_URL),
+  const endpoint = dataForSeoPath(request);
+  const result = await fetchDataForSeoJson(
+    new URL(endpoint, DATAFORSEO_BASE_URL),
     {
       method: "POST",
       headers: {
@@ -331,8 +345,8 @@ async function fetchDataForSeo(
       },
       body: JSON.stringify([dataForSeoTask(request)]),
     },
+    request.operation,
     signal,
-    "DataForSEO",
   );
   if (result.kind === "error") {
     return result;
@@ -340,6 +354,16 @@ async function fetchDataForSeo(
 
   const parsed = dataForSeoResponseSchema.safeParse(result.body);
   if (!parsed.success) {
+    L.warn("DataForSEO API returned an invalid response", {
+      operation: request.operation,
+      endpoint,
+      validationIssues: parsed.error.issues.slice(0, 10).map((issue) => {
+        return {
+          path: issue.path.join("."),
+          message: issue.message,
+        };
+      }),
+    });
     return errorResult(
       badGateway(
         "DataForSEO returned an invalid response",
@@ -354,6 +378,19 @@ async function fetchDataForSeo(
     !task ||
     task.status_code !== 20_000
   ) {
+    L.warn("DataForSEO task failed", {
+      operation: request.operation,
+      endpoint,
+      providerStatusCode: parsed.data.status_code,
+      providerStatusMessage: sanitizedErrorMessage(parsed.data.status_message),
+      tasksError: parsed.data.tasks_error,
+      ...(task
+        ? {
+            taskStatusCode: task.status_code,
+            taskStatusMessage: sanitizedErrorMessage(task.status_message),
+          }
+        : {}),
+    });
     return errorResult(
       badGateway(
         sanitizedErrorMessage(
@@ -365,6 +402,11 @@ async function fetchDataForSeo(
   }
   const billingQuantity = providerCostMicros(parsed.data.cost);
   if (billingQuantity === undefined) {
+    L.warn("DataForSEO API returned an invalid cost", {
+      operation: request.operation,
+      endpoint,
+      providerCostUsd: parsed.data.cost,
+    });
     return errorResult(
       badGateway(
         "DataForSEO returned an invalid cost",
@@ -377,103 +419,6 @@ async function fetchDataForSeo(
     body: result.body,
     providerCostUsd: parsed.data.cost,
     billingQuantity,
-  };
-}
-
-function serpApiUrl(apiKey: string, request: ZeroSeoSerpRequest): URL {
-  const url = new URL(SERPAPI_SEARCH_URL);
-  url.searchParams.set("api_key", apiKey);
-  url.searchParams.set("engine", request.engine);
-  url.searchParams.set("q", request.query);
-  url.searchParams.set("location", request.location);
-  url.searchParams.set("no_cache", "false");
-  if (request.engine === "bing") {
-    url.searchParams.set("cc", request.countryCode);
-    url.searchParams.set("setlang", request.languageCode);
-    url.searchParams.set("count", String(request.limit));
-  } else {
-    url.searchParams.set("gl", request.countryCode);
-    url.searchParams.set("hl", request.languageCode);
-    if (request.engine === "google_maps") {
-      url.searchParams.set("z", String(SERPAPI_GOOGLE_MAPS_DEFAULT_ZOOM));
-    } else if (request.engine === "google") {
-      url.searchParams.set("device", request.device);
-      url.searchParams.set("num", String(request.limit));
-    }
-  }
-  return url;
-}
-
-function isSerpApiCacheHit(
-  createdAt: string | undefined,
-  requestStartedAt: number,
-): boolean {
-  if (!createdAt) {
-    return false;
-  }
-  const createdAtMs = Date.parse(createdAt);
-  if (!Number.isFinite(createdAtMs)) {
-    return false;
-  }
-  return createdAtMs < Math.floor(requestStartedAt / 1000) * 1000;
-}
-
-function stripSerpApiKey(body: unknown): unknown {
-  if (!isRecord(body) || !isRecord(body.search_parameters)) {
-    return body;
-  }
-  return {
-    ...body,
-    search_parameters: Object.fromEntries(
-      Object.entries(body.search_parameters).filter(([key]) => {
-        return key !== "api_key";
-      }),
-    ),
-  };
-}
-
-async function fetchSerpApi(
-  apiKey: string,
-  request: ZeroSeoSerpRequest,
-  signal: AbortSignal,
-): Promise<SerpApiBodyResult> {
-  const requestStartedAt = now();
-  const result = await fetchProviderJson(
-    serpApiUrl(apiKey, request),
-    { method: "GET" },
-    signal,
-    "SerpAPI",
-  );
-  if (result.kind === "error") {
-    return result;
-  }
-
-  const parsed = serpApiResponseSchema.safeParse(result.body);
-  if (!parsed.success) {
-    return errorResult(
-      badGateway(
-        "SerpAPI returned an invalid response",
-        "SERPAPI_INVALID_RESPONSE",
-      ),
-    );
-  }
-  if (parsed.data.search_metadata.status !== "Success") {
-    return errorResult(
-      badGateway(
-        sanitizedErrorMessage(
-          parsed.data.error ?? "SerpAPI could not complete the search",
-        ),
-        "SERPAPI_ERROR",
-      ),
-    );
-  }
-  return {
-    kind: "body",
-    body: stripSerpApiKey(result.body),
-    cached: isSerpApiCacheHit(
-      parsed.data.search_metadata.created_at,
-      requestStartedAt,
-    ),
   };
 }
 
@@ -492,30 +437,10 @@ function usageActor(auth: AuthContext & { readonly orgId: string }) {
   };
 }
 
-function dataForSeoRequest(request: SeoRequest): DataForSeoRequest | undefined {
-  if (request.operation !== "serp") {
-    return request;
-  }
-  if (
-    request.body.provider !== "dataforseo" ||
-    request.body.engine === "google_shopping"
-  ) {
-    return undefined;
-  }
-  return {
-    operation: "serp",
-    body: {
-      ...request.body,
-      provider: "dataforseo",
-      engine: request.body.engine,
-    },
-  };
-}
-
 const runDataForSeo$ = command(
   async (
     { get, set },
-    args: AuthedSeoArgs & { readonly request: DataForSeoRequest },
+    args: AuthedSeoArgs,
     signal: AbortSignal,
   ): Promise<ZeroSeoCommandResponse> => {
     const login = env("ZERO_SEO_DATAFORSEO_LOGIN");
@@ -592,114 +517,12 @@ const runDataForSeo$ = command(
   },
 );
 
-const runSerpApi$ = command(
-  async (
-    { get, set },
-    args: AuthedSeoArgs & {
-      readonly request: {
-        readonly operation: "serp";
-        readonly body: ZeroSeoSerpRequest & { readonly provider: "serpapi" };
-      };
-    },
-    signal: AbortSignal,
-  ): Promise<ZeroSeoCommandResponse> => {
-    const apiKey = env("ZERO_SEO_SERPAPI_TOKEN");
-    if (!apiKey) {
-      return serviceUnavailable("Zero SEO SerpAPI provider is not configured");
-    }
-
-    const providerSignal = AbortSignal.any([signal, get(requestSignal$)]);
-    providerSignal.throwIfAborted();
-    const creditError = await set(
-      checkManagedCredits$,
-      {
-        orgId: args.auth.orgId,
-        userId: args.auth.userId,
-        resource: {
-          kind: USAGE_KIND,
-          provider: SERPAPI_PROVIDER,
-          category: SERPAPI_BILLING_CATEGORY,
-        },
-        label: "Zero SEO SerpAPI",
-      },
-      providerSignal,
-    );
-    signal.throwIfAborted();
-    providerSignal.throwIfAborted();
-    if (creditError) {
-      return creditError;
-    }
-
-    const providerResult = await fetchSerpApi(
-      apiKey,
-      args.request.body,
-      providerSignal,
-    );
-    signal.throwIfAborted();
-    if (providerResult.kind === "error") {
-      return providerResult.error;
-    }
-
-    const creditsCharged = providerResult.cached
-      ? 0
-      : await set(
-          recordManagedUsage$,
-          {
-            actor: usageActor(args.auth),
-            resource: {
-              kind: USAGE_KIND,
-              provider: SERPAPI_PROVIDER,
-              category: SERPAPI_BILLING_CATEGORY,
-            },
-            label: "SEO SerpAPI",
-          },
-          signal,
-        );
-    return {
-      status: 200,
-      body: {
-        operation: "serp",
-        provider: SERPAPI_PROVIDER,
-        billingCategory: SERPAPI_BILLING_CATEGORY,
-        billingQuantity: providerResult.cached ? 0 : 1,
-        cached: providerResult.cached,
-        creditsCharged,
-        result: providerResult.body,
-      },
-    };
-  },
-);
-
 export const zeroSeo$ = command(
   async (
     { set },
     args: AuthedSeoArgs,
     signal: AbortSignal,
   ): Promise<ZeroSeoCommandResponse> => {
-    const dataForSeo = dataForSeoRequest(args.request);
-    if (dataForSeo) {
-      return await set(
-        runDataForSeo$,
-        { ...args, request: dataForSeo },
-        signal,
-      );
-    }
-    if (
-      args.request.operation === "serp" &&
-      args.request.body.provider === "serpapi"
-    ) {
-      return await set(
-        runSerpApi$,
-        {
-          ...args,
-          request: {
-            operation: "serp",
-            body: { ...args.request.body, provider: "serpapi" },
-          },
-        },
-        signal,
-      );
-    }
-    throw new Error("Unsupported Zero SEO provider");
+    return await set(runDataForSeo$, args, signal);
   },
 );

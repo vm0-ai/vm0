@@ -116,7 +116,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.SeoBuiltIn]: {
     maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed DataForSEO and SerpAPI access",
+    description: "Enable vm0-managed DataForSEO access",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
