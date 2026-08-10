@@ -5,7 +5,8 @@ import {
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
-  type CustomConnectorResponse,
+  type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
@@ -270,9 +271,10 @@ async function setupAwsExternalCodeConnection(): Promise<{
 }
 
 function customConnector(
-  overrides: Partial<CustomConnectorResponse>,
-): CustomConnectorResponse {
+  overrides: Partial<CustomConnectorHttpResponse>,
+): CustomConnectorHttpResponse {
   return {
+    kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     slug: "acme-search",
     displayName: "Acme Search",
@@ -303,6 +305,33 @@ function customConnector(
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
     ...overrides,
+  };
+}
+
+function mcpCustomConnector(): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    slug: "_acme-mcp",
+    displayName: "Acme MCP",
+    endpoint: "https://mcp.acme.test/server",
+    transport: "streamable-http",
+    prefixes: [],
+    headerName: "",
+    headerTemplate: "",
+    prefixTemplates: [],
+    fields: [],
+    headerInjections: [],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    storageVersion: 1,
+    connected: true,
+    missingRequiredFields: [],
+    configuredFieldKeys: [],
+    hasSecret: false,
+    createdAt: "2026-08-10T00:00:00.000Z",
+    updatedAt: "2026-08-10T00:00:00.000Z",
   };
 }
 
@@ -374,7 +403,7 @@ function mockCustomConnectorStory(): {
     role: "admin",
   });
 
-  let connectors: CustomConnectorResponse[] = [];
+  let connectors: CustomConnectorHttpResponse[] = [];
   const createBodies: CreateCustomConnectorBody[] = [];
   const updateBodies: UpdateCustomConnectorBody[] = [];
 
@@ -3429,8 +3458,37 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows MCP metadata without offering HTTP management actions", async () => {
+    const connector = mcpCustomConnector();
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    const card = await waitFor(() => {
+      return connectorCardByLabel("Acme MCP");
+    });
+    expect(within(card).getByText("MCP · Streamable HTTP")).toBeInTheDocument();
+    expect(
+      within(card).getByText("https://mcp.acme.test/server"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Connect Acme MCP")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("More options"));
+    await expect(screen.findByText("Delete")).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Connect")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+  });
+
   it("refreshes the cached custom connector list after a realtime create event", async () => {
-    let connectors: CustomConnectorResponse[] = [];
+    let connectors: CustomConnectorHttpResponse[] = [];
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -3628,7 +3686,7 @@ describe("connectors page", () => {
     const createdBodies: CreateCustomConnectorBody[] = [];
     const updatedBodies: UpdateCustomConnectorBody[] = [];
     let oauthStartCount = 0;
-    let connector: CustomConnectorResponse | null = null;
+    let connector: CustomConnectorHttpResponse | null = null;
     const authWindow = createMockAuthWindow();
     const browserOpen = context.mocks.browser.open(authWindow);
     const clipboard = context.mocks.browser.clipboardWriteText();

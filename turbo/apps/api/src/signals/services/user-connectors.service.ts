@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -475,12 +475,13 @@ async function lockCustomConnectorsForReplace(
           eq(orgCustomConnectors.orgId, args.orgId),
           eq(orgCustomConnectors.id, id),
           eq(orgCustomConnectors.enabled, true),
+          isNull(orgCustomConnectors.mcpTransport),
         ),
       )
       .for("update", { of: orgCustomConnectors })
       .limit(1);
-    if (locked) {
-      lockedRows.push(locked);
+    if (locked && locked.headerTemplate !== null) {
+      lockedRows.push({ ...locked, headerTemplate: locked.headerTemplate });
     }
   }
 

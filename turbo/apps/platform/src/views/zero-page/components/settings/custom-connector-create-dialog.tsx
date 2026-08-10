@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { ChevronRight, Plus, Trash } from "lucide-react";
 import type {
   CreateCustomConnectorBody,
-  CustomConnectorResponse,
+  CustomConnectorHttpResponse,
   UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -612,7 +612,7 @@ function OAuth2AuthenticationFields({
 }
 
 function connectorHasSimpleApiDefinition(
-  connector: CustomConnectorResponse,
+  connector: CustomConnectorHttpResponse,
 ): boolean {
   const field = connector.fields[0];
   const injection = connector.headerInjections[0];
@@ -629,14 +629,14 @@ function connectorHasSimpleApiDefinition(
 }
 
 interface CustomConnectorDefinitionParts {
-  readonly fields: CustomConnectorResponse["fields"];
-  readonly headerInjections: CustomConnectorResponse["headerInjections"];
-  readonly queryInjections: CustomConnectorResponse["queryInjections"];
+  readonly fields: CustomConnectorHttpResponse["fields"];
+  readonly headerInjections: CustomConnectorHttpResponse["headerInjections"];
+  readonly queryInjections: CustomConnectorHttpResponse["queryInjections"];
 }
 
 function manualDefinitionFromForm(
   form: CustomConnectorCreateForm,
-  connector?: CustomConnectorResponse,
+  connector?: CustomConnectorHttpResponse,
 ): CustomConnectorDefinitionParts {
   const preserveAdvancedDefinition =
     connector !== undefined &&
@@ -673,7 +673,7 @@ function manualDefinitionFromForm(
 }
 
 function oauthDefinitionFromConnector(
-  connector?: CustomConnectorResponse,
+  connector?: CustomConnectorHttpResponse,
 ): CustomConnectorDefinitionParts {
   if (connector?.authMode === "oauth") {
     return {
@@ -696,7 +696,7 @@ function oauthDefinitionFromConnector(
 
 function oauthAuthorizationParamsFromForm(
   form: CustomConnectorCreateForm,
-  connector?: CustomConnectorResponse,
+  connector?: CustomConnectorHttpResponse,
 ): Readonly<Record<string, string>> {
   const authorizationParams = {
     ...connector?.oauthConfig?.authorizationParams,
@@ -720,7 +720,7 @@ function oauthAuthorizationParamsFromForm(
 
 function oauthConfigFromForm(
   form: CustomConnectorCreateForm,
-  connector?: CustomConnectorResponse,
+  connector?: CustomConnectorHttpResponse,
 ): NonNullable<UpdateCustomConnectorBody["oauthConfig"]> {
   return {
     providerAdapter: connector?.oauthConfig?.providerAdapter ?? "standard",
@@ -739,7 +739,7 @@ function oauthConfigFromForm(
 
 function canonicalDefinitionFromForm(
   form: CustomConnectorCreateForm,
-  connector?: CustomConnectorResponse,
+  connector?: CustomConnectorHttpResponse,
 ): UpdateCustomConnectorBody {
   const authMode = form.authMethodTypes.includes("oauth2")
     ? ("oauth" as const)
@@ -788,7 +788,7 @@ function credentialFieldContract(
 }
 
 function updateChangesCredentialContract(
-  connector: CustomConnectorResponse,
+  connector: CustomConnectorHttpResponse,
   body: UpdateCustomConnectorBody,
 ): boolean {
   const currentAuthMode = connector.authMode ?? "manual";
@@ -823,7 +823,7 @@ function updateChangesCredentialContract(
 
 function buildUpdateBody(
   form: CustomConnectorCreateForm,
-  connector: CustomConnectorResponse,
+  connector: CustomConnectorHttpResponse,
 ): UpdateCustomConnectorBody {
   const body = canonicalDefinitionFromForm(form, connector);
   return {
@@ -835,7 +835,7 @@ function buildUpdateBody(
 }
 
 function updateDisconnectsOAuthConnections(
-  connector: CustomConnectorResponse,
+  connector: CustomConnectorHttpResponse,
   body: UpdateCustomConnectorBody,
 ): boolean {
   if (connector.authMode !== "oauth") {
@@ -862,7 +862,7 @@ function updateDisconnectsOAuthConnections(
 
 function oauthCredentialsCanSubmit(
   form: CustomConnectorCreateForm,
-  connector?: CustomConnectorResponse,
+  connector?: CustomConnectorHttpResponse,
 ): boolean {
   const credentialsRequired = !connector?.oauthConfig;
   const hasClientId = form.oauthClientId.trim().length > 0;
@@ -872,7 +872,7 @@ function oauthCredentialsCanSubmit(
 
 function formCanSubmit(
   form: CustomConnectorCreateForm,
-  connector?: CustomConnectorResponse,
+  connector?: CustomConnectorHttpResponse,
 ): boolean {
   if (
     form.displayName.trim().length === 0 ||
@@ -1070,7 +1070,7 @@ function CustomConnectorDialogTitle({
 export function CustomConnectorCreateDialog({
   connector,
 }: {
-  readonly connector?: CustomConnectorResponse;
+  readonly connector?: CustomConnectorHttpResponse;
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);

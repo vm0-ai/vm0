@@ -49,6 +49,7 @@ import {
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
+import { seedMcpCustomConnectorFixture } from "./helpers/runtime-state";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -2988,6 +2989,86 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, autoSlug.id);
     await connectorsApi.deleteCustomConnector(admin, wildcard.id);
     await connectorsApi.deleteCustomConnector(admin, builtinOverlap.id);
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("lists a persisted MCP definition without exposing HTTP update semantics", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user();
+    const orgId = requiredOrgId(admin);
+    const connectorId = randomUUID();
+    const endpoint = "https://mcp-reader.example.test/server";
+
+    await seedMcpCustomConnectorFixture(context, {
+      connectorId,
+      orgId,
+      userId: admin.userId,
+      slug: uniqueSlug("bdd-mcp-reader"),
+      displayName: "BDD MCP Reader",
+      endpoint,
+    });
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.find((connector) => {
+        return connector.id === connectorId;
+      }),
+    ).toMatchObject({
+      kind: "mcp",
+      endpoint,
+      transport: "streamable-http",
+      prefixes: [],
+      prefixTemplates: [],
+      headerName: "",
+      headerTemplate: "",
+      permissionBundleRef: null,
+    });
+
+    const update = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      connectorId,
+      {
+        displayName: "HTTP Rewrite",
+        prefixTemplates: ["https://api.example.test/"],
+        fields: [
+          {
+            key: "secret",
+            label: "Secret",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+        storageVersion: 1,
+      },
+      [400],
+    );
+    expectApiError(update.body);
+    expect(update.body.error.message).toBe(
+      "MCP Custom Connectors cannot be updated with an HTTP definition",
+    );
+
+    const valueWrite = await connectorsApi.requestSetCustomConnectorValues(
+      admin,
+      connectorId,
+      [],
+      [400],
+    );
+    expectApiError(valueWrite.body);
+    expect(valueWrite.body.error.message).toBe(
+      "MCP Custom Connector credentials are not supported yet",
+    );
+
+    await connectorsApi.deleteCustomConnector(admin, connectorId);
     await expect(
       connectorsApi.listCustomConnectors(admin),
     ).resolves.toStrictEqual([]);

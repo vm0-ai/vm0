@@ -11,7 +11,7 @@ import {
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
-  type CustomConnectorResponse,
+  type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
@@ -205,9 +205,10 @@ function connectedConnectorResponse(args: {
 }
 
 function customConnector(
-  overrides: Partial<CustomConnectorResponse> = {},
-): CustomConnectorResponse {
+  overrides: Partial<CustomConnectorHttpResponse> = {},
+): CustomConnectorHttpResponse {
   return {
+    kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     storageVersion: 1,
     slug: "_acme-api",

@@ -47,6 +47,7 @@ import {
   CUSTOM_CONNECTOR_OAUTH_REFRESH_TOKEN_SECRET_NAME,
   getCustomConnectorById,
   normaliseCustomConnectorRow,
+  type CustomConnectorHttpRow,
   type CustomConnectorOAuthConfigRow,
   type CustomConnectorRow,
   type StoredValueRow,
@@ -492,7 +493,11 @@ export const startCustomConnectorOAuth2$ = command(
     if (!connector) {
       return notFound("Custom connector not found");
     }
-    if (connector.authMode !== "oauth" || !connector.oauthConfig) {
+    if (
+      connector.kind !== "http" ||
+      connector.authMode !== "oauth" ||
+      !connector.oauthConfig
+    ) {
       return badRequestMessage(
         "Custom connector does not support OAuth 2.0 authentication",
       );
@@ -1006,7 +1011,7 @@ interface ResolveCustomConnectorOAuth2AccessTokenArgs {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly connector: CustomConnectorRow;
+  readonly connector: CustomConnectorHttpRow;
   readonly featureContext: FeatureSwitchContext;
   readonly forceRefresh?: boolean;
 }
@@ -1140,7 +1145,7 @@ export async function refreshCustomConnectorOAuth2ValuesIfNeeded(
     readonly db: Db;
     readonly orgId: string;
     readonly userId: string;
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly values: readonly StoredValueRow[];
     readonly featureContext: FeatureSwitchContext;
   },
@@ -1206,7 +1211,11 @@ export async function resolveCurrentCustomConnectorOAuth2AccessToken(
 ): Promise<CustomConnectorOAuth2AccessTokenResolution> {
   const connector = await loadLiveCustomConnector(args);
   signal.throwIfAborted();
-  if (!connector || connector.authMode !== "oauth") {
+  if (
+    !connector ||
+    connector.kind !== "http" ||
+    connector.authMode !== "oauth"
+  ) {
     return { kind: "unavailable" };
   }
   return await resolveCustomConnectorOAuth2AccessToken(

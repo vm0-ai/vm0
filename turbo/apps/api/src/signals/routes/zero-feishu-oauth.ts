@@ -663,7 +663,8 @@ const completeLegacyFeishuOAuth$ = command(
     );
     signal.throwIfAborted();
     if (
-      !connector?.oauthConfig ||
+      connector?.kind !== "http" ||
+      !connector.oauthConfig ||
       connector.oauthConfig.providerAdapter !== "feishu"
     ) {
       return callbackRedirectResponse(
@@ -751,7 +752,8 @@ const completeClaimedCustomFeishuOAuth$ = command(
     );
     signal.throwIfAborted();
     if (
-      !connector?.oauthConfig ||
+      connector?.kind !== "http" ||
+      !connector.oauthConfig ||
       connector.oauthConfig.providerAdapter !== "feishu" ||
       !customConnectorOAuthStateMatchesDefinition(context, connector)
     ) {

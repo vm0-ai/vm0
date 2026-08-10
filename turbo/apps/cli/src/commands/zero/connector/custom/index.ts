@@ -69,7 +69,12 @@ const listCommand = new Command()
           return connector.displayName.length;
         }),
       );
-      const header = ["ID".padEnd(idWidth), "NAME".padEnd(nameWidth), "STATUS"];
+      const header = [
+        "ID".padEnd(idWidth),
+        "NAME".padEnd(nameWidth),
+        "KIND",
+        "STATUS",
+      ];
       if (agentCtx) {
         header.push(`AUTHORIZED FOR ${agentCtx.displayName}`);
       }
@@ -78,6 +83,7 @@ const listCommand = new Command()
         const row = [
           connector.id.padEnd(idWidth),
           connector.displayName.padEnd(nameWidth),
+          connector.kind,
           renderConnected(connector),
         ];
         if (agentCtx) {
@@ -110,12 +116,22 @@ const statusCommand = new Command()
         console.log(`Custom connector: ${chalk.cyan(connector.displayName)}`);
         console.log();
         console.log(`${"ID:".padEnd(LABEL_WIDTH)}${connector.id}`);
+        console.log(`${"Kind:".padEnd(LABEL_WIDTH)}${connector.kind}`);
         console.log(
           `${"Status:".padEnd(LABEL_WIDTH)}${renderConnected(connector)}`,
         );
-        console.log(
-          `${"Prefixes:".padEnd(LABEL_WIDTH)}${connector.prefixTemplates.join(", ")}`,
-        );
+        if (connector.kind === "mcp") {
+          console.log(
+            `${"Transport:".padEnd(LABEL_WIDTH)}${connector.transport}`,
+          );
+          console.log(
+            `${"Endpoint:".padEnd(LABEL_WIDTH)}${connector.endpoint}`,
+          );
+        } else {
+          console.log(
+            `${"Prefixes:".padEnd(LABEL_WIDTH)}${connector.prefixTemplates.join(", ")}`,
+          );
+        }
         console.log(
           `${"Fields:".padEnd(LABEL_WIDTH)}${connector.fields
             .map((field) => {

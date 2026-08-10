@@ -1940,6 +1940,7 @@
       },
       "emptyAdmin": "Pas encore de connecteurs personnalisés. Créez-en un pour enregistrer une API que tous les membres pourront utiliser.",
       "emptyMember": "Votre organisation n'a pas encore enregistré de connecteurs personnalisés.",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
       "moreOptions": "Plus d'options",
       "statusConnected": "Connecté",
       "toasts": {

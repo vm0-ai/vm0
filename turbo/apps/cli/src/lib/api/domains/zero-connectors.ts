@@ -23,6 +23,8 @@ import {
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
+  customConnectorListResponseSchema,
+  customConnectorResponseSchema,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -186,7 +188,7 @@ export async function listZeroCustomConnectors(): Promise<
 
   const result = await client.list({ headers: {} });
   if (result.status === 200) {
-    return result.body.connectors;
+    return customConnectorListResponseSchema.parse(result.body).connectors;
   }
 
   handleError(result, "Failed to list custom connectors");
@@ -200,7 +202,7 @@ export async function createZeroCustomConnector(
 
   const result = await client.create({ body, headers: {} });
   if (result.status === 201) {
-    return result.body;
+    return customConnectorResponseSchema.parse(result.body);
   }
 
   handleError(result, "Failed to create custom connector");
@@ -214,7 +216,7 @@ export async function getZeroCustomConnector(
 
   const result = await client.get({ params: { id }, headers: {} });
   if (result.status === 200) {
-    return result.body;
+    return customConnectorResponseSchema.parse(result.body);
   }
   if (result.status === 404) {
     return null;

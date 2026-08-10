@@ -5,7 +5,10 @@ import {
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
+  customConnectorListResponseSchema,
+  customConnectorResponseSchema,
   type CreateCustomConnectorBody,
+  type CustomConnectorHttpResponse,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -64,7 +67,7 @@ export const customConnectors$ = computed(
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorsContract);
     const result = await accept(client.list(), [200]);
-    return result.body.connectors;
+    return customConnectorListResponseSchema.parse(result.body).connectors;
   },
 );
 
@@ -227,16 +230,17 @@ export const createCustomConnector$ = command(
       }),
       [201],
     );
+    const connector = customConnectorResponseSchema.parse(result.body);
     set(bumpReload$);
     toast.success(
       i18n.t(
         ($) => {
           return $.connectors.custom.toasts.created;
         },
-        { connector: result.body.displayName },
+        { connector: connector.displayName },
       ),
     );
-    return result.body;
+    return connector;
   },
 );
 
@@ -260,16 +264,17 @@ export const updateCustomConnector$ = command(
       [200],
     );
     signal.throwIfAborted();
+    const connector = customConnectorResponseSchema.parse(result.body);
     set(bumpReload$);
     toast.success(
       i18n.t(
         ($) => {
           return $.connectors.custom.toasts.updated;
         },
-        { connector: result.body.displayName },
+        { connector: connector.displayName },
       ),
     );
-    return result.body;
+    return connector;
   },
 );
 
@@ -500,14 +505,14 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
 type DialogState =
   | { kind: "none" }
   | { kind: "create" }
-  | { kind: "edit"; connector: CustomConnectorResponse }
-  | { kind: "connect"; connector: CustomConnectorResponse }
+  | { kind: "edit"; connector: CustomConnectorHttpResponse }
+  | { kind: "connect"; connector: CustomConnectorHttpResponse }
   | { kind: "access"; connector: CustomConnectorResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
 
 const internalDialog$ = state<DialogState>({ kind: "none" });
 const internalEditConfirmation$ = state<{
-  readonly connector: CustomConnectorResponse;
+  readonly connector: CustomConnectorHttpResponse;
   readonly body: UpdateCustomConnectorBody;
 } | null>(null);
 
@@ -522,7 +527,7 @@ export const openCustomConnectorCreateDialog$ = command(({ set }) => {
   set(internalDialog$, { kind: "create" });
 });
 export const openCustomConnectorEditDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
+  ({ set }, connector: CustomConnectorHttpResponse) => {
     set(internalCreateForm$, createFormFromConnector(connector));
     set(internalEditConfirmation$, null);
     set(internalDialog$, { kind: "edit", connector });
@@ -532,7 +537,7 @@ export const openCustomConnectorEditConfirmationDialog$ = command(
   (
     { set },
     args: {
-      readonly connector: CustomConnectorResponse;
+      readonly connector: CustomConnectorHttpResponse;
       readonly body: UpdateCustomConnectorBody;
     },
   ) => {
@@ -545,7 +550,7 @@ export const closeCustomConnectorEditConfirmationDialog$ = command(
   },
 );
 export const openCustomConnectorConnectDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
+  ({ set }, connector: CustomConnectorHttpResponse) => {
     set(internalConnectForm$, {
       ...CONNECT_FORM_DEFAULTS,
       authMethod: connector.authMode === "oauth" ? "oauth2" : "api",
@@ -653,7 +658,7 @@ function oauthCreateFormFromConnector(
 }
 
 function createFormFromConnector(
-  connector: CustomConnectorResponse,
+  connector: CustomConnectorHttpResponse,
 ): CustomConnectorCreateForm {
   return {
     displayName: connector.displayName,
