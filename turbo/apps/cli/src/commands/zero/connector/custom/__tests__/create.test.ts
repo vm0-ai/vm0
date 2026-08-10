@@ -83,6 +83,31 @@ function oauthDefinition() {
   } as const;
 }
 
+function manualMcpDefinition() {
+  return {
+    kind: "mcp",
+    displayName: "Acme MCP",
+    endpoint: "https://mcp.acme.example/server",
+    transport: "streamable-http",
+    fields: [
+      {
+        key: "secret",
+        label: "API Token",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+  } as const;
+}
+
 describe("zero connector custom create", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   let tempDir: string;
@@ -208,6 +233,59 @@ describe("zero connector custom create", () => {
     expect(output).not.toContain("oauth-client-secret");
   });
 
+  it("creates an explicit Streamable HTTP MCP definition", async () => {
+    const definitionPath = writeDefinition(manualMcpDefinition());
+    let createBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/custom-connectors",
+        async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json(
+            {
+              kind: "mcp",
+              id: CONNECTOR_ID,
+              slug: "_acme-mcp",
+              displayName: "Acme MCP",
+              endpoint: "https://mcp.acme.example/server",
+              transport: "streamable-http",
+              prefixes: [],
+              headerName: "",
+              headerTemplate: "",
+              prefixTemplates: [],
+              fields: [...manualMcpDefinition().fields],
+              headerInjections: [...manualMcpDefinition().headerInjections],
+              queryInjections: [],
+              authMode: "manual",
+              permissionBundleRef: null,
+              storageVersion: 1,
+              connected: false,
+              missingRequiredFields: ["secret"],
+              configuredFieldKeys: [],
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+              hasSecret: false,
+            },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+
+    await customConnectorCommand.parseAsync([
+      "node",
+      "zero",
+      "create",
+      "--file",
+      definitionPath,
+    ]);
+
+    expect(createBody).toStrictEqual(manualMcpDefinition());
+    expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
+      'Custom connector "Acme MCP" created',
+    );
+  });
+
   it("rejects files containing credential values", async () => {
     const definitionPath = writeDefinition({
       ...manualDefinition(),
@@ -328,6 +406,7 @@ describe("zero connector custom create", () => {
     expect(createHelp).toContain("Bearer {{secrets.secret}}");
     expect(createHelp).toContain('"authMode": "oauth"');
     expect(createHelp).toContain("Bearer {{oauth.access_token}}");
+    expect(createHelp).toContain("endpoint for MCP");
     expect(createHelp).toContain("Never ask");
     expect(createHelp).toContain("end-user access token or refresh token");
     expect(createHelp).toContain("does not store a");
@@ -345,6 +424,6 @@ describe("zero connector custom create", () => {
       customConnectorCommand.commands.map((command) => {
         return command.name();
       }),
-    ).toStrictEqual(["create", "list", "status"]);
+    ).toStrictEqual(["create", "update", "list", "status"]);
   });
 });

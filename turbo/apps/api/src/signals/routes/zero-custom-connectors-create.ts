@@ -8,7 +8,6 @@ import {
   createCustomConnector$,
   serialiseCustomConnector,
 } from "../services/zero-custom-connector.service";
-import { isBadRequestResponse } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 import { publishCustomConnectorListChangedForUserSafely } from "../external/realtime";
 
@@ -41,7 +40,7 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
 
-  if (isBadRequestResponse(result)) {
+  if ("status" in result) {
     return result;
   }
 

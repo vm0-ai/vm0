@@ -197,7 +197,19 @@ export const customConnectorListResponseSchema = z.object({
   connectors: z.array(customConnectorResponseSchema),
 });
 
-export const createCustomConnectorBodySchema = z.object({
+const customConnectorDefinitionWriteBaseSchema = z.object({
+  displayName: z.string().min(1).max(128),
+  fields: z.array(customConnectorFieldSchema),
+  headerInjections: z.array(customConnectorHeaderInjectionSchema),
+  queryInjections: z.array(customConnectorQueryInjectionSchema),
+  authMode: customConnectorAuthModeSchema.optional(),
+  oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
+  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
+  storageVersion: z.number().int().positive().optional(),
+});
+
+export const customConnectorHttpCreateBodySchema = z.object({
+  kind: z.literal("http").optional(),
   displayName: z.string().min(1).max(128),
   prefixes: z.array(z.string().min(1)).min(1).optional(),
   headerName: z.string().min(1).max(128).optional(),
@@ -214,25 +226,63 @@ export const createCustomConnectorBodySchema = z.object({
   skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
   storageVersion: z.number().int().positive().optional(),
   slug: z.string().optional(),
+  endpoint: z.never().optional(),
+  transport: z.never().optional(),
 });
+
+export const customConnectorMcpCreateBodySchema =
+  customConnectorDefinitionWriteBaseSchema.extend({
+    kind: z.literal("mcp"),
+    endpoint: z.string().min(1).max(2048),
+    transport: customConnectorMcpTransportSchema,
+    permissionBundleRef: z.null().optional(),
+    slug: z.string().optional(),
+    prefixes: z.never().optional(),
+    headerName: z.never().optional(),
+    headerTemplate: z.never().optional(),
+    prefixTemplates: z.never().optional(),
+  });
+
+export const createCustomConnectorBodySchema = z.union([
+  customConnectorMcpCreateBodySchema,
+  customConnectorHttpCreateBodySchema,
+]);
 export type CreateCustomConnectorBody = z.infer<
   typeof createCustomConnectorBodySchema
 >;
 
-export const updateCustomConnectorBodySchema = z.object({
-  displayName: z.string().min(1).max(128),
-  prefixTemplates: z.array(z.string().min(1)).min(1),
-  fields: z.array(customConnectorFieldSchema),
-  headerInjections: z.array(customConnectorHeaderInjectionSchema),
-  queryInjections: z.array(customConnectorQueryInjectionSchema),
-  authMode: customConnectorAuthModeSchema.optional(),
-  oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
-  permissionBundleRef: customConnectorPermissionBundleRefSchema
-    .nullable()
-    .optional(),
-  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
-  storageVersion: z.number().int().positive().optional(),
-});
+export const customConnectorHttpUpdateBodySchema =
+  customConnectorDefinitionWriteBaseSchema.extend({
+    kind: z.literal("http").optional(),
+    prefixTemplates: z.array(z.string().min(1)).min(1),
+    permissionBundleRef: customConnectorPermissionBundleRefSchema
+      .nullable()
+      .optional(),
+    endpoint: z.never().optional(),
+    transport: z.never().optional(),
+  });
+
+export const customConnectorMcpUpdateBodySchema =
+  customConnectorDefinitionWriteBaseSchema.extend({
+    kind: z.literal("mcp"),
+    endpoint: z.string().min(1).max(2048),
+    transport: customConnectorMcpTransportSchema,
+    permissionBundleRef: z.null().optional(),
+    prefixTemplates: z.never().optional(),
+    prefixes: z.never().optional(),
+    headerName: z.never().optional(),
+    headerTemplate: z.never().optional(),
+  });
+
+export const updateCustomConnectorBodySchema = z.union([
+  customConnectorMcpUpdateBodySchema,
+  customConnectorHttpUpdateBodySchema,
+]);
+/*
+ * `kind` is intentionally optional only on the HTTP branches. Installed
+ * writers predate the protocol discriminator, while every MCP writer must be
+ * explicit so an HTTP-only backend cannot silently create a different shape.
+ */
 export type UpdateCustomConnectorBody = z.infer<
   typeof updateCustomConnectorBodySchema
 >;
@@ -416,6 +466,7 @@ export const zeroCustomConnectorSecretContract = c.router({
       204: c.noBody(),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
     },

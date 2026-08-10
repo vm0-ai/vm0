@@ -1131,27 +1131,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_catalog_cache_accepts_valid_template_base() {
-        let dir = tempfile::tempdir().unwrap();
-        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
-        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
-        let mut valid = catalog("github");
-        valid
-            .firewalls
-            .get_mut("github")
-            .expect("catalog should contain github")
-            .apis[0]
-            .base = "https://${{ vars.TENANT }}.example.com".to_string();
+    async fn write_catalog_cache_accepts_valid_template_bases() {
+        let valid_cases =
+            crate::test_fixtures::firewall_base_url_contract::catalog_firewall_base_url_validation_cases(
+            )
+            .into_iter()
+            .filter(|test_case| test_case.expected_valid);
 
-        write_catalog_cache(&cache_path, &lock_path, valid)
-            .await
-            .unwrap();
+        for test_case in valid_cases {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+            let mut valid = catalog("github");
+            valid
+                .firewalls
+                .get_mut("github")
+                .expect("catalog should contain github")
+                .apis[0]
+                .base = test_case.base.clone();
 
-        let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
-        assert_eq!(
-            cache.firewalls["github"].apis[0].base,
-            "https://${{ vars.TENANT }}.example.com"
-        );
+            write_catalog_cache(&cache_path, &lock_path, valid)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "valid shared template base {:?} failed: {error}",
+                        test_case.name
+                    )
+                });
+
+            let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
+            assert_eq!(cache.firewalls["github"].apis[0].base, test_case.base);
+        }
     }
 
     #[tokio::test]

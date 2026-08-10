@@ -27,6 +27,7 @@ import {
   customConnectorResponseSchema,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ConnectorListResponse,
@@ -223,4 +224,19 @@ export async function getZeroCustomConnector(
   }
 
   handleError(result, `Failed to get custom connector "${id}"`);
+}
+
+export async function updateZeroCustomConnector(
+  id: string,
+  body: UpdateCustomConnectorBody,
+): Promise<CustomConnectorResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroCustomConnectorByIdContract, config);
+
+  const result = await client.update({ params: { id }, body, headers: {} });
+  if (result.status === 200) {
+    return customConnectorResponseSchema.parse(result.body);
+  }
+
+  handleError(result, `Failed to update custom connector "${id}"`);
 }

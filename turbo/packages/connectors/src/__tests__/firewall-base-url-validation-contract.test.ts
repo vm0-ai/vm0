@@ -27,11 +27,29 @@ const baseUrlValidationCaseSchema = z.object({
   expectedCanonicalBase: z.string().optional(),
 });
 
+const catalogBaseUrlValidationCaseSchema = baseUrlTemplateResolutionCaseSchema
+  .extend({
+    expectedValid: z.boolean(),
+  })
+  .superRefine((testCase, ctx) => {
+    if (testCase.expectedValid === (testCase.expectedResolvedBase === null)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["expectedResolvedBase"],
+        message:
+          "expectedResolvedBase must be present exactly when expectedValid is true",
+      });
+    }
+  });
+
 const contractSchema = z
   .object({
     hostnamePolicy: z.literal(FIREWALL_HOSTNAME_POLICY_VERSION),
     baseUrlTemplateResolutionCases: z
       .array(baseUrlTemplateResolutionCaseSchema)
+      .min(1),
+    catalogBaseUrlValidationCases: z
+      .array(catalogBaseUrlValidationCaseSchema)
       .min(1),
     baseUrlValidationCases: z.array(baseUrlValidationCaseSchema).min(1),
   })
@@ -41,6 +59,7 @@ const contractSchema = z
         "baseUrlTemplateResolutionCases",
         contract.baseUrlTemplateResolutionCases,
       ],
+      ["catalogBaseUrlValidationCases", contract.catalogBaseUrlValidationCases],
       ["baseUrlValidationCases", contract.baseUrlValidationCases],
     ] as const) {
       const seenNames = new Set<string>();
@@ -58,6 +77,9 @@ const contractSchema = z
   });
 
 type BaseUrlValidationCase = z.infer<typeof baseUrlValidationCaseSchema>;
+type CatalogBaseUrlValidationCase = z.infer<
+  typeof catalogBaseUrlValidationCaseSchema
+>;
 type BaseUrlTemplateResolutionCase = z.infer<
   typeof baseUrlTemplateResolutionCaseSchema
 >;
@@ -112,12 +134,41 @@ function assertTemplateResolutionResult(
   expect(resolve()).toBe(testCase.expectedResolvedBase);
 }
 
+function assertCatalogValidationResult(
+  testCase: CatalogBaseUrlValidationCase,
+): void {
+  const validate = (): string => {
+    validateBaseUrl(testCase.base, "contract");
+    return resolveFirewallBaseUrlTemplate({
+      serviceName: "contract",
+      base: testCase.base,
+      vars: testCase.vars,
+    });
+  };
+
+  if (!testCase.expectedValid) {
+    expect(validate).toThrow();
+    return;
+  }
+
+  expect(testCase.expectedResolvedBase).not.toBeNull();
+  expect(validate()).toBe(testCase.expectedResolvedBase);
+}
+
 const contract = loadContract();
 
 describe("firewall base URL validation contract", () => {
   for (const testCase of contract.baseUrlValidationCases) {
     it(testCase.name, () => {
       assertValidationResult(testCase);
+    });
+  }
+});
+
+describe("firewall catalog base URL validation contract", () => {
+  for (const testCase of contract.catalogBaseUrlValidationCases) {
+    it(testCase.name, () => {
+      assertCatalogValidationResult(testCase);
     });
   }
 });

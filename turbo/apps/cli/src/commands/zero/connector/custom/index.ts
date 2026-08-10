@@ -10,6 +10,7 @@ import {
 } from "../../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../../lib/command/with-error-handler";
 import { createCustomConnectorCommand } from "./create";
+import { updateCustomConnectorCommand } from "./update";
 
 const LABEL_WIDTH = 18;
 
@@ -172,8 +173,9 @@ const statusCommand = new Command()
 
 export const customConnectorCommand = new Command()
   .name("custom")
-  .description("Create and inspect org custom connectors")
+  .description("Create, update, and inspect org custom connectors")
   .addCommand(createCustomConnectorCommand)
+  .addCommand(updateCustomConnectorCommand)
   .addCommand(listCommand)
   .addCommand(statusCommand)
   .addHelpText(

@@ -100,6 +100,7 @@ import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
+import * as activeInputDeliverySchema from "./schema/active-input-delivery";
 import * as chatEventSchema from "./schema/chat-event";
 import * as chatEventSearchSchema from "./schema/chat-event-search";
 import * as chatEventSnapshotSchema from "./schema/chat-event-snapshot";
@@ -231,6 +232,7 @@ export const schema = {
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
+  ...activeInputDeliverySchema,
   ...chatEventSchema,
   ...chatEventSearchSchema,
   ...chatEventSnapshotSchema,
