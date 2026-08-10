@@ -93,6 +93,7 @@ import {
   seedSlackOrgInstallation$,
 } from "./helpers/zero-integrations-slack";
 import {
+  seedCustomConnectorRuntimeConnectors,
   setConnectorCredentialStorageState,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
@@ -8916,55 +8917,30 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
     const suffix = randomUUID().slice(0, 8);
     const connectorCount = CONNECTOR_RUNTIME_SYNC_TARGETS_MAX + 1;
-    const createdIds: string[] = [];
-
-    for (let offset = 0; offset < connectorCount; offset += 32) {
-      const batchSize = Math.min(32, connectorCount - offset);
-      const batch = await Promise.all(
-        Array.from({ length: batchSize }, async (_unused, index) => {
-          const sequence = offset + index;
-          const connector = await connectors.createCustomConnector(actor, {
-            kind: "http",
-            displayName: `BDD Runtime Batch ${sequence}`,
-            prefixTemplates: [
-              `https://batch-${sequence}-${suffix}.example.test/api/`,
-            ],
-            fields: [
-              {
-                key: "secret",
-                label: "API key",
-                kind: "secret",
-                required: true,
-              },
-            ],
-            headerInjections: [
-              {
-                name: "Authorization",
-                valueTemplate: "Bearer {{secrets.secret}}",
-              },
-            ],
-            queryInjections: [],
-            authMode: "manual",
-          });
-          const connected = await connectors.setCustomConnectorValues(
-            actor,
-            connector.id,
-            [
-              {
-                key: "secret",
-                kind: "secret",
-                value: `batch-secret-${sequence}`,
-              },
-            ],
-          );
-          expect(connected.connected).toBeTruthy();
-          return connector.id;
-        }),
-      );
-      createdIds.push(...batch);
-    }
+    const runtimeConnectors = Array.from(
+      { length: connectorCount },
+      (_unused, sequence) => {
+        return {
+          id: randomUUID(),
+          slug: `_bdd-batch-${suffix}-${sequence}`,
+          displayName: `BDD Runtime Batch ${sequence}`,
+          prefixTemplate: `https://batch-${sequence}-${suffix}.example.test/api/`,
+        };
+      },
+    );
+    await seedCustomConnectorRuntimeConnectors(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectors: runtimeConnectors,
+    });
+    const createdIds = runtimeConnectors.map((connector) => {
+      return connector.id;
+    });
     const enabledIds = await connectors.updateAgentCustomConnectors(
       actor,
       agentId,

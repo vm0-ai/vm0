@@ -124,6 +124,34 @@ export async function seedConnectorStorageRow(
   return response.connector_id;
 }
 
+export async function seedCustomConnectorRuntimeConnectors(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectors: readonly {
+      readonly id: string;
+      readonly slug: string;
+      readonly displayName: string;
+      readonly prefixTemplate: string;
+    }[];
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "seed-custom-runtime-connectors",
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connectors: args.customConnectors.map((connector) => {
+      return {
+        id: connector.id,
+        slug: connector.slug,
+        display_name: connector.displayName,
+        prefix_template: connector.prefixTemplate,
+      };
+    }),
+  });
+}
+
 export async function setConnectorCredentialStorageState(
   context: TestContext,
   args: {
