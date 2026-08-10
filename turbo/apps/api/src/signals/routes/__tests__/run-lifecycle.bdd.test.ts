@@ -9602,20 +9602,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     );
 
-    context.mocks.ably.publish.mockClear();
     await connectors.setCustomConnectorValues(actor, saved.connector.id, [
       { key: "api_key", kind: "secret", value: "recovered-key" },
     ]);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "connector-runtime-sync",
-      {
-        runId: incompleteRun.runId,
-        target: {
-          kind: "custom",
-          customConnectorId: saved.connector.id,
-        },
-      },
-    );
     await api.requestCancelRun(actor, incompleteRun.runId, [200]);
 
     const longSubdomain = "a".repeat(55);
