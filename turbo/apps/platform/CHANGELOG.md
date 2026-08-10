@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.714.4](https://github.com/vm0-ai/vm0/compare/app-v0.714.3...app-v0.714.4) (2026-08-10)
+
+
+### Refactoring
+
+* **platform:** remove file-url rollout fallback ([#25955](https://github.com/vm0-ai/vm0/issues/25955)) ([de949a0](https://github.com/vm0-ai/vm0/commit/de949a07fb7ae6cd5bde1f1772da59dfe83add58))
+* remove expired deployment compatibility ([#25965](https://github.com/vm0-ai/vm0/issues/25965)) ([21d6851](https://github.com/vm0-ai/vm0/commit/21d685177b914ac5b1ab27bca5d4ea64cd2d8f11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.2
+    * @vm0/core bumped to 8.534.2
+
 ## [0.714.3](https://github.com/vm0-ai/vm0/compare/app-v0.714.2...app-v0.714.3) (2026-08-09)
 
 

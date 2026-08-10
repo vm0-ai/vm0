@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.411.3](https://github.com/vm0-ai/vm0/compare/api-v1.411.2...api-v1.411.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* route DeepSeek PiLoop through Responses API ([#25954](https://github.com/vm0-ai/vm0/issues/25954)) ([925af79](https://github.com/vm0-ai/vm0/commit/925af7913a2ab97bfd8e208c02cd501c64d876f2))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#25965](https://github.com/vm0-ai/vm0/issues/25965)) ([21d6851](https://github.com/vm0-ai/vm0/commit/21d685177b914ac5b1ab27bca5d4ea64cd2d8f11))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.301.2
+    * @vm0/core bumped to 8.534.2
+    * @vm0/db bumped to 1.182.3
+    * @vm0/pi-agent-runtime bumped to 1.3.23
+
 ## [1.411.2](https://github.com/vm0-ai/vm0/compare/api-v1.411.1...api-v1.411.2) (2026-08-09)
 
 
