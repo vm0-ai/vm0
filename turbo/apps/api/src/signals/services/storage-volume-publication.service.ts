@@ -93,7 +93,9 @@ function compareFilePaths(
 function materializeFiles(
   files: readonly VolumeFileInput[],
 ): readonly MaterializedVolumeFile[] {
+  const validationRoot = resolve(tmpdir(), "vm0-api-volume-validation");
   const materialized = files.map((file) => {
+    resolveVolumeFilePath(validationRoot, file.path);
     const content = Buffer.from(file.content, "utf8");
     return {
       path: file.path,
@@ -105,20 +107,25 @@ function materializeFiles(
   return materialized.sort(compareFilePaths);
 }
 
+function resolveVolumeFilePath(root: string, path: string): string {
+  const filePath = resolve(join(root, path));
+  const relativePath = relative(root, filePath);
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${sep}`) ||
+    isAbsolute(relativePath)
+  ) {
+    throw new Error(`Invalid file path: ${path}`);
+  }
+  return filePath;
+}
+
 function writeFilesToDirectory(
   tmpDir: string,
   files: readonly MaterializedVolumeFile[],
 ): void {
   for (const file of files) {
-    const filePath = resolve(join(tmpDir, file.path));
-    const relativePath = relative(tmpDir, filePath);
-    if (
-      relativePath === ".." ||
-      relativePath.startsWith(`..${sep}`) ||
-      isAbsolute(relativePath)
-    ) {
-      throw new Error(`Invalid file path: ${file.path}`);
-    }
+    const filePath = resolveVolumeFilePath(tmpDir, file.path);
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, file.content);
   }
