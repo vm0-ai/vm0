@@ -351,7 +351,8 @@ install_packages() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
   apt-get install -y \
-    procps wget git ripgrep jq file iproute2 sudo ffmpeg fonts-noto \
+    procps wget git ripgrep jq file iproute2 sudo ffmpeg \
+    fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
     libnss3 p11-kit-modules unzip \
     nodejs \
     python3 python3-pip \

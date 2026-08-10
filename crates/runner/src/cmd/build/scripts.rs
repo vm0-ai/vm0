@@ -594,15 +594,25 @@ wait
 
     #[test]
     fn template_installs_and_verifies_noto_fonts() {
-        assert!(
-            template_build_installs_apt_package("fonts-noto"),
-            "build-template.sh should install the complete Noto font metapackage"
-        );
+        for package in [
+            "fonts-noto-core",
+            "fonts-noto-cjk",
+            "fonts-noto-color-emoji",
+        ] {
+            assert!(
+                template_build_installs_apt_package(package),
+                "build-template.sh should install {package}"
+            );
+        }
 
         for (path, name) in [
             (
                 "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
                 "Noto Sans",
+            ),
+            (
+                "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+                "Noto Sans Arabic",
             ),
             (
                 "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
