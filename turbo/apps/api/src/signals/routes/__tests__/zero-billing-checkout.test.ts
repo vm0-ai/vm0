@@ -2584,6 +2584,10 @@ describe("usage pack allocation management", () => {
   });
 
   it("updates a member package through the combined subscription change", async () => {
+    mockNow(new Date("2035-01-16T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
     const oldSubscription = managedUsagePackSubscription(
