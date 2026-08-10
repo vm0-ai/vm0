@@ -197,6 +197,8 @@ impl MitmProxy {
             addon_dir: self.config.addon_dir.clone(),
             usage_state: Arc::clone(&self.usage_flush_state),
             request_lock: Arc::clone(&self.jsonl_flush_request_lock),
+            #[cfg(test)]
+            request_lock_poll_tx: None,
         }
     }
 
