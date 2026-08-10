@@ -169,22 +169,18 @@ async function seedGoalFixture(
   if (!goal) {
     throw new Error("Failed to seed orphan monitor goal");
   }
-  const [goalInputEvent] = await tx
-    .insert(chatEvents)
-    .values({
-      chatThreadId: args.threadId,
-      contextType: "goal",
-      eventType: "input.goal",
-      runGroupId: goal.id,
-      userMessage: createUserMessageDocument({
-        text: null,
-        nonContentPart: { type: "goal", goalBrief: "orphan monitor goal" },
-      }),
-      runId: null,
-      createdAt: new Date(0),
-      seqId: 1,
-    })
-    .returning({ id: chatEvents.id });
+  const goalInputEvent = await insertChatEvent(tx, {
+    chatThreadId: args.threadId,
+    contextType: "goal",
+    eventType: "input.goal",
+    runGroupId: goal.id,
+    userMessage: createUserMessageDocument({
+      text: null,
+      nonContentPart: { type: "goal", goalBrief: "orphan monitor goal" },
+    }),
+    runId: null,
+    createdAt: new Date(0),
+  });
   if (args.fixtureKind === "orphaned-goal") {
     await tx.delete(threadGoals).where(eq(threadGoals.id, goal.id));
   }

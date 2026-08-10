@@ -27,8 +27,10 @@ import type { Db } from "../external/db";
 import {
   chatEventTextCondition,
   chatEventTypeIn,
+  runOwnedChatEventCondition,
 } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_EVENT_CHAR_CAP = 4000;
@@ -120,6 +122,7 @@ async function selectIncompleteRoundFrontier(
         WHERE ${and(
           eq(chatEvents.chatThreadId, threadId),
           isNotNull(chatEvents.runId),
+          runOwnedChatEventCondition(),
           not(sql`${chatEvents.runId} = ANY(incomplete_frontier.seen_run_ids)`),
           visibleChatEventCondition(db),
           or(
@@ -216,7 +219,7 @@ async function loadSelectedIncompleteRounds(
     .select({
       runId: chatEvents.runId,
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
+      content: canonicalChatEventContent(),
       agentPrompt: agentRuns.prompt,
     })
     .from(chatEvents)

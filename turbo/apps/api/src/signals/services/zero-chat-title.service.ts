@@ -40,6 +40,10 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
@@ -254,8 +258,8 @@ async function getLatestTitleContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })
@@ -430,8 +434,8 @@ async function getLatestFollowupContextMessages(
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })

@@ -226,7 +226,7 @@ describe("cron monitor chat event queue", () => {
     });
   });
 
-  it("does not alert for a paused goal continuation without a context pointer", async () => {
+  it("does not alert for a paused canonical goal continuation", async () => {
     const fixture = await trackFixture(seedFixture("paused-goal"));
 
     const response = await accept(

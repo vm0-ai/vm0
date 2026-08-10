@@ -28,6 +28,7 @@ import type {
 } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
 import { manualTriggerSource } from "./workflow-automation-trigger-source";
+import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
 
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
@@ -269,7 +270,7 @@ async function loadAutomationRejectionPayload(
       automationId: chatAutomationContext.automationId,
       automationKind: zeroWorkflowAutomations.kind,
       triggerBrief: chatAutomationContext.triggerBrief,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
       workflowId: zeroWorkflows.id,
       workflowName: zeroWorkflows.name,
     })

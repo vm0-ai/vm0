@@ -39,6 +39,7 @@ import {
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { storeTelegramBotMessage } from "./zero-telegram-callback-persistence.service";
 import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
 
@@ -261,7 +262,7 @@ async function loadTelegramChatDeliveryContext(
   };
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -274,7 +275,7 @@ async function loadTelegramChatDeliveryContext(
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
@@ -632,14 +633,14 @@ export async function deliverTelegramChatAdmissionFailure(
   signal: AbortSignal,
 ): Promise<void> {
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.id, args.chatEventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         chatEventTypeIn(["output.error"]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);

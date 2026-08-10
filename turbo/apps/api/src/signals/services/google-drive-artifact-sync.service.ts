@@ -42,7 +42,7 @@ import {
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { legacyRunOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
+import { runOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
 
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const GOOGLE_DRIVE_UPLOAD_URL =
@@ -614,7 +614,7 @@ async function loadArtifactFile(
               .select({ one: chatEvents.id })
               .from(chatEvents)
               .where(
-                legacyRunOwnedChatEventForRunCondition({
+                runOwnedChatEventForRunCondition({
                   runId: runUploadedFiles.runId,
                   chatThreadId: args.threadId,
                 }),

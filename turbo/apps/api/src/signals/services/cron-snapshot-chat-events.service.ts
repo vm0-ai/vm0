@@ -1,12 +1,24 @@
 import { createHash } from "node:crypto";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gzipSync } from "node:zlib";
 
 import {
-  chatEventRowSchema,
-  type ChatEventRow,
+  chatEventRowV4Schema,
+  type ChatEventRowV4,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { command, type Computed } from "ccstate";
-import { and, asc, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSearchWatermarks } from "@vm0/db/schema/chat-event-search";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
@@ -18,7 +30,6 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   deleteS3Objects,
-  downloadS3Buffer,
   listS3ObjectsPage,
   putImmutableS3Object,
   type S3Object,
@@ -37,6 +48,20 @@ interface ChatEventSnapshotStats {
   readonly r2BytesDeleted: number;
   readonly r2GcShardsScanned: number;
   readonly r2GcSubpartitionedShards: number;
+  readonly snapshotHeads: number;
+  readonly nonV4SnapshotHeads: number;
+  readonly snapshotHeadVersions: readonly ChatEventSnapshotHeadVersion[];
+}
+
+interface ChatEventSnapshotHeadVersion {
+  readonly archiveSchemaVersion: number;
+  readonly heads: number;
+}
+
+interface ChatEventSnapshotConvergence {
+  readonly snapshotHeads: number;
+  readonly nonV4SnapshotHeads: number;
+  readonly snapshotHeadVersions: readonly ChatEventSnapshotHeadVersion[];
 }
 
 interface SnapshotCandidate {
@@ -50,11 +75,11 @@ interface SnapshotCandidate {
 
 /**
  * Version of the archive object contract. Bump it whenever the NDJSON line
- * shape (chatEventRowSchema) or the object encoding changes. v3 stores objects
- * with `Content-Encoding: gzip` metadata so browsers decompress snapshot
- * downloads transparently; readers only serve v3 heads.
+ * shape (chatEventRowV4Schema) or the object encoding changes. v4 is the
+ * canonical payload/run/context row shape and retains gzip content metadata
+ * so browser downloads are transparently decompressed.
  */
-export const ARCHIVE_SCHEMA_VERSION = 3;
+export const ARCHIVE_SCHEMA_VERSION = 4;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
@@ -64,7 +89,6 @@ const ARCHIVE_CONTENT_ENCODING = "gzip";
  */
 const DEFAULT_THREAD_BATCH_SIZE = 500;
 const EVENT_PAGE_SIZE = 1000;
-const OBJECT_KEY_CONTENT_SHA256 = /-([0-9a-f]{64})\.ndjson\.gz$/;
 const DEFAULT_R2_GC_GRACE_HOURS = 24 * 7;
 const R2_GC_SHARDS_PER_RUN = 16;
 const R2_GC_SHARD_COUNT = 16 ** 3;
@@ -81,17 +105,11 @@ type ArchiveEventRow = Pick<
   | "id"
   | "chatThreadId"
   | "runId"
-  | "usagePayload"
   | "revokesEventId"
-  | "interruptsRunId"
-  | "runGroupId"
   | "eventType"
+  | "payload"
   | "contextType"
   | "contextId"
-  | "content"
-  | "userMessage"
-  | "thinking"
-  | "error"
   | "runEventSequenceNumber"
   | "runEventId"
   | "seqId"
@@ -142,96 +160,39 @@ function hoursBefore(now: Date, hours: number): Date {
   return new Date(now.getTime() - hours * 60 * 60 * 1000);
 }
 
-function encodeArchiveLine(line: ChatEventRow): Buffer {
+function encodeArchiveLine(line: ChatEventRowV4): Buffer {
   return Buffer.from(`${JSON.stringify(line)}\n`);
 }
 
 /**
- * One archived chat event, one NDJSON line. Fields are listed explicitly so
- * that a chat_events schema change forces a conscious decision here instead
- * of silently changing the persisted archive shape. Canonical interrupt and
- * goal pointers are masked back to the v3 contract for old web/app clients
- * (about two days) and existing R2 v3 archives; DB/API skew has an observed
- * maximum of about 102 minutes. Remove these masks only with the canonical
- * reader/v4 archive cutover. Follow-up: #26158.
+ * One canonical archived chat event, one NDJSON line. Fields are listed
+ * explicitly so a chat_events schema change cannot silently alter the durable
+ * wire shape. The legacy payload leaves and pointer columns remain in
+ * Postgres for rollback, but never enter a v4 object.
  */
-export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRow {
-  const hasCanonicalGoalContext =
-    row.contextType === "goal" && row.contextId !== null;
-  const legacyGoalInputContext =
-    row.runGroupId === null ||
-    row.eventType === "input.goal" ||
-    row.eventType === "input.prompt" ||
-    row.eventType === "input.rejected";
-  return {
+export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRowV4 {
+  return chatEventRowV4Schema.parse({
     id: row.id,
     chatThreadId: row.chatThreadId,
-    runId: row.eventType === "control.interrupt" ? null : row.runId,
-    usagePayload: row.usagePayload,
+    runId: row.runId,
     revokesEventId: row.revokesEventId,
-    interruptsRunId: row.interruptsRunId,
-    runGroupId: row.runGroupId,
     eventType: row.eventType,
-    contextType:
-      hasCanonicalGoalContext && !legacyGoalInputContext
-        ? null
-        : row.contextType,
-    contextId: hasCanonicalGoalContext ? null : row.contextId,
-    content: row.content,
-    userMessage: row.userMessage,
-    thinking: row.thinking,
-    error: row.error,
+    payload: row.payload,
+    contextType: row.contextType,
+    contextId: row.contextId,
     runEventSequenceNumber: row.runEventSequenceNumber,
     runEventId: row.runEventId,
     seqId: row.seqId,
     createdAt: row.createdAt.toISOString(),
-  };
+  });
 }
 
 function archiveLine(row: ArchiveEventRow): Buffer {
   return encodeArchiveLine(chatEventRowFromDbRow(row));
 }
 
-function parseArchiveLines(raw: Buffer): readonly unknown[] {
-  const text = raw.toString("utf8");
-  if (text.length === 0 || !text.endsWith("\n")) {
-    throw new Error(
-      "chat event snapshot must be non-empty newline-delimited JSON",
-    );
-  }
-  return text
-    .slice(0, -1)
-    .split("\n")
-    .map((line) => {
-      const parsed: unknown = JSON.parse(line);
-      return parsed;
-    });
-}
-
-function validatedArchiveRows(raw: Buffer): readonly ChatEventRow[] {
-  const lines = parseArchiveLines(raw);
-  return lines.map((line) => {
-    return chatEventRowSchema.parse(line);
-  });
-}
-
-function validatedArchiveRaw(raw: Buffer): Buffer {
-  validatedArchiveRows(raw);
-  return raw;
-}
-
 function sha256Hex(buffer: Buffer): string {
   return createHash("sha256").update(buffer).digest("hex");
-}
-
-function contentSha256FromObjectKey(objectKey: string): string {
-  const hash = OBJECT_KEY_CONTENT_SHA256.exec(objectKey)?.[1];
-  if (hash === undefined) {
-    throw new Error(
-      `chat event snapshot key is missing a content hash: ${objectKey}`,
-    );
-  }
-  return hash;
 }
 
 function chatEventSnapshotObjectKey(
@@ -242,18 +203,7 @@ function chatEventSnapshotObjectKey(
   return `chat-events/${chatThreadId}/${lastSeqId}-${contentSha256}.ndjson.gz`;
 }
 
-function verifiedArchiveRaw(objectKey: string, compressed: Buffer): Buffer {
-  const expected = contentSha256FromObjectKey(objectKey);
-  const actual = sha256Hex(compressed);
-  if (actual !== expected) {
-    throw new Error(
-      `chat event snapshot object ${objectKey} content hash mismatch: ${actual}`,
-    );
-  }
-  return gunzipSync(compressed);
-}
-
-async function readTailEvents(
+async function readCanonicalEvents(
   db: Db,
   candidate: SnapshotCandidate,
 ): Promise<{
@@ -262,7 +212,7 @@ async function readTailEvents(
   readonly lastSeqId: number;
 }> {
   const lines: Buffer[] = [];
-  let cursor = candidate.headLastSeqId ?? 0;
+  let cursor = 0;
   let count = 0;
   for (;;) {
     const rows = await db
@@ -270,17 +220,11 @@ async function readTailEvents(
         id: chatEvents.id,
         chatThreadId: chatEvents.chatThreadId,
         runId: chatEvents.runId,
-        usagePayload: chatEvents.usagePayload,
         revokesEventId: chatEvents.revokesEventId,
-        interruptsRunId: chatEvents.interruptsRunId,
-        runGroupId: chatEvents.runGroupId,
         eventType: chatEvents.eventType,
+        payload: chatEvents.payload,
         contextType: chatEvents.contextType,
         contextId: chatEvents.contextId,
-        content: chatEvents.content,
-        userMessage: chatEvents.userMessage,
-        thinking: chatEvents.thinking,
-        error: chatEvents.error,
         runEventSequenceNumber: chatEvents.runEventSequenceNumber,
         runEventId: chatEvents.runEventId,
         seqId: chatEvents.seqId,
@@ -305,6 +249,11 @@ async function readTailEvents(
       cursor = lastRow.seqId;
     }
     if (rows.length < EVENT_PAGE_SIZE) {
+      if (count === 0 || cursor !== candidate.indexedSeqId) {
+        throw new Error(
+          `chat event snapshot rebuild for ${candidate.chatThreadId} ended at ${cursor.toString()} instead of indexed seq ${candidate.indexedSeqId.toString()}`,
+        );
+      }
       return { lines, count, lastSeqId: cursor };
     }
   }
@@ -323,13 +272,27 @@ async function publishSnapshotHead(
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     if (candidate.headId !== null) {
+      if (
+        candidate.headLastSeqId === null ||
+        candidate.headObjectKey === null ||
+        candidate.headArchiveSchemaVersion === null
+      ) {
+        throw new Error("chat event snapshot head metadata is incomplete");
+      }
       const demoted = await tx
         .update(chatEventSnapshots)
         .set({ isHead: false })
         .where(
           and(
             eq(chatEventSnapshots.id, candidate.headId),
+            eq(chatEventSnapshots.chatThreadId, candidate.chatThreadId),
             eq(chatEventSnapshots.isHead, true),
+            eq(
+              chatEventSnapshots.archiveSchemaVersion,
+              candidate.headArchiveSchemaVersion,
+            ),
+            eq(chatEventSnapshots.lastSeqId, candidate.headLastSeqId),
+            eq(chatEventSnapshots.objectKey, candidate.headObjectKey),
           ),
         )
         .returning({ id: chatEventSnapshots.id });
@@ -356,41 +319,15 @@ async function archiveThread(
   candidate: SnapshotCandidate,
   signal: AbortSignal,
 ): Promise<number | null> {
-  const tail = await readTailEvents(db, candidate);
+  const archive = await readCanonicalEvents(db, candidate);
   signal.throwIfAborted();
-  if (
-    candidate.headId !== null &&
-    candidate.headArchiveSchemaVersion !== ARCHIVE_SCHEMA_VERSION
-  ) {
-    throw new Error(
-      `unsupported chat event snapshot schema version: ${candidate.headArchiveSchemaVersion}`,
-    );
-  }
-  if (tail.count === 0) {
-    return null;
-  }
-
-  // The parent object supplies the archived prefix, so a rebuild only reads
-  // the Postgres tail past the head watermark. Re-reading the parent also
-  // re-verifies its hash.
-  let parentRaw: Buffer = Buffer.alloc(0);
-  if (candidate.headId !== null) {
-    if (candidate.headObjectKey === null) {
-      throw new Error("chat event snapshot head metadata is incomplete");
-    }
-    const parentCompressed = await get(
-      downloadS3Buffer(bucket, candidate.headObjectKey),
-    );
-    signal.throwIfAborted();
-    parentRaw = validatedArchiveRaw(
-      verifiedArchiveRaw(candidate.headObjectKey, parentCompressed),
-    );
-  }
-
-  const compressed = gzipSync(Buffer.concat([parentRaw, ...tail.lines]));
+  // Every generation is rebuilt from canonical Postgres rows. Retained v3 R2
+  // objects are immutable rollback/read-fallback inputs and are never
+  // transformed into a v4 object in place.
+  const compressed = gzipSync(Buffer.concat(archive.lines));
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
-    tail.lastSeqId,
+    archive.lastSeqId,
     sha256Hex(compressed),
   );
   await get(
@@ -405,7 +342,7 @@ async function archiveThread(
   // published this thread's next head (unique head/object key) are expected
   // races: skip the thread and leave the uploaded object orphaned.
   const published = await settle(
-    publishSnapshotHead(db, candidate, tail.lastSeqId, objectKey),
+    publishSnapshotHead(db, candidate, archive.lastSeqId, objectKey),
   );
   if (!published.ok) {
     if (
@@ -416,7 +353,34 @@ async function archiveThread(
     }
     return null;
   }
-  return published.value ? tail.count : null;
+  return published.value ? archive.count : null;
+}
+
+async function chatEventSnapshotConvergence(
+  db: Db,
+): Promise<ChatEventSnapshotConvergence> {
+  const versions = await db
+    .select({
+      archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+      heads: count(),
+    })
+    .from(chatEventSnapshots)
+    .where(eq(chatEventSnapshots.isHead, true))
+    .groupBy(chatEventSnapshots.archiveSchemaVersion)
+    .orderBy(asc(chatEventSnapshots.archiveSchemaVersion));
+  const snapshotHeads = versions.reduce((total, version) => {
+    return total + version.heads;
+  }, 0);
+  const nonV4SnapshotHeads = versions.reduce((total, version) => {
+    return version.archiveSchemaVersion === ARCHIVE_SCHEMA_VERSION
+      ? total
+      : total + version.heads;
+  }, 0);
+  return {
+    snapshotHeads,
+    nonV4SnapshotHeads,
+    snapshotHeadVersions: versions,
+  };
 }
 
 interface R2GcStats {
@@ -593,15 +557,12 @@ async function collectR2SnapshotGarbage(
 }
 
 /**
- * Archives chat_events into immutable full-thread R2 snapshot objects, oldest
- * threads first. Each pass picks threads whose search watermark is ahead of
- * their head snapshot, rebuilds one full archive per thread (parent object +
- * Postgres tail up to the watermark), uploads it content-addressed, and
- * publishes it as the new head. The search watermark caps every snapshot so no
- * archived event outruns the search index. Ticks are idempotent: objects are
- * immutable, the head swap is
- * guarded by the expected parent, and a lost race only leaves an orphaned
- * object behind.
+ * Archives chat_events into immutable canonical full-thread R2 snapshots.
+ * Each bounded pass picks both retired-version heads and threads whose search
+ * watermark advanced. It rebuilds from Postgres through that watermark,
+ * uploads content-addressed v4 bytes, and publishes with an exact parent CAS.
+ * Existing v3 objects remain immutable. Repeated or interrupted ticks are
+ * idempotent; a lost race can only leave a collectable orphan object.
  */
 export const snapshotChatEvents$ = command(
   async (
@@ -631,16 +592,32 @@ export const snapshotChatEvents$ = command(
           eq(chatEventSnapshots.isHead, true),
         ),
       )
-      // Only threads with a new tail. An idle head on a retired archive
-      // version is left alone: the reader already treats it as missing, and
-      // selecting it here would abort the whole pass on the throw below.
+      // Retired heads are rebuilt even when idle; current v4 heads are picked
+      // only when the indexed tail advanced. Future versions fail closed and
+      // are reported by the convergence check instead of being overwritten.
       .where(
-        gt(
-          chatEventSearchWatermarks.indexedSeqId,
-          sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
+        and(
+          or(
+            isNull(chatEventSnapshots.archiveSchemaVersion),
+            lte(
+              chatEventSnapshots.archiveSchemaVersion,
+              ARCHIVE_SCHEMA_VERSION,
+            ),
+          ),
+          or(
+            lt(chatEventSnapshots.archiveSchemaVersion, ARCHIVE_SCHEMA_VERSION),
+            gt(
+              chatEventSearchWatermarks.indexedSeqId,
+              sql`COALESCE(${chatEventSnapshots.lastSeqId}, 0)`,
+            ),
+          ),
         ),
       )
-      .orderBy(asc(chatThreads.lastMessageAt), asc(chatThreads.id))
+      .orderBy(
+        asc(chatEventSnapshots.archiveSchemaVersion),
+        asc(chatThreads.lastMessageAt),
+        asc(chatThreads.id),
+      )
       .limit(chatEventSnapshotThreadBatchSize());
     signal.throwIfAborted();
 
@@ -654,6 +631,8 @@ export const snapshotChatEvents$ = command(
         archivedEvents += archived;
       }
     }
+    const convergence = await chatEventSnapshotConvergence(db);
+    signal.throwIfAborted();
     const r2Gc = await collectR2SnapshotGarbage(get, db, bucket, signal);
     signal.throwIfAborted();
     return {
@@ -666,6 +645,15 @@ export const snapshotChatEvents$ = command(
       r2BytesDeleted: r2Gc.bytesDeleted,
       r2GcShardsScanned: r2Gc.shardsScanned,
       r2GcSubpartitionedShards: r2Gc.subpartitionedShards,
+      ...convergence,
     };
+  },
+);
+
+export const verifyChatEventSnapshotConvergence$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const convergence = await chatEventSnapshotConvergence(set(writeDb$));
+    signal.throwIfAborted();
+    return convergence;
   },
 );

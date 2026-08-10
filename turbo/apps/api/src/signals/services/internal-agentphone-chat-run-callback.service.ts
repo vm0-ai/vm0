@@ -25,6 +25,7 @@ import {
 } from "./agentphone-shared.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 
 const L = logger("InternalCallbacksAgentPhoneChat");
 type AgentPhoneSendResult = Awaited<ReturnType<typeof sendAgentPhoneMessage>>;
@@ -171,7 +172,7 @@ async function loadAgentPhoneChatDeliveryContext(
   };
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -184,7 +185,7 @@ async function loadAgentPhoneChatDeliveryContext(
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
@@ -418,14 +419,14 @@ export async function deliverAgentPhoneChatAdmissionFailure(
   signal: AbortSignal,
 ): Promise<void> {
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.id, args.chatEventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         chatEventTypeIn(["output.error"]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);

@@ -4,7 +4,7 @@ import { testContext } from "../../../__tests__/test-context";
 import {
   insertChatEventAgainstPrePayloadSchemaFixture,
   insertCanonicalChatEventWritesFixture,
-  isLegacyVisibleChatEventFixture,
+  isVisibleChatEventFixture,
   readCanonicalChatEventStorageFixture,
   readCanonicalRunIdCollisionSafetyFixture,
 } from "../../../test-fixtures/chat-events";
@@ -79,7 +79,7 @@ describe("canonical chat event storage", () => {
       interruptsRunId: fixture.single.interruptTargetRunId,
     });
     await expect(
-      isLegacyVisibleChatEventFixture(fixture.single.interruptId),
+      isVisibleChatEventFixture(fixture.single.interruptId),
     ).resolves.toBeFalsy();
     await expect(
       readCanonicalRunIdCollisionSafetyFixture({
@@ -133,22 +133,24 @@ describe("canonical chat event storage", () => {
       },
     });
 
-    const v3Rows = await chat.listThreadEventRows(actor, thread.id);
-    const v3Interrupt = v3Rows.find((candidate) => {
+    const v4Rows = await chat.listThreadEventRows(actor, thread.id);
+    const v4Interrupt = v4Rows.find((candidate) => {
       return candidate.id === fixture.single.interruptId;
     });
-    expect(v3Interrupt).toMatchObject({
-      runId: null,
-      interruptsRunId: fixture.single.interruptTargetRunId,
+    expect(v4Interrupt).toMatchObject({
+      runId: fixture.single.interruptTargetRunId,
+      payload: null,
     });
-    expect(v3Interrupt).not.toHaveProperty("payload");
-    const v3GoalOutput = v3Rows.find((candidate) => {
+    expect(v4Interrupt).not.toHaveProperty("interruptsRunId");
+    const v4GoalOutput = v4Rows.find((candidate) => {
       return candidate.id === fixture.single.goalContextEventId;
     });
-    expect(v3GoalOutput).toMatchObject({
-      contextType: null,
-      contextId: null,
+    expect(v4GoalOutput).toMatchObject({
+      contextType: "goal",
+      contextId: fixture.single.goalId,
+      payload: { content: "goal output" },
     });
+    expect(v4GoalOutput).not.toHaveProperty("runGroupId");
   });
 
   it("keeps central legacy writes legal before the payload column exists", async () => {

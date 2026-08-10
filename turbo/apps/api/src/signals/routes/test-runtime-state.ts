@@ -1247,7 +1247,12 @@ async function chatEventSnapshotFixtureActionResponse(
   if (body.action === "set-chat-event-snapshot-head-version") {
     const updated = await db
       .update(chatEventSnapshots)
-      .set({ archiveSchemaVersion: body.archive_schema_version })
+      .set({
+        archiveSchemaVersion: body.archive_schema_version,
+        ...(body.object_key === undefined
+          ? {}
+          : { objectKey: body.object_key }),
+      })
       .where(
         and(
           eq(chatEventSnapshots.chatThreadId, body.thread_id),

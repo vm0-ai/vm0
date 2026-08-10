@@ -46,9 +46,9 @@ export const listRowsAfter$ = command(
       sinceSeqId,
       count: result.body.rows.length,
     });
-    // Normalize at the ingestion boundary: the tail serves v3 rows today and
-    // v4 rows after the canonical cutover; everything downstream, including
-    // the IndexedDB cache, holds only the canonical shape.
+    // Keep the canonical ingestion boundary explicit even though the tail
+    // contract is now v4-only. The snapshot parser below remains the retained
+    // v3/v4 compatibility reader for already-published archive objects.
     return { kind: "rows", rows: result.body.rows.map(canonicalChatEventRow) };
   },
 );

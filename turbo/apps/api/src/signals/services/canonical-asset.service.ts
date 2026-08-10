@@ -668,8 +668,9 @@ export const materializeCanonicalSlackInputAssets$ = command(
  * Registers web chat input files as canonical assets.
  *
  * Web input events carry their own ordered attachment list in
- * `chat_events.user_message` (`type: "file"` parts with fileId, filename, and
- * content type), so this path only needs the canonical asset rows.
+ * `chat_events.payload.userMessage` (`type: "file"` parts with fileId,
+ * filename, and content type), so this path only needs the canonical asset
+ * rows.
  */
 export async function registerCanonicalWebInputAssets(
   db: Db,

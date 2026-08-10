@@ -16,6 +16,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import { createSlackClient } from "../external/slack-message-client";
 import { now, nowDate } from "../../lib/time";
@@ -119,7 +120,7 @@ async function loadSlackChatDeliveryContext(
   }
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -132,7 +133,7 @@ async function loadSlackChatDeliveryContext(
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
@@ -334,14 +335,14 @@ export async function deliverSlackChatAdmissionFailure(
 ): Promise<void> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
-      .select({ content: chatEvents.content })
+      .select({ content: canonicalChatEventContent() })
       .from(chatEvents)
       .where(
         and(
           eq(chatEvents.id, args.chatEventId),
           eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["output.error"]),
-          isNotNull(chatEvents.content),
+          isNotNull(canonicalChatEventContent()),
         ),
       )
       .limit(1),

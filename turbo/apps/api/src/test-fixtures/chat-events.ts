@@ -53,7 +53,7 @@ import {
 } from "../signals/services/zero-chat-event.service";
 import {
   chatInputPromptDispatchCondition,
-  legacyRunOwnedChatEventForRunCondition,
+  runOwnedChatEventForRunCondition,
 } from "../signals/services/zero-chat-event-type.service";
 import { visibleChatEventCondition } from "../signals/services/zero-chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
@@ -2273,7 +2273,7 @@ export async function readCanonicalChatEventStorageFixture(
     .where(inArray(chatEvents.id, [...eventIds]));
 }
 
-export async function isLegacyVisibleChatEventFixture(
+export async function isVisibleChatEventFixture(
   eventId: string,
 ): Promise<boolean> {
   const database = db();
@@ -2412,7 +2412,7 @@ export async function readCanonicalRunIdCollisionSafetyFixture(args: {
       .where(
         and(
           eq(chatEvents.id, args.interruptEventId),
-          legacyRunOwnedChatEventForRunCondition({ runId: args.runId }),
+          runOwnedChatEventForRunCondition({ runId: args.runId }),
         ),
       )
       .limit(1),
@@ -2422,7 +2422,7 @@ export async function readCanonicalRunIdCollisionSafetyFixture(args: {
       .where(
         and(
           eq(chatEvents.id, args.interruptEventId),
-          legacyRunOwnedChatEventForRunCondition({
+          runOwnedChatEventForRunCondition({
             runId: args.runId,
             chatThreadId: args.chatThreadId,
           }),

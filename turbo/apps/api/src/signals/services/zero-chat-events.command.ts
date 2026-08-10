@@ -21,7 +21,7 @@ import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -106,7 +106,15 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { registerCanonicalWebInputAssets } from "./canonical-asset.service";
 import { resolveArtifactObject$ } from "./artifact-storage.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTypeIn,
+  runOwnedChatEventCondition,
+} from "./zero-chat-event-type.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventError,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 import {
   buildWebChatAppendSystemPrompt,
   type WebChatSessionPromptContext,
@@ -446,7 +454,6 @@ interface ExistingClientEventIdRow {
   readonly content: string | null;
   readonly runId: string | null;
   readonly revokesEventId: string | null;
-  readonly interruptsRunId: string | null;
   readonly error: string | null;
   readonly eventCreatedAt: Date;
   readonly runStatus: string | null;
@@ -486,8 +493,7 @@ function resolveExistingClientEventIdRow(
   if (
     row.chatThreadId !== params.threadId ||
     row.threadUserId !== params.userId ||
-    (row.eventType !== "input.prompt" && row.eventType !== "input.rejected") ||
-    row.interruptsRunId !== null
+    (row.eventType !== "input.prompt" && row.eventType !== "input.rejected")
   ) {
     return { kind: "conflict" };
   }
@@ -552,30 +558,35 @@ async function resolveClientEventId(
       chatThreadId: chatEvents.chatThreadId,
       threadUserId: chatThreads.userId,
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
+      content: canonicalChatEventContent(),
       runId: chatEvents.runId,
       revokesEventId: chatEvents.revokesEventId,
-      interruptsRunId: chatEvents.interruptsRunId,
-      error: chatEvents.error,
+      error: canonicalChatEventError(),
       eventCreatedAt: chatEvents.createdAt,
       runStatus: agentRuns.status,
       runCreatedAt: agentRuns.createdAt,
       replacementEventId: replacementChatEvent.id,
       replacementRunId: replacementChatEvent.runId,
-      replacementError: replacementChatEvent.error,
+      replacementError: canonicalChatEventError(replacementChatEvent.payload),
       replacementRunStatus: replacementAgentRun.status,
       replacementRunCreatedAt: replacementAgentRun.createdAt,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-    .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
+    .leftJoin(
+      agentRuns,
+      and(eq(agentRuns.id, chatEvents.runId), runOwnedChatEventCondition()),
+    )
     .leftJoin(
       replacementChatEvent,
       eq(replacementChatEvent.revokesEventId, chatEvents.id),
     )
     .leftJoin(
       replacementAgentRun,
-      eq(replacementAgentRun.id, replacementChatEvent.runId),
+      and(
+        eq(replacementAgentRun.id, replacementChatEvent.runId),
+        ne(replacementChatEvent.eventType, "control.interrupt"),
+      ),
     )
     .where(eq(chatEvents.id, params.clientEventId))
     .limit(1);
@@ -1466,30 +1477,35 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: chatEvents.chatThreadId,
         threadUserId: chatThreads.userId,
         eventType: chatEvents.eventType,
-        content: chatEvents.content,
+        content: canonicalChatEventContent(),
         runId: chatEvents.runId,
         revokesEventId: chatEvents.revokesEventId,
-        interruptsRunId: chatEvents.interruptsRunId,
-        error: chatEvents.error,
+        error: canonicalChatEventError(),
         eventCreatedAt: chatEvents.createdAt,
         runStatus: agentRuns.status,
         runCreatedAt: agentRuns.createdAt,
         replacementEventId: replacementChatEvent.id,
         replacementRunId: replacementChatEvent.runId,
-        replacementError: replacementChatEvent.error,
+        replacementError: canonicalChatEventError(replacementChatEvent.payload),
         replacementRunStatus: replacementAgentRun.status,
         replacementRunCreatedAt: replacementAgentRun.createdAt,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-      .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
+      .leftJoin(
+        agentRuns,
+        and(eq(agentRuns.id, chatEvents.runId), runOwnedChatEventCondition()),
+      )
       .leftJoin(
         replacementChatEvent,
         eq(replacementChatEvent.revokesEventId, chatEvents.id),
       )
       .leftJoin(
         replacementAgentRun,
-        eq(replacementAgentRun.id, replacementChatEvent.runId),
+        and(
+          eq(replacementAgentRun.id, replacementChatEvent.runId),
+          ne(replacementChatEvent.eventType, "control.interrupt"),
+        ),
       )
       .where(eq(chatEvents.id, explicitId))
       .limit(1);
@@ -1597,7 +1613,7 @@ function appendRecallChatEvent(params: {
     const [existingRevoker] = await tx
       .select({
         eventType: chatEvents.eventType,
-        content: chatEvents.content,
+        content: canonicalChatEventContent(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
@@ -1623,7 +1639,7 @@ function appendRecallChatEvent(params: {
 
     const [target] = await tx
       .select({
-        error: chatEvents.error,
+        error: canonicalChatEventError(),
         revokesEventId: chatEvents.revokesEventId,
       })
       .from(chatEvents)
@@ -1686,8 +1702,8 @@ function appendRecallChatEvent(params: {
           eq(chatEvents.chatThreadId, params.threadId),
           eq(chatEvents.revokesEventId, params.revokesEventId),
           chatEventTypeIn(["control.revoke"]),
-          isNull(chatEvents.content),
-          isNull(chatEvents.error),
+          isNull(canonicalChatEventContent()),
+          isNull(canonicalChatEventError()),
         ),
       )
       .limit(1);
@@ -1713,7 +1729,7 @@ async function validateNormalRevocationTarget(params: {
   const [target] = await params.db
     .select({
       id: chatEvents.id,
-      content: chatEvents.content,
+      content: canonicalChatEventContent(),
     })
     .from(chatEvents)
     .where(
@@ -1755,14 +1771,15 @@ function appendInterruptUserMessage(params: {
     const [existingInterrupter] = await tx
       .select({
         eventType: chatEvents.eventType,
-        content: chatEvents.content,
+        content: canonicalChatEventContent(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .where(
         and(
           eq(chatEvents.chatThreadId, params.threadId),
-          eq(chatEvents.interruptsRunId, params.interruptsRunId),
+          eq(chatEvents.runId, params.interruptsRunId),
+          chatEventTypeIn(["control.interrupt"]),
         ),
       )
       .limit(1);
@@ -1818,9 +1835,9 @@ function appendInterruptUserMessage(params: {
       .where(
         and(
           eq(chatEvents.chatThreadId, params.threadId),
-          eq(chatEvents.interruptsRunId, params.interruptsRunId),
+          eq(chatEvents.runId, params.interruptsRunId),
           chatEventTypeIn(["control.interrupt"]),
-          isNull(chatEvents.content),
+          isNull(canonicalChatEventContent()),
         ),
       )
       .limit(1);
@@ -2589,7 +2606,7 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
     }
     const [queuedMessage] = await tx
       .select({
-        userMessage: chatEvents.userMessage,
+        userMessage: canonicalChatEventUserMessage(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)

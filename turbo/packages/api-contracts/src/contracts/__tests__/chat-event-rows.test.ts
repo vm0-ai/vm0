@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
 import {
   canonicalChatEventRow,
   chatEventRowReadSchema,
+  chatEventRowV4Schema,
   type ChatEventRow,
   type ChatEventRowV4,
 } from "../chat-event-rows";
@@ -49,6 +51,65 @@ function v4Row(overrides: Partial<ChatEventRowV4>): ChatEventRowV4 {
     createdAt: CREATED_AT,
     ...overrides,
   };
+}
+
+function projectableV4Row(eventType: ChatEventType): ChatEventRowV4 {
+  const runId = "00000000-0000-4000-8000-000000000013";
+  const revokesEventId = "00000000-0000-4000-8000-000000000014";
+  const userMessage = {
+    version: 1,
+    parts: [{ type: "text", text: eventType }],
+  };
+  const variants: Record<ChatEventType, Partial<ChatEventRowV4>> = {
+    "input.prompt": { payload: { userMessage }, contextType: "web" },
+    "input.automation": {
+      payload: { userMessage },
+      contextType: "automation",
+      contextId: "00000000-0000-4000-8000-000000000015",
+    },
+    "input.goal": {
+      payload: { userMessage },
+      contextType: "goal",
+      contextId: "00000000-0000-4000-8000-000000000016",
+    },
+    "input.budget": { payload: { userMessage }, contextType: "web" },
+    "input.rejected": {
+      payload: { userMessage, error: "rejected" },
+      contextType: "web",
+    },
+    "output.message": { payload: { content: "message" } },
+    "output.error": {
+      payload: { content: "display error", error: "output error" },
+    },
+    "output.thinking": { payload: { thinking: "thinking" } },
+    "output.followups": { payload: { content: "followups" } },
+    "run.queued": { runId, payload: { content: "queued" } },
+    "run.dequeued": { runId, revokesEventId },
+    "run.completed": { runId },
+    "run.failed": {
+      runId,
+      payload: { content: "failed", error: "runner error" },
+    },
+    "run.cancelled": { runId, payload: { error: "cancelled" } },
+    "control.interrupt": { runId },
+    "control.revoke": { revokesEventId },
+    "browser.open": {},
+    "browser.close": {},
+    "goal.open": { payload: { content: "goal opened" } },
+    "goal.close": {},
+    "usage.recorded": {
+      runId,
+      payload: {
+        usage: {
+          version: 1,
+          totalCredits: 1,
+          settledAt: CREATED_AT,
+          breakdown: [],
+        },
+      },
+    },
+  };
+  return v4Row({ eventType, ...variants[eventType] });
 }
 
 describe("chat event row reader union", () => {
@@ -158,9 +219,50 @@ describe("chat event row reader union", () => {
     });
     expect(canonicalChatEventRow(canonical)).toBe(canonical);
   });
+
+  it("preserves canonical multi-leaf payloads and nested JSON nulls", () => {
+    const row = v4Row({
+      payload: {
+        content: "historical content",
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "historical input" }],
+          compatibilityProbe: { nested: null },
+        },
+        thinking: "historical thinking",
+        error: "historical error",
+        usage: {
+          version: 1,
+          totalCredits: 4,
+          settledAt: CREATED_AT,
+          breakdown: [],
+        },
+      },
+    });
+    const parsed = chatEventRowV4Schema.parse(JSON.parse(JSON.stringify(row)));
+    expect(parsed).toStrictEqual(row);
+    expect(parsed.payload).toHaveProperty(
+      "userMessage.compatibilityProbe.nested",
+      null,
+    );
+    expect(parsed).not.toHaveProperty("content");
+    expect(parsed).not.toHaveProperty("interruptsRunId");
+    expect(parsed).not.toHaveProperty("runGroupId");
+  });
 });
 
 describe("canonical row projection keeps the v3 ChatEvent shape", () => {
+  it("serializes and projects every event type from canonical fields", () => {
+    expect(
+      CHAT_EVENT_TYPES.map((eventType) => {
+        const wireRow = JSON.parse(
+          JSON.stringify(projectableV4Row(eventType)),
+        ) as unknown;
+        return chatEventFromRow(chatEventRowV4Schema.parse(wireRow)).eventType;
+      }),
+    ).toStrictEqual([...CHAT_EVENT_TYPES]);
+  });
+
   it("emits the canonical interrupt run as interruptsRunId, never runId", () => {
     const target = "00000000-0000-4000-8000-000000000010";
     const projected = chatEventFromRow(

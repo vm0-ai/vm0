@@ -69,6 +69,10 @@ import {
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
 import { chatEventTextCondition } from "./zero-chat-event-type.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -763,8 +767,8 @@ async function collectConversationMessages(
     const rows = await runtime.db
       .select({
         eventType: chatEvents.eventType,
-        content: chatEvents.content,
-        userMessage: chatEvents.userMessage,
+        content: canonicalChatEventContent(),
+        userMessage: canonicalChatEventUserMessage(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)

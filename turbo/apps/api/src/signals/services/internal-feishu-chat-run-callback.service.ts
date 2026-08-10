@@ -25,6 +25,7 @@ import {
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveIntegrationAgentResponsePresentation } from "./integration-agent-response-presentation.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 
 const L = logger("InternalCallbacksFeishuChat");
 
@@ -120,7 +121,7 @@ async function loadFeishuChatDeliveryContext(
   }
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -133,7 +134,7 @@ async function loadFeishuChatDeliveryContext(
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
@@ -209,14 +210,14 @@ async function loadFeishuAdmissionFailureContext(
 ): Promise<{ readonly messageContent: string }> {
   const [eventRows, bindingRows] = await Promise.all([
     args.db
-      .select({ content: chatEvents.content })
+      .select({ content: canonicalChatEventContent() })
       .from(chatEvents)
       .where(
         and(
           eq(chatEvents.id, args.chatEventId),
           eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["output.error"]),
-          isNotNull(chatEvents.content),
+          isNotNull(canonicalChatEventContent()),
         ),
       )
       .limit(1),
