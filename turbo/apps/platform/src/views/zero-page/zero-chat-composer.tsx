@@ -6437,7 +6437,7 @@ function ConnectorsPopoverButton({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:h-9 sm:min-w-9 sm:px-1.5",
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-state-hover sm:min-w-9 sm:px-1.5",
                   COMPOSER_CONTROL_FOCUS_CLASS,
                 )}
                 aria-label={t(($) => {
