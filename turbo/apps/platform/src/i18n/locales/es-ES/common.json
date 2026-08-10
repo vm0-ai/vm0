@@ -973,8 +973,11 @@
         "discountBonusCredits": "Créditos extra por descuento",
         "existingPackagesUnchanged": "Los paquetes actuales de los miembros no cambian.",
         "management": {
+          "comparison": "Comparación de la suscripción actual y la nueva",
+          "current": "Actual",
           "downgradeDescription": "El paquete inferior comienza en la próxima fecha de facturación. Los créditos existentes seguirán disponibles hasta que caduquen.",
           "immediateAmount": "Importe a pagar ahora",
+          "new": "Nuevo",
           "nextRecurring": "Próximo total recurrente",
           "processing": "Cambio en curso",
           "reviewDescription": "Revisa el precio de la suscripción a continuación. Al confirmar, se cobrará el importe pendiente con tu método de pago guardado.",

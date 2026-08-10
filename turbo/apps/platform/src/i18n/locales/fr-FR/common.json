@@ -973,8 +973,11 @@
         "discountBonusCredits": "Crédits bonus liés à la remise",
         "existingPackagesUnchanged": "Les forfaits actuels des membres restent inchangés.",
         "management": {
+          "comparison": "Comparaison de l’abonnement actuel et du nouveau",
+          "current": "Actuel",
           "downgradeDescription": "Le forfait inférieur commence à la prochaine date de facturation. Les crédits existants restent disponibles jusqu’à leur expiration.",
           "immediateAmount": "À payer maintenant",
+          "new": "Nouveau",
           "nextRecurring": "Prochain total récurrent",
           "processing": "Modification en cours",
           "reviewDescription": "Vérifiez le prix de l’abonnement ci-dessous. La confirmation débitera le montant dû via votre moyen de paiement enregistré.",

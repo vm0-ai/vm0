@@ -2028,6 +2028,50 @@ describe("usage pack allocation management", () => {
     }
   });
 
+  it("replaces an unconfirmed package change preview", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 1500,
+      nextRecurringAmountCents: 5000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_20,
+      targetPriceId: TEST_PRICE_USAGE_PACK_50,
+    });
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+    const body = {
+      targetTier: "pro" as const,
+      memberUsagePacks: [{ memberId: userId, usagePackUsd: 50 as const }],
+    };
+
+    const first = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body,
+      }),
+      [200],
+    );
+    const second = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body,
+      }),
+      [200],
+    );
+
+    expect(second.body.changeId).not.toBe(first.body.changeId);
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledTimes(
+      4,
+    );
+  });
+
   it("upgrades the base plan in place without replacing the member package", async () => {
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 20 }]);

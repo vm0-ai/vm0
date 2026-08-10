@@ -952,8 +952,11 @@
         "discountBonusCredits": "Bonus kredit dari diskon",
         "existingPackagesUnchanged": "Paket anggota yang ada tetap tidak berubah.",
         "management": {
+          "comparison": "Perbandingan langganan saat ini dan baru",
+          "current": "Saat ini",
           "downgradeDescription": "Paket yang lebih rendah dimulai pada tanggal penagihan berikutnya. Kredit yang ada tetap tersedia hingga kedaluwarsa.",
           "immediateAmount": "Dibayar sekarang",
+          "new": "Baru",
           "nextRecurring": "Total berulang berikutnya",
           "processing": "Perubahan sedang diproses",
           "reviewDescription": "Tinjau harga langganan di bawah ini. Konfirmasi akan menagih jumlah yang harus dibayar melalui metode pembayaran tersimpan.",

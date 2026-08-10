@@ -16,9 +16,12 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
   isNotNull,
   lte,
+  ne,
   notInArray,
+  or,
   sql,
 } from "drizzle-orm";
 import type { Stripe } from "stripe";
@@ -202,6 +205,10 @@ async function loadUsagePackSubscriptionChangeContext(
             inArray(usagePackAllocationChanges.status, [
               ...OPEN_ALLOCATION_CHANGE_STATUSES,
             ]),
+            or(
+              isNull(usagePackAllocationChanges.subscriptionChangeId),
+              ne(usagePackAllocationChanges.status, "previewed"),
+            ),
           ),
         )
         .limit(1),

@@ -973,8 +973,11 @@
         "discountBonusCredits": "Crediti bonus dallo sconto",
         "existingPackagesUnchanged": "I pacchetti esistenti dei membri restano invariati.",
         "management": {
+          "comparison": "Confronto tra abbonamento attuale e nuovo",
+          "current": "Attuale",
           "downgradeDescription": "Il pacchetto inferiore inizia alla prossima data di fatturazione. I crediti esistenti restano disponibili fino alla scadenza.",
           "immediateAmount": "Da pagare ora",
+          "new": "Nuovo",
           "nextRecurring": "Prossimo totale ricorrente",
           "processing": "Modifica in elaborazione",
           "reviewDescription": "Controlla il prezzo dell’abbonamento qui sotto. Confermando, l’importo dovuto verrà addebitato sul metodo di pagamento salvato.",

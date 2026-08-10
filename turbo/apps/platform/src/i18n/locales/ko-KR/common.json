@@ -952,8 +952,11 @@
         "discountBonusCredits": "할인 보너스 크레딧",
         "existingPackagesUnchanged": "기존 멤버 패키지는 변경되지 않습니다.",
         "management": {
+          "comparison": "현재 및 새 구독 비교",
+          "current": "현재",
           "downgradeDescription": "하위 패키지는 다음 결제일부터 시작됩니다. 기존 크레딧은 만료될 때까지 사용할 수 있습니다.",
           "immediateAmount": "지금 결제",
+          "new": "신규",
           "nextRecurring": "다음 정기 결제 합계",
           "processing": "변경 처리 중",
           "reviewDescription": "아래 구독 요금을 검토하세요. 확인하면 저장된 결제 수단으로 지금 결제할 금액이 청구됩니다.",

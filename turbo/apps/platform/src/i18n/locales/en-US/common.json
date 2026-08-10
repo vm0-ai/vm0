@@ -952,8 +952,11 @@
         "discountBonusCredits": "Bonus credits from discount",
         "existingPackagesUnchanged": "Existing member packages stay unchanged.",
         "management": {
+          "comparison": "Current and new subscription comparison",
+          "current": "Current",
           "downgradeDescription": "The lower package starts at the next billing date. Existing credits remain available until they expire.",
           "immediateAmount": "Due now",
+          "new": "New",
           "nextRecurring": "Next recurring total",
           "processing": "Change is processing",
           "reviewDescription": "Review the subscription price below. Confirming charges the amount due with your saved payment method.",

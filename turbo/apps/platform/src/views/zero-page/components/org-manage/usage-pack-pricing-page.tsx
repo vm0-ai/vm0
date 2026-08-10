@@ -86,7 +86,7 @@ type PlanSelectionAction =
   | "select"
   | "upgrade";
 
-const USAGE_PACK_PLANS: readonly UsagePackPlan[] = [
+const USAGE_PACK_PLANS = [
   {
     tier: "pro",
     basePriceUsd: 0,
@@ -99,7 +99,11 @@ const USAGE_PACK_PLANS: readonly UsagePackPlan[] = [
     image: planTeamImg,
     popular: false,
   },
-];
+] as const satisfies readonly UsagePackPlan[];
+
+function usagePackPlan(tier: UsagePackPlanTier): UsagePackPlan {
+  return tier === "pro" ? USAGE_PACK_PLANS[0] : USAGE_PACK_PLANS[1];
+}
 
 function canCheckoutUsagePackPlan(
   currentTier: BillingTier,
@@ -252,6 +256,23 @@ function memberUsageTotals(
     (totals, member) => {
       const selection = memberUsageSelection(selections, member.id);
       const item = usagePackCatalogItem(catalog, selection);
+      return {
+        bonusCredits: totals.bonusCredits + item.bonusCredits,
+        totalCredits: totals.totalCredits + item.totalCredits,
+        totalUsd: totals.totalUsd + item.priceUsd,
+      };
+    },
+    { bonusCredits: 0, totalCredits: 0, totalUsd: 0 },
+  );
+}
+
+function managedMemberUsageTotals(
+  management: UsagePackManagementResponse,
+  catalog: readonly UsagePackCatalogItem[],
+): MemberUsageTotals {
+  return management.allocations.reduce<MemberUsageTotals>(
+    (totals, allocation) => {
+      const item = usagePackCatalogItem(catalog, allocation.usagePackUsd);
       return {
         bonusCredits: totals.bonusCredits + item.bonusCredits,
         totalCredits: totals.totalCredits + item.totalCredits,
@@ -1055,6 +1076,130 @@ function ManagedSubscriptionSummaryDetails({
   );
 }
 
+function ManagedSubscriptionComparison({
+  currentTotals,
+  management,
+  plan,
+  totals,
+}: {
+  readonly currentTotals: MemberUsageTotals;
+  readonly management: UsagePackManagementResponse;
+  readonly plan: UsagePackPlan;
+  readonly totals: MemberUsageTotals;
+}) {
+  const currentPlan = usagePackPlan(management.tier);
+  const currentMonthlyTotalUsd =
+    currentPlan.basePriceUsd + currentTotals.totalUsd;
+  const nextMonthlyTotalUsd = plan.basePriceUsd + totals.totalUsd;
+  const rows = [
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.planStep;
+      }),
+      current: `${planName(currentPlan.tier)} · ${formatUsd(currentPlan.basePriceUsd, 0)}`,
+      next: `${planName(plan.tier)} · ${formatUsd(plan.basePriceUsd, 0)}`,
+      changed: currentPlan.tier !== plan.tier,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.memberPackages;
+      }),
+      current: formatUsd(currentTotals.totalUsd, 0),
+      next: formatUsd(totals.totalUsd, 0),
+      changed: currentTotals.totalUsd !== totals.totalUsd,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.totalCredits;
+      }),
+      current: formatLocalizedNumber(currentTotals.totalCredits),
+      next: formatLocalizedNumber(totals.totalCredits),
+      changed: currentTotals.totalCredits !== totals.totalCredits,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.discountBonusCredits;
+      }),
+      current: formatLocalizedNumber(currentTotals.bonusCredits),
+      next: formatLocalizedNumber(totals.bonusCredits),
+      changed: currentTotals.bonusCredits !== totals.bonusCredits,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.monthlyTotal;
+      }),
+      current: i18n.t(
+        ($) => {
+          return $.billing.plans.pricePerMonth;
+        },
+        { price: formatUsd(currentMonthlyTotalUsd, 0) },
+      ),
+      next: i18n.t(
+        ($) => {
+          return $.billing.plans.pricePerMonth;
+        },
+        { price: formatUsd(nextMonthlyTotalUsd, 0) },
+      ),
+      changed: currentMonthlyTotalUsd !== nextMonthlyTotalUsd,
+    },
+  ];
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-lg border border-border/70">
+      <table
+        aria-label={i18n.t(($) => {
+          return $.billing.plans.usagePacks.management.comparison;
+        })}
+        className="w-full table-fixed text-[13px]"
+      >
+        <thead className="bg-muted/40 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <tr>
+            <th scope="col" className="w-[40%] px-3 py-2 text-left" />
+            <th scope="col" className="w-[30%] px-3 py-2 text-right">
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.management.current;
+              })}
+            </th>
+            <th scope="col" className="w-[30%] px-3 py-2 text-right">
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.management.new;
+              })}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const monthlyTotal = index === rows.length - 1;
+            return (
+              <tr
+                key={row.label}
+                className={`border-t border-border/60 ${monthlyTotal ? "bg-muted/20" : ""}`}
+              >
+                <th
+                  scope="row"
+                  className={`px-3 py-2.5 text-left ${monthlyTotal ? "font-medium text-foreground" : "font-normal text-muted-foreground"}`}
+                >
+                  {row.label}
+                </th>
+                <td
+                  className={`px-3 py-2.5 text-right text-muted-foreground ${monthlyTotal ? "font-medium" : ""}`}
+                >
+                  {row.current}
+                </td>
+                <td
+                  className={`px-3 py-2.5 text-right ${row.changed ? "font-semibold text-primary" : "font-medium text-foreground"}`}
+                >
+                  {row.next}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ManagedSubscriptionDowngradeNotice({
   currentPeriodEnd,
 }: {
@@ -1171,6 +1316,7 @@ function UsagePackSubscriptionChangeDialog({
 }
 
 interface ManagedSubscriptionOrderSummaryProps {
+  readonly currentTotals: MemberUsageTotals;
   readonly management: UsagePackManagementResponse;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly onConfirmed: () => void;
@@ -1179,7 +1325,48 @@ interface ManagedSubscriptionOrderSummaryProps {
   readonly totals: MemberUsageTotals;
 }
 
+function hasPendingUsagePackChange(
+  management: UsagePackManagementResponse,
+): boolean {
+  return management.allocations.some((allocation) => {
+    return allocation.pendingChange !== null;
+  });
+}
+
+function hasUsagePackConfigurationChange(
+  management: UsagePackManagementResponse,
+  plan: UsagePackPlan,
+  selections: Readonly<Record<string, MemberUsageSelection>>,
+): boolean {
+  return (
+    management.tier !== plan.tier ||
+    management.allocations.some((allocation) => {
+      return (
+        memberUsageSelection(selections, allocation.memberId) !==
+        allocation.usagePackUsd
+      );
+    })
+  );
+}
+
+function hasUsagePackDowngrade(
+  management: UsagePackManagementResponse,
+  plan: UsagePackPlan,
+  selections: Readonly<Record<string, MemberUsageSelection>>,
+): boolean {
+  return (
+    (management.tier === "team" && plan.tier === "pro") ||
+    management.allocations.some((allocation) => {
+      return (
+        memberUsageSelection(selections, allocation.memberId) <
+        allocation.usagePackUsd
+      );
+    })
+  );
+}
+
 function ManagedSubscriptionOrderSummary({
+  currentTotals,
   management,
   members,
   onConfirmed,
@@ -1205,25 +1392,13 @@ function ManagedSubscriptionOrderSummary({
           return $.billing.plans.usagePacks.planChangeError;
         })
       : null;
-  const hasPendingChange = management.allocations.some((allocation) => {
-    return allocation.pendingChange !== null;
-  });
-  const hasConfigurationChange =
-    management.tier !== plan.tier ||
-    management.allocations.some((allocation) => {
-      return (
-        memberUsageSelection(selections, allocation.memberId) !==
-        allocation.usagePackUsd
-      );
-    });
-  const hasDowngrade =
-    (management.tier === "team" && plan.tier === "pro") ||
-    management.allocations.some((allocation) => {
-      return (
-        memberUsageSelection(selections, allocation.memberId) <
-        allocation.usagePackUsd
-      );
-    });
+  const hasPendingChange = hasPendingUsagePackChange(management);
+  const hasConfigurationChange = hasUsagePackConfigurationChange(
+    management,
+    plan,
+    selections,
+  );
+  const hasDowngrade = hasUsagePackDowngrade(management, plan, selections);
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -1253,7 +1428,12 @@ function ManagedSubscriptionOrderSummary({
           return $.billing.plans.usagePacks.orderSummary;
         })}
       </h4>
-      <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
+      <ManagedSubscriptionComparison
+        currentTotals={currentTotals}
+        management={management}
+        plan={plan}
+        totals={totals}
+      />
       {hasDowngrade && management.currentPeriodEnd && (
         <ManagedSubscriptionDowngradeNotice
           currentPeriodEnd={management.currentPeriodEnd}
@@ -1402,6 +1582,7 @@ function PackageConfigurationStep({
       <MemberUsageConfiguration catalog={catalog} members={members} />
       {management ? (
         <ManagedSubscriptionOrderSummary
+          currentTotals={managedMemberUsageTotals(management, catalog)}
           management={management}
           members={members}
           onConfirmed={onConfirmed}

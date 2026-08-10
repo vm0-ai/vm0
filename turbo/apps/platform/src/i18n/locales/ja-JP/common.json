@@ -952,8 +952,11 @@
         "discountBonusCredits": "割引によるボーナスクレジット",
         "existingPackagesUnchanged": "既存のメンバーパッケージは変更されません。",
         "management": {
+          "comparison": "現在と新しいサブスクリプションの比較",
+          "current": "現在",
           "downgradeDescription": "下位パッケージは次回請求日から開始します。既存のクレジットは有効期限まで利用できます。",
           "immediateAmount": "今回のお支払い",
+          "new": "新規",
           "nextRecurring": "次回以降の合計",
           "processing": "変更を処理中",
           "reviewDescription": "以下のサブスクリプション料金を確認してください。確定すると、保存済みのお支払い方法に今回のお支払い額が請求されます。",

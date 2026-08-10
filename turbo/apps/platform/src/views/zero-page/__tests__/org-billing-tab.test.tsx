@@ -768,6 +768,11 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
+    const comparison = within(orderSummary).getByRole("table", {
+      name: "Current and new subscription comparison",
+    });
+    expect(within(comparison).getByText("Current")).toBeInTheDocument();
+    expect(within(comparison).getByText("New")).toBeInTheDocument();
     expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
     click(packageSelect);
     click(
@@ -775,6 +780,21 @@ describe("organization billing settings", () => {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Member packages \$20 \$50/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Total credits 21,234 54,321/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Monthly total \$20\/month \$50\/month/u,
+      }),
+    ).toBeInTheDocument();
     expect(within(orderSummary).getByText("$50/month")).toBeInTheDocument();
     expect(screen.queryByText("Review")).not.toBeInTheDocument();
     const locationBeforeConfirmation = window.location.href;
@@ -908,7 +928,19 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    expect(within(orderSummary).getByText("$160")).toBeInTheDocument();
+    const comparison = within(orderSummary).getByRole("table", {
+      name: "Current and new subscription comparison",
+    });
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Plan Pro · \$0 Team · \$160/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Monthly total \$20\/month \$180\/month/u,
+      }),
+    ).toBeInTheDocument();
     expect(within(orderSummary).getByText("$180/month")).toBeInTheDocument();
     const confirmButton = buttonByText("Confirm", orderSummary);
 
@@ -918,6 +950,11 @@ describe("organization billing settings", () => {
         name: "$50 · 54,321 credits · 8% off",
       }),
     );
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Monthly total \$20\/month \$210\/month/u,
+      }),
+    ).toBeInTheDocument();
     expect(within(orderSummary).getByText("$210/month")).toBeInTheDocument();
     expect(confirmButton).not.toBeDisabled();
 

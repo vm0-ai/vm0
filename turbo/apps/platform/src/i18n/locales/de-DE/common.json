@@ -952,8 +952,11 @@
         "discountBonusCredits": "Bonus-Credits durch Rabatt",
         "existingPackagesUnchanged": "Bestehende Mitgliederpakete bleiben unverändert.",
         "management": {
+          "comparison": "Vergleich des aktuellen und neuen Abonnements",
+          "current": "Aktuell",
           "downgradeDescription": "Das kleinere Paket beginnt am nächsten Abrechnungstag. Vorhandene Credits bleiben bis zu ihrem Ablauf verfügbar.",
           "immediateAmount": "Jetzt fällig",
+          "new": "Neu",
           "nextRecurring": "Nächster wiederkehrender Gesamtbetrag",
           "processing": "Änderung wird verarbeitet",
           "reviewDescription": "Prüfen Sie unten den Abonnementpreis. Mit der Bestätigung wird der fällige Betrag über Ihre gespeicherte Zahlungsmethode abgerechnet.",

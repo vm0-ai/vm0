@@ -973,8 +973,11 @@
         "discountBonusCredits": "Créditos bônus do desconto",
         "existingPackagesUnchanged": "Os pacotes atuais dos membros permanecem inalterados.",
         "management": {
+          "comparison": "Comparação entre a assinatura atual e a nova",
+          "current": "Atual",
           "downgradeDescription": "O pacote menor começa na próxima data de cobrança. Os créditos existentes permanecem disponíveis até expirarem.",
           "immediateAmount": "Cobrado agora",
+          "new": "Novo",
           "nextRecurring": "Próximo total recorrente",
           "processing": "Alteração em processamento",
           "reviewDescription": "Revise o preço da assinatura abaixo. Ao confirmar, o valor devido será cobrado no método de pagamento salvo.",
