@@ -1110,7 +1110,7 @@ mod tests {
         let decided_at = chrono::Utc::now();
         let notification: ImmediateSuccessorIntentNotification =
             serde_json::from_value(serde_json::json!({
-                "action": "arm",
+                "action": "revoke",
                 "predecessorRunId": run_id,
                 "intentId": intent_id,
                 "runnerIdentity": {
@@ -1126,7 +1126,7 @@ mod tests {
             fixture
                 .immediate_successor_intents
                 .receive(notification, runner_id, 7),
-            ImmediateSuccessorReceiveOutcome::Armed
+            ImmediateSuccessorReceiveOutcome::Revoked
         );
         let sandbox_id = SandboxId::new_v4();
         let cleanup_state = RunCleanupState::new();
@@ -1164,7 +1164,6 @@ mod tests {
             assert_telemetry_action(&finalized.telemetry, action);
         }
         for action in [
-            "runner_immediate_successor_intent_received",
             "runner_immediate_successor_event_prompt",
             "runner_immediate_successor_received_before_finalization",
             "runner_immediate_successor_decision_to_receipt",
@@ -1173,6 +1172,11 @@ mod tests {
         ] {
             assert_telemetry_action(&finalized.telemetry, action);
         }
+        assert_failed_telemetry_action(
+            &finalized.telemetry,
+            "runner_immediate_successor_intent_receipt_revoked",
+            "revoked",
+        );
         assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
         assert_eq!(
             cleanup_state.disposition(),

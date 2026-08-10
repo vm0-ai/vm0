@@ -35,6 +35,7 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::immediate_successor_intent::{
     ImmediateSuccessorFinalizationStage, ImmediateSuccessorIntents,
+    ImmediateSuccessorObservationState,
 };
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
@@ -176,7 +177,11 @@ impl Drop for FinalizationTelemetry<'_> {
         let Some(telemetry) = self.telemetry.as_deref_mut() else {
             return;
         };
-        if snapshots.is_empty() {
+        if snapshots.is_empty()
+            || snapshots
+                .iter()
+                .any(|snapshot| snapshot.state == ImmediateSuccessorObservationState::Armed)
+        {
             let reporter = telemetry.reporter();
             let immediate_successor_intents = self.immediate_successor_intents.clone();
             let run_id = self.run_id;

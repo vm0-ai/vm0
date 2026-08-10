@@ -955,6 +955,59 @@ mod tests {
         assert!(action_types.contains(&"runner_immediate_successor_received_after_publication"));
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn delayed_receipt_outcome_observes_revoke_after_arm() {
+        let registry = ImmediateSuccessorIntents::new(2);
+        let predecessor = RunId::new_v4();
+        let intent_id = Uuid::new_v4();
+        let wall = Utc::now();
+        let base = Instant::now();
+        assert_eq!(
+            registry.receive_at(
+                notification(
+                    ImmediateSuccessorIntentAction::Arm,
+                    predecessor,
+                    intent_id,
+                    wall,
+                    wall + chrono::Duration::seconds(1),
+                ),
+                RUNNER_ID,
+                GENERATION,
+                base,
+                wall,
+            ),
+            ImmediateSuccessorReceiveOutcome::Armed
+        );
+        let report = tokio::spawn(registry.clone().settled_receipt_records(predecessor));
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            registry.receive_at(
+                notification(
+                    ImmediateSuccessorIntentAction::Revoke,
+                    predecessor,
+                    intent_id,
+                    wall,
+                    wall + chrono::Duration::seconds(1),
+                ),
+                RUNNER_ID,
+                GENERATION,
+                base + Duration::from_millis(10),
+                wall,
+            ),
+            ImmediateSuccessorReceiveOutcome::Revoked
+        );
+        tokio::time::advance(MAX_INTENT_RETENTION).await;
+
+        let records = report.await.unwrap();
+        let action_types = records
+            .iter()
+            .map(|record| record.action_type)
+            .collect::<Vec<_>>();
+        assert!(action_types.contains(&"runner_immediate_successor_intent_receipt_revoked"));
+        assert!(!action_types.contains(&"runner_immediate_successor_intent_received"));
+    }
+
     #[test]
     fn expired_signal_is_retained_for_claim_outcome() {
         let registry = ImmediateSuccessorIntents::new(2);
