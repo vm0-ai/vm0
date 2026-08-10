@@ -304,6 +304,7 @@ describe("zero sidebar account menu", () => {
           totalCredits: 20_400,
           purchasedCredits: 20_000,
           bonusCredits: 400,
+          creditGrants: [],
         });
       },
     );
@@ -321,13 +322,31 @@ describe("zero sidebar account menu", () => {
     const menu = await openAccountMenu();
     expect(within(menu).getByText("Settings")).toBeInTheDocument();
     expect(
-      within(menu).queryByTestId("account-menu-usage-pack-credits"),
+      within(menu).queryByTestId("account-menu-credit-balance"),
     ).toBeNull();
     expect(usagePackCreditRequests).toBe(0);
   });
 
   it("shows member usage pack credits and opens their credit usage", async () => {
     mockMemberAccountSidebar();
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "pro",
+        credits: 12_500,
+        onboardingPaymentPending: false,
+        subscriptionStatus: "active",
+        currentPeriodEnd: "2026-04-01T00:00:00Z",
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: true,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 0,
+        concurrencySubscriptions: [],
+      });
+    });
     context.mocks.api(
       zeroBillingUsagePackCreditsContract.get,
       ({ respond }) => {
@@ -335,6 +354,7 @@ describe("zero sidebar account menu", () => {
           totalCredits: 20_400,
           purchasedCredits: 20_000,
           bonusCredits: 400,
+          creditGrants: [],
         });
       },
     );
@@ -352,11 +372,12 @@ describe("zero sidebar account menu", () => {
 
     const menu = await openAccountMenu();
     const usagePackItem = await within(menu).findByTestId(
-      "account-menu-usage-pack-credits",
+      "account-menu-credit-balance",
     );
     expect(
-      within(usagePackItem).getByText("20,400 usage pack credits"),
+      within(usagePackItem).getByText("20,400 credits"),
     ).toBeInTheDocument();
+    expect(within(menu).queryByText("32,900 credits")).toBeNull();
 
     click(usagePackItem);
 
@@ -366,6 +387,40 @@ describe("zero sidebar account menu", () => {
       ).toBeInTheDocument();
       expect(screen.getByTestId("usage-pack-credit-card")).toBeInTheDocument();
     });
+  });
+
+  it("shows admins one total combining organization and personal usage pack credits", async () => {
+    mockAdminAccountSidebar();
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          totalCredits: 20_400,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+          creditGrants: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    const menu = await openAccountMenu();
+    const creditItem = await within(menu).findByTestId(
+      "account-menu-credit-balance",
+    );
+    expect(within(creditItem).getByText("32,900 credits")).toBeInTheDocument();
+    expect(within(menu).queryByText("12,500 credits")).toBeNull();
+    expect(within(menu).queryByText("20,400 credits")).toBeNull();
   });
 
   it("opens credit balance and export data from the account menu", async () => {

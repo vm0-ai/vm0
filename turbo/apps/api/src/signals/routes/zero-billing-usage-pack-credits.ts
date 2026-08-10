@@ -7,7 +7,11 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { db$ } from "../external/db";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { getUsagePackCreditBalance } from "../services/usage-pack-credit.service";
+import {
+  getOrganizationUsagePackCreditBalances,
+  getUsagePackCreditBalance,
+  organizationHasActiveUsagePack,
+} from "../services/usage-pack-credit.service";
 import type { RouteEntry } from "../route-entry";
 
 const usagePackCreditsDisabled = Object.freeze({
@@ -36,12 +40,38 @@ const getUsagePackCredits$ = command(async ({ get }, signal: AbortSignal) => {
     return usagePackCreditsDisabled;
   }
 
-  const body = await getUsagePackCreditBalance(get(db$), {
+  const db = get(db$);
+  const hasUsagePack = await organizationHasActiveUsagePack(db, auth.orgId);
+  signal.throwIfAborted();
+  if (!hasUsagePack) {
+    return {
+      status: 200 as const,
+      body: {
+        totalCredits: 0,
+        purchasedCredits: 0,
+        bonusCredits: 0,
+        creditGrants: [],
+        hasUsagePack: false,
+      },
+    };
+  }
+
+  const body = await getUsagePackCreditBalance(db, {
     orgId: auth.orgId,
     userId: auth.userId,
   });
   signal.throwIfAborted();
-  return { status: 200 as const, body };
+  if (auth.orgRole === "admin") {
+    const memberCredits = await getOrganizationUsagePackCreditBalances(db, {
+      orgId: auth.orgId,
+    });
+    signal.throwIfAborted();
+    return {
+      status: 200 as const,
+      body: { ...body, hasUsagePack: true, memberCredits },
+    };
+  }
+  return { status: 200 as const, body: { ...body, hasUsagePack: true } };
 });
 
 export const zeroBillingUsagePackCreditsRoutes: readonly RouteEntry[] = [

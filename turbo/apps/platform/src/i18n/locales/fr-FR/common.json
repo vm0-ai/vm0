@@ -971,6 +971,7 @@
         "changePlan": "Changer de forfait",
         "choosePlan": "Choisissez un forfait",
         "choosePlanDescription": "Choisissez d’abord le forfait de l’espace de travail. Les forfaits des membres sont configurés ensuite.",
+        "concurrentSlots": "Emplacements simultanés",
         "configurePackages": "Configurer les forfaits des membres",
         "configurePackagesDescription": "Choisissez un forfait obligatoire pour chaque membre, puis vérifiez le total mensuel combiné.",
         "currentMember": "Membre actuel",
@@ -1074,13 +1075,21 @@
       "left": "{{value}} restant",
       "member": "Membre",
       "neverExpires": "N'expire jamais",
+      "orgCredits": "Crédits de l’organisation",
       "unavailable": "Solde de crédits indisponible.",
       "upgradeDescription": "Le plan Pro inclut des crédits mensuels et débloque des options de crédit supplémentaires.",
       "upgradeTitle": "Passez au Pro pour obtenir plus de crédits",
       "usagePack": {
         "bonus": "Bonus",
+        "members": "Membres",
+        "membersDescription": "Consultez les crédits restants et les ajouts de crédits du forfait de chaque membre.",
+        "membersTitle": "Crédits des forfaits des membres",
+        "nextExpiry": "Prochaine expiration",
         "purchased": "Achetés",
-        "title": "Crédits du forfait d’utilisation"
+        "remaining": "Restant",
+        "title": "Crédits du forfait d’utilisation",
+        "totalRemaining": "Total restant",
+        "viewMembers": "Voir les soldes des membres"
       },
       "used": "Utilisé"
     }
@@ -3989,9 +3998,6 @@
         }
       },
       "switchAccount": "Changer de compte",
-      "usagePackCreditBalance_one": "{{value}} crédit du forfait d’utilisation",
-      "usagePackCreditBalance_many": "{{value}} crédits du forfait d’utilisation",
-      "usagePackCreditBalance_other": "{{value}} crédits du forfait d’utilisation",
       "userFallback": "Utilisateur"
     },
     "buildInfo": {
