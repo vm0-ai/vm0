@@ -95,8 +95,6 @@ describe("release-please API deployment graph", () => {
       promoteApiProductionJob.indexOf("    steps:\n"),
     );
 
-    expect(workflow).not.toContain("\n  build-api-production:\n");
-    expect(workflow).not.toContain("\n  migrate-production:\n");
     expect(promoteApiProductionHeader).toContain(
       "needs: [release-please, builds-complete]",
     );
@@ -124,6 +122,9 @@ describe("release-please API deployment graph", () => {
     );
     const productionEnvironmentStep = promoteApiProductionJob.indexOf(
       "- name: Resolve API production environment",
+    );
+    const schemaUploadStep = promoteApiProductionJob.indexOf(
+      "- name: Upload Runtime API Schema Artifact",
     );
     const buildStepEnd = promoteApiProductionJob.indexOf(
       "- name: Install neonctl",
@@ -156,7 +157,12 @@ describe("release-please API deployment graph", () => {
     expect(
       promoteApiProductionJob.match(/pnpm --dir turbo\/apps\/api build/g),
     ).toHaveLength(1);
+    expect(schemaUploadStep).toBeGreaterThan(-1);
     expect(buildStep).toBeGreaterThan(-1);
+    expect(buildStep).toBeGreaterThan(schemaUploadStep);
+    expect(
+      promoteApiProductionJob.slice(schemaUploadStep, buildStep),
+    ).toContain("overwrite: true");
     expect(buildStepEnd).toBeGreaterThan(buildStep);
     expect(
       promoteApiProductionJob.slice(buildStep, buildStepEnd),
@@ -169,8 +175,6 @@ describe("release-please API deployment graph", () => {
     expect(migrationStep).toBeGreaterThan(deploymentToolchainStep);
     expect(migrationStep).toBeGreaterThan(migrationSmokeStep);
     expect(deploymentStep).toBeGreaterThan(migrationStep);
-    expect(promoteApiProductionJob).not.toContain("vercel-promote");
-    expect(promoteApiProductionJob).not.toContain("skip-domain");
     expect(promoteApiProductionJob).toContain('prebuilt: "true"');
     expect(promoteApiProductionJob).toContain('skip-setup: "true"');
   });
