@@ -8224,15 +8224,36 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Internal API",
-      prefixes: ["https://*.internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
+      prefixTemplates: [
+        "https://{{variables.tenant}}.internal.example.com/api/",
+      ],
+      fields: [
+        {
+          key: "secret",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "tenant",
+          label: "Tenant",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
     });
-    await connectors.setCustomConnectorSecret(
-      actor,
-      custom.id,
-      "custom-secret-value",
-    );
+    await connectors.setCustomConnectorValues(actor, custom.id, [
+      { key: "secret", kind: "secret", value: "custom-secret-value" },
+      { key: "tenant", kind: "variable", value: "acme" },
+    ]);
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
     const run = await api.createRun(actor, {
@@ -8261,9 +8282,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
     const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S_SECRET`;
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
-    expect(customApis[0]?.base).toBe(
-      "https://{hostWildcard1}.internal.example.com/api/",
-    );
+    expect(customApis[0]?.base).toBe("https://acme.internal.example.com/api/");
     expect(customApis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
@@ -8272,7 +8291,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(claim.connectorRuntimeTargets).toContainEqual({
       kind: "custom",
       customConnectorId: custom.id,
-      baseUrlVars: {},
+      baseUrlVars: { tenant: "acme" },
     });
     const customFirewall = findFirewallEntry(claim.firewalls, internalName);
     if (!customFirewall || customFirewall.kind !== "inline") {
@@ -8286,7 +8305,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     };
     const target = {
       ...targetIdentity,
-      baseUrlVars: {},
+      baseUrlVars: { tenant: "acme" },
     };
     const [initialRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
@@ -8294,7 +8313,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const initialAvailable = availableCustomConnectorRuntime(initialRuntime);
     expect(initialAvailable.nextSyncAt).toBeUndefined();
     expect(initialAvailable.target).toStrictEqual(targetIdentity);
-    expect(initialAvailable.baseUrlVars).toStrictEqual({});
+    expect(initialAvailable.baseUrlVars).toStrictEqual({ tenant: "acme" });
     const { api: initialApi, body: currentAuthBody } =
       customConnectorRuntimeAuthBody(
         initialAvailable,
@@ -8346,7 +8365,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       headers: { Authorization: "Bearer updated-custom-secret-value" },
     });
 
-    await connectors.deleteCustomConnectorSecret(actor, custom.id);
+    await connectors.disconnectCustomConnector(actor, custom.id);
     const [missingCredentialsRuntime] = await api.syncConnectorRuntime(
       run.runId,
       { targets: [target] },
@@ -8376,11 +8395,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       code: "CONNECTOR_NOT_CONFIGURED",
     });
 
-    await connectors.setCustomConnectorSecret(
-      actor,
-      custom.id,
-      "restored-custom-secret-value",
-    );
+    await connectors.setCustomConnectorValues(actor, custom.id, [
+      {
+        key: "secret",
+        kind: "secret",
+        value: "restored-custom-secret-value",
+      },
+      { key: "tenant", kind: "variable", value: "changed" },
+    ]);
     const restoredCredentialsAuth = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
       missingCredentialsAuthBody,
@@ -8509,7 +8531,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await connectors.updateCustomConnector(actor, custom.id, {
       displayName: "BDD Internal API Updated",
-      prefixTemplates: ["https://*.internal.example.com/v2/"],
+      prefixTemplates: [
+        "https://{{variables.tenant}}.internal.example.com/v2/",
+      ],
       fields: custom.fields,
       headerInjections: [
         {
@@ -8580,17 +8604,31 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Permissioned API",
-      prefixes: ["https://permissioned.example.test/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
+      prefixTemplates: [
+        "https://{{variables.workspace}}.permissioned.example.test/api/",
+      ],
+      fields: [
+        {
+          key: "workspace",
+          label: "Workspace",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [],
+      queryInjections: [
+        {
+          name: "workspace",
+          valueTemplate: "{{variables.workspace}}",
+        },
+      ],
+      authMode: "manual",
       permissionBundleRef: "builtin:slack@1",
       skillMarkdown: "Use the selected Slack-compatible operations only.",
     });
-    await connectors.setCustomConnectorSecret(
-      actor,
-      custom.id,
-      "permissioned-custom-secret",
-    );
+    await connectors.setCustomConnectorValues(actor, custom.id, [
+      { key: "workspace", kind: "variable", value: "acme" },
+    ]);
     const grant = {
       customConnectorId: custom.id,
       permissionNames: ["chat:write"],
@@ -8639,7 +8677,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
 
-    await connectors.deleteCustomConnectorSecret(actor, custom.id);
+    await connectors.disconnectCustomConnector(actor, custom.id);
     const disconnectedRun = await api.createRun(actor, {
       agentId,
       prompt: "use the disconnected custom connector skill",
@@ -8666,11 +8704,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(disconnectedSkillMount?.mountPath).toBe(skillMount?.mountPath);
     await api.requestCancelRun(actor, disconnectedRun.runId, [200]);
 
-    await connectors.setCustomConnectorSecret(
-      actor,
-      custom.id,
-      "restored-permissioned-custom-secret",
-    );
+    await connectors.setCustomConnectorValues(actor, custom.id, [
+      { key: "workspace", kind: "variable", value: "restored" },
+    ]);
     const restoredRun = await api.createRun(actor, {
       agentId,
       prompt: "use the reconnected custom connector",
@@ -8686,7 +8722,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(restoredClaim.connectorRuntimeTargets).toContainEqual({
       kind: "custom",
       customConnectorId: custom.id,
-      baseUrlVars: {},
+      baseUrlVars: { workspace: "restored" },
     });
 
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
@@ -9609,7 +9645,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
-    await connectors.deleteCustomConnectorSecret(actor, saved.connector.id);
+    await connectors.disconnectCustomConnector(actor, saved.connector.id);
 
     const incompleteRun = await api.createRun(actor, {
       agentId,
@@ -9639,6 +9675,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const longSubdomain = "a".repeat(55);
     await connectors.setCustomConnectorValues(actor, saved.connector.id, [
+      { key: "api_key", kind: "secret", value: "recovered-key" },
       { key: "subdomain", kind: "variable", value: longSubdomain },
     ]);
 

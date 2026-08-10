@@ -547,11 +547,15 @@ export const disconnectFeishuConnection$ = command(
           ),
         )
         .returning({ id: feishuOrgConnections.id });
-      await disconnectFeishuCustomConnectorOAuthConnection(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        installationId: args.installationId,
-      });
+      await disconnectFeishuCustomConnectorOAuthConnection(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          installationId: args.installationId,
+        },
+        signal,
+      );
       return deleted;
     });
     signal.throwIfAborted();

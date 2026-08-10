@@ -1,4 +1,5 @@
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
+import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { eq, isNotNull } from "drizzle-orm";
@@ -119,4 +120,29 @@ export async function upsertConnectorOwnedVariable(
   if (!row) {
     throw new Error(`Connector variable ${args.name} is owned by another row`);
   }
+}
+
+export async function deleteConnectorOwnedCredentialRows(
+  db: Db,
+  args: {
+    readonly connectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await db.delete(secrets).where(eq(secrets.connectorId, args.connectorId));
+  signal.throwIfAborted();
+  await db.delete(variables).where(eq(variables.connectorId, args.connectorId));
+  signal.throwIfAborted();
+}
+
+export async function deleteConnectorCredentialStorageConnection(
+  db: Db,
+  args: {
+    readonly connectorId: string;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await deleteConnectorOwnedCredentialRows(db, args, signal);
+  await db.delete(connectors).where(eq(connectors.id, args.connectorId));
+  signal.throwIfAborted();
 }

@@ -66,7 +66,7 @@ import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
 import { zeroCustomConnectorsDeleteRoutes } from "../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../zero-custom-connectors-get";
 import { zeroCustomConnectorOAuth2Routes } from "../zero-custom-connectors-oauth2";
-import { zeroCustomConnectorSecretDeleteRoutes } from "../zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorDisconnectRoutes } from "../zero-custom-connectors-disconnect";
 import { zeroCustomConnectorsSecretSetRoutes } from "../zero-custom-connectors-secret-set";
 import { zeroCustomConnectorsUpdateRoutes } from "../zero-custom-connectors-update";
 import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
@@ -78,7 +78,7 @@ const zeroCustomConnectorByIdTestRoutes = Object.freeze([
 ]);
 
 const zeroCustomConnectorSecretTestRoutes = Object.freeze([
-  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorDisconnectRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,
 ]);
 
@@ -1606,7 +1606,7 @@ describe("Feishu integration", () => {
     await accept(
       setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
         zeroCustomConnectorSecretContract,
-      ).delete({
+      ).disconnect({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
       }),
@@ -1622,6 +1622,16 @@ describe("Feishu integration", () => {
       id: managedConnector.id,
       connected: false,
     });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requireValue(
+          admin.orgId,
+          "Expected Feishu admin to have an organization",
+        ),
+        userId: admin.userId,
+        customConnectorId: managedConnector.id,
+      }),
+    ).resolves.toMatchObject({ connector: null });
     const disconnectedAdminFeishuStatus = await accept(
       client.getStatus({
         headers: { authorization: "Bearer clerk-session" },

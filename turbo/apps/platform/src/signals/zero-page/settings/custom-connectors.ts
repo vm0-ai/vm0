@@ -370,17 +370,18 @@ export const setCustomConnectorSecretForAgent$ = command(
   },
 );
 
-export const clearCustomConnectorSecret$ = command(
-  async ({ get, set }, id: string, _signal: AbortSignal): Promise<void> => {
+export const disconnectCustomConnector$ = command(
+  async ({ get, set }, id: string, signal: AbortSignal): Promise<void> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorSecretContract);
     await accept(
-      client.delete({
+      client.disconnect({
         params: { id },
-        fetchOptions: { signal: _signal },
+        fetchOptions: { signal },
       }),
       [204],
     );
+    signal.throwIfAborted();
     set(bumpReload$);
     toast.success(
       i18n.t(($) => {

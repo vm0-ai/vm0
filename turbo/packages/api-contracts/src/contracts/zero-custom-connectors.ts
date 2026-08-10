@@ -349,7 +349,7 @@ export type ZeroCustomConnectorByIdContract =
 /**
  * Zero custom connector secret contract for /api/zero/custom-connectors/[id]/secret
  * PUT: set the calling user's secret for this connector
- * DELETE: clear the calling user's secret
+ * DELETE: disconnect the calling user's complete connector connection
  */
 export const zeroCustomConnectorSecretContract = c.router({
   set: {
@@ -367,7 +367,7 @@ export const zeroCustomConnectorSecretContract = c.router({
     },
     summary: "Set the calling user's secret for a custom connector",
   },
-  delete: {
+  disconnect: {
     method: "DELETE",
     path: "/api/zero/custom-connectors/:id/secret",
     headers: authHeadersSchema,
@@ -378,7 +378,7 @@ export const zeroCustomConnectorSecretContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Clear the calling user's secret for a custom connector",
+    summary: "Disconnect the calling user's custom connector connection",
   },
 });
 export type ZeroCustomConnectorSecretContract =

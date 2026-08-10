@@ -58,6 +58,8 @@ import {
   type ConnectorCredentialAccess,
 } from "./connector-credential-access.service";
 import {
+  deleteConnectorCredentialStorageConnection,
+  deleteConnectorOwnedCredentialRows,
   upsertConnectorOwnedSecret,
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
@@ -809,15 +811,13 @@ export const deleteZeroConnectorLocalState$ = command(
       );
       signal.throwIfAborted();
 
-      await deleteConnectorOwnedCredentialRows(
+      await deleteConnectorCredentialStorageConnection(
         tx,
         {
           connectorId: existing.id,
         },
         signal,
       );
-      await tx.delete(connectors).where(eq(connectors.id, existing.id));
-      signal.throwIfAborted();
 
       return { deleted: true, pendingTokenRevoke };
     });
@@ -955,19 +955,6 @@ async function deleteVariableNames(
       );
     signal.throwIfAborted();
   }
-}
-
-async function deleteConnectorOwnedCredentialRows(
-  db: Db,
-  args: {
-    readonly connectorId: string;
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  await db.delete(secrets).where(eq(secrets.connectorId, args.connectorId));
-  signal.throwIfAborted();
-  await db.delete(variables).where(eq(variables.connectorId, args.connectorId));
-  signal.throwIfAborted();
 }
 
 async function cleanupExistingStoredConnectorForLocalConnect(

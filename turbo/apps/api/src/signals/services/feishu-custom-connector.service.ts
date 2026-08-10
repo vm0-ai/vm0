@@ -9,6 +9,7 @@ import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { deleteCustomConnectorMemberConnection } from "./custom-connector-credential-storage.service";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 import { commitCustomConnectorRuntimeMutation } from "./custom-connector-runtime-wakeup.service";
 import {
@@ -545,6 +546,7 @@ export async function disconnectFeishuCustomConnectorOAuthConnection(
     readonly userId: string;
     readonly installationId: string;
   },
+  signal: AbortSignal,
 ): Promise<void> {
   const [connector] = await db
     .select({ id: orgCustomConnectors.id })
@@ -558,17 +560,19 @@ export async function disconnectFeishuCustomConnectorOAuthConnection(
         ),
       ),
     )
+    .for("update")
     .limit(1);
+  signal.throwIfAborted();
   if (!connector) {
     return;
   }
-  await db
-    .delete(connectors)
-    .where(
-      and(
-        eq(connectors.customConnectorId, connector.id),
-        eq(connectors.orgId, args.orgId),
-        eq(connectors.userId, args.userId),
-      ),
-    );
+  await deleteCustomConnectorMemberConnection(
+    db,
+    {
+      connectorId: connector.id,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+    signal,
+  );
 }

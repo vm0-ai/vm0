@@ -764,10 +764,10 @@ describe("AGENT-01 and AGENT-02", () => {
     );
     expect(cleared.enabledIds).toStrictEqual([]);
 
-    await api.deleteCustomConnectorSecret(admin, connector.id);
-    const afterSecretDelete = await api.listCustomConnectors(admin);
+    await api.disconnectCustomConnector(admin, connector.id);
+    const afterDisconnect = await api.listCustomConnectors(admin);
     expect(
-      afterSecretDelete.connectors.find((candidate) => {
+      afterDisconnect.connectors.find((candidate) => {
         return candidate.id === connector.id;
       })?.hasSecret,
     ).toBeFalsy();

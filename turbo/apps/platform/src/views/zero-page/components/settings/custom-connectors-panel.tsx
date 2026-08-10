@@ -18,7 +18,7 @@ import {
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
-  clearCustomConnectorSecret$,
+  disconnectCustomConnector$,
   closeCustomConnectorDialog$,
   connectCustomConnectorOAuth2$,
   customConnectorAuthorizedAgentsById$,
@@ -395,11 +395,11 @@ export function CustomConnectorsPanel() {
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
   const connectOAuth2 = useSet(connectCustomConnectorOAuth2$);
-  const clearSecret = useSet(clearCustomConnectorSecret$);
+  const disconnect = useSet(disconnectCustomConnector$);
   const signal = useGet(pageSignal$);
 
   const handleDisconnect = (connector: CustomConnectorResponse) => {
-    detach(clearSecret(connector.id, signal), Reason.DomCallback);
+    detach(disconnect(connector.id, signal), Reason.DomCallback);
   };
 
   const handleConnect = (connector: CustomConnectorResponse) => {
