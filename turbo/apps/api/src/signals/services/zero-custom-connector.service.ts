@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
@@ -81,10 +81,7 @@ import {
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
-import {
-  connectorLocalConnectionState,
-  deleteConnectorOwnedCredentialRows,
-} from "./connector-credential-storage-write.service";
+import { replaceConnectorConnection } from "./connector-connection-write.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -2733,7 +2730,6 @@ interface SetCustomConnectorValuesArgs {
 
 interface CustomConnectorValueWriteState {
   readonly connector: CustomConnectorRow;
-  readonly memberConnectorId: string | null;
   readonly replacingStoredValues: boolean;
   readonly establishesCurrentCredentials: boolean;
   readonly runtimeRecovered: boolean;
@@ -2817,7 +2813,6 @@ async function prepareCustomConnectorValueWrite(args: {
 
   const [storedConnector] = await args.tx
     .select({
-      id: connectors.id,
       authMethod: connectors.authMethod,
       storageVersion: connectors.storageVersion,
     })
@@ -2855,44 +2850,12 @@ async function prepareCustomConnectorValueWrite(args: {
     storedConnector !== undefined || missingRequired.length === 0;
   return {
     connector,
-    memberConnectorId: storedConnector?.id ?? null,
     replacingStoredValues,
     establishesCurrentCredentials,
     runtimeRecovered:
       replacingStoredValues ||
       (storedConnector === undefined && establishesCurrentCredentials),
   };
-}
-
-async function upsertCustomConnectorValueParent(args: {
-  readonly tx: Tx;
-  readonly request: SetCustomConnectorValuesArgs;
-  readonly storageVersion: number;
-}): Promise<void> {
-  await args.tx
-    .insert(connectors)
-    .values({
-      customConnectorId: args.request.connectorId,
-      authMethod: "manual",
-      storageVersion: args.storageVersion,
-      userId: args.request.userId,
-      orgId: args.request.orgId,
-      ...connectorLocalConnectionState,
-    })
-    .onConflictDoUpdate({
-      target: [
-        connectors.orgId,
-        connectors.userId,
-        connectors.customConnectorId,
-      ],
-      targetWhere: isNotNull(connectors.customConnectorId),
-      set: {
-        authMethod: "manual",
-        storageVersion: args.storageVersion,
-        ...connectorLocalConnectionState,
-        updatedAt: nowDate(),
-      },
-    });
 }
 
 async function upsertEncryptedCustomConnectorValues(
@@ -2974,28 +2937,38 @@ async function persistCustomConnectorValues(
   if (state.replacingStoredValues) {
     await deleteCustomConnectorStoredValues(args.tx, args.request, signal);
   }
-  if (state.memberConnectorId) {
-    await deleteConnectorOwnedCredentialRows(
+  const writeValues = async (tx: Tx, writeSignal: AbortSignal) => {
+    await upsertEncryptedCustomConnectorValues(
+      {
+        tx,
+        request: args.request,
+        values: args.encryptedValues,
+      },
+      writeSignal,
+    );
+  };
+  if (state.establishesCurrentCredentials) {
+    await replaceConnectorConnection(
       args.tx,
-      { connectorId: state.memberConnectorId },
+      {
+        orgId: args.request.orgId,
+        userId: args.request.userId,
+        authMethod: "manual",
+        storageVersion: state.connector.storageVersion,
+        tokenExpiresAt: null,
+        target: {
+          kind: "custom",
+          customConnectorId: args.request.connectorId,
+        },
+        writeCredentials: async ({ db }, writeSignal) => {
+          await writeValues(db, writeSignal);
+        },
+      },
       signal,
     );
+  } else {
+    await writeValues(args.tx, signal);
   }
-  if (state.establishesCurrentCredentials) {
-    await upsertCustomConnectorValueParent({
-      tx: args.tx,
-      request: args.request,
-      storageVersion: state.connector.storageVersion,
-    });
-  }
-  await upsertEncryptedCustomConnectorValues(
-    {
-      tx: args.tx,
-      request: args.request,
-      values: args.encryptedValues,
-    },
-    signal,
-  );
   return {
     connector: state.connector,
     runtimeRecovered: state.runtimeRecovered,

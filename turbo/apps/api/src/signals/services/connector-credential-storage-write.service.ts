@@ -39,16 +39,6 @@ interface ConnectorCredentialStorageDeleteConditions extends ConnectorOwnedCrede
   readonly connection: SQL;
 }
 
-export const connectorLocalConnectionState = {
-  externalId: null,
-  externalUsername: null,
-  externalEmail: null,
-  oauthScopes: null,
-  tokenExpiresAt: null,
-  needsReconnect: false,
-  reconnectReason: null,
-} as const;
-
 function requireDeclaredStorageName(args: {
   readonly kind: "secret" | "variable";
   readonly method: ConnectorAuthMethodRuntimeConfig;

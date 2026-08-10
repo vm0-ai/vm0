@@ -59,7 +59,6 @@ import {
 } from "./connector-credential-access.service";
 import { publishBuiltinConnectorInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import {
-  connectorLocalConnectionState,
   deleteConnectorCredentialStorageConnection,
   deleteConnectorOwnedCredentialRows,
   upsertConnectorOwnedSecret,
@@ -839,7 +838,13 @@ async function upsertLocalConnectorRow(
       connectorSlug: args.connectorSlug,
       authMethod: args.authMethod,
       storageVersion: args.storageVersion,
-      ...connectorLocalConnectionState,
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      tokenExpiresAt: null,
+      needsReconnect: false,
+      reconnectReason: null,
     })
     .onConflictDoUpdate({
       target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
@@ -847,7 +852,13 @@ async function upsertLocalConnectorRow(
       set: {
         authMethod: args.authMethod,
         storageVersion: args.storageVersion,
-        ...connectorLocalConnectionState,
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        tokenExpiresAt: null,
+        needsReconnect: false,
+        reconnectReason: null,
         updatedAt: sql`clock_timestamp()`,
       },
     })
