@@ -3691,6 +3691,83 @@ describe("connectors page", () => {
     });
   });
 
+  it("connects a permissioned custom connector without replacing its grants", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000037";
+    const connector = customConnector({
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    let connected = false;
+    let savedSecret: string | null = null;
+    let authorizationUpdates = 0;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([teamAgent(researchAgentId, "Research")]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          {
+            ...connector,
+            connected,
+            configuredFieldKeys: connected ? ["secret"] : [],
+            hasSecret: connected,
+            missingRequiredFields: connected ? [] : ["secret"],
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledIds: [connector.id],
+        grants: [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        authorizationUpdates += 1;
+        return respond(200, { enabledIds: [connector.id] });
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.set,
+      ({ body, respond }) => {
+        savedSecret = body.value;
+        connected = true;
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    click(await screen.findByLabelText("Connect Acme Search"));
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Connect Acme Search",
+    });
+    await fill(within(connectDialog).getByLabelText("Secret"), "acme-secret");
+    click(buttonByText("Save", connectDialog));
+
+    await waitFor(() => {
+      expect(savedSecret).toBe("acme-secret");
+      expect(
+        within(connectorCardByLabel("Acme Search")).getByText("Connected"),
+      ).toBeInTheDocument();
+    });
+    expect(authorizationUpdates).toBe(0);
+    expect(
+      within(connectorCardByLabel("Acme Search")).getByTestId(
+        "connector-card-agent-access",
+      ),
+    ).toHaveTextContent("Used by Research");
+  });
+
   it("connects a kind-less HTTP definition returned by a previous API", async () => {
     const connector = previousApiCustomConnector(
       customConnector({ displayName: "Previous API HTTP" }),

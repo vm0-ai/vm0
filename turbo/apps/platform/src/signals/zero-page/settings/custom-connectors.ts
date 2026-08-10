@@ -321,6 +321,13 @@ const setCustomConnectorSecretForTarget$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    const connector = (await get(customConnectors$)).find((candidate) => {
+      return candidate.id === args.id;
+    });
+    signal.throwIfAborted();
+    if (!connector) {
+      throw new Error(`Custom connector not found: ${args.id}`);
+    }
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorSecretContract);
     await accept(
@@ -333,14 +340,16 @@ const setCustomConnectorSecretForTarget$ = command(
     );
     signal.throwIfAborted();
     set(bumpReload$);
-    await set(
-      authorizeCustomConnectorForTarget$,
-      {
-        connectorId: args.id,
-        target: args.authorizationTarget,
-      },
-      signal,
-    );
+    if (!connector.permissionBundleRef) {
+      await set(
+        authorizeCustomConnectorForTarget$,
+        {
+          connectorId: args.id,
+          target: args.authorizationTarget,
+        },
+        signal,
+      );
+    }
     toast.success(
       i18n.t(($) => {
         return $.connectors.custom.toasts.connected;
@@ -464,10 +473,10 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     set(bumpReload$);
     const connectors = await get(customConnectors$);
     signal.throwIfAborted();
-    const connected = connectors.some((connector) => {
-      return connector.id === args.id && connector.connected;
+    const connector = connectors.find((candidate) => {
+      return candidate.id === args.id;
     });
-    if (connected) {
+    if (connector?.connected && !connector.permissionBundleRef) {
       await set(
         authorizeCustomConnectorForTarget$,
         {
@@ -477,7 +486,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         signal,
       );
     }
-    return connected;
+    return connector?.connected ?? false;
   },
 );
 
