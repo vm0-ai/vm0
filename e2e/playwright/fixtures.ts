@@ -1,6 +1,8 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import {
   expect,
+  type Request,
+  type Response as PlaywrightResponse,
   type Route,
   test as base,
   type BrowserContext,
@@ -82,9 +84,28 @@ export const test = base.extend({
     }
   },
   page: async ({ page }, use) => {
+    const failedRequest = (request: Request) => {
+      const url = new URL(request.url());
+      console.error(
+        `[playwright:http] ${request.method()} failed ${url.origin}${url.pathname}: ${request.failure()?.errorText ?? "unknown error"}`,
+      );
+    };
+    const failedResponse = (response: PlaywrightResponse) => {
+      if (response.status() < 400) {
+        return;
+      }
+      const url = new URL(response.url());
+      console.error(
+        `[playwright:http] ${response.request().method()} ${response.status()} ${url.origin}${url.pathname}`,
+      );
+    };
+    page.on("requestfailed", failedRequest);
+    page.on("response", failedResponse);
     try {
       await use(page);
     } finally {
+      page.off("requestfailed", failedRequest);
+      page.off("response", failedResponse);
       await page.unrouteAll({ behavior: "ignoreErrors" });
     }
   },

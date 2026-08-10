@@ -24,6 +24,7 @@
     stripe_bin: "{{ stripe_bin_dir }}/stripe"
     stripe_start: "{{ stripe_dir }}/start-listener"
     stripe_log: "{{ stripe_dir }}/stripe-listen.log"
+    stripe_webhook_secret: "{{ stripe_dir }}/webhook-secret"
     stripe_cli_version: "1.41.2"
     stripe_events: checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted
     service_name: "vm0-stripe-listener-{{ job_ref }}"
@@ -91,6 +92,14 @@
       changed_when: stop_existing.rc == 0
       failed_when: false
 
+    - name: Remove stale Stripe listener runtime files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ stripe_log }}"
+        - "{{ stripe_webhook_secret }}"
+
     - name: Write Stripe listener environment
       copy:
         dest: "{{ stripe_dir }}/env"
@@ -147,7 +156,7 @@
       shell: |
         set -euo pipefail
         for _ in $(seq 1 20); do
-          if systemctl is-active --quiet "{{ service_name }}.service" && grep -qi ready "{{ stripe_log }}" 2>/dev/null; then
+          if systemctl is-active --quiet "{{ service_name }}.service" && grep -q 'whsec_' "{{ stripe_log }}" 2>/dev/null; then
             echo "Stripe CLI listener is ready"
             exit 0
           fi
@@ -166,3 +175,15 @@
       args:
         executable: /bin/bash
       changed_when: false
+
+    - name: Capture Stripe listener webhook secret
+      shell: |
+        set -euo pipefail
+        webhook_secret="$(sed -nE 's/.*(whsec_[[:alnum:]_]+).*/\1/p' "{{ stripe_log }}" | tail -n 1)"
+        [[ "$webhook_secret" == whsec_* ]]
+        umask 077
+        printf '%s\n' "$webhook_secret" > "{{ stripe_webhook_secret }}"
+      args:
+        executable: /bin/bash
+      changed_when: false
+      no_log: true

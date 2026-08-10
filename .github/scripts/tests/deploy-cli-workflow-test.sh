@@ -21,8 +21,8 @@ job_block() {
 deploy_api="$(job_block deploy-api)"
 deploy_cli="$(job_block deploy-cli)"
 
-grep -Fq '    needs: [prepare]' <<<"$deploy_api" ||
-  fail "deploy-api must depend on prepare"
+grep -Fq '    needs: [prepare, deploy-stripe-listener]' <<<"$deploy_api" ||
+  fail "deploy-api must depend on prepare and the preview Stripe listener"
 if grep -Fq 'deploy-cli' <<<"$deploy_api"; then
   fail "deploy-api must not wait for deploy-cli"
 fi
