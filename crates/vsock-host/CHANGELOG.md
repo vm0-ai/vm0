@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.79](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.78...vsock-host-v0.17.79) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** attribute severe balloon retention ([#26038](https://github.com/vm0-ai/vm0/issues/26038)) ([d996ab7](https://github.com/vm0-ai/vm0/commit/d996ab715ff06c03dee96b82f683e577c7e52b89))
+
 ## [0.17.78](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.77...vsock-host-v0.17.78) (2026-08-10)
 
 ## [0.17.77](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.76...vsock-host-v0.17.77) (2026-08-09)

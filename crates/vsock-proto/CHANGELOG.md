@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.28](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.27...vsock-proto-v0.18.28) (2026-08-10)
+
+
+### Bug Fixes
+
+* **runner:** attribute severe balloon retention ([#26038](https://github.com/vm0-ai/vm0/issues/26038)) ([d996ab7](https://github.com/vm0-ai/vm0/commit/d996ab715ff06c03dee96b82f683e577c7e52b89))
+
 ## [0.18.27](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.26...vsock-proto-v0.18.27) (2026-08-10)
 
 
