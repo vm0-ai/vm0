@@ -259,7 +259,7 @@ async function seedCustomRuntimeConnectors(
           displayName: connector.display_name,
           prefixes: [connector.prefix_template],
           headerName: "X-Connector",
-          headerTemplate: "runtime-batch",
+          headerTemplate: "runtime-batch {{secrets.optional_secret}}",
           prefixTemplates: [connector.prefix_template],
           fields: [
             {
@@ -270,7 +270,10 @@ async function seedCustomRuntimeConnectors(
             },
           ],
           headerInjections: [
-            { name: "X-Connector", valueTemplate: "runtime-batch" },
+            {
+              name: "X-Connector",
+              valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+            },
           ],
           queryInjections: [],
           authMode: "manual" as const,
