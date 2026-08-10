@@ -14,6 +14,7 @@ import {
   zeroBillingDowngradeContract,
   zeroBillingRestoreContract,
   type BillingStatusResponse,
+  type ConcurrencySubscriptionChangePreviewResponse,
   type MemberUsagePack,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -220,14 +221,20 @@ const internalFormThresholdOverride$ = state<string | null>(null);
 const internalFormAmountOverride$ = state<string | null>(null);
 const internalConcurrencySubscriptionQuantity$ = state<number | null>(null);
 const internalConcurrencyPurchaseDialogOpen$ = state(false);
-const internalConcurrencyConfirmDialog$ = state<{
+
+export interface ConcurrencyConfirmDialogState {
   readonly action: "change" | "restore";
   readonly subscriptionId: string;
   readonly currentQuantity: number;
   readonly canReduce: boolean;
+  readonly canChangeInApp: boolean;
   readonly changeMode: ConcurrencyChangeMode;
   readonly targetQuantity: number | null;
-} | null>(null);
+  readonly preview: ConcurrencySubscriptionChangePreviewResponse | null;
+}
+
+const internalConcurrencyConfirmDialog$ =
+  state<ConcurrencyConfirmDialogState | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -279,18 +286,23 @@ export const closeConcurrencyPurchaseDialog$ = command(({ set }) => {
 export const openConcurrencyConfirmDialog$ = command(
   (
     { set },
-    action: "change" | "restore",
-    subscriptionId: string,
-    currentQuantity: number,
-    canReduce: boolean,
+    args: {
+      readonly action: "change" | "restore";
+      readonly subscriptionId: string;
+      readonly currentQuantity: number;
+      readonly canReduce: boolean;
+      readonly canChangeInApp: boolean;
+    },
   ) => {
     set(internalConcurrencyConfirmDialog$, {
-      action,
-      subscriptionId,
-      currentQuantity,
-      canReduce: action === "change" && canReduce,
+      action: args.action,
+      subscriptionId: args.subscriptionId,
+      currentQuantity: args.currentQuantity,
+      canReduce: args.action === "change" && args.canReduce,
+      canChangeInApp: args.action === "change" && args.canChangeInApp,
       changeMode: "quantity",
-      targetQuantity: action === "change" ? currentQuantity : null,
+      targetQuantity: args.action === "change" ? args.currentQuantity : null,
+      preview: null,
     });
   },
 );
@@ -303,7 +315,7 @@ export const setConcurrencyChangeMode$ = command(
       if (!dialog || dialog.action !== "change") {
         return dialog;
       }
-      return { ...dialog, changeMode: mode };
+      return { ...dialog, changeMode: mode, preview: null };
     });
   },
 );
@@ -313,7 +325,7 @@ export const setConcurrencyTargetQuantity$ = command(
       if (!dialog || dialog.action !== "change") {
         return dialog;
       }
-      return { ...dialog, targetQuantity: quantity };
+      return { ...dialog, targetQuantity: quantity, preview: null };
     });
   },
 );
@@ -682,6 +694,65 @@ export const startConcurrencyCheckout$ = command(
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const previewConcurrencySubscriptionChange$ = command(
+  async (
+    { get, set },
+    args: { readonly subscriptionId: string; readonly quantity: number },
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    const result = await accept(
+      client.previewChange({
+        params: { subscriptionId: args.subscriptionId },
+        body: { quantity: args.quantity },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalConcurrencyConfirmDialog$, (dialog) => {
+      if (
+        !dialog ||
+        dialog.subscriptionId !== args.subscriptionId ||
+        dialog.targetQuantity !== args.quantity
+      ) {
+        return dialog;
+      }
+      return { ...dialog, preview: result.body };
+    });
+  },
+);
+
+export const confirmConcurrencySubscriptionChange$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const dialog = get(internalConcurrencyConfirmDialog$);
+    if (!dialog?.preview) {
+      throw new Error("Concurrency change preview is not available");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencySubscriptionContract);
+    await accept(
+      client.confirmChange({
+        params: { subscriptionId: dialog.subscriptionId },
+        body: { quantity: dialog.preview.targetQuantity },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(billingReload$, (x) => {
+      return x + 1;
+    });
+    set(internalConcurrencyConfirmDialog$, null);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyChanged;
+      }),
+    );
   },
 );
 

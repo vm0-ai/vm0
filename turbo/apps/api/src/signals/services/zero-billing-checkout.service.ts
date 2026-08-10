@@ -8,17 +8,13 @@ import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
   getStripeClient,
-  type StripeInvoice,
   type StripeMetadataParam,
   type StripeSubscription,
-  type StripeSubscriptionItem,
 } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
+import { applyStripeConcurrencySubscriptionChange$ } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
-import {
-  CONCURRENCY_SUBSCRIPTION_PURPOSE,
-  isConcurrencyPriceId,
-} from "./org-concurrency-entitlements.service";
+import { CONCURRENCY_SUBSCRIPTION_PURPOSE } from "./org-concurrency-entitlements.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -57,26 +53,15 @@ interface StartConcurrencyPurchaseArgs {
   readonly quantity: number;
   readonly priceId: string;
   readonly existingSubscriptionId?: string;
-  readonly portalConfigurationId?: string;
   readonly successUrl: string;
   readonly cancelUrl: string;
 }
 
-interface StartConcurrencySubscriptionUpdateArgs {
-  readonly subscriptionId: string;
-  readonly portalConfigurationId: string;
-  readonly update:
-    | { readonly type: "increase"; readonly quantity: number }
-    | { readonly type: "reduce"; readonly quantity: number };
-  readonly successUrl: string;
-  readonly cancelUrl: string;
-}
-
-type StartConcurrencySubscriptionUpdateResult =
+type StartConcurrencyPurchaseResult =
   | { readonly ok: true; readonly url: string }
   | {
       readonly ok: false;
-      readonly reason: "not_reduction" | "pending_update";
+      readonly reason: "invalid_quantity" | "pending_update";
     };
 
 const CREDITS_PER_DOLLAR = 1000;
@@ -503,129 +488,35 @@ export const createCreditCheckoutSession$ = command(
   },
 );
 
-function expandedLatestInvoice(
-  subscription: StripeSubscription,
-): StripeInvoice | null {
-  return typeof subscription.latest_invoice === "string"
-    ? null
-    : subscription.latest_invoice;
-}
-
-function concurrencySubscriptionItem(
-  items: readonly StripeSubscriptionItem[],
-): {
-  readonly id: string;
-  readonly quantity: number;
-} | null {
-  const item = items.find((candidate) => {
-    return isConcurrencyPriceId(candidate.price.id);
-  });
-  if (!item || !item.quantity) {
-    return null;
-  }
-  return { id: item.id, quantity: item.quantity };
-}
-
-export const startConcurrencySubscriptionUpdate$ = command(
-  async (
-    _,
-    args: StartConcurrencySubscriptionUpdateArgs,
-    signal: AbortSignal,
-  ): Promise<StartConcurrencySubscriptionUpdateResult> => {
-    const stripe = getStripeClient();
-    const subscription = await stripe.subscriptions.retrieve(
-      args.subscriptionId,
-      { expand: ["latest_invoice"] },
-    );
-    signal.throwIfAborted();
-
-    const pendingInvoice = expandedLatestInvoice(subscription);
-    if (subscription.pending_update) {
-      if (args.update.type === "reduce") {
-        const pendingItem = concurrencySubscriptionItem(
-          subscription.pending_update.subscription_items ?? [],
-        );
-        if (pendingItem?.quantity !== args.update.quantity) {
-          return { ok: false, reason: "pending_update" };
-        }
-      }
-      if (!pendingInvoice?.hosted_invoice_url) {
-        throw new Error(
-          "Pending concurrency subscription update has no hosted invoice URL",
-        );
-      }
-      return { ok: true, url: pendingInvoice.hosted_invoice_url };
-    }
-
-    const item = concurrencySubscriptionItem(subscription.items.data);
-    if (!item) {
-      throw new Error(
-        "Concurrency subscription has no active concurrency item",
-      );
-    }
-    const targetQuantity =
-      args.update.type === "increase"
-        ? item.quantity + args.update.quantity
-        : args.update.quantity;
-    if (args.update.type === "reduce" && targetQuantity >= item.quantity) {
-      return { ok: false, reason: "not_reduction" };
-    }
-
-    const customerId =
-      typeof subscription.customer === "string"
-        ? subscription.customer
-        : subscription.customer.id;
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      configuration: args.portalConfigurationId,
-      return_url: args.cancelUrl,
-      flow_data: {
-        type: "subscription_update_confirm",
-        after_completion: {
-          type: "redirect",
-          redirect: { return_url: args.successUrl },
-        },
-        subscription_update_confirm: {
-          subscription: subscription.id,
-          items: [{ id: item.id, quantity: targetQuantity }],
-        },
-      },
-    });
-    signal.throwIfAborted();
-    return { ok: true, url: session.url };
-  },
-);
-
 export const startConcurrencyPurchase$ = command(
   async (
     { set },
     args: StartConcurrencyPurchaseArgs,
     signal: AbortSignal,
-  ): Promise<string> => {
-    const stripe = getStripeClient();
+  ): Promise<StartConcurrencyPurchaseResult> => {
     if (args.existingSubscriptionId) {
-      if (!args.portalConfigurationId) {
-        throw new Error(
-          "Concurrency billing portal configuration is not configured",
-        );
-      }
       const result = await set(
-        startConcurrencySubscriptionUpdate$,
+        applyStripeConcurrencySubscriptionChange$,
         {
           subscriptionId: args.existingSubscriptionId,
-          portalConfigurationId: args.portalConfigurationId,
-          update: { type: "increase", quantity: args.quantity },
-          successUrl: args.successUrl,
-          cancelUrl: args.cancelUrl,
+          quantity: args.quantity,
+          mode: "increase",
         },
         signal,
       );
       if (!result.ok) {
-        throw new Error("Concurrency increase did not produce a Portal URL");
+        return {
+          ok: false,
+          reason:
+            result.reason === "invalid_quantity"
+              ? "invalid_quantity"
+              : "pending_update",
+        };
       }
-      return result.url;
+      return { ok: true, url: args.successUrl };
     }
 
+    const stripe = getStripeClient();
     const customerId = await set(
       getOrCreateStripeCustomer$,
       { orgId: args.orgId },
@@ -657,6 +548,6 @@ export const startConcurrencyPurchase$ = command(
     if (!session.url) {
       throw new Error("Stripe checkout session did not return a URL");
     }
-    return session.url;
+    return { ok: true, url: session.url };
   },
 );

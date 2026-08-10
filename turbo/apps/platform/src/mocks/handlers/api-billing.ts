@@ -96,6 +96,39 @@ export const apiBillingHandlers = [
   ),
 
   mockApi(
+    zeroBillingConcurrencySubscriptionContract.previewChange,
+    ({ body, params, respond }) => {
+      const subscription = mockBillingStatus.concurrencySubscriptions.find(
+        (candidate) => {
+          return candidate.id === params.subscriptionId;
+        },
+      );
+      const currentQuantity = subscription?.quantity ?? 1;
+      return respond(200, {
+        currentQuantity,
+        targetQuantity: body.quantity,
+        immediateAmountCents:
+          Math.max(0, body.quantity - currentQuantity) * 10_000,
+        nextRecurringAmountCents: body.quantity * 10_000,
+        currency: "usd",
+      });
+    },
+  ),
+
+  mockApi(
+    zeroBillingConcurrencySubscriptionContract.confirmChange,
+    ({ body, params, respond }) => {
+      mockBillingStatus.concurrencySubscriptions =
+        mockBillingStatus.concurrencySubscriptions.map((subscription) => {
+          return subscription.id === params.subscriptionId
+            ? { ...subscription, quantity: body.quantity }
+            : subscription;
+        });
+      return respond(200, { status: "processing" });
+    },
+  ),
+
+  mockApi(
     zeroBillingConcurrencySubscriptionContract.cancel,
     ({ params, respond }) => {
       mockBillingStatus.concurrencySubscriptions =

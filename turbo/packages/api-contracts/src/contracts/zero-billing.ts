@@ -54,6 +54,7 @@ const concurrencySubscriptionSchema = z.object({
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
   canReduce: z.boolean().optional(),
+  canChangeInApp: z.boolean().optional(),
 });
 
 const usageAllowanceWindowSchema = z.object({
@@ -294,6 +295,22 @@ const concurrencySubscriptionReduceRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
   successUrl: stripeRedirectUrlSchema,
   cancelUrl: stripeRedirectUrlSchema,
+});
+
+const concurrencySubscriptionChangeRequestSchema = z.object({
+  quantity: z.number().int().min(1).max(1000),
+});
+
+const concurrencySubscriptionChangePreviewResponseSchema = z.object({
+  currentQuantity: z.number().int().min(1).max(1000),
+  targetQuantity: z.number().int().min(1).max(1000),
+  immediateAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+});
+
+const concurrencySubscriptionChangeResponseSchema = z.object({
+  status: z.enum(["processing", "pending_payment", "completed"]),
 });
 
 const concurrencySubscriptionCancelResponseSchema = z.object({
@@ -591,6 +608,46 @@ export type ZeroBillingConcurrencyCheckoutContract =
  * Zero contract for concurrency subscriptions.
  */
 export const zeroBillingConcurrencySubscriptionContract = c.router({
+  previewChange: {
+    method: "POST",
+    path: "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/preview",
+    pathParams: z.object({
+      subscriptionId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: concurrencySubscriptionChangeRequestSchema,
+    responses: {
+      200: concurrencySubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a concurrency add-on subscription quantity change",
+  },
+  confirmChange: {
+    method: "POST",
+    path: "/api/zero/billing/concurrency-subscriptions/:subscriptionId/changes/confirm",
+    pathParams: z.object({
+      subscriptionId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: concurrencySubscriptionChangeRequestSchema,
+    responses: {
+      200: concurrencySubscriptionChangeResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Apply a concurrency add-on subscription quantity change",
+  },
   reduce: {
     method: "POST",
     path: "/api/zero/billing/concurrency-subscriptions/:subscriptionId/reduce",
@@ -950,6 +1007,12 @@ export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
 export type RedeemCodeResponse = z.infer<typeof redeemCodeResponseSchema>;
 export type ConcurrencyCheckoutRequest = z.infer<
   typeof concurrencyCheckoutRequestSchema
+>;
+export type ConcurrencySubscriptionChangePreviewResponse = z.infer<
+  typeof concurrencySubscriptionChangePreviewResponseSchema
+>;
+export type ConcurrencySubscriptionChangeResponse = z.infer<
+  typeof concurrencySubscriptionChangeResponseSchema
 >;
 export type CreditCheckoutRequest = z.infer<typeof creditCheckoutRequestSchema>;
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
