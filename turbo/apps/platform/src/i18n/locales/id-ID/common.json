@@ -1009,7 +1009,8 @@
       "planRestored": "Paket dipulihkan. Langganan Anda akan diperbarui seperti biasa.",
       "preparingReceiptDownload": "Menyiapkan unduhan struk...",
       "receiptDownloadFailed": "Gagal mengunduh struk",
-      "receiptsDownloaded": "Struk diunduh"
+      "receiptsDownloaded": "Struk diunduh",
+      "subscriptionChangeConfirmed": "Perubahan langganan dikonfirmasi."
     },
     "usage": {
       "added": "Ditambahkan {{date}}",

@@ -1009,7 +1009,8 @@
       "planRestored": "計画が復元されました。サブスクリプションは通常どおり更新されます。",
       "preparingReceiptDownload": "領収書のダウンロードを準備しています...",
       "receiptDownloadFailed": "領収書のダウンロードに失敗しました",
-      "receiptsDownloaded": "領収書をダウンロードしました"
+      "receiptsDownloaded": "領収書をダウンロードしました",
+      "subscriptionChangeConfirmed": "サブスクリプションの変更が確認されました。"
     },
     "usage": {
       "added": "{{date}} を追加しました",

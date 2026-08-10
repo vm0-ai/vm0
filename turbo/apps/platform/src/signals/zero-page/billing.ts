@@ -429,6 +429,7 @@ export const handleBillingRedirect$ = command(({ get, set }) => {
 
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
   set(reloadBillingStatus$);
+  set(reloadUsagePackManagement$);
   set(reloadUsageRecords$);
   return false;
 });
@@ -598,6 +599,11 @@ export const confirmUsagePackSubscriptionChange$ = command(
       [200],
     );
     signal.throwIfAborted();
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
     set(setUsagePackSubscriptionChangePreview$, null);
     set(reloadUsagePackManagement$);
     set(reloadBillingStatus$);

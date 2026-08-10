@@ -1030,7 +1030,8 @@
       "planRestored": "Piano ripristinato. Il tuo abbonamento si rinnoverà normalmente.",
       "preparingReceiptDownload": "Preparazione download ricevuta...",
       "receiptDownloadFailed": "Impossibile scaricare le ricevute",
-      "receiptsDownloaded": "Ricevute scaricate"
+      "receiptsDownloaded": "Ricevute scaricate",
+      "subscriptionChangeConfirmed": "La modifica dell'abbonamento è stata confermata."
     },
     "usage": {
       "added": "Aggiunto {{date}}",

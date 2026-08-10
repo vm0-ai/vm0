@@ -1009,7 +1009,8 @@
       "planRestored": "Plan wiederhergestellt. Ihr Abonnement verlängert sich normal.",
       "preparingReceiptDownload": "Download der Quittung wird vorbereitet...",
       "receiptDownloadFailed": "Belege konnten nicht heruntergeladen werden",
-      "receiptsDownloaded": "Quittungen heruntergeladen"
+      "receiptsDownloaded": "Quittungen heruntergeladen",
+      "subscriptionChangeConfirmed": "Die Abonnementänderung wurde bestätigt."
     },
     "usage": {
       "added": "Hinzugefügt {{date}}",

@@ -1030,7 +1030,8 @@
       "planRestored": "Forfait restauré. Votre abonnement se renouvellera normalement.",
       "preparingReceiptDownload": "Préparation du téléchargement du reçu...",
       "receiptDownloadFailed": "Échec du téléchargement des reçus",
-      "receiptsDownloaded": "Reçus téléchargés"
+      "receiptsDownloaded": "Reçus téléchargés",
+      "subscriptionChangeConfirmed": "La modification de l’abonnement a été confirmée."
     },
     "usage": {
       "added": "Ajouté {{date}}",

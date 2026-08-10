@@ -1009,7 +1009,8 @@
       "planRestored": "योजना बहाल। आपकी सदस्यता सामान्य रूप से नवीनीकृत हो जाएगी।",
       "preparingReceiptDownload": "रसीद डाउनलोड तैयार की जा रही है...",
       "receiptDownloadFailed": "रसीदें डाउनलोड करने में विफल।",
-      "receiptsDownloaded": "रसीदें डाउनलोड की गईं।"
+      "receiptsDownloaded": "रसीदें डाउनलोड की गईं।",
+      "subscriptionChangeConfirmed": "सदस्यता में बदलाव की पुष्टि हो गई है।"
     },
     "usage": {
       "added": "{{date}} जोड़ा गया",

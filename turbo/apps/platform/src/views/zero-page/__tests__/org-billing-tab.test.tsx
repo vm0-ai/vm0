@@ -15,6 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
 import { screen, waitFor, within } from "@testing-library/react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import {
@@ -635,7 +636,10 @@ describe("organization billing settings", () => {
 
   it("previews and confirms a current member package change inline", async () => {
     let pendingPayment = false;
+    let paymentApplied = false;
     let confirmationRequests = 0;
+    let managementRequests = 0;
+    const successToast = vi.spyOn(toast, "success");
     context.mocks.data.org({
       id: "org_1",
       name: "Managed Usage Pack Org",
@@ -671,6 +675,7 @@ describe("organization billing settings", () => {
     context.mocks.api(
       zeroBillingUsagePackManagementContract.get,
       ({ respond }) => {
+        managementRequests += 1;
         return respond(200, {
           tier: "pro",
           currentPeriodEnd: "2026-04-01T00:00:00Z",
@@ -678,17 +683,18 @@ describe("organization billing settings", () => {
             {
               id: "b5235934-83df-4f16-bf41-f46890db7d40",
               memberId: "user_1",
-              usagePackUsd: 20,
+              usagePackUsd: paymentApplied ? 50 : 20,
               currentPeriodEnd: "2026-04-01T00:00:00Z",
-              pendingChange: pendingPayment
-                ? {
-                    id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
-                    kind: "upgrade",
-                    status: "pending_payment",
-                    targetUsagePackUsd: 50,
-                    effectiveAt: "2026-03-16T00:00:00Z",
-                  }
-                : null,
+              pendingChange:
+                pendingPayment && !paymentApplied
+                  ? {
+                      id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                      kind: "upgrade",
+                      status: "pending_payment",
+                      targetUsagePackUsd: 50,
+                      effectiveAt: "2026-03-16T00:00:00Z",
+                    }
+                  : null,
             },
           ],
         });
@@ -830,7 +836,36 @@ describe("organization billing settings", () => {
     click(buttonByText("Confirm", reopenedConfirmationDialog));
     await screen.findByRole("heading", { name: "Choose a plan" });
     expect(confirmationRequests).toBe(1);
+    expect(successToast).toHaveBeenCalledWith("Subscription change confirmed.");
     expect(window.location.href).toBe(locationBeforeConfirmation);
+
+    click(
+      buttonByText("Manage", screen.getByRole("article", { name: "Pro plan" })),
+    );
+    await screen.findByText("Change is processing");
+    click(screen.getByLabelText("Back"));
+    await screen.findByRole("heading", { name: "Choose a plan" });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+    const managementRequestsBeforeRealtime = managementRequests;
+    paymentApplied = true;
+    context.mocks.ably.trigger("billing:changed");
+    await waitFor(() => {
+      expect(managementRequests).toBeGreaterThan(
+        managementRequestsBeforeRealtime,
+      );
+    });
+
+    click(
+      buttonByText("Manage", screen.getByRole("article", { name: "Pro plan" })),
+    );
+    await expect(
+      screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
+    ).resolves.toHaveTextContent("$50 · 54,321 credits · 8% off");
   });
 
   it("upgrades an existing usage pack plan without buying member packages again", async () => {

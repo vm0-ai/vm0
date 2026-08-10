@@ -1030,7 +1030,8 @@
       "planRestored": "Plano restaurado. Sua assinatura será renovada normalmente.",
       "preparingReceiptDownload": "Preparando o download dos recibos...",
       "receiptDownloadFailed": "Não foi possível baixar os recibos",
-      "receiptsDownloaded": "Recibos baixados"
+      "receiptsDownloaded": "Recibos baixados",
+      "subscriptionChangeConfirmed": "Alteração da assinatura confirmada."
     },
     "usage": {
       "added": "Adicionado em {{date}}",

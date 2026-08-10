@@ -1009,7 +1009,8 @@
       "planRestored": "Plan restored. Your subscription will renew normally.",
       "preparingReceiptDownload": "Preparing receipt download...",
       "receiptDownloadFailed": "Failed to download receipts",
-      "receiptsDownloaded": "Receipts downloaded"
+      "receiptsDownloaded": "Receipts downloaded",
+      "subscriptionChangeConfirmed": "Subscription change confirmed."
     },
     "usage": {
       "added": "Added {{date}}",

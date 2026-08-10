@@ -1009,7 +1009,8 @@
       "planRestored": "플랜이 복원되었습니다. 구독이 정상적으로 갱신됩니다.",
       "preparingReceiptDownload": "영수증 다운로드 준비 중...",
       "receiptDownloadFailed": "영수증 다운로드에 실패했습니다",
-      "receiptsDownloaded": "영수증이 다운로드되었습니다"
+      "receiptsDownloaded": "영수증이 다운로드되었습니다",
+      "subscriptionChangeConfirmed": "구독 변경이 확인되었습니다."
     },
     "usage": {
       "added": "{{date}}에 추가됨",
