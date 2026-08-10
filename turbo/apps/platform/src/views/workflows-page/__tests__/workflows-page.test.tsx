@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
@@ -42,7 +43,6 @@ import {
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
 import { i18n } from "../../../i18n/index.ts";
-import { labelInitials } from "../workflow-shared.tsx";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -67,17 +67,6 @@ type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
 afterEach(() => {
   toast.dismiss();
-});
-
-describe("workflow label initials", () => {
-  it("uses the first two non-empty words", () => {
-    expect(labelInitials("  Research   Assistant  ")).toBe("RA");
-  });
-
-  it("uses up to two characters for a single word", () => {
-    expect(labelInitials("Zero")).toBe("ZE");
-    expect(labelInitials(" ")).toBe("??");
-  });
 });
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
@@ -1397,6 +1386,7 @@ async function openCopyDialog(): Promise<HTMLElement> {
 
 describe("workflows routes", () => {
   it("renders the workspace workflows index", async () => {
+    const user = userEvent.setup();
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupPage({
@@ -1411,6 +1401,10 @@ describe("workflows routes", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Sales Research")).toBeInTheDocument();
+
+    await user.hover(linkByAriaLabel("Open Sales Research"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(within(tooltip).getByText("TU")).toBeInTheDocument();
   });
 
   it("labels existing Stripe automations on the workspace workflows index", async () => {
