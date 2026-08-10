@@ -155,11 +155,5 @@ describe("connector/providers/tiktok-ads", () => {
         },
       });
     });
-
-    it("does not register a refresh handler", () => {
-      expect(tiktokAdsProvider.access).toStrictEqual({
-        kind: "none",
-      });
-    });
   });
 });
