@@ -18,6 +18,7 @@ import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type {
   createChatThreadScrollSignals,
+  ReadyScrollAfterRenderRequest,
   ThreadScrollPosition,
 } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
@@ -62,6 +63,9 @@ export interface MessageListSignals {
   readonly latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
+  readonly readyScrollAfterRenderRequest$: Computed<
+    Promise<ReadyScrollAfterRenderRequest | null>
+  >;
   readonly chatSkeletonVisible$: Computed<boolean>;
   readonly assistantErrorRecovery$: Computed<
     Promise<AssistantErrorRecovery | null>
@@ -139,6 +143,13 @@ export interface ChatPanelSignals {
   readonly scrollContentOnRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
+  >;
+  readonly scrollCommitOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  readonly readyScrollAfterRenderRequest$: Computed<
+    Promise<ReadyScrollAfterRenderRequest | null>
   >;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;

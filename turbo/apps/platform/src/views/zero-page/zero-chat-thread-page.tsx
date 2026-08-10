@@ -2793,15 +2793,101 @@ const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
+function renderedChatEventKeys(
+  groups: readonly ChatEventGroup[],
+): readonly string[] {
+  return groups.flatMap((group) => {
+    return group.events.map((event) => {
+      return `${event.id}:${event.isQueued ? "queued" : "active"}`;
+    });
+  });
+}
+
+function chatGroupsContainEvent(
+  groups: readonly ChatEventGroup[],
+  eventId: string | undefined,
+): boolean {
+  return groups.some((group) => {
+    return group.events.some((event) => {
+      return event.id === eventId;
+    });
+  });
+}
+
+function ChatThreadScrollCommitMarker({
+  thread,
+  renderedGroups,
+}: {
+  thread: ChatPanelSignals;
+  renderedGroups: ChatEventGroup[] | undefined;
+}) {
+  const readyScrollRequestLoadable = useLoadable(
+    thread.readyScrollAfterRenderRequest$,
+  );
+  const commitScroll = useSet(thread.scrollCommitOnRef$);
+  if (
+    renderedGroups === undefined ||
+    readyScrollRequestLoadable.state !== "hasData" ||
+    readyScrollRequestLoadable.data === null
+  ) {
+    return null;
+  }
+
+  const readyScrollRequest = readyScrollRequestLoadable.data;
+  if (
+    !equalArrays(
+      readyScrollRequest.renderedEventKeys,
+      renderedChatEventKeys(renderedGroups),
+    )
+  ) {
+    return null;
+  }
+
+  const { activeGroups, queuedGroups } =
+    splitQueuedEventsForThinkingIndicator(renderedGroups);
+  const { request } = readyScrollRequest;
+  const targetEventId = request.position?.targetEventId;
+  const activeTargetRendered = chatGroupsContainEvent(
+    activeGroups,
+    targetEventId,
+  );
+  const targetMovedToQueue = chatGroupsContainEvent(
+    queuedGroups,
+    targetEventId,
+  );
+  const activeEventsRendered = activeGroups.some((group) => {
+    return group.events.length > 0;
+  });
+  if (
+    !activeEventsRendered ||
+    (request.position !== null && !activeTargetRendered && !targetMovedToQueue)
+  ) {
+    return null;
+  }
+
+  const commitToTail = request.position === null || targetMovedToQueue;
+  return (
+    <span
+      key={request.revision}
+      ref={commitScroll}
+      data-chat-scroll-commit-revision={request.revision}
+      data-chat-scroll-commit-to-tail={commitToTail ? "" : undefined}
+      aria-hidden
+      className="hidden"
+    />
+  );
+}
+
 function ChatThreadRenderedEventGroups({
   thread,
 }: {
   thread: ChatPanelSignals;
 }) {
-  const renderedGroups =
-    useLastResolved(thread.visibleRenderedChatGroups$, {
-      equalityFn: equalArrays,
-    }) ?? [];
+  const resolvedRenderedGroups = useLastResolved(
+    thread.visibleRenderedChatGroups$,
+    { equalityFn: equalArrays },
+  );
+  const renderedGroups = resolvedRenderedGroups ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedEventsForThinkingIndicator(renderedGroups);
   const modelChanges = modelChangesByEventId(renderedActiveGroups);
@@ -2829,16 +2915,22 @@ function ChatThreadRenderedEventGroups({
     completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
 
   return (
-    <ChatThreadEventGroups
-      thread={thread}
-      groups={visibleGroups}
-      modelChanges={modelChanges}
-      runGroupFolding={runGroupFolding}
-      onToggleRunGroup={toggleRunGroupExpanded}
-      completedWorkFolding={completedWorkFolding}
-      completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
-      onToggleCompletedWork={toggleCompletedWorkExpanded}
-    />
+    <>
+      <ChatThreadEventGroups
+        thread={thread}
+        groups={visibleGroups}
+        modelChanges={modelChanges}
+        runGroupFolding={runGroupFolding}
+        onToggleRunGroup={toggleRunGroupExpanded}
+        completedWorkFolding={completedWorkFolding}
+        completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
+        onToggleCompletedWork={toggleCompletedWorkExpanded}
+      />
+      <ChatThreadScrollCommitMarker
+        thread={thread}
+        renderedGroups={resolvedRenderedGroups}
+      />
+    </>
   );
 }
 
@@ -3953,7 +4045,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
           standalonePwa && "overscroll-contain",
         )}
       >
-        <ChatThreadEventsMain thread={thread} />
+        <ChatThreadEventsMain key={thread.threadId} thread={thread} />
       </div>
       <ChatThreadSkeletonOverlay
         key={`skeleton:${thread.threadId}`}
