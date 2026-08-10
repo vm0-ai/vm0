@@ -1,4 +1,74 @@
-"""Lock-protected mutable state for the usage buffer."""
+"""Lock-protected mutable state for the usage buffer.
+
+State ownership
+---------------
+Callers hold ``UsageEventBuffer._lock`` for every state transition. Accepted
+source records are represented by exactly one of these work domains:
+
+* *Live* work is still mutable in the aggregate and source-preserving event and
+  observation stores. ``snapshot_live_flush()`` atomically replaces those
+  stores with empty ones and transfers their contents to one pending flush.
+* *Pending* work is a batch snapshot eligible for selection, or a retained
+  snapshot waiting for a later retry. Selecting a pending flush and calling
+  ``begin_delivery()`` transfers its ownership to the delivering domain.
+* *Delivering* work has entered webhook admission and remains here until every
+  admitted callback is resolved. Successful or permanent outcomes leave the
+  state; retryable or unadmitted batches return to pending ownership unless the
+  retry budget drops them.
+
+``_seen_source_keys`` is admission history, not a work domain. Accepted source
+and atomic admission keys survive flush boundaries in this process. The history
+is bounded by insertion order: duplicate checks do not refresh an entry,
+overflow evicts the earliest inserted keys, and ``clear()`` resets the history
+along with all work domains.
+
+Admission and callback ordering
+-------------------------------
+``begin_delivery()`` counts the entire pending flush before admission starts
+because a delivery callback may complete synchronously inside the enqueue call.
+Each callback decrements ``remaining_batch_count`` and records a retryable
+outcome when applicable. Admission completion then reconciles that callback
+state with the admitted prefix:
+
+* When admitted callbacks remain unresolved, the admitted prefix stays in the
+  delivering domain, ``remaining_batch_count`` becomes the number of unresolved
+  admitted callbacks, and the unadmitted suffix is retained as pending work.
+* When no admitted callback remains, including when no batch was admitted, the
+  retryable admitted batches and unadmitted suffix are retained together and
+  delivering ownership ends.
+
+Callbacks that finish the delivering flush first remove its ownership, so later
+admission reconciliation cannot retain a second copy. Retryable callbacks are
+rebuilt in original batch order rather than callback-completion order.
+
+Retry eligibility and ordering
+------------------------------
+A retained flush records the current flush generation and is ineligible for the
+rest of that flush invocation; a later invocation has a new generation and may
+select it. Billable ``usage_event`` batches have priority over observation
+batches. When live work is eligible for a snapshot, it preempts available
+pending work only at a strictly higher priority; list order is FIFO among
+equal-priority pending flushes. Original flush batch indices preserve same-flush
+order when callbacks finish out of order or retain additional fragments later.
+
+Each retention increments the batch's retained retry count. A batch already at
+the configured maximum is dropped instead of returning to pending ownership.
+Delivering work is not schedulable, and ``_active_enqueue_count`` blocks another
+selection only while admission is active; after admission returns, newer live
+work may be flushed while older delivery callbacks are still outstanding.
+
+Observable count and verification
+---------------------------------
+``buffered_source_event_count()`` sums original source records represented by
+live stores, retained pending flushes, and delivering flushes. Aggregated
+batches therefore contribute their source-record count, not their payload-event
+count. Admission history and active-enqueue bookkeeping are excluded.
+
+The integration contracts for these invariants live in
+``tests/test_usage_buffer_flush_failures.py``,
+``tests/test_usage_buffer_timer_shutdown.py``, and
+``tests/test_usage_buffer_idempotency.py``.
+"""
 
 from __future__ import annotations
 
@@ -138,8 +208,8 @@ class _UsageBufferState:
                 bucket.source_event_count += 1
             self._source_event_count += 1
             accepted_count += 1
-        # Keep the admission key newer than its member keys so its bounded LRU
-        # lifetime covers the entire group.
+        # Insert the admission key after its member keys so its bounded
+        # insertion-order lifetime covers the entire group.
         if atomic_source_key is not None and accepted_count > 0:
             self._seen_source_keys[atomic_source_key] = None
         self._evict_source_keys()
