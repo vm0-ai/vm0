@@ -151,7 +151,7 @@ describe("canonical chat event storage", () => {
     });
   });
 
-  it("keeps central legacy writes legal before migration 0880", async () => {
+  it("keeps central legacy writes legal before the payload column exists", async () => {
     await expect(
       insertChatEventAgainstPrePayloadSchemaFixture(),
     ).resolves.toStrictEqual([

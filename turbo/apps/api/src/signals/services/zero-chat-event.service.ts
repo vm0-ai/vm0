@@ -49,11 +49,12 @@ import type {
 import type { Tx } from "../../lib/db-types";
 
 // Drizzle emits every column declared by an insert table, even when a value is
-// omitted. This runtime-only table shape keeps pre-0880 INSERT statements from
-// naming payload during the DB/API rollout window (observed maximum: about 102
-// minutes); it is intentionally outside the generated DB schema export. Remove
-// it with the capability probe after 0880 is guaranteed everywhere and
-// rollback closes. Follow-up: #26158.
+// omitted. This runtime-only table shape keeps INSERT statements issued before
+// the payload column is available from naming it during the DB/API rollout
+// window (observed maximum: about 102 minutes); it is intentionally outside the
+// generated DB schema export. Remove it with the capability probe after the
+// payload column is guaranteed everywhere and rollback closes. Follow-up:
+// #26158.
 const chatEventsBeforePayload = pgTable("chat_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   chatThreadId: uuid("chat_thread_id").notNull(),
@@ -1020,9 +1021,9 @@ function canonicalChatEventPayload(
 async function chatEventPayloadSchemaAvailable(
   tx: ChatEventWriteTransaction,
 ): Promise<boolean> {
-  // A new API can deploy before migration 0880 during the DB/API rollout
-  // window (observed maximum: about 102 minutes). Keep legacy-only writes
-  // legal until the column exists; remove this probe after 0880 is guaranteed
+  // A new API can deploy before the payload column during the DB/API rollout
+  // window (observed maximum: about 102 minutes). Keep legacy-only writes legal
+  // until the column exists; remove this probe after the column is guaranteed
   // everywhere and rollback closes. Follow-up: #26158.
   const [state] = await tx
     .select({
@@ -1038,18 +1039,21 @@ async function chatEventPayloadSchemaAvailable(
     })
     .from(sql`(SELECT 1) AS schema_probe`)
     .limit(1);
-  return state?.available ?? false;
+  if (!state) {
+    throw new Error("chat event payload schema probe returned no row");
+  }
+  return state.available;
 }
 
 /**
  * Build the transitional storage row at the central persistence boundary.
- * Once migration 0880 is present, payload is written alongside every legacy
- * leaf; interrupt and goal pointers likewise keep their canonical and legacy
- * columns in sync. The legacy writes protect the deployed v3 API/Platform and
- * old clients while readers remain authoritative on the old columns. Remove
- * these dual writes only after canonical readers land and the relevant DB/API
- * (observed maximum: about 102 minutes) and client (about two days) rollback
- * windows close. Follow-up: #26158.
+ * Once the payload column is present, payload is written alongside every
+ * legacy leaf; interrupt and goal pointers likewise keep their canonical and
+ * legacy columns in sync. The legacy writes protect the deployed v3
+ * API/Platform and old clients while readers remain authoritative on the old
+ * columns. Remove these dual writes only after canonical readers land and the
+ * relevant DB/API (observed maximum: about 102 minutes) and client (about two
+ * days) rollback windows close. Follow-up: #26158.
  */
 function persistedChatEventValues(
   values: NewChatEvent,
