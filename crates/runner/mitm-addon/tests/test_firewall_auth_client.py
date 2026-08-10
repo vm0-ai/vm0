@@ -265,21 +265,46 @@ class TestFetchFirewallHeaders:
         assert result.refreshed_secrets == ["NOTION_TOKEN"]
         assert not hasattr(result, "futureField")
 
-    async def test_response_may_omit_configured_header_and_query_entries(self, mitm_ctx):
+    @pytest.mark.parametrize(
+        ("response", "expected_reason"),
+        [
+            pytest.param(
+                firewall_auth_success_response(
+                    {"Authorization": "Bearer sensitive-resolved-token"},
+                )
+                | {"query": {"tenant": "resolved-tenant"}},
+                "headers must match the configured auth header names",
+                id="missing-header",
+            ),
+            pytest.param(
+                firewall_auth_success_response(
+                    {
+                        "Authorization": "Bearer sensitive-resolved-token",
+                        "X-Secondary": "sensitive-secondary-token",
+                    },
+                )
+                | {"query": {}},
+                "query must match the configured auth query names",
+                id="missing-query",
+            ),
+        ],
+    )
+    async def test_response_must_include_all_configured_header_and_query_entries(
+        self,
+        mitm_ctx,
+        response: dict[str, object],
+        expected_reason: str,
+    ):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response(
-            firewall_auth_success_response(
-                {"Authorization": "Bearer primary-token"},
-            )
-            | {"query": {}}
-        )
+        endpoint.queue_json_response(response)
 
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX) as exc_info,
         ):
-            result = await auth_client.fetch_firewall_headers(
+            await auth_client.fetch_firewall_headers(
                 firewall_auth_request(
                     auth_headers={
                         "Authorization": "Bearer ${{ secrets.PRIMARY_TOKEN }}",
@@ -289,10 +314,9 @@ class TestFetchFirewallHeaders:
                 )
             )
 
-        assert result.payload.headers == {
-            "Authorization": "Bearer primary-token",
-        }
-        assert result.payload.query == {}
+        message = str(exc_info.value)
+        assert message == f"{_MALFORMED_SUCCESS_PREFIX}: {expected_reason}"
+        assert "sensitive-resolved-token" not in message
 
     @pytest.mark.parametrize(
         "session_token",
