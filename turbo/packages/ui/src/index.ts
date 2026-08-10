@@ -1,5 +1,9 @@
 // shadcn components
 export {
+  AnimatedNumber,
+  type AnimatedNumberProps,
+} from "./components/ui/animated-number";
+export {
   Button,
   buttonVariants,
   type ButtonProps,

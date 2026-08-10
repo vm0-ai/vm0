@@ -1794,6 +1794,7 @@
       },
       "categoriesAria": "Categorias de conectores",
       "description": "Conecte serviços de terceiros para seus agentes usarem.",
+      "descriptionWithCount": "Conecte {{value}} serviços para seus agentes usarem.",
       "empty": {
         "agent": "Nenhum conector para este agente",
         "connected": "Nenhum conector conectado",

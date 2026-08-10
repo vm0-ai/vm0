@@ -1754,6 +1754,7 @@
       },
       "categoriesAria": "Integration-Kategorien",
       "description": "Verbinden Sie Dienste von Drittanbietern, damit Ihre Agenten sie nutzen können.",
+      "descriptionWithCount": "Verbinden Sie {{value}} Dienste, damit Ihre Agenten sie nutzen können.",
       "empty": {
         "agent": "Keine Integrationen für diesen Agenten",
         "connected": "Keine verbundenen Integrationen",

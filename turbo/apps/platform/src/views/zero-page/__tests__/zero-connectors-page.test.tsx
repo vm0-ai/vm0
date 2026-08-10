@@ -620,6 +620,28 @@ describe("connectors page", () => {
     ).toBeTruthy();
   });
 
+  it("shows the exact connector catalog size in the page description", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorSlug: "github",
+        label: "GitHub",
+        authMethods: [],
+      }),
+      publicStatusItem({
+        connectorSlug: "slack",
+        label: "Slack",
+        authMethods: [],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await expect(
+      screen.findByLabelText("Connect 2 services for your agents to use."),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("shows only the update dialog when the client requires an upgrade", async () => {
     context.mocks.http.get("*/api/zero/connector-catalog/status", () => {
       return Response.json(

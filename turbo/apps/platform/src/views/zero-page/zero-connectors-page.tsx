@@ -24,6 +24,7 @@ import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
+import { ConnectorCatalogDescription } from "./components/settings/connector-catalog-description.tsx";
 import {
   allConnectorCatalogItems$,
   connectConnectorOAuthAuthCode$,
@@ -1078,11 +1079,13 @@ export function ZeroConnectorsPage() {
                 return $.connectors.catalog.title;
               })}
             </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {t(($) => {
-                return $.connectors.catalog.description;
-              })}
-            </p>
+            <ConnectorCatalogDescription
+              connectorCount={
+                catalogStatusLoadable.state === "hasData"
+                  ? catalogStatusLoadable.data.connectors.length
+                  : null
+              }
+            />
           </div>
         </div>
       </header>

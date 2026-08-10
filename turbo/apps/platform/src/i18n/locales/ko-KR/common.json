@@ -1753,6 +1753,7 @@
       },
       "categoriesAria": "커넥터 카테고리",
       "description": "에이전트가 사용할 수 있도록 타사 서비스를 연결하세요.",
+      "descriptionWithCount": "에이전트가 사용할 수 있도록 {{value}}개의 서비스를 연결하세요.",
       "empty": {
         "agent": "이 에이전트에 연결된 커넥터가 없습니다",
         "connected": "연결된 커넥터가 없습니다",
