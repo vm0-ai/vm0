@@ -2067,6 +2067,12 @@ describe("usage pack allocation management", () => {
       }),
       [200],
     );
+    expect(first.body.immediateCreditGrant).toStrictEqual({
+      purchasedCredits: 15_000,
+      bonusCredits: 1100,
+      totalCredits: 16_100,
+      expiresAt: new Date(fixture.billingPeriod.end * 1000).toISOString(),
+    });
     const management = await accept(
       client.get({ headers: { authorization: "Bearer clerk-session" } }),
       [200],

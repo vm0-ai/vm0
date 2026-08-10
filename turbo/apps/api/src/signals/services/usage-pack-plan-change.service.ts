@@ -31,6 +31,7 @@ import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import {
+  calculateUsagePackUpgradeCreditGrants,
   fulfillUsagePackSubscriptionChangeInvoice,
   reconcileUsagePackAllocationChangeSubscription,
   type UsagePackChangeInvoiceInput,
@@ -1018,6 +1019,51 @@ async function persistSubscriptionChangePreview(
   });
 }
 
+async function immediateUsagePackUpgradeCreditGrant(
+  prepared: PreparedSubscriptionChange,
+): Promise<{
+  readonly purchasedCredits: number;
+  readonly bonusCredits: number;
+  readonly totalCredits: number;
+  readonly expiresAt: string;
+}> {
+  const inputs = prepared.allocationChanges.flatMap((change) => {
+    return change.kind === "upgrade"
+      ? [
+          {
+            sourceAllocation: change.source,
+            sourceStripePriceId: change.source.stripePriceId,
+            targetStripePriceId: change.targetStripePriceId,
+          },
+        ]
+      : [];
+  });
+  const grants = await calculateUsagePackUpgradeCreditGrants(inputs, {
+    start: prepared.prorationTimestamp,
+    end: prepared.period.end,
+  });
+  let purchasedCredits = 0;
+  let bonusCredits = 0;
+  for (const grant of grants) {
+    purchasedCredits += grant.purchasedCredits;
+    bonusCredits += grant.bonusCredits;
+  }
+  const totalCredits = purchasedCredits + bonusCredits;
+  if (
+    !Number.isSafeInteger(purchasedCredits) ||
+    !Number.isSafeInteger(bonusCredits) ||
+    !Number.isSafeInteger(totalCredits)
+  ) {
+    throw new Error("Usage pack upgrade credits are too large");
+  }
+  return {
+    purchasedCredits,
+    bonusCredits,
+    totalCredits,
+    expiresAt: new Date(prepared.period.end * 1000).toISOString(),
+  };
+}
+
 export async function previewUsagePackSubscriptionChange(
   db: Db,
   args: {
@@ -1065,28 +1111,30 @@ export async function previewUsagePackSubscriptionChange(
     finalPackageQuantities,
   );
   const stripe = getStripeClient();
-  const [recurringPreview, immediatePreview] = await Promise.all([
-    stripe.invoices.createPreview(
-      prepared.restoreScheduleId
-        ? restoredSubscriptionRecurringPreviewParams(prepared.subscription)
-        : {
+  const [recurringPreview, immediatePreview, immediateCreditGrant] =
+    await Promise.all([
+      stripe.invoices.createPreview(
+        prepared.restoreScheduleId
+          ? restoredSubscriptionRecurringPreviewParams(prepared.subscription)
+          : {
+              subscription: prepared.subscription.id,
+              preview_mode: "recurring",
+              subscription_details: { items: finalItems },
+            },
+      ),
+      prepared.hasImmediateChanges
+        ? stripe.invoices.createPreview({
             subscription: prepared.subscription.id,
-            preview_mode: "recurring",
-            subscription_details: { items: finalItems },
-          },
-    ),
-    prepared.hasImmediateChanges
-      ? stripe.invoices.createPreview({
-          subscription: prepared.subscription.id,
-          preview_mode: "next",
-          subscription_details: {
-            items: immediateItems,
-            proration_behavior: "always_invoice",
-            proration_date: prepared.prorationTimestamp,
-          },
-        })
-      : null,
-  ]);
+            preview_mode: "next",
+            subscription_details: {
+              items: immediateItems,
+              proration_behavior: "always_invoice",
+              proration_date: prepared.prorationTimestamp,
+            },
+          })
+        : null,
+      immediateUsagePackUpgradeCreditGrant(prepared),
+    ]);
   args.signal.throwIfAborted();
   if (
     immediatePreview &&
@@ -1128,6 +1176,7 @@ export async function previewUsagePackSubscriptionChange(
       sourceTier: change.sourceTier,
       targetTier: change.targetTier,
       immediateAmountCents,
+      immediateCreditGrant,
       nextRecurringAmountCents,
       currency: recurringPreview.currency,
       effectiveAt: effectiveAt.toISOString(),

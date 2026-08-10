@@ -443,13 +443,9 @@ function MemberUsageRow({
   );
 }
 
-function MemberUsageHeader({
-  usagePackTotalUsd,
-}: {
-  readonly usagePackTotalUsd: number;
-}) {
+function MemberUsageHeader() {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-border/60 px-4 py-4">
+    <div className="border-b border-border/60 px-4 py-4">
       <div>
         <h4 className="text-sm font-medium text-foreground">
           {i18n.t(($) => {
@@ -460,21 +456,6 @@ function MemberUsageHeader({
           {i18n.t(($) => {
             return $.billing.plans.usagePacks.description;
           })}
-        </p>
-      </div>
-      <div className="shrink-0 text-right">
-        <p className="text-[11px] text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.memberUsageTotal;
-          })}
-        </p>
-        <p className="mt-0.5 text-sm font-semibold text-foreground">
-          {i18n.t(
-            ($) => {
-              return $.billing.plans.pricePerMonth;
-            },
-            { price: formatUsd(usagePackTotalUsd, 0) },
-          )}
         </p>
       </div>
     </div>
@@ -510,7 +491,6 @@ function MemberUsageConfiguration({
   if (!members) {
     return <div className="h-36 animate-pulse rounded-xl bg-muted/40" />;
   }
-  const { totalUsd } = memberUsageTotals(members, selections, catalog);
   const memberUsageLabel = i18n.t(($) => {
     return $.billing.plans.usagePacks.memberUsage;
   });
@@ -521,7 +501,7 @@ function MemberUsageConfiguration({
       aria-label={memberUsageLabel}
       className="rounded-xl bg-card zero-border"
     >
-      <MemberUsageHeader usagePackTotalUsd={totalUsd} />
+      <MemberUsageHeader />
 
       {members.map((member, index) => {
         const selection = memberUsageSelection(selections, member.id);
@@ -1087,6 +1067,7 @@ function ManagedSubscriptionSummaryDetails({
   readonly totals: MemberUsageTotals;
 }) {
   const monthlyTotalUsd = plan.basePriceUsd + totals.totalUsd;
+  const purchasedCredits = totals.totalCredits - totals.bonusCredits;
   return (
     <div className="mt-4 space-y-2.5 text-[13px]">
       <div className="flex items-center justify-between gap-4 text-muted-foreground">
@@ -1111,15 +1092,15 @@ function ManagedSubscriptionSummaryDetails({
       <div className="flex items-center justify-between gap-4 text-muted-foreground">
         <span>
           {i18n.t(($) => {
-            return $.billing.plans.usagePacks.totalCredits;
+            return $.billing.plans.usagePacks.purchasedCredits;
           })}
         </span>
-        <span>{formatLocalizedNumber(totals.totalCredits)}</span>
+        <span>{formatLocalizedNumber(purchasedCredits)}</span>
       </div>
       <div className="flex items-center justify-between gap-4 text-muted-foreground">
         <span>
           {i18n.t(($) => {
-            return $.billing.plans.usagePacks.discountBonusCredits;
+            return $.billing.plans.usagePacks.bonusCredits;
           })}
         </span>
         <span>{formatLocalizedNumber(totals.bonusCredits)}</span>
@@ -1177,15 +1158,19 @@ function ManagedSubscriptionComparison({
     },
     {
       label: i18n.t(($) => {
-        return $.billing.plans.usagePacks.totalCredits;
+        return $.billing.plans.usagePacks.purchasedCredits;
       }),
-      current: formatLocalizedNumber(currentTotals.totalCredits),
-      next: formatLocalizedNumber(totals.totalCredits),
-      changed: currentTotals.totalCredits !== totals.totalCredits,
+      current: formatLocalizedNumber(
+        currentTotals.totalCredits - currentTotals.bonusCredits,
+      ),
+      next: formatLocalizedNumber(totals.totalCredits - totals.bonusCredits),
+      changed:
+        currentTotals.totalCredits - currentTotals.bonusCredits !==
+        totals.totalCredits - totals.bonusCredits,
     },
     {
       label: i18n.t(($) => {
-        return $.billing.plans.usagePacks.discountBonusCredits;
+        return $.billing.plans.usagePacks.bonusCredits;
       }),
       current: formatLocalizedNumber(currentTotals.bonusCredits),
       next: formatLocalizedNumber(totals.bonusCredits),
@@ -1291,6 +1276,93 @@ function ManagedSubscriptionDowngradeNotice({
   );
 }
 
+function UsagePackChangePaymentSummary({
+  preview,
+}: {
+  readonly preview: UsagePackSubscriptionChangePreviewResponse;
+}) {
+  const immediateCreditGrant =
+    preview.immediateCreditGrant &&
+    preview.immediateCreditGrant.totalCredits > 0
+      ? preview.immediateCreditGrant
+      : null;
+  return (
+    <div className="mt-1 border-y border-border/70 py-4">
+      <div
+        className={
+          immediateCreditGrant
+            ? "grid grid-cols-2 divide-x divide-border/70"
+            : "grid grid-cols-1"
+        }
+      >
+        <div className={immediateCreditGrant ? "pr-5" : undefined}>
+          <p className="text-xs font-medium text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.immediateAmount;
+            })}
+          </p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight text-primary">
+            {formatUsd(preview.immediateAmountCents / 100)}
+          </p>
+        </div>
+        {immediateCreditGrant && (
+          <div
+            role="group"
+            aria-label={i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.immediateCredits;
+            })}
+            className="pl-5"
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.management.immediateCredits;
+              })}
+            </p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-primary">
+              +{formatLocalizedNumber(immediateCreditGrant.totalCredits)}
+            </p>
+            <div className="mt-2 space-y-1 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">
+                  {i18n.t(($) => {
+                    return $.billing.plans.usagePacks.purchasedCredits;
+                  })}
+                </span>
+                <span className="font-medium tabular-nums text-foreground">
+                  +
+                  {formatLocalizedNumber(immediateCreditGrant.purchasedCredits)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">
+                  {i18n.t(($) => {
+                    return $.billing.plans.usagePacks.bonusCredits;
+                  })}
+                </span>
+                <span className="font-medium tabular-nums text-foreground">
+                  +{formatLocalizedNumber(immediateCreditGrant.bonusCredits)}
+                </span>
+              </div>
+            </div>
+            {immediateCreditGrant.expiresAt && (
+              <p className="mt-2 border-t border-border/70 pt-2 text-[11px] text-muted-foreground">
+                {i18n.t(
+                  ($) => {
+                    return $.billing.usage.expires;
+                  },
+                  {
+                    date: formatBillingDate(immediateCreditGrant.expiresAt),
+                  },
+                )}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function UsagePackSubscriptionChangeDialog({
   confirming,
   error,
@@ -1330,31 +1402,15 @@ function UsagePackSubscriptionChangeDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
-        {preview && (
-          <div className="mt-2 space-y-2.5 rounded-lg bg-muted/50 p-3 text-[13px]">
-            <div className="flex items-center justify-between gap-4 text-muted-foreground">
-              <span>
-                {i18n.t(($) => {
-                  return $.billing.plans.usagePacks.management.immediateAmount;
-                })}
-              </span>
-              <span className="font-medium text-foreground">
-                {formatUsd(preview.immediateAmountCents / 100)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-4 text-muted-foreground">
-              <span>
-                {i18n.t(($) => {
-                  return $.billing.plans.usagePacks.management.nextRecurring;
-                })}
-              </span>
-              <span className="font-medium text-foreground">
-                {formatUsd(preview.nextRecurringAmountCents / 100)}
-              </span>
-            </div>
-          </div>
-        )}
+        {preview && <UsagePackChangePaymentSummary preview={preview} />}
+        <div className="pt-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.orderSummary;
+            })}
+          </p>
+          <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
+        </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
         <DialogFooter>
           <Button

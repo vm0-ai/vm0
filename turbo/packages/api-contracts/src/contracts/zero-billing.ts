@@ -248,6 +248,14 @@ const usagePackSubscriptionChangePreviewResponseSchema = z.object({
   sourceTier: z.enum(["pro", "team"]),
   targetTier: z.enum(["pro", "team"]),
   immediateAmountCents: z.number().int().nonnegative(),
+  immediateCreditGrant: z
+    .object({
+      purchasedCredits: z.number().int().nonnegative(),
+      bonusCredits: z.number().int().nonnegative(),
+      totalCredits: z.number().int().nonnegative(),
+      expiresAt: z.iso.datetime().optional(),
+    })
+    .optional(),
   nextRecurringAmountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
   effectiveAt: z.iso.datetime(),

@@ -726,6 +726,12 @@ describe("organization billing settings", () => {
           sourceTier: "pro",
           targetTier: "pro",
           immediateAmountCents: 1500,
+          immediateCreditGrant: {
+            purchasedCredits: 15_000,
+            bonusCredits: 1100,
+            totalCredits: 16_100,
+            expiresAt: "2026-04-01T00:00:00Z",
+          },
           nextRecurringAmountCents: 5000,
           currency: "usd",
           effectiveAt: "2026-03-16T00:00:00Z",
@@ -812,7 +818,12 @@ describe("organization billing settings", () => {
     ).toBeInTheDocument();
     expect(
       within(comparison).getByRole("row", {
-        name: /Total credits 21,234 54,321/u,
+        name: /Purchased credits 20,000 50,000/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Bonus credits 1,234 4,321/u,
       }),
     ).toBeInTheDocument();
     expect(
@@ -830,9 +841,35 @@ describe("organization billing settings", () => {
     expect(within(confirmationDialog).getByText("Due now")).toBeInTheDocument();
     expect(within(confirmationDialog).getByText("$15.00")).toBeInTheDocument();
     expect(
-      within(confirmationDialog).getByText("Next recurring total"),
+      within(confirmationDialog).getByText("Credits added after payment"),
     ).toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("$50.00")).toBeInTheDocument();
+    const creditGrant = within(confirmationDialog).getByRole("group", {
+      name: "Credits added after payment",
+    });
+    expect(within(creditGrant).getByText("+16,100")).toBeInTheDocument();
+    expect(
+      within(creditGrant).getByText("Purchased credits"),
+    ).toBeInTheDocument();
+    expect(within(creditGrant).getByText("+15,000")).toBeInTheDocument();
+    expect(within(creditGrant).getByText("Bonus credits")).toBeInTheDocument();
+    expect(within(creditGrant).getByText("+1,100")).toBeInTheDocument();
+    expect(
+      within(creditGrant).getByText("Expires Apr 1, 2026"),
+    ).toBeInTheDocument();
+    expect(
+      within(confirmationDialog).queryByText("Next recurring total"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(confirmationDialog).queryByText("Total credits"),
+    ).not.toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("50,000")).toBeInTheDocument();
+    expect(within(confirmationDialog).getByText("4,321")).toBeInTheDocument();
+    expect(
+      within(confirmationDialog).getByText("$50/month"),
+    ).toBeInTheDocument();
+    expect(
+      within(confirmationDialog).queryByText(/Renews /u),
+    ).not.toBeInTheDocument();
     expect(window.location.href).toBe(locationBeforeConfirmation);
     click(buttonByText("Cancel", confirmationDialog));
     await waitFor(() => {
@@ -1219,7 +1256,9 @@ describe("organization billing settings", () => {
       name: "Review package change",
     });
     expect(within(confirmationDialog).getByText("$80.00")).toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("$180.00")).toBeInTheDocument();
+    expect(
+      within(confirmationDialog).getByText("$180/month"),
+    ).toBeInTheDocument();
     expect(window.location.href).toBe(locationBeforeConfirmation);
     click(buttonByText("Confirm", confirmationDialog));
     await screen.findByRole("heading", {
@@ -1333,7 +1372,9 @@ describe("organization billing settings", () => {
       name: "Review package change",
     });
     expect(within(confirmationDialog).getByText("$0.00")).toBeInTheDocument();
-    expect(within(confirmationDialog).getByText("$20.00")).toBeInTheDocument();
+    expect(
+      within(confirmationDialog).getByText("$20/month"),
+    ).toBeInTheDocument();
     click(buttonByText("Confirm", confirmationDialog));
     await waitFor(() => {
       expect(

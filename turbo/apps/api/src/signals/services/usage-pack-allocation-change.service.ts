@@ -84,6 +84,21 @@ interface UsagePackPeriod {
   readonly end: number;
 }
 
+interface UsagePackUpgradeCreditGrantInput {
+  readonly sourceAllocation: {
+    readonly id: string;
+    readonly currentPeriodStart: Date | null;
+    readonly currentPeriodEnd: Date | null;
+  };
+  readonly sourceStripePriceId: string;
+  readonly targetStripePriceId: string;
+}
+
+interface UsagePackUpgradeCreditGrant {
+  readonly purchasedCredits: number;
+  readonly bonusCredits: number;
+}
+
 function isProjectedUsagePackAllocation(
   allocation: UsagePackAllocationRow,
 ): boolean {
@@ -1953,7 +1968,7 @@ function upgradeProrationPeriod(
 function proratedCreditDelta(
   sourceCredits: number,
   targetCredits: number,
-  sourceAllocation: UsagePackAllocationRow,
+  sourceAllocation: UsagePackUpgradeCreditGrantInput["sourceAllocation"],
   prorationPeriod: UsagePackPeriod,
 ): number {
   if (
@@ -1991,6 +2006,44 @@ function proratedCreditDelta(
     throw new Error("Usage pack upgrade prorated credit delta is invalid");
   }
   return prorated;
+}
+
+export async function calculateUsagePackUpgradeCreditGrants(
+  inputs: readonly UsagePackUpgradeCreditGrantInput[],
+  prorationPeriod: UsagePackPeriod,
+): Promise<readonly UsagePackUpgradeCreditGrant[]> {
+  const priceIds = new Set<string>();
+  for (const input of inputs) {
+    priceIds.add(input.sourceStripePriceId);
+    priceIds.add(input.targetStripePriceId);
+  }
+  const creditEntries = await Promise.all(
+    [...priceIds].map(async (priceId) => {
+      return [priceId, await usagePackCreditsForPrice(priceId)] as const;
+    }),
+  );
+  const creditsByPriceId = new Map(creditEntries);
+  return inputs.map((input) => {
+    const sourceCredits = creditsByPriceId.get(input.sourceStripePriceId);
+    const targetCredits = creditsByPriceId.get(input.targetStripePriceId);
+    if (!sourceCredits || !targetCredits) {
+      throw new Error("Usage pack upgrade credits could not be loaded");
+    }
+    return {
+      purchasedCredits: proratedCreditDelta(
+        sourceCredits.purchased,
+        targetCredits.purchased,
+        input.sourceAllocation,
+        prorationPeriod,
+      ),
+      bonusCredits: proratedCreditDelta(
+        sourceCredits.bonus,
+        targetCredits.bonus,
+        input.sourceAllocation,
+        prorationPeriod,
+      ),
+    };
+  });
 }
 
 async function usagePackInvoiceFulfillmentExists(
