@@ -9,7 +9,11 @@ import {
   type CustomConnectorMcpResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorResponse,
+  type AgentCustomConnectorUpdate,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorOpenIdStartContract,
@@ -3428,15 +3432,10 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows connection status and authorized agents on custom connector cards", async () => {
+  it("manages agent access for a disconnected custom connector", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000031";
     const supportAgentId = "c0000000-0000-4000-a000-000000000032";
-    const connector = customConnector({
-      connected: true,
-      missingRequiredFields: [],
-      configuredFieldKeys: ["secret"],
-      hasSecret: true,
-    });
+    const connector = customConnector({});
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -3485,9 +3484,12 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("Acme Search");
-      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(within(card).getByText("Not connected")).toBeInTheDocument();
       expect(
-        within(card).getByTestId("custom-connector-card-agent-usage"),
+        within(card).getByText("https://api.acme.test/v1/"),
+      ).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("connector-card-agent-access"),
       ).toHaveTextContent("Used by Research");
     });
 
@@ -3511,13 +3513,182 @@ describe("connectors page", () => {
       ).toBeInTheDocument();
       expect(
         within(connectorCardByLabel("Acme Search")).getByTestId(
-          "custom-connector-card-agent-usage",
+          "connector-card-agent-access",
         ),
       ).toHaveTextContent("Used by Research, Support");
     });
+    expect(screen.queryByText("Connect Acme Search")).not.toBeInTheDocument();
+  });
+
+  it("selects permissions before authorizing a custom connector from settings", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000035";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000036";
+    const connector = customConnector({
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    const accessByAgentId = new Map<string, AgentCustomConnectorResponse>([
+      [researchAgentId, { enabledIds: [], grants: [] }],
+      [supportAgentId, { enabledIds: [], grants: [] }],
+    ]);
+    const updates: {
+      readonly agentId: string;
+      readonly body: AgentCustomConnectorUpdate;
+    }[] = [];
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([
+      teamAgent(researchAgentId, "Research"),
+      teamAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.permissions,
+      ({ params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        return respond(200, {
+          ref: "builtin:feishu@1",
+          permissions: [
+            {
+              name: "standard:use",
+              description: "Use standard Feishu APIs with approval.",
+            },
+            {
+              name: "messages:send-as-user",
+              description: "Send messages as the connected user.",
+            },
+          ],
+          defaultPolicies: {
+            "standard:use": "allow",
+            "messages:send-as-user": "deny",
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(
+          200,
+          accessByAgentId.get(params.id) ?? { enabledIds: [], grants: [] },
+        );
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ params, body, respond }) => {
+        updates.push({ agentId: params.id, body });
+        const current = accessByAgentId.get(params.id) ?? {
+          enabledIds: [],
+          grants: [],
+        };
+        let next: AgentCustomConnectorResponse;
+        if ("grants" in body) {
+          next = {
+            enabledIds: body.grants.map((grant) => {
+              return grant.customConnectorId;
+            }),
+            grants: body.grants,
+          };
+        } else if (body.operation === "remove") {
+          next = {
+            enabledIds: current.enabledIds.filter((connectorId) => {
+              return !body.enabledIds.includes(connectorId);
+            }),
+            grants: (current.grants ?? []).filter((grant) => {
+              return !body.enabledIds.includes(grant.customConnectorId);
+            }),
+          };
+        } else {
+          throw new Error("Expected explicit grants or direct removal");
+        }
+        accessByAgentId.set(params.id, next);
+        return respond(200, next);
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    click(await screen.findByLabelText("Manage Acme Search access"));
+    const accessDialog = await screen.findByRole("dialog", {
+      name: "Manage Acme Search access",
+    });
+    click(
+      within(accessDialog).getByLabelText(
+        "Authorize Acme Search access for Support",
+      ),
+    );
+
+    const permission = await screen.findByText("messages:send-as-user");
+    const permissionRow = permission.parentElement?.parentElement;
+    const permissionDrawer = permission.closest('[role="dialog"]');
+    if (
+      !(permissionRow instanceof HTMLElement) ||
+      !(permissionDrawer instanceof HTMLElement)
+    ) {
+      throw new Error("Custom connector permission drawer not found");
+    }
     expect(
-      screen.queryByText("https://api.acme.test/v1/"),
+      within(permissionDrawer).queryByText("standard:use"),
     ).not.toBeInTheDocument();
+    click(buttonByText("Allow", permissionRow));
+    click(buttonByText("Apply", permissionDrawer));
+
+    await waitFor(() => {
+      expect(updates).toStrictEqual([
+        {
+          agentId: supportAgentId,
+          body: {
+            grants: [
+              {
+                customConnectorId: connector.id,
+                permissionNames: ["messages:send-as-user"],
+              },
+            ],
+            operation: "add",
+          },
+        },
+      ]);
+      expect(
+        within(accessDialog).getByLabelText(
+          "Revoke Acme Search access for Support",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Acme Search")).getByTestId(
+          "connector-card-agent-access",
+        ),
+      ).toHaveTextContent("Used by Support");
+    });
+
+    click(
+      within(accessDialog).getByLabelText(
+        "Revoke Acme Search access for Support",
+      ),
+    );
+    await waitFor(() => {
+      expect(updates[1]).toStrictEqual({
+        agentId: supportAgentId,
+        body: {
+          enabledIds: [connector.id],
+          operation: "remove",
+        },
+      });
+      expect(
+        within(accessDialog).getByLabelText(
+          "Authorize Acme Search access for Support",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Acme Search")).getByTestId(
+          "connector-card-access-empty",
+        ),
+      ).toHaveTextContent("Add access");
+    });
   });
 
   it("connects a kind-less HTTP definition returned by a previous API", async () => {
@@ -3635,7 +3806,7 @@ describe("connectors page", () => {
       const card = connectorCardByLabel("Acme Search");
       expect(within(card).getByText("Conectado")).toBeInTheDocument();
       expect(
-        within(card).getByTestId("custom-connector-card-agent-usage"),
+        within(card).getByTestId("connector-card-agent-access"),
       ).toHaveTextContent("Usado por Research");
     });
 
@@ -4083,7 +4254,7 @@ describe("connectors page", () => {
       const card = connectorCardByLabel("Acme API");
       expect(within(card).getByText("Connected")).toBeInTheDocument();
       expect(
-        within(card).getByTestId("custom-connector-card-agent-usage"),
+        within(card).getByTestId("connector-card-agent-access"),
       ).toHaveTextContent("Used by Zero, Research");
     });
     expect(browserOpen.calls).toStrictEqual([
@@ -4140,7 +4311,7 @@ describe("connectors page", () => {
       expect(
         within(card).getByText("https://api.acme.test/v1/"),
       ).toBeInTheDocument();
-      expect(within(card).queryByText("Not connected")).not.toBeInTheDocument();
+      expect(within(card).getByText("Not connected")).toBeInTheDocument();
     });
     expect(story.createBodies[0]?.storageVersion).toBe(1);
 
@@ -4161,12 +4332,12 @@ describe("connectors page", () => {
       const card = connectorCardByLabel("Acme API");
       expect(within(card).getByText("Connected")).toBeInTheDocument();
       expect(
-        within(card).getByTestId("custom-connector-card-agent-usage"),
+        within(card).getByTestId("connector-card-agent-access"),
       ).toHaveTextContent("Used by Zero, Research +1");
     });
     expect(
       within(connectorCardByLabel("Acme API")).getByTestId(
-        "custom-connector-card-agent-usage",
+        "connector-card-agent-access",
       ),
     ).toHaveAttribute("title", "Zero, Research, Support");
     expect(

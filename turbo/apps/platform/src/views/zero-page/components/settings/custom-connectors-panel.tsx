@@ -7,7 +7,6 @@ import {
 import { EllipsisVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import {
   Button,
   DropdownMenu,
@@ -41,135 +40,14 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
 import { CustomConnectorAccessManagementDialog } from "./connector-access-management-dialog.tsx";
+import { ConnectorAgentAccessButton } from "./connector-agent-access-button.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
-
-const CUSTOM_CONNECTOR_AGENT_NAME_LIMIT = 2;
-const CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS = 12;
 
 function connectsDirectlyWithOAuth(
   connector: CustomConnectorResponse,
 ): boolean {
   return connector.authMode === "oauth";
-}
-
-function customConnectorAgentName(
-  agent: TeamComposeItem,
-  unnamed: string,
-): string {
-  return agent.displayName ?? unnamed;
-}
-
-function truncateCustomConnectorAgentName(name: string): string {
-  if (name.length <= CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS) {
-    return name;
-  }
-  return `${name.slice(0, CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS - 1)}…`;
-}
-
-function CustomConnectorAgentUsage({
-  agents,
-  loading,
-  connectorLabel,
-  onClick,
-}: {
-  readonly agents: readonly TeamComposeItem[];
-  readonly loading: boolean;
-  readonly connectorLabel: string;
-  readonly onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  const unnamed = t(($) => {
-    return $.connectors.catalog.unnamedAgent;
-  });
-  if (loading) {
-    return (
-      <button
-        type="button"
-        className="inline-flex h-7 min-w-0 shrink items-center rounded-lg px-2"
-        aria-label={t(
-          ($) => {
-            return $.connectors.catalog.access.manage;
-          },
-          { connector: connectorLabel },
-        )}
-        onClick={onClick}
-      >
-        <span className="block h-3 w-20 animate-pulse rounded bg-muted" />
-      </button>
-    );
-  }
-  if (agents.length === 0) {
-    return (
-      <button
-        type="button"
-        className="inline-flex h-7 min-w-0 shrink items-center rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        aria-label={t(
-          ($) => {
-            return $.connectors.catalog.access.manage;
-          },
-          { connector: connectorLabel },
-        )}
-        data-testid="custom-connector-card-agent-usage"
-        onClick={onClick}
-      >
-        <span className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
-          {t(($) => {
-            return $.connectors.custom.agentUsage.none;
-          })}
-        </span>
-      </button>
-    );
-  }
-
-  const visibleNames = agents
-    .slice(0, CUSTOM_CONNECTOR_AGENT_NAME_LIMIT)
-    .map((agent) => {
-      return truncateCustomConnectorAgentName(
-        customConnectorAgentName(agent, unnamed),
-      );
-    });
-  const overflowCount = agents.length - visibleNames.length;
-  const agentNames = visibleNames.join(", ");
-  return (
-    <button
-      type="button"
-      className="inline-flex h-7 min-w-0 shrink items-center rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label={t(
-        ($) => {
-          return $.connectors.catalog.access.manage;
-        },
-        { connector: connectorLabel },
-      )}
-      data-testid="custom-connector-card-agent-usage"
-      title={agents
-        .map((agent) => {
-          return customConnectorAgentName(agent, unnamed);
-        })
-        .join(", ")}
-      onClick={onClick}
-    >
-      <span className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
-        {overflowCount > 0
-          ? t(
-              ($) => {
-                return $.connectors.custom.agentUsage.usedByOverflow;
-              },
-              {
-                agents: agentNames,
-                count: overflowCount,
-                value: formatLocalizedNumber(overflowCount),
-              },
-            )
-          : t(
-              ($) => {
-                return $.connectors.custom.agentUsage.usedBy;
-              },
-              { agents: agentNames },
-            )}
-      </span>
-    </button>
-  );
 }
 
 interface CustomConnectorRowProps {
@@ -189,82 +67,104 @@ function CustomConnectorCardContent({
   authorizedAgents,
   authorizedAgentsLoading,
   hasActions,
+  onConnect,
   onManageAccess,
 }: {
   readonly connector: CustomConnectorResponse;
   readonly authorizedAgents: readonly TeamComposeItem[];
   readonly authorizedAgentsLoading: boolean;
   readonly hasActions: boolean;
+  readonly onConnect: () => void;
   readonly onManageAccess: () => void;
 }) {
   const { t } = useTranslation();
+  const headerContent = (
+    <>
+      <CustomConnectorIcon
+        id={connector.id}
+        displayName={connector.displayName}
+        size={20}
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          data-testid="connector-card-label"
+          className="block truncate text-sm font-medium text-foreground"
+        >
+          {connector.displayName}
+        </span>
+        {connector.kind === "mcp" ? (
+          <span className="block truncate text-xs text-muted-foreground">
+            {t(($) => {
+              return $.connectors.custom.mcpStreamableHttp;
+            })}
+          </span>
+        ) : !connector.connected ? (
+          <span
+            className="block truncate font-mono text-xs text-muted-foreground/60"
+            title={connector.prefixes[0]}
+          >
+            {connector.prefixes[0]}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
   return (
     <>
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <CustomConnectorIcon
-          id={connector.id}
-          displayName={connector.displayName}
-          size={20}
-        />
-        <span className="min-w-0 flex-1">
-          <span
-            data-testid="connector-card-label"
-            className="block truncate text-sm font-medium text-foreground"
-          >
-            {connector.displayName}
-          </span>
-          {connector.kind === "mcp" && (
-            <span className="block truncate text-xs text-muted-foreground">
-              {t(($) => {
-                return $.connectors.custom.mcpStreamableHttp;
-              })}
-            </span>
+      {!connector.connected && connector.kind === "http" ? (
+        <button
+          type="button"
+          aria-label={t(
+            ($) => {
+              return $.connectors.card.connectAria;
+            },
+            { connector: connector.displayName },
           )}
-        </span>
-      </div>
+          className="flex h-14 w-full cursor-pointer items-center gap-2.5 px-5 text-left"
+          onClick={onConnect}
+        >
+          {headerContent}
+        </button>
+      ) : (
+        <div className="flex h-14 items-center gap-2.5 px-5">
+          {headerContent}
+        </div>
+      )}
       <div
         className={`flex h-11 items-center justify-between gap-2 border-t border-border/50 pl-5 ${
-          hasActions ? "pr-12" : "pr-5"
+          hasActions ? "pr-12" : "pr-2"
         }`}
       >
-        {connector.connected ? (
-          <>
-            <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-              {t(($) => {
-                return $.connectors.custom.statusConnected;
-              })}
-            </span>
-            {connector.kind === "mcp" ? (
-              <span
-                className="min-w-0 truncate font-mono text-xs text-muted-foreground/60"
-                title={connector.endpoint}
-              >
-                {connector.endpoint}
-              </span>
-            ) : (
-              <CustomConnectorAgentUsage
-                agents={authorizedAgents}
-                loading={authorizedAgentsLoading}
-                connectorLabel={connector.displayName}
-                onClick={onManageAccess}
-              />
-            )}
-          </>
-        ) : (
+        {connector.kind === "mcp" ? (
           <span
             className="min-w-0 truncate font-mono text-xs text-muted-foreground/60"
-            title={
-              connector.kind === "mcp"
-                ? connector.endpoint
-                : connector.prefixes[0]
-            }
+            title={connector.endpoint}
           >
-            {connector.kind === "mcp"
-              ? connector.endpoint
-              : connector.prefixes[0]}
+            {connector.endpoint}
           </span>
-        )}
+        ) : connector.connected ? (
+          <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+            {t(($) => {
+              return $.connectors.custom.statusConnected;
+            })}
+          </span>
+        ) : connector.kind === "http" ? (
+          <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+            {t(($) => {
+              return $.connectors.catalog.filters.notConnected;
+            })}
+          </span>
+        ) : null}
+        {connector.kind === "http" ? (
+          <ConnectorAgentAccessButton
+            agents={authorizedAgents}
+            loading={authorizedAgentsLoading}
+            connectorLabel={connector.displayName}
+            onClick={onManageAccess}
+          />
+        ) : null}
       </div>
     </>
   );
@@ -294,29 +194,14 @@ function CustomConnectorRow({
       authorizedAgents={authorizedAgents}
       authorizedAgentsLoading={authorizedAgentsLoading}
       hasActions={hasActions}
+      onConnect={onConnect}
       onManageAccess={onManageAccess}
     />
   );
 
   return (
     <div className="relative">
-      {connector.connected || connector.kind === "mcp" ? (
-        <div className="zero-card flex flex-col">{cardContent}</div>
-      ) : (
-        <button
-          type="button"
-          aria-label={t(
-            ($) => {
-              return $.connectors.card.connectAria;
-            },
-            { connector: connector.displayName },
-          )}
-          className="zero-card flex w-full cursor-pointer flex-col text-left"
-          onClick={onConnect}
-        >
-          {cardContent}
-        </button>
-      )}
+      <div className="zero-card flex flex-col">{cardContent}</div>
       {hasActions && (
         <div className="absolute bottom-2 right-2">
           <DropdownMenu>
@@ -491,7 +376,9 @@ export function CustomConnectorsPanel() {
                   }
                 }}
                 onManageAccess={() => {
-                  return openAccess(c);
+                  if (isHttpCustomConnectorResponse(c)) {
+                    return openAccess(c);
+                  }
                 }}
                 onDelete={() => {
                   return openDelete(c);

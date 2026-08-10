@@ -1852,12 +1852,6 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "どのエージェントも使用していません",
-        "usedBy": "{{agents}} によって使用されます",
-        "usedByOverflow_one": "{{agents}} +{{value}} によって使用されます",
-        "usedByOverflow_other": "{{agents}} +{{value}} によって使用されます"
-      },
       "connect": {
         "apiAuthentication": "API認証",
         "apiDescription": "プロバイダーが発行したAPIシークレットを入力します。",

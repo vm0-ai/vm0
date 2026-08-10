@@ -1893,13 +1893,6 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "Não é usado por nenhum agente",
-        "usedBy": "Usado por {{agents}}",
-        "usedByOverflow_one": "Usado por {{agents}} +{{value}}",
-        "usedByOverflow_many": "Usado por {{agents}} +{{value}}",
-        "usedByOverflow_other": "Usado por {{agents}} +{{value}}"
-      },
       "connect": {
         "apiAuthentication": "Autenticação por API",
         "apiDescription": "Insira o segredo de API fornecido pelo provedor.",

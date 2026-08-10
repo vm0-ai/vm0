@@ -164,9 +164,6 @@ async function authorizeCustomConnectorAgent(
     case "customConnectorsNotFound": {
       return "OAuth connected, but the custom connector was not found";
     }
-    case "customConnectorsNotConfigured": {
-      return "OAuth connected, but the connector could not be authorized";
-    }
     case "customConnectorPermissionSelectionRequired": {
       return "OAuth connected, but connector permissions must be selected before authorizing the agent";
     }
