@@ -13,7 +13,9 @@ import {
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
 
-const fixtureBody$ = bodyResultOf(testStripeAutomationEventFixtureContract.apply);
+const fixtureBody$ = bodyResultOf(
+  testStripeAutomationEventFixtureContract.apply,
+);
 
 async function installIngressFailureTrigger(db: Db): Promise<void> {
   await db.execute(sql`

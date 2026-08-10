@@ -34,7 +34,9 @@ export const stripeWorkflowDeliveries = pgTable(
     stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull(),
     stripeEventCreatedAt: timestamp("stripe_event_created_at").notNull(),
     billingReason: text("billing_reason"),
-    snapshot: jsonb("snapshot").$type<StripeAutomationEventSnapshot>().notNull(),
+    snapshot: jsonb("snapshot")
+      .$type<StripeAutomationEventSnapshot>()
+      .notNull(),
     status: varchar("status", { length: 32 })
       .$type<StripeWorkflowDeliveryStatus>()
       .default("pending")
