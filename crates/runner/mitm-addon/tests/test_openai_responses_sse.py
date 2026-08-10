@@ -16,7 +16,8 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(
             b"event: response.completed\n"
             b'data: {"type":"response.completed","response":{"id":"resp_1",'
-            b'"model":"gpt-5.6-sol","usage":{"input_tokens":100,'
+            b'"model":"gpt-5.6-sol","service_tier":"priority",'
+            b'"usage":{"input_tokens":100,'
             b'"output_tokens":40,"input_tokens_details":{"cached_tokens":25,'
             b'"cache_write_tokens":30},'
             b'"output_tokens_details":{"reasoning_tokens":10}}}}\n\n'
@@ -24,6 +25,7 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage == {
             "message_id": "resp_1",
             "model": "gpt-5.6-sol",
+            "service_tier": "priority",
             "tokens.input": 45,
             "tokens.output": 40,
             "tokens.cache_read": 25,

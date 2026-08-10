@@ -52,6 +52,10 @@ const MODEL_TOKEN_CATEGORIES = {
   outputLongContext: "tokens.output.long_context",
   cacheReadLongContext: "tokens.cache_read.long_context",
   cacheCreationLongContext: "tokens.cache_creation.long_context",
+  inputLongContextFast: "tokens.input.long_context.fast",
+  outputLongContextFast: "tokens.output.long_context.fast",
+  cacheReadLongContextFast: "tokens.cache_read.long_context.fast",
+  cacheCreationLongContextFast: "tokens.cache_creation.long_context.fast",
 } as const;
 
 interface ModelTokenCounts {
@@ -61,6 +65,10 @@ interface ModelTokenCounts {
   readonly outputLongContext?: number;
   readonly cacheReadLongContext?: number;
   readonly cacheCreationLongContext?: number;
+  readonly inputLongContextFast?: number;
+  readonly outputLongContextFast?: number;
+  readonly cacheReadLongContextFast?: number;
+  readonly cacheCreationLongContextFast?: number;
 }
 
 function authHeaders() {
@@ -753,10 +761,10 @@ describe("GET /api/zero/usage/record", () => {
       createdAt: createdAt(10),
     });
     await recordModelUsage(fixture.actor, webhookRun.runId, model, {
-      inputLongContext: 25,
-      outputLongContext: 5,
-      cacheReadLongContext: 7,
-      cacheCreationLongContext: 3,
+      inputLongContextFast: 25,
+      outputLongContextFast: 5,
+      cacheReadLongContextFast: 7,
+      cacheCreationLongContextFast: 3,
     });
 
     await billing.processOrgUsageEvents(fixture.actor);

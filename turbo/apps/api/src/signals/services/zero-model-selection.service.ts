@@ -366,7 +366,6 @@ export async function resolveDefaultModelFirstPin(
             : null;
         const serviceTier = isCodexFastServiceTierSupported({
           selectedModel: preferredRoute.selectedModel,
-          effectiveModelProvider: preferredRoute.modelProviderType,
           codexFastModeEnabled:
             featureSwitchContext !== null &&
             isFeatureEnabled(
@@ -665,13 +664,10 @@ export async function resolveModelFirstProviderAdmission(params: {
 
 export function isCodexFastServiceTierSupported(params: {
   readonly selectedModel: string | null | undefined;
-  readonly effectiveModelProvider: string | null | undefined;
   readonly codexFastModeEnabled: boolean;
 }): boolean {
   return (
-    params.codexFastModeEnabled &&
-    params.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastModeModel(params.selectedModel)
+    params.codexFastModeEnabled && isCodexFastModeModel(params.selectedModel)
   );
 }
 
@@ -681,11 +677,7 @@ export async function validateCodexServiceTier(params: {
   readonly userId: string;
   readonly pin: ModelFirstPin;
   readonly codexServiceTier: "fast" | null;
-}): Promise<
-  | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof insufficientCredits>
-  | undefined
-> {
+}): Promise<ReturnType<typeof badRequestMessage> | undefined> {
   if (params.codexServiceTier !== "fast") {
     return undefined;
   }
@@ -699,26 +691,15 @@ export async function validateCodexServiceTier(params: {
       "Codex fast mode is not enabled for this workspace",
     );
   }
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelPin: params.pin,
-    requestedModelProvider: undefined,
-  });
-  if (providerAdmission.error) {
-    return providerAdmission.error;
-  }
   if (
     isCodexFastServiceTierSupported({
       selectedModel: params.pin.selectedModel,
-      effectiveModelProvider: providerAdmission.effectiveModelProvider,
       codexFastModeEnabled: true,
     })
   ) {
     return undefined;
   }
   return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
+    "Codex fast mode is only available for GPT 5.6 runs",
   );
 }

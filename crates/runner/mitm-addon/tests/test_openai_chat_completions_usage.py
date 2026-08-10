@@ -298,6 +298,38 @@ class TestOpenAIChatCompletionsUsage:
             "tokens.output": 5,
         }
 
+    def test_non_streaming_priority_response_uses_fast_pricing_categories(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = _chat_completions_flow(
+            tmp_path,
+            real_flow,
+            content_type="application/json",
+        )
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-luna"
+        payload = json.dumps(
+            {
+                "id": "chatcmpl_fast",
+                "model": "gpt-5.6-luna",
+                "service_tier": "priority",
+                "choices": [{"index": 0, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 30, "completion_tokens": 5},
+            },
+            separators=(",", ":"),
+        ).encode()
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(payload)
+
+        webhook = _run_response(flow, self._usage_webhook_api)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input.fast": 30,
+            "tokens.output.fast": 5,
+        }
+
     def test_non_billable_sse_reports_observation_without_usage_event(
         self,
         tmp_path,

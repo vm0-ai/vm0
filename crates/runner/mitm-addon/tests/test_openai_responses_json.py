@@ -19,6 +19,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
             {
                 "id": "resp_123",
                 "model": "gpt-5.6-sol",
+                "service_tier": "priority",
                 "usage": {
                     "input_tokens": 100,
                     "output_tokens": 40,
@@ -36,6 +37,7 @@ class TestExtractOpenAIResponsesUsageWithErrorFromJson:
         assert result == {
             "message_id": "resp_123",
             "model": "gpt-5.6-sol",
+            "service_tier": "priority",
             "tokens.input": 45,
             "tokens.output": 40,
             "tokens.cache_read": 25,

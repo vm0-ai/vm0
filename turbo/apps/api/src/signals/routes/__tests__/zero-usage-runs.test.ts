@@ -41,6 +41,10 @@ const MODEL_TOKEN_CATEGORIES = {
   outputLongContext: "tokens.output.long_context",
   cacheReadLongContext: "tokens.cache_read.long_context",
   cacheCreationLongContext: "tokens.cache_creation.long_context",
+  inputLongContextFast: "tokens.input.long_context.fast",
+  outputLongContextFast: "tokens.output.long_context.fast",
+  cacheReadLongContextFast: "tokens.cache_read.long_context.fast",
+  cacheCreationLongContextFast: "tokens.cache_creation.long_context.fast",
 } as const;
 
 interface ModelTokenCounts {
@@ -52,6 +56,10 @@ interface ModelTokenCounts {
   readonly outputLongContext?: number;
   readonly cacheReadLongContext?: number;
   readonly cacheCreationLongContext?: number;
+  readonly inputLongContextFast?: number;
+  readonly outputLongContextFast?: number;
+  readonly cacheReadLongContextFast?: number;
+  readonly cacheCreationLongContextFast?: number;
 }
 
 function authHeaders() {
@@ -341,10 +349,10 @@ describe("GET /api/zero/usage/runs", () => {
       createdAt: createdAt(1),
     });
     await recordModelUsage(actor, included.runId, model, {
-      inputLongContext: 123,
-      outputLongContext: 45,
-      cacheReadLongContext: 11,
-      cacheCreationLongContext: 7,
+      inputLongContextFast: 123,
+      outputLongContextFast: 45,
+      cacheReadLongContextFast: 11,
+      cacheCreationLongContextFast: 7,
     });
     await recordModelUsage(actor, excluded.runId, model, {
       input: 999,

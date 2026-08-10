@@ -47,14 +47,13 @@ import {
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 
 describe("model-first canonical catalog", () => {
-  it("recognizes ChatGPT Codex fast mode models", () => {
+  it("recognizes GPT 5.6 Codex fast mode models", () => {
     expect(CODEX_FAST_MODE_MODELS).toEqual([
-      "gpt-5.5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
     ]);
-    expect(isCodexFastModeModel("gpt-5.5")).toBe(true);
+    expect(isCodexFastModeModel("gpt-5.5")).toBe(false);
     expect(isCodexFastModeModel("openai/gpt-5.6-sol")).toBe(true);
     expect(isCodexFastModeModel("gpt-5.6-terra")).toBe(true);
     expect(isCodexFastModeModel("gpt-5.6-luna")).toBe(true);

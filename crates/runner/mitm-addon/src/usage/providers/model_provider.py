@@ -9,8 +9,8 @@ idempotency keys preserved.
 
 Extractor metadata uses only the base categories in ``MODEL_USAGE_CATEGORIES``.
 Billing tier selection may remap those keys to reporter-owned
-``.long_context`` categories only while building billable usage events. Model
-usage observations retain the base categories.
+``.long_context`` and ``.fast`` categories only while building billable usage
+events. Model usage observations retain the base categories.
 
 Model-provider usage reporting is separate from platform billing. Run contexts
 set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the canonical model
@@ -63,11 +63,13 @@ _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT = "tokens.input.long_context"
 _MODEL_USAGE_CATEGORY_OUTPUT_LONG_CONTEXT = "tokens.output.long_context"
 _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT = "tokens.cache_read.long_context"
 _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT = "tokens.cache_creation.long_context"
+_MODEL_USAGE_FAST_CATEGORY_SUFFIX = ".fast"
 
 
 @dataclass(frozen=True, slots=True)
 class _ModelUsageTierDecision:
     tier: _ModelUsageTier
+    fast: bool
     committed: bool
 
 
@@ -86,6 +88,12 @@ _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
         _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
         _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
         _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
+        f"{MODEL_USAGE_CATEGORY_INPUT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
+        f"{MODEL_USAGE_CATEGORY_CACHE_READ}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
+        f"{MODEL_USAGE_CATEGORY_CACHE_CREATION}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
+        f"{_MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
+        f"{_MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
+        f"{_MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
     )
 )
 
@@ -204,16 +212,17 @@ def report_model_provider_usage_source(
     can_report_usage = _is_billable_model_provider(flow, run_id)
     can_report_observation = bool(run_id and is_model_provider_usage_observable(flow))
     if can_report_usage:
-        billing_tier = _source_model_usage_tier(
+        pricing = _source_model_usage_pricing(
             flow,
             message_id,
             provider,
             source_usage,
         )
-        if billing_tier is None:
+        if pricing is None:
             if has_positive_model_provider_usage(source_usage):
                 _log_model_usage_tier_unresolved(flow, run_id, provider)
         else:
+            billing_tier, fast = pricing
             usage_events = _build_usage_events(
                 run_id,
                 source_id,
@@ -221,6 +230,7 @@ def report_model_provider_usage_source(
                 source_usage,
                 USAGE_EVENT_NAMESPACE_MODEL,
                 billing_tier,
+                fast,
             )
     if can_report_observation:
         observations = _build_model_usage_observations(
@@ -416,6 +426,7 @@ def _build_model_provider_usage_events(
                 usage,
                 namespace,
                 billing_tier,
+                _is_fast_service_tier(usage),
             )
         )
     return events
@@ -506,6 +517,7 @@ def _build_usage_events(
     usage: dict,
     namespace: uuid.UUID,
     billing_tier: _ModelUsageTier,
+    fast: bool,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
@@ -517,6 +529,8 @@ def _build_usage_events(
             if billing_tier == _MODEL_USAGE_TIER_LONG_CONTEXT
             else category
         )
+        if fast:
+            billable_category = f"{billable_category}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}"
         event: UsageEvent = {
             "idempotencyKey": derive_usage_idempotency_key(
                 namespace,
@@ -531,38 +545,44 @@ def _build_usage_events(
     return events
 
 
-def _source_model_usage_tier(
+def _source_model_usage_pricing(
     flow: http.HTTPFlow,
     message_id: str,
     provider: str,
     usage: dict,
-) -> _ModelUsageTier | None:
+) -> tuple[_ModelUsageTier, bool] | None:
     billing_tier = _model_usage_tier(provider, usage)
     if provider not in MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS:
-        return billing_tier
+        return (billing_tier, _is_fast_service_tier(usage)) if billing_tier else None
 
     tiers = _model_provider_usage_tiers(flow)
     remembered_decision = tiers.get(message_id)
+    observed_fast = _observed_fast_service_tier(usage)
     if remembered_decision is not None:
         tier = remembered_decision.tier
+        fast = remembered_decision.fast
         if not remembered_decision.committed and billing_tier is not None:
             tier = billing_tier
+            if observed_fast is not None:
+                fast = observed_fast
         tiers[message_id] = _ModelUsageTierDecision(
             tier=tier,
+            fast=fast,
             committed=remembered_decision.committed or has_positive_model_provider_usage(usage),
         )
         tiers.move_to_end(message_id)
-        return tier
+        return tier, fast
     if billing_tier is None:
         return None
 
     tiers[message_id] = _ModelUsageTierDecision(
         tier=billing_tier,
+        fast=observed_fast is True,
         committed=has_positive_model_provider_usage(usage),
     )
     if len(tiers) > _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT:
         tiers.popitem(last=False)
-    return billing_tier
+    return billing_tier, observed_fast is True
 
 
 def _model_provider_usage_tiers(
@@ -595,6 +615,17 @@ def _model_usage_tier(provider: str, usage: dict) -> _ModelUsageTier | None:
     if total_input_tokens >= min_input_tokens:
         return _MODEL_USAGE_TIER_LONG_CONTEXT
     return _MODEL_USAGE_TIER_BASE
+
+
+def _observed_fast_service_tier(usage: dict) -> bool | None:
+    service_tier = usage.get("service_tier")
+    if not isinstance(service_tier, str) or not service_tier:
+        return None
+    return service_tier in ("fast", "priority")
+
+
+def _is_fast_service_tier(usage: dict) -> bool:
+    return _observed_fast_service_tier(usage) is True
 
 
 def _log_model_usage_tier_unresolved(

@@ -505,6 +505,13 @@
       "when": 1786354744070,
       "tag": "0879_sturdy_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 880,
+      "version": "7",
+      "when": 1786358806272,
+      "tag": "0880_add_gpt_5_6_fast_pricing",
+      "breakpoints": true
     }
   ]
 }

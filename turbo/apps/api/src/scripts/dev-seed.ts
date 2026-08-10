@@ -177,6 +177,17 @@ function withLongContextPricing(
   ];
 }
 
+function withFastPricing(
+  rows: readonly UsagePricingRow[],
+): readonly UsagePricingRow[] {
+  return [
+    ...rows,
+    ...rows.map(([category, unitPrice, unitSize]) => {
+      return [`${category}.fast`, unitPrice * 2, unitSize] as const;
+    }),
+  ];
+}
+
 function buildSeedSkillValues(
   names: readonly string[],
 ): (typeof skills.$inferInsert)[] {
@@ -459,17 +470,17 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup(
     "model",
     "gpt-5.6-sol",
-    withLongContextPricing(GPT_5_6_SOL_PRICING, 2, 1.5),
+    withFastPricing(withLongContextPricing(GPT_5_6_SOL_PRICING, 2, 1.5)),
   ),
   ...usageGroup(
     "model",
     "gpt-5.6-terra",
-    withLongContextPricing(GPT_5_6_TERRA_PRICING, 2, 1.5),
+    withFastPricing(withLongContextPricing(GPT_5_6_TERRA_PRICING, 2, 1.5)),
   ),
   ...usageGroup(
     "model",
     "gpt-5.6-luna",
-    withLongContextPricing(GPT_5_6_LUNA_PRICING, 2, 1.5),
+    withFastPricing(withLongContextPricing(GPT_5_6_LUNA_PRICING, 2, 1.5)),
   ),
   ...usageGroup(
     "model",

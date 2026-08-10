@@ -67,7 +67,6 @@ export const resolveIntegrationModelRouteForUser$ = command(
     signal.throwIfAborted();
     const serviceTier = isCodexFastServiceTierSupported({
       selectedModel: routePolicy.model,
-      effectiveModelProvider: routePolicy.defaultProviderType,
       codexFastModeEnabled:
         featureSwitchContext !== null &&
         isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext),

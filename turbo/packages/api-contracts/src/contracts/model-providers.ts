@@ -163,9 +163,8 @@ export function isSupportedRunModel(
   return typeof model === "string" && SUPPORTED_RUN_MODEL_SET.has(model);
 }
 
-/** Models supported by the ChatGPT Codex Fast service tier. */
+/** Models supported by the Codex Fast service tier. */
 export const CODEX_FAST_MODE_MODELS = [
-  "gpt-5.5",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
