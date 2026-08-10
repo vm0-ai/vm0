@@ -23,6 +23,11 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import {
+  PRESENTATION_LANDING_PROMPT,
+  PRESENTATION_ONBOARDING_PATH,
+  PRESENTATION_SHOWCASE_URL,
+} from "../../../__tests__/presentation-onboarding-fixture.ts";
 import { pathname } from "../../../signals/location.ts";
 import { ONBOARDING_CHECKOUT_STATE_PARAM } from "../../../signals/onboarding/onboarding-state.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
@@ -520,6 +525,42 @@ describe("onboarding flow", () => {
     }
     expect(within(githubRow).getByText("Connected")).toBeInTheDocument();
     expect(queryButtonByText("Connect", githubRow)).toBeNull();
+  });
+
+  it("runs a presentation landing-page prompt through onboarding", async () => {
+    let runPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+      },
+    });
+    mockOnboardingNeeded();
+
+    detachedSetupPage({
+      context,
+      path: PRESENTATION_ONBOARDING_PATH,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Try this prompt" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+      PRESENTATION_LANDING_PROMPT,
+    );
+
+    click(buttonByText("Next"));
+
+    await waitFor(() => {
+      expect(runPrompt).toBe(PRESENTATION_LANDING_PROMPT);
+      expect(pathname()).toMatch(/^\/chats\//u);
+    });
+    const routedParams = context.store.get(searchParams$);
+    expect(routedParams.has("prompt")).toBeFalsy();
+    expect(routedParams.get("showcase")).toBe(PRESENTATION_SHOWCASE_URL);
+    expect(routedParams.get("vm0_source")).toBe("presentation");
+    expect(routedParams.get("landing_host")).toBe("www.vm0.ai");
+    expect(routedParams.get("landing_path")).toBe("/en/presentation");
+    expect(routedParams.get("source_type")).toBe("direct");
   });
 
   it("connects Ahrefs for the default agent without permission confirmation", async () => {

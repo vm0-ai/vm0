@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import {
+  PRESENTATION_ONBOARDING_PATH,
+  PRESENTATION_ONBOARDING_URL,
+} from "../../__tests__/presentation-onboarding-fixture.ts";
+import {
   mockClerkLoaded,
   mockedClerk,
   mockedClerkLoad,
@@ -189,6 +193,25 @@ describe("platform auth redirects", () => {
         "https://pr-18532-app.omby.ai/agents",
       );
     });
+  });
+
+  it("preserves a presentation onboarding deep link through the auth redirect", async () => {
+    setBrowserUrl(PRESENTATION_ONBOARDING_URL);
+
+    await setupPage({
+      context,
+      path: PRESENTATION_ONBOARDING_PATH,
+      session: null,
+      user: null,
+      withoutRender: true,
+    });
+
+    const url = new URL(window.location.href);
+    expect(url.origin).toBe("https://app.vm0.ai");
+    expect(url.pathname).toBe("/sign-in");
+    expect(url.searchParams.get("redirect_url")).toBe(
+      PRESENTATION_ONBOARDING_URL,
+    );
   });
 
   it("redirects users who need org selection to app auth", async () => {
