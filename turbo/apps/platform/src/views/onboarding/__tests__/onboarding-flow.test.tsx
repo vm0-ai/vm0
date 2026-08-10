@@ -31,6 +31,14 @@ import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.t
 
 const context = testContext();
 
+const PRESENTATION_LANDING_PROMPT =
+  "/gen presentation with template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, " +
+  "a playful habit-building app for remote teams introducing a shared 30-day wellness challenge. Present it to people and culture leaders " +
+  "with cover, agenda, launch story, audience pain points, product vision, feature tour, rollout timeline, activation moments, team, early metrics, " +
+  "testimonials, pricing, and next steps. Make it saturated, joyful, idea-led, and structured.";
+const PRESENTATION_SHOWCASE_URL =
+  "https://cdn.vm0.io/artifacts/example/playful-launch-presentation.html";
+
 function templateTypeFromUserMessage(
   document: UserMessageDocument | undefined,
 ): string | undefined {
@@ -506,6 +514,50 @@ describe("onboarding flow", () => {
     }
     expect(within(githubRow).getByText("Connected")).toBeInTheDocument();
     expect(queryButtonByText("Connect", githubRow)).toBeNull();
+  });
+
+  it("runs a presentation landing-page prompt through onboarding", async () => {
+    let runPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        runPrompt = body.prompt;
+      },
+    });
+    mockOnboardingNeeded();
+    const params = new URLSearchParams({
+      prompt: PRESENTATION_LANDING_PROMPT,
+      showcase: PRESENTATION_SHOWCASE_URL,
+      vm0_source: "presentation",
+      landing_host: "www.vm0.ai",
+      landing_path: "/en/presentation",
+      source_type: "direct",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/onboarding?${params.toString()}`,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Try this prompt" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Onboarding prompt")).toHaveValue(
+      PRESENTATION_LANDING_PROMPT,
+    );
+
+    click(buttonByText("Next"));
+
+    await waitFor(() => {
+      expect(runPrompt).toBe(PRESENTATION_LANDING_PROMPT);
+      expect(pathname()).toMatch(/^\/chats\//u);
+    });
+    const routedParams = context.store.get(searchParams$);
+    expect(routedParams.has("prompt")).toBeFalsy();
+    expect(routedParams.get("showcase")).toBe(PRESENTATION_SHOWCASE_URL);
+    expect(routedParams.get("vm0_source")).toBe("presentation");
+    expect(routedParams.get("landing_host")).toBe("www.vm0.ai");
+    expect(routedParams.get("landing_path")).toBe("/en/presentation");
+    expect(routedParams.get("source_type")).toBe("direct");
   });
 
   it("connects Ahrefs for the default agent without permission confirmation", async () => {
