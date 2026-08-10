@@ -115,6 +115,20 @@ function isProjectedUsagePackAllocation(
   });
 }
 
+function withAcceptedInvitationAllocations(
+  context: UsagePackChangeContext,
+): UsagePackChangeContext {
+  return {
+    ...context,
+    allocations: context.allocations.map((allocation) => {
+      return allocation.status === "paid_pending_invitation" &&
+        allocation.userId
+        ? { ...allocation, status: "pending_payment" }
+        : allocation;
+    }),
+  };
+}
+
 interface UsagePackChangePreviewArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -592,7 +606,7 @@ function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
   return invoice.amount_due;
 }
 
-async function lockUsagePackBillingOrg(
+export async function lockUsagePackBillingOrg(
   tx: Pick<WriteTx, "execute">,
   orgId: string,
 ): Promise<void> {
@@ -973,6 +987,237 @@ function projectedScheduleItems(
       return { price, quantity };
     }),
   ];
+}
+
+function subscriptionProjectionUpdateItems(
+  subscription: UsagePackChangeSubscriptionInput,
+  quantities: ReadonlyMap<string, number>,
+): StripeSubscriptionUpdateItemParam[] {
+  const remaining = new Map(quantities);
+  const items: StripeSubscriptionUpdateItemParam[] = [];
+  for (const item of subscription.items.data) {
+    if (usagePackUsdForKnownPriceId(item.price.id) === null) {
+      continue;
+    }
+    const quantity = remaining.get(item.price.id);
+    remaining.delete(item.price.id);
+    items.push(
+      quantity
+        ? { id: subscriptionItemId(item), quantity }
+        : { id: subscriptionItemId(item), deleted: true },
+    );
+  }
+  return [
+    ...items,
+    ...[...remaining].map(([price, quantity]) => {
+      return { price, quantity };
+    }),
+  ];
+}
+
+function projectionFingerprint(
+  quantities: ReadonlyMap<string, number>,
+): string {
+  return [...quantities]
+    .map(([priceId, quantity]) => {
+      const packageUsd = usagePackUsdForKnownPriceId(priceId);
+      if (packageUsd === null) {
+        throw new Error(`Unknown usage pack Price ${priceId}`);
+      }
+      return `${packageUsd}-${quantity}`;
+    })
+    .sort()
+    .join("_");
+}
+
+export interface UsagePackAllocationAdditionPreview {
+  readonly amountCents: number;
+  readonly currency: string;
+  readonly currentPeriodStart: Date;
+  readonly currentPeriodEnd: Date;
+  readonly prorationTimestamp: number;
+}
+
+export async function previewUsagePackAllocationAddition(
+  db: Pick<Db, "select">,
+  args: {
+    readonly usagePackSubscriptionId: string;
+    readonly stripePriceId: string;
+  },
+  signal: AbortSignal,
+): Promise<UsagePackAllocationAdditionPreview> {
+  const context = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    args.usagePackSubscriptionId,
+  );
+  const stripeSubscriptionId = context?.subscription.stripeSubscriptionId;
+  if (!context || !stripeSubscriptionId) {
+    throw new Error("Usage pack subscription is not ready");
+  }
+  const stripe = getStripeClient();
+  const subscription =
+    await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  signal.throwIfAborted();
+  validateCurrentStripeProjection(context, subscription);
+  if (subscription.pending_update) {
+    throw new Error("Usage pack subscription has a pending payment update");
+  }
+  const period = usagePackItemPeriod(subscription);
+  const requestedTimestamp = Math.floor(nowDate().getTime() / 1000);
+  const prorationTimestamp = Math.min(
+    Math.max(requestedTimestamp, period.start),
+    period.end - 1,
+  );
+  const target = subscription.items.data.find((item) => {
+    return item.price.id === args.stripePriceId;
+  });
+  const currentQuantity = target ? (target.quantity ?? 1) : 0;
+  if (!Number.isSafeInteger(currentQuantity) || currentQuantity < 0) {
+    throw new Error("Usage pack subscription has an invalid quantity");
+  }
+  const preview = await stripe.invoices.createPreview({
+    subscription: subscription.id,
+    preview_mode: "next",
+    subscription_details: {
+      items: [
+        target
+          ? {
+              id: subscriptionItemId(target),
+              quantity: currentQuantity + 1,
+            }
+          : { price: args.stripePriceId, quantity: 1 },
+      ],
+      proration_behavior: "always_invoice",
+      proration_date: prorationTimestamp,
+    },
+  });
+  signal.throwIfAborted();
+  return {
+    amountCents: safeInvoiceAmount(preview, "invitation"),
+    currency: preview.currency,
+    currentPeriodStart: new Date(period.start * 1000),
+    currentPeriodEnd: new Date(period.end * 1000),
+    prorationTimestamp,
+  };
+}
+
+/**
+ * Converges Stripe to the local allocation projection without creating a
+ * current-period proration. This is safe to retry after invitation acceptance.
+ */
+export async function syncUsagePackAllocationProjection(
+  db: Pick<Db, "select">,
+  args: {
+    readonly usagePackSubscriptionId: string;
+    readonly operationId: string;
+    readonly includedAllocationId: string;
+    readonly includedUserId: string;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const context = await loadUsagePackChangeContextBySubscriptionId(
+    db,
+    args.usagePackSubscriptionId,
+  );
+  const stripeSubscriptionId = context?.subscription.stripeSubscriptionId;
+  if (!context || !stripeSubscriptionId) {
+    throw new Error("Usage pack subscription is not ready");
+  }
+  const stripe = getStripeClient();
+  const subscription =
+    await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  signal?.throwIfAborted();
+  if (
+    subscription.id !== stripeSubscriptionId ||
+    stripeObjectId(subscription.customer) !==
+      context.subscription.stripeCustomerId
+  ) {
+    throw new Error("Stripe subscription does not match the usage pack record");
+  }
+  const includedAllocation = context.allocations.find((allocation) => {
+    return allocation.id === args.includedAllocationId;
+  });
+  if (
+    includedAllocation?.userId !== args.includedUserId ||
+    (includedAllocation.status !== "paid_pending_invitation" &&
+      includedAllocation.status !== "active")
+  ) {
+    throw new Error("Accepted invitation allocation is not ready");
+  }
+  const projectionContext = withAcceptedInvitationAllocations(context);
+  const currentQuantities = packageQuantitiesForAllocations(
+    projectionContext.allocations,
+  );
+  if (currentQuantities.size === 0) {
+    throw new Error("A usage pack subscription must retain a package");
+  }
+  const scheduledChanges = projectionContext.changes.filter((change) => {
+    return change.status === "scheduled";
+  });
+  const renewalQuantities = projectedQuantitiesAfterChanges(
+    projectionContext,
+    scheduledChanges,
+  );
+  if (renewalQuantities.size === 0) {
+    throw new Error("A usage pack subscription must renew with a package");
+  }
+  const projectionId = `${projectionFingerprint(currentQuantities)}:${projectionFingerprint(renewalQuantities)}`;
+
+  const scheduleId = subscriptionScheduleId(subscription);
+  if (scheduleId) {
+    const period = usagePackItemPeriod(subscription);
+    const discounts = subscriptionPhaseDiscounts(subscription);
+    await stripe.subscriptionSchedules.update(
+      scheduleId,
+      {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          phaseWithDiscounts(
+            {
+              start_date: period.start,
+              end_date: period.end,
+              items: projectedScheduleItems(subscription, currentQuantities),
+              proration_behavior: "none",
+            },
+            discounts,
+          ),
+          phaseWithDiscounts(
+            {
+              start_date: period.end,
+              duration: subscriptionRecurringDuration(subscription),
+              items: projectedScheduleItems(subscription, renewalQuantities),
+              proration_behavior: "none",
+            },
+            discounts,
+          ),
+        ],
+      },
+      {
+        idempotencyKey: `usage-pack-projection:${args.operationId}:${projectionId}:schedule`,
+      },
+    );
+  } else if (
+    !quantitiesMatch(
+      currentQuantities,
+      packageQuantitiesForSubscription(subscription),
+    )
+  ) {
+    await stripe.subscriptions.update(
+      subscription.id,
+      {
+        items: subscriptionProjectionUpdateItems(
+          subscription,
+          currentQuantities,
+        ),
+        proration_behavior: "none",
+      },
+      {
+        idempotencyKey: `usage-pack-projection:${args.operationId}:${projectionId}:subscription`,
+      },
+    );
+  }
+  signal?.throwIfAborted();
 }
 
 async function scheduleUsagePackAllocationChange(
@@ -1580,6 +1825,15 @@ function changesReflectedBySubscription(
   if (quantitiesMatch(actualQuantities, currentQuantities)) {
     return [];
   }
+  const activationContext = withAcceptedInvitationAllocations(context);
+  if (
+    quantitiesMatch(
+      actualQuantities,
+      packageQuantitiesForAllocations(activationContext.allocations),
+    )
+  ) {
+    return [];
+  }
 
   const period = usagePackItemPeriod(subscription);
   const periodStart = new Date(period.start * 1000);
@@ -1613,10 +1867,12 @@ function changesReflectedBySubscription(
     upgrades,
   ]);
   const reflected = candidates.find((changes) => {
-    return quantitiesMatch(
-      projectedQuantitiesAfterChanges(context, changes),
-      actualQuantities,
-    );
+    return [context, activationContext].some((candidateContext) => {
+      return quantitiesMatch(
+        projectedQuantitiesAfterChanges(candidateContext, changes),
+        actualQuantities,
+      );
+    });
   });
   if (!reflected) {
     throw new Error(

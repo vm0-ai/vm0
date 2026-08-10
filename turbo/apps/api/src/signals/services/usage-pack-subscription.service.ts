@@ -726,17 +726,16 @@ function inspectStripeUsagePackPackages(
 }
 
 function inspectAllocationQuantities(
-  context: UsagePackContext,
+  allocations: readonly UsagePackAllocationRow[],
 ): InspectedValue<ReadonlyMap<string, number>> {
-  const payableAllocations = invoiceEligibleUsagePackAllocations(context);
-  if (payableAllocations.length === 0) {
+  if (allocations.length === 0) {
     return {
       valid: false,
       reason: "local usage pack subscription has no payable allocations",
     };
   }
   const quantities = new Map<string, number>();
-  for (const allocation of payableAllocations) {
+  for (const allocation of allocations) {
     const usagePackUsd = usagePackUsdForKnownPriceId(allocation.stripePriceId);
     if (usagePackUsd !== allocation.usagePackUsd) {
       return {
@@ -750,6 +749,40 @@ function inspectAllocationQuantities(
     );
   }
   return { valid: true, value: quantities };
+}
+
+function usagePackAllocationsForStripeQuantities(
+  context: UsagePackContext,
+  stripeQuantities: ReadonlyMap<string, number>,
+): InspectedValue<readonly UsagePackAllocationRow[]> {
+  const current = invoiceEligibleUsagePackAllocations(context);
+  const acceptedPending = context.allocations.filter((allocation) => {
+    return (
+      allocation.status === "paid_pending_invitation" &&
+      allocation.userId !== null
+    );
+  });
+  const candidates =
+    acceptedPending.length === 0
+      ? [current]
+      : [current, [...current, ...acceptedPending]];
+  let reason = "Local usage pack allocations do not match Stripe";
+  for (const candidate of candidates) {
+    const inspected = inspectAllocationQuantities(candidate);
+    if (!inspected.valid) {
+      reason = inspected.reason;
+      continue;
+    }
+    const mismatch = usagePackQuantityMismatchReason(
+      stripeQuantities,
+      inspected.value,
+    );
+    if (!mismatch) {
+      return { valid: true, value: candidate };
+    }
+    reason = mismatch;
+  }
+  return { valid: false, reason };
 }
 
 function usagePackQuantityMismatchReason(
@@ -779,16 +812,12 @@ function inspectUsagePackSubscriptionShape(
   if (!packages.valid) {
     return packages;
   }
-  const allocations = inspectAllocationQuantities(context);
+  const allocations = usagePackAllocationsForStripeQuantities(
+    context,
+    packages.value.quantities,
+  );
   if (!allocations.valid) {
     return allocations;
-  }
-  const mismatchReason = usagePackQuantityMismatchReason(
-    packages.value.quantities,
-    allocations.value,
-  );
-  if (mismatchReason) {
-    return { valid: false, reason: mismatchReason };
   }
 
   return {
@@ -1314,13 +1343,21 @@ function commonUsagePackInvoicePeriod(
 function prepareUsagePackAllocationGrants(
   context: UsagePackContext,
   preparedPrices: readonly PreparedUsagePackPriceCredits[],
+  stripeQuantities: ReadonlyMap<string, number>,
 ): readonly PreparedUsagePackAllocationGrant[] {
   const creditsByPriceId = new Map(
     preparedPrices.map((prepared) => {
       return [prepared.priceId, prepared] as const;
     }),
   );
-  return invoiceEligibleUsagePackAllocations(context).map((allocation) => {
+  const allocations = usagePackAllocationsForStripeQuantities(
+    context,
+    stripeQuantities,
+  );
+  if (!allocations.valid) {
+    throw new Error(allocations.reason);
+  }
+  return allocations.value.map((allocation) => {
     const credits = creditsByPriceId.get(allocation.stripePriceId);
     if (!credits) {
       throw new Error(
@@ -1384,7 +1421,11 @@ async function prepareUsagePackFulfillment(
     fulfillment: {
       periodStart,
       periodEnd,
-      allocations: prepareUsagePackAllocationGrants(context, preparedPrices),
+      allocations: prepareUsagePackAllocationGrants(
+        context,
+        preparedPrices,
+        shape.packageQuantities,
+      ),
     },
   };
 }
@@ -1439,7 +1480,10 @@ async function requireCurrentFulfillmentAllocations(
         inArray(usagePackAllocations.status, [
           ...(subscription.subscriptionStatus === "canceled"
             ? USAGE_PACK_ALLOCATION_STATUSES
-            : PAYABLE_USAGE_PACK_ALLOCATION_STATUSES),
+            : [
+                ...PAYABLE_USAGE_PACK_ALLOCATION_STATUSES,
+                "paid_pending_invitation" as const,
+              ]),
         ]),
       ),
     );
