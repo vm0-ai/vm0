@@ -152,7 +152,7 @@ function CreateWorkspaceItem() {
       <DropdownMenuItem
         onClick={handleCreateOrg}
         disabled={clerk === null || creatingOrg}
-        className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
+        className="min-w-0 gap-3 px-3 py-2.5"
       >
         <Plus
           size={18}
@@ -201,7 +201,7 @@ function OtherMembershipsList() {
             onClick={() => {
               handleSwitchOrg(membership.organization.id);
             }}
-            className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
+            className="min-w-0 gap-3 px-3 py-2.5"
           >
             <OrgAvatar
               name={membership.organization.name}

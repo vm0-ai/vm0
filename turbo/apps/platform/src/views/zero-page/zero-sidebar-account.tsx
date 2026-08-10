@@ -409,7 +409,7 @@ function CreditBalanceItem({
   return (
     <DropdownMenuModalItem
       onModalSelect={onOpenCreditBalance}
-      className="gap-3 px-3 py-2.5 rounded-lg"
+      className="gap-3 px-3 py-2.5"
     >
       <Coins size={18} strokeWidth={1.5} className="text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
@@ -437,7 +437,7 @@ function UnifiedSettingsGroup({
     <>
       <DropdownMenuModalItem
         onModalSelect={onOpenSettings}
-        className="gap-3 px-3 py-2.5 rounded-lg"
+        className="gap-3 px-3 py-2.5"
       >
         <Settings
           size={18}
@@ -455,7 +455,7 @@ function UnifiedSettingsGroup({
           onClick={() => {
             return onAccountAction("lab");
           }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
+          className="gap-3 px-3 py-2.5"
         >
           <FlaskConical
             size={18}
@@ -486,10 +486,7 @@ function AccountManagementGroup({
   const { t } = useTranslation();
   if (others.length === 0) {
     return (
-      <DropdownMenuItem
-        onClick={onAddAccount}
-        className="gap-3 px-3 py-2.5 rounded-lg"
-      >
+      <DropdownMenuItem onClick={onAddAccount} className="gap-3 px-3 py-2.5">
         <Plus size={18} strokeWidth={1.5} className="text-muted-foreground" />
         <span>
           {t(($) => {
@@ -501,7 +498,7 @@ function AccountManagementGroup({
   }
   return (
     <DropdownMenuSub>
-      <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
+      <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5">
         <ArrowRightLeft
           size={18}
           strokeWidth={1.5}
@@ -526,7 +523,7 @@ function AccountManagementGroup({
               onClick={() => {
                 return onSwitchSession(account.sessionId);
               }}
-              className="gap-3 px-3 py-2.5 rounded-lg"
+              className="gap-3 px-3 py-2.5"
             >
               <AccountAvatar
                 imageUrl={account.imageUrl}
@@ -545,10 +542,7 @@ function AccountManagementGroup({
           );
         })}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={onAddAccount}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
+        <DropdownMenuItem onClick={onAddAccount} className="gap-3 px-3 py-2.5">
           <Plus size={18} strokeWidth={1.5} className="text-muted-foreground" />
           <span>
             {t(($) => {
@@ -568,7 +562,7 @@ function ExtraAccountActions() {
       onClick={() => {
         return window.open(`${window.location.origin}/export`, "_blank");
       }}
-      className="gap-3 px-3 py-2.5 rounded-lg"
+      className="gap-3 px-3 py-2.5"
     >
       <DatabaseBackup
         size={18}
@@ -595,7 +589,7 @@ function SignOutItem({
       onClick={() => {
         return onAccountAction("signout");
       }}
-      className="gap-3 px-3 py-2.5 rounded-lg"
+      className="gap-3 px-3 py-2.5"
     >
       <LogOut size={18} strokeWidth={1.5} className="text-muted-foreground" />
       <span>

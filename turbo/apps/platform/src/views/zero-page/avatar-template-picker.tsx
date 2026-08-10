@@ -205,7 +205,7 @@ function CatalogFiltersPopover({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-[min(340px,calc(100vw-2rem))] rounded-xl p-4"
+        className="w-[min(340px,calc(100vw-2rem))] p-4"
       >
         <div className="mb-4 flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-foreground">
