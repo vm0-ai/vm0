@@ -1423,6 +1423,9 @@ function ConcurrencySubscriptionRow({
             subscriptionId: subscription.id,
             currentQuantity: subscription.quantity,
             canReduce: subscription.canReduce === true,
+            // Old API responses omit this during the ~2-day web/app client
+            // version-skew window. Remove the legacy Stripe branch with #26152
+            // after #26116 has been deployed beyond that window.
             canChangeInApp: subscription.canChangeInApp === true,
           });
         }}

@@ -10,6 +10,7 @@ import {
   getStripeClient,
   type StripeInvoice,
   type StripeInvoiceLine,
+  type StripeSubscription,
   type StripeSubscriptionItem,
 } from "../external/stripe-client";
 import { nowDate } from "../../lib/time";
@@ -127,6 +128,33 @@ function concurrencySubscriptionItem(
     return null;
   }
   return { id: item.id, quantity: item.quantity };
+}
+
+function expandedLatestInvoice(
+  subscription: StripeSubscription,
+): StripeInvoice | null {
+  return subscription.latest_invoice &&
+    typeof subscription.latest_invoice !== "string"
+    ? subscription.latest_invoice
+    : null;
+}
+
+function appliedConcurrencyChangeResponse(
+  subscription: StripeSubscription,
+): ConcurrencySubscriptionChangeResponse {
+  if (!subscription.pending_update) {
+    return { status: "processing", hostedInvoiceUrl: null };
+  }
+  const invoice = expandedLatestInvoice(subscription);
+  if (!invoice?.hosted_invoice_url) {
+    throw new Error(
+      "Pending concurrency subscription update has no hosted invoice URL",
+    );
+  }
+  return {
+    status: "pending_payment",
+    hostedInvoiceUrl: invoice.hosted_invoice_url,
+  };
 }
 
 function invoiceAmount(invoice: StripeInvoice, description: string): number {
@@ -257,6 +285,7 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
     const stripe = getStripeClient();
     const subscription = await stripe.subscriptions.retrieve(
       args.subscriptionId,
+      { expand: ["latest_invoice"] },
     );
     signal.throwIfAborted();
     const item = concurrencySubscriptionItem(subscription.items.data);
@@ -283,11 +312,17 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
         subscription.pending_update.subscription_items ?? [],
       );
       return pendingItem?.quantity === targetQuantity
-        ? { ok: true, response: { status: "pending_payment" } }
+        ? {
+            ok: true,
+            response: appliedConcurrencyChangeResponse(subscription),
+          }
         : { ok: false, reason: "pending_update" };
     }
     if (targetQuantity === item.quantity) {
-      return { ok: true, response: { status: "completed" } };
+      return {
+        ok: true,
+        response: { status: "completed", hostedInvoiceUrl: null },
+      };
     }
 
     const updatedSubscription = await stripe.subscriptions.update(
@@ -297,16 +332,13 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: Math.floor(nowDate().getTime() / 1000),
+        expand: ["latest_invoice"],
       },
     );
     signal.throwIfAborted();
     return {
       ok: true,
-      response: {
-        status: updatedSubscription.pending_update
-          ? "pending_payment"
-          : "processing",
-      },
+      response: appliedConcurrencyChangeResponse(updatedSubscription),
     };
   },
 );
@@ -402,6 +434,9 @@ export const cancelConcurrencySubscription$ = command(
   },
 );
 
+// Old web/app clients can call this legacy reduction endpoint for the ~2-day
+// client version-skew window. Remove the route, contract, and client fallback
+// with #26152 after #26116 has been deployed beyond that window.
 export const reduceConcurrencySubscription$ = command(
   async (
     { get, set },
@@ -441,7 +476,13 @@ export const reduceConcurrencySubscription$ = command(
             : "not_reduction",
       };
     }
-    return { ok: true, url: args.successUrl };
+    return {
+      ok: true,
+      url:
+        result.response.status === "pending_payment"
+          ? result.response.hostedInvoiceUrl
+          : args.successUrl,
+    };
   },
 );
 

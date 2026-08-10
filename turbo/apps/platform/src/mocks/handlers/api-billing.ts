@@ -124,7 +124,10 @@ export const apiBillingHandlers = [
             ? { ...subscription, quantity: body.quantity }
             : subscription;
         });
-      return respond(200, { status: "processing" });
+      return respond(200, {
+        status: "processing",
+        hostedInvoiceUrl: null,
+      });
     },
   ),
 

@@ -3931,9 +3931,11 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
   });
 
-  it("applies additional slots in place for an existing subscription", async () => {
+  it("returns the hosted invoice when an existing subscription needs payment", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const subscriptionItemId = `si_${randomUUID()}`;
+    const hostedInvoiceUrl =
+      "https://invoice.stripe.test/pending-concurrency-increase";
     const periodEnd = new Date("2099-05-20T00:00:00Z");
     const fixture = await createConcurrencySubscriptionOrg({
       subscriptionId,
@@ -3959,6 +3961,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
     context.mocks.stripe.subscriptions.update.mockResolvedValueOnce({
       id: subscriptionId,
+      latest_invoice: {
+        id: `in_${randomUUID()}`,
+        hosted_invoice_url: hostedInvoiceUrl,
+      },
       pending_update: {
         expires_at: 4_102_444_800,
         subscription_items: [
@@ -3990,10 +3996,11 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     );
 
     expect(response.body).toStrictEqual({
-      url: successUrl,
+      url: hostedInvoiceUrl,
     });
     expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledWith(
       subscriptionId,
+      { expand: ["latest_invoice"] },
     );
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
       subscriptionId,
@@ -4002,6 +4009,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: expect.any(Number),
+        expand: ["latest_invoice"],
       },
     );
     expect(
@@ -4081,6 +4089,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: expect.any(Number),
+        expand: ["latest_invoice"],
       },
     );
     expect(
@@ -4181,6 +4190,8 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
   it("previews and confirms a concurrency change without Portal", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const subscriptionItemId = `si_${randomUUID()}`;
+    const hostedInvoiceUrl =
+      "https://invoice.stripe.test/pending-concurrency-change";
     const fixture = await createConcurrencySubscriptionOrg({
       subscriptionId,
       slots: 2,
@@ -4255,6 +4266,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       });
     context.mocks.stripe.subscriptions.update.mockResolvedValueOnce({
       id: subscriptionId,
+      latest_invoice: {
+        id: `in_${randomUUID()}`,
+        hosted_invoice_url: hostedInvoiceUrl,
+      },
       pending_update: {
         expires_at: 4_102_444_800,
         subscription_items: [
@@ -4314,7 +4329,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       [200],
     );
 
-    expect(confirmed.body).toStrictEqual({ status: "pending_payment" });
+    expect(confirmed.body).toStrictEqual({
+      status: "pending_payment",
+      hostedInvoiceUrl,
+    });
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
       subscriptionId,
       {
@@ -4322,6 +4340,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         payment_behavior: "pending_if_incomplete",
         proration_behavior: "always_invoice",
         proration_date: expect.any(Number),
+        expand: ["latest_invoice"],
       },
     );
     expect(
@@ -4443,6 +4462,8 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
   it("reuses a matching pending in-place update", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const subscriptionItemId = `si_${randomUUID()}`;
+    const hostedInvoiceUrl =
+      "https://invoice.stripe.test/pending-concurrency-existing";
     const fixture = await createConcurrencySubscriptionOrg({
       subscriptionId,
       slots: 2,
@@ -4452,6 +4473,10 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
       id: subscriptionId,
+      latest_invoice: {
+        id: `in_${randomUUID()}`,
+        hosted_invoice_url: hostedInvoiceUrl,
+      },
       pending_update: {
         expires_at: 4_102_444_800,
         subscription_items: [
@@ -4490,8 +4515,12 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     );
 
     expect(response.body).toStrictEqual({
-      url: successUrl,
+      url: hostedInvoiceUrl,
     });
+    expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledWith(
+      subscriptionId,
+      { expand: ["latest_invoice"] },
+    );
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(
       context.mocks.stripe.billingPortal.sessions.create,

@@ -1854,7 +1854,11 @@ describe("organization billing settings", () => {
       zeroBillingConcurrencySubscriptionContract.confirmChange,
       ({ body, respond }) => {
         confirmedQuantity = body.quantity;
-        return respond(200, { status: "pending_payment" });
+        return respond(200, {
+          status: "pending_payment",
+          hostedInvoiceUrl:
+            "https://invoice.stripe.test/org-concurrency-change",
+        });
       },
     );
 
@@ -1921,7 +1925,6 @@ describe("organization billing settings", () => {
       expect(within(changeDialog).getByText("$400/month")).toBeInTheDocument();
     });
 
-    const locationBeforeChange = window.location.href;
     click(buttonByText("Review change", changeDialog));
 
     const reviewDialog = await screen.findByRole("dialog", {
@@ -1935,12 +1938,9 @@ describe("organization billing settings", () => {
 
     await waitFor(() => {
       expect(confirmedQuantity).toBe(4);
-      expect(
-        screen.getByText(
-          "Concurrency change confirmed. Your slot count will update after Stripe processes the change.",
-        ),
-      ).toBeInTheDocument();
-      expect(window.location.href).toBe(locationBeforeChange);
+      expect(window.location.href).toBe(
+        "https://invoice.stripe.test/org-concurrency-change",
+      );
     });
   });
 
@@ -2035,7 +2035,10 @@ describe("organization billing settings", () => {
       zeroBillingConcurrencySubscriptionContract.confirmChange,
       ({ body, respond }) => {
         confirmedQuantity = body.quantity;
-        return respond(200, { status: "processing" });
+        return respond(200, {
+          status: "processing",
+          hostedInvoiceUrl: null,
+        });
       },
     );
 

@@ -789,7 +789,7 @@ export const confirmConcurrencySubscriptionChange$ = command(
     }
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingConcurrencySubscriptionContract);
-    await accept(
+    const result = await accept(
       client.confirmChange({
         params: { subscriptionId: dialog.subscriptionId },
         body: { quantity: dialog.preview.targetQuantity },
@@ -798,6 +798,10 @@ export const confirmConcurrencySubscriptionChange$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (result.body.status === "pending_payment") {
+      window.location.href = result.body.hostedInvoiceUrl;
+      return;
+    }
     set(billingReload$, (x) => {
       return x + 1;
     });

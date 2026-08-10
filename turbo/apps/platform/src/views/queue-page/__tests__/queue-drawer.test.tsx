@@ -494,7 +494,11 @@ describe("queue drawer", () => {
       ({ params, body, respond }) => {
         confirmedSubscriptionId = params.subscriptionId;
         confirmedQuantity = body.quantity;
-        return respond(200, { status: "processing" });
+        return respond(200, {
+          status: "pending_payment",
+          hostedInvoiceUrl:
+            "https://invoice.stripe.test/queue-concurrency-change",
+        });
       },
     );
 
@@ -519,7 +523,6 @@ describe("queue drawer", () => {
       expect(screen.getByText("Buy $200/month")).toBeInTheDocument();
     });
 
-    const locationBeforeChange = window.location.href;
     click(screen.getByText("Buy $200/month"));
 
     const reviewDialog = await screen.findByRole("dialog", {
@@ -536,7 +539,9 @@ describe("queue drawer", () => {
     await waitFor(() => {
       expect(confirmedSubscriptionId).toBe("sub_concurrency_active");
       expect(confirmedQuantity).toBe(4);
-      expect(window.location.href).toBe(locationBeforeChange);
+      expect(window.location.href).toBe(
+        "https://invoice.stripe.test/queue-concurrency-change",
+      );
     });
   });
 

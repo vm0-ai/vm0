@@ -494,6 +494,9 @@ export const startConcurrencyPurchase$ = command(
     args: StartConcurrencyPurchaseArgs,
     signal: AbortSignal,
   ): Promise<StartConcurrencyPurchaseResult> => {
+    // Old web/app clients can send existing subscriptions through this legacy
+    // checkout endpoint for the ~2-day client version-skew window. Remove this
+    // branch with #26152 after #26116 has been deployed beyond that window.
     if (args.existingSubscriptionId) {
       const result = await set(
         applyStripeConcurrencySubscriptionChange$,
@@ -513,7 +516,13 @@ export const startConcurrencyPurchase$ = command(
               : "pending_update",
         };
       }
-      return { ok: true, url: args.successUrl };
+      return {
+        ok: true,
+        url:
+          result.response.status === "pending_payment"
+            ? result.response.hostedInvoiceUrl
+            : args.successUrl,
+      };
     }
 
     const stripe = getStripeClient();

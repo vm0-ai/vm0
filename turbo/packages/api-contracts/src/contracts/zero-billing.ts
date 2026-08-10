@@ -54,6 +54,9 @@ const concurrencySubscriptionSchema = z.object({
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
   canReduce: z.boolean().optional(),
+  // Old API responses omit this capability during the ~2-day web/app client
+  // version-skew window. Remove the optional field with #26152 after #26116
+  // has been deployed beyond that window.
   canChangeInApp: z.boolean().optional(),
 });
 
@@ -309,9 +312,23 @@ const concurrencySubscriptionChangePreviewResponseSchema = z.object({
   currency: z.string().length(3),
 });
 
-const concurrencySubscriptionChangeResponseSchema = z.object({
-  status: z.enum(["processing", "pending_payment", "completed"]),
-});
+const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      status: z.literal("processing"),
+      hostedInvoiceUrl: z.null(),
+    }),
+    z.object({
+      status: z.literal("pending_payment"),
+      hostedInvoiceUrl: z.string().url(),
+    }),
+    z.object({
+      status: z.literal("completed"),
+      hostedInvoiceUrl: z.null(),
+    }),
+  ],
+);
 
 const concurrencySubscriptionCancelResponseSchema = z.object({
   success: z.literal(true),
