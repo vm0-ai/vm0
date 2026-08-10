@@ -715,7 +715,7 @@ interface CopyWorkflowRuntimeArgs {
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
   readonly currentTime: Date;
-  readonly autonomyBudgetLimit?: number;
+  readonly inheritedAutonomyBudget?: number;
 }
 
 interface CopyWorkflowScopedRowsArgs {
@@ -724,7 +724,7 @@ interface CopyWorkflowScopedRowsArgs {
   readonly sourceWorkflowId: string;
   readonly targetWorkflowId: string;
   readonly currentTime: Date;
-  readonly autonomyBudgetLimit?: number;
+  readonly inheritedAutonomyBudget?: number;
 }
 
 interface CopyWorkflowAutomationRowsArgs extends CopyWorkflowScopedRowsArgs {
@@ -828,10 +828,8 @@ async function copyWorkflowAutomationRow(
     lastRunAt: null,
     lastRunId: null,
     consecutiveFailures: 0,
-    autonomyBudget: Math.min(
-      args.automation.autonomyBudget,
-      args.autonomyBudgetLimit ?? args.automation.autonomyBudget,
-    ),
+    autonomyBudget:
+      args.inheritedAutonomyBudget ?? args.automation.autonomyBudget,
     createdAt: args.currentTime,
     updatedAt: args.currentTime,
   });
@@ -899,9 +897,9 @@ async function copyWorkflowRuntimeConfiguration(
     sourceWorkflowId: args.sourceWorkflow.id,
     targetWorkflowId: workflow.id,
     currentTime: args.currentTime,
-    ...(args.autonomyBudgetLimit === undefined
+    ...(args.inheritedAutonomyBudget === undefined
       ? {}
-      : { autonomyBudgetLimit: args.autonomyBudgetLimit }),
+      : { inheritedAutonomyBudget: args.inheritedAutonomyBudget }),
   };
   await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
@@ -923,7 +921,7 @@ const copyWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    let autonomyBudgetLimit: number | undefined;
+    let inheritedAutonomyBudget: number | undefined;
     if (auth.tokenType === "zero") {
       const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(writeDb, {
         runId: auth.runId,
@@ -938,7 +936,7 @@ const copyWorkflowInner$ = command(
       if (derived.kind === "exhausted") {
         return autonomyBudgetExhausted();
       }
-      autonomyBudgetLimit = derived.autonomyBudget;
+      inheritedAutonomyBudget = derived.autonomyBudget;
     }
     const source = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
@@ -990,7 +988,9 @@ const copyWorkflowInner$ = command(
         sourceWorkflow: source.workflow,
         targetAgentId: targetAgent.id,
         currentTime,
-        ...(autonomyBudgetLimit === undefined ? {} : { autonomyBudgetLimit }),
+        ...(inheritedAutonomyBudget === undefined
+          ? {}
+          : { inheritedAutonomyBudget }),
       });
     });
     signal.throwIfAborted();

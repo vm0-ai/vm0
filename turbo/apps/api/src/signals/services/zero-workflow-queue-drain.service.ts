@@ -96,7 +96,7 @@ async function resolveWorkflowRunAutonomyBudget(
   }
   return {
     kind: "ok",
-    autonomyBudget: Math.min(automation.autonomyBudget, derived.autonomyBudget),
+    autonomyBudget: derived.autonomyBudget,
   };
 }
 

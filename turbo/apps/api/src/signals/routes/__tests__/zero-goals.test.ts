@@ -280,6 +280,34 @@ describe("zero goals", () => {
     });
   });
 
+  it("refreshes reactivated goal budgets from the current run", async () => {
+    const fixture = await seedGoalApiFixture();
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 1);
+    await createGoal(fixture, "refresh inherited goal budget");
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(0);
+
+    await accept(goalsClient().block({ headers: headers(fixture) }), [200]);
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 5);
+    await accept(goalsClient().resume({ headers: headers(fixture) }), [200]);
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(4);
+
+    await setRunAutonomyBudgetFixture(context, fixture.runId, 7);
+    await accept(
+      goalsClient().edit({
+        headers: headers(fixture, ["goal:user-control:write"]),
+        body: { objective: "refresh inherited goal budget again" },
+      }),
+      [200],
+    );
+    await expect(
+      readThreadGoalAutonomyBudgetFixture(context, fixture.threadId),
+    ).resolves.toBe(6);
+  });
+
   it("bootstraps a provisioned goal thread through a claimed input.goal event", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);

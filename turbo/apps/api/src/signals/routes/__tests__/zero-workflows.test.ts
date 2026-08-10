@@ -1536,7 +1536,7 @@ describe("zero workflows", () => {
     ).toBeTruthy();
   });
 
-  it("caps copied automation budgets for Zero callers and rejects exhausted runs", async () => {
+  it("inherits copied automation budgets from Zero callers and rejects exhausted runs", async () => {
     const actor = user({ orgRole: "org:admin" });
     await enableWorkflowRuns(actor);
     const sourceAgent = await createAgent(actor, {
@@ -1552,7 +1552,7 @@ describe("zero workflows", () => {
       name: `budgeted-copy-${randomUUID().slice(0, 8)}`,
       instruction: "# budgeted copy source",
     });
-    await accept(
+    const sourceAutomation = await accept(
       automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId: workflow.body.id },
@@ -1562,6 +1562,11 @@ describe("zero workflows", () => {
         },
       }),
       [201],
+    );
+    await setWorkflowAutomationAutonomyBudgetFixture(
+      context,
+      sourceAutomation.body.id,
+      2,
     );
     const sourceRun = await accept(
       detailClient().run({
@@ -1579,7 +1584,7 @@ describe("zero workflows", () => {
       ["agent:write"],
     );
 
-    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 1);
+    await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 10);
     const copied = await accept(
       detailClient().copy({
         headers: { authorization: `Bearer ${sourceToken}` },
@@ -1601,7 +1606,7 @@ describe("zero workflows", () => {
     }
     await expect(
       readWorkflowAutomationAutonomyFixture(context, copiedAutomation.id),
-    ).resolves.toMatchObject({ autonomyBudget: 0 });
+    ).resolves.toMatchObject({ autonomyBudget: 9 });
 
     await setRunAutonomyBudgetFixture(context, sourceRun.body.runId, 0);
     const blockedTargetAgent = await createAgent(actor, {

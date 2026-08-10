@@ -64,7 +64,7 @@ import {
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishChatThreadAutomationsChangedSafely } from "../external/realtime";
@@ -3119,7 +3119,7 @@ interface AutomationActionInput {
   readonly member: WorkflowMember;
   readonly automationId: string;
   readonly sourceRunId?: string;
-  readonly autonomyBudgetCeiling?: number;
+  readonly inheritedAutonomyBudget?: number;
 }
 
 /**
@@ -3520,7 +3520,7 @@ async function persistEnabledWorkflowAutomation(
     readonly orgId: string;
     readonly nextRunAt: Date | null;
     readonly now: Date;
-    readonly autonomyBudgetCeiling?: number;
+    readonly inheritedAutonomyBudget?: number;
   },
   signal: AbortSignal,
 ): Promise<
@@ -3552,14 +3552,9 @@ async function persistEnabledWorkflowAutomation(
         nextRunAt: args.nextRunAt,
         consecutiveFailures: 0,
         updatedAt: args.now,
-        ...(args.autonomyBudgetCeiling === undefined
+        ...(args.inheritedAutonomyBudget === undefined
           ? {}
-          : {
-              autonomyBudget: sql`least(
-                ${zeroWorkflowAutomations.autonomyBudget},
-                ${args.autonomyBudgetCeiling}
-              )`,
-            }),
+          : { autonomyBudget: args.inheritedAutonomyBudget }),
       })
       .where(eq(zeroWorkflowAutomations.id, args.automation.id))
       .returning(workflowAutomationColumns());
@@ -3727,7 +3722,7 @@ export const enableWorkflowAutomation$ = command(
         orgId: args.orgId,
         nextRunAt,
         now,
-        autonomyBudgetCeiling: args.autonomyBudgetCeiling,
+        inheritedAutonomyBudget: args.inheritedAutonomyBudget,
       },
       signal,
     );

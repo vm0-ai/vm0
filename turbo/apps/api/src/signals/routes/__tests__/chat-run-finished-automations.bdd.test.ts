@@ -350,7 +350,7 @@ describe("chat-run-finished workflow automations", () => {
       ).resolves.toMatchObject({ autonomyBudget: 1 });
       await expect(
         readLatestWorkflowAutomationRunFixture(context, patternMatch),
-      ).resolves.toMatchObject({ autonomyBudget: 0 });
+      ).resolves.toMatchObject({ autonomyBudget: 1 });
 
       const automationRuns = await api.listAgentRuns(fixture.actor, {
         status: "pending",

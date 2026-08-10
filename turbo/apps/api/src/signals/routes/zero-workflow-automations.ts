@@ -291,7 +291,7 @@ const enableAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.enable));
-    let autonomyBudgetCeiling: number | undefined;
+    let inheritedAutonomyBudget: number | undefined;
     const db = get(db$);
     if (auth.tokenType === "zero") {
       const sourceAutonomyBudget = await loadOwnedRunAutonomyBudget(db, {
@@ -307,7 +307,7 @@ const enableAutomationInner$ = command(
       if (derived.kind === "exhausted") {
         return autonomyBudgetExhausted();
       }
-      autonomyBudgetCeiling = derived.autonomyBudget;
+      inheritedAutonomyBudget = derived.autonomyBudget;
     }
     const result = await set(
       enableWorkflowAutomation$,
@@ -315,9 +315,9 @@ const enableAutomationInner$ = command(
         orgId: auth.orgId,
         member: memberFromAuth(auth),
         automationId: params.id,
-        ...(autonomyBudgetCeiling === undefined
+        ...(inheritedAutonomyBudget === undefined
           ? {}
-          : { autonomyBudgetCeiling }),
+          : { inheritedAutonomyBudget }),
       },
       signal,
     );
