@@ -533,6 +533,15 @@ export const disconnectFeishuConnection$ = command(
       return false;
     }
     const rows = await db.transaction(async (tx) => {
+      await disconnectFeishuCustomConnectorOAuthConnection(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          installationId: args.installationId,
+        },
+        signal,
+      );
       const deleted = await tx
         .delete(feishuOrgConnections)
         .where(
@@ -547,11 +556,7 @@ export const disconnectFeishuConnection$ = command(
           ),
         )
         .returning({ id: feishuOrgConnections.id });
-      await disconnectFeishuCustomConnectorOAuthConnection(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        installationId: args.installationId,
-      });
+      signal.throwIfAborted();
       return deleted;
     });
     signal.throwIfAborted();

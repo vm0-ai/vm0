@@ -89,7 +89,7 @@ import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
 import { zeroCustomConnectorsCreateRoutes } from "../../zero-custom-connectors-create";
 import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
-import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
 import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
@@ -224,7 +224,7 @@ const authOrgRoutes = [
   ...zeroCustomConnectorsGetRoutes,
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsSecretSetRoutes,
-  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorDisconnectRoutes,
 ] as const;
 
 function isBearerActor(actor: LogoUploadActor): actor is BearerActor {
@@ -1552,7 +1552,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async deleteCustomConnectorSecret(
+    async disconnectCustomConnector(
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<void> {
@@ -1560,7 +1560,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         zeroCustomConnectorSecretContract,
       );
       await accept(
-        client.delete({
+        client.disconnect({
           headers: authenticate(actor),
           params: { id: connectorId },
         }),

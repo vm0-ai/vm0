@@ -51,6 +51,10 @@ import {
   customConnectorDefinitionSelection,
   type CustomConnectorDefinitionRow,
 } from "./custom-connector-definition-selection";
+import {
+  deleteCustomConnectorMemberConnection,
+  deleteCustomConnectorStoredValues,
+} from "./custom-connector-credential-storage.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
   loadCustomConnectorCredentialAccesses,
@@ -2206,30 +2210,6 @@ async function prepareCustomConnectorValueWrite(args: {
   };
 }
 
-async function deleteStoredCustomConnectorValues(
-  tx: Tx,
-  args: SetCustomConnectorValuesArgs,
-): Promise<void> {
-  await tx
-    .delete(orgCustomConnectorValues)
-    .where(
-      and(
-        eq(orgCustomConnectorValues.connectorId, args.connectorId),
-        eq(orgCustomConnectorValues.userId, args.userId),
-        eq(orgCustomConnectorValues.orgId, args.orgId),
-      ),
-    );
-  await tx
-    .delete(orgCustomConnectorSecrets)
-    .where(
-      and(
-        eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-        eq(orgCustomConnectorSecrets.userId, args.userId),
-        eq(orgCustomConnectorSecrets.orgId, args.orgId),
-      ),
-    );
-}
-
 async function upsertCustomConnectorValueParent(args: {
   readonly tx: Tx;
   readonly request: SetCustomConnectorValuesArgs;
@@ -2335,7 +2315,7 @@ async function persistCustomConnectorValues(
     return state;
   }
   if (state.replacingStoredValues) {
-    await deleteStoredCustomConnectorValues(args.tx, args.request);
+    await deleteCustomConnectorStoredValues(args.tx, args.request, signal);
   }
   if (state.establishesCurrentCredentials) {
     await upsertCustomConnectorValueParent({
@@ -2445,7 +2425,7 @@ export const setCustomConnectorValues$ = command(
 
 export const disconnectCustomConnector$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -2453,26 +2433,48 @@ export const disconnectCustomConnector$ = command(
     },
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
-    const connector = await get(
-      getCustomConnectorById({
-        orgId: args.orgId,
-        connectorId: args.connectorId,
-      }),
-    );
-    signal.throwIfAborted();
-    if (!connector) {
-      return notFound("Custom connector not found");
-    }
     const writeDb = set(writeDb$);
-    await writeDb.transaction(async (tx) => {
-      if (connector.oauthConfig?.providerAdapter === "feishu") {
+    const disconnected = await writeDb.transaction(async (tx) => {
+      const [connector] = await tx
+        .select({
+          id: orgCustomConnectors.id,
+          oauthProviderAdapter: orgCustomConnectorOauthConfigs.providerAdapter,
+          oauthClientId: orgCustomConnectorOauthConfigs.clientId,
+        })
+        .from(orgCustomConnectors)
+        .leftJoin(
+          orgCustomConnectorOauthConfigs,
+          and(
+            eq(
+              orgCustomConnectorOauthConfigs.connectorId,
+              orgCustomConnectors.id,
+            ),
+            eq(orgCustomConnectorOauthConfigs.orgId, orgCustomConnectors.orgId),
+          ),
+        )
+        .where(
+          and(
+            eq(orgCustomConnectors.id, args.connectorId),
+            eq(orgCustomConnectors.orgId, args.orgId),
+          ),
+        )
+        .for("update", { of: orgCustomConnectors })
+        .limit(1);
+      signal.throwIfAborted();
+      if (!connector) {
+        return false;
+      }
+      if (
+        connector.oauthProviderAdapter === "feishu" &&
+        connector.oauthClientId !== null
+      ) {
         const [installation] = await tx
           .select({ id: feishuOrgInstallations.id })
           .from(feishuOrgInstallations)
           .where(
             and(
               eq(feishuOrgInstallations.orgId, args.orgId),
-              eq(feishuOrgInstallations.appId, connector.oauthConfig.clientId),
+              eq(feishuOrgInstallations.appId, connector.oauthClientId),
             ),
           )
           .limit(1);
@@ -2487,52 +2489,13 @@ export const disconnectCustomConnector$ = command(
             );
         }
       }
-      await tx
-        .delete(orgCustomConnectorValues)
-        .where(
-          and(
-            eq(orgCustomConnectorValues.connectorId, args.connectorId),
-            eq(orgCustomConnectorValues.userId, args.userId),
-            eq(orgCustomConnectorValues.orgId, args.orgId),
-            eq(orgCustomConnectorValues.kind, "secret"),
-          ),
-        );
-      await tx
-        .delete(orgCustomConnectorSecrets)
-        .where(
-          and(
-            eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-            eq(orgCustomConnectorSecrets.userId, args.userId),
-            eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          ),
-        );
-      const [remainingValue] =
-        connector.authMode === "manual"
-          ? await tx
-              .select({ id: orgCustomConnectorValues.id })
-              .from(orgCustomConnectorValues)
-              .where(
-                and(
-                  eq(orgCustomConnectorValues.connectorId, args.connectorId),
-                  eq(orgCustomConnectorValues.userId, args.userId),
-                  eq(orgCustomConnectorValues.orgId, args.orgId),
-                ),
-              )
-              .limit(1)
-          : [];
-      if (!remainingValue) {
-        await tx
-          .delete(connectors)
-          .where(
-            and(
-              eq(connectors.customConnectorId, args.connectorId),
-              eq(connectors.userId, args.userId),
-              eq(connectors.orgId, args.orgId),
-            ),
-          );
-      }
+      await deleteCustomConnectorMemberConnection(tx, args, signal);
+      return true;
     });
     signal.throwIfAborted();
+    if (!disconnected) {
+      return notFound("Custom connector not found");
+    }
     return undefined;
   },
 );

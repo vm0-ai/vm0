@@ -426,7 +426,7 @@ function mockCustomConnectorStory(): {
     },
   );
   context.mocks.api(
-    zeroCustomConnectorSecretContract.delete,
+    zeroCustomConnectorSecretContract.disconnect,
     ({ params, respond }) => {
       connectors = connectors.map((connector) => {
         return connector.id === params.id
