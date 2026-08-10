@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getRunModelDisplayName } from "@vm0/core/model-display-name";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
@@ -31,19 +31,22 @@ async function resolveAgentLabel(
   return row.displayName === null ? row.name : row.displayName;
 }
 
-async function resolveSelectedModel(
+async function resolveModelLabel(
   db: ReadonlyDb,
   runId: string,
 ): Promise<string | undefined> {
   const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
+    .select({
+      selectedModel: zeroRuns.selectedModel,
+      codexServiceTier: zeroRuns.codexServiceTier,
+    })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   if (!row || row.selectedModel === null) {
     return undefined;
   }
-  return row.selectedModel;
+  return getRunModelDisplayName(row.selectedModel, row.codexServiceTier);
 }
 
 async function resolveUserMention(
@@ -89,10 +92,10 @@ export function slackMessageSendFooterText(args: {
     const runId = args.authRunId;
 
     const noop = (): void => {};
-    const [agentLabel, userMention, selectedModel] = await Promise.all([
+    const [agentLabel, userMention, modelLabel] = await Promise.all([
       tapError(resolveAgentLabel(db, runId), noop),
       tapError(resolveUserMention(db, runId), noop),
-      tapError(resolveSelectedModel(db, runId), noop),
+      tapError(resolveModelLabel(db, runId), noop),
     ]);
 
     const parts: string[] = [];
@@ -102,8 +105,8 @@ export function slackMessageSendFooterText(args: {
     if (userMention) {
       parts.push(`Triggered by ${userMention}`);
     }
-    if (selectedModel) {
-      parts.push(getModelDisplayName(selectedModel));
+    if (modelLabel) {
+      parts.push(modelLabel);
     }
 
     return parts.length > 0 ? parts.join(" · ") : undefined;

@@ -1,5 +1,6 @@
 import { computed, type Computed } from "ccstate";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getRunModelDisplayName } from "@vm0/core/model-display-name";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
@@ -123,12 +124,14 @@ async function resolveAgentReplyModelLabel(args: {
   readonly orgId: string;
   readonly runId: string;
 }): Promise<string | undefined> {
-  const selectedModel = await resolveRunSelectedModel(args.db, args.runId);
+  const runModel = await resolveRunModelSelection(args.db, args.runId);
   const model =
-    selectedModel ??
+    runModel?.selectedModel ??
     (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));
 
-  return model ? escapeHtml(getModelDisplayName(model)) : undefined;
+  return model
+    ? escapeHtml(getRunModelDisplayName(model, runModel?.codexServiceTier))
+    : undefined;
 }
 
 export async function resolveTelegramAgentReplyFooterText(args: {
@@ -215,16 +218,24 @@ async function resolveRunUserLabel(
   return telegramUserMention(row.telegramUserId, label);
 }
 
-async function resolveRunSelectedModel(
+interface RunModelSelection {
+  readonly selectedModel: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
+}
+
+async function resolveRunModelSelection(
   db: ReadonlyDb,
   runId: string,
-): Promise<string | undefined> {
+): Promise<RunModelSelection | undefined> {
   const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
+    .select({
+      selectedModel: zeroRuns.selectedModel,
+      codexServiceTier: zeroRuns.codexServiceTier,
+    })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
-  return row?.selectedModel ?? undefined;
+  return row;
 }
 
 /**
@@ -245,13 +256,13 @@ export function telegramMessageSendFooterText(args: {
     }
     const db = get(db$);
 
-    const [agentLabel, userLabel, selectedModel] = await Promise.all([
+    const [agentLabel, userLabel, runModel] = await Promise.all([
       resolveRunAgentLabel(db, args.authRunId),
       resolveRunUserLabel(db, {
         runId: args.authRunId,
         botId: args.botId,
       }),
-      resolveRunSelectedModel(db, args.authRunId),
+      resolveRunModelSelection(db, args.authRunId),
     ]);
 
     const parts: string[] = [];
@@ -261,8 +272,15 @@ export function telegramMessageSendFooterText(args: {
     if (userLabel) {
       parts.push(`Triggered by ${userLabel}`);
     }
-    if (selectedModel) {
-      parts.push(escapeHtml(getModelDisplayName(selectedModel)));
+    if (runModel?.selectedModel) {
+      parts.push(
+        escapeHtml(
+          getRunModelDisplayName(
+            runModel.selectedModel,
+            runModel.codexServiceTier,
+          ),
+        ),
+      );
     }
 
     return parts.length > 0 ? parts.join(" · ") : undefined;

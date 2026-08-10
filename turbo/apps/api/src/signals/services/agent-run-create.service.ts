@@ -15,6 +15,7 @@ import {
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -439,6 +440,7 @@ interface ZeroRunMetadata {
   // Run provenance for autonomous thread-goal continuation.
   readonly goalId?: string;
   readonly autonomyBudget?: number;
+  readonly codexServiceTier?: CodexServiceTier;
 }
 
 interface AgentConfig {
@@ -5489,6 +5491,7 @@ function launchZeroRunValues(
       ? {}
       : { autonomyBudget: metadata.autonomyBudget }),
     ...(args.zeroRunModelPin ?? zeroRunModelProviderValues(args.modelProvider)),
+    codexServiceTier: metadata.codexServiceTier ?? null,
     chatThreadId: args.chatThreadId ?? null,
     apiStartedAt: args.status === "queued" ? null : new Date(args.apiStartTime),
   };

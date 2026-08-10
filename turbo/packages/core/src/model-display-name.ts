@@ -1,3 +1,5 @@
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+
 /**
  * Human-readable display names for model IDs across all providers.
  * Falls back to the raw model ID if no mapping is found.
@@ -85,4 +87,15 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
  */
 export function getModelDisplayName(model: string): string {
   return MODEL_DISPLAY_NAMES[model] ?? model;
+}
+
+/**
+ * Get the model label for one run, including its user-facing service tier.
+ */
+export function getRunModelDisplayName(
+  model: string,
+  codexServiceTier: CodexServiceTier | null | undefined,
+): string {
+  const modelName = getModelDisplayName(model);
+  return codexServiceTier === "fast" ? `${modelName} Fast` : modelName;
 }

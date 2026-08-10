@@ -3,9 +3,10 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getRunModelDisplayName } from "@vm0/core/model-display-name";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -20,16 +21,24 @@ function buildLogsUrl(runId: string): string {
   return `${env("APP_URL")}/activities/${encodeURIComponent(runId)}`;
 }
 
-async function resolveRunSelectedModel(
+interface RunModelSelection {
+  readonly selectedModel: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
+}
+
+async function resolveRunModelSelection(
   db: Db,
   runId: string,
-): Promise<string | undefined> {
+): Promise<RunModelSelection | undefined> {
   const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
+    .select({
+      selectedModel: zeroRuns.selectedModel,
+      codexServiceTier: zeroRuns.codexServiceTier,
+    })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
-  return row?.selectedModel ?? undefined;
+  return row;
 }
 
 async function resolveRespondedByLabel(args: {
@@ -90,11 +99,13 @@ async function resolveModelLabel(args: {
   readonly orgId: string;
   readonly runId: string;
 }): Promise<string | undefined> {
-  const selectedModel = await resolveRunSelectedModel(args.db, args.runId);
+  const runModel = await resolveRunModelSelection(args.db, args.runId);
   const model =
-    selectedModel ??
+    runModel?.selectedModel ??
     (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));
-  return model ? getModelDisplayName(model) : undefined;
+  return model
+    ? getRunModelDisplayName(model, runModel?.codexServiceTier)
+    : undefined;
 }
 
 export async function resolveIntegrationAgentResponsePresentation(

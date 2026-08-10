@@ -2,6 +2,7 @@ import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -18,6 +19,7 @@ import { createDeferredPromise } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   agentPhoneBddWebhookSecret,
   createBddIntegrationApi,
@@ -27,6 +29,7 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 helper gap:
@@ -45,6 +48,7 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const integrations = createBddIntegrationApi(context);
+const misc = createMiscRoutesApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const callbackStore = createStore();
@@ -276,6 +280,39 @@ function latestSlackModal(): SlackModalSelectState {
 
 function uniqueSlackUserId(): string {
   return `U_BDD_${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
+
+function base64UrlEncode(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function unsignedJwt(payload: Record<string, unknown>): string {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
+}
+
+function codexFastAuthJson(): string {
+  const expiresAt = Math.floor(now() / 1000) + 7200;
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: unsignedJwt({ exp: expiresAt }),
+      refresh_token: "rt_bdd_slack_fast_mode",
+      account_id: "ws_acct_bdd_slack_fast_mode",
+      id_token: unsignedJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_bdd_slack_fast_mode_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "BDD Slack Fast Mode" },
+        },
+        exp: expiresAt,
+      }),
+    },
+  });
 }
 
 function slackPostMessageCallsJson(): string {
@@ -3959,6 +3996,109 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect(slackPostMessageCallsJson()).toContain(
         "Sent via BDD Slack Failing Override",
       );
+    });
+  });
+
+  it("keeps the Slack Fast footer bound to the originating run", async () => {
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected the Slack fast-mode actor to have an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexFastAuthJson() },
+      },
+      [200, 201],
+    );
+    await runs.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.6-sol",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+    await bdd.readOnboardingStatus(actor);
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.CodexFastMode]: true,
+    });
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    integrations.clearSlackCallHistory();
+
+    const channelId = "C_BDD_FAST_FOOTER";
+    const threadTs = "3999.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "start the standard codex thread",
+      ts: threadTs,
+      channel: channelId,
+    });
+    const standardRunId = await pollSlackRun(runnerGroup);
+    const standardClaim = await runs.claimRunnerJob(standardRunId);
+    await completeSlackTriggeredRun({
+      runId: standardRunId,
+      sandboxToken: standardClaim.sandboxToken,
+      cliAgentType: "codex",
+      codexAgentMessageText: "standard answer",
+    });
+    await flushWaitUntilAndAssert(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ text: "standard answer" }),
+      );
+    });
+    const standardFooter = slackPostMessageCallsJson();
+    expect(standardFooter).toContain("GPT 5.6 Sol");
+    expect(standardFooter).not.toContain("GPT 5.6 Sol Fast");
+
+    const state = await integrations.readSlackTestState(teamId);
+    const threadId = state.chat_thread_routes[0]?.chatThreadId;
+    if (!threadId) {
+      throw new Error("Expected the Slack fast-mode route to own a thread");
+    }
+    await chat.updateThreadModelSelection(actor, threadId, "gpt-5.6-sol", {
+      codexServiceTier: "fast",
+    });
+    context.mocks.slack.chat.postMessage.mockClear();
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "answer this one in fast mode",
+      ts: "3999.000200",
+      thread_ts: threadTs,
+      channel: channelId,
+    });
+    const fastRunId = await pollSlackRun(runnerGroup);
+    const fastClaim = await runs.claimRunnerJob(fastRunId);
+    expect(fastClaim.cliAgentType).toBe("codex");
+    expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBe("fast");
+
+    await chat.updateThreadModelSelection(actor, threadId, "gpt-5.6-sol", {
+      codexServiceTier: null,
+    });
+    await completeSlackTriggeredRun({
+      runId: fastRunId,
+      sandboxToken: fastClaim.sandboxToken,
+      cliAgentType: "codex",
+      codexAgentMessageText: "fast answer",
+    });
+    await flushWaitUntilAndAssert(() => {
+      expect(slackPostMessageCallsJson()).toContain("GPT 5.6 Sol Fast");
     });
   });
 
