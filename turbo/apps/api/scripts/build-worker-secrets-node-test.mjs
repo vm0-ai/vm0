@@ -10,7 +10,12 @@ test("writes every shard and excludes Sentry runtime settings", () => {
       "ENV=preview",
       'CF_ACCESS_JWKS={"keys":[{"kty":"RSA"}]}',
       "SENTRY_DSN=https://example@sentry.io/1",
+      "TIKTOK_ADS_OAUTH_CLIENT_ID=tiktok-client",
+      "TIKTOK_ADS_OAUTH_CLIENT_SECRET=tiktok-secret",
       "VERCEL_AUTOMATION_BYPASS_SECRET=vercel-only",
+      "ZERO_SEO_DATAFORSEO_LOGIN=dataforseo-user",
+      "ZERO_SEO_DATAFORSEO_PASSWORD=dataforseo-password",
+      "ZERO_SEO_SERPAPI_TOKEN=serpapi-token",
     ].join("\n"),
   );
   assert.equal(Object.keys(secrets).length, 32);
@@ -21,7 +26,12 @@ test("writes every shard and excludes Sentry runtime settings", () => {
     CF_ACCESS_JWKS: '{"keys":[{"kty":"RSA"}]}',
     DATABASE_URL: "postgres://example",
     ENV: "preview",
+    TIKTOK_ADS_OAUTH_CLIENT_ID: "tiktok-client",
+    TIKTOK_ADS_OAUTH_CLIENT_SECRET: "tiktok-secret",
     VERCEL_AUTOMATION_BYPASS_SECRET: "vercel-only",
+    ZERO_SEO_DATAFORSEO_LOGIN: "dataforseo-user",
+    ZERO_SEO_DATAFORSEO_PASSWORD: "dataforseo-password",
+    ZERO_SEO_SERPAPI_TOKEN: "serpapi-token",
   });
 });
 
