@@ -339,17 +339,18 @@
     "sources": {
       "agent": "Agente",
       "agentphone": "AgentPhone",
+      "automationEvent": "Evento de automatización",
+      "automationSchedule": "Programación de automatización",
       "email": "Correo electrónico",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "Objetivo",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "Prueba",
       "web": "Web",
-      "webhook": "Webhook",
-      "workflowEvent": "Evento de flujo de trabajo",
-      "workflowSchedule": "Calendario de flujo de trabajo"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "Cancelado",
@@ -808,6 +809,7 @@
     "common": {
       "back": "Volver",
       "cancel": "Cancelar",
+      "confirm": "Confirmar",
       "credits": "Créditos",
       "manage": "Gestionar",
       "redirecting": "Redirigiendo...",
@@ -919,10 +921,9 @@
         "communitySupport": "Soporte de la comunidad",
         "emailSupport": "Soporte por correo electrónico",
         "existingCredits": "Solo créditos gratuitos existentes",
-        "monthlyCredits": "{{value}} créditos / mes",
         "oneConcurrentRun": "1 ejecución simultánea",
-        "payAsYouGo": "Créditos de pago por uso",
         "prioritySupport": "Soporte prioritario",
+        "sharedAndPrivateAgents": "7 agentes compartidos, agentes privados ilimitados",
         "tenConcurrentRuns": "10 ejecuciones simultáneas",
         "twoConcurrentRuns": "2 ejecuciones simultáneas",
         "unlimitedAgents": "Agentes totales ilimitados",
@@ -948,7 +949,7 @@
       "popular": "Popular",
       "pricePerMonth": "{{price}}/mes",
       "pro": {
-        "description": "Más potencia y colaboración fluida para tu equipo.",
+        "description": "Más créditos y concurrencia para equipos que usan agentes de IA todos los días.",
         "name": "Pro"
       },
       "renews": "Renueva {{date}}",
@@ -956,13 +957,13 @@
       "sectionTitle": "Plan",
       "selectedPlan": "El plan seleccionado",
       "team": {
-        "description": "Escala rápido, sin fricción y con total flexibilidad.",
+        "description": "Espacio para un equipo de empleados de IA: gran volumen de créditos y 10 agentes ejecutándose a la vez.",
         "name": "Equipo"
       },
       "upgrade": "Actualización",
       "upgradeTo": "Actualizar a {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} créditos extra",
+        "bonusCredits": "Créditos de bonificación",
         "changePlan": "Cambiar plan",
         "choosePlan": "Elige un plan",
         "choosePlanDescription": "Elige primero el plan del espacio de trabajo. Los paquetes de miembros se configuran después.",
@@ -971,19 +972,35 @@
         "currentMember": "Miembro actual",
         "description": "Elige un paquete de uso mensual para cada miembro.",
         "discountBonusCredits": "Créditos extra por descuento",
+        "existingPackagesUnchanged": "Los paquetes actuales de los miembros no cambian.",
+        "management": {
+          "comparison": "Comparación de la suscripción actual y la nueva",
+          "current": "Actual",
+          "downgradeDescription": "El paquete inferior comienza en la próxima fecha de facturación. Los créditos existentes seguirán disponibles hasta que caduquen.",
+          "downgradesToDate": "Baja a {{package}} el {{date}}.",
+          "downgradesToPeriod": "Baja a {{package}} en la próxima fecha de facturación.",
+          "immediateAmount": "Importe a pagar ahora",
+          "immediateCredits": "Créditos añadidos tras el pago",
+          "new": "Nuevo",
+          "processing": "Cambio en curso",
+          "reviewDescription": "Revisa el precio de la suscripción a continuación. Al confirmar, se cobrará el importe pendiente con tu método de pago guardado.",
+          "reviewTitle": "Revisar cambio de paquete",
+          "scheduledFor": "Programado para el {{date}}"
+        },
         "memberExclusive": "Cada paquete pertenece a un miembro y no se puede compartir. Cuando se agota, el uso vuelve a los créditos de pago por uso. Puedes actualizar a un paquete nuevo más adelante.",
         "memberPackages": "Paquetes de miembros",
         "memberUsage": "Uso del miembro",
-        "memberUsageTotal": "Total de paquetes mensuales",
         "minimumPackageBreakdown": "Plan de {{base}} + paquete obligatorio de {{package}} para un miembro",
         "monthlyTotal": "Total mensual",
         "orderSummary": "Resumen del pedido",
         "packagesStep": "Paquetes",
         "packOption": "{{price}} · {{credits}} créditos · {{discount}} % de descuento",
+        "planChangeError": "No se pudo preparar el cambio de suscripción. Inténtalo de nuevo.",
         "planStep": "Plan",
+        "purchasedCredits": "Créditos comprados",
         "purchaseSteps": "Pasos de compra",
         "selectedPlan": "Plan seleccionado",
-        "selectPlan": "Seleccionar {{plan}}",
+        "selectPlan": "Empezar con {{plan}}",
         "selectUsage": "Uso de {{name}}",
         "startingAt": "Desde",
         "totalCredits": "Créditos totales"
@@ -1016,7 +1033,8 @@
       "planRestored": "Plan restaurado. Tu suscripción se renovará normalmente.",
       "preparingReceiptDownload": "Preparando la descarga del recibo...",
       "receiptDownloadFailed": "No se han conseguido descargar los recibos",
-      "receiptsDownloaded": "Recibos descargados"
+      "receiptsDownloaded": "Recibos descargados",
+      "subscriptionChangeConfirmed": "Se confirmó el cambio de suscripción."
     },
     "usage": {
       "added": "Añadido {{date}}",

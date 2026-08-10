@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
   USAGE_PACKS_USD,
+  type UsagePackSubscriptionChangePreviewResponse,
   type UsagePackUsd,
 } from "@vm0/api-contracts/contracts/zero-billing";
 
@@ -18,6 +19,8 @@ const internalSelectedUsagePackPlan$ = state<UsagePackPlanTier | null>(null);
 const internalMemberUsageSelections$ = state<
   Readonly<Record<string, MemberUsageSelection>>
 >({});
+const internalUsagePackSubscriptionChangePreview$ =
+  state<UsagePackSubscriptionChangePreviewResponse | null>(null);
 
 export const memberUsageSelections$ = computed((get) => {
   return get(internalMemberUsageSelections$);
@@ -25,6 +28,10 @@ export const memberUsageSelections$ = computed((get) => {
 
 export const selectedUsagePackPlan$ = computed((get) => {
   return get(internalSelectedUsagePackPlan$);
+});
+
+export const usagePackSubscriptionChangePreview$ = computed((get) => {
+  return get(internalUsagePackSubscriptionChangePreview$);
 });
 
 export const setSelectedUsagePackPlan$ = command(
@@ -36,7 +43,14 @@ export const setSelectedUsagePackPlan$ = command(
 const resetUsagePackPricing$ = command(({ set }) => {
   set(internalSelectedUsagePackPlan$, null);
   set(internalMemberUsageSelections$, {});
+  set(internalUsagePackSubscriptionChangePreview$, null);
 });
+
+export const setUsagePackSubscriptionChangePreview$ = command(
+  ({ set }, preview: UsagePackSubscriptionChangePreviewResponse | null) => {
+    set(internalUsagePackSubscriptionChangePreview$, preview);
+  },
+);
 
 export const usagePackPricingPageRef$ = onRef(
   command(({ set }, element: HTMLDivElement, signal: AbortSignal) => {
@@ -62,5 +76,11 @@ export const setMemberUsageSelection$ = command(
     set(internalMemberUsageSelections$, (current) => {
       return { ...current, [selection.memberId]: selection.usage };
     });
+  },
+);
+
+export const setMemberUsageSelections$ = command(
+  ({ set }, selections: Readonly<Record<string, MemberUsageSelection>>) => {
+    set(internalMemberUsageSelections$, selections);
   },
 );

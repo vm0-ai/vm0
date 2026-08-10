@@ -541,7 +541,7 @@ describe("GET /api/zero/usage/record", () => {
     ]);
   });
 
-  it("normalizes current Workflow Automation sources without changing credits", async () => {
+  it("normalizes unattended sources without changing credits", async () => {
     const fixture = await entitledRecordActor();
     const connectorProvider = uniqueProvider("bdd-connector");
     await seedConnectorPricing(connectorProvider);
@@ -549,6 +549,9 @@ describe("GET /api/zero/usage/record", () => {
     const sources = [
       ["workflow-schedule", 2],
       ["workflow-event", 3],
+      ["automation-schedule", 4],
+      ["automation-event", 5],
+      ["goal", 6],
     ] as const;
     for (const [triggerSource, quantity] of sources) {
       const run = await createUnthreadedRun(fixture.actor, {
@@ -575,12 +578,12 @@ describe("GET /api/zero/usage/record", () => {
     );
 
     expect(response.body.rows).toHaveLength(1);
-    expect(response.body.totalCredits).toBe(50);
+    expect(response.body.totalCredits).toBe(200);
     expect(response.body.rows[0]).toMatchObject({
       source: "automation",
       threadId: null,
       runId: null,
-      credits: 50,
+      credits: 200,
       tokens: 0,
     });
   });

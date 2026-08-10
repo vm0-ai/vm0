@@ -325,17 +325,18 @@
     "sources": {
       "agent": "에이전트",
       "agentphone": "AgentPhone",
+      "automationEvent": "자동화 이벤트",
+      "automationSchedule": "자동화 일정",
       "email": "이메일",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "목표",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "테스트",
       "web": "웹",
-      "webhook": "Webhook",
-      "workflowEvent": "워크플로 이벤트",
-      "workflowSchedule": "워크플로 일정"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "취소됨",
@@ -789,6 +790,7 @@
     "common": {
       "back": "뒤로",
       "cancel": "취소",
+      "confirm": "확인",
       "credits": "크레딧",
       "manage": "관리",
       "redirecting": "리디렉션 중...",
@@ -898,10 +900,9 @@
         "communitySupport": "커뮤니티 지원",
         "emailSupport": "이메일 지원",
         "existingCredits": "기존 무료 크레딧만",
-        "monthlyCredits": "월 {{value}} 크레딧",
         "oneConcurrentRun": "1 동시 실행",
-        "payAsYouGo": "이후 사용량 기반 결제",
         "prioritySupport": "우선 지원",
+        "sharedAndPrivateAgents": "공유 에이전트 7개, 비공개 에이전트 무제한",
         "tenConcurrentRuns": "10 동시 실행",
         "twoConcurrentRuns": "2 동시 실행",
         "unlimitedAgents": "무제한 에이전트",
@@ -927,7 +928,7 @@
       "popular": "인기",
       "pricePerMonth": "{{price}}/월",
       "pro": {
-        "description": "팀을 위한 더 강력한 기능과 원활한 협업.",
+        "description": "매일 AI 에이전트를 실행하는 팀을 위한 더 많은 크레딧과 동시 실행 수.",
         "name": "Pro"
       },
       "renews": "{{date}}에 갱신됨",
@@ -935,13 +936,13 @@
       "sectionTitle": "플랜",
       "selectedPlan": "선택한 플랜",
       "team": {
-        "description": "마찰 없이 빠르게 확장하고 완전한 유연성을 누리세요.",
+        "description": "AI 직원 팀을 위한 충분한 공간: 많은 크레딧과 에이전트 10개 동시 실행.",
         "name": "팀"
       },
       "upgrade": "업그레이드",
       "upgradeTo": "{{plan}}으로 업그레이드",
       "usagePacks": {
-        "bonusCredits": "+{{value}} 보너스 크레딧",
+        "bonusCredits": "보너스 크레딧",
         "changePlan": "플랜 변경",
         "choosePlan": "플랜 선택",
         "choosePlanDescription": "먼저 워크스페이스 플랜을 선택하세요. 구성원 패키지는 다음 단계에서 설정합니다.",
@@ -950,19 +951,35 @@
         "currentMember": "현재 구성원",
         "description": "각 구성원의 월간 사용량 패키지를 선택하세요.",
         "discountBonusCredits": "할인 보너스 크레딧",
+        "existingPackagesUnchanged": "기존 멤버 패키지는 변경되지 않습니다.",
+        "management": {
+          "comparison": "현재 및 새 구독 비교",
+          "current": "현재",
+          "downgradeDescription": "하위 패키지는 다음 결제일부터 시작됩니다. 기존 크레딧은 만료될 때까지 사용할 수 있습니다.",
+          "downgradesToDate": "{{date}}에 {{package}}(으)로 다운그레이드됩니다.",
+          "downgradesToPeriod": "다음 결제일에 {{package}}(으)로 다운그레이드됩니다.",
+          "immediateAmount": "지금 결제",
+          "immediateCredits": "결제 후 추가되는 크레딧",
+          "new": "신규",
+          "processing": "변경 처리 중",
+          "reviewDescription": "아래 구독 요금을 검토하세요. 확인하면 저장된 결제 수단으로 지금 결제할 금액이 청구됩니다.",
+          "reviewTitle": "패키지 변경 검토",
+          "scheduledFor": "{{date}}에 변경 예정"
+        },
         "memberExclusive": "각 패키지는 한 구성원에게만 속하며 공유할 수 없습니다. 패키지를 모두 사용하면 종량제 크레딧으로 전환됩니다. 나중에 새 패키지로 업그레이드할 수 있습니다.",
         "memberPackages": "구성원 패키지",
         "memberUsage": "구성원 사용량",
-        "memberUsageTotal": "월간 팩 합계",
         "minimumPackageBreakdown": "{{base}} 플랜 + {{package}} 필수 구성원 패키지",
         "monthlyTotal": "월간 합계",
         "orderSummary": "주문 요약",
         "packagesStep": "패키지",
         "packOption": "{{price}} · {{credits}} 크레딧 · {{discount}}% 할인",
+        "planChangeError": "구독 변경을 준비하지 못했습니다. 다시 시도하세요.",
         "planStep": "플랜",
+        "purchasedCredits": "구매 크레딧",
         "purchaseSteps": "구매 단계",
         "selectedPlan": "선택한 플랜",
-        "selectPlan": "{{plan}} 선택",
+        "selectPlan": "{{plan}} 시작하기",
         "selectUsage": "{{name}} 사용량",
         "startingAt": "최저",
         "totalCredits": "총 크레딧"
@@ -995,7 +1012,8 @@
       "planRestored": "플랜이 복원되었습니다. 구독이 정상적으로 갱신됩니다.",
       "preparingReceiptDownload": "영수증 다운로드 준비 중...",
       "receiptDownloadFailed": "영수증 다운로드에 실패했습니다",
-      "receiptsDownloaded": "영수증이 다운로드되었습니다"
+      "receiptsDownloaded": "영수증이 다운로드되었습니다",
+      "subscriptionChangeConfirmed": "구독 변경이 확인되었습니다."
     },
     "usage": {
       "added": "{{date}}에 추가됨",

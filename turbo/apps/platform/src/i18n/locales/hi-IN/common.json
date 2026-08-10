@@ -325,17 +325,18 @@
     "sources": {
       "agent": "एजेंट",
       "agentphone": "AgentPhone",
+      "automationEvent": "ऑटोमेशन घटना",
+      "automationSchedule": "ऑटोमेशन शेड्यूल",
       "email": "ईमेल",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "लक्ष्य",
       "slack": "Slack",
       "teams": "टीमें",
       "telegram": "Telegram",
       "test": "टेस्ट",
       "web": "वेब",
-      "webhook": "वेबहुक",
-      "workflowEvent": "वर्कफ़्लो घटना",
-      "workflowSchedule": "वर्कफ़्लो शेड्यूल"
+      "webhook": "वेबहुक"
     },
     "statuses": {
       "cancelled": "रद्द कर दिया गया",
@@ -789,6 +790,7 @@
     "common": {
       "back": "पीछे",
       "cancel": "रद्द करना",
+      "confirm": "पुष्टि करें",
       "credits": "क्रेडिट",
       "manage": "प्रबंधित करना",
       "redirecting": "पुनर्निर्देशन...",
@@ -898,10 +900,9 @@
         "communitySupport": "समुदाय का समर्थन",
         "emailSupport": "ई - मेल समर्थन",
         "existingCredits": "केवल मौजूदा निःशुल्क क्रेडिट",
-        "monthlyCredits": "{{value}} क्रेडिट/माह",
         "oneConcurrentRun": "1 समवर्ती रन",
-        "payAsYouGo": "उसके बाद जाते ही भुगतान करें",
         "prioritySupport": "प्रायोरिटी सपोर्ट",
+        "sharedAndPrivateAgents": "7 साझा एजेंट, असीमित निजी एजेंट",
         "tenConcurrentRuns": "10 समवर्ती रन",
         "twoConcurrentRuns": "2 समवर्ती रन",
         "unlimitedAgents": "असीमित कुल एजेंट",
@@ -927,7 +928,7 @@
       "popular": "लोकप्रिय",
       "pricePerMonth": "{{price}}/माह",
       "pro": {
-        "description": "आपकी टीम के लिए अधिक शक्ति और निर्बाध सहयोग।",
+        "description": "हर दिन AI एजेंट चलाने वाली टीमों के लिए अधिक क्रेडिट और समवर्ती रन।",
         "name": "प्रो"
       },
       "renews": "{{date}} को नवीनीकृत होगा",
@@ -935,13 +936,13 @@
       "sectionTitle": "योजना",
       "selectedPlan": "चयनित योजना",
       "team": {
-        "description": "शून्य घर्षण और पूर्ण लचीलेपन के साथ तेजी से स्केल करें।",
+        "description": "AI कर्मचारियों की टीम के लिए जगह: अधिक क्रेडिट और एक साथ चलने वाले 10 एजेंट।",
         "name": "टीम"
       },
       "upgrade": "अपग्रेड",
       "upgradeTo": "{{plan}} में अपग्रेड करें",
       "usagePacks": {
-        "bonusCredits": "+{{value}} बोनस क्रेडिट",
+        "bonusCredits": "बोनस क्रेडिट",
         "changePlan": "प्लान बदलें",
         "choosePlan": "प्लान चुनें",
         "choosePlanDescription": "पहले वर्कस्पेस प्लान चुनें। सदस्य पैकेज अगले चरण में कॉन्फ़िगर किए जाते हैं।",
@@ -950,19 +951,35 @@
         "currentMember": "मौजूदा सदस्य",
         "description": "हर सदस्य के लिए मासिक उपयोग पैक चुनें।",
         "discountBonusCredits": "छूट से बोनस क्रेडिट",
+        "existingPackagesUnchanged": "सदस्यों के मौजूदा पैकेज अपरिवर्तित रहेंगे।",
+        "management": {
+          "comparison": "वर्तमान और नई सदस्यता की तुलना",
+          "current": "वर्तमान",
+          "downgradeDescription": "कम पैकेज अगली बिलिंग तारीख से शुरू होगा। मौजूदा क्रेडिट अपनी समाप्ति तक उपलब्ध रहेंगे।",
+          "downgradesToDate": "{{date}} को {{package}} पर डाउनग्रेड होगा।",
+          "downgradesToPeriod": "अगली बिलिंग तारीख पर {{package}} पर डाउनग्रेड होगा।",
+          "immediateAmount": "अभी देय",
+          "immediateCredits": "भुगतान के बाद जोड़े गए क्रेडिट",
+          "new": "नया",
+          "processing": "बदलाव संसाधित हो रहा है",
+          "reviewDescription": "नीचे सदस्यता की कीमत की समीक्षा करें। पुष्टि करने पर देय राशि आपकी सहेजी गई भुगतान विधि से ली जाएगी।",
+          "reviewTitle": "पैकेज बदलाव की समीक्षा करें",
+          "scheduledFor": "{{date}} के लिए निर्धारित"
+        },
         "memberExclusive": "हर पैकेज एक सदस्य का होता है और साझा नहीं किया जा सकता। पैकेज समाप्त होने पर उपयोग पे-एज़-यू-गो क्रेडिट पर वापस चला जाता है। आप बाद में नए पैकेज में अपग्रेड कर सकते हैं।",
         "memberPackages": "सदस्य पैकेज",
         "memberUsage": "सदस्य उपयोग",
-        "memberUsageTotal": "मासिक पैक का कुल",
         "minimumPackageBreakdown": "{{base}} प्लान + {{package}} का आवश्यक सदस्य पैकेज",
         "monthlyTotal": "मासिक कुल",
         "orderSummary": "ऑर्डर सारांश",
         "packagesStep": "पैकेज",
         "packOption": "{{price}} · {{credits}} क्रेडिट · {{discount}}% की छूट",
+        "planChangeError": "सदस्यता परिवर्तन तैयार नहीं किया जा सका। फिर से कोशिश करें।",
         "planStep": "प्लान",
+        "purchasedCredits": "खरीदे गए क्रेडिट",
         "purchaseSteps": "खरीद के चरण",
         "selectedPlan": "चुना गया प्लान",
-        "selectPlan": "{{plan}} चुनें",
+        "selectPlan": "{{plan}} के साथ शुरू करें",
         "selectUsage": "{{name}} के लिए उपयोग",
         "startingAt": "शुरुआती कीमत",
         "totalCredits": "कुल क्रेडिट"
@@ -995,7 +1012,8 @@
       "planRestored": "योजना बहाल। आपकी सदस्यता सामान्य रूप से नवीनीकृत हो जाएगी।",
       "preparingReceiptDownload": "रसीद डाउनलोड तैयार की जा रही है...",
       "receiptDownloadFailed": "रसीदें डाउनलोड करने में विफल।",
-      "receiptsDownloaded": "रसीदें डाउनलोड की गईं।"
+      "receiptsDownloaded": "रसीदें डाउनलोड की गईं।",
+      "subscriptionChangeConfirmed": "सदस्यता में बदलाव की पुष्टि हो गई है।"
     },
     "usage": {
       "added": "{{date}} जोड़ा गया",

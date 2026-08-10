@@ -122,9 +122,13 @@ function serviceUnavailable(message: string, code = "NOT_CONFIGURED") {
   return errorResponse(503, code, message);
 }
 
-function isAutomationTriggerSource(triggerSource: string | null): boolean {
+function isUnattendedTriggerSource(triggerSource: string | null): boolean {
   return (
-    triggerSource === "workflow-schedule" || triggerSource === "workflow-event"
+    triggerSource === "workflow-schedule" ||
+    triggerSource === "workflow-event" ||
+    triggerSource === "automation-schedule" ||
+    triggerSource === "automation-event" ||
+    triggerSource === "goal"
   );
 }
 
@@ -539,7 +543,7 @@ async function authorizeBankingAccess(
   }
 
   if (
-    isAutomationTriggerSource(run.triggerSource) &&
+    isUnattendedTriggerSource(run.triggerSource) &&
     !grant.allowAutomationRuns
   ) {
     // Historical audit rows persist the former "SCHEDULE_NOT_ALLOWED" code;

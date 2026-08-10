@@ -1,6 +1,6 @@
 {
-  "id": "1d2a2f31-2a2c-4c17-9e9e-a64cac92abc4",
-  "prevId": "5225f49e-1bf0-49eb-90e1-7c242ef0a78c",
+  "id": "06001100-be86-4d87-a7c6-c89e636c3ea2",
+  "prevId": "e3427ef5-daed-49fb-b1a1-93bee7775925",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -22418,6 +22418,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "subscription_change_id": {
+          "name": "subscription_change_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "org_id": {
           "name": "org_id",
           "type": "text",
@@ -22572,7 +22578,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"usage_pack_allocation_changes\".\"status\" IN ('previewed', 'applying', 'pending_payment')",
+          "where": "\"usage_pack_allocation_changes\".\"subscription_change_id\" IS NULL AND \"usage_pack_allocation_changes\".\"status\" IN ('previewed', 'applying', 'pending_payment')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -22636,6 +22642,21 @@
           "method": "btree",
           "with": {}
         },
+        "idx_usage_pack_changes_subscription_change": {
+          "name": "idx_usage_pack_changes_subscription_change",
+          "columns": [
+            {
+              "expression": "subscription_change_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_usage_pack_changes_reconcile": {
           "name": "idx_usage_pack_changes_reconcile",
           "columns": [
@@ -22665,6 +22686,19 @@
           "tableTo": "usage_pack_subscriptions",
           "columnsFrom": [
             "usage_pack_subscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "usage_pack_allocation_changes_subscription_change_id_usage_pack_subscription_changes_id_fk": {
+          "name": "usage_pack_allocation_changes_subscription_change_id_usage_pack_subscription_changes_id_fk",
+          "tableFrom": "usage_pack_allocation_changes",
+          "tableTo": "usage_pack_subscription_changes",
+          "columnsFrom": [
+            "subscription_change_id"
           ],
           "columnsTo": [
             "id"
@@ -23022,6 +23056,233 @@
         "chk_usage_pack_invoice_fulfillments_period": {
           "name": "chk_usage_pack_invoice_fulfillments_period",
           "value": "\"usage_pack_invoice_fulfillments\".\"period_start\" IS NULL OR \"usage_pack_invoice_fulfillments\".\"period_end\" > \"usage_pack_invoice_fulfillments\".\"period_start\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.usage_pack_subscription_changes": {
+      "name": "usage_pack_subscription_changes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "usage_pack_subscription_id": {
+          "name": "usage_pack_subscription_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_tier": {
+          "name": "source_tier",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_tier": {
+          "name": "target_tier",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'previewed'"
+        },
+        "proration_timestamp": {
+          "name": "proration_timestamp",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "immediate_amount_cents": {
+          "name": "immediate_amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "next_recurring_amount_cents": {
+          "name": "next_recurring_amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preview_expires_at": {
+          "name": "preview_expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stripe_invoice_id": {
+          "name": "stripe_invoice_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stripe_pending_update_expires_at": {
+          "name": "stripe_pending_update_expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_at": {
+          "name": "effective_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "uq_usage_pack_subscription_changes_active_org": {
+          "name": "uq_usage_pack_subscription_changes_active_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"usage_pack_subscription_changes\".\"status\" IN ('previewed', 'applying', 'pending_payment')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_usage_pack_subscription_changes_stripe_invoice": {
+          "name": "uq_usage_pack_subscription_changes_stripe_invoice",
+          "columns": [
+            {
+              "expression": "stripe_invoice_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"usage_pack_subscription_changes\".\"stripe_invoice_id\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_usage_pack_subscription_changes_subscription_status": {
+          "name": "idx_usage_pack_subscription_changes_subscription_status",
+          "columns": [
+            {
+              "expression": "usage_pack_subscription_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_usage_pack_subscription_changes_reconcile": {
+          "name": "idx_usage_pack_subscription_changes_reconcile",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "usage_pack_subscription_changes_usage_pack_subscription_id_usage_pack_subscriptions_id_fk": {
+          "name": "usage_pack_subscription_changes_usage_pack_subscription_id_usage_pack_subscriptions_id_fk",
+          "tableFrom": "usage_pack_subscription_changes",
+          "tableTo": "usage_pack_subscriptions",
+          "columnsFrom": [
+            "usage_pack_subscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_usage_pack_subscription_changes_tiers": {
+          "name": "chk_usage_pack_subscription_changes_tiers",
+          "value": "\"usage_pack_subscription_changes\".\"source_tier\" IN ('pro', 'team') AND \"usage_pack_subscription_changes\".\"target_tier\" IN ('pro', 'team')"
+        },
+        "chk_usage_pack_subscription_changes_status": {
+          "name": "chk_usage_pack_subscription_changes_status",
+          "value": "\"usage_pack_subscription_changes\".\"status\" IN ('previewed', 'applying', 'pending_payment', 'completed', 'failed')"
+        },
+        "chk_usage_pack_subscription_changes_amounts": {
+          "name": "chk_usage_pack_subscription_changes_amounts",
+          "value": "\"usage_pack_subscription_changes\".\"immediate_amount_cents\" >= 0 AND \"usage_pack_subscription_changes\".\"next_recurring_amount_cents\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -24563,6 +24824,12 @@
         "selected_model": {
           "name": "selected_model",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "codex_service_tier": {
+          "name": "codex_service_tier",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
         },

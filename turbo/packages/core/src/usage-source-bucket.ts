@@ -23,6 +23,9 @@ export function triggerSourceToBucket(
       return "email";
     case "workflow-schedule":
     case "workflow-event":
+    case "automation-schedule":
+    case "automation-event":
+    case "goal":
       return "automation";
     default:
       // telegram, github, cli, agent, phone, agentphone, null

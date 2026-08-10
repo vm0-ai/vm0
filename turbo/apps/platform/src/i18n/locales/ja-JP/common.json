@@ -325,17 +325,18 @@
     "sources": {
       "agent": "エージェント",
       "agentphone": "エージェントフォン",
+      "automationEvent": "オートメーションイベント",
+      "automationSchedule": "オートメーションスケジュール",
       "email": "メール",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "目標",
       "slack": "Slack",
       "teams": "チーム",
       "telegram": "Telegram",
       "test": "テスト",
       "web": "ウェブ",
-      "webhook": "Webhook",
-      "workflowEvent": "ワークフローイベント",
-      "workflowSchedule": "ワークフロースケジュール"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "キャンセルされました",
@@ -789,6 +790,7 @@
     "common": {
       "back": "戻る",
       "cancel": "キャンセル",
+      "confirm": "確認する",
       "credits": "クレジット",
       "manage": "管理",
       "redirecting": "リダイレクト中...",
@@ -898,10 +900,9 @@
         "communitySupport": "コミュニティサポート",
         "emailSupport": "メールサポート",
         "existingCredits": "既存の無料クレジットのみ",
-        "monthlyCredits": "{{value}} クレジット / 月",
         "oneConcurrentRun": "1つの同時実行",
-        "payAsYouGo": "その後は従量料金を支払う",
         "prioritySupport": "優先サポート",
+        "sharedAndPrivateAgents": "共有エージェント7個、プライベートは無制限",
         "tenConcurrentRuns": "10 個の同時実行",
         "twoConcurrentRuns": "2つの同時実行",
         "unlimitedAgents": "無制限の合計エージェント",
@@ -927,7 +928,7 @@
       "popular": "人気のある",
       "pricePerMonth": "{{price}}/月",
       "pro": {
-        "description": "チームのさらなるパワーとシームレスなコラボレーション。",
+        "description": "AIエージェントを毎日実行するチーム向けに、より多くのクレジットと同時実行数を提供します。",
         "name": "プロ"
       },
       "renews": "{{date}} を更新します",
@@ -935,13 +936,13 @@
       "sectionTitle": "計画",
       "selectedPlan": "選択したプラン",
       "team": {
-        "description": "摩擦がなく、完全な柔軟性を備えているため、迅速に拡張できます。",
+        "description": "AI従業員チームのための余裕：大容量のクレジットと10エージェントの同時実行。",
         "name": "チーム"
       },
       "upgrade": "アップグレード",
       "upgradeTo": "{{plan}} にアップグレードする",
       "usagePacks": {
-        "bonusCredits": "+{{value}} ボーナスクレジット",
+        "bonusCredits": "ボーナスクレジット",
         "changePlan": "プランを変更",
         "choosePlan": "プランを選択",
         "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
@@ -950,19 +951,35 @@
         "currentMember": "現在のメンバー",
         "description": "各メンバーに月額利用パックを選択します。",
         "discountBonusCredits": "割引によるボーナスクレジット",
+        "existingPackagesUnchanged": "既存のメンバーパッケージは変更されません。",
+        "management": {
+          "comparison": "現在と新しいサブスクリプションの比較",
+          "current": "現在",
+          "downgradeDescription": "下位パッケージは次回請求日から開始します。既存のクレジットは有効期限まで利用できます。",
+          "downgradesToDate": "{{date}}に{{package}}へダウングレードします。",
+          "downgradesToPeriod": "次回請求日に{{package}}へダウングレードします。",
+          "immediateAmount": "今回のお支払い",
+          "immediateCredits": "支払い後に追加されるクレジット",
+          "new": "新規",
+          "processing": "変更を処理中",
+          "reviewDescription": "以下のサブスクリプション料金を確認してください。確定すると、保存済みのお支払い方法に今回のお支払い額が請求されます。",
+          "reviewTitle": "パッケージ変更の確認",
+          "scheduledFor": "{{date}}に変更予定"
+        },
         "memberExclusive": "各パッケージは1人のメンバー専用で共有できません。パッケージを使い切ると、従量課金クレジットに切り替わります。後から新しいパッケージにアップグレードできます。",
         "memberPackages": "メンバーパッケージ",
         "memberUsage": "メンバーの利用設定",
-        "memberUsageTotal": "月額パック合計",
         "minimumPackageBreakdown": "{{base}} のプラン + {{package}} の必須メンバーパッケージ",
         "monthlyTotal": "月額合計",
         "orderSummary": "注文内容",
         "packagesStep": "パッケージ",
         "packOption": "{{price}} · {{credits}} クレジット · {{discount}}%オフ",
+        "planChangeError": "サブスクリプションの変更を準備できませんでした。もう一度お試しください。",
         "planStep": "プラン",
+        "purchasedCredits": "購入クレジット",
         "purchaseSteps": "購入手順",
         "selectedPlan": "選択したプラン",
-        "selectPlan": "{{plan}} を選択",
+        "selectPlan": "{{plan}} で始める",
         "selectUsage": "{{name}} の利用設定",
         "startingAt": "最低料金",
         "totalCredits": "合計クレジット"
@@ -995,7 +1012,8 @@
       "planRestored": "計画が復元されました。サブスクリプションは通常どおり更新されます。",
       "preparingReceiptDownload": "領収書のダウンロードを準備しています...",
       "receiptDownloadFailed": "領収書のダウンロードに失敗しました",
-      "receiptsDownloaded": "領収書をダウンロードしました"
+      "receiptsDownloaded": "領収書をダウンロードしました",
+      "subscriptionChangeConfirmed": "サブスクリプションの変更が確認されました。"
     },
     "usage": {
       "added": "{{date}} を追加しました",
