@@ -90,6 +90,89 @@ fn proxy_register_failure_warns_with_error() {
 }
 
 #[tokio::test]
+async fn proxy_registration_prefers_complete_connector_candidates_with_legacy_fallback() {
+    let candidate_dir = tempfile::tempdir().unwrap();
+    let candidate_config = test_executor_config(candidate_dir.path()).await;
+    let mut candidate_context = minimal_context();
+    candidate_context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "model-provider:anthropic-api-key".to_string(),
+        base_url_vars: None,
+    }]);
+    candidate_context.connector_runtime_targets = Vec::new();
+    candidate_context.connector_runtime_candidate_targets =
+        Some(vec![ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "zendesk".to_string(),
+            base_url_vars: Some(HashMap::from([(
+                "ZENDESK_SUBDOMAIN".to_string(),
+                "xn--mnich-kva".to_string(),
+            )])),
+        }]);
+    candidate_context.vars = Some(HashMap::from([(
+        "ZENDESK_SUBDOMAIN".to_string(),
+        "münich".to_string(),
+    )]));
+
+    let _candidate_session = register_proxy(&candidate_config, &candidate_context, "10.200.0.2")
+        .await
+        .unwrap();
+    let candidate_registry: serde_json::Value = serde_json::from_str(
+        &tokio::fs::read_to_string(candidate_dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let candidate_vm = &candidate_registry["vms"]["10.200.0.2"];
+    assert_eq!(
+        candidate_vm["firewalls"],
+        serde_json::json!([
+            {
+                "kind": "builtin",
+                "name": "model-provider:anthropic-api-key"
+            },
+            {
+                "kind": "builtin",
+                "name": "zendesk",
+                "baseUrlVars": {
+                    "ZENDESK_SUBDOMAIN": "xn--mnich-kva"
+                }
+            }
+        ])
+    );
+    assert_eq!(
+        candidate_vm["connectorRuntimeTargets"],
+        serde_json::json!([{
+            "kind": "builtin",
+            "connectorSlug": "zendesk"
+        }])
+    );
+    assert_eq!(
+        candidate_vm["connectorRoutingVariables"]["builtin:zendesk"],
+        serde_json::json!({"ZENDESK_SUBDOMAIN": "münich"})
+    );
+
+    let legacy_dir = tempfile::tempdir().unwrap();
+    let legacy_config = test_executor_config(legacy_dir.path()).await;
+    let mut legacy_context = minimal_context();
+    legacy_context.firewalls = None;
+    legacy_context.connector_runtime_targets = vec![ConnectorRuntimeTargetRegistration::Builtin {
+        connector_slug: "zendesk".to_string(),
+        base_url_vars: None,
+    }];
+    legacy_context.connector_runtime_candidate_targets = None;
+
+    let _legacy_session = register_proxy(&legacy_config, &legacy_context, "10.200.0.3")
+        .await
+        .unwrap();
+    let legacy_registry: serde_json::Value = serde_json::from_str(
+        &tokio::fs::read_to_string(legacy_dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(legacy_registry["vms"]["10.200.0.3"]["firewalls"].is_null());
+}
+
+#[tokio::test]
 async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_start() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

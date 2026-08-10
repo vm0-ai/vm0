@@ -130,6 +130,10 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
     pub connector_runtime_targets: Vec<ConnectorRuntimeTargetRegistration>,
+    /// Complete target membership written by candidate-aware APIs. During
+    /// rollout, connector_runtime_targets remains the previous runner view.
+    #[serde(default)]
+    pub connector_runtime_candidate_targets: Option<Vec<ConnectorRuntimeTargetRegistration>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -1343,13 +1347,17 @@ pub enum ConnectorRuntimeTarget {
 }
 
 /// Stable connector identity plus run-pinned metadata used at registration and
-/// in runtime synchronization requests. Metadata never participates in target
-/// equality, result correlation, or realtime notification routing.
+/// in runtime synchronization requests. Metadata never participates in the
+/// derived target identity, result correlation, or realtime notification routing.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ConnectorRuntimeTargetRegistration {
     #[serde(rename_all = "camelCase")]
-    Builtin { connector_slug: String },
+    Builtin {
+        connector_slug: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_url_vars: Option<HashMap<String, String>>,
+    },
     #[serde(rename_all = "camelCase")]
     Custom {
         custom_connector_id: String,
@@ -1361,7 +1369,7 @@ pub enum ConnectorRuntimeTargetRegistration {
 impl ConnectorRuntimeTargetRegistration {
     pub(crate) fn target(&self) -> ConnectorRuntimeTarget {
         match self {
-            Self::Builtin { connector_slug } => ConnectorRuntimeTarget::Builtin {
+            Self::Builtin { connector_slug, .. } => ConnectorRuntimeTarget::Builtin {
                 connector_slug: connector_slug.clone(),
             },
             Self::Custom {
@@ -1384,7 +1392,10 @@ impl ConnectorRuntimeTargetRegistration {
 impl From<ConnectorRuntimeTarget> for ConnectorRuntimeTargetRegistration {
     fn from(target: ConnectorRuntimeTarget) -> Self {
         match target {
-            ConnectorRuntimeTarget::Builtin { connector_slug } => Self::Builtin { connector_slug },
+            ConnectorRuntimeTarget::Builtin { connector_slug } => Self::Builtin {
+                connector_slug,
+                base_url_vars: None,
+            },
             ConnectorRuntimeTarget::Custom {
                 custom_connector_id,
             } => Self::Custom {
@@ -1960,6 +1971,46 @@ mod tests {
         assert_eq!(snapshot.entries[0].version_id, "version-1");
         let serialized = serde_json::to_string(snapshot).unwrap();
         assert!(!serialized.contains("url"));
+    }
+
+    #[test]
+    fn execution_context_preserves_optional_connector_candidate_targets() {
+        let mut json = serde_json::json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude-code",
+            "connectorRuntimeTargets": [],
+            "connectorRuntimeCandidateTargets": [{
+                "kind": "builtin",
+                "connectorSlug": "zendesk",
+                "baseUrlVars": {
+                    "ZENDESK_SUBDOMAIN": "xn--mnich-kva"
+                }
+            }]
+        });
+
+        let context: ExecutionContext = serde_json::from_value(json.clone()).unwrap();
+        let candidate = context
+            .connector_runtime_candidate_targets
+            .as_deref()
+            .and_then(|targets| targets.first())
+            .expect("candidate target should be preserved");
+        assert!(matches!(
+            candidate,
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug,
+                base_url_vars: Some(base_url_vars),
+            } if connector_slug == "zendesk"
+                && base_url_vars.get("ZENDESK_SUBDOMAIN")
+                    .is_some_and(|value| value == "xn--mnich-kva")
+        ));
+
+        json.as_object_mut()
+            .unwrap()
+            .remove("connectorRuntimeCandidateTargets");
+        let legacy: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert!(legacy.connector_runtime_candidate_targets.is_none());
     }
 
     #[test]

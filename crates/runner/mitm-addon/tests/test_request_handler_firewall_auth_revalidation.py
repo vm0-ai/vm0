@@ -18,6 +18,7 @@ import request_classification
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_helpers import cancel_pending_task
+from tests.registry_builtin_helpers import write_registry_with_cache
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 from tests.requestheaders_helpers import _assert_no_request_stream, await_requestheaders_result
 from tests.upstream_connection_helpers import mark_connected_tls_upstream
@@ -30,6 +31,9 @@ _FIREWALL_NAME = "model-provider:test"
 _ORIGINAL_RUN_ID = "run-before-auth-wait"
 _RESOLVED_AUTHORIZATION = "Bearer resolved-for-old-authorization"
 _RESOLVED_AUTH_BASE = "https://webhook.example.com/deliver"
+_CUSTOM_CONNECTOR_ID = "550e8400-e29b-41d4-a716-446655440000"
+_CANDIDATE_BUILTIN_NAME = "github"
+_CANDIDATE_CUSTOM_NAME = "custom_connector_550e8400e29b41d4a716446655440000"
 
 
 def _registry_vm(
@@ -113,6 +117,80 @@ def _switchable_permission_vm(
         billable_firewalls=[_FIREWALL_NAME],
         vm_fields={"captureNetworkBodies": True, "modelUsageProvider": "test"},
     )
+
+
+def _candidate_precedence_vm(tmp_path: Path, *, custom_available: bool) -> dict[str, object]:
+    firewalls: list[dict[str, object]] = [{"kind": "builtin", "name": _CANDIDATE_BUILTIN_NAME}]
+    network_policies: dict[str, dict[str, object]] = {
+        _CANDIDATE_BUILTIN_NAME: {
+            "allow": ["repos-write"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "deny",
+        }
+    }
+    vm: dict[str, object] = {
+        "runId": _ORIGINAL_RUN_ID,
+        "sandboxToken": "candidate-precedence-token",
+        "networkLogPath": str(tmp_path / "net.jsonl"),
+        "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+        "encryptedSecrets": "iv:tag:data",
+        "connectorRuntimeTargets": [
+            {"kind": "builtin", "connectorSlug": _CANDIDATE_BUILTIN_NAME},
+            {"kind": "custom", "customConnectorId": _CUSTOM_CONNECTOR_ID},
+        ],
+        "connectorRoutingVariables": {f"custom:{_CUSTOM_CONNECTOR_ID}": {}},
+        "firewalls": firewalls,
+        "networkPolicies": network_policies,
+        "billableFirewalls": [_CANDIDATE_BUILTIN_NAME],
+    }
+    if not custom_available:
+        vm["omittedCustomConnectorIds"] = [_CUSTOM_CONNECTOR_ID]
+        return vm
+
+    firewalls.append(
+        {
+            "kind": "inline",
+            "customConnectorId": _CUSTOM_CONNECTOR_ID,
+            "firewall": {
+                "name": _CANDIDATE_CUSTOM_NAME,
+                "apis": [
+                    {
+                        "base": "https://api.github.com",
+                        "auth": {
+                            "headers": {"Authorization": "Bearer ${{ secrets.CUSTOM_TOKEN }}"}
+                        },
+                        "permissions": [
+                            {
+                                "name": "custom-repos-write",
+                                "rules": ["POST /repos/{path+}"],
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+    )
+    network_policies[_CANDIDATE_CUSTOM_NAME] = {
+        "allow": ["custom-repos-write"],
+        "deny": [],
+        "ask": [],
+        "unknownPolicy": "deny",
+    }
+    return vm
+
+
+def _candidate_builtin_firewall() -> dict[str, object]:
+    return {
+        "name": _CANDIDATE_BUILTIN_NAME,
+        "apis": [
+            {
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "repos-write", "rules": ["POST /repos/{path+}"]}],
+            }
+        ],
+    }
 
 
 def _publish_registry(registry_path: Path, *, vm_info: dict[str, object] | None) -> None:
@@ -436,6 +514,62 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
     }
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "firewall_authorization_changed"
+    assert flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY) is None
+    assert "_usage_flow_tracked" not in flow.metadata
+
+
+async def test_custom_owner_change_during_auth_discards_builtin_credentials(
+    tmp_path,
+    real_flow,
+    make_tls_data,
+    mitm_ctx,
+    monkeypatch,
+):
+    registry_path, cache_path = write_registry_with_cache(
+        tmp_path,
+        {_CLIENT_IP: _candidate_precedence_vm(tmp_path, custom_available=False)},
+        {_CANDIDATE_BUILTIN_NAME: _candidate_builtin_firewall()},
+    )
+    flow, tls_data = _firewall_flow(real_flow, make_tls_data)
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return _resolved_firewall_auth()
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    monkeypatch.setattr(auth, "get_firewall_headers", auth_fetch)
+
+    request_task: asyncio.Task[None] | None = None
+    with mitm_ctx(
+        registry_path=str(registry_path),
+        builtin_firewall_catalog_cache_path=str(cache_path),
+        api_url="https://api.vm0.ai",
+    ):
+        mitm_addon.tls_clienthello(tls_data)
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            _publish_registry(
+                registry_path,
+                vm_info=_candidate_precedence_vm(tmp_path, custom_available=True),
+            )
+            release_auth_resolution.set()
+            await asyncio.gather(request_task)
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(request_task)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    assert flow.response.content is not None
+    assert json.loads(flow.response.content)["error"] == "firewall_authorization_changed"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "firewall_authorization_changed"
+    assert flow.request.headers.get("Authorization") is None
+    assert flow.request.query.get("managed") is None
     assert flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY) is None
     assert "_usage_flow_tracked" not in flow.metadata
 

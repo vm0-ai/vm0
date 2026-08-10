@@ -734,9 +734,16 @@ interface ResolvedModelProviderEnvironment {
   readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
 }
 
+type BuiltinRuntimeTargetRegistration = Extract<
+  ConnectorRuntimeTargetRegistration,
+  { readonly kind: "builtin" }
+>;
+
 interface PermissionManifest {
   readonly firewalls: ExecutionFirewalls;
   readonly networkPolicies: NetworkPolicies;
+  readonly builtinRuntimeTargets?: readonly BuiltinRuntimeTargetRegistration[];
+  readonly builtinRuntimeCandidateTargets?: readonly BuiltinRuntimeTargetRegistration[];
   readonly connectorPermissionBaseline?: StoredConnectorPermissionBaseline;
   readonly environmentSecretPlaceholders:
     | Readonly<Record<string, string>>
@@ -5011,6 +5018,80 @@ function applyBuiltinConnectorMetadataPolicies(
   };
 }
 
+function builtinRuntimeTargetRegistration(
+  firewall: ExecutionFirewallEntry,
+): BuiltinRuntimeTargetRegistration {
+  if (firewall.kind !== "builtin") {
+    throw new Error("Builtin connector manifest contains an inline firewall");
+  }
+  return {
+    kind: "builtin",
+    connectorSlug: connectorSlugSchema.parse(firewall.name),
+    ...(firewall.baseUrlVars === undefined
+      ? {}
+      : { baseUrlVars: { ...firewall.baseUrlVars } }),
+  };
+}
+
+function mergePermissionManifests(args: {
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
+  readonly builtinSources: readonly BuiltinConnectorManifestSource[];
+  readonly connectorManifest: PermissionManifest;
+  readonly customConnectorManifest: Pick<
+    PermissionManifest,
+    "firewalls" | "networkPolicies"
+  >;
+  readonly providerManifest: PermissionManifest | undefined;
+  readonly customConnectorFirewalls: readonly ExpandedFirewallConfig[];
+  readonly legacyBuiltinConnectorSlugs: ReadonlySet<ConnectorSlug>;
+}): PermissionManifest | undefined {
+  const builtinRuntimeCandidateTargets = args.connectorManifest.firewalls.map(
+    builtinRuntimeTargetRegistration,
+  );
+  const firewalls = [
+    ...(args.providerManifest?.firewalls ?? []),
+    ...args.connectorManifest.firewalls.filter((firewall) => {
+      return (
+        firewall.kind !== "builtin" ||
+        args.legacyBuiltinConnectorSlugs.has(
+          connectorSlugSchema.parse(firewall.name),
+        )
+      );
+    }),
+    ...args.customConnectorManifest.firewalls,
+  ];
+
+  if (firewalls.length === 0) {
+    return undefined;
+  }
+
+  return {
+    firewalls,
+    builtinRuntimeTargets: builtinRuntimeCandidateTargets.filter((target) => {
+      return args.legacyBuiltinConnectorSlugs.has(target.connectorSlug);
+    }),
+    builtinRuntimeCandidateTargets,
+    connectorPermissionBaseline: buildConnectorPermissionBaseline(
+      args.connectorCatalogSnapshot,
+      args.builtinSources,
+    ),
+    environmentSecretPlaceholders: mergeRecords(
+      args.providerManifest?.environmentSecretPlaceholders,
+      args.connectorManifest.environmentSecretPlaceholders,
+      firewallSecretPlaceholdersFromFirewalls(args.customConnectorFirewalls),
+    ),
+    billableFirewalls: [
+      ...(args.providerManifest?.billableFirewalls ?? []),
+      ...args.connectorManifest.billableFirewalls,
+    ],
+    networkPolicies: {
+      ...args.providerManifest?.networkPolicies,
+      ...args.connectorManifest.networkPolicies,
+      ...args.customConnectorManifest.networkPolicies,
+    },
+  };
+}
+
 interface BuildPermissionManifestArgs {
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -5034,18 +5115,21 @@ async function buildPermissionManifest(
     });
   const connectorBaseUrlVars = mergeRecords(args.vars, args.connectorVars);
   const customConnectorFirewalls = args.customConnectorFirewalls ?? [];
-  // Narrower custom bases already win by base specificity. Remove a built-in
-  // only when a custom base covers it, which avoids equal/broader ambiguity.
   const builtinConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
-    return (
-      args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug) &&
-      !builtinConnectorOverriddenByCustomFirewalls({
+    return args.connectorCatalogSnapshot.serverFirewalls.has(connectorSlug);
+  });
+  // Previous runners cannot reconcile overlapping candidates. Keep their
+  // firewall and target view filtered until that runner generation drains;
+  // candidate-aware runners receive the complete membership separately.
+  const legacyBuiltinConnectorSlugs = new Set(
+    builtinConnectorSlugs.filter((connectorSlug) => {
+      return !builtinConnectorOverriddenByCustomFirewalls({
         snapshot: args.connectorCatalogSnapshot,
         connectorSlug,
         customFirewalls: customConnectorFirewalls,
-      })
-    );
-  });
+      });
+    }),
+  );
 
   const builtinSources = await measureApiDispatchTiming(
     args.timing,
@@ -5123,37 +5207,17 @@ async function buildPermissionManifest(
     "api_dispatch_prepare_context_merge_permission_manifest",
     "nested",
     () => {
-      const firewalls = [
-        ...(providerManifest?.firewalls ?? []),
-        ...connectorManifest.firewalls,
-        ...customConnectorManifest.firewalls,
-      ];
-
-      if (firewalls.length === 0) {
-        return Promise.resolve(undefined);
-      }
-
-      return Promise.resolve({
-        firewalls,
-        connectorPermissionBaseline: buildConnectorPermissionBaseline(
-          args.connectorCatalogSnapshot,
+      return Promise.resolve(
+        mergePermissionManifests({
+          connectorCatalogSnapshot: args.connectorCatalogSnapshot,
           builtinSources,
-        ),
-        environmentSecretPlaceholders: mergeRecords(
-          providerManifest?.environmentSecretPlaceholders,
-          connectorManifest.environmentSecretPlaceholders,
-          firewallSecretPlaceholdersFromFirewalls(customConnectorFirewalls),
-        ),
-        billableFirewalls: [
-          ...(providerManifest?.billableFirewalls ?? []),
-          ...connectorManifest.billableFirewalls,
-        ],
-        networkPolicies: {
-          ...providerManifest?.networkPolicies,
-          ...connectorManifest.networkPolicies,
-          ...customConnectorManifest.networkPolicies,
-        },
-      });
+          connectorManifest,
+          customConnectorManifest,
+          providerManifest,
+          customConnectorFirewalls,
+          legacyBuiltinConnectorSlugs,
+        }),
+      );
     },
   );
 }
@@ -5840,21 +5904,23 @@ async function insertLaunchRunRows(
   return { createdAt };
 }
 
-function storedConnectorRuntimeTargets(args: {
+function storedConnectorRuntimeTargetViews(args: {
   readonly permissionManifest: PermissionManifest | undefined;
   readonly customTargets: readonly ConnectorRuntimeTargetRegistration[];
-}): ConnectorRuntimeTargetRegistration[] {
-  const builtinTargets = Object.keys(
-    args.permissionManifest?.connectorPermissionBaseline?.connectors ?? {},
-  )
-    .sort()
-    .map((connectorSlug) => {
-      return {
-        kind: "builtin" as const,
-        connectorSlug: connectorSlugSchema.parse(connectorSlug),
-      };
-    });
-  return [...builtinTargets, ...args.customTargets];
+}): {
+  readonly legacy: ConnectorRuntimeTargetRegistration[];
+  readonly candidates: ConnectorRuntimeTargetRegistration[];
+} {
+  return {
+    legacy: [
+      ...(args.permissionManifest?.builtinRuntimeTargets ?? []),
+      ...args.customTargets,
+    ],
+    candidates: [
+      ...(args.permissionManifest?.builtinRuntimeCandidateTargets ?? []),
+      ...args.customTargets,
+    ],
+  };
 }
 
 async function buildStoredExecutionContextDraft(args: {
@@ -5890,13 +5956,13 @@ async function buildStoredExecutionContextDraft(args: {
   const secretValues = executionSecrets.secrets
     ? Object.values(executionSecrets.secrets)
     : [];
-  const connectorRuntimeTargets = storedConnectorRuntimeTargets({
+  const connectorRuntimeTargets = storedConnectorRuntimeTargetViews({
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
   const customConnectorIds = [
     ...new Set(
-      connectorRuntimeTargets.flatMap((target) => {
+      connectorRuntimeTargets.candidates.flatMap((target) => {
         return target.kind === "custom" ? [target.customConnectorId] : [];
       }),
     ),
@@ -5946,7 +6012,8 @@ async function buildStoredExecutionContextDraft(args: {
       userTimezone: args.userTimezone,
       firewalls: permissions?.firewalls,
       networkPolicies: permissions?.networkPolicies,
-      connectorRuntimeTargets,
+      connectorRuntimeTargets: connectorRuntimeTargets.legacy,
+      connectorRuntimeCandidateTargets: connectorRuntimeTargets.candidates,
       connectorPermissionBaseline: permissions?.connectorPermissionBaseline,
       disallowedTools: args.body.disallowedTools,
       tools: args.body.tools,

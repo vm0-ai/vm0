@@ -324,6 +324,33 @@ describe("connector runtime synchronization contract", () => {
     ).toBe(true);
   });
 
+  it("preserves complete candidate targets and pinned built-in routing values", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const candidateTarget = {
+      kind: "builtin" as const,
+      connectorSlug: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    };
+
+    const execution = executionContextSchema.parse({
+      ...fixture,
+      connectorRuntimeTargets: [],
+      connectorRuntimeCandidateTargets: [candidateTarget],
+    });
+    const legacy = executionContextSchema.parse({
+      ...fixture,
+      connectorRuntimeTargets: [],
+    });
+
+    expect(execution.connectorRuntimeTargets).toEqual([]);
+    expect(execution.connectorRuntimeCandidateTargets).toEqual([
+      candidateTarget,
+    ]);
+    expect(legacy.connectorRuntimeCandidateTargets).toBeUndefined();
+  });
+
   it("requires stable API identities on available custom firewalls", () => {
     const result = {
       target: { kind: "custom" as const, customConnectorId },

@@ -1398,12 +1398,16 @@ function connectorPermissionBaselineMatchesStoredContext(
 ): boolean {
   const baselineConnectorSlugs = Object.keys(baseline.connectors);
   const storedBuiltinConnectorSlugs = new Set(
-    (storedContext.firewalls ?? []).flatMap((firewall) => {
-      return firewall.kind === "builtin" &&
-        connectorSlugSchema.safeParse(firewall.name).success
-        ? [firewall.name]
-        : [];
-    }),
+    storedContext.connectorRuntimeCandidateTargets === undefined
+      ? (storedContext.firewalls ?? []).flatMap((firewall) => {
+          return firewall.kind === "builtin" &&
+            connectorSlugSchema.safeParse(firewall.name).success
+            ? [firewall.name]
+            : [];
+        })
+      : storedContext.connectorRuntimeCandidateTargets.flatMap((target) => {
+          return target.kind === "builtin" ? [target.connectorSlug] : [];
+        }),
   );
   const storedNetworkPolicies = storedContext.networkPolicies ?? {};
   return (

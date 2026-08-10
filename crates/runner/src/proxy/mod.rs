@@ -66,5 +66,5 @@ pub use flush::{
 };
 pub(crate) use managed_process::ManagedMitmdump;
 pub use process::{MitmProxy, ProxyConfig};
-pub(crate) use registry::CustomConnectorRuntimeRegistryState;
+pub(crate) use registry::{ConnectorRuntimeRegistryUpdate, CustomConnectorRuntimeRegistryState};
 pub use registry::{ProxyRegistryHandle, VmRegistration};
