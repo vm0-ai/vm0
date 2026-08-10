@@ -424,6 +424,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
   },
+  [FeatureSwitchKey.CustomConnectorMcp]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable remote Streamable HTTP MCP definitions for organization Custom Connectors.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

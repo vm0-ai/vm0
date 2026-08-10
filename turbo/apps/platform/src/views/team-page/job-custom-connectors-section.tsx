@@ -15,7 +15,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  isHttpCustomConnectorResponse,
+  type CustomConnectorHttpResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
@@ -44,7 +47,7 @@ function CustomConnectorPermissionRow({
   onToggle,
   onManage,
 }: {
-  connector: CustomConnectorResponse;
+  connector: CustomConnectorHttpResponse;
   enabled: boolean;
   loading: boolean;
   disabled: boolean;
@@ -134,6 +137,7 @@ function CustomConnectorPermissionRow({
 export function JobCustomConnectorsSection() {
   const { t } = useTranslation("agents");
   const connectors = useLastResolved(customConnectors$);
+  const httpConnectors = connectors?.filter(isHttpCustomConnectorResponse);
   const addedLoadable = useLastLoadable(agentAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
   const addedSet = new Set(added);
@@ -149,7 +153,7 @@ export function JobCustomConnectorsSection() {
   const grantsLoadable = useLastLoadable(agentCustomConnectorGrants$);
   const detail = useLastResolved(agentDetail$);
 
-  if (!connectors || connectors.length === 0) {
+  if (!httpConnectors || httpConnectors.length === 0) {
     return null;
   }
 
@@ -175,7 +179,7 @@ export function JobCustomConnectorsSection() {
   const activePermissionDraft =
     permissionDraft?.agentId === detail?.agentId ? permissionDraft : null;
   const permissionTargetConnector = activePermissionDraft
-    ? connectors.find((connector) => {
+    ? httpConnectors.find((connector) => {
         return connector.id === activePermissionDraft.connectorId;
       })
     : undefined;
@@ -198,7 +202,7 @@ export function JobCustomConnectorsSection() {
           return $.authorization.customConnectors.description;
         })}
       </div>
-      {connectors.map((c, i) => {
+      {httpConnectors.map((c, i) => {
         const enabled = addedSet.has(c.id);
         return (
           <CustomConnectorPermissionRow
@@ -214,7 +218,7 @@ export function JobCustomConnectorsSection() {
               grantsLoadable.state === "hasData" &&
               detail?.agentId !== undefined
             }
-            isLast={i === connectors.length - 1}
+            isLast={i === httpConnectors.length - 1}
             onToggle={(checked) => {
               return handleToggle(c.id, checked);
             }}

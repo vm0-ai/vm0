@@ -44,8 +44,8 @@ export const orgCustomConnectors = pgTable(
     slug: varchar("slug", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 128 }).notNull(),
     prefixes: jsonb("prefixes").notNull().$type<OrgCustomConnectorPrefixes>(),
-    headerName: varchar("header_name", { length: 128 }).notNull(),
-    headerTemplate: text("header_template").notNull(),
+    headerName: varchar("header_name", { length: 128 }),
+    headerTemplate: text("header_template"),
     prefixTemplates: jsonb("prefix_templates")
       .notNull()
       .default(sql`'[]'::jsonb`)
@@ -72,6 +72,8 @@ export const orgCustomConnectors = pgTable(
     mcpTransport: varchar("mcp_transport", {
       length: 32,
     }).$type<OrgCustomConnectorMcpTransport>(),
+    // Physical compatibility column only. New readers do not project it;
+    // https://github.com/vm0-ai/vm0/issues/26013 drops it after API drain.
     mcpResource: text("mcp_resource"),
     skillMarkdown: text("skill_markdown"),
     storageVersion: bigint("storage_version", { mode: "number" })
@@ -100,11 +102,29 @@ export const orgCustomConnectors = pgTable(
       check(
         "chk_org_custom_connectors_mcp",
         sql`(
-          ${table.mcpEndpoint} IS NULL
-          AND ${table.mcpTransport} IS NULL
-        ) OR (
-          ${table.mcpEndpoint} IS NOT NULL
-          AND ${table.mcpTransport} = 'streamable-http'
+          ${table.mcpResource} IS NULL
+          AND (
+            (
+              ${table.mcpEndpoint} IS NULL
+              AND ${table.mcpTransport} IS NULL
+              AND ${table.prefixes} <> '[]'::jsonb
+              AND ${table.prefixTemplates} <> '[]'::jsonb
+              AND ${table.headerName} IS NOT NULL
+              AND ${table.headerName} <> ''
+              AND ${table.headerTemplate} IS NOT NULL
+              AND ${table.headerTemplate} <> ''
+            ) OR (
+              ${table.mcpEndpoint} IS NOT NULL
+              AND btrim(${table.mcpEndpoint}) <> ''
+              AND ${table.mcpTransport} IS NOT NULL
+              AND ${table.mcpTransport} = 'streamable-http'
+              AND ${table.prefixes} = '[]'::jsonb
+              AND ${table.prefixTemplates} = '[]'::jsonb
+              AND ${table.headerName} IS NULL
+              AND ${table.headerTemplate} IS NULL
+              AND ${table.permissionBundleRef} IS NULL
+            )
+          )
         )`,
       ),
       check(

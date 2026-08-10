@@ -15,7 +15,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vm0/ui";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  isHttpCustomConnectorResponse,
+  type CustomConnectorHttpResponse,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
   disconnectCustomConnector$,
@@ -202,11 +206,20 @@ function CustomConnectorCardContent({
           displayName={connector.displayName}
           size={20}
         />
-        <span
-          data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
-        >
-          {connector.displayName}
+        <span className="min-w-0 flex-1">
+          <span
+            data-testid="connector-card-label"
+            className="block truncate text-sm font-medium text-foreground"
+          >
+            {connector.displayName}
+          </span>
+          {connector.kind === "mcp" && (
+            <span className="block truncate text-xs text-muted-foreground">
+              {t(($) => {
+                return $.connectors.custom.mcpStreamableHttp;
+              })}
+            </span>
+          )}
         </span>
       </div>
       <div
@@ -222,19 +235,34 @@ function CustomConnectorCardContent({
                 return $.connectors.custom.statusConnected;
               })}
             </span>
-            <CustomConnectorAgentUsage
-              agents={authorizedAgents}
-              loading={authorizedAgentsLoading}
-              connectorLabel={connector.displayName}
-              onClick={onManageAccess}
-            />
+            {connector.kind === "mcp" ? (
+              <span
+                className="min-w-0 truncate font-mono text-xs text-muted-foreground/60"
+                title={connector.endpoint}
+              >
+                {connector.endpoint}
+              </span>
+            ) : (
+              <CustomConnectorAgentUsage
+                agents={authorizedAgents}
+                loading={authorizedAgentsLoading}
+                connectorLabel={connector.displayName}
+                onClick={onManageAccess}
+              />
+            )}
           </>
         ) : (
           <span
             className="min-w-0 truncate font-mono text-xs text-muted-foreground/60"
-            title={connector.prefixes[0]}
+            title={
+              connector.kind === "mcp"
+                ? connector.endpoint
+                : connector.prefixes[0]
+            }
           >
-            {connector.prefixes[0]}
+            {connector.kind === "mcp"
+              ? connector.endpoint
+              : connector.prefixes[0]}
           </span>
         )}
       </div>
@@ -254,9 +282,11 @@ function CustomConnectorRow({
   onDelete,
 }: CustomConnectorRowProps) {
   const { t } = useTranslation();
-  const adminCanManage =
+  const adminCanDelete =
     isAdmin && connector.oauthConfig?.providerAdapter !== "feishu";
-  const hasActions = connector.connected || adminCanManage;
+  const adminCanEdit =
+    adminCanDelete && isHttpCustomConnectorResponse(connector);
+  const hasActions = connector.connected || adminCanDelete;
   const directOAuth = connectsDirectlyWithOAuth(connector);
   const cardContent = (
     <CustomConnectorCardContent
@@ -270,7 +300,7 @@ function CustomConnectorRow({
 
   return (
     <div className="relative">
-      {connector.connected ? (
+      {connector.connected || connector.kind === "mcp" ? (
         <div className="zero-card flex flex-col">{cardContent}</div>
       ) : (
         <button
@@ -303,20 +333,24 @@ function CustomConnectorRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              {!connector.connected && directOAuth && (
-                <DropdownMenuItem onClick={onConnect}>
-                  {t(($) => {
-                    return $.connectors.actions.connect;
-                  })}
-                </DropdownMenuItem>
-              )}
-              {!connector.connected && !directOAuth && (
-                <DropdownMenuModalItem onModalSelect={onConnect}>
-                  {t(($) => {
-                    return $.connectors.actions.connect;
-                  })}
-                </DropdownMenuModalItem>
-              )}
+              {connector.kind === "http" &&
+                !connector.connected &&
+                directOAuth && (
+                  <DropdownMenuItem onClick={onConnect}>
+                    {t(($) => {
+                      return $.connectors.actions.connect;
+                    })}
+                  </DropdownMenuItem>
+                )}
+              {connector.kind === "http" &&
+                !connector.connected &&
+                !directOAuth && (
+                  <DropdownMenuModalItem onModalSelect={onConnect}>
+                    {t(($) => {
+                      return $.connectors.actions.connect;
+                    })}
+                  </DropdownMenuModalItem>
+                )}
               {connector.connected && (
                 <DropdownMenuItem onClick={onDisconnect}>
                   {t(($) => {
@@ -324,22 +358,22 @@ function CustomConnectorRow({
                   })}
                 </DropdownMenuItem>
               )}
-              {adminCanManage && (
-                <>
-                  <DropdownMenuModalItem onModalSelect={onEdit}>
-                    {t(($) => {
-                      return $.connectors.actions.edit;
-                    })}
-                  </DropdownMenuModalItem>
-                  <DropdownMenuModalItem
-                    onModalSelect={onDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    {t(($) => {
-                      return $.connectors.actions.delete;
-                    })}
-                  </DropdownMenuModalItem>
-                </>
+              {adminCanEdit && (
+                <DropdownMenuModalItem onModalSelect={onEdit}>
+                  {t(($) => {
+                    return $.connectors.actions.edit;
+                  })}
+                </DropdownMenuModalItem>
+              )}
+              {adminCanDelete && (
+                <DropdownMenuModalItem
+                  onModalSelect={onDelete}
+                  className="text-destructive focus:text-destructive"
+                >
+                  {t(($) => {
+                    return $.connectors.actions.delete;
+                  })}
+                </DropdownMenuModalItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -402,7 +436,7 @@ export function CustomConnectorsPanel() {
     detach(disconnect(connector.id, signal), Reason.DomCallback);
   };
 
-  const handleConnect = (connector: CustomConnectorResponse) => {
+  const handleConnect = (connector: CustomConnectorHttpResponse) => {
     if (connectsDirectlyWithOAuth(connector)) {
       detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
       return;
@@ -444,13 +478,17 @@ export function CustomConnectorsPanel() {
                 authorizedAgentsLoading={authorizedAgentsLoading}
                 isAdmin={isAdmin}
                 onConnect={() => {
-                  return handleConnect(c);
+                  if (isHttpCustomConnectorResponse(c)) {
+                    return handleConnect(c);
+                  }
                 }}
                 onDisconnect={() => {
                   return handleDisconnect(c);
                 }}
                 onEdit={() => {
-                  return openEdit(c);
+                  if (isHttpCustomConnectorResponse(c)) {
+                    return openEdit(c);
+                  }
                 }}
                 onManageAccess={() => {
                   return openAccess(c);

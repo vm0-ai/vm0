@@ -139,7 +139,11 @@ import {
 import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  isHttpCustomConnectorResponse,
+  type CustomConnectorHttpResponse,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
@@ -331,7 +335,7 @@ type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
   readonly authorized: boolean;
 };
 
-type ComposerCustomConnectorItem = CustomConnectorResponse & {
+type ComposerCustomConnectorItem = CustomConnectorHttpResponse & {
   readonly authorized: boolean;
 };
 
@@ -5913,7 +5917,7 @@ function ConnectorTriggerIcons({
 
 function matchesCustomConnectorSearch(
   search: string,
-  connector: CustomConnectorResponse,
+  connector: CustomConnectorHttpResponse,
 ): boolean {
   const normalizedSearch = search.trim().toLowerCase();
   if (!normalizedSearch) {
@@ -5930,7 +5934,7 @@ function CustomConnectorCatalogCard({
   connector,
   onConnect,
 }: {
-  connector: CustomConnectorResponse;
+  connector: CustomConnectorHttpResponse;
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
@@ -5990,12 +5994,12 @@ function AddConnectorsDialog({
 }: {
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
-  unconnectedCustom: CustomConnectorResponse[];
+  unconnectedCustom: CustomConnectorHttpResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
-  onConnectCustom: (connector: CustomConnectorResponse) => void;
+  onConnectCustom: (connector: CustomConnectorHttpResponse) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -7557,10 +7561,10 @@ interface ResolvedComposerConnectorCollections {
     PlatformConnectorCatalogStatusItem
   >;
   readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
-  readonly unconnectedCustomConnectors: CustomConnectorResponse[];
+  readonly unconnectedCustomConnectors: CustomConnectorHttpResponse[];
   readonly agentConnectors: ComposerConnectorItem[];
   readonly agentCustomConnectors: ComposerCustomConnectorItem[];
-  readonly selectedCustomConnector: CustomConnectorResponse | undefined;
+  readonly selectedCustomConnector: CustomConnectorHttpResponse | undefined;
 }
 
 function resolveComposerConnectorCollections({
@@ -7581,7 +7585,9 @@ function resolveComposerConnectorCollections({
   const resolvedCatalogItems =
     catalogItems.state === "hasData" ? catalogItems.data : [];
   const resolvedCustomConnectors =
-    customConnectors.state === "hasData" ? customConnectors.data : [];
+    customConnectors.state === "hasData"
+      ? customConnectors.data.filter(isHttpCustomConnectorResponse)
+      : [];
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
   const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
   const connectorMap = new Map(

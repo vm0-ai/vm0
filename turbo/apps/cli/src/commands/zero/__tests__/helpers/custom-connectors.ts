@@ -1,10 +1,14 @@
 import { http, HttpResponse } from "msw";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type {
+  CustomConnectorHttpResponse,
+  CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 export function customConnector(
-  overrides: Partial<CustomConnectorResponse> = {},
-): CustomConnectorResponse {
+  overrides: Partial<CustomConnectorHttpResponse> = {},
+): CustomConnectorHttpResponse {
   return {
+    kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     slug: "_acme-search",
     displayName: "Acme Search",

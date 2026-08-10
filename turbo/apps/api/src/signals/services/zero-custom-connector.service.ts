@@ -1,13 +1,16 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
   CustomConnectorField,
   CustomConnectorFieldKind,
   CustomConnectorHeaderInjection,
+  CustomConnectorHttpResponse,
+  CustomConnectorMcpResponse,
+  CustomConnectorMcpTransport,
   CustomConnectorOAuthConfig,
   CustomConnectorOAuthConfigInput,
   CustomConnectorPermissionBundleRef,
@@ -109,27 +112,41 @@ export interface CustomConnectorOAuthConfigRow {
   readonly updatedAt: Date;
 }
 
-export interface CustomConnectorRow {
+interface CustomConnectorSharedRow {
   readonly id: string;
   readonly orgId: string;
   readonly slug: string;
   readonly displayName: string;
-  readonly prefixes: readonly string[];
-  readonly headerName: string;
-  readonly headerTemplate: string;
-  readonly prefixTemplates: readonly string[];
   readonly fields: readonly CustomConnectorField[];
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode: CustomConnectorAuthMode;
   readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
-  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
+  readonly enabled: boolean;
   readonly skillMarkdown: string | null;
   readonly storageVersion: number;
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
+
+export interface CustomConnectorHttpRow extends CustomConnectorSharedRow {
+  readonly kind: "http";
+  readonly prefixes: readonly string[];
+  readonly headerName: string;
+  readonly headerTemplate: string;
+  readonly prefixTemplates: readonly string[];
+  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
+}
+
+export interface CustomConnectorMcpRow extends CustomConnectorSharedRow {
+  readonly kind: "mcp";
+  readonly endpoint: string;
+  readonly transport: CustomConnectorMcpTransport;
+  readonly permissionBundleRef: null;
+}
+
+export type CustomConnectorRow = CustomConnectorHttpRow | CustomConnectorMcpRow;
 
 interface DefinitionInput {
   readonly displayName: string;
@@ -308,6 +325,65 @@ function legacyHeaderTemplateFromCanonical(template: string): string {
   );
 }
 
+type PersistedHttpDefinitionRow = CustomConnectorDefinitionRow & {
+  readonly mcpEndpoint: null;
+  readonly mcpTransport: null;
+  readonly headerName: string;
+  readonly headerTemplate: string;
+};
+
+type PersistedMcpDefinitionRow = CustomConnectorDefinitionRow & {
+  readonly mcpEndpoint: string;
+  readonly mcpTransport: "streamable-http";
+  readonly headerName: null;
+  readonly headerTemplate: null;
+  readonly permissionBundleRef: null;
+};
+
+function hasHttpDiscriminator(
+  row: CustomConnectorDefinitionRow,
+): row is CustomConnectorDefinitionRow & {
+  readonly mcpEndpoint: null;
+  readonly mcpTransport: null;
+} {
+  return row.mcpEndpoint === null && row.mcpTransport === null;
+}
+
+function isValidPersistedHttpDefinition(
+  row: CustomConnectorDefinitionRow & {
+    readonly mcpEndpoint: null;
+    readonly mcpTransport: null;
+  },
+  legacyPrefixes: readonly string[],
+  prefixTemplates: readonly string[],
+): row is PersistedHttpDefinitionRow {
+  return (
+    legacyPrefixes.length > 0 &&
+    prefixTemplates.length > 0 &&
+    row.headerName !== null &&
+    row.headerName.length > 0 &&
+    row.headerTemplate !== null &&
+    row.headerTemplate.length > 0
+  );
+}
+
+function isValidPersistedMcpDefinition(
+  row: CustomConnectorDefinitionRow,
+  legacyPrefixes: readonly string[],
+  prefixTemplates: readonly string[],
+): row is PersistedMcpDefinitionRow {
+  return (
+    row.mcpEndpoint !== null &&
+    row.mcpEndpoint.trim().length > 0 &&
+    row.mcpTransport === "streamable-http" &&
+    legacyPrefixes.length === 0 &&
+    prefixTemplates.length === 0 &&
+    row.headerName === null &&
+    row.headerTemplate === null &&
+    row.permissionBundleRef === null
+  );
+}
+
 export function normaliseCustomConnectorRow(
   row: CustomConnectorDefinitionRow,
   oauthConfig: CustomConnectorOAuthConfigRow | null = null,
@@ -317,32 +393,67 @@ export function normaliseCustomConnectorRow(
   const storedHeaderInjections = headerInjectionArray(row.headerInjections);
   const queryInjections = queryInjectionArray(row.queryInjections);
   const legacyPrefixes = stringArray(row.prefixes);
-  return {
-    ...row,
-    prefixes: legacyPrefixes,
-    prefixTemplates:
-      prefixTemplates.length > 0 ? prefixTemplates : legacyPrefixes,
-    fields:
-      storedFields.length > 0
-        ? storedFields
-        : row.authMode === "manual"
-          ? canonicalFieldsFromLegacy()
-          : [],
-    headerInjections:
-      storedHeaderInjections.length > 0
-        ? storedHeaderInjections
-        : row.authMode === "manual"
-          ? [
-              {
-                name: row.headerName,
-                valueTemplate: canonicalHeaderTemplateFromLegacy(
-                  row.headerTemplate,
-                ),
-              },
-            ]
-          : [],
+  const shared = {
+    id: row.id,
+    orgId: row.orgId,
+    slug: row.slug,
+    displayName: row.displayName,
+    fields: storedFields,
+    headerInjections: storedHeaderInjections,
     queryInjections,
+    authMode: row.authMode,
     oauthConfig,
+    enabled: row.enabled,
+    skillMarkdown: row.skillMarkdown,
+    storageVersion: row.storageVersion,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+
+  if (hasHttpDiscriminator(row)) {
+    if (!isValidPersistedHttpDefinition(row, legacyPrefixes, prefixTemplates)) {
+      throw new Error("Invalid persisted HTTP Custom Connector definition");
+    }
+    return {
+      ...shared,
+      kind: "http",
+      prefixes: legacyPrefixes,
+      headerName: row.headerName,
+      headerTemplate: row.headerTemplate,
+      prefixTemplates,
+      fields:
+        storedFields.length > 0
+          ? storedFields
+          : row.authMode === "manual"
+            ? canonicalFieldsFromLegacy()
+            : [],
+      headerInjections:
+        storedHeaderInjections.length > 0
+          ? storedHeaderInjections
+          : row.authMode === "manual"
+            ? [
+                {
+                  name: row.headerName,
+                  valueTemplate: canonicalHeaderTemplateFromLegacy(
+                    row.headerTemplate,
+                  ),
+                },
+              ]
+            : [],
+      permissionBundleRef: row.permissionBundleRef,
+    };
+  }
+
+  if (!isValidPersistedMcpDefinition(row, legacyPrefixes, prefixTemplates)) {
+    throw new Error("Invalid persisted MCP Custom Connector definition");
+  }
+  return {
+    ...shared,
+    kind: "mcp",
+    endpoint: row.mcpEndpoint,
+    transport: row.mcpTransport,
+    permissionBundleRef: null,
   };
 }
 
@@ -375,7 +486,7 @@ function jsonValuesEqual(left: unknown, right: unknown): boolean {
 }
 
 function grantConfigurationChanged(args: {
-  readonly existing: CustomConnectorRow;
+  readonly existing: CustomConnectorHttpRow;
   readonly definition: ValidatedDefinition;
   readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
 }): boolean {
@@ -420,7 +531,7 @@ function credentialFieldsEqual(
 }
 
 function credentialContractChanged(args: {
-  readonly existing: CustomConnectorRow;
+  readonly existing: CustomConnectorHttpRow;
   readonly definition: ValidatedDefinition;
   readonly nextOAuthConfig: CustomConnectorOAuthConfigRow | null;
 }): boolean {
@@ -516,7 +627,7 @@ function computeMissingRequiredFields(args: {
 }
 
 function effectivePermissionBundleRef(
-  row: CustomConnectorRow,
+  row: CustomConnectorHttpRow,
 ): CustomConnectorPermissionBundleRef | null {
   return effectiveCustomConnectorPermissionBundleRef({
     slug: row.slug,
@@ -551,16 +662,10 @@ export function serialiseCustomConnector(args: {
     ...missingRequiredFields,
     ...(args.row.authMode === "oauth" && !oauthConnected ? ["oauth"] : []),
   ];
-  return {
+  const common = {
     id: args.row.id,
     slug: args.row.slug,
     displayName: args.row.displayName,
-    prefixes: [...args.row.prefixTemplates],
-    headerName: args.row.headerInjections[0]?.name ?? args.row.headerName,
-    headerTemplate: legacyHeaderTemplateFromCanonical(
-      args.row.headerInjections[0]?.valueTemplate ?? args.row.headerTemplate,
-    ),
-    prefixTemplates: [...args.row.prefixTemplates],
     fields: [...args.row.fields],
     headerInjections: [...args.row.headerInjections],
     queryInjections: [...args.row.queryInjections],
@@ -568,7 +673,6 @@ export function serialiseCustomConnector(args: {
     ...(args.row.oauthConfig
       ? { oauthConfig: serialiseOAuthConfig(args.row.oauthConfig) }
       : {}),
-    permissionBundleRef: effectivePermissionBundleRef(args.row),
     skillMarkdown: args.row.skillMarkdown,
     storageVersion: args.row.storageVersion,
     connected,
@@ -578,6 +682,32 @@ export function serialiseCustomConnector(args: {
     updatedAt: args.row.updatedAt.toISOString(),
     hasSecret: connected,
   };
+
+  if (args.row.kind === "mcp") {
+    return {
+      ...common,
+      kind: "mcp",
+      endpoint: args.row.endpoint,
+      transport: args.row.transport,
+      prefixes: [],
+      headerName: "",
+      headerTemplate: "",
+      prefixTemplates: [],
+      permissionBundleRef: null,
+    } satisfies CustomConnectorMcpResponse;
+  }
+
+  return {
+    ...common,
+    kind: "http",
+    prefixes: [...args.row.prefixTemplates],
+    headerName: args.row.headerInjections[0]?.name ?? args.row.headerName,
+    headerTemplate: legacyHeaderTemplateFromCanonical(
+      args.row.headerInjections[0]?.valueTemplate ?? args.row.headerTemplate,
+    ),
+    prefixTemplates: [...args.row.prefixTemplates],
+    permissionBundleRef: effectivePermissionBundleRef(args.row),
+  } satisfies CustomConnectorHttpResponse;
 }
 
 function validateDisplayName(raw: string): string | BadRequestResponse {
@@ -1681,6 +1811,11 @@ export const updateCustomConnectorDefinition$ = command(
     if (!existingConnector) {
       return notFound("Custom connector not found");
     }
+    if (existingConnector.kind !== "http") {
+      return badRequestMessage(
+        "MCP Custom Connectors cannot be updated with an HTTP definition",
+      );
+    }
     const v = validateDefinition(
       definitionFromUpdateInput(args.input, existingConnector),
     );
@@ -1928,7 +2063,7 @@ export function getCustomConnectorPermissionBundle(args: {
   return computed(async (get) => {
     const db = get(db$);
     const connector = await get(getCustomConnectorById(args));
-    if (!connector) {
+    if (!connector || connector.kind !== "http") {
       return null;
     }
     const permissionBundleRef = effectivePermissionBundleRef(connector);
@@ -2034,6 +2169,11 @@ function validateValueInputs(args: {
   readonly connector: CustomConnectorRow;
   readonly values: readonly CustomConnectorValueInput[];
 }): readonly CustomConnectorValueInput[] | BadRequestResponse {
+  if (args.connector.kind !== "http") {
+    return badRequestMessage(
+      "MCP Custom Connector credentials are not supported yet",
+    );
+  }
   return validateValueInputsForDefinition({
     fields: args.connector.fields,
     prefixTemplates: args.connector.prefixTemplates,
@@ -2802,7 +2942,7 @@ export async function loadCustomConnectorRuntimeData(
   },
 ): Promise<
   readonly {
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly values: readonly StoredValueRow[];
     readonly credentialAccess: CustomConnectorCredentialAccess;
   }[]
@@ -2837,11 +2977,13 @@ export async function loadCustomConnectorRuntimeData(
           ? and(
               eq(orgCustomConnectors.orgId, args.orgId),
               eq(orgCustomConnectors.enabled, true),
+              isNull(orgCustomConnectors.mcpTransport),
               inArray(orgCustomConnectors.id, [...args.connectorIds]),
             )
           : and(
               eq(orgCustomConnectors.orgId, args.orgId),
               eq(orgCustomConnectors.enabled, true),
+              isNull(orgCustomConnectors.mcpTransport),
             ),
       );
   });
@@ -2867,6 +3009,9 @@ export async function loadCustomConnectorRuntimeData(
           row.connector,
           row.oauthConfig,
         );
+        if (connector.kind !== "http") {
+          throw new Error("Expected HTTP Custom Connector runtime data");
+        }
         const credentialAccess = credentialAccesses.get(connector.id);
         if (!credentialAccess) {
           throw new Error("Expected custom connector credential access");

@@ -212,6 +212,7 @@ const completeOAuth2Callback$ = command(
     signal.throwIfAborted();
     if (
       !connector ||
+      connector.kind !== "http" ||
       connector.authMode !== "oauth" ||
       !connector.oauthConfig ||
       !customConnectorOAuthStateMatchesDefinition(state.context, connector)

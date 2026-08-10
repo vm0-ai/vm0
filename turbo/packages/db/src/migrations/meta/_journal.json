@@ -456,6 +456,13 @@
       "when": 1786286367180,
       "tag": "0872_curious_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 873,
+      "version": "7",
+      "when": 1786336791894,
+      "tag": "0873_prepare_mcp_custom_connector_readers",
+      "breakpoints": true
     }
   ]
 }

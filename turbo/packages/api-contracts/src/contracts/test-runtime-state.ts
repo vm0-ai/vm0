@@ -175,6 +175,19 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     run_id: z.uuid(),
     profile: z.string(),
   }),
+  z.object({
+    action: z.literal("seed-mcp-custom-connector"),
+    connector_id: z.uuid(),
+    org_id: z.string(),
+    user_id: z.string(),
+    slug: z.string(),
+    display_name: z.string(),
+    endpoint: z.url(),
+  }),
+  z.object({
+    action: z.literal("delete-custom-connector-fixture"),
+    connector_id: z.uuid(),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({

@@ -106,18 +106,19 @@ export const customConnectorSkillMarkdownSchema = z.string().refine(
   { message: "Custom connector skill markdown must not exceed 64 KiB" },
 );
 
+export const customConnectorMcpTransportSchema = z.literal("streamable-http");
+export type CustomConnectorMcpTransport = z.infer<
+  typeof customConnectorMcpTransportSchema
+>;
+
 /**
  * Custom connector response — safe to return to any org member.
  * Never includes any secret material.
  */
-export const customConnectorResponseSchema = z.object({
+const customConnectorResponseBaseSchema = z.object({
   id: z.string().uuid(),
   slug: z.string(),
   displayName: z.string(),
-  prefixes: z.array(z.string()),
-  headerName: z.string(),
-  headerTemplate: z.string(),
-  prefixTemplates: z.array(z.string()),
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
@@ -135,9 +136,62 @@ export const customConnectorResponseSchema = z.object({
   updatedAt: z.string(),
   hasSecret: z.boolean(),
 });
+
+export const customConnectorHttpResponseSchema =
+  customConnectorResponseBaseSchema.extend({
+    kind: z.literal("http"),
+    prefixes: z.array(z.string()),
+    headerName: z.string(),
+    headerTemplate: z.string(),
+    prefixTemplates: z.array(z.string()),
+  });
+export type CustomConnectorHttpResponse = z.infer<
+  typeof customConnectorHttpResponseSchema
+>;
+
+export const customConnectorMcpResponseSchema =
+  customConnectorResponseBaseSchema.extend({
+    kind: z.literal("mcp"),
+    endpoint: z.string().min(1),
+    transport: customConnectorMcpTransportSchema,
+    // Installed CLI versions still require the old HTTP response keys. These
+    // exact literals are wire compatibility only, never MCP definition state.
+    prefixes: z.tuple([]),
+    headerName: z.literal(""),
+    headerTemplate: z.literal(""),
+    prefixTemplates: z.tuple([]),
+    permissionBundleRef: z.null().optional(),
+  });
+export type CustomConnectorMcpResponse = z.infer<
+  typeof customConnectorMcpResponseSchema
+>;
+
+const taggedCustomConnectorResponseSchema = z.discriminatedUnion("kind", [
+  customConnectorHttpResponseSchema,
+  customConnectorMcpResponseSchema,
+]);
+
+export const customConnectorResponseSchema = z.preprocess((value) => {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !("kind" in value) &&
+    !("endpoint" in value) &&
+    !("transport" in value)
+  ) {
+    return { ...value, kind: "http" };
+  }
+  return value;
+}, taggedCustomConnectorResponseSchema);
 export type CustomConnectorResponse = z.infer<
   typeof customConnectorResponseSchema
 >;
+
+export function isHttpCustomConnectorResponse(
+  connector: CustomConnectorResponse,
+): connector is CustomConnectorHttpResponse {
+  return connector.kind === "http";
+}
 
 export const customConnectorListResponseSchema = z.object({
   connectors: z.array(customConnectorResponseSchema),

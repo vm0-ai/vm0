@@ -35,6 +35,7 @@ import {
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
+  type CustomConnectorHttpResponse,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -212,8 +213,9 @@ function axiomCatalogStatusItem(
   };
 }
 
-function createCustomConnector(): CustomConnectorResponse {
+function createCustomConnector(): CustomConnectorHttpResponse {
   return {
+    kind: "http",
     id: "33333333-3333-4333-8333-333333333333",
     storageVersion: 1,
     slug: "acme-search",

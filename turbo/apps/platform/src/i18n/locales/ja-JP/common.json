@@ -1898,6 +1898,7 @@
       },
       "emptyAdmin": "カスタム コネクタはまだありません。すべてのメンバーが使用する API を登録するために作成します。",
       "emptyMember": "組織はまだカスタム コネクタを登録していません。",
+      "mcpStreamableHttp": "MCP · Streamable HTTP",
       "moreOptions": "その他のオプション",
       "statusConnected": "接続済み",
       "toasts": {
