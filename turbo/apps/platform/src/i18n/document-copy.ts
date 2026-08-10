@@ -13,6 +13,14 @@ interface BrowserUpgradeCopy {
   readonly title: string;
 }
 
+function appBrandName(): "VM0" | "Okou" {
+  const brandName = document.documentElement.dataset.appBrandName;
+  if (brandName !== "VM0" && brandName !== "Okou") {
+    throw new Error("Invalid app brand name");
+  }
+  return brandName;
+}
+
 function setMetaContent(selector: string, content: string): void {
   document.querySelector(selector)?.setAttribute("content", content);
 }
@@ -20,10 +28,9 @@ function setMetaContent(selector: string, content: string): void {
 function brandedBrowserUpgradeCopy(
   copy: BrowserUpgradeCopy,
 ): BrowserUpgradeCopy {
-  const brandName = document.documentElement.dataset.appBrandName ?? "Zero";
   return {
     ...copy,
-    description: copy.description.replace(/Zero/gu, brandName),
+    description: copy.description.replace(/Zero/gu, appBrandName()),
   };
 }
 

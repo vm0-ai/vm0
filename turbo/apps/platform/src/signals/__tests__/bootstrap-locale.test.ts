@@ -328,7 +328,7 @@ describe("bootstrap locale", () => {
     );
     expect(upgradeTitle).toHaveTextContent("Update Chrome to continue");
     expect(upgradeDescription).toHaveTextContent(
-      "Zero does not support your current browser version.",
+      "VM0 does not support your current browser version.",
     );
     expect(upgradeAction).toHaveTextContent("Update Chrome");
   });

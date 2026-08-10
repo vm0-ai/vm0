@@ -281,6 +281,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   ensureTestLocalStorage();
+  document.documentElement.dataset.appBrandName = "VM0";
 
   // Override console.error to throw on unexpected errors.
   // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.

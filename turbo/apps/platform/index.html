@@ -719,7 +719,10 @@
         };
 
         var selectedCopy = copyByLocale[locale];
-        var brandName = document.documentElement.dataset.appBrandName || "VM0";
+        var brandName = document.documentElement.dataset.appBrandName;
+        if (brandName !== "VM0" && brandName !== "Okou") {
+          throw new Error("Invalid app brand name");
+        }
         var browserUpgradeTargets = [
           "browser",
           "chrome",
