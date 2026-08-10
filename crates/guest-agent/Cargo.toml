@@ -34,7 +34,7 @@ zstd.workspace = true
 
 [dev-dependencies]
 httpmock.workspace = true
-nix = { workspace = true, features = ["inotify"] }
+nix = { workspace = true, features = ["inotify", "process"] }
 shell-quote.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 vsock-host.workspace = true

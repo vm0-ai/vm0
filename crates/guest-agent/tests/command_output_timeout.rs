@@ -30,6 +30,14 @@ impl Drop for DescendantCleanup {
     }
 }
 
+#[test]
+fn command_session_rejects_zero_session_id() {
+    assert!(!common::process_session::session_id_matches_target(
+        rustix::process::Pid::INIT,
+        Ok(0),
+    ));
+}
+
 #[tokio::test]
 async fn command_output_timeout_preserves_completed_output()
 -> Result<(), Box<dyn std::error::Error>> {
