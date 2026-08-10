@@ -18,7 +18,7 @@ import hashlib
 import hmac
 import re
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import NewType
 
@@ -111,6 +111,42 @@ class _SigningUrl:
     query_pairs: tuple[tuple[str, str], ...]
 
 
+@dataclass(frozen=True)
+class AwsSigV4RequestInspection:
+    """Validated SigV4 request context for one exact URL/header representation."""
+
+    requires_body: bool
+    _url: str = field(repr=False)
+    _headers: tuple[tuple[str, str], ...] = field(repr=False)
+    _context: _SigningContext = field(repr=False)
+    _signing_url: _SigningUrl = field(repr=False)
+
+    def _matches(self, *, url: str, headers: list[tuple[str, str]]) -> bool:
+        """Return whether this inspection describes the exact current input."""
+        return self._url == url and self._headers == tuple(headers)
+
+
+def inspect_request(
+    *,
+    url: str,
+    headers: list[tuple[str, str]],
+) -> AwsSigV4RequestInspection:
+    """Validate and classify one exact SigV4 request representation."""
+    _validate_headers(headers)
+    context, signing_url = _classify_request(url, headers)
+    _validate_signing_context(context)
+    requires_body = _content_hash_header_value(headers) is None and not (
+        context.location is _AuthLocation.QUERY and context.scope.service in _S3_SIGNING_NAMES
+    )
+    return AwsSigV4RequestInspection(
+        requires_body=requires_body,
+        _url=url,
+        _headers=tuple(headers),
+        _context=context,
+        _signing_url=signing_url,
+    )
+
+
 def sign_request(
     *,
     method: str,
@@ -119,6 +155,7 @@ def sign_request(
     body: bytes | None,
     credentials: AwsSigV4Credentials,
     precomputed_body_hash: AwsSigV4BodyHash | None = None,
+    inspection: AwsSigV4RequestInspection | None = None,
 ) -> tuple[str, list[tuple[str, str]]]:
     """Return a URL/header pair re-signed with real AWS credentials.
 
@@ -143,11 +180,14 @@ def sign_request(
 
     When supplied, ``precomputed_body_hash`` must be the SHA-256 digest of
     ``body``. It is ignored when the request declares a supported payload hash.
+    ``inspection`` is reused only when it describes the exact current URL and
+    ordered headers; otherwise the current representation is inspected once.
     """
     _validate_credentials(credentials)
-    _validate_headers(headers)
-    context, signing_url = _classify_request(url, headers)
-    _validate_signing_context(context)
+    if inspection is None or not inspection._matches(url=url, headers=headers):
+        inspection = inspect_request(url=url, headers=headers)
+    context = inspection._context
+    signing_url = inspection._signing_url
     if context.source_access_key_id == credentials.access_key_id:
         raise AwsSigV4SigningError("AWS request must use a placeholder access key ID")
 
@@ -186,14 +226,7 @@ def request_requires_body_for_signing(
     headers: list[tuple[str, str]],
 ) -> bool:
     """Return whether re-signing must hash the request body bytes."""
-    _validate_headers(headers)
-    context, _signing_url = _classify_request(url, headers)
-    _validate_signing_context(context)
-    if _content_hash_header_value(headers) is not None:
-        return False
-    return not (
-        context.location is _AuthLocation.QUERY and context.scope.service in _S3_SIGNING_NAMES
-    )
+    return inspect_request(url=url, headers=headers).requires_body
 
 
 def _validate_signing_context(context: _SigningContext) -> None:

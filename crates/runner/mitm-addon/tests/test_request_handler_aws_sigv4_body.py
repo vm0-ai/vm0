@@ -159,6 +159,13 @@ def _header_auth_flow(
     )
 
 
+def _raw_header_list_size(request_headers: http.Headers) -> int:
+    return sum(
+        len(name) + len(value) + auth.AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES
+        for name, value in request_headers.fields
+    )
+
+
 @pytest.mark.parametrize("capture_body", [False, True])
 async def test_payload_independent_sigv4_signs_before_streaming(
     tmp_path,
@@ -188,6 +195,7 @@ async def test_payload_independent_sigv4_signs_before_streaming(
         await await_requestheaders_result(mitm_addon.requestheaders(flow))
 
         assert callable(flow.request.stream)
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
         callback = flow.request.stream
         streamed_body = b"x" * (STREAM_BUFFER_LIMIT + 17)
         assert callback(streamed_body) == streamed_body
@@ -235,6 +243,199 @@ async def test_payload_independent_large_fixed_length_bypasses_buffer_limit(
     assert callable(flow.request.stream)
     assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
     assert flow.error is None
+
+
+async def test_payload_independent_sigv4_cancellation_restores_inspection_state(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        content_length="0",
+        content_hash="UNSIGNED-PAYLOAD",
+    )
+    original_headers = flow.request.headers.fields
+    original_url = flow.request.url
+    get_headers = AsyncMock(side_effect=asyncio.CancelledError)
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await await_requestheaders_result(mitm_addon.requestheaders(flow))
+
+    get_headers.assert_awaited_once()
+    assert flow.request.headers.fields == original_headers
+    assert flow.request.url == original_url
+    assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
+    assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+
+
+@pytest.mark.parametrize(
+    ("target_size", "accepted"),
+    [
+        (auth.MAX_AWS_SIGV4_REQUEST_TARGET_BYTES, True),
+        (auth.MAX_AWS_SIGV4_REQUEST_TARGET_BYTES + 1, False),
+    ],
+    ids=["exact-limit", "over-limit"],
+)
+async def test_sigv4_request_target_inspection_boundary(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+    target_size: int,
+    accepted: bool,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        content_length="0",
+        content_hash="UNSIGNED-PAYLOAD",
+    )
+    flow.request.path = "/" + "a" * (target_size - 1)
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        if accepted:
+            await await_requestheaders_result(requestheaders_result)
+            assert flow.response is None
+            assert (
+                f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
+            )
+            await mitm_addon.request(flow)
+            flow.response = http.Response.make(200, b"ok")
+        else:
+            assert requestheaders_result is None
+            assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION in flow.metadata
+            await mitm_addon.request(flow)
+            assert flow.response is not None
+            assert flow.response.status_code == 502
+            assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+            assert "AWS request target is too large" in flow.response.json()["message"]
+            assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.headers["authorization"]
+
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
+        mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
+@pytest.mark.parametrize(
+    ("header_list_size", "accepted"),
+    [
+        (auth.MAX_AWS_SIGV4_REQUEST_HEADER_LIST_BYTES, True),
+        (auth.MAX_AWS_SIGV4_REQUEST_HEADER_LIST_BYTES + 1, False),
+    ],
+    ids=["exact-limit", "over-limit"],
+)
+async def test_sigv4_request_header_list_inspection_boundary(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+    header_list_size: int,
+    accepted: bool,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        content_length="0",
+        content_hash="UNSIGNED-PAYLOAD",
+    )
+    padding_name = "X-Padding"
+    padding_value_size = (
+        header_list_size
+        - _raw_header_list_size(flow.request.headers)
+        - len(padding_name.encode())
+        - auth.AWS_SIGV4_REQUEST_HEADER_FIELD_OVERHEAD_BYTES
+    )
+    assert padding_value_size >= 0
+    flow.request.headers[padding_name] = "x" * padding_value_size
+    assert _raw_header_list_size(flow.request.headers) == header_list_size
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        if accepted:
+            await await_requestheaders_result(requestheaders_result)
+            assert flow.response is None
+            assert (
+                f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
+            )
+            await mitm_addon.request(flow)
+            flow.response = http.Response.make(200, b"ok")
+        else:
+            assert requestheaders_result is None
+            assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION in flow.metadata
+            await mitm_addon.request(flow)
+            assert flow.response is not None
+            assert flow.response.status_code == 502
+            assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+            assert "AWS request headers are too large" in flow.response.json()["message"]
+            assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.headers["authorization"]
+
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
+        mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
+async def test_sigv4_request_header_field_count_fails_closed(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+) -> None:
+    registry_path = _write_aws_registry(tmp_path)
+    flow = _header_auth_flow(
+        real_flow,
+        headers,
+        content_length="0",
+        content_hash="UNSIGNED-PAYLOAD",
+    )
+    additional_fields = (
+        auth.MAX_AWS_SIGV4_REQUEST_HEADER_FIELDS + 1 - len(flow.request.headers.fields)
+    )
+    flow.request.headers = http.Headers(
+        (*flow.request.headers.fields, *((b"X-Padding", b""),) * additional_fields)
+    )
+    assert len(flow.request.headers.fields) == auth.MAX_AWS_SIGV4_REQUEST_HEADER_FIELDS + 1
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+        assert "AWS request headers are too large" in flow.response.json()["message"]
+        assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.headers["authorization"]
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
+        mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
 async def test_payload_independent_sigv4_disconnect_during_auth_falls_back_without_credentials(
@@ -305,10 +506,12 @@ async def test_payload_independent_sigv4_disconnect_during_auth_falls_back_witho
         assert flow.request.url == original_url
         assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.url
         assert aws_sigv4_body_admission.state_for_tests() == (1, 4)
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION in flow.metadata
         mitm_addon.error(flow)
 
     get_headers.assert_awaited_once()
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+    assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
 
 
 async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
@@ -333,10 +536,12 @@ async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
     ):
         assert mitm_addon.requestheaders(flow) is None
         assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION in flow.metadata
         get_headers.assert_not_awaited()
 
         await mitm_addon.request(flow)
         assert aws_sigv4_body_admission.state_for_tests() == (1, len(body))
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
         assert f"Credential={RESOLVED_AWS_ACCESS_KEY_ID}/" in flow.request.headers["authorization"]
 
         flow.response = http.Response.make(200, b"ok")
@@ -345,6 +550,7 @@ async def test_payload_dependent_sigv4_holds_admission_until_terminal_cleanup(
     get_headers.assert_awaited_once()
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
     assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+    assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
 
 
 async def test_payload_dependent_sigv4_revalidates_network_policy_before_auth(
@@ -651,6 +857,7 @@ def test_payload_dependent_sigv4_rejects_unbounded_framing_before_auth(
     assert flow.error is not None
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_error
     assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
+    assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
@@ -687,6 +894,7 @@ def test_malformed_sigv4_placeholder_uses_bounded_fallback(
         flow.metadata[metadata_keys.FIREWALL_ERROR]
         == auth.AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR
     )
+    assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
 
 
 @pytest.mark.parametrize(
@@ -727,6 +935,7 @@ def test_payload_dependent_sigv4_rejects_saturated_admission_before_auth(
         == auth.AWS_SIGV4_REQUEST_BODY_ADMISSION_SATURATED_ERROR
     )
     assert flow.metadata[metadata_keys.SUPPRESS_REQUEST_BODY_CAPTURE] is True
+    assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
 
 
@@ -750,11 +959,13 @@ async def test_payload_dependent_sigv4_cancellation_releases_admission(
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
         assert mitm_addon.requestheaders(flow) is None
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION in flow.metadata
         with pytest.raises(asyncio.CancelledError):
             await mitm_addon.request(flow)
 
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
     assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
+    assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
 
 
 async def test_payload_dependent_sigv4_auth_failure_releases_at_local_response_terminal(
