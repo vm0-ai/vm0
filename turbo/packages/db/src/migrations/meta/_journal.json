@@ -589,6 +589,13 @@
       "when": 1786416103938,
       "tag": "0891_certain_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 892,
+      "version": "7",
+      "when": 1786417137511,
+      "tag": "0892_ancient_hedge_knight",
+      "breakpoints": true
     }
   ]
 }

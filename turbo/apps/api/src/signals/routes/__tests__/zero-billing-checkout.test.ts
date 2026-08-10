@@ -2961,6 +2961,52 @@ describe("usage pack allocation management", () => {
     );
   });
 
+  it("rejects adding a user who is not an active organization member", async () => {
+    const orgFixture = createOrgFixture();
+    const unknownUserId = `user_${randomUUID()}`;
+    await seedManagedUsagePack(
+      [{ userId: orgFixture.userId, usagePackUsd: 20 }],
+      "pro",
+      orgFixture,
+    );
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: orgFixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+
+    const response = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [
+            { memberId: orgFixture.userId, usagePackUsd: 20 },
+            { memberId: unknownUserId, usagePackUsd: 50 },
+          ],
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Organization members changed; refresh billing and try again",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
+  });
+
   it("restores a scheduled package downgrade", async () => {
     const userId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 50 }]);
