@@ -185,7 +185,7 @@ async fn scan_session_members(session_id: Pid) -> Result<SessionScan, String> {
                 continue;
             }
         };
-        if process_session_id(pid) != Ok(session_id) {
+        if !session_id_matches_target(session_id, process_session_id(pid)) {
             continue;
         }
 
@@ -228,7 +228,7 @@ async fn scan_session_members(session_id: Pid) -> Result<SessionScan, String> {
                 continue;
             }
         }
-        if process_session_id(pid) != Ok(session_id) {
+        if !session_id_matches_target(session_id, process_session_id(pid)) {
             continue;
         }
 
@@ -250,7 +250,7 @@ fn record_owned_stat_error(
     live_pids: &mut Vec<Pid>,
     first_error: &mut Option<String>,
 ) {
-    if process_session_id(pid) != Ok(session_id) {
+    if !session_id_matches_target(session_id, process_session_id(pid)) {
         return;
     }
     live_pids.push(pid);
@@ -261,8 +261,16 @@ fn record_owned_stat_error(
     }
 }
 
-fn process_session_id(pid: Pid) -> rustix::io::Result<Pid> {
-    rustix::process::getsid(Some(pid))
+pub(crate) fn session_id_matches_target(
+    target_session_id: Pid,
+    observed_session_id: Result<libc::pid_t, nix::errno::Errno>,
+) -> bool {
+    observed_session_id == Ok(target_session_id.as_raw_pid())
+}
+
+fn process_session_id(pid: Pid) -> Result<libc::pid_t, nix::errno::Errno> {
+    nix::unistd::getsid(Some(nix::unistd::Pid::from_raw(pid.as_raw_pid())))
+        .map(nix::unistd::Pid::as_raw)
 }
 
 async fn read_process_stat(pid: Pid) -> ProcessStatRead {
