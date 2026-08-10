@@ -249,6 +249,38 @@ function mockAdminAccountSidebar(): void {
 }
 
 describe("zero sidebar account menu", () => {
+  it("restores visible focus to the account trigger when the menu closes", async () => {
+    const user = userEvent.setup();
+    prepareDefaultAgent();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const accountName = await screen.findByText("Alex Rivera");
+    const accountButton = accountName.closest("button");
+    if (!accountButton) {
+      throw new Error("Account menu trigger not found");
+    }
+
+    await user.click(accountButton);
+    const menu = await screen.findByRole("menu");
+    expect(menu).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(accountButton).toHaveFocus();
+      expect(accountButton.matches(":focus-visible")).toBeTruthy();
+    });
+  });
+
   it("opens credit balance and export data from the account menu", async () => {
     mockAdminAccountSidebar();
     const openMock = context.mocks.browser.open(null);

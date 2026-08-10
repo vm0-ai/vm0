@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
+  Button,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -188,12 +189,12 @@ function accountDisplayFrom(
 
 function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
   return (
-    <button
+    <Button
       type="button"
-      className={`rounded-lg transition-colors duration-200 ${
-        collapsed
-          ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-state-hover"
-          : "flex w-full items-center gap-2 p-2 text-left hover:bg-state-hover"
+      variant="ghost"
+      size={collapsed ? "icon-sm" : "default"}
+      className={`font-normal text-sidebar-foreground duration-200 ${
+        collapsed ? "shrink-0 p-0" : "h-auto w-full justify-start p-2 text-left"
       }`}
     >
       <AccountAvatar
@@ -211,7 +212,7 @@ function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
           </p>
         </div>
       )}
-    </button>
+    </Button>
   );
 }
 
