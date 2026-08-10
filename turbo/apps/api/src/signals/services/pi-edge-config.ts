@@ -4,6 +4,7 @@ import type {
 } from "@vm0/api-contracts/contracts/runners";
 import {
   getModelProviderPiChatCompletionsUrl,
+  getProviderBaseUrl,
   supportedRunModelSchema,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -73,15 +74,17 @@ export function piSandboxModelConfig(config: PiEdgeModelConfig): PiModelConfig {
 }
 
 /**
- * Pi base URLs are derived from the model-provider firewall table rather than
- * duplicated here. The firewall injects the real key only on bases it lists,
- * so a second copy of these URLs could drift out of the firewall's coverage
- * and leave a standby turn shipping the placeholder upstream.
+ * Pi base URLs are derived from model-provider metadata rather than duplicated
+ * here. DeepSeek uses its Responses-compatible provider base; providers driven
+ * through Pi's chat-completions transport derive the base from their exact
+ * firewall path.
  */
 function piEdgeDefaultBaseUrl(concreteType: string): string | undefined {
-  const chatCompletionsUrl = getModelProviderPiChatCompletionsUrl(
-    concreteType as ModelProviderType,
-  );
+  const providerType = concreteType as ModelProviderType;
+  if (providerType === "deepseek") {
+    return getProviderBaseUrl(providerType) ?? undefined;
+  }
+  const chatCompletionsUrl = getModelProviderPiChatCompletionsUrl(providerType);
   return chatCompletionsUrl?.replace(/chat\/completions$/, "");
 }
 

@@ -93,7 +93,6 @@ const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
     secretName: "DEEPSEEK_API_KEY",
     openaiBaseUrl: "https://api.deepseek.com/",
     firewallBaseUrl: "https://api.deepseek.com/responses",
-    piChatCompletionsUrl: "https://api.deepseek.com/chat/completions",
   },
   "zai-api-key": {
     framework: "claude-code",

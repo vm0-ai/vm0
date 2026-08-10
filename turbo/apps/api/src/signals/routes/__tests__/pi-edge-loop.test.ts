@@ -64,7 +64,7 @@ type AgentUsageEventBody = Parameters<
 
 const MODEL = "deepseek-v4-flash";
 const MANAGED_MODEL = "gpt-5.6-luna";
-const COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
+const DEEPSEEK_RESPONSES_URL = "https://api.deepseek.com/responses";
 const CODEX_MODEL = "gpt-5.5";
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -182,7 +182,8 @@ function assistantToolStream(args: {
 }
 
 function systemPromptFromRequest(request: unknown): string | undefined {
-  const messages = recordOf(request)?.messages;
+  const requestRecord = recordOf(request);
+  const messages = requestRecord?.messages ?? requestRecord?.input;
   if (!Array.isArray(messages)) {
     return undefined;
   }
@@ -299,19 +300,208 @@ function codexTextSsePayload(text: string): string {
     .join("");
 }
 
-function codexTextSseStream(text: string): Response {
-  // MSW's HttpResponse.text body does not close for the Codex stream reader in
-  // this environment; a raw Response with a ReadableStream does (same shape as
-  // the pi-agent-runtime unit coverage).
+function rawSseStream(body: string): Response {
+  // MSW's HttpResponse.text body does not close for the Responses stream reader
+  // in this environment; a raw Response with a ReadableStream does.
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(codexTextSsePayload(text)));
+      controller.enqueue(new TextEncoder().encode(body));
       controller.close();
     },
   });
   return new Response(stream, {
     headers: { "content-type": "text/event-stream" },
   });
+}
+
+function codexTextSseStream(text: string): Response {
+  return rawSseStream(codexTextSsePayload(text));
+}
+
+function responsesSseStream(
+  events: readonly Readonly<Record<string, unknown>>[],
+): Response {
+  return rawSseStream(
+    events
+      .map((event) => {
+        return `data: ${JSON.stringify(event)}\n\n`;
+      })
+      .join(""),
+  );
+}
+
+function deepseekReasoningItem(thinking: string): Record<string, unknown> {
+  return {
+    type: "reasoning",
+    id: "rs_pi_deepseek",
+    status: "completed",
+    summary: [],
+    content: [{ type: "reasoning_text", text: thinking }],
+  };
+}
+
+function deepseekMessageItem(text: string): Record<string, unknown> {
+  return {
+    type: "message",
+    id: "msg_pi_deepseek",
+    role: "assistant",
+    status: "completed",
+    content: [{ type: "output_text", text, annotations: [] }],
+  };
+}
+
+function deepseekResponseUsage(
+  usage?: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  return (
+    usage ?? {
+      input_tokens: 5,
+      output_tokens: 3,
+      total_tokens: 8,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens_details: { reasoning_tokens: 0 },
+    }
+  );
+}
+
+function deepseekTextSseStream(
+  text: string,
+  thinking: string,
+  usage?: Readonly<Record<string, unknown>>,
+): Response {
+  const reasoningItem = deepseekReasoningItem(thinking);
+  const messageItem = deepseekMessageItem(text);
+  return responsesSseStream([
+    {
+      type: "response.created",
+      response: {
+        id: "resp_pi_deepseek",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { ...reasoningItem, status: "in_progress", content: [] },
+    },
+    {
+      type: "response.reasoning_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: thinking,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: reasoningItem,
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 1,
+      item: { ...messageItem, status: "in_progress", content: [] },
+    },
+    {
+      type: "response.output_text.delta",
+      output_index: 1,
+      content_index: 0,
+      delta: text,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 1,
+      item: messageItem,
+    },
+    {
+      type: "response.completed",
+      response: {
+        id: "resp_pi_deepseek",
+        status: "completed",
+        output: [reasoningItem, messageItem],
+        usage: deepseekResponseUsage(usage),
+      },
+    },
+  ]);
+}
+
+function deepseekToolCallId(callId: string): string {
+  return `${callId}|fc_${callId}`;
+}
+
+function deepseekToolSseStream(args: {
+  readonly id: string;
+  readonly name: string;
+  readonly arguments: Readonly<Record<string, unknown>>;
+  readonly thinking: string;
+  readonly usage?: Readonly<Record<string, unknown>>;
+}): Response {
+  const reasoningItem = deepseekReasoningItem(args.thinking);
+  const serializedArguments = JSON.stringify(args.arguments);
+  const functionItem = {
+    type: "function_call",
+    id: `fc_${args.id}`,
+    call_id: args.id,
+    name: args.name,
+    arguments: serializedArguments,
+    status: "completed",
+  };
+  return responsesSseStream([
+    {
+      type: "response.created",
+      response: {
+        id: "resp_pi_deepseek",
+        status: "in_progress",
+        output: [],
+        usage: null,
+      },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { ...reasoningItem, status: "in_progress", content: [] },
+    },
+    {
+      type: "response.reasoning_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: args.thinking,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: reasoningItem,
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 1,
+      item: { ...functionItem, arguments: "", status: "in_progress" },
+    },
+    {
+      type: "response.function_call_arguments.delta",
+      output_index: 1,
+      delta: serializedArguments,
+    },
+    {
+      type: "response.function_call_arguments.done",
+      output_index: 1,
+      arguments: serializedArguments,
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 1,
+      item: functionItem,
+    },
+    {
+      type: "response.completed",
+      response: {
+        id: "resp_pi_deepseek",
+        status: "completed",
+        output: [reasoningItem, functionItem],
+        usage: deepseekResponseUsage(args.usage),
+      },
+    },
+  ]);
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -927,7 +1117,7 @@ describe("PiLoop edge turn", () => {
         releaseModel.resolve();
       }
     });
-    const completionRequests: unknown[] = [];
+    const responsesRequests: unknown[] = [];
     const axiomIngestBodies: unknown[] = [];
     let modelCall = 0;
     server.use(
@@ -942,14 +1132,14 @@ describe("PiLoop edge turn", () => {
           });
         },
       ),
-      http.post(COMPLETIONS_URL, async ({ request }) => {
-        completionRequests.push(await request.json());
+      http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
+        responsesRequests.push(await request.json());
         const currentCall = modelCall;
         modelCall += 1;
         if (currentCall === 0) {
           modelStarted.resolve();
           await releaseModel.promise;
-          return assistantToolStream({
+          return deepseekToolSseStream({
             id: "read_skill_1",
             name: "read",
             arguments: {
@@ -958,7 +1148,7 @@ describe("PiLoop edge turn", () => {
             thinking: "inspect the pinned skill",
           });
         }
-        return assistantTextStream("follow-up answer", "follow-up reasoning");
+        return deepseekTextSseStream("follow-up answer", "follow-up reasoning");
       }),
     );
 
@@ -1071,26 +1261,27 @@ describe("PiLoop edge turn", () => {
     releaseModel.resolve();
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(1);
-    expect(completionRequests[0]).toMatchObject({
+    expect(responsesRequests).toHaveLength(1);
+    expect(responsesRequests[0]).toMatchObject({
       model: MODEL,
-      messages: [
-        { role: "system", content: piSystemPrompt },
+      input: [
+        { role: "developer", content: piSystemPrompt },
         {
           role: "user",
-          content: [{ type: "text", text: edgePrompt }],
+          content: [{ type: "input_text", text: edgePrompt }],
         },
       ],
       stream: true,
+      store: false,
       tools: expect.arrayContaining([
         expect.objectContaining({
           type: "function",
-          function: expect.objectContaining({ name: "read" }),
+          name: "read",
         }),
       ]),
     });
-    expect(systemPromptFromRequest(completionRequests[0])).toBe(piSystemPrompt);
-    expect(JSON.stringify(completionRequests)).not.toContain(legacyPrompt);
+    expect(systemPromptFromRequest(responsesRequests[0])).toBe(piSystemPrompt);
+    expect(JSON.stringify(responsesRequests)).not.toContain(legacyPrompt);
     const handoffTelemetry = axiomIngestBodies
       .flatMap((body) => {
         return Array.isArray(body) ? body : [];
@@ -1130,7 +1321,7 @@ describe("PiLoop edge turn", () => {
           messageId: `${edge.runId}/3`,
           message: {
             role: "toolResult",
-            toolCallId: "read_skill_1",
+            toolCallId: deepseekToolCallId("read_skill_1"),
             toolName: "read",
             content: [
               {
@@ -1153,7 +1344,7 @@ describe("PiLoop edge turn", () => {
               { type: "thinking", thinking: "edge reasoning" },
               { type: "text", text: "edge answer" },
             ],
-            api: "openai-completions",
+            api: "openai-responses",
             provider: "deepseek",
             model: MODEL,
             usage: {
@@ -1215,7 +1406,7 @@ describe("PiLoop edge turn", () => {
               },
               {
                 type: "toolCall",
-                id: "read_skill_1",
+                id: deepseekToolCallId("read_skill_1"),
                 name: "read",
                 arguments: {
                   path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
@@ -1233,7 +1424,7 @@ describe("PiLoop edge turn", () => {
           role: "toolResult",
           payload: {
             role: "toolResult",
-            toolCallId: "read_skill_1",
+            toolCallId: deepseekToolCallId("read_skill_1"),
             toolName: "read",
             content: [
               expect.objectContaining({
@@ -1306,29 +1497,30 @@ describe("PiLoop edge turn", () => {
     const followUp = await sendChatRun(fixture, followUpPrompt, edge.threadId);
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(2);
-    expect(completionRequests[1]).toMatchObject({
+    expect(responsesRequests).toHaveLength(2);
+    expect(responsesRequests[1]).toMatchObject({
       model: MODEL,
-      messages: [
-        { role: "system", content: piSystemPrompt },
+      input: [
+        { role: "developer", content: piSystemPrompt },
         expect.objectContaining({ role: "user" }),
         expect.objectContaining({
-          role: "assistant",
-          tool_calls: [expect.objectContaining({ id: "read_skill_1" })],
+          type: "reasoning",
         }),
         expect.objectContaining({
-          role: "tool",
-          tool_call_id: "read_skill_1",
+          type: "function_call",
+          name: "read",
         }),
-        expect.objectContaining({ role: "assistant", content: "edge answer" }),
+        expect.objectContaining({ type: "function_call_output" }),
+        expect.objectContaining({ type: "message", role: "assistant" }),
         {
           role: "user",
-          content: [{ type: "text", text: followUpPrompt }],
+          content: [{ type: "input_text", text: followUpPrompt }],
         },
       ],
       stream: true,
+      store: false,
     });
-    expect(JSON.stringify(completionRequests[1])).not.toContain(legacyPrompt);
+    expect(JSON.stringify(responsesRequests[1])).not.toContain(legacyPrompt);
     const continuedTranscript = await readTranscript(followUp.runId);
     expect(continuedTranscript).toMatchObject({
       lastOrdinal: 6,
@@ -1394,29 +1586,29 @@ describe("PiLoop edge turn", () => {
       createTarGz(memoryFiles),
     );
 
-    const completionRequests: unknown[] = [];
+    const responsesRequests: unknown[] = [];
     let modelCall = 0;
     server.use(
-      http.post(COMPLETIONS_URL, async ({ request }) => {
-        completionRequests.push(await request.json());
+      http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
+        responsesRequests.push(await request.json());
         const currentCall = modelCall;
         modelCall += 1;
         return currentCall === 0
-          ? assistantToolStream({
+          ? deepseekToolSseStream({
               id: "read_memory_1",
               name: "read",
               arguments: { path: `${PI_MEMORY_ROOT}/MEMORY.md` },
               thinking: "read the complete durable memory",
             })
-          : assistantTextStream("memory read", "memory considered");
+          : deepseekTextSseStream("memory read", "memory considered");
       }),
     );
 
     const run = await sendChatRun(fixture, "use my durable memory");
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(1);
-    const systemPrompt = systemPromptFromRequest(completionRequests[0]);
+    expect(responsesRequests).toHaveLength(1);
+    const systemPrompt = systemPromptFromRequest(responsesRequests[0]);
     if (systemPrompt === undefined) {
       throw new Error("Expected the Pi request to contain a system prompt");
     }
@@ -1459,7 +1651,7 @@ describe("PiLoop edge turn", () => {
           messageId: `${run.runId}/3`,
           message: {
             role: "toolResult",
-            toolCallId: "read_memory_1",
+            toolCallId: deepseekToolCallId("read_memory_1"),
             toolName: "read",
             content: [{ type: "text", text: memoryContent }],
             isError: false,
@@ -1671,31 +1863,31 @@ describe("PiLoop edge turn", () => {
   });
 
   it("bills each vm0-managed edge response once using normalized canonical-model usage", async () => {
-    await unitPriceModelTokens(MANAGED_MODEL);
-    const fixture = await piEdgeFixture({ provider: "vm0" });
+    await unitPriceModelTokens(MODEL);
+    const fixture = await piEdgeFixture({ provider: "vm0", model: MODEL });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
-    const completionRequests: unknown[] = [];
+    const responsesRequests: unknown[] = [];
     server.use(
-      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
-        completionRequests.push(await request.json());
-        return assistantToolStream({
+      http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
+        responsesRequests.push(await request.json());
+        return deepseekToolSseStream({
           id: "read_billing_1",
           name: "read",
           arguments: {
             path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
           },
           thinking: "read before answering",
-          responseModel: "untrusted-response-model",
           usage: {
-            prompt_tokens: 100,
-            completion_tokens: 11,
-            prompt_tokens_details: {
+            input_tokens: 100,
+            output_tokens: 11,
+            total_tokens: 111,
+            input_tokens_details: {
               cached_tokens: 20,
               cache_write_tokens: 5,
             },
-            completion_tokens_details: { reasoning_tokens: 4 },
+            output_tokens_details: { reasoning_tokens: 4 },
           },
         });
       }),
@@ -1711,11 +1903,11 @@ describe("PiLoop edge turn", () => {
     );
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(1);
-    expect(completionRequests[0]).toMatchObject({
-      model: MANAGED_MODEL,
+    expect(responsesRequests).toHaveLength(1);
+    expect(responsesRequests[0]).toMatchObject({
+      model: MODEL,
       stream: true,
-      stream_options: { include_usage: true },
+      store: false,
     });
 
     // The read hands off to the Sandbox, which resumes and completes the run.
@@ -1731,7 +1923,7 @@ describe("PiLoop edge turn", () => {
           messageId: `${run.runId}/3`,
           message: {
             role: "toolResult",
-            toolCallId: "read_billing_1",
+            toolCallId: deepseekToolCallId("read_billing_1"),
             toolName: "read",
             content: [{ type: "text", text: "skill bytes\n" }],
             isError: false,
@@ -1767,7 +1959,7 @@ describe("PiLoop edge turn", () => {
     expect(runState.status).toBe("completed");
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
       runId: run.runId,
-      model: MANAGED_MODEL,
+      model: MODEL,
       inputTokens: 75,
       outputTokens: 11,
       cacheTokens: 25,
@@ -1796,7 +1988,7 @@ describe("PiLoop edge turn", () => {
     );
     await flushWaitUntilForTest();
     expect(replay).toStrictEqual(run);
-    expect(completionRequests).toHaveLength(1);
+    expect(responsesRequests).toHaveLength(1);
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
       creditsCharged: 111,
     });
@@ -1808,13 +2000,12 @@ describe("PiLoop edge turn", () => {
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
     server.use(
-      http.post(COMPLETIONS_URL, () => {
-        return assistantTextStream("BYOK answer", "BYOK reasoning", {
-          usage: {
-            prompt_tokens: 40,
-            completion_tokens: 9,
-            prompt_tokens_details: { cached_tokens: 7 },
-          },
+      http.post(DEEPSEEK_RESPONSES_URL, () => {
+        return deepseekTextSseStream("BYOK answer", "BYOK reasoning", {
+          input_tokens: 40,
+          output_tokens: 9,
+          total_tokens: 49,
+          input_tokens_details: { cached_tokens: 7 },
         });
       }),
     );
@@ -2077,10 +2268,10 @@ describe("PiLoop edge turn", () => {
       }
     });
     server.use(
-      http.post(COMPLETIONS_URL, async () => {
+      http.post(DEEPSEEK_RESPONSES_URL, async () => {
         modelStarted.resolve();
         await releaseModel.promise;
-        return assistantTextStream(
+        return deepseekTextSseStream(
           "committed edge answer",
           "committed edge reasoning",
         );
@@ -2177,7 +2368,7 @@ describe("PiLoop edge turn", () => {
     const fixture = await piEdgeFixture();
     await enablePiLoop(fixture);
     server.use(
-      http.post(COMPLETIONS_URL, () => {
+      http.post(DEEPSEEK_RESPONSES_URL, () => {
         return HttpResponse.json(
           { error: "provider unavailable" },
           { status: 503 },

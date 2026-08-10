@@ -22,11 +22,14 @@ const PI_CAPABLE_PROVIDERS = [
 type PiCapableProvider = (typeof PI_CAPABLE_PROVIDERS)[number];
 
 /**
- * Actual request URL the Pi runtime calls. Most providers hit the
- * chat-completions URL directly; the Codex subscription runtime appends
- * `/codex/responses` to its base URL.
+ * Actual request URL the Pi runtime calls. DeepSeek uses its native Responses
+ * endpoint, most providers use chat completions, and the Codex subscription
+ * runtime appends `/codex/responses` to its base URL.
  */
 function piRequestUrl(provider: PiCapableProvider): string | undefined {
+  if (provider === "deepseek") {
+    return "https://api.deepseek.com/responses";
+  }
   const url = getModelProviderPiChatCompletionsUrl(provider);
   if (url === undefined) {
     return undefined;
@@ -86,5 +89,12 @@ describe("model provider firewall covers the Pi standby request", () => {
     expect(getModelProviderPiChatCompletionsUrl("anthropic-api-key")).toBe(
       undefined,
     );
+  });
+
+  it("exposes no chat-completions endpoint for DeepSeek", () => {
+    expect(getModelProviderPiChatCompletionsUrl("deepseek")).toBeUndefined();
+    expect(firewallAuthBases("deepseek")).toStrictEqual([
+      "https://api.deepseek.com/responses",
+    ]);
   });
 });
