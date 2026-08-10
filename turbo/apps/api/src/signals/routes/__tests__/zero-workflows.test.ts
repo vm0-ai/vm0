@@ -21,6 +21,7 @@ import {
 } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -1787,7 +1788,7 @@ describe("zero workflows", () => {
     ).resolves.toMatchObject({ archive_size: firstArchive.length });
   });
 
-  it("repairs duplicate workflow paths with deterministic archive bytes", async () => {
+  it("repairs workflow archives deterministically across path order and umask", async () => {
     const actor = user();
     const agent = await createAgent(actor, {
       displayName: "Duplicate Path Volume Agent",
@@ -1798,6 +1799,10 @@ describe("zero workflows", () => {
       { path: "duplicate.txt", content: "first duplicate" },
       { path: "duplicate.txt", content: "second duplicate" },
     ];
+    const originalUmask = process.umask(0o022);
+    onTestFinished(() => {
+      process.umask(originalUmask);
+    });
     const workflow = await createWorkflow(actor, {
       agentId: agent.agentId,
       name: `duplicate-volume-${randomUUID().slice(0, 8)}`,
@@ -1827,9 +1832,11 @@ describe("zero workflows", () => {
       observedRepair = true;
     });
 
+    process.umask(0o077);
     await updateWorkflow(actor, workflow.body.id, {
       files: [...duplicateFiles].reverse(),
     });
+    process.umask(originalUmask);
 
     expect(observedRepair).toBeTruthy();
     expect(

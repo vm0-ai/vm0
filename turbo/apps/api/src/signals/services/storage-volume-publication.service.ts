@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -134,6 +134,8 @@ function writeFilesToDirectory(
     const filePath = resolveVolumeFilePath(tmpDir, file.path);
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, file.content);
+    // `tar` portable mode retains file permissions, so canonicalize them.
+    chmodSync(filePath, 0o644);
   }
 }
 
