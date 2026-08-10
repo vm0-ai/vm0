@@ -1,39 +1,353 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const workerPath = process.argv[2];
-if (!workerPath) {
-  throw new Error("worker module path is required");
+const [workerPath, indexPath, manifestPath] = process.argv.slice(2);
+if (!workerPath || !indexPath || !manifestPath) {
+  throw new Error("worker, index, and manifest paths are required");
+}
+
+function parseAttributes(tag) {
+  const attributes = new Map();
+  const pattern = /([A-Za-z_:][A-Za-z0-9:._-]*)\s*=\s*(["'])(.*?)\2/gu;
+  for (const match of tag.matchAll(pattern)) {
+    const name = match[1];
+    const value = match[3];
+    if (name !== undefined && value !== undefined) {
+      attributes.set(name, value);
+    }
+  }
+  return attributes;
+}
+
+function escapeHtml(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function serializeAttributes(attributes) {
+  return [...attributes]
+    .map(([name, value]) => ` ${name}="${escapeHtml(value)}"`)
+    .join("");
+}
+
+function matchesSelector(tagName, attributes, selector) {
+  const match = /^(meta|link)\[(name|property|rel)(\^?=)"([^"]+)"\]$/u.exec(
+    selector,
+  );
+  if (!match || match[1] !== tagName) {
+    return false;
+  }
+  const attributeName = match[2];
+  const operator = match[3];
+  const expectedValue = match[4];
+  const actualValue = attributes.get(attributeName);
+  if (actualValue === undefined) {
+    return false;
+  }
+  return operator === "^="
+    ? actualValue.startsWith(expectedValue)
+    : actualValue === expectedValue;
+}
+
+function applyHandler({ attributes, handler, innerContent = "" }) {
+  const state = {
+    appendedContent: "",
+    attributes,
+    innerContent,
+    removed: false,
+  };
+  handler.element({
+    append(content, options) {
+      state.appendedContent += options?.html ? content : escapeHtml(content);
+    },
+    remove() {
+      state.removed = true;
+    },
+    setAttribute(name, value) {
+      state.attributes.set(name, value);
+    },
+    setInnerContent(content, options) {
+      state.innerContent = options?.html ? content : escapeHtml(content);
+    },
+  });
+  return state;
+}
+
+function rewritePairedTag(html, tagName, handler) {
+  const pattern = new RegExp(
+    `<${tagName}([^>]*)>([\\s\\S]*?)</${tagName}>`,
+    "iu",
+  );
+  return html.replace(pattern, (tag, attributeSource, innerContent) => {
+    const state = applyHandler({
+      attributes: parseAttributes(attributeSource),
+      handler,
+      innerContent,
+    });
+    if (state.removed) {
+      return "";
+    }
+    return `<${tagName}${serializeAttributes(state.attributes)}>${state.innerContent}${state.appendedContent}</${tagName}>`;
+  });
+}
+
+function rewriteVoidTag(html, tagName, selector, handler) {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*>`, "giu");
+  return html.replace(pattern, (tag) => {
+    const attributes = parseAttributes(tag);
+    if (!matchesSelector(tagName, attributes, selector)) {
+      return tag;
+    }
+    const state = applyHandler({ attributes, handler });
+    if (state.removed) {
+      return "";
+    }
+    return `<${tagName}${serializeAttributes(state.attributes)} />`;
+  });
+}
+
+function rewriteHtml(html, selector, handler) {
+  if (selector === "html" || selector === "head" || selector === "title") {
+    return rewritePairedTag(html, selector, handler);
+  }
+  if (selector.startsWith("meta[")) {
+    return rewriteVoidTag(html, "meta", selector, handler);
+  }
+  if (selector.startsWith("link[")) {
+    return rewriteVoidTag(html, "link", selector, handler);
+  }
+  throw new Error(`Unsupported test HTMLRewriter selector: ${selector}`);
 }
 
 globalThis.HTMLRewriter = class HTMLRewriter {
-  on() {
+  handlers = [];
+
+  on(selector, handler) {
+    this.handlers.push({ handler, selector });
     return this;
   }
 
   transform(response) {
-    return response;
+    const handlers = this.handlers;
+    const body = new ReadableStream({
+      async start(controller) {
+        let html = await response.text();
+        for (const { handler, selector } of handlers) {
+          html = rewriteHtml(html, selector, handler);
+        }
+        controller.enqueue(new TextEncoder().encode(html));
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   }
 };
 
-const { default: worker } = await import(pathToFileURL(workerPath).href);
+const [indexTemplate, manifestTemplate, workerModule] = await Promise.all([
+  readFile(indexPath, "utf8"),
+  readFile(manifestPath, "utf8"),
+  import(pathToFileURL(workerPath).href),
+]);
+const worker = workerModule.default;
 const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-api.vm6.ai";
+const vm0Description =
+  "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+const okouDescription =
+  "Okou, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
+
+function requestUrl(input) {
+  return new URL(input instanceof Request ? input.url : input.toString());
+}
 
 function assetEnvironment(apiOrigin = "") {
+  const indexHtml = indexTemplate.replace(
+    '<meta name="vm0-api-origin" content="" />',
+    `<meta name="vm0-api-origin" content="${apiOrigin}" />`,
+  );
   return {
     ASSETS: {
-      fetch() {
+      fetch(input) {
+        const url = requestUrl(input);
+        if (url.pathname === "/manifest.webmanifest") {
+          return Promise.resolve(
+            new Response(manifestTemplate, {
+              headers: {
+                "Content-Encoding": "gzip",
+                "Content-Type": "application/manifest+json",
+                ETag: '"manifest-etag"',
+              },
+            }),
+          );
+        }
+        if (url.pathname === "/assets/app.js") {
+          return Promise.resolve(
+            new Response("export const app = true;", {
+              headers: {
+                "Content-Type": "application/javascript",
+                ETag: '"asset-etag"',
+              },
+            }),
+          );
+        }
         return Promise.resolve(
-          new Response(
-            `<!doctype html><head><meta name="vm0-api-origin" content="${apiOrigin}" /></head>`,
-            { status: 200, headers: { "Content-Type": "text/html" } },
-          ),
+          new Response(indexHtml, {
+            status: 200,
+            headers: {
+              "Content-Encoding": "gzip",
+              "Content-Type": "text/html; charset=UTF-8",
+              ETag: '"index-etag"',
+            },
+          }),
         );
       },
     },
   };
 }
+
+function tagAttribute(html, tagName, selectorAttribute, selectorValue, target) {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*>`, "giu");
+  for (const match of html.matchAll(pattern)) {
+    const attributes = parseAttributes(match[0]);
+    if (attributes.get(selectorAttribute) === selectorValue) {
+      return attributes.get(target) ?? null;
+    }
+  }
+  return null;
+}
+
+function metaContent(html, selectorAttribute, selectorValue) {
+  return tagAttribute(
+    html,
+    "meta",
+    selectorAttribute,
+    selectorValue,
+    "content",
+  );
+}
+
+function documentTitle(html) {
+  return /<title[^>]*>([\s\S]*?)<\/title>/iu.exec(html)?.[1]?.trim() ?? null;
+}
+
+function htmlAttribute(html, attributeName) {
+  const tag = /<html\b[^>]*>/iu.exec(html)?.[0];
+  return tag ? (parseAttributes(tag).get(attributeName) ?? null) : null;
+}
+
+async function requestAppPage(origin) {
+  const response = await worker.fetch(
+    new Request(`${origin}/settings/profile`),
+    assetEnvironment(),
+  );
+  const html = await response.text();
+  return { html, response };
+}
+
+const vm0Page = await requestAppPage("https://app.vm0.ai");
+assert.equal(vm0Page.response.status, 200);
+assert.equal(vm0Page.response.headers.get("x-robots-tag"), "noindex, nofollow");
+assert.equal(vm0Page.response.headers.get("content-encoding"), null);
+assert.equal(vm0Page.response.headers.get("etag"), null);
+assert.equal(
+  documentTitle(vm0Page.html),
+  "AI Agents for Real Work — Your Trustworthy AI Teammate | VM0",
+);
+assert.equal(htmlAttribute(vm0Page.html, "data-app-brand-name"), "VM0");
+assert.equal(metaContent(vm0Page.html, "name", "application-name"), "VM0");
+assert.equal(
+  metaContent(vm0Page.html, "name", "apple-mobile-web-app-title"),
+  "VM0",
+);
+assert.equal(metaContent(vm0Page.html, "name", "description"), vm0Description);
+assert.equal(metaContent(vm0Page.html, "property", "og:site_name"), "VM0");
+assert.equal(
+  metaContent(vm0Page.html, "property", "og:title"),
+  "VM0 - Your Trustworthy AI Teammate",
+);
+assert.equal(metaContent(vm0Page.html, "name", "twitter:site"), "@okou_ai");
+assert.equal(metaContent(vm0Page.html, "name", "twitter:creator"), "@okou_ai");
+assert.equal(metaContent(vm0Page.html, "name", "robots"), "noindex, nofollow");
+assert.equal(
+  tagAttribute(vm0Page.html, "link", "rel", "canonical", "href"),
+  "https://app.vm0.ai/",
+);
+assert.equal(
+  metaContent(vm0Page.html, "property", "og:url"),
+  "https://app.vm0.ai/",
+);
+
+const okouPage = await requestAppPage("https://app.okou.ai");
+assert.equal(
+  documentTitle(okouPage.html),
+  "AI Agents for Real Work — Your Trustworthy AI Teammate | Okou",
+);
+assert.equal(htmlAttribute(okouPage.html, "data-app-brand-name"), "Okou");
+assert.equal(metaContent(okouPage.html, "name", "application-name"), "Okou");
+assert.equal(
+  metaContent(okouPage.html, "name", "description"),
+  okouDescription,
+);
+assert.equal(metaContent(okouPage.html, "property", "og:site_name"), "Okou");
+assert.equal(
+  metaContent(okouPage.html, "property", "og:title"),
+  "Okou - Your Trustworthy AI Teammate",
+);
+assert.equal(
+  tagAttribute(okouPage.html, "link", "rel", "canonical", "href"),
+  "https://app.okou.ai/",
+);
+assert.equal(
+  metaContent(okouPage.html, "property", "og:url"),
+  "https://app.okou.ai/",
+);
+
+const okouPreview = await requestAppPage("https://3508a2f5.okou-app.pages.dev");
+assert.equal(htmlAttribute(okouPreview.html, "data-app-brand-name"), "Okou");
+assert.equal(
+  tagAttribute(okouPreview.html, "link", "rel", "canonical", "href"),
+  "https://app.okou.ai/",
+);
+
+const untrustedSuffix = await requestAppPage("https://okou.ai.evil.example");
+assert.equal(htmlAttribute(untrustedSuffix.html, "data-app-brand-name"), "VM0");
+
+for (const [origin, brandName, description] of [
+  ["https://app.vm0.ai", "VM0", vm0Description],
+  ["https://app.okou.ai", "Okou", okouDescription],
+]) {
+  const response = await worker.fetch(
+    new Request(`${origin}/manifest.webmanifest`),
+    assetEnvironment(),
+  );
+  const manifest = await response.json();
+  assert.equal(response.headers.get("content-encoding"), null);
+  assert.equal(response.headers.get("etag"), null);
+  assert.equal(
+    response.headers.get("content-type"),
+    "application/manifest+json; charset=UTF-8",
+  );
+  assert.equal(manifest.name, brandName);
+  assert.equal(manifest.short_name, brandName);
+  assert.equal(manifest.description, description);
+  assert.equal(manifest.icons.length, 3);
+}
+
+const staticAsset = await worker.fetch(
+  new Request("https://app.okou.ai/assets/app.js"),
+  assetEnvironment(),
+);
+assert.equal(await staticAsset.text(), "export const app = true;");
+assert.equal(staticAsset.headers.get("etag"), '"asset-etag"');
+assert.equal(staticAsset.headers.get("x-robots-tag"), null);
 
 async function requestSharedPage({
   appOrigin,
@@ -49,9 +363,7 @@ async function requestSharedPage({
     return Promise.resolve(metaResponse());
   };
   const response = await worker.fetch(
-    new Request(
-      `${appOrigin}/share/threads/${sharedThreadId}${query}`,
-    ),
+    new Request(`${appOrigin}/share/threads/${sharedThreadId}${query}`),
     assetEnvironment(apiOrigin),
   );
   return { response, observedUrl, observedHeaders };
@@ -73,6 +385,21 @@ assert.equal(
 assert.equal(
   preview.observedHeaders.get("x-vercel-protection-bypass"),
   "preview-secret",
+);
+const previewHtml = await preview.response.text();
+assert.equal(documentTitle(previewHtml), "Preview conversation | Okou");
+assert.equal(htmlAttribute(previewHtml, "data-app-brand-name"), "Okou");
+assert.equal(
+  metaContent(previewHtml, "property", "og:title"),
+  "Preview conversation",
+);
+assert.equal(
+  metaContent(previewHtml, "property", "og:url"),
+  `https://pr-25304-app.omby.ai/share/threads/${sharedThreadId}`,
+);
+assert.equal(
+  tagAttribute(previewHtml, "link", "rel", "canonical", "href"),
+  null,
 );
 
 const production = await requestSharedPage({
@@ -106,10 +433,14 @@ assert.equal(
   missing.response.headers.get("cache-control"),
   "public, max-age=60, s-maxage=60",
 );
+assert.equal(missing.response.headers.get("x-robots-tag"), "noindex, nofollow");
+const missingHtml = await missing.response.text();
 assert.equal(
-  missing.response.headers.get("x-robots-tag"),
-  "noindex, nofollow",
+  documentTitle(missingHtml),
+  "Shared conversation not found | Okou",
 );
+assert.equal(metaContent(missingHtml, "property", "og:title"), null);
+assert.equal(metaContent(missingHtml, "name", "twitter:title"), null);
 
 const upstreamFailure = await requestSharedPage({
   appOrigin: "https://app.okou.ai",
@@ -118,9 +449,6 @@ const upstreamFailure = await requestSharedPage({
   },
 });
 assert.equal(upstreamFailure.response.status, 502);
-assert.equal(
-  upstreamFailure.response.headers.get("cache-control"),
-  "no-store",
-);
+assert.equal(upstreamFailure.response.headers.get("cache-control"), "no-store");
 
 console.log("okou app worker tests passed");

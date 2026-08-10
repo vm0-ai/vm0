@@ -76,4 +76,25 @@ describe("shared thread page", () => {
     const scroller = await screen.findByTestId("shared-thread-scroll");
     expect(scroller).toHaveClass("h-full", "overflow-y-auto");
   });
+
+  it("does not repeat a brand-only document title", async () => {
+    context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+      return respond(200, {
+        id: SHARED_THREAD_ID,
+        title: "VM0",
+        messages: [],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/share/threads/${SHARED_THREAD_ID}`,
+      user: null,
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "VM0" }),
+    ).resolves.toBeInTheDocument();
+    expect(document.title).toBe("VM0");
+  });
 });
