@@ -170,6 +170,25 @@ async function readWorkflowStorageVersion(
   return response.body.storage_version ?? null;
 }
 
+async function setWorkflowStorageVersionArchiveSize(
+  actor: ApiTestUser,
+  workflowId: string,
+  versionId: string,
+  archiveSize: number,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected an organization-scoped workflow actor");
+  }
+  await storageStateAction({
+    action: "set-storage-version-archive-size",
+    org_id: actor.orgId,
+    user_id: VOLUME_ORG_USER_ID,
+    storage_name: getCustomSkillStorageName(workflowId),
+    version_id: versionId,
+    archive_size: archiveSize,
+  });
+}
+
 function s3BodyBuffer(body: unknown): Buffer {
   if (Buffer.isBuffer(body)) {
     return Buffer.from(body);
@@ -1720,6 +1739,12 @@ describe("zero workflows", () => {
         ?.head_version_id,
     ).toBe(secondVersionId);
 
+    await setWorkflowStorageVersionArchiveSize(
+      actor,
+      workflow.body.id,
+      firstVersionId,
+      firstArchive.length + 1,
+    );
     s3.objects.delete(firstArchiveKey);
     s3.clearWrites();
     let observedRepairPreparation = false;
