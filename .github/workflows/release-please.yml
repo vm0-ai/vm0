@@ -649,196 +649,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber
 
-  # Build API production deployment (Staged - prod-eligible, not serving traffic)
-  build-api-production:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.url }}
-    permissions:
-      contents: read
-      id-token: write
-    environment: production
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.release-please.outputs.release_target }}
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Build Runtime API Schema
-        working-directory: turbo
-        run: pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out "$GITHUB_WORKSPACE/turbo/runtime-api-schema.json"
-
-      - name: Upload Runtime API Schema Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: runtime-api-schema
-          path: turbo/runtime-api-schema.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Install neonctl
-        run: npm install -g neonctl@2.15.0
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*API* building staged production deployment..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*API* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Get Production Database URL
-        id: get-db-url
-        run: |
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-
-      - name: Fetch production Doppler OAuth config
-        id: doppler-oauth
-        uses: dopplerhq/secrets-fetch-action@v2.0.0
-        with:
-          auth-method: oidc
-          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
-          doppler-project: vm0
-          doppler-config: prd
-
-      - name: Wait for canonical CLI artifact
-        id: cli-artifact
-        shell: bash
-        env:
-          ARTIFACT_SHA: ${{ needs.release-please.outputs.release_target }}
-          CLI_STATIC_BASE_URL: https://static.vm0.io
-        run: |
-          set -euo pipefail
-
-          if [[ ! "$ARTIFACT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "CLI artifact commit must be a full lowercase SHA-1: $ARTIFACT_SHA" >&2
-            exit 1
-          fi
-
-          artifact_base_url="${CLI_STATIC_BASE_URL}/okou-cli/${ARTIFACT_SHA}"
-          artifact_dir="$(mktemp -d)"
-          for attempt in $(seq 1 60); do
-            if curl -fsSL \
-              "${artifact_base_url}/ready.json" \
-              --output "${artifact_dir}/ready.json"; then
-              break
-            fi
-            if (( attempt == 60 )); then
-              echo "CLI artifact was not ready after 10 minutes: $artifact_base_url" >&2
-              exit 1
-            fi
-            echo "Waiting for CLI artifact: $artifact_base_url (attempt $attempt/60)"
-            sleep 10
-          done
-
-          curl -fsSL \
-            "${artifact_base_url}/manifest.json" \
-            --output "${artifact_dir}/manifest.json"
-          curl -fsSL \
-            "${artifact_base_url}/package.tgz" \
-            --output "${artifact_dir}/package.tgz"
-          bash .github/scripts/verify-okou-cli-artifact.sh \
-            "$artifact_dir" \
-            "$ARTIFACT_SHA"
-          echo "package-url=${artifact_base_url}/package.tgz" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve API production environment
-        id: api-production-env
-        uses: ./.github/actions/web-api-env
-        with:
-          app: api
-          environment: production
-          database-url: ${{ steps.get-db-url.outputs.database-url }}
-          web-url: https://www.vm0.ai
-          app-url: https://app.vm0.ai
-          api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
-          cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
-        env:
-          REPO_VARS_JSON: ${{ toJSON(vars) }}
-          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
-          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
-
-      - name: Build API Staged Production Deployment
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
-          environment: production
-          deployment-env: api
-          prebuilt: "true"
-          prebuilt-build-command: |
-            pnpm --dir turbo/apps/api build
-            rm -rf .vercel/output
-            cp -R turbo/apps/api/.vercel/output .vercel/output
-          skip-domain: "true"
-          skip-start: "true"
-          skip-finish: "true"
-          environment-file: ${{ steps.api-production-env.outputs.file }}
-
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
-        run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*API* ✅ Staged build ready (not yet serving)"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*API* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*API* ❌ Staged build failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*API* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
   detect-host-worker-deploy-inputs:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
@@ -994,8 +804,8 @@ jobs:
   # or validation fails, this job fails, which in turn blocks jobs that keep a
   # `needs: builds-complete` edge.
   #
-  # API promotion and schema publishing depend directly on build-api-production,
-  # so the shared barrier does not wait on the runtime API schema artifact.
+  # The API artifact is built in promote-api-production after this barrier so it
+  # stays on the same runner through migrations and production deployment.
   builds-complete:
     needs:
       - release-please
@@ -1033,10 +843,10 @@ jobs:
           fi
           echo "✅ All build-phase jobs succeeded or were skipped."
 
-  # Run required production migrations and immediately promote the staged API
-  # deployment in the same job, avoiding a second runner and toolchain setup.
+  # Build the API artifact, run required production migrations, and deploy that
+  # exact artifact from the same runner only after migrations succeed.
   promote-api-production:
-    needs: [release-please, builds-complete, build-api-production]
+    needs: [release-please, builds-complete]
     if: >-
       always() &&
       !failure() && !cancelled() &&
@@ -1045,20 +855,38 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
-      deployment_url: ${{ needs.build-api-production.outputs.deployment_url }}
+      deployment_url: ${{ steps.deploy.outputs.url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
     permissions:
       contents: read
       deployments: write
+      id-token: write
     environment: production
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.release_target }}
 
-      - name: Initialize migration toolchain
-        if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+      - name: Initialize API release toolchain
         uses: ./.github/actions/toolchain-init
+
+      - name: Build Runtime API Schema
+        working-directory: turbo
+        run: pnpm --filter @vm0/api-contracts run build:runtime-api-schema -- --out "$GITHUB_WORKSPACE/turbo/runtime-api-schema.json"
+
+      - name: Upload Runtime API Schema Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: runtime-api-schema
+          path: turbo/runtime-api-schema.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build API Production Artifact
+        run: pnpm --dir turbo/apps/api build
+
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
 
       - name: Initialize API deployment toolchain
         uses: ./.github/actions/vercel-setup
@@ -1066,6 +894,80 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+
+      - name: Get Production Database URL
+        id: get-db-url
+        run: |
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+      - name: Fetch production Doppler OAuth config
+        id: doppler-oauth
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: prd
+
+      - name: Wait for canonical CLI artifact
+        id: cli-artifact
+        shell: bash
+        env:
+          ARTIFACT_SHA: ${{ needs.release-please.outputs.release_target }}
+          CLI_STATIC_BASE_URL: https://static.vm0.io
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$ARTIFACT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "CLI artifact commit must be a full lowercase SHA-1: $ARTIFACT_SHA" >&2
+            exit 1
+          fi
+
+          artifact_base_url="${CLI_STATIC_BASE_URL}/okou-cli/${ARTIFACT_SHA}"
+          artifact_dir="$(mktemp -d)"
+          for attempt in $(seq 1 60); do
+            if curl -fsSL \
+              "${artifact_base_url}/ready.json" \
+              --output "${artifact_dir}/ready.json"; then
+              break
+            fi
+            if (( attempt == 60 )); then
+              echo "CLI artifact was not ready after 10 minutes: $artifact_base_url" >&2
+              exit 1
+            fi
+            echo "Waiting for CLI artifact: $artifact_base_url (attempt $attempt/60)"
+            sleep 10
+          done
+
+          curl -fsSL \
+            "${artifact_base_url}/manifest.json" \
+            --output "${artifact_dir}/manifest.json"
+          curl -fsSL \
+            "${artifact_base_url}/package.tgz" \
+            --output "${artifact_dir}/package.tgz"
+          bash .github/scripts/verify-okou-cli-artifact.sh \
+            "$artifact_dir" \
+            "$ARTIFACT_SHA"
+          echo "package-url=${artifact_base_url}/package.tgz" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve API production environment
+        id: api-production-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: api
+          environment: production
+          database-url: ${{ steps.get-db-url.outputs.database-url }}
+          web-url: https://www.vm0.ai
+          app-url: https://app.vm0.ai
+          api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
+          cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       - name: Notify Slack - Migration Starting
         id: migration-slack-start
@@ -1097,23 +999,13 @@ jobs:
           neon-project-id: ${{ vars.NEON_PROJECT_ID }}
           branch-name: release-smoke/migrate-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Get Production Database URL
-        id: get-migration-db-url
-        if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
-        run: |
-          # Get the production branch database URL.
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-
       - name: Run Production Migrations
         if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
         run: |
           echo "Running production migrations on production"
           cd turbo && pnpm -F @vm0/db db:migrate
         env:
-          DATABASE_URL: ${{ steps.get-migration-db-url.outputs.database-url }}
+          DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
 
@@ -1194,7 +1086,7 @@ jobs:
           token: ${{ github.token }}
           env: api/production
           ref: ${{ github.ref }}
-          desc: Promoting API staged deployment to production
+          desc: Deploying API production artifact
 
       - name: Notify Slack - Starting
         id: slack-start
@@ -1205,33 +1097,42 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*API* promoting staged deployment to production..."
+            text: "*API* deploying production artifact..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*API* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+                  text: "*API* deploying production artifact...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
 
       - name: Record start time
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Promote API Deployment
-        uses: ./.github/actions/vercel-promote
+      - name: Deploy API Production
+        id: deploy
+        uses: ./.github/actions/vercel-deploy
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
-          deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
+          environment: production
+          deployment-env: api
+          prebuilt: "true"
+          prebuilt-build-command: |
+            rm -rf .vercel/output
+            cp -R turbo/apps/api/.vercel/output .vercel/output
+          environment-file: ${{ steps.api-production-env.outputs.file }}
+          skip-start: "true"
+          skip-finish: "true"
           skip-setup: "true"
 
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
-        if: ${{ needs.build-api-production.outputs.deployment_url != '' }}
+        if: ${{ steps.deploy.outputs.url != '' }}
         uses: ./.github/actions/vercel-dashboard-url
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
 
       - name: Finish GitHub Deployment
         if: ${{ always() && steps.deployment.outputs.deployment_id }}
@@ -1264,12 +1165,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*API* ✅ Promoted to production"
+            text: "*API* ✅ Deployed to production"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*API* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*API* ✅ Deployed to production\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -1280,15 +1181,15 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*API* ❌ Promote failed"
+            text: "*API* ❌ Deploy failed"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*API* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*API* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   deploy-api-schema:
-    needs: [release-please, build-api-production, promote-api-production]
+    needs: [release-please, promote-api-production]
     if: >-
       always() &&
       needs.release-please.outputs.api_deploy_required == 'true' &&
