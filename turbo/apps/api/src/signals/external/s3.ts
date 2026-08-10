@@ -2,6 +2,7 @@ import { computed, type Computed } from "ccstate";
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
+  CopyObjectCommand,
   CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -856,6 +857,131 @@ function putS3ObjectWithClient(
 }
 
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const S3_STREAMING_PART_BYTES = 8 * 1024 * 1024;
+
+export function uploadS3ObjectStream(
+  bucket: string,
+  key: string,
+  body: AsyncIterable<Uint8Array>,
+  contentType: string,
+  signal: AbortSignal,
+): Computed<Promise<number>> {
+  return computed(async (get): Promise<number> => {
+    const client = get(s3ClientForBucket(bucket));
+    const created = await client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: contentType,
+      }),
+      { abortSignal: signal },
+    );
+    const uploadId = created.UploadId;
+    if (!uploadId) {
+      throw new Error("R2 did not return a multipart upload ID");
+    }
+
+    const parts: MultipartS3Part[] = [];
+    let chunks: Buffer[] = [];
+    let bufferedBytes = 0;
+    let uploadedBytes = 0;
+    const uploadPart = async (): Promise<void> => {
+      if (bufferedBytes === 0) {
+        return;
+      }
+      const partNumber = parts.length + 1;
+      const partBody = Buffer.concat(chunks, bufferedBytes);
+      chunks = [];
+      bufferedBytes = 0;
+      const uploaded = await client.send(
+        new UploadPartCommand({
+          Bucket: bucket,
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+          Body: partBody,
+        }),
+        { abortSignal: signal },
+      );
+      if (!uploaded.ETag) {
+        throw new Error("R2 did not return a multipart upload part ETag");
+      }
+      uploadedBytes += partBody.length;
+      parts.push({ partNumber, etag: uploaded.ETag });
+    };
+
+    const completed = await settle(
+      (async () => {
+        for await (const chunk of body) {
+          signal.throwIfAborted();
+          const buffer = Buffer.from(chunk);
+          let offset = 0;
+          while (offset < buffer.length) {
+            const availableBytes = S3_STREAMING_PART_BYTES - bufferedBytes;
+            const end = Math.min(offset + availableBytes, buffer.length);
+            const slice = buffer.subarray(offset, end);
+            chunks.push(slice);
+            bufferedBytes += slice.length;
+            offset = end;
+            if (bufferedBytes === S3_STREAMING_PART_BYTES) {
+              await uploadPart();
+            }
+          }
+        }
+        await uploadPart();
+        if (parts.length === 0) {
+          throw new Error("Cannot multipart upload an empty S3 object");
+        }
+        await client.send(
+          new CompleteMultipartUploadCommand({
+            Bucket: bucket,
+            Key: key,
+            UploadId: uploadId,
+            MultipartUpload: {
+              Parts: parts.map((part) => {
+                return { ETag: part.etag, PartNumber: part.partNumber };
+              }),
+            },
+          }),
+          { abortSignal: signal },
+        );
+      })(),
+      signal,
+    );
+    if (!completed.ok) {
+      await settle(
+        client.send(
+          new AbortMultipartUploadCommand({
+            Bucket: bucket,
+            Key: key,
+            UploadId: uploadId,
+          }),
+        ),
+      );
+      throw completed.error;
+    }
+    return uploadedBytes;
+  });
+}
+
+export function copyS3Object(
+  bucket: string,
+  sourceKey: string,
+  destinationKey: string,
+  signal: AbortSignal,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const client = get(s3ClientForBucket(bucket));
+    await client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        Key: destinationKey,
+        CopySource: `${bucket}/${sourceKey}`,
+      }),
+      { abortSignal: signal },
+    );
+  });
+}
 
 function isS3PreconditionFailedError(error: unknown): boolean {
   const candidate = error as {

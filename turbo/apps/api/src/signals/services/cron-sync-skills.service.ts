@@ -1,9 +1,6 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { createHash, randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { createGzip } from "node:zlib";
 
 import {
   DEFAULT_SKILLS_BRANCH,
@@ -25,18 +22,21 @@ import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command, computed, type Computed } from "ccstate";
 import { eq, inArray, like } from "drizzle-orm";
-import { create as createTar, Parser } from "tar";
+import { pack, type Headers as TarHeaders, type Pack } from "tar-stream";
+import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
+  copyS3Object,
   deleteS3Objects,
   listS3ObjectsUnderPrefix,
   putS3Object,
+  uploadS3ObjectStream,
 } from "../external/s3";
-import { createDeferredPromise, safeSync, tapError } from "../utils";
+import { createDeferredPromise, settle, tapError } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
@@ -49,14 +49,8 @@ interface SyncSkillsResult {
   readonly total: number;
 }
 
-interface SyncSkillsScope {
-  readonly skillNamePrefix: string | null;
-  readonly requiredSkillNames: readonly string[];
-}
-
 interface ExtractedFile {
   readonly path: string;
-  readonly content: Buffer;
   readonly hash: string;
   readonly size: number;
 }
@@ -64,6 +58,9 @@ interface ExtractedFile {
 interface ExtractedSkill {
   readonly skillName: string;
   readonly files: readonly ExtractedFile[];
+  readonly skillMdContent: Buffer;
+  readonly temporaryArchiveKey: string;
+  readonly archiveSize: number;
 }
 
 interface SkillSyncContext {
@@ -78,16 +75,60 @@ interface SkillSyncContext {
 }
 
 interface SkillArchiveUpload {
-  readonly archiveBuffer: Buffer;
-  readonly manifestBuffer: Buffer;
+  readonly archiveSize: number;
   readonly s3Key: string;
+}
+
+interface GitTreeFile {
+  readonly path: string;
+  readonly sha: string;
+  readonly size: number;
+}
+
+interface GitTreeSnapshot {
+  readonly filesByPath: ReadonlyMap<string, GitTreeFile>;
+  readonly skillFiles: ReadonlyMap<string, readonly GitTreeFile[]>;
+}
+
+interface StoredSkillSource {
+  readonly url: string;
+  readonly commitSha: string | null;
+}
+
+interface SkillTreeSyncPlan {
+  readonly currentTree: GitTreeSnapshot;
+  readonly changedSkills: ReadonlySet<string>;
+  readonly sourceSkillNames: ReadonlySet<string>;
+}
+
+interface SkillArchiveBuilder {
+  readonly archive: Pack;
+  readonly archiveSize: Promise<number>;
+  readonly compressed: ReturnType<typeof createGzip>;
+  readonly temporaryArchiveKey: string;
 }
 
 const log = logger("skills:sync");
 const REPO_REFS_URL = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}.git/info/refs?service=git-upload-pack`;
-const TARBALL_URL = `https://codeload.github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tar.gz/refs/heads/${DEFAULT_SKILLS_BRANCH}`;
-const OFFICIAL_SKILL_URL_ROOT = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
-const SYNC_BATCH_SIZE = 5;
+const GITHUB_API_BASE = `https://api.github.com/repos/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}`;
+const RAW_CONTENT_BASE = `https://raw.githubusercontent.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}`;
+const GITHUB_API_HEADERS = {
+  Accept: "application/vnd.github+json",
+  "User-Agent": "vm0-api",
+} as const;
+const SKILL_ARCHIVE_TEMP_PREFIX = "_system/skill-sync";
+
+const gitTreeSchema = z.object({
+  truncated: z.boolean(),
+  tree: z.array(
+    z.object({
+      path: z.string().min(1),
+      type: z.string(),
+      sha: z.string().min(1),
+      size: z.number().int().nonnegative().optional(),
+    }),
+  ),
+});
 
 function parseHeadRef(pktLineText: string, branch: string): string {
   const refSuffix = `refs/heads/${branch}`;
@@ -123,93 +164,87 @@ async function fetchHeadCommitSha(signal: AbortSignal): Promise<string> {
   return parseHeadRef(await response.text(), DEFAULT_SKILLS_BRANCH);
 }
 
-function extractSkillsFromTarball(
-  gzipped: Buffer,
+async function fetchGitTree(
+  commitSha: string,
   signal: AbortSignal,
-): Promise<ExtractedSkill[]> {
-  const decompressed = gunzipSync(gzipped);
-  const filesBySkill = new Map<string, ExtractedFile[]>();
-  const deferred = createDeferredPromise<ExtractedSkill[]>(signal);
-
-  const parser = new Parser({
-    onReadEntry: (entry) => {
-      if (entry.type !== "File") {
-        entry.resume();
-        return;
-      }
-
-      const parts = entry.path.split("/");
-      if (parts.length < 3) {
-        entry.resume();
-        return;
-      }
-
-      const skillName = parts[1]!;
-      const relativePath = parts.slice(2).join("/");
-      const chunks: Buffer[] = [];
-      entry.on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-      entry.on("end", () => {
-        const content = Buffer.concat(chunks);
-        const hash = createHash("sha256").update(content).digest("hex");
-        const files = filesBySkill.get(skillName) ?? [];
-        files.push({
-          path: relativePath,
-          content,
-          hash,
-          size: content.length,
-        });
-        filesBySkill.set(skillName, files);
-      });
-    },
-  });
-
-  parser.on("end", () => {
-    if (deferred.settled()) {
-      return;
-    }
-
-    const extracted: ExtractedSkill[] = [];
-    for (const [skillName, files] of filesBySkill) {
-      if (
-        files.some((file) => {
-          return file.path === "SKILL.md";
-        })
-      ) {
-        extracted.push({ skillName, files });
-      }
-    }
-    deferred.resolve(extracted);
-  });
-  parser.on("error", (error) => {
-    if (!deferred.settled()) {
-      deferred.reject(error);
-    }
-  });
-  const parseResult = safeSync(() => {
-    parser.write(decompressed);
-    parser.end();
-  });
-  if ("error" in parseResult && !deferred.settled()) {
-    deferred.reject(parseResult.error);
+): Promise<GitTreeSnapshot> {
+  const response = await fetch(
+    `${GITHUB_API_BASE}/git/trees/${commitSha}?recursive=1`,
+    { headers: GITHUB_API_HEADERS, signal },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch skills git tree: ${response.status}`);
+  }
+  const parsed = gitTreeSchema.parse(await response.json());
+  if (parsed.truncated) {
+    throw new Error("Skills git tree response was truncated");
   }
 
-  return deferred.promise;
+  const filesByPath = new Map<string, GitTreeFile>();
+  const filesBySkill = new Map<string, GitTreeFile[]>();
+  for (const entry of parsed.tree) {
+    if (entry.type !== "blob" || entry.size === undefined) {
+      continue;
+    }
+    const parts = entry.path.split("/");
+    if (
+      parts.length < 2 ||
+      parts.some((part) => {
+        return !part || part === "..";
+      })
+    ) {
+      continue;
+    }
+    const file = { path: entry.path, sha: entry.sha, size: entry.size };
+    filesByPath.set(file.path, file);
+    const skillName = parts[0]!;
+    const files = filesBySkill.get(skillName) ?? [];
+    files.push(file);
+    filesBySkill.set(skillName, files);
+  }
+
+  const skillFiles = new Map<string, readonly GitTreeFile[]>();
+  for (const [skillName, files] of filesBySkill) {
+    if (
+      files.some((file) => {
+        return file.path === `${skillName}/SKILL.md`;
+      })
+    ) {
+      skillFiles.set(
+        skillName,
+        files.sort((left, right) => {
+          return left.path.localeCompare(right.path);
+        }),
+      );
+    }
+  }
+  return { filesByPath, skillFiles };
 }
 
-async function downloadAndExtractSkills(
-  signal: AbortSignal,
-): Promise<ExtractedSkill[]> {
-  const response = await fetch(TARBALL_URL, { signal });
-  if (!response.ok) {
-    throw new Error(`Failed to download tarball: ${response.status}`);
+function changedSkillNames(
+  previous: GitTreeSnapshot | undefined,
+  current: GitTreeSnapshot,
+): ReadonlySet<string> {
+  if (!previous) {
+    return new Set(current.skillFiles.keys());
   }
-
-  return await extractSkillsFromTarball(
-    Buffer.from(await response.arrayBuffer()),
-    signal,
-  );
+  const changed = new Set<string>();
+  const paths = new Set([
+    ...previous.filesByPath.keys(),
+    ...current.filesByPath.keys(),
+  ]);
+  for (const path of paths) {
+    if (
+      previous.filesByPath.get(path)?.sha === current.filesByPath.get(path)?.sha
+    ) {
+      continue;
+    }
+    const [skillName] = path.split("/");
+    if (skillName) {
+      changed.add(skillName);
+    }
+  }
+  return changed;
 }
 
 function computeSystemSkillHash(
@@ -241,12 +276,9 @@ function buildSkillSyncContext(extracted: ExtractedSkill): SkillSyncContext {
   const files = extracted.files;
   const url = skillUrl(skillName);
   const fullPath = `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`;
-  const skillMd = files.find((file) => {
-    return file.path === "SKILL.md";
-  });
-  const frontmatter: SkillFrontmatter = skillMd
-    ? parseSkillFrontmatter(skillMd.content.toString("utf8"))
-    : {};
+  const frontmatter: SkillFrontmatter = parseSkillFrontmatter(
+    extracted.skillMdContent.toString("utf8"),
+  );
   const fileEntries: FileEntryWithHash[] = files.map((file) => {
     return {
       path: file.path,
@@ -270,32 +302,8 @@ function buildSkillSyncContext(extracted: ExtractedSkill): SkillSyncContext {
   };
 }
 
-async function createSkillArchive(
-  files: readonly ExtractedFile[],
-): Promise<{ archiveBuffer: Buffer; manifestBuffer: Buffer }> {
-  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-api-skill-"));
-  await Promise.all(
-    files.map((file) => {
-      const filePath = join(tmpDir, file.path);
-      mkdirSync(join(filePath, ".."), { recursive: true });
-      return writeFile(filePath, file.content);
-    }),
-  );
-
-  const tarPath = join(tmpDir, "__archive.tar.gz");
-  await createTar(
-    {
-      gzip: true,
-      file: tarPath,
-      cwd: tmpDir,
-    },
-    files.map((file) => {
-      return file.path;
-    }),
-  );
-
-  const archiveBuffer = await readFile(tarPath);
-  const manifestBuffer = Buffer.from(
+function createSkillManifest(files: readonly ExtractedFile[]): Buffer {
+  return Buffer.from(
     JSON.stringify(
       {
         version: 1,
@@ -312,9 +320,159 @@ async function createSkillArchive(
       2,
     ),
   );
-  rmSync(tmpDir, { recursive: true, force: true });
+}
 
-  return { archiveBuffer, manifestBuffer };
+function startSkillArchive(
+  skillName: string,
+  commitSha: string,
+  signal: AbortSignal,
+): Computed<SkillArchiveBuilder> {
+  return computed((get): SkillArchiveBuilder => {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const temporaryArchiveKey = `${SKILL_ARCHIVE_TEMP_PREFIX}/${commitSha}/${randomUUID()}-${skillName}.tar.gz`;
+    const archive = pack();
+    const compressed = createGzip({ level: 1 });
+    archive.pipe(compressed);
+    const archiveSize = get(
+      uploadS3ObjectStream(
+        bucket,
+        temporaryArchiveKey,
+        compressed,
+        "application/gzip",
+        signal,
+      ),
+    );
+    return { archive, archiveSize, compressed, temporaryArchiveKey };
+  });
+}
+
+function encodedRawFilePath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => {
+      return encodeURIComponent(segment);
+    })
+    .join("/");
+}
+
+async function writeSkillArchiveFile(
+  builder: SkillArchiveBuilder,
+  skillName: string,
+  commitSha: string,
+  file: GitTreeFile,
+  signal: AbortSignal,
+): Promise<{ readonly file: ExtractedFile; readonly skillMd?: Buffer }> {
+  const response = await fetch(
+    `${RAW_CONTENT_BASE}/${commitSha}/${encodedRawFilePath(file.path)}`,
+    { signal },
+  );
+  if (!response.ok || !response.body) {
+    throw new Error(`Failed to fetch skill file: ${response.status}`);
+  }
+  const relativePath = file.path.slice(skillName.length + 1);
+  const header: TarHeaders = {
+    name: relativePath,
+    size: file.size,
+    type: "file",
+    mode: 0o644,
+    mtime: new Date(0),
+  };
+  const archiveEntryComplete = createDeferredPromise<void>(signal);
+  const archiveEntry: ReturnType<Pack["entry"]> = builder.archive.entry(
+    header,
+    (error) => {
+      if (error) {
+        archiveEntryComplete.reject(error);
+      } else {
+        archiveEntryComplete.resolve();
+      }
+    },
+  );
+  const hash = createHash("sha256");
+  const skillMdChunks: Buffer[] = [];
+  let bytesRead = 0;
+  const reader = response.body.getReader();
+  while (true) {
+    signal.throwIfAborted();
+    const chunk = await reader.read();
+    if (chunk.done) {
+      break;
+    }
+    const buffer = Buffer.from(chunk.value);
+    bytesRead += buffer.length;
+    hash.update(buffer);
+    if (relativePath === "SKILL.md") {
+      skillMdChunks.push(buffer);
+    }
+    if (!archiveEntry.write(buffer)) {
+      await once(archiveEntry, "drain", { signal });
+    }
+  }
+  archiveEntry.end();
+  await archiveEntryComplete.promise;
+  if (bytesRead !== file.size) {
+    throw new Error("Skill file size did not match git tree metadata");
+  }
+
+  return {
+    file: { path: relativePath, hash: hash.digest("hex"), size: bytesRead },
+    ...(relativePath === "SKILL.md"
+      ? { skillMd: Buffer.concat(skillMdChunks, bytesRead) }
+      : {}),
+  };
+}
+
+function normalizeArchiveError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function downloadSkillArchive(
+  skillName: string,
+  files: readonly GitTreeFile[],
+  commitSha: string,
+  signal: AbortSignal,
+): Computed<Promise<ExtractedSkill>> {
+  return computed(async (get): Promise<ExtractedSkill> => {
+    const builder = get(startSkillArchive(skillName, commitSha, signal));
+    const extractedFiles: ExtractedFile[] = [];
+    let skillMdContent: Buffer | undefined;
+    const extracted = await settle(
+      (async () => {
+        for (const file of files) {
+          const result = await writeSkillArchiveFile(
+            builder,
+            skillName,
+            commitSha,
+            file,
+            signal,
+          );
+          extractedFiles.push(result.file);
+          skillMdContent = result.skillMd ?? skillMdContent;
+        }
+        builder.archive.finalize();
+        const archiveSize = await builder.archiveSize;
+        if (!skillMdContent) {
+          throw new Error("Skill archive is missing SKILL.md");
+        }
+        return {
+          skillName,
+          files: extractedFiles,
+          skillMdContent,
+          temporaryArchiveKey: builder.temporaryArchiveKey,
+          archiveSize,
+        };
+      })(),
+      signal,
+    );
+    if (!extracted.ok) {
+      const error = normalizeArchiveError(extracted.error);
+      builder.archive.destroy();
+      builder.compressed.destroy(error);
+      await settle(builder.archiveSize);
+      throw error;
+    }
+    return extracted.value;
+  });
 }
 
 async function hasCurrentSkillVersion(
@@ -322,7 +480,6 @@ async function hasCurrentSkillVersion(
     readonly db: Db;
     readonly url: string;
     readonly versionHash: string;
-    readonly commitSha: string;
   },
   signal: AbortSignal,
 ): Promise<boolean> {
@@ -336,36 +493,27 @@ async function hasCurrentSkillVersion(
   if (existingSkill?.versionHash !== args.versionHash) {
     return false;
   }
-
-  await args.db
-    .update(skills)
-    .set({ commitSha: args.commitSha, updatedAt: nowDate() })
-    .where(eq(skills.url, args.url));
-  signal.throwIfAborted();
   return true;
 }
 
 function uploadSkillArchive(
   context: SkillSyncContext,
+  extracted: ExtractedSkill,
   s3Prefix: string,
   signal: AbortSignal,
 ): Computed<Promise<SkillArchiveUpload>> {
   return computed(async (get): Promise<SkillArchiveUpload> => {
-    const { archiveBuffer, manifestBuffer } = await createSkillArchive(
-      context.files,
-    );
-    signal.throwIfAborted();
-
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
     const s3Key = `${s3Prefix}/${context.versionHash}`;
+    const manifestBuffer = createSkillManifest(context.files);
 
     await Promise.all([
       get(
-        putS3Object(
+        copyS3Object(
           bucketName,
+          extracted.temporaryArchiveKey,
           `${s3Key}/archive.tar.gz`,
-          archiveBuffer,
-          "application/gzip",
+          signal,
         ),
       ),
       get(
@@ -379,7 +527,10 @@ function uploadSkillArchive(
     ]);
     signal.throwIfAborted();
 
-    return { archiveBuffer, manifestBuffer, s3Key };
+    return {
+      archiveSize: extracted.archiveSize,
+      s3Key,
+    };
   });
 }
 
@@ -440,14 +591,14 @@ async function insertSkillStorageVersion(
       storageId: args.storageId,
       s3Key: args.upload.s3Key,
       size: args.context.totalSize,
-      archiveSize: args.upload.archiveBuffer.length,
+      archiveSize: args.upload.archiveSize,
       fileCount: args.context.files.length,
       message: `Synced from ${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}@${args.commitSha.slice(0, 7)}`,
       createdBy: "system",
     })
     .onConflictDoUpdate({
       target: storageVersions.id,
-      set: { archiveSize: args.upload.archiveBuffer.length },
+      set: { archiveSize: args.upload.archiveSize },
     });
   signal.throwIfAborted();
 }
@@ -457,7 +608,6 @@ async function updateSkillStorageHead(
     readonly db: Db;
     readonly storageId: string;
     readonly context: SkillSyncContext;
-    readonly upload: SkillArchiveUpload;
     readonly timestamp: Date;
   },
   signal: AbortSignal,
@@ -480,7 +630,6 @@ async function upsertSkillRecord(
     readonly storageId: string;
     readonly context: SkillSyncContext;
     readonly upload: SkillArchiveUpload;
-    readonly commitSha: string;
     readonly timestamp: Date;
   },
   signal: AbortSignal,
@@ -495,7 +644,7 @@ async function upsertSkillRecord(
       fullPath: args.context.fullPath,
       storageId: args.storageId,
       versionHash: args.context.versionHash,
-      commitSha: args.commitSha,
+      commitSha: null,
       frontmatter: args.context.frontmatter,
       s3Key: args.upload.s3Key,
       size: args.context.totalSize,
@@ -509,7 +658,7 @@ async function upsertSkillRecord(
         fullPath: args.context.fullPath,
         storageId: args.storageId,
         versionHash: args.context.versionHash,
-        commitSha: args.commitSha,
+        commitSha: null,
         frontmatter: args.context.frontmatter,
         s3Key: args.upload.s3Key,
         size: args.context.totalSize,
@@ -536,7 +685,6 @@ function syncSingleSkill(
           db,
           url: context.url,
           versionHash: context.versionHash,
-          commitSha,
         },
         signal,
       )
@@ -557,7 +705,7 @@ function syncSingleSkill(
     );
     const storageId = storage.id;
     const upload = await get(
-      uploadSkillArchive(context, storage.s3Prefix, signal),
+      uploadSkillArchive(context, extracted, storage.s3Prefix, signal),
     );
     await insertSkillStorageVersion(
       {
@@ -574,7 +722,6 @@ function syncSingleSkill(
         db,
         storageId,
         context,
-        upload,
         timestamp,
       },
       signal,
@@ -585,7 +732,6 @@ function syncSingleSkill(
         storageId,
         context,
         upload,
-        commitSha,
         timestamp,
       },
       signal,
@@ -601,16 +747,16 @@ function syncSingleSkill(
 
 function removeOrphanedSkills(
   db: Db,
-  extractedSkills: readonly ExtractedSkill[],
-  urlPrefix: string,
+  sourceSkillNames: ReadonlySet<string>,
   signal: AbortSignal,
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
-    const tarballUrls = new Set(
-      extractedSkills.map((skill) => {
-        return skillUrl(skill.skillName);
+    const sourceUrls = new Set(
+      [...sourceSkillNames].map((skillName) => {
+        return skillUrl(skillName);
       }),
     );
+    const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
     const existingSkills = await db
       .select({ id: skills.id, url: skills.url, storageId: skills.storageId })
       .from(skills)
@@ -618,7 +764,7 @@ function removeOrphanedSkills(
     signal.throwIfAborted();
 
     const orphans = existingSkills.filter((skill) => {
-      return !tarballUrls.has(skill.url);
+      return !sourceUrls.has(skill.url);
     });
     if (orphans.length === 0) {
       return 0;
@@ -691,17 +837,9 @@ function removeOrphanedSkills(
   });
 }
 
-function validateSeedSkills(
-  extractedSkills: readonly ExtractedSkill[],
-  requiredSkillNames: readonly string[],
-): void {
-  const tarballNames = new Set(
-    extractedSkills.map((skill) => {
-      return skill.skillName;
-    }),
-  );
-  const missingSkills = requiredSkillNames.filter((name) => {
-    return !tarballNames.has(name);
+function validateSeedSkills(sourceSkillNames: ReadonlySet<string>): void {
+  const missingSkills = SEED_SKILLS.filter((name) => {
+    return !sourceSkillNames.has(name);
   });
 
   if (missingSkills.length > 0) {
@@ -713,28 +851,97 @@ function validateSeedSkills(
   }
 }
 
-export const syncSkillsForScope$ = command(
-  async (
-    { get, set },
-    scope: SyncSkillsScope,
-    signal: AbortSignal,
-  ): Promise<SyncSkillsResult> => {
+function isUsableBaseCommitSha(commitSha: string): boolean {
+  return /^[0-9a-f]{40}$/.test(commitSha) && commitSha !== "0".repeat(40);
+}
+
+async function buildSkillTreeSyncPlan(
+  existing: readonly StoredSkillSource[],
+  headSha: string,
+  signal: AbortSignal,
+): Promise<SkillTreeSyncPlan> {
+  const currentTree = await fetchGitTree(headSha, signal);
+  signal.throwIfAborted();
+  const baseCommitShas = new Set(
+    existing.flatMap((skill) => {
+      return skill.commitSha && isUsableBaseCommitSha(skill.commitSha)
+        ? [skill.commitSha]
+        : [];
+    }),
+  );
+  const [baseCommitSha] = baseCommitShas;
+  const previousTreeResult =
+    baseCommitShas.size === 1 && baseCommitSha
+      ? await settle(fetchGitTree(baseCommitSha, signal), signal)
+      : undefined;
+  if (previousTreeResult && !previousTreeResult.ok) {
+    log.warn("Failed to fetch previous skills tree; checking all skills", {
+      commitSha: baseCommitSha,
+      error:
+        previousTreeResult.error instanceof Error
+          ? previousTreeResult.error.message
+          : String(previousTreeResult.error),
+    });
+  }
+  const previousTree = previousTreeResult?.ok
+    ? previousTreeResult.value
+    : undefined;
+  const changedSkills = new Set(changedSkillNames(previousTree, currentTree));
+  const existingUrls = new Set(
+    existing.map((skill) => {
+      return skill.url;
+    }),
+  );
+  for (const skillName of currentTree.skillFiles.keys()) {
+    if (!existingUrls.has(skillUrl(skillName))) {
+      changedSkills.add(skillName);
+    }
+  }
+  return {
+    currentTree,
+    changedSkills,
+    sourceSkillNames: new Set(currentTree.skillFiles.keys()),
+  };
+}
+
+async function markSkillsSyncComplete(
+  db: Db,
+  sourceSkillNames: ReadonlySet<string>,
+  commitSha: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const sourceUrls = [...sourceSkillNames].map((skillName) => {
+    return skillUrl(skillName);
+  });
+  if (sourceUrls.length === 0) {
+    return;
+  }
+  await db
+    .update(skills)
+    .set({ commitSha, updatedAt: nowDate() })
+    .where(inArray(skills.url, sourceUrls));
+  signal.throwIfAborted();
+}
+
+export const syncSkills$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
     const db = set(writeDb$);
     const headSha = await fetchHeadCommitSha(signal);
     signal.throwIfAborted();
 
-    const urlPrefix = `${OFFICIAL_SKILL_URL_ROOT}${scope.skillNamePrefix ?? ""}`;
-    const [existing] =
-      scope.skillNamePrefix === null
-        ? await db.select({ commitSha: skills.commitSha }).from(skills).limit(1)
-        : await db
-            .select({ commitSha: skills.commitSha })
-            .from(skills)
-            .where(like(skills.url, `${urlPrefix}%`))
-            .limit(1);
+    const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
+    const existing = await db
+      .select({ url: skills.url, commitSha: skills.commitSha })
+      .from(skills)
+      .where(like(skills.url, `${urlPrefix}%`));
     signal.throwIfAborted();
 
-    if (existing?.commitSha === headSha) {
+    if (
+      existing.length > 0 &&
+      existing.every((skill) => {
+        return skill.commitSha === headSha;
+      })
+    ) {
       return {
         commitSha: headSha,
         synced: 0,
@@ -745,59 +952,82 @@ export const syncSkillsForScope$ = command(
       };
     }
 
-    const extractedSkills = (await downloadAndExtractSkills(signal)).filter(
-      (skill) => {
-        return (
-          scope.skillNamePrefix === null ||
-          skill.skillName.startsWith(scope.skillNamePrefix)
-        );
-      },
-    );
-    signal.throwIfAborted();
+    const { currentTree, changedSkills, sourceSkillNames } =
+      await buildSkillTreeSyncPlan(existing, headSha, signal);
 
     let synced = 0;
     let skipped = 0;
     let failed = 0;
 
-    for (
-      let index = 0;
-      index < extractedSkills.length;
-      index += SYNC_BATCH_SIZE
-    ) {
-      const batch = extractedSkills.slice(index, index + SYNC_BATCH_SIZE);
-      const results = await Promise.allSettled(
-        batch.map((extracted) => {
-          return get(syncSingleSkill(db, extracted, headSha, signal));
-        }),
+    for (const [skillName, files] of currentTree.skillFiles) {
+      if (!changedSkills.has(skillName)) {
+        skipped++;
+        continue;
+      }
+
+      const downloaded = await settle(
+        get(downloadSkillArchive(skillName, files, headSha, signal)),
+        signal,
       );
       signal.throwIfAborted();
+      if (!downloaded.ok) {
+        failed++;
+        log.warn("Skipping skill due to sync error", {
+          skillName,
+          error:
+            downloaded.error instanceof Error
+              ? downloaded.error.message
+              : String(downloaded.error),
+        });
+        continue;
+      }
 
-      for (let resultIndex = 0; resultIndex < results.length; resultIndex++) {
-        const result = results[resultIndex]!;
-        if (result.status === "fulfilled") {
-          if (result.value) {
-            synced++;
-          } else {
-            skipped++;
-          }
-        } else {
-          failed++;
-          log.warn("Skipping skill due to sync error", {
-            skillName: batch[resultIndex]!.skillName,
-            error:
-              result.reason instanceof Error
-                ? result.reason.message
-                : String(result.reason),
-          });
-        }
+      const result = await settle(
+        get(syncSingleSkill(db, downloaded.value, headSha, signal)),
+        signal,
+      );
+      const cleaned = await settle(
+        get(
+          deleteS3Objects(env("R2_USER_STORAGES_BUCKET_NAME"), [
+            downloaded.value.temporaryArchiveKey,
+          ]),
+        ),
+        signal,
+      );
+      if (!cleaned.ok) {
+        log.warn("Failed to clean up temporary skill archive", {
+          skillName,
+          error:
+            cleaned.error instanceof Error
+              ? cleaned.error.message
+              : String(cleaned.error),
+        });
+      }
+      signal.throwIfAborted();
+      if (!result.ok) {
+        failed++;
+        log.warn("Skipping skill due to sync error", {
+          skillName,
+          error:
+            result.error instanceof Error
+              ? result.error.message
+              : String(result.error),
+        });
+      } else if (result.value) {
+        synced++;
+      } else {
+        skipped++;
       }
     }
 
     const removed = await get(
-      removeOrphanedSkills(db, extractedSkills, urlPrefix, signal),
+      removeOrphanedSkills(db, sourceSkillNames, signal),
     );
     signal.throwIfAborted();
-    validateSeedSkills(extractedSkills, scope.requiredSkillNames);
+    validateSeedSkills(sourceSkillNames);
+    if (failed === 0) {
+      await markSkillsSyncComplete(db, sourceSkillNames, headSha, signal);
+    }
 
     log.debug("Skills sync completed", {
       commitSha: headSha,
@@ -805,7 +1035,7 @@ export const syncSkillsForScope$ = command(
       skipped,
       failed,
       removed,
-      total: extractedSkills.length,
+      total: sourceSkillNames.size,
     });
 
     return {
@@ -814,17 +1044,7 @@ export const syncSkillsForScope$ = command(
       skipped,
       failed,
       removed,
-      total: extractedSkills.length,
+      total: sourceSkillNames.size,
     };
-  },
-);
-
-export const syncSkills$ = command(
-  async ({ set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
-    return await set(
-      syncSkillsForScope$,
-      { skillNamePrefix: null, requiredSkillNames: SEED_SKILLS },
-      signal,
-    );
   },
 );
