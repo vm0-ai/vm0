@@ -152,8 +152,13 @@ async fn write_claude_stream_json_to_stdin(
 
     while let Some(frame) = active_input.next_frame().await {
         active_input.mark_writing(&frame.uuid);
-        write_claude_user_frame_to_stdin(&mut stdin, &frame.uuid, &frame.text).await?;
-        active_input.mark_written(&frame.uuid);
+        if let Err(error) =
+            write_claude_user_frame_to_stdin(&mut stdin, &frame.uuid, &frame.text).await
+        {
+            active_input.mark_backend_failed(&frame);
+            return Err(error);
+        }
+        active_input.mark_backend_accepted_with_replay(&frame)?;
     }
 
     active_input.close_terminal();
@@ -263,6 +268,9 @@ pub struct CliExecutionResult {
     /// Whether this child produced a terminal run result or only released an
     /// unused Pi standby allocation.
     pub completion_disposition: CliCompletionDisposition,
+
+    /// Backend-accepted delivery identities settled or recoverable at completion.
+    pub active_input_delivery_ids: Vec<String>,
 }
 
 /// How top-level guest-agent handling should settle a finished CLI execution.
@@ -1436,6 +1444,7 @@ async fn execute_cli_inner(
     let _ = log_file.flush().await;
 
     active_input_controller.close_terminal();
+    let mut active_input_error = None;
     if let Some(handle) = claude_stdin_write_handle.take() {
         if handle.is_finished() {
             match handle.await {
@@ -1445,12 +1454,43 @@ async fn execute_cli_inner(
                         LOG_TAG,
                         "Claude stdin writer finished after CLI loop with error: {error}"
                     );
+                    if active_input_controller.has_durable_activity() {
+                        active_input_error = Some(error);
+                    }
                 }
                 Err(error) => {
                     log_warn!(
                         LOG_TAG,
                         "Claude stdin writer failed after CLI loop: {error}"
                     );
+                    if active_input_controller.has_durable_activity() {
+                        active_input_error = Some(AgentError::Execution(format!(
+                            "Claude stdin writer task failed during active-input quiescence: {error}"
+                        )));
+                    }
+                }
+            }
+        } else if active_input_controller.has_durable_activity() {
+            let mut handle = handle;
+            match tokio::time::timeout(
+                Duration::from_secs(constants::ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS),
+                &mut handle,
+            )
+            .await
+            {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(error))) => active_input_error = Some(error),
+                Ok(Err(error)) => {
+                    active_input_error = Some(AgentError::Execution(format!(
+                        "Claude stdin writer task failed during active-input quiescence: {error}"
+                    )));
+                }
+                Err(_) => {
+                    handle.abort();
+                    let _ = handle.await;
+                    active_input_error = Some(AgentError::Execution(
+                        "Claude stdin writer did not quiesce after terminal close".to_string(),
+                    ));
                 }
             }
         } else {
@@ -1460,8 +1500,20 @@ async fn execute_cli_inner(
         }
     }
 
+    let active_input_delivery_ids = match active_input_controller.finalize_receipts().await {
+        Ok(delivery_ids) => delivery_ids,
+        Err(error) => {
+            if active_input_error.is_none() {
+                active_input_error = Some(error);
+            }
+            Vec::new()
+        }
+    };
+
     let has_control_error = termination_runtime.has_control_error();
-    let event_error = if has_control_error {
+    let event_error = if active_input_error.is_some() {
+        active_input_error
+    } else if has_control_error {
         None
     } else {
         event_result.err()
@@ -1539,6 +1591,7 @@ async fn execute_cli_inner(
         control_error,
         cli_termination,
         completion_disposition: CliCompletionDisposition::Terminal,
+        active_input_delivery_ids,
     })
 }
 

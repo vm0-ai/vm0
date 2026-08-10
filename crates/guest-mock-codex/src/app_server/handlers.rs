@@ -12,12 +12,16 @@ use super::scenario::Scenario;
 use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
 use serde_json::{Value, json};
 use std::io::{self, Write};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::thread;
 use uuid::Uuid;
 
 const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
+const WAIT_ON_TURN_STEER_READY_FILE: &str = ".vm0-mock-codex-turn-steer-ready";
+const WAIT_ON_TURN_STEER_READY_EVENT: &str = "vm0_mock_codex_turn_steer_ready";
+const WAIT_ON_TURN_STEER_RELEASE_SOCKET: &str = ".vm0-mock-codex-turn-steer-release.sock";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 // Integration contract with guest-agent's Codex app-server stdout framing policy.
 const APP_SERVER_STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
@@ -328,7 +332,10 @@ impl AppServerState {
         }
         if self.scenario.writes_turn_started_before_steer() {
             if let Some(current_thread) = &mut self.current_thread
-                && self.scenario == Scenario::RuntimeTurnStartedBeforeSteer
+                && matches!(
+                    self.scenario,
+                    Scenario::RuntimeTurnStartedBeforeSteer | Scenario::WaitOnTurnSteerResponse
+                )
             {
                 current_thread.active_turn_id = Some(turn_id.clone());
             }
@@ -443,6 +450,17 @@ impl AppServerState {
             },
             &inputs,
         )?;
+        if self.scenario == Scenario::WaitOnTurnSteerResponse {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
+            let home = PathBuf::from(home);
+            let release = UnixListener::bind(home.join(WAIT_ON_TURN_STEER_RELEASE_SOCKET))?;
+            std::fs::write(
+                home.join(WAIT_ON_TURN_STEER_READY_FILE),
+                WAIT_ON_TURN_STEER_READY_EVENT,
+            )?;
+            release.accept()?;
+        }
         let response_text = mock_response_text(
             self.initial_inputs
                 .iter()

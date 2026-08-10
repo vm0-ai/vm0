@@ -2,6 +2,8 @@
 
 use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::time::Duration;
 
 use serde_json::{Map, Value, json};
 use tokio::io::AsyncWriteExt;
@@ -27,7 +29,7 @@ use super::{
     CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction,
     codex_runtime_config,
 };
-use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
+use crate::active_input::{ActiveInputController, ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationDiagnostic, CliTerminationReason,
@@ -105,12 +107,45 @@ enum AppServerRunOutcome {
     Completed(Box<Result<CliExecutionResult, AgentError>>),
     ExecutionTimedOut { timeout_secs: u64 },
     UserCancelled,
+    ActiveInputQuiescenceFailed,
+}
+
+async fn settle_active_input_before_stop<Run>(
+    mut run: Pin<&mut Run>,
+    active_input: &ActiveInputController,
+    stopped: AppServerRunOutcome,
+) -> AppServerRunOutcome
+where
+    Run: Future<Output = Result<CliExecutionResult, AgentError>>,
+{
+    if !active_input.durable_sink_in_flight() {
+        return stopped;
+    }
+
+    let settle = async {
+        tokio::select! {
+            biased;
+            result = run.as_mut() => Ok(Some(result)),
+            idle = active_input.wait_for_durable_sink_idle() => idle.map(|()| None),
+        }
+    };
+    match tokio::time::timeout(
+        Duration::from_secs(crate::constants::ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS),
+        settle,
+    )
+    .await
+    {
+        Ok(Ok(Some(result))) => AppServerRunOutcome::Completed(Box::new(result)),
+        Ok(Ok(None)) => stopped,
+        Ok(Err(_)) | Err(_) => AppServerRunOutcome::ActiveInputQuiescenceFailed,
+    }
 }
 
 async fn run_with_execution_deadline(
     run: impl Future<Output = Result<CliExecutionResult, AgentError>>,
     deadline: Option<AgentExecutionDeadline>,
     user_cancellation: &CancellationToken,
+    active_input: &ActiveInputController,
 ) -> AppServerRunOutcome {
     tokio::pin!(run);
 
@@ -122,9 +157,21 @@ async fn run_with_execution_deadline(
             tokio::select! {
                 biased;
                 result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
-                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
-                () = &mut deadline_sleep => AppServerRunOutcome::ExecutionTimedOut {
-                    timeout_secs: deadline.timeout_secs,
+                () = user_cancellation.cancelled() => {
+                    settle_active_input_before_stop(
+                        run.as_mut(),
+                        active_input,
+                        AppServerRunOutcome::UserCancelled,
+                    ).await
+                },
+                () = &mut deadline_sleep => {
+                    settle_active_input_before_stop(
+                        run.as_mut(),
+                        active_input,
+                        AppServerRunOutcome::ExecutionTimedOut {
+                            timeout_secs: deadline.timeout_secs,
+                        },
+                    ).await
                 },
             }
         }
@@ -132,7 +179,13 @@ async fn run_with_execution_deadline(
             tokio::select! {
                 biased;
                 result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
-                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
+                () = user_cancellation.cancelled() => {
+                    settle_active_input_before_stop(
+                        run.as_mut(),
+                        active_input,
+                        AppServerRunOutcome::UserCancelled,
+                    ).await
+                },
             }
         }
     }
@@ -202,6 +255,7 @@ async fn run_codex_app_server(
     let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
         .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
+    let active_input_controller = active_input.controller();
 
     let run = async {
         race_with_heartbeat(
@@ -378,28 +432,37 @@ async fn run_codex_app_server(
             control_error: None,
             cli_termination: None,
             completion_disposition: super::CliCompletionDisposition::Terminal,
+            active_input_delivery_ids: Vec::new(),
         })
     };
-    let run_outcome =
-        run_with_execution_deadline(run, runtime.agent_execution_deadline, &user_cancellation)
-            .await;
+    let run_outcome = run_with_execution_deadline(
+        run,
+        runtime.agent_execution_deadline,
+        &user_cancellation,
+        &active_input_controller,
+    )
+    .await;
     active_input.close_terminal();
+    let active_input_delivery_ids = active_input_controller.finalize_receipts().await;
 
     let shutdown_result = match &run_outcome {
         AppServerRunOutcome::Completed(result) if result.is_ok() => client.shutdown().await,
         AppServerRunOutcome::Completed(_)
         | AppServerRunOutcome::ExecutionTimedOut { .. }
-        | AppServerRunOutcome::UserCancelled => client.terminate().await,
+        | AppServerRunOutcome::UserCancelled
+        | AppServerRunOutcome::ActiveInputQuiescenceFailed => client.terminate().await,
     };
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
     // Complete the final event-log write after the child is stopped and
     // before callers observe the finished app-server execution.
     let _ = log_file.flush().await;
+    let active_input_delivery_ids = active_input_delivery_ids?;
 
     match run_outcome {
         AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
             (Ok(mut result), Ok(())) => {
                 result.stderr_lines = stderr_lines;
+                result.active_input_delivery_ids = active_input_delivery_ids;
                 Ok(result)
             }
             (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
@@ -440,6 +503,7 @@ async fn run_codex_app_server(
                     CliTerminationReason::ExecutionTimeout,
                 )),
                 completion_disposition: super::CliCompletionDisposition::Terminal,
+                active_input_delivery_ids,
             })
         }
         AppServerRunOutcome::UserCancelled => {
@@ -464,8 +528,12 @@ async fn run_codex_app_server(
                     CliTerminationReason::UserCancellation,
                 )),
                 completion_disposition: super::CliCompletionDisposition::Terminal,
+                active_input_delivery_ids,
             })
         }
+        AppServerRunOutcome::ActiveInputQuiescenceFailed => Err(AgentError::Execution(
+            "Codex active-input steer did not quiesce after terminal stop".to_string(),
+        )),
     }
 }
 
@@ -683,7 +751,7 @@ async fn steer_active_input(
     .await;
     match result {
         Ok(_) => {
-            active_input.mark_written_without_replay(&frame.uuid);
+            active_input.mark_backend_accepted_without_replay(&frame)?;
             log_info!(
                 LOG_TAG,
                 "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} input_uuid={} outcome=active_turn_advanced",
@@ -692,6 +760,7 @@ async fn steer_active_input(
             Ok(())
         }
         Err(error) => {
+            active_input.mark_backend_failed(&frame);
             active_input.close_terminal();
             log_warn!(
                 LOG_TAG,
