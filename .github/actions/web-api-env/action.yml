@@ -323,6 +323,7 @@ runs:
           HUBSPOT
           CLOSE
           META_ADS
+          TIKTOK_ADS
           AHREFS
           AIRTABLE
           TODOIST
@@ -345,6 +346,9 @@ runs:
         add_secret ZERO_WEB_SEARCH_PERPLEXITY_TOKEN ZERO_WEB_SEARCH_PERPLEXITY_TOKEN
         add_secret ZERO_FINANCE_APIDOJO_TOKEN ZERO_FINANCE_APIDOJO_TOKEN
         if [[ "$INPUT_APP" == "api" ]]; then
+          add_secret ZERO_SEO_SERPAPI_TOKEN ZERO_SEO_SERPAPI_TOKEN
+          add_secret ZERO_SEO_DATAFORSEO_LOGIN ZERO_SEO_DATAFORSEO_LOGIN
+          add_secret ZERO_SEO_DATAFORSEO_PASSWORD ZERO_SEO_DATAFORSEO_PASSWORD
           add_secret ZERO_BROWSER_USE_API_KEY ZERO_BROWSER_USE_API_KEY
         fi
         add_secret STEAM_WEB_API_KEY STEAM_WEB_API_KEY

@@ -484,6 +484,13 @@
       "when": 1786345755980,
       "tag": "0876_nebulous_vision",
       "breakpoints": true
+    },
+    {
+      "idx": 877,
+      "version": "7",
+      "when": 1786347881302,
+      "tag": "0877_add_zero_seo_pricing",
+      "breakpoints": true
     }
   ]
 }

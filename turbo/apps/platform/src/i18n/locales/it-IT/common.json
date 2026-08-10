@@ -1814,6 +1814,7 @@
       },
       "categoriesAria": "Categorie di connettori",
       "description": "Connetti servizi di terze parti affinché i tuoi agenti possano utilizzarli.",
+      "descriptionWithCount": "Connetti {{value}} servizi affinché i tuoi agenti possano utilizzarli.",
       "empty": {
         "agent": "Nessun connettore per questo agente",
         "connected": "Nessun connettore collegato",
