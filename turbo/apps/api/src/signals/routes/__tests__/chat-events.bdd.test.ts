@@ -1714,6 +1714,375 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
+  it("reserves ordered rich input durably and settles concurrent receipts once", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "anchor durable active input delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const firstEventId = randomUUID();
+    const secondEventId = randomUUID();
+    const fileId = randomUUID();
+    chat.mockCompletedUploadObject(actor, fileId, "delivery-notes.txt", 23);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "first durable steer",
+        clientEventId: firstEventId,
+      },
+      [201],
+    );
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "second durable steer",
+        clientEventId: secondEventId,
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "file",
+              fileId,
+              filenameSnapshot: "delivery-notes.txt",
+              contentType: "text/plain",
+            },
+            { type: "text", text: "second durable steer" },
+          ],
+        },
+      },
+      [201],
+    );
+
+    const reservations = await Promise.all([
+      api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+      api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ]);
+    const [firstReservation, concurrentReservation] = reservations;
+    if (
+      firstReservation.outcome !== "reserved" ||
+      concurrentReservation.outcome !== "reserved"
+    ) {
+      throw new Error("Expected both concurrent reservations to succeed");
+    }
+    expect(concurrentReservation).toStrictEqual(firstReservation);
+    expect(firstReservation.eventIds).toStrictEqual([
+      firstEventId,
+      secondEventId,
+    ]);
+    expect(firstReservation.prompt).toBe(
+      [
+        "first durable steer",
+        `[Web file] delivery-notes.txt (text/plain)\n   [ID] ${fileId}`,
+        "second durable steer",
+      ].join("\n\n"),
+    );
+
+    // Model a lost first response: retry must retrieve the same durable batch.
+    await expect(
+      api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual(firstReservation);
+
+    context.mocks.ably.publish.mockClear();
+    const receipts = await Promise.all([
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        firstReservation.deliveryId,
+      ),
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        firstReservation.deliveryId,
+      ),
+    ]);
+    expect(receipts).toStrictEqual([
+      { outcome: "delivered" },
+      { outcome: "delivered" },
+    ]);
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([topic]) => {
+        return topic === `chatThreadMessageCreated:${active.threadId}`;
+      }),
+    ).toHaveLength(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        firstReservation.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([topic]) => {
+        return topic === `chatThreadMessageCreated:${active.threadId}`;
+      }),
+    ).toHaveLength(1);
+
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    const replacements = events.events.filter((event) => {
+      return (
+        event.runId === active.runId &&
+        (event.revokesEventId === firstEventId ||
+          event.revokesEventId === secondEventId)
+      );
+    });
+    expect(
+      replacements.map((event) => {
+        return event.revokesEventId;
+      }),
+    ).toStrictEqual([firstEventId, secondEventId]);
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("classifies delivery lifecycle and authorization without route-level 404", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const emptyRun = await sendChatRun(actor, {
+      agentId,
+      prompt: "empty durable delivery",
+    });
+    const preclaimSandboxToken = api.sandboxTokenForRun(actor, emptyRun.runId);
+    await expect(
+      api.reserveRunnerActiveInputs(preclaimSandboxToken, emptyRun.runId),
+    ).resolves.toStrictEqual({
+      outcome: "rejected",
+      reason: "run_not_running",
+    });
+    const emptyClaim = await claimChatRun(runnerGroup, emptyRun.runId);
+    await expect(
+      api.reserveRunnerActiveInputs(
+        emptyClaim.claim.sandboxToken,
+        emptyRun.runId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "empty" });
+    const missingAuth = await api.requestReserveRunnerActiveInputsAs(
+      undefined,
+      emptyRun.runId,
+      [401],
+    );
+    expectApiError(missingAuth.body);
+    const cli = await api.createCliToken(actor);
+    const wrongCredential = await api.requestReserveRunnerActiveInputsAs(
+      `Bearer ${cli.token}`,
+      emptyRun.runId,
+      [403],
+    );
+    expectApiError(wrongCredential.body);
+
+    const peer = bdd.user();
+    const wrongTenantToken = api.sandboxTokenForRun(peer, emptyRun.runId);
+    const wrongTenant = await api.requestReserveRunnerActiveInputsAs(
+      `Bearer ${wrongTenantToken}`,
+      emptyRun.runId,
+      [403],
+    );
+    expectApiError(wrongTenant.body);
+    const randomDelivery = await api.requestRecordRunnerActiveInputDeliveryAs(
+      `Bearer ${emptyClaim.claim.sandboxToken}`,
+      emptyRun.runId,
+      randomUUID(),
+      [403],
+    );
+    expectApiError(randomDelivery.body);
+
+    await cancelChatRun(actor, emptyRun.runId);
+    await expect(
+      api.reserveRunnerActiveInputs(
+        emptyClaim.claim.sandboxToken,
+        emptyRun.runId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "terminal" });
+
+    const heldRun = await sendChatRun(actor, {
+      agentId,
+      prompt: "hold durable delivery after termination",
+    });
+    const heldClaim = await claimChatRun(runnerGroup, heldRun.runId);
+    const heldEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: heldRun.threadId,
+        prompt: "remain held",
+        clientEventId: heldEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      heldClaim.claim.sandboxToken,
+      heldRun.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected an active-input delivery reservation");
+    }
+    const wrongRun = await api.requestReserveRunnerActiveInputsAs(
+      `Bearer ${emptyClaim.claim.sandboxToken}`,
+      heldRun.runId,
+      [403],
+    );
+    expectApiError(wrongRun.body);
+    const crossDelivery = await api.requestRecordRunnerActiveInputDeliveryAs(
+      `Bearer ${emptyClaim.claim.sandboxToken}`,
+      emptyRun.runId,
+      reserved.deliveryId,
+      [403],
+    );
+    expectApiError(crossDelivery.body);
+
+    await cancelChatRun(actor, heldRun.runId);
+    await expect(
+      api.reserveRunnerActiveInputs(
+        heldClaim.claim.sandboxToken,
+        heldRun.runId,
+      ),
+    ).resolves.toStrictEqual({
+      outcome: "held",
+      deliveryId: reserved.deliveryId,
+      eventIds: [heldEventId],
+    });
+  }, 90_000);
+
+  it("applies the delivery-aware payload limit without consuming rejection", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "validate durable delivery payload limit",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const emptyDeliveryPayloadBytes = Buffer.byteLength(
+      JSON.stringify({
+        type: "active-input",
+        deliveryId: randomUUID(),
+        text: "",
+      }),
+      "utf8",
+    );
+    const exactEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "x".repeat(
+          ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - emptyDeliveryPayloadBytes,
+        ),
+        clientEventId: exactEventId,
+      },
+      [201],
+    );
+    const exact = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (exact.outcome !== "reserved") {
+      throw new Error("Expected exact-limit delivery to be reserved");
+    }
+    expect(
+      Buffer.byteLength(
+        JSON.stringify({
+          type: "active-input",
+          deliveryId: exact.deliveryId,
+          text: exact.prompt,
+        }),
+        "utf8",
+      ),
+    ).toBe(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES);
+    await api.recordRunnerActiveInputDelivery(
+      claimed.claim.sandboxToken,
+      active.runId,
+      exact.deliveryId,
+    );
+
+    const oversizedEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "x".repeat(
+          ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES -
+            emptyDeliveryPayloadBytes +
+            1,
+        ),
+        clientEventId: oversizedEventId,
+      },
+      [201],
+    );
+    await expect(
+      api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual({
+      outcome: "rejected",
+      reason: "payload_too_large",
+    });
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([oversizedEventId]);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        revokesEventId: oversizedEventId,
+      },
+      [201],
+    );
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("reserves and settles a run-scoped budget input", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "reserve the time budget warning",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
+    await runSteerRunTimeBudgetCron();
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected the budget input to be reserved");
+    }
+    expect(reserved.prompt).toBe(RUN_TIME_BUDGET_MESSAGE);
+    expect(reserved.eventIds).toHaveLength(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([]);
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.budget",
+        runId: active.runId,
+        revokesEventId: reserved.eventIds[0],
+      }),
+    );
+    await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
   it("steers a run once when it reaches its time budget", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
