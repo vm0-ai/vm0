@@ -833,6 +833,8 @@ async fn execute_inner_waits_for_transient_workspace_cache_lock() {
         &cache_key,
     );
     let held_lock = crate::lock::acquire(lock_path.clone()).await.unwrap();
+    // Each acquisition attempt tightens this safe mode to 0600 before flock.
+    // Two tightenings while the guard is held prove the first attempt observed contention.
     std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o644)).unwrap();
     let (controller_ready_tx, controller_ready_rx) = mpsc::sync_channel(0);
     let release = std::thread::spawn(move || {
