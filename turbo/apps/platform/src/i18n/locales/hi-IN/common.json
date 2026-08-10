@@ -1672,6 +1672,9 @@
       "frequentlyUsed": "बहुधा प्रयुक्त",
       "icon": "चैट थ्रेड आइकन",
       "loadingEarlier": "पहले के संदेश लोड हो रहे हैं",
+      "locator": {
+        "you": "आप"
+      },
       "noEmojiFound": "कोई इमोजी नहीं मिला",
       "notFound": "चैट थ्रेड नहीं मिला",
       "openArtifacts": "आर्टिफ़ैक्ट खोलें",

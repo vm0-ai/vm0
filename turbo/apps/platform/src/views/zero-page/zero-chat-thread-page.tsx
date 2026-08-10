@@ -128,6 +128,7 @@ import {
   ChatVideoPreviewButton,
 } from "./chat-body-cards.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
+import { ChatConversationLocator } from "./chat-conversation-locator.tsx";
 import {
   customConnectorMcpEnabled$,
   featureSwitch$,
@@ -4419,6 +4420,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
       </div>
       <ChatThreadSkeletonOverlay thread={thread} />
       <ScrollToBottomButton thread={thread} />
+      <ChatConversationLocator thread={thread} />
     </div>
   );
 }

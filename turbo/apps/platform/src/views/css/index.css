@@ -388,6 +388,27 @@ body {
   animation: zero-chat-skeleton-reveal 0s 100ms forwards;
 }
 
+/* Conversation locator: mark where a rail jump landed, then fade back out. */
+@keyframes zero-locator-landed {
+  from {
+    background-color: hsl(var(--primary) / 0.1);
+    box-shadow: 0 0 0 0.75rem hsl(var(--primary) / 0.1);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: 0 0 0 0.75rem transparent;
+  }
+}
+[data-locator-landed] {
+  border-radius: 0.75rem;
+  animation: zero-locator-landed 1.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-locator-landed] {
+    animation-duration: 0.01ms;
+  }
+}
+
 /* Thinking indicator: 3-block loader */
 .zero-blocks {
   display: inline-grid;
