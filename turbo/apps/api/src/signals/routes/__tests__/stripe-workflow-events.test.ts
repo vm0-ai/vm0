@@ -24,7 +24,7 @@ import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
 import { testStripeWorkflowEventRoutes } from "../test-stripe-workflow-events";
-import { webhooksStripeWorkflowEventsRoutes } from "../webhooks-stripe-workflow-events";
+import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
 const context = testContext();
@@ -33,7 +33,7 @@ const runs = createRunsApi(context);
 const workflows = createWorkflowsBddApi(context);
 const mocks = createZeroRouteMocks(context);
 
-const WORKFLOW_WEBHOOK_SECRET = "whsec_stripe_workflow_events";
+const AUTOMATION_WEBHOOK_SECRET = "whsec_stripe_automation_events";
 const CRON_SECRET = "stripe-workflow-cron-secret";
 const STRIPE_ACCOUNT_ID = "acct_stripe_workflow_live";
 const cronResultSchema = z.object({
@@ -235,11 +235,11 @@ async function postStripeWorkflowEvent(
   const body = JSON.stringify(event);
   const response = await createApp({
     signal: context.signal,
-    routes: webhooksStripeWorkflowEventsRoutes,
-  }).request("/api/webhooks/stripe-workflow-events", {
+    routes: webhooksStripeAutomationEventsRoutes,
+  }).request("/api/webhooks/stripe-automation-events", {
     method: "POST",
     body,
-    headers: { "stripe-signature": "t=1,v1=stripe-workflow" },
+    headers: { "stripe-signature": "t=1,v1=stripe-automation" },
   });
   expect(response.status).toBe(expectedStatus);
   return response;
@@ -371,13 +371,16 @@ beforeEach(() => {
       secret,
     );
   });
-  mockOptionalEnv("STRIPE_WORKFLOW_WEBHOOK_SECRET", WORKFLOW_WEBHOOK_SECRET);
+  mockOptionalEnv(
+    "STRIPE_AUTOMATION_WEBHOOK_SECRET",
+    AUTOMATION_WEBHOOK_SECRET,
+  );
   mockEnv("CRON_SECRET", CRON_SECRET);
 });
 
-describe("Stripe workflow event webhook", () => {
-  it("keeps the existing billing webhook operational without the workflow secret", async () => {
-    mockOptionalEnv("STRIPE_WORKFLOW_WEBHOOK_SECRET", undefined);
+describe("Stripe automation event webhook", () => {
+  it("keeps the existing billing webhook operational without the automation secret", async () => {
+    mockOptionalEnv("STRIPE_AUTOMATION_WEBHOOK_SECRET", undefined);
     const billing = await workflows.setupWorkflowOrg();
     expect(billing).toMatchObject({
       actor: { orgId: expect.any(String) },
@@ -389,21 +392,24 @@ describe("Stripe workflow event webhook", () => {
 
   it("uses the dedicated secret and classifies boundary failures", async () => {
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_billing_unchanged");
-    mockOptionalEnv("STRIPE_WORKFLOW_WEBHOOK_SECRET", undefined);
+    mockOptionalEnv("STRIPE_AUTOMATION_WEBHOOK_SECRET", undefined);
     const unconfigured = await createApp({
       signal: context.signal,
-      routes: webhooksStripeWorkflowEventsRoutes,
-    }).request("/api/webhooks/stripe-workflow-events", {
+      routes: webhooksStripeAutomationEventsRoutes,
+    }).request("/api/webhooks/stripe-automation-events", {
       method: "POST",
       body: "{}",
     });
     expect(unconfigured.status).toBe(503);
 
-    mockOptionalEnv("STRIPE_WORKFLOW_WEBHOOK_SECRET", WORKFLOW_WEBHOOK_SECRET);
+    mockOptionalEnv(
+      "STRIPE_AUTOMATION_WEBHOOK_SECRET",
+      AUTOMATION_WEBHOOK_SECRET,
+    );
     const unsigned = await createApp({
       signal: context.signal,
-      routes: webhooksStripeWorkflowEventsRoutes,
-    }).request("/api/webhooks/stripe-workflow-events", {
+      routes: webhooksStripeAutomationEventsRoutes,
+    }).request("/api/webhooks/stripe-automation-events", {
       method: "POST",
       body: "{}",
     });
@@ -414,8 +420,8 @@ describe("Stripe workflow event webhook", () => {
     });
     const invalidSignature = await createApp({
       signal: context.signal,
-      routes: webhooksStripeWorkflowEventsRoutes,
-    }).request("/api/webhooks/stripe-workflow-events", {
+      routes: webhooksStripeAutomationEventsRoutes,
+    }).request("/api/webhooks/stripe-automation-events", {
       method: "POST",
       body: "{}",
       headers: { "stripe-signature": "invalid" },
@@ -445,8 +451,8 @@ describe("Stripe workflow event webhook", () => {
       context.mocks.stripe.webhooks.constructEvent,
     ).toHaveBeenLastCalledWith(
       JSON.stringify(unmapped),
-      "t=1,v1=stripe-workflow",
-      WORKFLOW_WEBHOOK_SECRET,
+      "t=1,v1=stripe-automation",
+      AUTOMATION_WEBHOOK_SECRET,
     );
   });
 

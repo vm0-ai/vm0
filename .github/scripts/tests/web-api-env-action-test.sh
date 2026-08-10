@@ -107,6 +107,14 @@ build_doppler_secrets_json() {
   if [[ "$omit_key" != "STRIPE_OAUTH_CLIENT_ID" ]]; then
     json="$(jq -c --arg value "doppler-STRIPE_OAUTH_CLIENT_ID" '. + {STRIPE_OAUTH_CLIENT_ID: $value}' <<< "$json")"
   fi
+  json="$(
+    jq -c '
+      . + {
+        STRIPE_WEBHOOK_SECRET: "doppler-stripe-billing-webhook-secret",
+        STRIPE_AUTOMATION_WEBHOOK_SECRET: "doppler-stripe-automation-webhook-secret"
+      }
+    ' <<< "$json"
+  )"
   printf '%s' "$json"
 }
 
@@ -137,7 +145,7 @@ run_action() {
     INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
     INPUT_CLI_PKG_URL="$input_cli_pkg_url" \
     REPO_VARS_JSON="$repo_vars_json" \
-    REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","ZERO_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","ZERO_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","ZERO_BROWSER_USE_API_KEY":"github-browser-use-api-key","ZERO_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","ZERO_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret"}' \
+    REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","ZERO_WEATHER_GOOGLE_WEATHER_TOKEN":"github-google-weather-token","ZERO_FINANCE_APIDOJO_TOKEN":"github-apidojo-token","ZERO_BROWSER_USE_API_KEY":"github-browser-use-api-key","ZERO_SCRAPE_FIRECRAWL_TOKEN":"github-firecrawl-token","ZERO_WEB_SEARCH_PERPLEXITY_TOKEN":"github-perplexity-token","STEAM_WEB_API_KEY":"github-steam-web-api-key","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret","UNSPLASH_ACCESS_KEY":"github-unsplash-access-key","VM0_MACHINE_SECRET_KEY":"github-atom-machine-secret","MICROSOFT_TEAMS_BOT_APP_PASSWORD":"github-teams-bot-app-password","VERCEL_AUTOMATION_BYPASS_SECRET":"github-vercel-bypass-secret","CLOUDFLARE_BROWSER_RENDERING_API_TOKEN":"github-cloudflare-browser-rendering-token","ARTIFACT_PREVIEW_WAF_SECRET":"github-artifact-preview-waf-secret","JOGGAI_WEBHOOK_SECRET":"github-joggai-webhook-secret","STRIPE_WEBHOOK_SECRET":"github-stripe-billing-webhook-secret","STRIPE_AUTOMATION_WEBHOOK_SECRET":"github-stripe-automation-webhook-secret"}' \
     DOPPLER_SECRETS_JSON="$doppler_secrets_json" \
     bash "$action_script"
 }
@@ -256,6 +264,10 @@ assert_env_value "$production_api_env_file" ZERO_WEB_SEARCH_PERPLEXITY_TOKEN "gi
 assert_env_absent_value "$production_api_env_file" "ONBOARDING_URL="
 assert_env_value "$production_api_env_file" CLOUDFLARE_BROWSER_RENDERING_API_TOKEN "github-cloudflare-browser-rendering-token"
 assert_env_value "$production_api_env_file" ARTIFACT_PREVIEW_WAF_SECRET "github-artifact-preview-waf-secret"
+assert_env_value "$production_api_env_file" STRIPE_WEBHOOK_SECRET "github-stripe-billing-webhook-secret"
+assert_env_value "$production_api_env_file" STRIPE_AUTOMATION_WEBHOOK_SECRET "github-stripe-automation-webhook-secret"
+assert_env_absent_value "$production_api_env_file" "doppler-stripe-billing-webhook-secret"
+assert_env_absent_value "$production_api_env_file" "doppler-stripe-automation-webhook-secret"
 
 missing_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_dir")

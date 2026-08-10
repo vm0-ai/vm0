@@ -90,13 +90,13 @@ export const webhookStripeContract = c.router({
 });
 
 /**
- * Stripe Connect workflow-event webhook contract. This route is intentionally
+ * Stripe Connect automation-event webhook contract. This route is intentionally
  * separate from the vm0 billing webhook above.
  */
-export const webhookStripeWorkflowEventsContract = c.router({
+export const webhookStripeAutomationEventsContract = c.router({
   post: {
     method: "POST",
-    path: "/api/webhooks/stripe-workflow-events",
+    path: "/api/webhooks/stripe-automation-events",
     body: c.type<string>(),
     responses: {
       200: thirdPartyWebhookOkSchema,
@@ -105,7 +105,7 @@ export const webhookStripeWorkflowEventsContract = c.router({
       500: thirdPartyWebhookErrorSchema,
       503: thirdPartyWebhookErrorSchema,
     },
-    summary: "Handle Stripe Connect workflow events",
+    summary: "Handle Stripe Connect automation events",
   },
 });
 
@@ -1010,8 +1010,8 @@ export type WebhookGoogleCalendarContract =
 export type WebhookGoogleWorkspaceEventsContract =
   typeof webhookGoogleWorkspaceEventsContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
-export type WebhookStripeWorkflowEventsContract =
-  typeof webhookStripeWorkflowEventsContract;
+export type WebhookStripeAutomationEventsContract =
+  typeof webhookStripeAutomationEventsContract;
 export type WebhookWorkflowAutomationContract =
   typeof webhookWorkflowAutomationContract;
 export type WebhookBuiltInGenerationFalContract =
