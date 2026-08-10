@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.162.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.9...runner-rs-v0.162.10) (2026-08-10)
+
+
+### Bug Fixes
+
+* **mitm-addon:** distinguish repeated-slash diagnostic bases ([#26100](https://github.com/vm0-ai/vm0/issues/26100)) ([0a8bb82](https://github.com/vm0-ai/vm0/commit/0a8bb821545d23bede3ae075e711baa1c648dccb))
+* **runner:** frame rootfs hash inputs ([#26122](https://github.com/vm0-ai/vm0/issues/26122)) ([8c38ec3](https://github.com/vm0-ai/vm0/commit/8c38ec3dbd7d48d04e4e5b06607393305c82d850))
+
+
+### Refactoring
+
+* **python:** centralize synthetic json framing ([#26117](https://github.com/vm0-ai/vm0/issues/26117)) ([b5e9b13](https://github.com/vm0-ai/vm0/commit/b5e9b13e9bc887836faf617eff3887070428b317))
+
 ## [0.162.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.8...runner-rs-v0.162.9) (2026-08-10)
 
 

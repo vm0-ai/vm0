@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.719.0](https://github.com/vm0-ai/vm0/compare/app-v0.718.0...app-v0.719.0) (2026-08-10)
+
+
+### Features
+
+* **chat:** persist fast mode in user messages ([#26109](https://github.com/vm0-ai/vm0/issues/26109)) ([9ccbee2](https://github.com/vm0-ai/vm0/commit/9ccbee23ae65d2c8f5653678d2e4131fa0548a0e))
+* require usage pack payment when inviting members ([#25527](https://github.com/vm0-ai/vm0/issues/25527)) ([070ff0e](https://github.com/vm0-ai/vm0/commit/070ff0ec08040bad52437e9b41dace350e806a62))
+
+
+### Performance Improvements
+
+* **platform:** eliminate idle animation paints ([#26123](https://github.com/vm0-ai/vm0/issues/26123)) ([9c2e984](https://github.com/vm0-ai/vm0/commit/9c2e984e8e4fe8f4d98dd9928bb8a73d64106fa8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.306.0
+    * @vm0/core bumped to 8.538.1
+
 ## [0.718.0](https://github.com/vm0-ai/vm0/compare/app-v0.717.0...app-v0.718.0) (2026-08-10)
 
 
