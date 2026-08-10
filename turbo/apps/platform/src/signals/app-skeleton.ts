@@ -10,6 +10,7 @@ import { locale$ } from "./locale.ts";
 // ---------------------------------------------------------------------------
 
 const internalVisible$ = state(true);
+const internalOverlayMounted$ = state(true);
 
 const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
 const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
@@ -28,6 +29,7 @@ export const initBootstrapSkeleton$ = command(({ set }) => {
   if (active) {
     queueAppSkeletonVisibleEvent();
   }
+  set(internalOverlayMounted$, !active);
   set(internalBootstrapSkeletonActive$, active);
 });
 
@@ -172,6 +174,16 @@ export const appSkeletonVisible$ = computed((get) => {
   return get(internalVisible$);
 });
 
+export const appSkeletonOverlayMounted$ = computed((get) => {
+  return get(internalOverlayMounted$);
+});
+
+export const unmountAppSkeletonOverlay$ = command(({ get, set }) => {
+  if (!get(internalVisible$)) {
+    set(internalOverlayMounted$, false);
+  }
+});
+
 /**
  * Reveal the skeleton and reset the typewriter intro. `hideAppSkeleton$`
  * aborts the cycling loop via `resetSkeletonCycling$`; if the caller needs
@@ -180,8 +192,9 @@ export const appSkeletonVisible$ = computed((get) => {
  * restart the cycling itself by awaiting `startSkeletonCycling$` in its
  * own async context.
  */
-export const showAppSkeleton$ = command(({ set }) => {
+export const showAppSkeleton$ = command(({ get, set }) => {
   set(internalVisible$, true);
+  set(internalOverlayMounted$, !get(internalBootstrapSkeletonActive$));
   set(skeletonFirstCycle$, true);
 });
 
