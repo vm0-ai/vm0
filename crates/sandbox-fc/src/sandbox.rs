@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::num::NonZeroU64;
 use std::path::Path;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -10,8 +10,9 @@ use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestMemorySnapshot,
     GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
-    ProcessControlAck, ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
-    Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkObserver,
+    ProcessControlAck, ProcessControlFailureKind, ProcessControlGuestStatus, ProcessControlMode,
+    ProcessControlOutcome, ProcessControlWriteState, ProcessExit, ProcessOutputChunk,
+    ProcessOutputMode, Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkObserver,
     SandboxFinalExecParkOutcome, SandboxFinalExecParkStage, SandboxIdleTransition,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
     SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
@@ -22,8 +23,9 @@ use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
 use vsock_host::{
-    ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, NormalOperationFence,
-    NormalOperationFenceRejection, SupervisedExecControl, SupervisedExecRequest, VsockHost,
+    ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver,
+    NormalOperationFence, NormalOperationFenceRejection, SupervisedExecControl,
+    SupervisedExecRequest, VsockHost,
 };
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTimeoutPolicy};
 
@@ -856,6 +858,52 @@ impl FirecrackerSandbox {
         io::Error::other(error)
     }
 
+    fn process_control_guest_status(
+        status: vsock_proto::ExecControlStatus,
+    ) -> io::Result<ProcessControlGuestStatus> {
+        let status = match status {
+            vsock_proto::ExecControlStatus::Inactive => ProcessControlGuestStatus::Inactive,
+            vsock_proto::ExecControlStatus::NonceMismatch => {
+                ProcessControlGuestStatus::NonceMismatch
+            }
+            vsock_proto::ExecControlStatus::Unsupported => ProcessControlGuestStatus::Unsupported,
+            vsock_proto::ExecControlStatus::Rejected => ProcessControlGuestStatus::Rejected,
+            vsock_proto::ExecControlStatus::SinkUnavailable => {
+                ProcessControlGuestStatus::SinkUnavailable
+            }
+            vsock_proto::ExecControlStatus::SinkTimeout => ProcessControlGuestStatus::SinkTimeout,
+            vsock_proto::ExecControlStatus::QueueFull => ProcessControlGuestStatus::QueueFull,
+            vsock_proto::ExecControlStatus::SinkError => ProcessControlGuestStatus::SinkError,
+            vsock_proto::ExecControlStatus::Delivered => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "delivered exec-control status used a guest-status outcome",
+                ));
+            }
+        };
+        Ok(status)
+    }
+
+    fn process_control_write_state(write_started: &AtomicBool) -> ProcessControlWriteState {
+        if write_started.load(Ordering::Acquire) {
+            ProcessControlWriteState::PossiblyWritten
+        } else {
+            ProcessControlWriteState::NotWritten
+        }
+    }
+
+    fn process_control_failure(
+        kind: ProcessControlFailureKind,
+        write_started: &AtomicBool,
+        error: io::Error,
+    ) -> ProcessControlOutcome {
+        ProcessControlOutcome::Failed {
+            kind,
+            write_state: Self::process_control_write_state(write_started),
+            error,
+        }
+    }
+
     async fn exec_process_control(
         coordinator: ParkCoordinator,
         state: Arc<AtomicU8>,
@@ -864,41 +912,88 @@ impl FirecrackerSandbox {
         message_id: String,
         payload: Vec<u8>,
         timeout: Duration,
-    ) -> io::Result<ProcessControlAck> {
+    ) -> ProcessControlOutcome {
         enum ControlOutcome {
-            Returned(io::Result<vsock_host::ExecControlAck>),
+            Returned(io::Result<vsock_host::ExecControlOutcome>),
             BackendCrashed,
         }
 
         let operation = SandboxOperation::ProcessControl;
-        Self::begin_process_control(&coordinator, || Self::current_state_from(&state)).map_err(
-            |error| {
-                Self::operation_start_io_error(operation, error, Self::current_state_from(&state))
-            },
-        )?;
+        let write_started = Arc::new(AtomicBool::new(false));
+        if let Err(error) =
+            Self::begin_process_control(&coordinator, || Self::current_state_from(&state))
+        {
+            let kind = if matches!(&error, GuestOperationStartError::BackendCrashed) {
+                ProcessControlFailureKind::BackendCrashed
+            } else {
+                ProcessControlFailureKind::Operation
+            };
+            return Self::process_control_failure(
+                kind,
+                &write_started,
+                Self::operation_start_io_error(operation, error, Self::current_state_from(&state)),
+            );
+        }
+
+        let write_observer = FrameWriteObserver::new({
+            let write_started = Arc::clone(&write_started);
+            move || {
+                write_started.store(true, Ordering::Release);
+                Ok(())
+            }
+        });
 
         let outcome = tokio::select! {
-            result = control.control_owned(
+            result = control.control_owned_with_write_observer(
                 message_id,
                 payload,
                 timeout,
+                write_observer,
             ) => ControlOutcome::Returned(result),
             () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
         };
 
         match outcome {
-            ControlOutcome::Returned(Ok(ack)) => Ok(ProcessControlAck {
-                message_id: ack.message_id,
-            }),
+            ControlOutcome::Returned(Ok(vsock_host::ExecControlOutcome::Delivered(ack))) => {
+                ProcessControlOutcome::Delivered(ProcessControlAck {
+                    message_id: ack.message_id,
+                })
+            }
+            ControlOutcome::Returned(Ok(vsock_host::ExecControlOutcome::GuestStatus(status))) => {
+                match Self::process_control_guest_status(status.status) {
+                    Ok(guest_status) => ProcessControlOutcome::GuestStatus {
+                        status: guest_status,
+                        diagnostic: status.diagnostic,
+                    },
+                    Err(error) => Self::process_control_failure(
+                        ProcessControlFailureKind::Operation,
+                        &write_started,
+                        error,
+                    ),
+                }
+            }
+            ControlOutcome::Returned(Ok(vsock_host::ExecControlOutcome::GuestError(message))) => {
+                ProcessControlOutcome::GuestError(message)
+            }
             ControlOutcome::Returned(Err(error)) => {
                 if Self::current_state_from(&state) == SandboxState::Crashed {
-                    return Err(io::Error::other(Self::backend_crashed_error(operation)));
+                    return Self::process_control_failure(
+                        ProcessControlFailureKind::BackendCrashed,
+                        &write_started,
+                        io::Error::other(Self::backend_crashed_error(operation)),
+                    );
                 }
-                Err(error)
+                Self::process_control_failure(
+                    ProcessControlFailureKind::Operation,
+                    &write_started,
+                    error,
+                )
             }
-            ControlOutcome::BackendCrashed => {
-                Err(io::Error::other(Self::backend_crashed_error(operation)))
-            }
+            ControlOutcome::BackendCrashed => Self::process_control_failure(
+                ProcessControlFailureKind::BackendCrashed,
+                &write_started,
+                io::Error::other(Self::backend_crashed_error(operation)),
+            ),
         }
     }
 
@@ -2342,7 +2437,8 @@ impl Sandbox for FirecrackerSandbox {
                     let coordinator = self.park_coordinator.clone();
                     let state = Arc::clone(&self.state);
                     let state_rx = self.state_tx.subscribe();
-                    GuestProcessControlHandle::new(move |message_id, payload, timeout| {
+                    GuestProcessControlHandle::new_with_outcome(
+                        move |message_id, payload, timeout| {
                         let control = control.clone();
                         let coordinator = coordinator.clone();
                         let state = Arc::clone(&state);
@@ -2353,7 +2449,8 @@ impl Sandbox for FirecrackerSandbox {
                             )
                             .await
                         })
-                    })
+                        },
+                    )
                 });
                 let (stdout_rx, close_stdout) = if request.output.streams_stdout() {
                     match handle.take_stream_receiver() {

@@ -160,7 +160,8 @@ async fn process_control_calls_are_recorded_when_overrides_are_enabled() {
 #[tokio::test]
 async fn queued_process_control_errors_are_consumed_fifo() {
     let overrides = Arc::new(MockSandboxOverrides::new());
-    overrides.push_process_control_error("control failed");
+    overrides.push_process_control_error("first control failed");
+    overrides.push_process_control_error("second control failed");
     let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
     let handle = sandbox
         .start_process(&StartProcessRequest {
@@ -177,18 +178,79 @@ async fn queued_process_control_errors_are_consumed_fifo() {
         .control_handle()
         .expect("enabled control should expose a handle");
 
-    let err = control
-        .control("msg-1", b"payload-1", Duration::from_secs(1))
+    let outcome = control
+        .control_outcome("msg-1", b"payload-1", Duration::from_secs(1))
+        .await;
+    let first_error = match outcome {
+        ProcessControlOutcome::Failed {
+            kind,
+            write_state,
+            error,
+        } => {
+            assert_eq!(kind, ProcessControlFailureKind::Operation);
+            assert_eq!(write_state, ProcessControlWriteState::PossiblyWritten);
+            error
+        }
+        other => panic!("expected failed process-control outcome, got {other:?}"),
+    };
+    let second_error = control
+        .control("msg-2", b"payload-2", Duration::from_secs(1))
         .await
         .unwrap_err();
     let ack = control
-        .control("msg-2", b"payload-2", Duration::from_secs(1))
+        .control("msg-3", b"payload-3", Duration::from_secs(1))
         .await
         .unwrap();
 
-    assert!(err.to_string().contains("control failed"));
-    assert_eq!(ack.message_id, "msg-2");
-    assert_eq!(overrides.process_control_calls().len(), 2);
+    assert!(first_error.to_string().contains("first control failed"));
+    assert!(second_error.to_string().contains("second control failed"));
+    assert_eq!(ack.message_id, "msg-3");
+    assert_eq!(overrides.process_control_calls().len(), 3);
+}
+
+#[tokio::test]
+async fn structured_process_control_distinguishes_timeout_write_state() {
+    for write_state in [
+        ProcessControlWriteState::NotWritten,
+        ProcessControlWriteState::PossiblyWritten,
+    ] {
+        let control =
+            GuestProcessControlHandle::new_with_outcome(move |_message_id, _payload, _timeout| {
+                Box::pin(async move {
+                    ProcessControlOutcome::Failed {
+                        kind: ProcessControlFailureKind::Operation,
+                        write_state,
+                        error: std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "process control timed out",
+                        ),
+                    }
+                })
+            });
+
+        let outcome = control
+            .control_outcome("msg", b"payload", Duration::from_secs(1))
+            .await;
+        match outcome {
+            ProcessControlOutcome::Failed {
+                kind,
+                write_state: actual_write_state,
+                error,
+            } => {
+                assert_eq!(kind, ProcessControlFailureKind::Operation);
+                assert_eq!(actual_write_state, write_state);
+                assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+            }
+            other => panic!("expected failed process-control outcome, got {other:?}"),
+        }
+
+        let error = control
+            .control("msg-1", b"payload-1", Duration::from_secs(1))
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        assert_eq!(error.to_string(), "process control timed out");
+    }
 }
 
 #[tokio::test]

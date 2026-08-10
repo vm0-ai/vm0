@@ -447,6 +447,47 @@ async fn send_mismatched_exec_control_result(stream: &mut UnixStream, request: R
     stream.write_all(&response).await.unwrap();
 }
 
+fn expect_process_control_delivered(outcome: ProcessControlOutcome) -> ProcessControlAck {
+    match outcome {
+        ProcessControlOutcome::Delivered(ack) => ack,
+        other => panic!("expected delivered process-control outcome, got {other:?}"),
+    }
+}
+
+fn expect_process_control_failure(
+    outcome: ProcessControlOutcome,
+    expected_kind: ProcessControlFailureKind,
+    expected_write_state: ProcessControlWriteState,
+) -> io::Error {
+    match outcome {
+        ProcessControlOutcome::Failed {
+            kind,
+            write_state,
+            error,
+        } => {
+            assert_eq!(kind, expected_kind);
+            assert_eq!(write_state, expected_write_state);
+            error
+        }
+        other => panic!("expected failed process-control outcome, got {other:?}"),
+    }
+}
+
+fn assert_process_control_guest_status(
+    outcome: &ProcessControlOutcome,
+    expected_status: ProcessControlGuestStatus,
+    expected_diagnostic: &str,
+) {
+    assert!(
+        matches!(
+            outcome,
+            ProcessControlOutcome::GuestStatus { status, diagnostic }
+                if *status == expected_status && diagnostic == expected_diagnostic
+        ),
+        "unexpected process-control outcome: {outcome:?}",
+    );
+}
+
 async fn send_exec_exit(stream: &mut UnixStream, exec_seq: u32) {
     let payload = vsock_proto::encode_exec_result(
         vsock_proto::ExecTermination::Exited { exit_code: 0 },
@@ -2686,7 +2727,7 @@ async fn process_control_rejects_closed_policy_gate_without_dirtying() {
         .expect("begin prepare park");
     let (state, state_tx) = running_process_state();
 
-    let error = FirecrackerSandbox::exec_process_control(
+    let outcome = FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         state,
         state_tx.subscribe(),
@@ -2695,8 +2736,12 @@ async fn process_control_rejects_closed_policy_gate_without_dirtying() {
         b"payload".to_vec(),
         Duration::from_secs(5),
     )
-    .await
-    .unwrap_err();
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::NotWritten,
+    );
 
     assert!(
         error.to_string().contains("sandbox operation gate closed"),
@@ -2721,7 +2766,7 @@ async fn process_control_rejects_stopped_state_without_dirtying() {
     let coordinator = ParkCoordinator::new();
     let (state, state_tx) = process_state(SandboxState::Stopped);
 
-    let error = FirecrackerSandbox::exec_process_control(
+    let outcome = FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         state,
         state_tx.subscribe(),
@@ -2730,11 +2775,53 @@ async fn process_control_rejects_stopped_state_without_dirtying() {
         b"payload".to_vec(),
         Duration::from_secs(5),
     )
-    .await
-    .unwrap_err();
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::NotWritten,
+    );
 
     assert!(
         error.to_string().contains("sandbox not running"),
+        "unexpected error: {error}",
+    );
+    assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+    send_exec_exit(&mut guest, exec_seq).await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
+async fn process_control_reports_backend_crash_before_guest_write() {
+    let ExecProcessControlFixture {
+        host: _host,
+        handle,
+        mut guest,
+        exec_seq,
+    } = setup_exec_process_control_fixture().await;
+    let control = handle.control_handle().unwrap();
+    let coordinator = ParkCoordinator::new();
+    let (state, state_tx) = process_state(SandboxState::Crashed);
+
+    let outcome = FirecrackerSandbox::exec_process_control(
+        coordinator.clone(),
+        state,
+        state_tx.subscribe(),
+        control,
+        "crashed-before-write".to_owned(),
+        b"payload".to_vec(),
+        Duration::from_secs(5),
+    )
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::BackendCrashed,
+        ProcessControlWriteState::NotWritten,
+    );
+
+    assert!(
+        error.to_string().contains("firecracker process crashed"),
         "unexpected error: {error}",
     );
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2756,7 +2843,7 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
     let (state, state_tx) = running_process_state();
     let too_large = vec![0; vsock_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES + 1];
 
-    let error = FirecrackerSandbox::exec_process_control(
+    let outcome = FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         Arc::clone(&state),
         state_tx.subscribe(),
@@ -2765,8 +2852,12 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
         too_large,
         Duration::from_secs(5),
     )
-    .await
-    .unwrap_err();
+    .await;
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::NotWritten,
+    );
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2783,7 +2874,7 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
     let request = read_vsock_message(&mut guest).await;
     send_exec_control_result(&mut guest, request, ExecControlStatus::Delivered, "").await;
 
-    let ack = control_task.await.unwrap().unwrap();
+    let ack = expect_process_control_delivered(control_task.await.unwrap());
     assert_eq!(ack.message_id, "valid-after-local-failure");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 
@@ -2792,7 +2883,7 @@ async fn process_control_local_validation_failure_keeps_gate_clean() {
 }
 
 #[tokio::test]
-async fn process_control_guest_status_keeps_policy_open() {
+async fn process_control_preserves_guest_statuses_and_legacy_errors() {
     let ExecProcessControlFixture {
         host: _host,
         handle,
@@ -2803,12 +2894,85 @@ async fn process_control_guest_status_keeps_policy_open() {
     let coordinator = ParkCoordinator::new();
     let (state, state_tx) = running_process_state();
 
+    let cases = [
+        (
+            ExecControlStatus::Inactive,
+            ProcessControlGuestStatus::Inactive,
+            io::ErrorKind::NotFound,
+            "exec operation is not active",
+        ),
+        (
+            ExecControlStatus::NonceMismatch,
+            ProcessControlGuestStatus::NonceMismatch,
+            io::ErrorKind::PermissionDenied,
+            "exec operation nonce mismatch",
+        ),
+        (
+            ExecControlStatus::Unsupported,
+            ProcessControlGuestStatus::Unsupported,
+            io::ErrorKind::Unsupported,
+            "exec control is not supported by this operation",
+        ),
+        (
+            ExecControlStatus::Rejected,
+            ProcessControlGuestStatus::Rejected,
+            io::ErrorKind::PermissionDenied,
+            "exec control request rejected",
+        ),
+        (
+            ExecControlStatus::SinkUnavailable,
+            ProcessControlGuestStatus::SinkUnavailable,
+            io::ErrorKind::NotConnected,
+            "exec control sink is not connected",
+        ),
+        (
+            ExecControlStatus::SinkTimeout,
+            ProcessControlGuestStatus::SinkTimeout,
+            io::ErrorKind::TimedOut,
+            "exec control sink timed out",
+        ),
+        (
+            ExecControlStatus::QueueFull,
+            ProcessControlGuestStatus::QueueFull,
+            io::ErrorKind::WouldBlock,
+            "exec control queue is full",
+        ),
+        (
+            ExecControlStatus::SinkError,
+            ProcessControlGuestStatus::SinkError,
+            io::ErrorKind::BrokenPipe,
+            "exec control sink error",
+        ),
+    ];
+
+    for (index, (guest_status, status, error_kind, error_message)) in cases.into_iter().enumerate()
+    {
+        let message_id = format!("guest-status-{index}");
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
+            coordinator.clone(),
+            Arc::clone(&state),
+            state_tx.subscribe(),
+            control.clone(),
+            message_id,
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        send_exec_control_result(&mut guest, request, guest_status, "").await;
+
+        let outcome = control_task.await.unwrap();
+        assert_process_control_guest_status(&outcome, status, "");
+        let error = outcome.into_ack().unwrap_err();
+        assert_eq!(error.kind(), error_kind);
+        assert_eq!(error.to_string(), error_message);
+    }
+
     let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
         coordinator.clone(),
         state,
         state_tx.subscribe(),
         control,
-        "sink-timeout".to_owned(),
+        "guest-diagnostic".to_owned(),
         b"payload".to_vec(),
         Duration::from_secs(5),
     ));
@@ -2816,14 +2980,20 @@ async fn process_control_guest_status_keeps_policy_open() {
     send_exec_control_result(
         &mut guest,
         request,
-        ExecControlStatus::SinkTimeout,
-        "guest sink timed out",
+        ExecControlStatus::Rejected,
+        "guest rejected this request",
     )
     .await;
 
-    let error = control_task.await.unwrap().unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
-    assert_eq!(error.to_string(), "guest sink timed out");
+    let outcome = control_task.await.unwrap();
+    assert_process_control_guest_status(
+        &outcome,
+        ProcessControlGuestStatus::Rejected,
+        "guest rejected this request",
+    );
+    let error = outcome.into_ack().unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "guest rejected this request");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 
     send_exec_exit(&mut guest, exec_seq).await;
@@ -2854,7 +3024,15 @@ async fn process_control_guest_error_keeps_policy_open() {
     let request = read_vsock_message(&mut guest).await;
     send_exec_control_error(&mut guest, request, "guest rejected control").await;
 
-    let error = control_task.await.unwrap().unwrap_err();
+    let outcome = control_task.await.unwrap();
+    assert!(
+        matches!(
+            &outcome,
+            ProcessControlOutcome::GuestError(message) if message == "guest rejected control"
+        ),
+        "unexpected process-control outcome: {outcome:?}",
+    );
+    let error = outcome.into_ack().unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::Other);
     assert_eq!(error.to_string(), "guest rejected control");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2912,8 +3090,8 @@ async fn process_control_allows_concurrent_requests_while_policy_open() {
     send_exec_control_result(&mut guest, second_request, ExecControlStatus::Delivered, "").await;
     send_exec_control_result(&mut guest, first_request, ExecControlStatus::Delivered, "").await;
 
-    let first_ack = first_task.await.unwrap().unwrap();
-    let second_ack = second_task.await.unwrap().unwrap();
+    let first_ack = expect_process_control_delivered(first_task.await.unwrap());
+    let second_ack = expect_process_control_delivered(second_task.await.unwrap());
     assert_eq!(first_ack.message_id, "concurrent-a");
     assert_eq!(second_ack.message_id, "concurrent-b");
     assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -2946,7 +3124,11 @@ async fn process_control_protocol_poison_after_guest_write_keeps_policy_open() {
     let request = read_vsock_message(&mut guest).await;
     send_mismatched_exec_control_result(&mut guest, request).await;
 
-    let error = control_task.await.unwrap().unwrap_err();
+    let error = expect_process_control_failure(
+        control_task.await.unwrap(),
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::PossiblyWritten,
+    );
     assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 }
@@ -2978,11 +3160,15 @@ async fn process_control_backend_crash_after_guest_write_keeps_policy_open() {
     state.store(SandboxState::Crashed as u8, Ordering::Release);
     state_tx.send(SandboxState::Crashed).unwrap();
 
-    let error = tokio::time::timeout(Duration::from_secs(1), control_task)
+    let outcome = tokio::time::timeout(Duration::from_secs(1), control_task)
         .await
         .unwrap()
-        .unwrap()
-        .unwrap_err();
+        .unwrap();
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::BackendCrashed,
+        ProcessControlWriteState::PossiblyWritten,
+    );
     assert!(
         error.to_string().contains("firecracker process crashed"),
         "unexpected error: {error}",
@@ -3017,11 +3203,15 @@ async fn process_control_timeout_after_guest_write_keeps_policy_open() {
     let request = read_vsock_message(&mut guest).await;
     assert_eq!(request.msg_type, MSG_EXEC_CONTROL);
 
-    let error = tokio::time::timeout(Duration::from_secs(1), control_task)
+    let outcome = tokio::time::timeout(Duration::from_secs(1), control_task)
         .await
         .unwrap()
-        .unwrap()
-        .unwrap_err();
+        .unwrap();
+    let error = expect_process_control_failure(
+        outcome,
+        ProcessControlFailureKind::Operation,
+        ProcessControlWriteState::PossiblyWritten,
+    );
     assert_eq!(error.kind(), io::ErrorKind::TimedOut);
     assert_eq!(coordinator.state(), CoordinatorState::Open);
 

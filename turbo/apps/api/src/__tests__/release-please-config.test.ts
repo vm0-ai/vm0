@@ -84,15 +84,8 @@ describe("release-please API deployment graph", () => {
     }
   });
 
-  it("builds and promotes API for every release", () => {
+  it("builds and deploys API for every release", () => {
     const workflow = readText(".github/workflows/release-please.yml");
-    const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
-
-    expect(apiBuildJob).toContain(
-      `if: \${{ needs.release-please.outputs.releases_created == 'true' }}`,
-    );
-    expect(apiBuildJob).not.toContain("api_deploy_required");
-
     const promoteApiProductionJob = workflowJobBlock(
       workflow,
       "promote-api-production",
@@ -102,20 +95,42 @@ describe("release-please API deployment graph", () => {
       promoteApiProductionJob.indexOf("    steps:\n"),
     );
 
-    expect(workflow).not.toContain("\n  migrate-production:\n");
+    expect(promoteApiProductionHeader).toContain(
+      "needs: [release-please, builds-complete]",
+    );
     expect(promoteApiProductionJob).toContain("always() &&");
     expect(promoteApiProductionJob).toContain(
       "needs.release-please.outputs.releases_created == 'true'",
     );
     expect(promoteApiProductionJob).not.toContain("api_deploy_required");
     expect(promoteApiProductionHeader).not.toContain("api_release_created");
+
+    const deployApiSchemaJob = workflowJobBlock(workflow, "deploy-api-schema");
+    expect(deployApiSchemaJob).toContain(
+      "needs: [release-please, promote-api-production]",
+    );
   });
 
-  it("prepares API promotion before release migrations", () => {
+  it("builds the API before migrations and deploys it afterward", () => {
     const workflow = readText(".github/workflows/release-please.yml");
     const promoteApiProductionJob = workflowJobBlock(
       workflow,
       "promote-api-production",
+    );
+    const buildStep = promoteApiProductionJob.indexOf(
+      "- name: Build API Production Artifact",
+    );
+    const productionEnvironmentStep = promoteApiProductionJob.indexOf(
+      "- name: Resolve API production environment",
+    );
+    const schemaUploadStep = promoteApiProductionJob.indexOf(
+      "- name: Upload Runtime API Schema Artifact",
+    );
+    const buildStepEnd = promoteApiProductionJob.indexOf(
+      "- name: Install neonctl",
+    );
+    const migrationSmokeStep = promoteApiProductionJob.indexOf(
+      "- name: Run Production Migration Smoke Test",
     );
     const migrationStep = promoteApiProductionJob.indexOf(
       "- name: Run Production Migrations",
@@ -123,8 +138,8 @@ describe("release-please API deployment graph", () => {
     const deploymentToolchainStep = promoteApiProductionJob.indexOf(
       "- name: Initialize API deployment toolchain",
     );
-    const promotionStep = promoteApiProductionJob.indexOf(
-      "- name: Promote API Deployment",
+    const deploymentStep = promoteApiProductionJob.indexOf(
+      "- name: Deploy API Production",
     );
 
     expect(promoteApiProductionJob).toContain(
@@ -136,11 +151,45 @@ describe("release-please API deployment graph", () => {
     expect(
       promoteApiProductionJob.match(/\.\/\.github\/actions\/vercel-setup/g),
     ).toHaveLength(1);
+    expect(
+      promoteApiProductionJob.match(/\.\/\.github\/actions\/vercel-deploy/g),
+    ).toHaveLength(1);
+    expect(
+      promoteApiProductionJob.match(/pnpm --dir turbo\/apps\/api build/g),
+    ).toHaveLength(1);
+    expect(schemaUploadStep).toBeGreaterThan(-1);
+    expect(buildStep).toBeGreaterThan(-1);
+    expect(buildStep).toBeGreaterThan(schemaUploadStep);
+    expect(
+      promoteApiProductionJob.slice(schemaUploadStep, buildStep),
+    ).toContain("overwrite: true");
+    expect(buildStepEnd).toBeGreaterThan(buildStep);
+    expect(
+      promoteApiProductionJob.slice(buildStep, buildStepEnd),
+    ).not.toContain("secrets.");
     expect(deploymentToolchainStep).toBeGreaterThan(-1);
+    expect(productionEnvironmentStep).toBeGreaterThan(buildStep);
+    expect(deploymentToolchainStep).toBeGreaterThan(buildStep);
+    expect(migrationSmokeStep).toBeGreaterThan(buildStep);
     expect(migrationStep).toBeGreaterThan(-1);
     expect(migrationStep).toBeGreaterThan(deploymentToolchainStep);
-    expect(promotionStep).toBeGreaterThan(migrationStep);
+    expect(migrationStep).toBeGreaterThan(migrationSmokeStep);
+    expect(deploymentStep).toBeGreaterThan(migrationStep);
+    expect(promoteApiProductionJob).toContain('prebuilt: "true"');
     expect(promoteApiProductionJob).toContain('skip-setup: "true"');
+  });
+
+  it("keeps Vercel setup enabled for other deployment callers", () => {
+    const action = readText(".github/actions/vercel-deploy/action.yml");
+    const skipSetupInputStart = action.indexOf("  skip-setup:\n");
+    const runsStart = action.indexOf("\nruns:\n");
+
+    expect(skipSetupInputStart).toBeGreaterThan(-1);
+    expect(runsStart).toBeGreaterThan(skipSetupInputStart);
+    expect(action.slice(skipSetupInputStart, runsStart)).toContain(
+      'default: "false"',
+    );
+    expect(action).toContain(`if: \${{ inputs.skip-setup != 'true' }}`);
   });
 
   it("keeps Vercel setup enabled for other promotion callers", () => {

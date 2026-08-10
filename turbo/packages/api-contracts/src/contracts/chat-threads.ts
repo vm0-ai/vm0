@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { chatEventRowSchema } from "./chat-event-rows";
+import { chatEventRowReadSchema } from "./chat-event-rows";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
@@ -1539,7 +1539,9 @@ export const chatThreadEventsContract = c.router({
     }),
     responses: {
       200: z.object({
-        rows: z.array(chatEventRowSchema),
+        // Reader union: the server emits v3 rows until the canonical (v4)
+        // cutover; clients normalize every row through canonicalChatEventRow.
+        rows: z.array(chatEventRowReadSchema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
