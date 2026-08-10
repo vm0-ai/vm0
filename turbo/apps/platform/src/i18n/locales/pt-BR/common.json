@@ -962,12 +962,12 @@
       "upgrade": "Fazer upgrade",
       "upgradeTo": "Fazer upgrade para {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} créditos bônus",
         "changePlan": "Alterar plano",
         "choosePlan": "Escolha um plano",
         "choosePlanDescription": "Escolha primeiro o plano do workspace. Os pacotes dos membros são configurados em seguida.",
         "configurePackages": "Configurar pacotes dos membros",
         "configurePackagesDescription": "Escolha um pacote obrigatório para cada membro e revise o total mensal combinado.",
+        "creditBreakdown": "{{purchased}} créditos comprados + {{bonus}} créditos bônus",
         "currentMember": "Membro atual",
         "description": "Escolha um pacote mensal de uso para cada membro.",
         "discountBonusCredits": "Créditos bônus do desconto",

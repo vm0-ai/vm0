@@ -941,12 +941,12 @@
       "upgrade": "アップグレード",
       "upgradeTo": "{{plan}} にアップグレードする",
       "usagePacks": {
-        "bonusCredits": "+{{value}} ボーナスクレジット",
         "changePlan": "プランを変更",
         "choosePlan": "プランを選択",
         "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
         "configurePackages": "メンバーパッケージを設定",
         "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
+        "creditBreakdown": "購入クレジット {{purchased}} + ボーナスクレジット {{bonus}}",
         "currentMember": "現在のメンバー",
         "description": "各メンバーに月額利用パックを選択します。",
         "discountBonusCredits": "割引によるボーナスクレジット",

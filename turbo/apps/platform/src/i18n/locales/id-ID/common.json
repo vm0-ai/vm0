@@ -941,12 +941,12 @@
       "upgrade": "Tingkatkan",
       "upgradeTo": "Tingkatkan ke {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} kredit bonus",
         "changePlan": "Ubah paket",
         "choosePlan": "Pilih paket",
         "choosePlanDescription": "Pilih paket ruang kerja terlebih dahulu. Paket anggota dikonfigurasi berikutnya.",
         "configurePackages": "Konfigurasikan paket anggota",
         "configurePackagesDescription": "Pilih paket wajib untuk setiap anggota, lalu tinjau total bulanan gabungan.",
+        "creditBreakdown": "{{purchased}} kredit dibeli + {{bonus}} kredit bonus",
         "currentMember": "Anggota saat ini",
         "description": "Pilih paket penggunaan bulanan untuk setiap anggota.",
         "discountBonusCredits": "Bonus kredit dari diskon",

@@ -380,12 +380,13 @@ function MemberUsageRow({
   readonly selection: MemberUsageSelection;
 }) {
   const item = usagePackCatalogItem(catalog, selection);
-  const summary = i18n.t(
+  const creditBreakdown = i18n.t(
     ($) => {
-      return $.billing.plans.usagePacks.bonusCredits;
+      return $.billing.plans.usagePacks.creditBreakdown;
     },
     {
-      value: formatLocalizedNumber(item.bonusCredits),
+      bonus: formatLocalizedNumber(item.bonusCredits),
+      purchased: formatLocalizedNumber(item.purchasedCredits),
     },
   );
   const downgradeSummary = downgrade
@@ -445,7 +446,7 @@ function MemberUsageRow({
         <p
           className={`mt-1 truncate text-[10px] ${downgradeSummary ? "font-medium text-amber-600 dark:text-amber-300" : "text-muted-foreground"}`}
         >
-          {downgradeSummary ?? summary}
+          {downgradeSummary ?? creditBreakdown}
         </p>
       </div>
     </div>
@@ -1394,7 +1395,6 @@ interface ManagedSubscriptionOrderSummaryProps {
   readonly currentTotals: MemberUsageTotals;
   readonly management: UsagePackManagementResponse;
   readonly members: readonly MemberDisplay[] | undefined;
-  readonly onConfirmed: () => void;
   readonly plan: UsagePackPlan;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
   readonly totals: MemberUsageTotals;
@@ -1499,7 +1499,6 @@ function ManagedSubscriptionOrderSummary({
   currentTotals,
   management,
   members,
-  onConfirmed,
   plan,
   selections,
   totals,
@@ -1549,7 +1548,6 @@ function ManagedSubscriptionOrderSummary({
   };
   const submitChange = async (): Promise<void> => {
     await confirmChange(pageSignal);
-    onConfirmed();
   };
 
   return (
@@ -1626,13 +1624,11 @@ function PackageConfigurationStep({
   catalog,
   management,
   onBack,
-  onConfirmed,
   plan,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly management: UsagePackManagementResponse | null;
   readonly onBack: () => void;
-  readonly onConfirmed: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const userLoadable = useLastLoadable(currentUserInfo$);
@@ -1723,7 +1719,6 @@ function PackageConfigurationStep({
           currentTotals={managedMemberUsageTotals(management, catalog)}
           management={management}
           members={members}
-          onConfirmed={onConfirmed}
           plan={plan}
           selections={selections}
           totals={totals}
@@ -1781,9 +1776,6 @@ export function UsagePackPricingPage({
           management={management}
           plan={selectedPlan}
           onBack={() => {
-            setSelectedPlan(null);
-          }}
-          onConfirmed={() => {
             setSelectedPlan(null);
           }}
         />

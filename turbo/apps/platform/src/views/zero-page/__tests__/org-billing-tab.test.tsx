@@ -489,7 +489,9 @@ describe("organization billing settings", () => {
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
     expect(
-      within(memberUsage).getAllByText("+1,234 bonus credits"),
+      within(memberUsage).getAllByText(
+        "20,000 purchased credits + 1,234 bonus credits",
+      ),
     ).toHaveLength(3);
     expect(
       within(memberUsage).getByText(
@@ -532,7 +534,9 @@ describe("organization billing settings", () => {
     expect(within(orderSummary).getByText("185,554")).toBeInTheDocument();
     expect(within(orderSummary).getByText("15,554")).toBeInTheDocument();
     expect(
-      within(memberUsage).getByText("+9,999 bonus credits"),
+      within(memberUsage).getByText(
+        "100,000 purchased credits + 9,999 bonus credits",
+      ),
     ).toBeInTheDocument();
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
@@ -834,17 +838,16 @@ describe("organization billing settings", () => {
       name: "Review package change",
     });
     click(buttonByText("Confirm", reopenedConfirmationDialog));
-    await screen.findByRole("heading", { name: "Choose a plan" });
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    await screen.findByText("Change is processing");
     expect(confirmationRequests).toBe(1);
     expect(successToast).toHaveBeenCalledWith("Subscription change confirmed.");
     expect(window.location.href).toBe(locationBeforeConfirmation);
-
-    click(
-      buttonByText("Manage", screen.getByRole("article", { name: "Pro plan" })),
-    );
-    await screen.findByText("Change is processing");
-    click(screen.getByLabelText("Back"));
-    await screen.findByRole("heading", { name: "Choose a plan" });
+    expect(
+      screen.queryByRole("heading", { name: "Choose a plan" }),
+    ).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(
@@ -860,9 +863,6 @@ describe("organization billing settings", () => {
       );
     });
 
-    click(
-      buttonByText("Manage", screen.getByRole("article", { name: "Pro plan" })),
-    );
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
     ).resolves.toHaveTextContent("$50 · 54,321 credits · 8% off");
@@ -1023,12 +1023,11 @@ describe("organization billing settings", () => {
       name: "Review package change",
     });
     click(buttonByText("Confirm", confirmationDialog));
-    await screen.findByRole("heading", { name: "Choose a plan" });
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
     expect(successToast).toHaveBeenCalledWith("Subscription change confirmed.");
 
-    click(
-      buttonByText("Manage", screen.getByRole("article", { name: "Pro plan" })),
-    );
     await expect(
       screen.findByRole("combobox", { name: "Usage for Alex Chen" }),
     ).resolves.toHaveTextContent("$100 · 109,999 credits · 9% off");
@@ -1190,7 +1189,9 @@ describe("organization billing settings", () => {
     expect(within(confirmationDialog).getByText("$180.00")).toBeInTheDocument();
     expect(window.location.href).toBe(locationBeforeConfirmation);
     click(buttonByText("Confirm", confirmationDialog));
-    await screen.findByRole("heading", { name: "Choose a plan" });
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
     expect(window.location.href).toBe(locationBeforeConfirmation);
   });
 
@@ -1303,7 +1304,7 @@ describe("organization billing settings", () => {
     click(buttonByText("Confirm", confirmationDialog));
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Choose a plan" }),
+        screen.getByRole("heading", { name: "Configure member packages" }),
       ).toBeInTheDocument();
     });
   });

@@ -962,12 +962,12 @@
       "upgrade": "Mettre à niveau",
       "upgradeTo": "Passer à {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} crédits bonus",
         "changePlan": "Changer de forfait",
         "choosePlan": "Choisissez un forfait",
         "choosePlanDescription": "Choisissez d’abord le forfait de l’espace de travail. Les forfaits des membres sont configurés ensuite.",
         "configurePackages": "Configurer les forfaits des membres",
         "configurePackagesDescription": "Choisissez un forfait obligatoire pour chaque membre, puis vérifiez le total mensuel combiné.",
+        "creditBreakdown": "{{purchased}} crédits achetés + {{bonus}} crédits bonus",
         "currentMember": "Membre actuel",
         "description": "Choisissez un forfait d’utilisation mensuel pour chaque membre.",
         "discountBonusCredits": "Crédits bonus liés à la remise",

@@ -962,12 +962,12 @@
       "upgrade": "Aggiorna",
       "upgradeTo": "Passa a {{plan}}",
       "usagePacks": {
-        "bonusCredits": "+{{value}} crediti bonus",
         "changePlan": "Cambia piano",
         "choosePlan": "Scegli un piano",
         "choosePlanDescription": "Scegli prima il piano dell’area di lavoro. I pacchetti dei membri vengono configurati dopo.",
         "configurePackages": "Configura i pacchetti dei membri",
         "configurePackagesDescription": "Scegli un pacchetto obbligatorio per ogni membro, quindi verifica il totale mensile combinato.",
+        "creditBreakdown": "{{purchased}} crediti acquistati + {{bonus}} crediti bonus",
         "currentMember": "Membro attuale",
         "description": "Scegli un pacchetto di utilizzo mensile per ogni membro.",
         "discountBonusCredits": "Crediti bonus dallo sconto",
