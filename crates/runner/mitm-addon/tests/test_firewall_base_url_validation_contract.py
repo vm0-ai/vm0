@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 import builtin_base_url
+import builtin_firewall_cache
 import matching
+from tests.registry_builtin_helpers import write_catalog_cache
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[4]
@@ -38,6 +40,7 @@ def _case_name(case: dict[str, object]) -> str:
 
 
 _BASE_URL_VALIDATION_CASES = _load_cases("baseUrlValidationCases")
+_CATALOG_BASE_URL_VALIDATION_CASES = _load_cases("catalogBaseUrlValidationCases")
 _BASE_URL_TEMPLATE_RESOLUTION_CASES = _load_cases("baseUrlTemplateResolutionCases")
 
 
@@ -51,6 +54,36 @@ def test_firewall_base_url_config_validity_matches_shared_contract(
     assert isinstance(expected_valid, bool)
 
     assert matching.firewall_base_config_is_valid(base) is expected_valid
+
+
+@pytest.mark.parametrize("case", _CATALOG_BASE_URL_VALIDATION_CASES, ids=_case_name)
+def test_firewall_catalog_base_url_validity_matches_shared_contract(
+    case: dict[str, object],
+    tmp_path: Path,
+    mitm_ctx,
+) -> None:
+    base = case["base"]
+    assert isinstance(base, str)
+    expected_valid = case["expectedValid"]
+    assert isinstance(expected_valid, bool)
+
+    cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+    write_catalog_cache(
+        cache_path,
+        digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        version="catalog-contract",
+        firewalls={
+            "contract": {
+                "name": "contract",
+                "apis": [{"base": base, "auth": {}}],
+            }
+        },
+    )
+    with mitm_ctx():
+        snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+    assert (snapshot.catalog is not None) is expected_valid
+    assert snapshot.unavailable_reason == (None if expected_valid else "cache_invalid")
 
 
 @pytest.mark.parametrize("case", _BASE_URL_TEMPLATE_RESOLUTION_CASES, ids=_case_name)

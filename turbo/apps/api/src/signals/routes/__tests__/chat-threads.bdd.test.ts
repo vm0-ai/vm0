@@ -75,7 +75,7 @@ import {
 import {
   insertUsageEvent$,
   materializeHourlyUsage$,
-} from "./helpers/zero-usage-insight";
+} from "./helpers/usage-state";
 import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
 import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";

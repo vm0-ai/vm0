@@ -179,6 +179,62 @@ class TestRegistryBuiltinCatalogValidation:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.example.com"
 
+    def test_runner_catalog_cache_resolves_whole_host_template_with_path_parameter(
+        self, tmp_path, mitm_ctx
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        write_multi_vm_registry(
+            registry_path,
+            {
+                "10.200.0.1": builtin_vm(
+                    "run-template",
+                    "templated",
+                    {"WORKSPACE_HOST": "acme.uspacy.com"},
+                )
+            },
+        )
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={
+                "templated": {
+                    "name": "templated",
+                    "apis": [
+                        {
+                            "base": "https://${{ vars.WORKSPACE_HOST }}/v1/hooks/{hookKey}",
+                            "hostPolicy": {
+                                "kind": "providerOwned",
+                                "suffixes": [".uspacy.com"],
+                            },
+                            "auth": {"headers": {}},
+                            "permissions": [
+                                {
+                                    "name": "read",
+                                    "rules": ["GET /v1/hooks/{hookKey}"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            },
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(registry_path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert (
+            vm_info["firewalls"][0]["apis"][0]["base"]
+            == "https://acme.uspacy.com/v1/hooks/{hookKey}"
+        )
+
     def test_malformed_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"

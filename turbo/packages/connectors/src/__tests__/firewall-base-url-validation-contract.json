@@ -16,6 +16,13 @@
       "expectedResolvedBase": "https://api-tenant.example.com"
     },
     {
+      "category": "whole-authority",
+      "name": "whole host before parameterized path resolves",
+      "base": "https://${{ vars.WORKSPACE_HOST }}/v1/{resource}",
+      "vars": { "WORKSPACE_HOST": "tenant.example.com" },
+      "expectedResolvedBase": "https://tenant.example.com/v1/{resource}"
+    },
+    {
       "category": "query-fragment",
       "name": "trailing authority fragment before query is invalid",
       "base": "https://api-${{ vars.HOST }}?page=1",
@@ -41,6 +48,162 @@
       "name": "trailing authority fragment rejects encoded structure",
       "base": "https://api-${{ vars.HOST }}/v1",
       "vars": { "HOST": "tenant.example.com%2fcapture" },
+      "expectedResolvedBase": null
+    }
+  ],
+  "catalogBaseUrlValidationCases": [
+    {
+      "category": "valid",
+      "name": "whole host template with parameterized path",
+      "base": "https://${{ vars.WORKSPACE_HOST }}/v1/{resource}",
+      "vars": { "WORKSPACE_HOST": "tenant.example.com" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://tenant.example.com/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "whole base template with parameterized path",
+      "base": "${{ vars.API_BASE_URL }}/v1/{resource}",
+      "vars": { "API_BASE_URL": "https://api.example.com" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://api.example.com/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host label template with parameterized path",
+      "base": "https://${{ vars.TENANT }}.example.com/v1/{resource}",
+      "vars": { "TENANT": "acme" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://acme.example.com/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host fragment template with parameterized path",
+      "base": "https://api-${{ vars.TENANT }}.example.com/v1/{resource}",
+      "vars": { "TENANT": "acme" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://api-acme.example.com/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host fragment template at DNS label length limit",
+      "base": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${{ vars.SUFFIX }}.example/v1/{resource}",
+      "vars": {
+        "SUFFIX": "x"
+      },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaax.example/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "port template with parameterized path",
+      "base": "https://api.example.com:${{ vars.PORT }}/v1/{resource}",
+      "vars": { "PORT": "8443" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://api.example.com:8443/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "host and port templates with parameterized path",
+      "base": "https://${{ vars.HOST }}:${{ vars.PORT }}/v1/{resource}",
+      "vars": { "HOST": "api.example.com", "PORT": "8443" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://api.example.com:8443/v1/{resource}"
+    },
+    {
+      "category": "valid",
+      "name": "path template with parameterized path",
+      "base": "https://api.example.com/${{ vars.TENANT }}/v1/{resource}",
+      "vars": { "TENANT": "acme" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://api.example.com/acme/v1/{resource}"
+    },
+    {
+      "category": "template-grammar",
+      "name": "byte order mark template whitespace with parameterized path",
+      "base": "https://${{\ufeffvars.HOST\ufeff}}/v1/{resource}",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": true,
+      "expectedResolvedBase": "https://api.example.com/v1/{resource}"
+    },
+    {
+      "category": "template-position",
+      "name": "scheme template is invalid",
+      "base": "${{ vars.SCHEME }}://api.example.com/v1/{resource}",
+      "vars": { "SCHEME": "https" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "scheme",
+      "name": "unsupported fixed scheme with host template is invalid",
+      "base": "ftp://${{ vars.HOST }}/v1/{resource}",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "authority",
+      "name": "userinfo template is invalid",
+      "base": "https://${{ vars.USER }}@api.example.com/v1/{resource}",
+      "vars": { "USER": "alice" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "template-grammar",
+      "name": "next line template whitespace is invalid",
+      "base": "https://${{\u0085vars.HOST\u0085}}/v1/{resource}",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "template-grammar",
+      "name": "secret reference in base is invalid",
+      "base": "https://${{ secrets.HOST }}/v1/{resource}",
+      "vars": {},
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "parameters",
+      "name": "templated base with greedy path parameter is invalid",
+      "base": "https://${{ vars.HOST }}/v1/{resource+}",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "parameters",
+      "name": "templated base with duplicate path parameter is invalid",
+      "base": "https://${{ vars.HOST }}/v1/{resource}/{resource}",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "query-fragment",
+      "name": "templated base with query string is invalid",
+      "base": "https://${{ vars.HOST }}/v1/{resource}?page=1",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "query-fragment",
+      "name": "templated base with fragment is invalid",
+      "base": "https://${{ vars.HOST }}/v1/{resource}#section",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": false,
+      "expectedResolvedBase": null
+    },
+    {
+      "category": "path-safety",
+      "name": "templated base with parent path segment is invalid",
+      "base": "https://${{ vars.HOST }}/v1/../{resource}",
+      "vars": { "HOST": "api.example.com" },
+      "expectedValid": false,
       "expectedResolvedBase": null
     }
   ],

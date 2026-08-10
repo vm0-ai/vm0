@@ -535,6 +535,59 @@ fn is_unsafe_url_codepoint(ch: char) -> bool {
     ch < '\u{0020}' || ch == '\u{007f}'
 }
 
+// Use the shortest valid witness for each URL component so materialization does
+// not push an otherwise satisfiable DNS label past its 63-byte limit.
+const BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER: &str = "https://x.y";
+const BASE_URL_TEMPLATE_HOST_PLACEHOLDER: &str = "x.y";
+const BASE_URL_TEMPLATE_PORT_PLACEHOLDER: &str = "1";
+const BASE_URL_TEMPLATE_PATH_PLACEHOLDER: &str = "x";
+
+// Precompute fixed URL delimiters once; a catalog base can contain many templates.
+struct BaseUrlTemplateComponentBoundaries {
+    authority_start: Option<usize>,
+    path_start: Option<usize>,
+    query_or_fragment_start: Option<usize>,
+}
+
+impl BaseUrlTemplateComponentBoundaries {
+    fn new(base: &str) -> Self {
+        let authority_start = base.find("://").map(|index| index + "://".len());
+        let path_start = authority_start.and_then(|start| {
+            base[start..]
+                .find('/')
+                .map(|relative_index| start + relative_index)
+        });
+        let query_or_fragment_start = authority_start.and_then(|start| {
+            base[start..]
+                .find(['?', '#'])
+                .map(|relative_index| start + relative_index)
+        });
+        Self {
+            authority_start,
+            path_start,
+            query_or_fragment_start,
+        }
+    }
+
+    fn prefix_is_inside_authority(&self, template_start: usize) -> bool {
+        self.authority_start
+            .is_some_and(|start| start <= template_start)
+            && self
+                .path_start
+                .into_iter()
+                .chain(self.query_or_fragment_start)
+                .all(|boundary| template_start <= boundary)
+    }
+
+    fn prefix_is_inside_path(&self, template_start: usize) -> bool {
+        self.path_start
+            .is_some_and(|path_start| path_start < template_start)
+            && self
+                .query_or_fragment_start
+                .is_none_or(|boundary| template_start <= boundary)
+    }
+}
+
 fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     let template_syntax_target = base_url_template_syntax_target_for_cache(base)?;
     let raw_syntax_target = template_syntax_target.as_deref().unwrap_or(base);
@@ -553,35 +606,21 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     if raw_syntax_target.contains('#') {
         return Err("base URL must not contain fragment".to_string());
     }
-    let raw_path = if template_syntax_target.is_some() && !raw_syntax_target.contains("://") {
-        raw_syntax_target
-            .strip_prefix("template")
-            .filter(|suffix| suffix.starts_with('/'))
-            .unwrap_or("")
-    } else {
-        raw_url_path(raw_syntax_target)
-    };
+    let raw_path = raw_url_path(raw_syntax_target);
     if path_has_unsafe_segments_for_cache(raw_path) {
         return Err("base URL must not contain unsafe path".to_string());
     }
-    if template_syntax_target.is_some() {
-        if (raw_syntax_target.contains('{') || raw_syntax_target.contains('}'))
-            && raw_syntax_target.contains("://")
-        {
-            validate_parameterized_firewall_base_for_cache(raw_syntax_target)?;
-        }
-        return Ok(());
+    if raw_syntax_target.contains('{') || raw_syntax_target.contains('}') {
+        return validate_parameterized_firewall_base_for_cache(raw_syntax_target);
     }
-    if base.contains('{') || base.contains('}') {
-        return validate_parameterized_firewall_base_for_cache(base);
-    }
-    let parsed = url::Url::parse(base).map_err(|_| "base URL is invalid".to_string())?;
-    let authority = raw_url_authority(base)
+    let parsed =
+        url::Url::parse(raw_syntax_target).map_err(|_| "base URL is invalid".to_string())?;
+    let authority = raw_url_authority(raw_syntax_target)
         .ok_or_else(|| "base URL must include :// after the scheme".to_string())?;
     if authority.is_empty() {
         return Err("base URL must include a host".to_string());
     }
-    if raw_authority_has_empty_port(base) {
+    if raw_authority_has_empty_port(raw_syntax_target) {
         return Err("base URL authority must not include an empty port".to_string());
     }
     crate::firewall_hostname_policy::validate_base_host_for_cache(raw_host_from_authority(
@@ -611,6 +650,7 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
     let mut search_start = 0;
     let mut result = String::new();
     let mut found = false;
+    let boundaries = BaseUrlTemplateComponentBoundaries::new(base);
     while let Some(relative_start) = base[search_start..].find("${{") {
         found = true;
         let start = search_start + relative_start;
@@ -621,8 +661,14 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
         let end = content_start + relative_end;
         validate_base_url_var_reference(&base[content_start..end])?;
         result.push_str(&base[search_start..start]);
-        result.push_str("template");
-        search_start = end + "}}".len();
+        let template_end = end + "}}".len();
+        result.push_str(base_url_template_syntax_placeholder_for_cache(
+            base,
+            start,
+            template_end,
+            &boundaries,
+        )?);
+        search_start = template_end;
     }
     if !found {
         return Ok(None);
@@ -632,11 +678,55 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
 }
 
 fn validate_base_url_var_reference(content: &str) -> Result<(), String> {
-    let trimmed = content.trim();
+    let trimmed = content.trim_matches(is_ecmascript_whitespace);
     let Some(name) = trimmed.strip_prefix("vars.") else {
         return Err("base URL template reference must use vars".to_string());
     };
     validate_template_identifier(name, "base URL template variable")
+}
+
+fn is_ecmascript_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0009}'..='\u{000d}'
+            | '\u{0020}'
+            | '\u{00a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}
+
+fn base_url_template_syntax_placeholder_for_cache(
+    base: &str,
+    start: usize,
+    template_end: usize,
+    boundaries: &BaseUrlTemplateComponentBoundaries,
+) -> Result<&'static str, String> {
+    let ends_base_or_starts_path =
+        template_end == base.len() || base[template_end..].starts_with('/');
+
+    if start == 0 && ends_base_or_starts_path {
+        return Ok(BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER);
+    }
+    if base[..start].ends_with("://") && ends_base_or_starts_path {
+        return Ok(BASE_URL_TEMPLATE_HOST_PLACEHOLDER);
+    }
+    if boundaries.prefix_is_inside_authority(start) {
+        if base[..start].ends_with(':') && ends_base_or_starts_path {
+            return Ok(BASE_URL_TEMPLATE_PORT_PLACEHOLDER);
+        }
+        return Ok(BASE_URL_TEMPLATE_HOST_PLACEHOLDER);
+    }
+    if boundaries.prefix_is_inside_path(start) {
+        return Ok(BASE_URL_TEMPLATE_PATH_PLACEHOLDER);
+    }
+    Err("base URL template variable is used in an unsupported position".to_string())
 }
 
 fn validate_template_identifier(name: &str, label: &str) -> Result<(), String> {
@@ -1040,7 +1130,7 @@ fn auth_base_static_validation_target_for_cache(
 }
 
 fn validate_auth_base_template_reference(content: &str) -> Result<(), String> {
-    let trimmed = content.trim();
+    let trimmed = content.trim_matches(is_ecmascript_whitespace);
     let name = trimmed
         .strip_prefix("secrets.")
         .or_else(|| trimmed.strip_prefix("vars."))

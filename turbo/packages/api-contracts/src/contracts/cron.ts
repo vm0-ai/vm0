@@ -63,11 +63,6 @@ export const cronCleanupSandboxesContract = c.router({
 
 export type CronCleanupSandboxesContract = typeof cronCleanupSandboxesContract;
 
-const cronAggregateUsageResponseSchema = z.object({
-  date: z.string(),
-  aggregated: z.number(),
-});
-
 const cronProcessUsageEventsResponseSchema = z.object({
   success: z.literal(true),
   processed: z.number(),
@@ -219,22 +214,6 @@ const cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema = z.object({
   failed: z.number(),
 });
 
-const cronAggregateInsightsSkippedResponseSchema = z.object({
-  users: z.number(),
-  skipped: z.literal(true),
-});
-
-const cronAggregateInsightsAggregatedResponseSchema = z.object({
-  users: z.number(),
-  windows: z.number(),
-  networkRows: z.number(),
-});
-
-const cronAggregateInsightsResponseSchema = z.union([
-  cronAggregateInsightsSkippedResponseSchema,
-  cronAggregateInsightsAggregatedResponseSchema,
-]);
-
 const storagePresignedUrlRefreshResultSchema = z.object({
   due: z.number(),
   refreshed: z.number(),
@@ -254,19 +233,6 @@ const cronAggregateModelStatsResponseSchema = z.object({
   processedObservations: z.number().int().nonnegative(),
   updatedStats: z.number().int().nonnegative(),
   deletedObservations: z.number().int().nonnegative(),
-});
-
-export const cronAggregateUsageContract = c.router({
-  aggregate: {
-    method: "GET",
-    path: "/api/cron/aggregate-usage",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronAggregateUsageResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Aggregate daily usage cache",
-  },
 });
 
 export const cronProcessUsageEventsContract = c.router({
@@ -544,19 +510,6 @@ export const cronExecuteMorningBriefsContract = c.router({
   },
 });
 
-export const cronAggregateInsightsContract = c.router({
-  aggregate: {
-    method: "GET",
-    path: "/api/cron/aggregate-insights",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronAggregateInsightsResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Aggregate daily usage insights",
-  },
-});
-
 export const cronAggregateModelStatsContract = c.router({
   aggregate: {
     method: "GET",
@@ -584,7 +537,6 @@ export const cronRefreshStoragePresignedUrlsContract = c.router({
   },
 });
 
-export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
@@ -593,8 +545,6 @@ export type CronMonitorChatEventQueueContract =
   typeof cronMonitorChatEventQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
-export type CronAggregateInsightsContract =
-  typeof cronAggregateInsightsContract;
 export type CronAggregateModelStatsContract =
   typeof cronAggregateModelStatsContract;
 export type CronRefreshStoragePresignedUrlsContract =
@@ -621,7 +571,6 @@ export type CronRenewGoogleWorkspaceEventSubscriptionsContract =
 export {
   cleanupResultSchema,
   cleanupResponseSchema,
-  cronAggregateUsageResponseSchema,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
@@ -636,7 +585,6 @@ export {
   cronRenewGoogleFormsWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,
-  cronAggregateInsightsResponseSchema,
   cronAggregateModelStatsResponseSchema,
   cronRefreshStoragePresignedUrlsResponseSchema,
 };

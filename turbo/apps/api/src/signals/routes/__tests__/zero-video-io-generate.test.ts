@@ -26,7 +26,7 @@ import {
   type UsagePricingRow,
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
+import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
