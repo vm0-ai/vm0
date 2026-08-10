@@ -100,7 +100,7 @@ export type ZeroWorkflowAutomationKind = z.infer<
   typeof zeroWorkflowAutomationKindSchema
 >;
 
-export const zeroWorkflowEventTypeSchema = z.enum([
+export const zeroAutomationEventTypeSchema = z.enum([
   "chat-run-finished",
   "gmail-new-message",
   "gmail-label-applied",
@@ -122,7 +122,9 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "stripe-invoice-paid",
   "webhook-received",
 ]);
-export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
+export type ZeroAutomationEventType = z.infer<
+  typeof zeroAutomationEventTypeSchema
+>;
 
 export const chatRunFinishedRunStatusSchema = z.enum([
   "completed",
@@ -207,12 +209,12 @@ export type GmailLabelAppliedEventConfig = z.infer<
   typeof gmailLabelAppliedEventConfigSchema
 >;
 
-export const gmailWorkflowEventConfigSchema = z.discriminatedUnion("event", [
+export const gmailAutomationEventConfigSchema = z.discriminatedUnion("event", [
   gmailNewMessageEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
 ]);
-export type GmailWorkflowEventConfig = z.infer<
-  typeof gmailWorkflowEventConfigSchema
+export type GmailAutomationEventConfig = z.infer<
+  typeof gmailAutomationEventConfigSchema
 >;
 
 export const webhookReceivedEventConfigSchema = z
@@ -440,7 +442,7 @@ export type GithubIssueCommentCreatedEventConfig = z.infer<
   typeof githubIssueCommentCreatedEventConfigSchema
 >;
 
-export const githubWorkflowEventConfigSchema = z.discriminatedUnion("event", [
+export const githubAutomationEventConfigSchema = z.discriminatedUnion("event", [
   githubLabelAppliedEventConfigSchema,
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
@@ -448,8 +450,8 @@ export const githubWorkflowEventConfigSchema = z.discriminatedUnion("event", [
   githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
 ]);
-export type GithubWorkflowEventConfig = z.infer<
-  typeof githubWorkflowEventConfigSchema
+export type GithubAutomationEventConfig = z.infer<
+  typeof githubAutomationEventConfigSchema
 >;
 
 export const googleCalendarEventCreatedEventConfigSchema = z
@@ -485,7 +487,7 @@ export type GoogleCalendarEventCancelledEventConfig = z.infer<
   typeof googleCalendarEventCancelledEventConfigSchema
 >;
 
-export type GoogleCalendarWorkflowEventConfig =
+export type GoogleCalendarAutomationEventConfig =
   | GoogleCalendarEventCreatedEventConfig
   | GoogleCalendarEventUpdatedEventConfig
   | GoogleCalendarEventCancelledEventConfig;
@@ -505,7 +507,7 @@ export const googleMeetTranscriptGeneratedEventConfigSchema = z
 export type GoogleMeetTranscriptGeneratedEventConfig = z.infer<
   typeof googleMeetTranscriptGeneratedEventConfigSchema
 >;
-export type GoogleMeetWorkflowEventConfig =
+export type GoogleMeetAutomationEventConfig =
   GoogleMeetTranscriptGeneratedEventConfig;
 
 export const googleFormsFormReferenceSchema = z
@@ -542,7 +544,7 @@ export type GoogleFormsResponseSubmittedEventCreateConfig = z.infer<
   typeof googleFormsResponseSubmittedEventCreateConfigSchema
 >;
 
-export type GoogleFormsWorkflowEventConfig =
+export type GoogleFormsAutomationEventConfig =
   GoogleFormsResponseSubmittedEventConfig;
 
 export const notionPageReferenceSchema = z
@@ -666,7 +668,7 @@ export type NotionPageContentUpdatedEventCreateConfig = z.infer<
   typeof notionPageContentUpdatedEventCreateConfigSchema
 >;
 
-export type NotionWorkflowEventConfig =
+export type NotionAutomationEventConfig =
   | NotionChildPageCreatedEventConfig
   | NotionDatabaseItemCreatedEventConfig
   | NotionPageContentUpdatedEventConfig;
@@ -969,7 +971,7 @@ export const zeroWorkflowWebhookReceivedAutomationSummarySchema =
     webhookSecret: z.string().min(1).optional(),
   });
 
-export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
+export const zeroEventAutomationSummarySchema = z.discriminatedUnion(
   "eventType",
   [
     zeroWorkflowChatRunFinishedAutomationSummarySchema,
@@ -997,7 +999,7 @@ export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
 
 export const zeroWorkflowAutomationSummarySchema = z.union([
   zeroWorkflowScheduleAutomationSummarySchema,
-  zeroWorkflowEventAutomationSummarySchema,
+  zeroEventAutomationSummarySchema,
 ]);
 export type ZeroWorkflowAutomationSummary = z.infer<
   typeof zeroWorkflowAutomationSummarySchema
@@ -1453,11 +1455,11 @@ export const zeroWorkflowScheduleAutomationUpdateRequestSchema = z.object({
 });
 
 export const zeroWorkflowGmailEventAutomationUpdateRequestSchema = z.object({
-  eventConfig: gmailWorkflowEventConfigSchema,
+  eventConfig: gmailAutomationEventConfigSchema,
 });
 
 export const zeroWorkflowGithubEventAutomationUpdateRequestSchema = z.object({
-  eventConfig: githubWorkflowEventConfigSchema,
+  eventConfig: githubAutomationEventConfigSchema,
 });
 
 export const zeroWorkflowAutomationUpdateRequestSchema = z.union([

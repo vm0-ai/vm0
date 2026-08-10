@@ -3547,10 +3547,10 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
     automationGroupId: "00000000-0000-4000-8000-000000081005",
     workflowRunId: "00000000-0000-4000-8000-000000081006",
     goalRunId: "00000000-0000-4000-8000-000000081007",
-    workflowEventId: "00000000-0000-4000-8000-000000081008",
+    automationEventId: "00000000-0000-4000-8000-000000081008",
     goalEventId: "00000000-0000-4000-8000-000000081009",
     drainingWorkflowRunId: "00000000-0000-4000-8000-000000081010",
-    drainingWorkflowEventId: "00000000-0000-4000-8000-000000081011",
+    drainingAutomationEventId: "00000000-0000-4000-8000-000000081011",
     orgId: "goal-only-run-groups-org",
     userId: "goal-only-run-groups-user",
   } as const;
@@ -3711,7 +3711,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
             ($2, $3, $5, $7, 'output.message', 'goal result', 1, 2)
         `,
         [
-          fixture.workflowEventId,
+          fixture.automationEventId,
           fixture.goalEventId,
           fixture.threadId,
           fixture.workflowRunId,
@@ -3750,10 +3750,10 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
           WHERE "id" IN ($1, $2)
           ORDER BY "id"
         `,
-        [fixture.workflowEventId, fixture.goalEventId],
+        [fixture.automationEventId, fixture.goalEventId],
       );
       assert.deepEqual(eventGroups.rows, [
-        { id: fixture.workflowEventId, runGroupId: null },
+        { id: fixture.automationEventId, runGroupId: null },
         { id: fixture.goalEventId, runGroupId: fixture.goalId },
       ]);
 
@@ -3811,7 +3811,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
           VALUES ($1, $2, $3, $4, 'output.message', 'draining result', 1, 3)
         `,
         [
-          fixture.drainingWorkflowEventId,
+          fixture.drainingAutomationEventId,
           fixture.threadId,
           fixture.drainingWorkflowRunId,
           fixture.automationGroupId,
@@ -3851,7 +3851,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
 
       await assertChatEventsAppendOnlyProtection(
         client,
-        fixture.workflowEventId,
+        fixture.automationEventId,
       );
       const rejectFunction = await client.query<{ definition: string }>(`
         SELECT pg_get_functiondef(
