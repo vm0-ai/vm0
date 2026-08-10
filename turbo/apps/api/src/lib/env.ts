@@ -36,7 +36,6 @@ const SCHEMA = {
   ZERO_SCRAPE_FIRECRAWL_TOKEN: z.string().min(1).optional(),
   ZERO_WEB_SEARCH_PERPLEXITY_TOKEN: z.string().min(1).optional(),
   ZERO_FINANCE_APIDOJO_TOKEN: z.string().min(1).optional(),
-  ZERO_SEO_SERPAPI_TOKEN: z.string().min(1).optional(),
   ZERO_SEO_DATAFORSEO_LOGIN: z.string().min(1).optional(),
   ZERO_SEO_DATAFORSEO_PASSWORD: z.string().min(1).optional(),
   ZERO_BROWSER_USE_API_KEY: z.string().min(1).optional(),
