@@ -374,10 +374,16 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert_eq!(copy_calls.len(), 1);
     assert!(copy_calls[0].path.ends_with("/session-history-sidecar"));
     assert_eq!(copy_calls[0].max_bytes, RESUME_SESSION_HISTORY_MAX_BYTES);
-    let sidecar_entry_dir = copy_calls[0].host_path.parent().unwrap();
-    let sidecar_metadata_path = sidecar_entry_dir.join("session-history.metadata.json");
+    let inspection = fixture.cache.inspect().await.unwrap();
+    let entry = inspection.entries.first().unwrap();
+    let entry_paths = fixture.cache.entry_paths(&entry.cache_key);
+    assert_eq!(
+        copy_calls[0].host_path.parent(),
+        Some(entry_paths.entry_dir())
+    );
+    let sidecar_metadata_path = entry_paths.session_history_sidecar_metadata();
     if !sidecar_metadata_path.is_file() {
-        let entries = std::fs::read_dir(sidecar_entry_dir)
+        let entries = std::fs::read_dir(entry_paths.entry_dir())
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect::<Vec<_>>();

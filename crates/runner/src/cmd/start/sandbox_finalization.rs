@@ -1895,8 +1895,10 @@ mod tests {
         )
         .await;
         let seeded_entry = cache.inspect().await.unwrap().entries.remove(0);
-        let entry_dir = paths.workspace_image_cache_entry_dir(&seeded_entry.cache_key);
-        let sidecar_metadata_path = entry_dir.join("session-history.metadata.json");
+        let sidecar_metadata_path = cache
+            .entry_paths(&seeded_entry.cache_key)
+            .session_history_sidecar_metadata()
+            .to_path_buf();
 
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -1940,7 +1942,10 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
+            cache
+                .entry_paths(&seeded_entry.cache_key)
+                .current_image()
+                .to_path_buf(),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -1996,9 +2001,14 @@ mod tests {
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].reuse_key, reuse_key);
         let workspace_metadata: serde_json::Value = serde_json::from_slice(
-            &tokio::fs::read(paths.workspace_image_cache_metadata(&seeded_entry.cache_key))
-                .await
-                .unwrap(),
+            &tokio::fs::read(
+                cache
+                    .entry_paths(&seeded_entry.cache_key)
+                    .metadata()
+                    .to_path_buf(),
+            )
+            .await
+            .unwrap(),
         )
         .unwrap();
         assert!(workspace_metadata.get("cliAgentSessionId").is_none());
@@ -2082,7 +2092,10 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::rename(
-            paths.workspace_image_cache_current_image(&seeded_entry.cache_key),
+            cache
+                .entry_paths(&seeded_entry.cache_key)
+                .current_image()
+                .to_path_buf(),
             paths.active_workspace_image(&sandbox_id),
         )
         .await
@@ -2332,7 +2345,10 @@ mod tests {
         );
         let metadata: serde_json::Value = serde_json::from_slice(
             &tokio::fs::read(
-                paths.workspace_image_cache_metadata(&inspection.entries[0].cache_key),
+                cache
+                    .entry_paths(&inspection.entries[0].cache_key)
+                    .metadata()
+                    .to_path_buf(),
             )
             .await
             .unwrap(),

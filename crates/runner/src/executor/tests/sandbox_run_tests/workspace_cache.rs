@@ -1387,7 +1387,7 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
         CANONICAL_WORKING_DIR,
         u64::from(params.workspace_disk_mb) * 1024 * 1024,
     );
-    let current_image = runner_paths.workspace_image_cache_current_image(&cache_key);
+    let current_image = cache.entry_paths(&cache_key).current_image().to_path_buf();
     tokio::fs::create_dir_all(current_image.parent().unwrap())
         .await
         .unwrap();
