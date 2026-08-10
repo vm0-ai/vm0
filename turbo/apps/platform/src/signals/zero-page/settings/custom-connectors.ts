@@ -228,6 +228,34 @@ const authorizeCustomConnectorForTarget$ = command(
   },
 );
 
+const shouldWriteLegacyAuthorizationAfterConnection$ = command(
+  async (
+    { get },
+    args: {
+      readonly connector: CustomConnectorResponse;
+      readonly target: CustomConnectorAuthorizationTarget;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (!args.connector.permissionBundleRef) {
+      return true;
+    }
+    if (args.target.kind === "visible-agents") {
+      return false;
+    }
+    const agentId = args.target.agentId;
+    const authorizedAgentsByConnectorId = await get(
+      customConnectorAuthorizedAgentsById$,
+    );
+    signal.throwIfAborted();
+    return !(authorizedAgentsByConnectorId.get(args.connector.id) ?? []).some(
+      (agent) => {
+        return agent.id === agentId;
+      },
+    );
+  },
+);
+
 export const createCustomConnector$ = command(
   async (
     { get, set },
@@ -328,6 +356,12 @@ const setCustomConnectorSecretForTarget$ = command(
     if (!connector) {
       throw new Error(`Custom connector not found: ${args.id}`);
     }
+    const writeLegacyAuthorization = await set(
+      shouldWriteLegacyAuthorizationAfterConnection$,
+      { connector, target: args.authorizationTarget },
+      signal,
+    );
+    signal.throwIfAborted();
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorSecretContract);
     await accept(
@@ -340,7 +374,7 @@ const setCustomConnectorSecretForTarget$ = command(
     );
     signal.throwIfAborted();
     set(bumpReload$);
-    if (!connector.permissionBundleRef) {
+    if (writeLegacyAuthorization) {
       await set(
         authorizeCustomConnectorForTarget$,
         {
@@ -476,7 +510,15 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     const connector = connectors.find((candidate) => {
       return candidate.id === args.id;
     });
-    if (connector?.connected && !connector.permissionBundleRef) {
+    const writeLegacyAuthorization = connector
+      ? await set(
+          shouldWriteLegacyAuthorizationAfterConnection$,
+          { connector, target: args.authorizationTarget },
+          signal,
+        )
+      : false;
+    signal.throwIfAborted();
+    if (connector?.connected && writeLegacyAuthorization) {
       await set(
         authorizeCustomConnectorForTarget$,
         {
