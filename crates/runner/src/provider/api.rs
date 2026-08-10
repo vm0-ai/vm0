@@ -1020,13 +1020,14 @@ impl ApiClient {
         })
     }
 
-    /// Send a heartbeat with runner state. The short timeout (3s) bounds this
-    /// best-effort request and any lifecycle drain waiting for it.
+    /// Send a heartbeat with runner state. Use the same 10-second transport
+    /// budget as other API requests so Worker-backed previews have time to
+    /// establish their database connection.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = send_api(
             self.http
                 .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
-                .timeout(Duration::from_secs(3))
+                .timeout(Duration::from_secs(10))
                 .json(state),
             "heartbeat",
         )
