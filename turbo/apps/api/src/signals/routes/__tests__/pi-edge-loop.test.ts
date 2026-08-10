@@ -19,7 +19,6 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { generateSandboxToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -31,7 +30,6 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
@@ -50,7 +48,6 @@ import { readSystemStorageVersionNameByS3KeyFixture } from "../../../test-fixtur
 
 const context = testContext();
 const bdd = createBddApi(context);
-const misc = createMiscRoutesApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -63,122 +60,24 @@ type AgentUsageEventBody = Parameters<
 >[0];
 
 const MODEL = "deepseek-v4-flash";
-const MANAGED_MODEL = "gpt-5.6-luna";
+const NON_PI_MODELS = [
+  "kimi-k3",
+  "kimi-k2.7-code",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gpt-5.5",
+] as const satisfies readonly SupportedRunModel[];
 const DEEPSEEK_RESPONSES_URL = "https://api.deepseek.com/responses";
-const CODEX_MODEL = "gpt-5.5";
-const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
-const CODEX_WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
-const CODEX_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
-const OPENAI_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";
 const STORAGE_ARCHIVE_SUFFIX = "/archive.tar.gz";
 const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
   "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
 
-interface CompletionStreamOptions {
-  readonly usage?: Readonly<Record<string, unknown>>;
-  readonly responseModel?: string;
-}
-
 function recordOf(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
     : null;
-}
-
-function completionStream(
-  deltas: readonly Record<string, unknown>[],
-  finishReason: "stop" | "tool_calls" | "content_filter",
-  options: CompletionStreamOptions = {},
-): HttpResponse<string> {
-  const responseModel = options.responseModel ?? MODEL;
-  const chunks = [
-    ...deltas.map((delta) => {
-      return {
-        id: "chatcmpl-pi-edge",
-        object: "chat.completion.chunk",
-        created: 1,
-        model: responseModel,
-        choices: [{ index: 0, delta, finish_reason: null }],
-      };
-    }),
-    {
-      id: "chatcmpl-pi-edge",
-      object: "chat.completion.chunk",
-      created: 1,
-      model: responseModel,
-      choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
-      ...(options.usage === undefined ? {} : { usage: options.usage }),
-    },
-  ];
-  return HttpResponse.text(
-    `${chunks
-      .map((chunk) => {
-        return `data: ${JSON.stringify(chunk)}\n\n`;
-      })
-      .join("")}data: [DONE]\n\n`,
-    { headers: { "content-type": "text/event-stream" } },
-  );
-}
-
-function assistantTextStream(
-  text: string,
-  thinking: string,
-  options: CompletionStreamOptions = {},
-): HttpResponse<string> {
-  return completionStream(
-    [{ role: "assistant", reasoning_content: thinking }, { content: text }],
-    "stop",
-    options,
-  );
-}
-
-function assistantErrorAfterUsageStream(args: {
-  readonly text: string;
-  readonly usage: Readonly<Record<string, unknown>>;
-}): HttpResponse<string> {
-  return completionStream(
-    [{ role: "assistant", content: args.text }],
-    "content_filter",
-    { usage: args.usage },
-  );
-}
-
-function assistantToolStream(args: {
-  readonly id: string;
-  readonly name: string;
-  readonly arguments: Record<string, unknown>;
-  readonly thinking: string;
-  readonly text?: string;
-  readonly usage?: Readonly<Record<string, unknown>>;
-  readonly responseModel?: string;
-}): HttpResponse<string> {
-  return completionStream(
-    [
-      { role: "assistant", reasoning_content: args.thinking },
-      {
-        ...(args.text === undefined ? {} : { content: args.text }),
-        tool_calls: [
-          {
-            index: 0,
-            id: args.id,
-            type: "function",
-            function: {
-              name: args.name,
-              arguments: JSON.stringify(args.arguments),
-            },
-          },
-        ],
-      },
-    ],
-    "tool_calls",
-    {
-      ...(args.usage === undefined ? {} : { usage: args.usage }),
-      ...(args.responseModel === undefined
-        ? {}
-        : { responseModel: args.responseModel }),
-    },
-  );
 }
 
 function systemPromptFromRequest(request: unknown): string | undefined {
@@ -195,111 +94,6 @@ function systemPromptFromRequest(request: unknown): string | undefined {
     : undefined;
 }
 
-function base64UrlEncode(input: string): string {
-  return Buffer.from(input, "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function codexJwt(accountId: string, expiresInSeconds = 3600): string {
-  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const payload = base64UrlEncode(
-    JSON.stringify({
-      exp: Math.floor(now() / 1000) + expiresInSeconds,
-      "https://api.openai.com/auth": {
-        chatgpt_account_id: accountId,
-        chatgpt_plan_type: "pro",
-      },
-    }),
-  );
-  return `${header}.${payload}.fake-signature`;
-}
-
-function codexAuthJson(accessToken: string): string {
-  const accountId = "ws_acct_from_id_token_pi_edge";
-  return JSON.stringify({
-    OPENAI_API_KEY: null,
-    tokens: {
-      access_token: accessToken,
-      refresh_token: "rt_pi_edge_synthetic_high_entropy",
-      account_id: "ws_acct_pi_edge_plain",
-      id_token: codexJwt(accountId),
-    },
-  });
-}
-
-function codexTextSsePayload(text: string): string {
-  const events = [
-    {
-      type: "response.created",
-      response: {
-        id: "resp_pi_codex",
-        object: "response",
-        status: "in_progress",
-        output: [],
-        usage: null,
-      },
-    },
-    {
-      type: "response.output_item.added",
-      output_index: 0,
-      item: {
-        type: "message",
-        id: "msg_pi_codex",
-        role: "assistant",
-        status: "in_progress",
-        content: [],
-      },
-    },
-    {
-      type: "response.output_text.delta",
-      output_index: 0,
-      content_index: 0,
-      delta: text,
-    },
-    {
-      type: "response.output_item.done",
-      output_index: 0,
-      item: {
-        type: "message",
-        id: "msg_pi_codex",
-        role: "assistant",
-        status: "completed",
-        content: [{ type: "output_text", text, annotations: [] }],
-      },
-    },
-    {
-      type: "response.completed",
-      response: {
-        id: "resp_pi_codex",
-        object: "response",
-        status: "completed",
-        output: [
-          {
-            type: "message",
-            id: "msg_pi_codex",
-            role: "assistant",
-            status: "completed",
-            content: [{ type: "output_text", text, annotations: [] }],
-          },
-        ],
-        usage: {
-          input_tokens: 5,
-          output_tokens: 3,
-          total_tokens: 8,
-        },
-      },
-    },
-  ];
-  return events
-    .map((event) => {
-      return `data: ${JSON.stringify(event)}\n\n`;
-    })
-    .join("");
-}
-
 function rawSseStream(body: string): Response {
   // MSW's HttpResponse.text body does not close for the Responses stream reader
   // in this environment; a raw Response with a ReadableStream does.
@@ -312,10 +106,6 @@ function rawSseStream(body: string): Response {
   return new Response(stream, {
     headers: { "content-type": "text/event-stream" },
   });
-}
-
-function codexTextSseStream(text: string): Response {
-  return rawSseStream(codexTextSsePayload(text));
 }
 
 function responsesSseStream(
@@ -351,23 +141,23 @@ function deepseekMessageItem(text: string): Record<string, unknown> {
 }
 
 function deepseekResponseUsage(
-  usage?: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> {
-  return (
-    usage ?? {
-      input_tokens: 5,
-      output_tokens: 3,
-      total_tokens: 8,
-      input_tokens_details: { cached_tokens: 0 },
-      output_tokens_details: { reasoning_tokens: 0 },
-    }
-  );
+  usage?: Readonly<Record<string, unknown>> | null,
+): Readonly<Record<string, unknown>> | null {
+  return usage === undefined
+    ? {
+        input_tokens: 5,
+        output_tokens: 3,
+        total_tokens: 8,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+      }
+    : usage;
 }
 
 function deepseekTextSseStream(
   text: string,
   thinking: string,
-  usage?: Readonly<Record<string, unknown>>,
+  usage?: Readonly<Record<string, unknown>> | null,
 ): Response {
   const reasoningItem = deepseekReasoningItem(thinking);
   const messageItem = deepseekMessageItem(text);
@@ -733,8 +523,7 @@ async function piEdgeFixture(
   } = {},
 ): Promise<PiEdgeFixture> {
   const providerType = options.provider ?? "byok";
-  const model =
-    options.model ?? (providerType === "vm0" ? MANAGED_MODEL : MODEL);
+  const model = options.model ?? MODEL;
   const orgId = `org_pi_edge_${randomUUID()}`;
   const actor = bdd.user({ orgId });
   const switchOwner = bdd.user({ orgId });
@@ -794,87 +583,6 @@ async function piEdgeFixture(
     workflowSkillName,
     storageObjects,
     model,
-  };
-}
-
-async function codexPiEdgeFixture(args?: {
-  readonly accessToken?: string;
-}): Promise<PiEdgeFixture> {
-  const orgId = `org_pi_codex_${randomUUID()}`;
-  const actor = bdd.user({ orgId });
-  const switchOwner = bdd.user({ orgId });
-  chatCallbacks.acceptChatObjectStorage();
-  chatCallbacks.disableVapid();
-  api.acceptStorageDownloads();
-  const storageObjects = acceptPiStorageObjects();
-  api.acceptTelemetryIngest();
-  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-  const runnerGroup = api.configureRunnerGroup();
-  await api.grantProEntitlement(actor);
-  server.use(
-    http.get(CODEX_WHAM_USAGE_URL, () => {
-      return HttpResponse.json({
-        plan_type: "pro",
-        rate_limit: {
-          primary_window: {
-            limit_window_seconds: 18_000,
-            reset_at: 1_893_441_600,
-          },
-          secondary_window: {
-            limit_window_seconds: 604_800,
-            reset_at: 1_893_456_000,
-          },
-        },
-      });
-    }),
-  );
-  await misc.upsertPersonalModelProvider(
-    actor,
-    {
-      type: "codex-oauth-token",
-      authMethod: "auth_json",
-      secrets: {
-        CODEX_AUTH_JSON: codexAuthJson(
-          args?.accessToken ?? codexJwt("ws_acct_pi_edge_access"),
-        ),
-      },
-    },
-    [200, 201],
-  );
-  await api.updateOrgModelPolicies(actor, [
-    {
-      model: CODEX_MODEL,
-      isDefault: true,
-      defaultProviderType: "codex-oauth-token",
-      credentialScope: "member",
-      modelProviderId: null,
-    },
-  ]);
-  const agent = await bdd.createAgent(actor, {
-    displayName: AGENT_DISPLAY_NAME,
-    description: "Exercises the in-API Pi edge turn with a Codex subscription.",
-    visibility: "private",
-  });
-  const agentInstructions =
-    "# Pinned Pi instructions\nAlways preserve the run snapshot.";
-  await bdd.updateAgentInstructions(actor, agent.agentId, agentInstructions);
-  const workflowSkillName = `pi-snapshot-${randomUUID().slice(0, 8)}`;
-  await workflows.createWorkflow(actor, {
-    agentId: agent.agentId,
-    name: workflowSkillName,
-  });
-  return {
-    actor,
-    switchOwner,
-    agentId: agent.agentId,
-    orgId,
-    runnerGroup,
-    runnerProfile: DEFAULT_PROFILE,
-    agentDisplayName: AGENT_DISPLAY_NAME,
-    agentInstructions,
-    workflowSkillName,
-    storageObjects,
-    model: CODEX_MODEL,
   };
 }
 
@@ -1096,6 +804,26 @@ async function expectQueuedPiEdgePromotion(args: {
 }
 
 describe("PiLoop edge turn", () => {
+  it.each(NON_PI_MODELS)(
+    "keeps %s on the standard runner path when PiLoop is enabled",
+    async (model) => {
+      const fixture = await piEdgeFixture({ provider: "vm0", model });
+      await enablePiLoop(fixture);
+
+      const run = await sendChatRun(
+        fixture,
+        "use the standard runner for this model",
+      );
+      expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
+        "pending",
+      );
+
+      const poll = await api.pollRunner(fixture.runnerGroup);
+      expect(poll.body.job?.runId).toBe(run.runId);
+      expect(poll.body.job).not.toHaveProperty("piExecutionMode");
+    },
+  );
+
   it("uses the org gate, mounts Pi memory, and hands off the first tool to the Sandbox", async () => {
     const fixture = await piEdgeFixture();
     const legacyPrompt = "legacy context must not enter the Pi transcript";
@@ -1689,179 +1417,6 @@ describe("PiLoop edge turn", () => {
     );
   });
 
-  it("refreshes an expired Codex subscription before the Pi edge turn", async () => {
-    const fixture = await codexPiEdgeFixture({
-      accessToken: codexJwt("ws_acct_pi_edge_expired", -60),
-    });
-    await enablePiLoop(fixture);
-    const refreshedAccessToken = codexJwt("ws_acct_pi_edge_refreshed");
-    const refreshBodies: unknown[] = [];
-    let codexAuthorization: string | null = null;
-    let codexAccountId: string | null = null;
-    const modelStarted = createDeferredPromise<void>(context.signal);
-    const releaseModel = createDeferredPromise<void>(context.signal);
-    onTestFinished(() => {
-      if (!releaseModel.settled()) {
-        releaseModel.resolve();
-      }
-    });
-    server.use(
-      http.post(CODEX_OAUTH_TOKEN_URL, async ({ request }) => {
-        refreshBodies.push(await request.json());
-        return HttpResponse.json({
-          access_token: refreshedAccessToken,
-          refresh_token: "rt_pi_edge_rotated_high_entropy",
-          expires_in: 3600,
-        });
-      }),
-      http.post(CODEX_RESPONSES_URL, async ({ request }) => {
-        codexAuthorization = request.headers.get("authorization");
-        codexAccountId = request.headers.get("chatgpt-account-id");
-        modelStarted.resolve();
-        await releaseModel.promise;
-        return codexTextSseStream("codex edge answer");
-      }),
-    );
-
-    const prompt = "answer with the Codex subscription";
-    const run = await sendChatRun(fixture, prompt, undefined, CODEX_MODEL);
-    await modelStarted.promise;
-
-    const standbyPoll = await api.requestPollRunner(
-      true,
-      {
-        group: fixture.runnerGroup,
-        supportedProfiles: [fixture.runnerProfile],
-      },
-      [200],
-    );
-    if (standbyPoll.status !== 200) {
-      throw new Error("Expected Pi standby poll to return 200");
-    }
-    expect(standbyPoll.body.job).toMatchObject({
-      runId: run.runId,
-      experimentalProfile: fixture.runnerProfile,
-      piExecutionMode: "standby",
-    });
-    const standbyContext = await api.claimRunnerJob(run.runId);
-    expect(standbyContext.piModelConfig).toStrictEqual({
-      provider: "codex",
-      baseUrl: "https://chatgpt.com/backend-api",
-      model: CODEX_MODEL,
-      apiKeyEnv: "CHATGPT_ACCESS_TOKEN",
-    });
-
-    releaseModel.resolve();
-    await flushWaitUntilForTest();
-
-    expect(refreshBodies).toStrictEqual([
-      {
-        client_id: expect.any(String),
-        grant_type: "refresh_token",
-        refresh_token: "rt_pi_edge_synthetic_high_entropy",
-      },
-    ]);
-    expect(codexAuthorization).toBe(`Bearer ${refreshedAccessToken}`);
-    expect(codexAccountId).toBe("ws_acct_pi_edge_refreshed");
-
-    const transcript = await readTranscript(run.runId);
-    expect(transcript).toMatchObject({
-      lastOrdinal: 2,
-      hasMore: false,
-      messages: [
-        {
-          ordinal: 1,
-          messageId: `${run.runId}/1`,
-          runId: run.runId,
-          runEventSequenceNumber: 1,
-          role: "user",
-          payload: {
-            role: "user",
-            content: [{ type: "text", text: prompt }],
-          },
-        },
-        {
-          ordinal: 2,
-          messageId: `${run.runId}/2`,
-          runId: run.runId,
-          runEventSequenceNumber: 2,
-          role: "assistant",
-          payload: {
-            role: "assistant",
-            content: [{ type: "text", text: "codex edge answer" }],
-            stopReason: "stop",
-          },
-        },
-      ],
-    });
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
-      "completed",
-    );
-  });
-
-  it("uses the Sandbox lane when an expired Codex subscription cannot refresh", async () => {
-    const fixture = await codexPiEdgeFixture({
-      accessToken: codexJwt("ws_acct_pi_edge_expired", -60),
-    });
-    await enablePiLoop(fixture);
-    const refreshBodies: unknown[] = [];
-    let codexRequests = 0;
-    server.use(
-      http.post(CODEX_OAUTH_TOKEN_URL, async ({ request }) => {
-        refreshBodies.push(await request.json());
-        return HttpResponse.json(
-          {
-            error: {
-              code: "refresh_token_expired",
-              message: "expired refresh token",
-            },
-          },
-          { status: 401 },
-        );
-      }),
-      http.post(CODEX_RESPONSES_URL, () => {
-        codexRequests += 1;
-        return codexTextSseStream("unexpected edge answer");
-      }),
-    );
-
-    const run = await sendChatRun(
-      fixture,
-      "fall back after Codex reconnect is required",
-      undefined,
-      CODEX_MODEL,
-    );
-    const defaultPoll = await api.pollRunner(fixture.runnerGroup);
-
-    expect(defaultPoll.body.job?.runId).toBe(run.runId);
-    expect(codexRequests).toBe(0);
-    expect(refreshBodies).toStrictEqual([
-      {
-        client_id: expect.any(String),
-        grant_type: "refresh_token",
-        refresh_token: "rt_pi_edge_synthetic_high_entropy",
-      },
-    ]);
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
-      "pending",
-    );
-    const providers = await misc.listPersonalModelProviders(
-      fixture.actor,
-      [200],
-    );
-    if (providers.status !== 200) {
-      throw new Error("Expected personal model providers to load");
-    }
-    expect(
-      providers.body.modelProviders.find((provider) => {
-        return provider.type === "codex-oauth-token";
-      }),
-    ).toMatchObject({
-      needsReconnect: true,
-      lastRefreshErrorCode: "refresh_token_expired",
-    });
-  });
-
   it("bills each vm0-managed edge response once using normalized canonical-model usage", async () => {
     await unitPriceModelTokens(MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0", model: MODEL });
@@ -2026,78 +1581,30 @@ describe("PiLoop edge turn", () => {
     ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
   });
 
-  it("bills known managed usage when the same model response ends in error", async () => {
-    await unitPriceModelTokens(MANAGED_MODEL);
-    const fixture = await piEdgeFixture({ provider: "vm0" });
-    await enablePiLoop(fixture);
-    const creditsBefore = (await billing.readBillingStatus(fixture.actor))
-      .credits;
-    server.use(
-      http.post(OPENAI_COMPLETIONS_URL, () => {
-        return assistantErrorAfterUsageStream({
-          text: "partial response before stream failure",
-          usage: {
-            prompt_tokens: 23,
-            completion_tokens: 5,
-            prompt_tokens_details: { cached_tokens: 3 },
-          },
-        });
-      }),
-    );
-
-    const run = await sendChatRun(fixture, "bill usage received before error");
-    await flushWaitUntilForTest();
-
-    const standbyContext = await api.claimRunnerJob(run.runId);
-    await webhooks.requestAgentComplete(
-      {
-        runId: run.runId,
-        exitCode: 1,
-        error: "Pi standby timed out waiting for a persisted tool call",
-        lastEventSequence: 2,
-      },
-      { authorization: `Bearer ${standbyContext.sandboxToken}` },
-      [200],
-    );
-    await flushWaitUntilForTest();
-
-    expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
-    await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      model: MANAGED_MODEL,
-      inputTokens: 20,
-      outputTokens: 5,
-      cacheTokens: 3,
-      creditsCharged: 28,
-    });
-    expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
-      creditsBefore - 28,
-    );
-    const idempotencyKey = piEdgeUsageObservationKey(run.runId, 2);
-    await expect(
-      readModelStatsObservations(context, [idempotencyKey]),
-    ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
-  });
-
   it("settles successful managed usage when the run later fails in the Sandbox", async () => {
-    await unitPriceModelTokens(MANAGED_MODEL);
+    await unitPriceModelTokens(MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
-    const completionRequests: unknown[] = [];
+    const responsesRequests: unknown[] = [];
     let modelCall = 0;
     server.use(
-      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
-        completionRequests.push(await request.json());
+      http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
+        responsesRequests.push(await request.json());
         modelCall += 1;
-        return assistantToolStream({
+        return deepseekToolSseStream({
           id: "read_before_failure_1",
           name: "read",
           arguments: {
             path: `${PI_SKILLS_ROOT}/${fixture.workflowSkillName}/SKILL.md`,
           },
           thinking: "this successful call must still be billed",
-          usage: { prompt_tokens: 20, completion_tokens: 3 },
+          usage: {
+            input_tokens: 20,
+            output_tokens: 3,
+            total_tokens: 23,
+          },
         });
       }),
     );
@@ -2109,7 +1616,7 @@ describe("PiLoop edge turn", () => {
     await flushWaitUntilForTest();
 
     expect(modelCall).toBe(1);
-    expect(completionRequests).toHaveLength(1);
+    expect(responsesRequests).toHaveLength(1);
 
     // The read hands off to the Sandbox. Its failure settles the run directly;
     // the edge's successful managed response must still be billed.
@@ -2129,7 +1636,7 @@ describe("PiLoop edge turn", () => {
 
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe("failed");
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      model: MANAGED_MODEL,
+      model: MODEL,
       inputTokens: 20,
       outputTokens: 3,
       cacheTokens: 0,
@@ -2141,16 +1648,17 @@ describe("PiLoop edge turn", () => {
   });
 
   it("fails closed without projecting a managed response that has no usage", async () => {
-    await unitPriceModelTokens(MANAGED_MODEL);
+    await unitPriceModelTokens(MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
     server.use(
-      http.post(OPENAI_COMPLETIONS_URL, () => {
-        return assistantTextStream(
+      http.post(DEEPSEEK_RESPONSES_URL, () => {
+        return deepseekTextSseStream(
           "this answer must not be projected",
           "usage is missing",
+          null,
         );
       }),
     );
@@ -2193,67 +1701,6 @@ describe("PiLoop edge turn", () => {
     await expect(usageRun(fixture.actor, run.runId)).resolves.toBeUndefined();
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore,
-    );
-  });
-
-  it("uses the managed model long-context tier only above the exact boundary", async () => {
-    const model = "gpt-5.6-luna";
-    await withModelPricing(model, [
-      {
-        category: "tokens.input",
-        unitPrice: 1,
-        unitSize: 272_001,
-      },
-      {
-        category: "tokens.input.long_context",
-        unitPrice: 2,
-        unitSize: 272_001,
-      },
-    ]);
-    const fixture = await piEdgeFixture({ provider: "vm0", model });
-    await enablePiLoop(fixture);
-    const inputTokens = [272_000, 272_001] as const;
-    let modelCall = 0;
-    server.use(
-      http.post(OPENAI_COMPLETIONS_URL, () => {
-        const promptTokens = inputTokens[modelCall];
-        modelCall += 1;
-        if (promptTokens === undefined) {
-          throw new Error("Unexpected long-context model call");
-        }
-        return assistantTextStream(
-          `boundary response ${promptTokens}`,
-          "classify the canonical model tier",
-          {
-            responseModel: "untrusted-response-model",
-            usage: {
-              prompt_tokens: promptTokens,
-              completion_tokens: 0,
-            },
-          },
-        );
-      }),
-    );
-
-    const baseRun = await sendChatRun(fixture, "base context boundary");
-    await flushWaitUntilForTest();
-    const longRun = await sendChatRun(fixture, "long context boundary");
-    await flushWaitUntilForTest();
-
-    expect(modelCall).toBe(2);
-    await expect(usageRun(fixture.actor, baseRun.runId)).resolves.toMatchObject(
-      {
-        model,
-        inputTokens: 272_000,
-        creditsCharged: 1,
-      },
-    );
-    await expect(usageRun(fixture.actor, longRun.runId)).resolves.toMatchObject(
-      {
-        model,
-        inputTokens: 272_001,
-        creditsCharged: 2,
-      },
     );
   });
 
@@ -2318,24 +1765,23 @@ describe("PiLoop edge turn", () => {
     );
   });
 
-  it("starts and bills a concurrency-queued managed OpenAI-compatible Pi run when promoted", async () => {
+  it("starts and bills a concurrency-queued managed DeepSeek Pi run when promoted", async () => {
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-    await unitPriceModelTokens(MANAGED_MODEL);
+    await unitPriceModelTokens(MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     const queuedRun = await expectQueuedPiEdgePromotion({
       fixture,
       model: fixture.model,
-      completionsUrl: OPENAI_COMPLETIONS_URL,
+      completionsUrl: DEEPSEEK_RESPONSES_URL,
       completionResponse: () => {
-        return assistantTextStream(
+        return deepseekTextSseStream(
           "promoted edge answer",
           "promoted edge reasoning",
           {
-            usage: {
-              prompt_tokens: 16,
-              completion_tokens: 3,
-              prompt_tokens_details: { cached_tokens: 2 },
-            },
+            input_tokens: 16,
+            output_tokens: 3,
+            total_tokens: 19,
+            input_tokens_details: { cached_tokens: 2 },
           },
         );
       },
@@ -2343,24 +1789,11 @@ describe("PiLoop edge turn", () => {
     await expect(
       usageRun(fixture.actor, queuedRun.runId),
     ).resolves.toMatchObject({
-      model: MANAGED_MODEL,
+      model: MODEL,
       inputTokens: 14,
       outputTokens: 3,
       cacheTokens: 2,
       creditsCharged: 19,
-    });
-  });
-
-  it("starts the Pi edge turn when a concurrency-queued Codex run is promoted", async () => {
-    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-    const fixture = await codexPiEdgeFixture();
-    await expectQueuedPiEdgePromotion({
-      fixture,
-      model: CODEX_MODEL,
-      completionsUrl: CODEX_RESPONSES_URL,
-      completionResponse: () => {
-        return codexTextSseStream("promoted codex edge answer");
-      },
     });
   });
 
@@ -2426,25 +1859,25 @@ describe("PiLoop edge turn", () => {
   });
 
   it("bills edge and runner usage once across a sandbox handoff", async () => {
-    await unitPriceModelTokens(MANAGED_MODEL);
+    await unitPriceModelTokens(MODEL);
     const fixture = await piEdgeFixture({ provider: "vm0" });
     await enablePiLoop(fixture);
     const creditsBefore = (await billing.readBillingStatus(fixture.actor))
       .credits;
-    const completionRequests: unknown[] = [];
+    const responsesRequests: unknown[] = [];
     server.use(
-      http.post(OPENAI_COMPLETIONS_URL, async ({ request }) => {
-        completionRequests.push(await request.json());
-        return assistantToolStream({
+      http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
+        responsesRequests.push(await request.json());
+        return deepseekToolSseStream({
           id: "bash_handoff_1",
           name: "bash",
           arguments: { command: "pwd" },
           thinking: "the sandbox must execute this",
-          text: "I will inspect the workspace.",
           usage: {
-            prompt_tokens: 12,
-            completion_tokens: 3,
-            prompt_tokens_details: { cached_tokens: 2 },
+            input_tokens: 12,
+            output_tokens: 3,
+            total_tokens: 15,
+            input_tokens_details: { cached_tokens: 2 },
           },
         });
       }),
@@ -2455,7 +1888,7 @@ describe("PiLoop edge turn", () => {
     const run = await sendChatRun(fixture, prompt);
     await flushWaitUntilForTest();
 
-    expect(completionRequests).toHaveLength(1);
+    expect(responsesRequests).toHaveLength(1);
     expect((await api.readRun(fixture.actor, run.runId)).status).toBe(
       "pending",
     );
@@ -2480,10 +1913,9 @@ describe("PiLoop edge turn", () => {
                 type: "thinking",
                 thinking: "the sandbox must execute this",
               },
-              { type: "text", text: "I will inspect the workspace." },
               {
                 type: "toolCall",
-                id: "bash_handoff_1",
+                id: deepseekToolCallId("bash_handoff_1"),
                 name: "bash",
                 arguments: { command: "pwd" },
               },
@@ -2517,7 +1949,7 @@ describe("PiLoop edge turn", () => {
     expect(standbyPoll.body.job?.runId).toBe(run.runId);
     const standbyContext = await api.claimRunnerJob(run.runId);
     expect(standbyContext.piSystemPrompt).toBe(
-      systemPromptFromRequest(completionRequests[0]),
+      systemPromptFromRequest(responsesRequests[0]),
     );
     expect(standbyContext.runSkillSnapshot?.digest).toMatch(
       /^sha256:[a-f0-9]{64}$/,
@@ -2535,7 +1967,7 @@ describe("PiLoop edge turn", () => {
           messageId: `${run.runId}/3`,
           message: {
             role: "toolResult",
-            toolCallId: "bash_handoff_1",
+            toolCallId: deepseekToolCallId("bash_handoff_1"),
             toolName: "bash",
             content: [{ type: "text", text: "/home/user/workspace\n" }],
             details: {},
@@ -2583,7 +2015,7 @@ describe("PiLoop edge turn", () => {
         {
           idempotencyKey: randomUUID(),
           kind: "model",
-          provider: MANAGED_MODEL,
+          provider: MODEL,
           category: "tokens.output",
           quantity: 5,
         },
@@ -2625,7 +2057,7 @@ describe("PiLoop edge turn", () => {
       ],
     });
     await expect(usageRun(fixture.actor, run.runId)).resolves.toMatchObject({
-      model: MANAGED_MODEL,
+      model: MODEL,
       inputTokens: 10,
       outputTokens: 8,
       cacheTokens: 2,
