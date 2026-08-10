@@ -1134,7 +1134,7 @@ mod tests {
         let finalization = fixture.finalization_phase(
             run_id,
             sandbox_id,
-            "sess-restore-plan",
+            "thread:restore-plan",
             lease,
             cleanup_state.clone(),
         );
@@ -1182,7 +1182,7 @@ mod tests {
             .idle_pool
             .lock()
             .await
-            .take("sess-restore-plan")
+            .take("thread:restore-plan")
             .expect("parked sandbox should be in idle pool");
         let IdleUnparkResult::Reused { sandbox, .. } =
             entry.try_unpark_for_run(RunId::new_v4()).await

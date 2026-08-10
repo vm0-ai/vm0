@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::ids::RunId;
 use crate::provider::RunnerProcessIdentity;
-use crate::telemetry::JobTelemetry;
+use crate::telemetry::{JobTelemetry, SandboxOpRecord};
 
 pub(crate) const IMMEDIATE_SUCCESSOR_INTENT_EVENT_NAME: &str = "immediate-successor-intent";
 const DEFAULT_CAPACITY: usize = 1024;
@@ -416,6 +416,20 @@ impl ImmediateSuccessorIntents {
             .map(|(_, entry)| snapshot_entry(entry, timeline, None))
             .collect()
     }
+
+    pub(crate) async fn settled_receipt_records(
+        self,
+        predecessor_run_id: RunId,
+    ) -> Vec<SandboxOpRecord> {
+        // Finalization can finish before the detached API lookup and Ably
+        // publish. Keep completion non-blocking while retaining late receipt
+        // evidence even when a different runner eventually claims the job.
+        tokio::time::sleep(MAX_INTENT_RETENTION).await;
+        self.snapshots_for_predecessor(predecessor_run_id, Instant::now())
+            .into_iter()
+            .flat_map(ImmediateSuccessorIntentSnapshot::receipt_records)
+            .collect()
+    }
 }
 
 fn snapshot_entry(
@@ -536,6 +550,7 @@ fn receipt_phase(
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct ImmediateSuccessorIntentObservation {
     registry: ImmediateSuccessorIntents,
     key: IntentKey,
@@ -545,6 +560,14 @@ pub(crate) struct ImmediateSuccessorIntentObservation {
 impl ImmediateSuccessorIntentObservation {
     pub(crate) fn snapshot(&self) -> ImmediateSuccessorIntentSnapshot {
         self.registry.snapshot(self.key, self.claimed_at)
+    }
+
+    pub(crate) async fn settled_claim_records(self, idle_unpark: Duration) -> Vec<SandboxOpRecord> {
+        // A job can be claimed before the detached API lookup and Ably publish
+        // finish. Wait out the complete advisory window before declaring that
+        // an intent was missing; this does not delay claim or execution.
+        tokio::time::sleep(MAX_INTENT_RETENTION).await;
+        self.snapshot().claim_records(idle_unpark)
     }
 }
 
@@ -576,32 +599,42 @@ impl ImmediateSuccessorIntentSnapshot {
         }
     }
 
-    fn record_common(self, telemetry: &mut JobTelemetry) {
+    fn push_common_records(self, records: &mut Vec<SandboxOpRecord>) {
         if let Some(event_class) = self.event_class {
-            telemetry.record(event_class.action_type(), Duration::ZERO, true, None);
+            records.push(SandboxOpRecord::new(
+                event_class.action_type(),
+                Duration::ZERO,
+                true,
+                None,
+            ));
         }
         if let Some(receipt_phase) = self.receipt_phase {
-            telemetry.record(receipt_phase.action_type(), Duration::ZERO, true, None);
+            records.push(SandboxOpRecord::new(
+                receipt_phase.action_type(),
+                Duration::ZERO,
+                true,
+                None,
+            ));
         }
         if let Some(duration) = self.decision_to_receipt {
-            telemetry.record(
+            records.push(SandboxOpRecord::new(
                 "runner_immediate_successor_decision_to_receipt",
                 duration,
                 true,
                 None,
-            );
+            ));
         }
         if let Some(duration) = self.remaining_at_receipt {
-            telemetry.record(
+            records.push(SandboxOpRecord::new(
                 "runner_immediate_successor_deadline_remaining_at_receipt",
                 duration,
                 true,
                 None,
-            );
+            ));
         }
     }
 
-    pub(crate) fn record_receipt(self, telemetry: &mut JobTelemetry) {
+    fn receipt_records(self) -> Vec<SandboxOpRecord> {
         let (action_type, success, error) = match self.state {
             ImmediateSuccessorObservationState::Armed => {
                 ("runner_immediate_successor_intent_received", true, None)
@@ -616,21 +649,38 @@ impl ImmediateSuccessorIntentSnapshot {
                 false,
                 Some("expired"),
             ),
-            ImmediateSuccessorObservationState::Missing => return,
+            ImmediateSuccessorObservationState::Missing => return Vec::new(),
         };
-        telemetry.record(action_type, Duration::ZERO, success, error);
-        self.record_common(telemetry);
+        let mut records = vec![SandboxOpRecord::new(
+            action_type,
+            Duration::ZERO,
+            success,
+            error,
+        )];
+        self.push_common_records(&mut records);
         if let Some(duration) = self.predicted_prepared_hold {
-            telemetry.record(
+            records.push(SandboxOpRecord::new(
                 "runner_immediate_successor_predicted_prepared_hold",
                 duration,
                 true,
                 None,
+            ));
+        }
+        records
+    }
+
+    pub(crate) fn record_receipt(self, telemetry: &mut JobTelemetry) {
+        for record in self.receipt_records() {
+            telemetry.record(
+                record.action_type,
+                record.duration,
+                record.success,
+                record.error,
             );
         }
     }
 
-    pub(crate) fn record_claim(self, telemetry: &mut JobTelemetry, idle_unpark: Duration) {
+    pub(crate) fn claim_records(self, idle_unpark: Duration) -> Vec<SandboxOpRecord> {
         let (action_type, success, error) = match self.state {
             ImmediateSuccessorObservationState::Armed => {
                 ("runner_immediate_successor_intent_matched", true, None)
@@ -651,38 +701,55 @@ impl ImmediateSuccessorIntentSnapshot {
                 Some("missing"),
             ),
         };
-        telemetry.record(action_type, Duration::ZERO, success, error);
-        self.record_common(telemetry);
+        let mut records = vec![SandboxOpRecord::new(
+            action_type,
+            Duration::ZERO,
+            success,
+            error,
+        )];
+        self.push_common_records(&mut records);
         if let Some(duration) = self.receipt_to_claim {
-            telemetry.record(
+            records.push(SandboxOpRecord::new(
                 "runner_immediate_successor_receipt_to_claim",
                 duration,
                 true,
                 None,
-            );
+            ));
         }
         if self.claim_before_receipt {
-            telemetry.record(
+            records.push(SandboxOpRecord::new(
                 "runner_immediate_successor_claim_before_receipt",
                 Duration::ZERO,
                 true,
                 None,
-            );
+            ));
         }
         if let Some(park_saved) = self.predicted_park_saved {
-            telemetry.record(
+            records.push(SandboxOpRecord::new(
                 "runner_immediate_successor_predicted_saved",
                 park_saved.saturating_add(idle_unpark),
                 true,
                 None,
-            );
+            ));
         }
         if let Some(duration) = self.predicted_prepared_hold {
-            telemetry.record(
+            records.push(SandboxOpRecord::new(
                 "runner_immediate_successor_predicted_prepared_hold",
                 duration,
                 true,
                 None,
+            ));
+        }
+        records
+    }
+
+    pub(crate) fn record_claim(self, telemetry: &mut JobTelemetry, idle_unpark: Duration) {
+        for record in self.claim_records(idle_unpark) {
+            telemetry.record(
+                record.action_type,
+                record.duration,
+                record.success,
+                record.error,
             );
         }
     }
@@ -792,6 +859,100 @@ mod tests {
         assert_eq!(snapshot.state, ImmediateSuccessorObservationState::Armed);
         assert!(snapshot.claim_before_receipt);
         assert_eq!(snapshot.receipt_to_claim, None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn delayed_claim_outcome_waits_for_arm_before_reporting_missing() {
+        let registry = ImmediateSuccessorIntents::new(2);
+        let predecessor = RunId::new_v4();
+        let intent_id = Uuid::new_v4();
+        let wall = Utc::now();
+        let base = Instant::now();
+        let observation = registry
+            .observe_claim(Some(predecessor), Some(intent_id), base)
+            .unwrap();
+        let report = tokio::spawn(observation.settled_claim_records(Duration::from_millis(7)));
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            registry.receive_at(
+                notification(
+                    ImmediateSuccessorIntentAction::Arm,
+                    predecessor,
+                    intent_id,
+                    wall,
+                    wall + chrono::Duration::seconds(1),
+                ),
+                RUNNER_ID,
+                GENERATION,
+                base + Duration::from_millis(10),
+                wall,
+            ),
+            ImmediateSuccessorReceiveOutcome::Armed
+        );
+        tokio::time::advance(MAX_INTENT_RETENTION).await;
+
+        let records = report.await.unwrap();
+        let action_types = records
+            .iter()
+            .map(|record| record.action_type)
+            .collect::<Vec<_>>();
+        assert!(action_types.contains(&"runner_immediate_successor_intent_matched"));
+        assert!(action_types.contains(&"runner_immediate_successor_claim_before_receipt"));
+        assert!(!action_types.contains(&"runner_immediate_successor_intent_missing"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn delayed_receipt_outcome_retains_signal_after_idle_publication() {
+        let registry = ImmediateSuccessorIntents::new(2);
+        let predecessor = RunId::new_v4();
+        let intent_id = Uuid::new_v4();
+        let wall = Utc::now();
+        let base = Instant::now();
+        registry.record_finalization_started(predecessor, base);
+        registry.record_finalization_stage(
+            predecessor,
+            ImmediateSuccessorFinalizationStage::ReusePreparation,
+            base + Duration::from_millis(5),
+            base + Duration::from_millis(10),
+            true,
+        );
+        registry.record_finalization_stage(
+            predecessor,
+            ImmediateSuccessorFinalizationStage::PhysicalPark,
+            base + Duration::from_millis(20),
+            base + Duration::from_millis(80),
+            true,
+        );
+        registry.record_idle_publication(predecessor, base + Duration::from_millis(90));
+        let report = tokio::spawn(registry.clone().settled_receipt_records(predecessor));
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            registry.receive_at(
+                notification(
+                    ImmediateSuccessorIntentAction::Arm,
+                    predecessor,
+                    intent_id,
+                    wall,
+                    wall + chrono::Duration::seconds(1),
+                ),
+                RUNNER_ID,
+                GENERATION,
+                base + Duration::from_millis(100),
+                wall,
+            ),
+            ImmediateSuccessorReceiveOutcome::Armed
+        );
+        tokio::time::advance(MAX_INTENT_RETENTION).await;
+
+        let records = report.await.unwrap();
+        let action_types = records
+            .iter()
+            .map(|record| record.action_type)
+            .collect::<Vec<_>>();
+        assert!(action_types.contains(&"runner_immediate_successor_intent_received"));
+        assert!(action_types.contains(&"runner_immediate_successor_received_after_publication"));
     }
 
     #[test]

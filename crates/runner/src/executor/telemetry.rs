@@ -260,7 +260,19 @@ impl RunnerPreSpawnTiming {
                 .phase_durations
                 .get(RunnerPreSpawnPhase::IdleUnpark)
                 .unwrap_or_default();
-            snapshot.record_claim(telemetry, idle_unpark);
+            if snapshot.state
+                == crate::immediate_successor_intent::ImmediateSuccessorObservationState::Missing
+            {
+                let reporter = telemetry.reporter();
+                let observation = observation.clone();
+                tokio::spawn(async move {
+                    reporter
+                        .report(observation.settled_claim_records(idle_unpark).await)
+                        .await;
+                });
+            } else {
+                snapshot.record_claim(telemetry, idle_unpark);
+            }
         }
     }
 }

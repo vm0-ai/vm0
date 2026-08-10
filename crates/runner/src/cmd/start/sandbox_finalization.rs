@@ -60,6 +60,7 @@ struct FinalizationTelemetry<'a> {
     telemetry: Option<&'a mut JobTelemetry>,
     physical_park_completed_at: Option<Instant>,
     immediate_successor_intents: ImmediateSuccessorIntents,
+    track_immediate_successor_intents: bool,
     run_id: RunId,
 }
 
@@ -67,24 +68,35 @@ impl<'a> FinalizationTelemetry<'a> {
     fn new(
         telemetry: &'a mut JobTelemetry,
         immediate_successor_intents: ImmediateSuccessorIntents,
+        track_immediate_successor_intents: bool,
         run_id: RunId,
     ) -> Self {
-        immediate_successor_intents.record_finalization_started(run_id, Instant::now());
+        if track_immediate_successor_intents {
+            immediate_successor_intents.record_finalization_started(run_id, Instant::now());
+        }
         Self {
             telemetry: Some(telemetry),
             physical_park_completed_at: None,
             immediate_successor_intents,
+            track_immediate_successor_intents,
             run_id,
         }
     }
 
     #[cfg(test)]
-    fn disabled(immediate_successor_intents: ImmediateSuccessorIntents, run_id: RunId) -> Self {
-        immediate_successor_intents.record_finalization_started(run_id, Instant::now());
+    fn disabled(
+        immediate_successor_intents: ImmediateSuccessorIntents,
+        track_immediate_successor_intents: bool,
+        run_id: RunId,
+    ) -> Self {
+        if track_immediate_successor_intents {
+            immediate_successor_intents.record_finalization_started(run_id, Instant::now());
+        }
         Self {
             telemetry: None,
             physical_park_completed_at: None,
             immediate_successor_intents,
+            track_immediate_successor_intents,
             run_id,
         }
     }
@@ -101,7 +113,7 @@ impl<'a> FinalizationTelemetry<'a> {
                 error,
             );
         }
-        if success {
+        if success && self.track_immediate_successor_intents {
             self.immediate_successor_intents
                 .record_idle_publication(self.run_id, Instant::now());
         }
@@ -135,13 +147,15 @@ impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
                 ImmediateSuccessorFinalizationStage::PhysicalPark,
             ),
         };
-        self.immediate_successor_intents.record_finalization_stage(
-            self.run_id,
-            immediate_stage,
-            started_at,
-            completed_at,
-            success,
-        );
+        if self.track_immediate_successor_intents {
+            self.immediate_successor_intents.record_finalization_stage(
+                self.run_id,
+                immediate_stage,
+                started_at,
+                completed_at,
+                success,
+            );
+        }
         if let Some(telemetry) = self.telemetry.as_deref_mut() {
             telemetry.record(action_type, duration, success, error);
         }
@@ -153,16 +167,40 @@ impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
 
 impl Drop for FinalizationTelemetry<'_> {
     fn drop(&mut self) {
+        if !self.track_immediate_successor_intents {
+            return;
+        }
         let snapshots = self
             .immediate_successor_intents
             .snapshots_for_predecessor(self.run_id, Instant::now());
         let Some(telemetry) = self.telemetry.as_deref_mut() else {
             return;
         };
+        if snapshots.is_empty() {
+            let reporter = telemetry.reporter();
+            let immediate_successor_intents = self.immediate_successor_intents.clone();
+            let run_id = self.run_id;
+            tokio::spawn(async move {
+                reporter
+                    .report(
+                        immediate_successor_intents
+                            .settled_receipt_records(run_id)
+                            .await,
+                    )
+                    .await;
+            });
+            return;
+        }
         for snapshot in snapshots {
             snapshot.record_receipt(telemetry);
         }
     }
+}
+
+fn should_track_immediate_successor_intents(reuse_key: Option<&str>) -> bool {
+    // The API only emits these signals from canonical chat-thread queues. Do
+    // not let unrelated finalizations consume the bounded observation state.
+    reuse_key.is_some_and(|reuse_key| reuse_key_kind(reuse_key) == "thread")
 }
 
 fn local_completed_at() -> String {
@@ -251,12 +289,19 @@ pub(super) async fn finalize_sandbox_for_completion_with_telemetry(
     ctx: FinalizeContext,
 ) -> CompletionReady {
     let immediate_successor_intents = ctx.immediate_successor_intents.clone();
+    let track_immediate_successor_intents =
+        should_track_immediate_successor_intents(ctx.reuse_key.as_deref());
     let run_id = ctx.run_id;
     finalize_sandbox_for_completion_inner(
         sandbox,
         active_lease,
         completion_payload,
-        FinalizationTelemetry::new(telemetry, immediate_successor_intents, run_id),
+        FinalizationTelemetry::new(
+            telemetry,
+            immediate_successor_intents,
+            track_immediate_successor_intents,
+            run_id,
+        ),
         ctx,
     )
     .await
@@ -270,12 +315,18 @@ async fn finalize_sandbox_for_completion(
     ctx: FinalizeContext,
 ) -> CompletionReady {
     let immediate_successor_intents = ctx.immediate_successor_intents.clone();
+    let track_immediate_successor_intents =
+        should_track_immediate_successor_intents(ctx.reuse_key.as_deref());
     let run_id = ctx.run_id;
     finalize_sandbox_for_completion_inner(
         sandbox,
         active_lease,
         completion_payload,
-        FinalizationTelemetry::disabled(immediate_successor_intents, run_id),
+        FinalizationTelemetry::disabled(
+            immediate_successor_intents,
+            track_immediate_successor_intents,
+            run_id,
+        ),
         ctx,
     )
     .await
@@ -1691,7 +1742,7 @@ mod tests {
             &cache,
             run_id,
             sandbox_id,
-            "sess-reuse-rejected",
+            "thread:reuse-rejected",
         )
         .await;
         let overrides = Arc::new(MockSandboxOverrides::new());
@@ -1716,7 +1767,7 @@ mod tests {
         let mut context = fixture.finalize_context(
             run_id,
             sandbox_id,
-            "sess-reuse-rejected",
+            "thread:reuse-rejected",
             network_log_session,
             RunCancellationHandle::new(),
         );
@@ -1757,7 +1808,7 @@ mod tests {
         assert_eq!(observation.predicted_park_saved, Some(Duration::ZERO));
         let cache_states = cache.held_workspace_states().await;
         assert_eq!(cache_states.len(), 1);
-        assert_eq!(cache_states[0].reuse_key, "sess-reuse-rejected");
+        assert_eq!(cache_states[0].reuse_key, "thread:reuse-rejected");
         assert_eq!(
             cleanup_state.disposition(),
             RunCleanupDisposition::DestroyCompleted
