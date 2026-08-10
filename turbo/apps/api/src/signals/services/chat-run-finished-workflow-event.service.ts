@@ -258,7 +258,7 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
           },
           automationContext: context,
           apiStartTime: now(),
-          triggerSource: "workflow-event",
+          triggerSource: "automation-event",
           triggerBrief: `Chat run ${event.runStatus} in watched thread`,
           dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         },

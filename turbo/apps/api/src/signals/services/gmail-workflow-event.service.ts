@@ -2434,7 +2434,7 @@ const startGmailWorkflowRun$ = command(
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         triggerBrief: runInput.triggerBrief,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
