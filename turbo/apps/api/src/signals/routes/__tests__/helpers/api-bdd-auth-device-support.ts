@@ -5,6 +5,7 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
+  zeroPersonalModelProviderAccountsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
@@ -15,6 +16,7 @@ import type { RouteEntry } from "../../../route-entry";
 import { zeroConnectorsRoutes } from "../../zero-connectors";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroMeModelProvidersDeleteRoutes } from "../../zero-me-model-providers-delete";
+import { zeroMeModelProviderAccountRoutes } from "../../zero-me-model-provider-accounts";
 import { zeroMeModelProvidersListRoutes } from "../../zero-me-model-providers-list";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
@@ -28,6 +30,7 @@ interface AuthHeaders {
 const authDeviceSupportRoutes: readonly RouteEntry[] = [
   ...zeroConnectorsRoutes,
   ...zeroFeatureSwitchesRoutes,
+  ...zeroMeModelProviderAccountRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,
   ...zeroModelProvidersRoutes,
@@ -111,6 +114,34 @@ export function createAuthDeviceSupportApi(context: TestContext) {
           params: { type },
         }),
         statuses,
+      );
+    },
+
+    async activatePersonalModelProviderAccount(actor: ApiTestUser, id: string) {
+      return await accept(
+        authDeviceSupportApp(context)(
+          zeroPersonalModelProviderAccountsByIdContract,
+        ).activate({
+          headers: authenticate(context, actor),
+          params: { id },
+          body: {},
+        }),
+        [200],
+      );
+    },
+
+    async deletePersonalModelProviderAccount(
+      actor: ApiTestUser,
+      id: string,
+    ): Promise<void> {
+      await accept(
+        authDeviceSupportApp(context)(
+          zeroPersonalModelProviderAccountsByIdContract,
+        ).delete({
+          headers: authenticate(context, actor),
+          params: { id },
+        }),
+        [204],
       );
     },
 

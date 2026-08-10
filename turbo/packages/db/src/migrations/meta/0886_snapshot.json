@@ -1,6 +1,6 @@
 {
-  "id": "240475b2-aedd-433d-af35-a6798b81bd94",
-  "prevId": "9445a6ab-ce05-42b8-800c-9810d0a1487d",
+  "id": "2f52c84b-10ca-459d-87c6-9040fe334430",
+  "prevId": "240475b2-aedd-433d-af35-a6798b81bd94",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5123,6 +5123,22 @@
           ],
           "isUnique": true,
           "where": "\"chat_events\".\"thinking\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_events_control_interrupt_run_id_unique": {
+          "name": "chat_events_control_interrupt_run_id_unique",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"chat_events\".\"event_type\" = 'control.interrupt' AND \"chat_events\".\"run_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

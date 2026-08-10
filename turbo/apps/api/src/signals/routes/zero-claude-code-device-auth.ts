@@ -50,6 +50,13 @@ const startClaudeCodeDeviceAuthInner$ = command(
     if (body.data.scope === "org" && auth.orgRole !== "admin") {
       return adminRequired;
     }
+    if (
+      body.data.scope === "personal" &&
+      body.data.mode === "reconnect" &&
+      !body.data.modelProviderId
+    ) {
+      return badRequestMessage("modelProviderId is required for reconnect");
+    }
 
     const result = await startClaudeCodeDeviceAuth(
       {
@@ -57,6 +64,8 @@ const startClaudeCodeDeviceAuthInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         scope: body.data.scope,
+        mode: body.data.mode,
+        modelProviderId: body.data.modelProviderId,
       },
       signal,
     );

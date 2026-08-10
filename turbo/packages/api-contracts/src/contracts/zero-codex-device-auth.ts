@@ -7,6 +7,7 @@ import { modelProviderResponseSchema } from "./model-providers";
 const c = initContract();
 
 export const codexDeviceAuthScopeSchema = z.enum(["org", "personal"]);
+export const codexDeviceAuthModeSchema = z.enum(["add", "reconnect"]);
 
 const codexDeviceAuthStartResponseSchema = z.object({
   sessionToken: z.string(),
@@ -45,7 +46,11 @@ export const zeroCodexDeviceAuthContract = c.router({
     method: "POST",
     path: "/api/zero/model-providers/codex/device-auth/sessions",
     headers: authHeadersSchema,
-    body: z.object({ scope: codexDeviceAuthScopeSchema }),
+    body: z.object({
+      scope: codexDeviceAuthScopeSchema,
+      mode: codexDeviceAuthModeSchema.optional(),
+      modelProviderId: z.uuid().optional(),
+    }),
     responses: {
       200: codexDeviceAuthStartResponseSchema,
       400: apiErrorSchema,
@@ -87,4 +92,5 @@ export const zeroCodexDeviceAuthContract = c.router({
 });
 
 export type CodexDeviceAuthScope = z.infer<typeof codexDeviceAuthScopeSchema>;
+export type CodexDeviceAuthMode = z.infer<typeof codexDeviceAuthModeSchema>;
 export type ZeroCodexDeviceAuthContract = typeof zeroCodexDeviceAuthContract;

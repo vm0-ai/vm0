@@ -2,6 +2,7 @@ import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-p
 import {
   zeroPersonalModelProvidersMainContract,
   zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProviderAccountsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { nowDate } from "../../lib/time.ts";
 import { mockApi } from "../msw-contract.ts";
@@ -118,6 +119,75 @@ export const apiPersonalModelProvidersHandlers = [
       });
 
       return respond(200, { outcome: "reset" });
+    },
+  ),
+
+  mockApi(
+    zeroPersonalModelProviderAccountsByIdContract.activate,
+    ({ params, respond }) => {
+      const selected = mockPersonalModelProviders.find((provider) => {
+        return provider.id === params.id;
+      });
+      if (!selected) {
+        return respond(404, {
+          error: {
+            message: "Model provider account not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      mockPersonalModelProviders = mockPersonalModelProviders.map(
+        (provider) => {
+          return provider.type === selected.type
+            ? { ...provider, isActive: provider.id === selected.id }
+            : provider;
+        },
+      );
+      return respond(200, { ...selected, isActive: true });
+    },
+  ),
+
+  mockApi(
+    zeroPersonalModelProviderAccountsByIdContract.delete,
+    ({ params, respond }) => {
+      const selected = mockPersonalModelProviders.find((provider) => {
+        return provider.id === params.id;
+      });
+      if (!selected) {
+        return respond(404, {
+          error: {
+            message: "Model provider account not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      mockPersonalModelProviders = mockPersonalModelProviders.filter(
+        (provider) => {
+          return provider.id !== params.id;
+        },
+      );
+      return respond(204);
+    },
+  ),
+
+  mockApi(
+    zeroPersonalModelProviderAccountsByIdContract.resetSubscriptionUsage,
+    ({ params, respond }) => {
+      const selected = mockPersonalModelProviders.find((provider) => {
+        return provider.id === params.id;
+      });
+      if (!selected || selected.type !== "codex-oauth-token") {
+        return respond(404, {
+          error: {
+            message: "Model provider account not found",
+            code: "NOT_FOUND",
+          },
+        });
+      }
+      return respond(200, {
+        outcome:
+          (selected.subscriptionResetCredits ?? 0) > 0 ? "reset" : "noCredit",
+      });
     },
   ),
 ];

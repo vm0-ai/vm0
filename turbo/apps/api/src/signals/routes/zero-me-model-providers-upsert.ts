@@ -5,6 +5,11 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -17,6 +22,13 @@ import {
   type ModelProviderInfo,
 } from "../services/zero-model-provider.service";
 import type { RouteEntry } from "../route-entry";
+import { writeDb$ } from "../external/db";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
+import {
+  isPersonalSubscriptionProviderType,
+  upsertPersonalModelProviderAccount,
+  type PersonalSubscriptionProviderType,
+} from "../services/model-provider-account.service";
 
 function providerNotFound(type: string) {
   return {
@@ -30,7 +42,9 @@ function providerNotFound(type: string) {
   };
 }
 
-function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
+function isModelFirstPersonalProviderType(
+  type: ModelProviderType,
+): type is PersonalSubscriptionProviderType {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
 }
 
@@ -76,6 +90,84 @@ function shapeUpsertResult(
   };
 }
 
+function shapeAccountUpsertResult(
+  provider: ModelProviderResponse,
+  created: boolean,
+) {
+  return {
+    status: (created ? 201 : 200) as 200 | 201,
+    body: { provider, created },
+  };
+}
+
+const upsertPersonalCodexAuthJson$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly rawAuthJson: string;
+      readonly selectedModel: string | undefined;
+      readonly accountsEnabled: boolean;
+      readonly featureSwitchContext: FeatureSwitchContext;
+    },
+    signal: AbortSignal,
+  ) => {
+    return await handleCodexAuthJsonPaste(
+      {
+        scope: "personal",
+        orgId: args.orgId,
+        userId: args.userId,
+        rawAuthJson: args.rawAuthJson,
+        selectedModel: args.selectedModel,
+        upsert: async (pasteArgs) => {
+          if (args.accountsEnabled) {
+            const result = await upsertPersonalModelProviderAccount(
+              {
+                db: set(writeDb$),
+                orgId: args.orgId,
+                userId: args.userId,
+                type: "codex-oauth-token",
+                authMethod: pasteArgs.authMethod,
+                secretValues: pasteArgs.secretValues,
+                selectedModel: pasteArgs.selectedModel,
+                metadata: pasteArgs.metadata,
+                mode: { kind: "replace-active" },
+                featureSwitchContext: args.featureSwitchContext,
+              },
+              signal,
+            );
+            if ("status" in result) {
+              throw new Error(result.body.error.message);
+            }
+            return result;
+          }
+          const result = await set(
+            upsertUserMultiAuthModelProvider$,
+            {
+              orgId: args.orgId,
+              userId: args.userId,
+              type: "codex-oauth-token",
+              authMethod: pasteArgs.authMethod,
+              secretValues: pasteArgs.secretValues,
+              selectedModel: pasteArgs.selectedModel,
+              metadata: pasteArgs.metadata,
+            },
+            signal,
+          );
+          if ("status" in result) {
+            throw new Error(
+              "upsertUserMultiAuthModelProvider$ unexpectedly returned BAD_REQUEST during codex paste",
+            );
+          }
+          return result;
+        },
+      },
+      signal,
+    );
+  },
+);
+
 const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
@@ -93,6 +185,16 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!isModelFirstPersonalProviderType(type)) {
     return providerNotFound(type);
   }
+  const featureSwitchContext = await get(
+    userFeatureSwitchContext(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+  const accountsEnabled =
+    isPersonalSubscriptionProviderType(type) &&
+    isFeatureEnabled(
+      FeatureSwitchKey.PersonalModelProviderAccounts,
+      featureSwitchContext,
+    );
 
   // Branch 1: codex-oauth-token + auth_json paste flow
   if (type === "codex-oauth-token" && authMethod === "auth_json") {
@@ -100,38 +202,15 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     if (!raw) {
       return badRequestMessage("Missing CODEX_AUTH_JSON secret");
     }
-    return await handleCodexAuthJsonPaste(
+    return await set(
+      upsertPersonalCodexAuthJson$,
       {
-        scope: "personal",
         orgId: auth.orgId,
         userId: auth.userId,
         rawAuthJson: raw,
         selectedModel,
-        upsert: async (pasteArgs) => {
-          const result = await set(
-            upsertUserMultiAuthModelProvider$,
-            {
-              orgId: auth.orgId,
-              userId: auth.userId,
-              type: "codex-oauth-token",
-              authMethod: pasteArgs.authMethod,
-              secretValues: pasteArgs.secretValues,
-              selectedModel: pasteArgs.selectedModel,
-              metadata: pasteArgs.metadata,
-            },
-            signal,
-          );
-          if ("status" in result) {
-            // Defensive guard: the parsed paste produces well-formed inputs and
-            // codex-oauth-token has a known auth method config — this branch
-            // shouldn't fire. Surface as a typed Error so the paste handler's
-            // outer try/catch propagates it as a 500.
-            throw new Error(
-              "upsertUserMultiAuthModelProvider$ unexpectedly returned BAD_REQUEST during codex paste",
-            );
-          }
-          return result;
-        },
+        accountsEnabled,
+        featureSwitchContext,
       },
       signal,
     );
@@ -143,6 +222,26 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       return badRequestMessage(
         `Provider "${type}" requires authMethod and secrets`,
       );
+    }
+    if (accountsEnabled) {
+      const result = await upsertPersonalModelProviderAccount(
+        {
+          db: set(writeDb$),
+          orgId: auth.orgId,
+          userId: auth.userId,
+          type,
+          authMethod,
+          secretValues: secrets,
+          selectedModel,
+          mode: { kind: "replace-active" },
+          featureSwitchContext,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      return "status" in result
+        ? result
+        : shapeAccountUpsertResult(result.provider, result.created);
     }
     const result = await set(
       upsertUserMultiAuthModelProvider$,
@@ -157,15 +256,36 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       signal,
     );
     signal.throwIfAborted();
-    if ("status" in result) {
-      return result;
-    }
-    return shapeUpsertResult(result.provider, result.created);
+    return "status" in result
+      ? result
+      : shapeUpsertResult(result.provider, result.created);
   }
 
   // Branch 3: single-secret provider
   if (!secret) {
     return badRequestMessage(`Provider "${type}" requires a secret`);
+  }
+  if (accountsEnabled) {
+    const result = await upsertPersonalModelProviderAccount(
+      {
+        db: set(writeDb$),
+        orgId: auth.orgId,
+        userId: auth.userId,
+        type,
+        authMethod: null,
+        secretValues: {
+          CLAUDE_CODE_OAUTH_TOKEN: secret,
+        },
+        selectedModel,
+        mode: { kind: "replace-active" },
+        featureSwitchContext,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return "status" in result
+      ? result
+      : shapeAccountUpsertResult(result.provider, result.created);
   }
   const result = await set(
     upsertUserModelProvider$,
@@ -179,10 +299,9 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
   signal.throwIfAborted();
-  if ("status" in result) {
-    return result;
-  }
-  return shapeUpsertResult(result.provider, result.created);
+  return "status" in result
+    ? result
+    : shapeUpsertResult(result.provider, result.created);
 });
 
 export const zeroMeModelProvidersUpsertRoutes: readonly RouteEntry[] = [

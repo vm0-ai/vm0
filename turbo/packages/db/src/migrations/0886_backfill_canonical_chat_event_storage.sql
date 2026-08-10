@@ -83,7 +83,7 @@ $$;--> statement-breakpoint
 -- jsonb_strip_nulls), and the result is SQL NULL only when every leaf is SQL
 -- NULL. This mirrors the dual-write serialization introduced with the payload
 -- column.
-CREATE OR REPLACE FUNCTION "canonical_chat_event_payload_0885"(
+CREATE OR REPLACE FUNCTION "canonical_chat_event_payload_0886"(
   "event" "chat_events"
 ) RETURNS jsonb
 LANGUAGE sql
@@ -129,7 +129,7 @@ BEGIN
       = (to_jsonb(OLD) - 'payload' - 'run_id' - 'context_type' - 'context_id')
     AND NEW."payload" IS NOT DISTINCT FROM COALESCE(
       OLD."payload",
-      "canonical_chat_event_payload_0885"(OLD)
+      "canonical_chat_event_payload_0886"(OLD)
     )
     AND NEW."run_id" IS NOT DISTINCT FROM (CASE
       WHEN OLD."event_type" = 'control.interrupt' AND OLD."run_id" IS NULL
@@ -158,7 +158,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
-CREATE OR REPLACE PROCEDURE "backfill_canonical_chat_event_storage_0885"()
+CREATE OR REPLACE PROCEDURE "backfill_canonical_chat_event_storage_0886"()
 LANGUAGE plpgsql AS $$
 DECLARE
   batch_last_id uuid;
@@ -193,7 +193,7 @@ BEGIN
       UPDATE "chat_events" AS "target"
       SET "payload" = COALESCE(
           "target"."payload",
-          "canonical_chat_event_payload_0885"("target")
+          "canonical_chat_event_payload_0886"("target")
         ),
         "run_id" = CASE
           WHEN "target"."event_type" = 'control.interrupt'
@@ -266,8 +266,8 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-CALL "backfill_canonical_chat_event_storage_0885"();--> statement-breakpoint
-DROP PROCEDURE IF EXISTS "backfill_canonical_chat_event_storage_0885"();--> statement-breakpoint
+CALL "backfill_canonical_chat_event_storage_0886"();--> statement-breakpoint
+DROP PROCEDURE IF EXISTS "backfill_canonical_chat_event_storage_0886"();--> statement-breakpoint
 
 -- zero_runs has no append-only trigger; the permanent goal-only bridge
 -- trigger rewrites run_group_id := goal_id on this update, which is a no-op
@@ -275,7 +275,7 @@ DROP PROCEDURE IF EXISTS "backfill_canonical_chat_event_storage_0885"();--> stat
 -- longer exists keep goal_id NULL: that is the same end state the FK's ON
 -- DELETE SET NULL produces for dual-written rows, so skipping them is the
 -- deterministic canonical outcome, not a guess.
-CREATE OR REPLACE PROCEDURE "backfill_zero_run_goal_ids_0885"()
+CREATE OR REPLACE PROCEDURE "backfill_zero_run_goal_ids_0886"()
 LANGUAGE plpgsql AS $$
 DECLARE
   batch_last_id uuid;
@@ -340,8 +340,8 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-CALL "backfill_zero_run_goal_ids_0885"();--> statement-breakpoint
-DROP PROCEDURE IF EXISTS "backfill_zero_run_goal_ids_0885"();--> statement-breakpoint
+CALL "backfill_zero_run_goal_ids_0886"();--> statement-breakpoint
+DROP PROCEDURE IF EXISTS "backfill_zero_run_goal_ids_0886"();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$
 BEGIN
@@ -360,7 +360,7 @@ BEGIN
   SELECT COUNT(*)
   INTO residual_count
   FROM "chat_events"
-  WHERE "payload" IS DISTINCT FROM "canonical_chat_event_payload_0885"("chat_events");
+  WHERE "payload" IS DISTINCT FROM "canonical_chat_event_payload_0886"("chat_events");
   IF residual_count > 0 THEN
     RAISE EXCEPTION
       'chat_events has % rows whose payload disagrees with the legacy leaves',
@@ -425,7 +425,7 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-DROP FUNCTION IF EXISTS "canonical_chat_event_payload_0885"("chat_events");--> statement-breakpoint
+DROP FUNCTION IF EXISTS "canonical_chat_event_payload_0886"("chat_events");--> statement-breakpoint
 
 -- With run_id now the canonical interrupt pointer, enforce one
 -- control.interrupt per target run on the canonical column, mirroring

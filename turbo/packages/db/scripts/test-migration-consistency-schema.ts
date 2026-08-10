@@ -5429,9 +5429,9 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
   );
 }
 
-const CANONICAL_CHAT_EVENT_STORAGE_PREVIOUS_MIGRATION = "0884_happy_vermin";
+const CANONICAL_CHAT_EVENT_STORAGE_PREVIOUS_MIGRATION = "0885_mighty_ken_ellis";
 const CANONICAL_CHAT_EVENT_STORAGE_MIGRATION =
-  "0885_backfill_canonical_chat_event_storage";
+  "0886_backfill_canonical_chat_event_storage";
 
 async function readCanonicalBackfillDigests(client: Client): Promise<{
   readonly chatEvents: string;
@@ -5468,40 +5468,40 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
   const testDb = "migration_canonical_chat_event_storage_test";
   const testDbUrl = createTestDbUrl(testDb);
   const fixture = {
-    composeId: "00000000-0000-4000-8000-000000088501",
-    threadAId: "00000000-0000-4000-8000-000000088502",
-    threadBId: "00000000-0000-4000-8000-000000088503",
-    goalAId: "00000000-0000-4000-8000-000000088504",
-    goalBId: "00000000-0000-4000-8000-000000088505",
-    sessionId: "00000000-0000-4000-8000-000000088506",
-    goalZeroRunId: "00000000-0000-4000-8000-000000088507",
-    danglingZeroRunId: "00000000-0000-4000-8000-000000088508",
-    conflictZeroRunId: "00000000-0000-4000-8000-000000088509",
-    multiLeafEventId: "00000000-0000-4000-8000-000000088510",
-    userMessageEventId: "00000000-0000-4000-8000-000000088511",
-    thinkingEventId: "00000000-0000-4000-8000-000000088512",
-    usageEventId: "00000000-0000-4000-8000-000000088513",
-    allLeavesEventId: "00000000-0000-4000-8000-000000088514",
-    allNullEventId: "00000000-0000-4000-8000-000000088515",
-    goalOpenEventId: "00000000-0000-4000-8000-000000088516",
-    interruptLegacyEventId: "00000000-0000-4000-8000-000000088517",
-    interruptCanonicalEventId: "00000000-0000-4000-8000-000000088518",
-    goalOutputEventId: "00000000-0000-4000-8000-000000088519",
-    goalInputEventId: "00000000-0000-4000-8000-000000088520",
-    goalDanglingEventId: "00000000-0000-4000-8000-000000088521",
-    dualWriteEventId: "00000000-0000-4000-8000-000000088522",
-    conflictInterruptEventId: "00000000-0000-4000-8000-000000088523",
-    conflictContextEventId: "00000000-0000-4000-8000-000000088524",
-    concurrentInsertEventId: "00000000-0000-4000-8000-000000088525",
-    legacyInterruptRunId: "00000000-0000-4000-8000-000000088530",
-    canonicalInterruptRunId: "00000000-0000-4000-8000-000000088531",
-    usageRunId: "00000000-0000-4000-8000-000000088532",
-    conflictOwnerRunId: "00000000-0000-4000-8000-000000088533",
-    duplicateProbeInterruptsRunId: "00000000-0000-4000-8000-000000088534",
-    conflictInterruptTargetRunId: "00000000-0000-4000-8000-000000088535",
-    missingGoalId: "00000000-0000-4000-8000-000000088536",
-    duplicateProbeEventId: "00000000-0000-4000-8000-000000088537",
-    conflictContextId: "00000000-0000-4000-8000-000000088538",
+    composeId: "00000000-0000-4000-8000-000000088601",
+    threadAId: "00000000-0000-4000-8000-000000088602",
+    threadBId: "00000000-0000-4000-8000-000000088603",
+    goalAId: "00000000-0000-4000-8000-000000088604",
+    goalBId: "00000000-0000-4000-8000-000000088605",
+    sessionId: "00000000-0000-4000-8000-000000088606",
+    goalZeroRunId: "00000000-0000-4000-8000-000000088607",
+    danglingZeroRunId: "00000000-0000-4000-8000-000000088608",
+    conflictZeroRunId: "00000000-0000-4000-8000-000000088609",
+    multiLeafEventId: "00000000-0000-4000-8000-000000088610",
+    userMessageEventId: "00000000-0000-4000-8000-000000088611",
+    thinkingEventId: "00000000-0000-4000-8000-000000088612",
+    usageEventId: "00000000-0000-4000-8000-000000088613",
+    allLeavesEventId: "00000000-0000-4000-8000-000000088614",
+    allNullEventId: "00000000-0000-4000-8000-000000088615",
+    goalOpenEventId: "00000000-0000-4000-8000-000000088616",
+    interruptLegacyEventId: "00000000-0000-4000-8000-000000088617",
+    interruptCanonicalEventId: "00000000-0000-4000-8000-000000088618",
+    goalOutputEventId: "00000000-0000-4000-8000-000000088619",
+    goalInputEventId: "00000000-0000-4000-8000-000000088620",
+    goalDanglingEventId: "00000000-0000-4000-8000-000000088621",
+    dualWriteEventId: "00000000-0000-4000-8000-000000088622",
+    conflictInterruptEventId: "00000000-0000-4000-8000-000000088623",
+    conflictContextEventId: "00000000-0000-4000-8000-000000088624",
+    concurrentInsertEventId: "00000000-0000-4000-8000-000000088625",
+    legacyInterruptRunId: "00000000-0000-4000-8000-000000088630",
+    canonicalInterruptRunId: "00000000-0000-4000-8000-000000088631",
+    usageRunId: "00000000-0000-4000-8000-000000088632",
+    conflictOwnerRunId: "00000000-0000-4000-8000-000000088633",
+    duplicateProbeInterruptsRunId: "00000000-0000-4000-8000-000000088634",
+    conflictInterruptTargetRunId: "00000000-0000-4000-8000-000000088635",
+    missingGoalId: "00000000-0000-4000-8000-000000088636",
+    duplicateProbeEventId: "00000000-0000-4000-8000-000000088637",
+    conflictContextId: "00000000-0000-4000-8000-000000088638",
   } as const;
   const nestedNullUserMessage = JSON.stringify({
     version: 1,

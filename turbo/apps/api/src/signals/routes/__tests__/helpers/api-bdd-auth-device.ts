@@ -222,14 +222,25 @@ function makeCodexIdToken(opts: {
   return makeCodexJwt(payload);
 }
 
-function makeCodexTokenResponse(scope: "org" | "personal") {
+function makeCodexTokenResponse(
+  scope: "org" | "personal",
+  args: {
+    readonly accountId?: string;
+    readonly workspaceName?: string;
+  } = {},
+) {
+  const accountId = args.accountId ?? `ws_acct_from_id_token_${scope}`;
   return {
-    access_token: makeCodexJwt({ exp: Math.floor(now() / 1000) + 7200 }),
+    access_token: makeCodexJwt({
+      exp: Math.floor(now() / 1000) + 7200,
+      account_id: accountId,
+    }),
     refresh_token: `rt_${scope}_synthetic_high_entropy`,
     id_token: makeCodexIdToken({
-      accountId: `ws_acct_from_id_token_${scope}`,
+      accountId,
       planType: "plus",
-      workspaceName: scope === "org" ? "Org Acme" : "Personal Acme",
+      workspaceName:
+        args.workspaceName ?? (scope === "org" ? "Org Acme" : "Personal Acme"),
     }),
   };
 }
@@ -286,7 +297,11 @@ interface CodexDeviceAuthProviderRecorder {
 }
 
 export function mockCodexDeviceAuthProvider(
-  options: { readonly tokenScope?: "org" | "personal" } = {},
+  options: {
+    readonly tokenScope?: "org" | "personal";
+    readonly accountId?: string;
+    readonly workspaceName?: string;
+  } = {},
 ): CodexDeviceAuthProviderRecorder {
   const recorded: CodexDeviceAuthProviderRecorder = {
     userCode: [],
@@ -320,7 +335,7 @@ export function mockCodexDeviceAuthProvider(
     http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
       recorded.oauthToken.push(new URLSearchParams(await request.text()));
       return HttpResponse.json(
-        makeCodexTokenResponse(options.tokenScope ?? "org"),
+        makeCodexTokenResponse(options.tokenScope ?? "org", options),
       );
     }),
   );
@@ -334,7 +349,15 @@ interface ClaudeCodeTokenEndpointRecorder {
   readonly usage: Headers[];
 }
 
-export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
+export function mockClaudeCodeTokenEndpoint(
+  options: {
+    readonly accountEmail?: string;
+    readonly organizationName?: string;
+  } = {},
+): ClaudeCodeTokenEndpointRecorder {
+  const accountEmail = options.accountEmail ?? "claude.user@example.com";
+  const organizationName =
+    options.organizationName ?? "Claude User's Organization";
   const recorded: ClaudeCodeTokenEndpointRecorder = {
     token: [],
     profile: [],
@@ -357,12 +380,12 @@ export function mockClaudeCodeTokenEndpoint(): ClaudeCodeTokenEndpointRecorder {
       recorded.profile.push(request.headers);
       return HttpResponse.json({
         account: {
-          email: "claude.user@example.com",
+          email: accountEmail,
           has_claude_max: false,
           has_claude_pro: true,
         },
         organization: {
-          name: "Claude User's Organization",
+          name: organizationName,
           organization_type: "claude_pro",
           rate_limit_tier: "default_claude_ai",
         },
@@ -665,10 +688,17 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser | null,
       scope: CodexDeviceAuthScope,
       statuses: readonly (200 | 400 | 401 | 403 | 503)[],
+      mutation?: {
+        readonly mode: "add" | "reconnect";
+        readonly modelProviderId?: string;
+      },
     ) {
       const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
       return await accept(
-        client.start({ headers: authenticate(actor), body: { scope } }),
+        client.start({
+          headers: authenticate(actor),
+          body: { scope, ...mutation },
+        }),
         statuses,
       );
     },
@@ -707,10 +737,17 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser | null,
       scope: ClaudeCodeDeviceAuthScope,
       statuses: readonly (200 | 400 | 401 | 403 | 503)[],
+      mutation?: {
+        readonly mode: "add" | "reconnect";
+        readonly modelProviderId?: string;
+      },
     ) {
       const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
       return await accept(
-        client.start({ headers: authenticate(actor), body: { scope } }),
+        client.start({
+          headers: authenticate(actor),
+          body: { scope, ...mutation },
+        }),
         statuses,
       );
     },
