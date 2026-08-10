@@ -955,6 +955,8 @@
           "comparison": "현재 및 새 구독 비교",
           "current": "현재",
           "downgradeDescription": "하위 패키지는 다음 결제일부터 시작됩니다. 기존 크레딧은 만료될 때까지 사용할 수 있습니다.",
+          "downgradesToDate": "{{date}}에 {{package}}(으)로 다운그레이드됩니다.",
+          "downgradesToPeriod": "다음 결제일에 {{package}}(으)로 다운그레이드됩니다.",
           "immediateAmount": "지금 결제",
           "new": "신규",
           "nextRecurring": "다음 정기 결제 합계",

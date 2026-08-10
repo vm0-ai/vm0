@@ -976,6 +976,8 @@
           "comparison": "Comparação entre a assinatura atual e a nova",
           "current": "Atual",
           "downgradeDescription": "O pacote menor começa na próxima data de cobrança. Os créditos existentes permanecem disponíveis até expirarem.",
+          "downgradesToDate": "Muda para {{package}} em {{date}}.",
+          "downgradesToPeriod": "Muda para {{package}} na próxima data de cobrança.",
           "immediateAmount": "Cobrado agora",
           "new": "Novo",
           "nextRecurring": "Próximo total recorrente",

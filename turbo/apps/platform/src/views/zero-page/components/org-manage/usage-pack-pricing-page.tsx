@@ -79,6 +79,11 @@ interface MemberDisplay {
   readonly name: string;
 }
 
+interface MemberUsageDowngrade {
+  readonly effectiveAt: string | null;
+  readonly targetUsagePackUsd: UsagePackUsd;
+}
+
 type PlanSelectionAction =
   | "disabled"
   | "downgrade"
@@ -266,13 +271,30 @@ function memberUsageTotals(
   );
 }
 
+type ManagedUsagePackAllocation =
+  UsagePackManagementResponse["allocations"][number];
+
+function managedUsagePackSelection(
+  allocation: ManagedUsagePackAllocation,
+): UsagePackUsd {
+  const pendingChange = allocation.pendingChange;
+  return pendingChange?.kind === "downgrade" &&
+    pendingChange.status === "scheduled" &&
+    pendingChange.targetUsagePackUsd !== null
+    ? pendingChange.targetUsagePackUsd
+    : allocation.usagePackUsd;
+}
+
 function managedMemberUsageTotals(
   management: UsagePackManagementResponse,
   catalog: readonly UsagePackCatalogItem[],
 ): MemberUsageTotals {
   return management.allocations.reduce<MemberUsageTotals>(
     (totals, allocation) => {
-      const item = usagePackCatalogItem(catalog, allocation.usagePackUsd);
+      const item = usagePackCatalogItem(
+        catalog,
+        managedUsagePackSelection(allocation),
+      );
       return {
         bonusCredits: totals.bonusCredits + item.bonusCredits,
         totalCredits: totals.totalCredits + item.totalCredits,
@@ -346,11 +368,13 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 
 function MemberUsageRow({
   catalog,
+  downgrade,
   member,
   onSelect,
   selection,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
+  readonly downgrade: MemberUsageDowngrade | null;
   readonly member: MemberDisplay;
   readonly onSelect: (selection: MemberUsageSelection) => void;
   readonly selection: MemberUsageSelection;
@@ -364,6 +388,26 @@ function MemberUsageRow({
       value: formatLocalizedNumber(item.bonusCredits),
     },
   );
+  const downgradeSummary = downgrade
+    ? downgrade.effectiveAt
+      ? i18n.t(
+          ($) => {
+            return $.billing.plans.usagePacks.management.downgradesToDate;
+          },
+          {
+            package: formatUsd(downgrade.targetUsagePackUsd, 0),
+            date: formatBillingDate(downgrade.effectiveAt),
+          },
+        )
+      : i18n.t(
+          ($) => {
+            return $.billing.plans.usagePacks.management.downgradesToPeriod;
+          },
+          {
+            package: formatUsd(downgrade.targetUsagePackUsd, 0),
+          },
+        )
+    : null;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)] items-center gap-3 px-4 py-3">
       <MemberIdentity member={member} />
@@ -398,8 +442,10 @@ function MemberUsageRow({
             })}
           </SelectContent>
         </Select>
-        <p className="mt-1 truncate text-[10px] text-muted-foreground">
-          {summary}
+        <p
+          className={`mt-1 truncate text-[10px] ${downgradeSummary ? "font-medium text-amber-600 dark:text-amber-300" : "text-muted-foreground"}`}
+        >
+          {downgradeSummary ?? summary}
         </p>
       </div>
     </div>
@@ -458,10 +504,12 @@ function MemberUsageFooter() {
 
 function MemberUsageConfiguration({
   catalog,
+  management,
   members,
   onSelectionChange,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
+  readonly management: UsagePackManagementResponse | null;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly onSelectionChange?: () => void;
 }) {
@@ -486,6 +534,32 @@ function MemberUsageConfiguration({
 
       {members.map((member, index) => {
         const selection = memberUsageSelection(selections, member.id);
+        const allocation = management?.allocations.find((candidate) => {
+          return candidate.memberId === member.id;
+        });
+        const pendingDowngrade =
+          allocation?.pendingChange?.kind === "downgrade" &&
+          allocation.pendingChange.targetUsagePackUsd !== null
+            ? {
+                effectiveAt:
+                  allocation.pendingChange.effectiveAt ??
+                  allocation.currentPeriodEnd ??
+                  management?.currentPeriodEnd ??
+                  null,
+                targetUsagePackUsd: allocation.pendingChange.targetUsagePackUsd,
+              }
+            : null;
+        const downgrade =
+          pendingDowngrade ??
+          (allocation && selection < allocation.usagePackUsd
+            ? {
+                effectiveAt:
+                  allocation.currentPeriodEnd ??
+                  management?.currentPeriodEnd ??
+                  null,
+                targetUsagePackUsd: selection,
+              }
+            : null);
         return (
           <div
             key={member.id}
@@ -493,6 +567,7 @@ function MemberUsageConfiguration({
           >
             <MemberUsageRow
               catalog={catalog}
+              downgrade={downgrade}
               member={member}
               selection={selection}
               onSelect={(usage) => {
@@ -1333,6 +1408,20 @@ function hasPendingUsagePackChange(
   });
 }
 
+function hasRestorableUsagePackDowngrade(
+  management: UsagePackManagementResponse,
+): boolean {
+  const pendingChanges = management.allocations.flatMap((allocation) => {
+    return allocation.pendingChange ? [allocation.pendingChange] : [];
+  });
+  return (
+    pendingChanges.length > 0 &&
+    pendingChanges.every((change) => {
+      return change.kind === "downgrade" && change.status === "scheduled";
+    })
+  );
+}
+
 function hasUsagePackConfigurationChange(
   management: UsagePackManagementResponse,
   plan: UsagePackPlan,
@@ -1343,6 +1432,23 @@ function hasUsagePackConfigurationChange(
     management.allocations.some((allocation) => {
       return (
         memberUsageSelection(selections, allocation.memberId) !==
+        managedUsagePackSelection(allocation)
+      );
+    })
+  );
+}
+
+function restoresScheduledUsagePackDowngrade(
+  management: UsagePackManagementResponse,
+  plan: UsagePackPlan,
+  selections: Readonly<Record<string, MemberUsageSelection>>,
+): boolean {
+  return (
+    management.tier === plan.tier &&
+    hasRestorableUsagePackDowngrade(management) &&
+    management.allocations.every((allocation) => {
+      return (
+        memberUsageSelection(selections, allocation.memberId) ===
         allocation.usagePackUsd
       );
     })
@@ -1363,6 +1469,30 @@ function hasUsagePackDowngrade(
       );
     })
   );
+}
+
+function managedSubscriptionActionLabel(args: {
+  readonly hasConfigurationChange: boolean;
+  readonly previewing: boolean;
+  readonly restoresScheduledDowngrade: boolean;
+}): string {
+  if (args.previewing) {
+    return i18n.t(($) => {
+      return $.billing.common.updating;
+    });
+  }
+  if (args.restoresScheduledDowngrade) {
+    return i18n.t(($) => {
+      return $.billing.common.restore;
+    });
+  }
+  return args.hasConfigurationChange
+    ? i18n.t(($) => {
+        return $.billing.common.confirm;
+      })
+    : i18n.t(($) => {
+        return $.billing.plans.currentPlan;
+      });
 }
 
 function ManagedSubscriptionOrderSummary({
@@ -1394,6 +1524,12 @@ function ManagedSubscriptionOrderSummary({
       : null;
   const hasPendingChange = hasPendingUsagePackChange(management);
   const hasConfigurationChange = hasUsagePackConfigurationChange(
+    management,
+    plan,
+    selections,
+  );
+  const hasScheduledDowngrade = hasRestorableUsagePackDowngrade(management);
+  const restoresScheduledDowngrade = restoresScheduledUsagePackDowngrade(
     management,
     plan,
     selections,
@@ -1443,7 +1579,7 @@ function ManagedSubscriptionOrderSummary({
           currentPeriodEnd={management.currentPeriodEnd}
         />
       )}
-      {hasPendingChange && (
+      {hasPendingChange && !hasScheduledDowngrade && (
         <p className="mt-3 text-xs text-muted-foreground">
           {i18n.t(($) => {
             return $.billing.plans.usagePacks.management.processing;
@@ -1456,8 +1592,8 @@ function ManagedSubscriptionOrderSummary({
         className="mt-4 h-10 w-full text-sm font-medium"
         disabled={
           !members ||
-          hasPendingChange ||
-          !hasConfigurationChange ||
+          (hasPendingChange && !restoresScheduledDowngrade) ||
+          (!hasConfigurationChange && !restoresScheduledDowngrade) ||
           previewing ||
           confirming
         }
@@ -1465,17 +1601,11 @@ function ManagedSubscriptionOrderSummary({
           detach(openPreview(), Reason.DomCallback);
         }}
       >
-        {previewing
-          ? i18n.t(($) => {
-              return $.billing.common.updating;
-            })
-          : !hasConfigurationChange
-            ? i18n.t(($) => {
-                return $.billing.plans.currentPlan;
-              })
-            : i18n.t(($) => {
-                return $.billing.common.confirm;
-              })}
+        {managedSubscriptionActionLabel({
+          hasConfigurationChange,
+          previewing,
+          restoresScheduledDowngrade,
+        })}
       </Button>
       <UsagePackSubscriptionChangeDialog
         confirming={confirming}
@@ -1583,7 +1713,11 @@ function PackageConfigurationStep({
       <PricingPageHeader onBack={onBack} step={2} />
       <PricingSteps current={2} />
       <SelectedPlanSummary plan={plan} onChange={onBack} />
-      <MemberUsageConfiguration catalog={catalog} members={members} />
+      <MemberUsageConfiguration
+        catalog={catalog}
+        management={management}
+        members={members}
+      />
       {management ? (
         <ManagedSubscriptionOrderSummary
           currentTotals={managedMemberUsageTotals(management, catalog)}
@@ -1674,7 +1808,7 @@ export function UsagePackPricingPage({
                     management.allocations.map((allocation) => {
                       return [
                         allocation.memberId,
-                        allocation.usagePackUsd,
+                        managedUsagePackSelection(allocation),
                       ] as const;
                     }),
                   )

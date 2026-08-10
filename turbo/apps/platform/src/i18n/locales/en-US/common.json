@@ -955,6 +955,8 @@
           "comparison": "Current and new subscription comparison",
           "current": "Current",
           "downgradeDescription": "The lower package starts at the next billing date. Existing credits remain available until they expire.",
+          "downgradesToDate": "Downgrades to {{package}} on {{date}}.",
+          "downgradesToPeriod": "Downgrades to {{package}} at the next billing date.",
           "immediateAmount": "Due now",
           "new": "New",
           "nextRecurring": "Next recurring total",

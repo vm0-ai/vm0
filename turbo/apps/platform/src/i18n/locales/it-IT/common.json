@@ -976,6 +976,8 @@
           "comparison": "Confronto tra abbonamento attuale e nuovo",
           "current": "Attuale",
           "downgradeDescription": "Il pacchetto inferiore inizia alla prossima data di fatturazione. I crediti esistenti restano disponibili fino alla scadenza.",
+          "downgradesToDate": "Passa a {{package}} il {{date}}.",
+          "downgradesToPeriod": "Passa a {{package}} alla prossima data di fatturazione.",
           "immediateAmount": "Da pagare ora",
           "new": "Nuovo",
           "nextRecurring": "Prossimo totale ricorrente",

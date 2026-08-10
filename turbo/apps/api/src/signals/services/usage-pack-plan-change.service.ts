@@ -83,7 +83,7 @@ type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 interface UsagePackSubscriptionChangeContext {
   readonly subscription: UsagePackSubscriptionRow;
   readonly allocations: readonly UsagePackAllocationRow[];
-  readonly openAllocationChanges: readonly { readonly id: string }[];
+  readonly openAllocationChanges: readonly UsagePackAllocationChangeRow[];
   readonly openSubscriptionChanges: readonly {
     readonly id: string;
     readonly status: UsagePackSubscriptionChangeRow["status"];
@@ -107,6 +107,7 @@ interface PreparedSubscriptionChange {
   readonly prorationTimestamp: number;
   readonly hasImmediateChanges: boolean;
   readonly hasScheduledChanges: boolean;
+  readonly restoreScheduleId: string | null;
 }
 
 interface PersistSubscriptionChangePreviewArgs {
@@ -194,7 +195,7 @@ async function loadUsagePackSubscriptionChangeContext(
           eq(usagePackAllocations.usagePackSubscriptionId, subscription.id),
         ),
       db
-        .select({ id: usagePackAllocationChanges.id })
+        .select()
         .from(usagePackAllocationChanges)
         .where(
           and(
@@ -210,8 +211,7 @@ async function loadUsagePackSubscriptionChangeContext(
               ne(usagePackAllocationChanges.status, "previewed"),
             ),
           ),
-        )
-        .limit(1),
+        ),
       db
         .select({
           id: usagePackSubscriptionChanges.id,
@@ -602,6 +602,24 @@ function planIsDowngrade(
   return source === "team" && target === "pro";
 }
 
+function restorableScheduleId(
+  changes: readonly UsagePackAllocationChangeRow[],
+): string | null {
+  const scheduleId = changes[0]?.stripeScheduleId;
+  if (!scheduleId) {
+    return null;
+  }
+  return changes.every((change) => {
+    return (
+      change.status === "scheduled" &&
+      change.kind === "downgrade" &&
+      change.stripeScheduleId === scheduleId
+    );
+  })
+    ? scheduleId
+    : null;
+}
+
 async function prepareSubscriptionChange(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -627,7 +645,6 @@ async function prepareSubscriptionChange(args: {
   }
   if (
     context.subscription.cancelAtPeriodEnd ||
-    context.openAllocationChanges.length > 0 ||
     context.openSubscriptionChanges.some((change) => {
       return change.status !== "previewed";
     })
@@ -641,10 +658,16 @@ async function prepareSubscriptionChange(args: {
   if (!allocationChanges) {
     return { status: "invalid_members" };
   }
-  if (
+  const sameConfiguration =
     context.subscription.tier === args.targetTier &&
-    allocationChanges.length === 0
-  ) {
+    allocationChanges.length === 0;
+  const restoreScheduleId = sameConfiguration
+    ? restorableScheduleId(context.openAllocationChanges)
+    : null;
+  if (context.openAllocationChanges.length > 0 && !restoreScheduleId) {
+    return { status: "conflict" };
+  }
+  if (sameConfiguration && !restoreScheduleId) {
     return { status: "same_configuration" };
   }
   const targetPlanPriceId =
@@ -661,7 +684,13 @@ async function prepareSubscriptionChange(args: {
     { expand: ["latest_invoice"] },
   );
   args.signal.throwIfAborted();
-  if (subscription.pending_update || stripeObjectId(subscription.schedule)) {
+  const stripeScheduleId = stripeObjectId(subscription.schedule);
+  if (
+    subscription.pending_update ||
+    (restoreScheduleId
+      ? stripeScheduleId !== restoreScheduleId
+      : stripeScheduleId !== null)
+  ) {
     return { status: "conflict" };
   }
   const planItem = validateStripeSubscription(context, subscription);
@@ -691,6 +720,7 @@ async function prepareSubscriptionChange(args: {
         allocationChanges.some((change) => {
           return change.kind === "downgrade";
         }),
+      restoreScheduleId,
     },
   };
 }
@@ -803,8 +833,9 @@ async function supersedePreviewedSubscriptionChanges(
 
 async function subscriptionChangeSnapshotMatches(
   tx: WriteTx,
-  context: UsagePackSubscriptionChangeContext,
+  prepared: PreparedSubscriptionChange,
 ): Promise<boolean> {
+  const { context } = prepared;
   const [lockedSubscription] = await tx
     .select()
     .from(usagePackSubscriptions)
@@ -822,7 +853,7 @@ async function subscriptionChangeSnapshotMatches(
   }
   const [openAllocation, openSubscription] = await Promise.all([
     tx
-      .select({ id: usagePackAllocationChanges.id })
+      .select()
       .from(usagePackAllocationChanges)
       .where(
         and(
@@ -834,8 +865,7 @@ async function subscriptionChangeSnapshotMatches(
             ...OPEN_ALLOCATION_CHANGE_STATUSES,
           ]),
         ),
-      )
-      .limit(1),
+      ),
     tx
       .select({ id: usagePackSubscriptionChanges.id })
       .from(usagePackSubscriptionChanges)
@@ -852,7 +882,23 @@ async function subscriptionChangeSnapshotMatches(
       )
       .limit(1),
   ]);
-  if (openAllocation.length > 0 || openSubscription.length > 0) {
+  const expectedOpenAllocationIds = new Set(
+    context.openAllocationChanges.map((change) => {
+      return change.id;
+    }),
+  );
+  const openAllocationMatches = prepared.restoreScheduleId
+    ? openAllocation.length === expectedOpenAllocationIds.size &&
+      openAllocation.every((change) => {
+        return (
+          expectedOpenAllocationIds.has(change.id) &&
+          change.status === "scheduled" &&
+          change.kind === "downgrade" &&
+          change.stripeScheduleId === prepared.restoreScheduleId
+        );
+      })
+    : openAllocation.length === 0;
+  if (!openAllocationMatches || openSubscription.length > 0) {
     return false;
   }
   const lockedAllocations = await tx
@@ -947,7 +993,7 @@ async function persistSubscriptionChangePreview(
       context.subscription.orgId,
       args.createdAt,
     );
-    if (!(await subscriptionChangeSnapshotMatches(tx, context))) {
+    if (!(await subscriptionChangeSnapshotMatches(tx, args.prepared))) {
       return null;
     }
     return await insertSubscriptionChangePreview(tx, args);
@@ -1002,11 +1048,18 @@ export async function previewUsagePackSubscriptionChange(
   );
   const stripe = getStripeClient();
   const [recurringPreview, immediatePreview] = await Promise.all([
-    stripe.invoices.createPreview({
-      subscription: prepared.subscription.id,
-      preview_mode: "recurring",
-      subscription_details: { items: finalItems },
-    }),
+    stripe.invoices.createPreview(
+      prepared.restoreScheduleId
+        ? {
+            subscription: prepared.subscription.id,
+            preview_mode: "recurring",
+          }
+        : {
+            subscription: prepared.subscription.id,
+            preview_mode: "recurring",
+            subscription_details: { items: finalItems },
+          },
+    ),
     prepared.hasImmediateChanges
       ? stripe.invoices.createPreview({
           subscription: prepared.subscription.id,
@@ -1683,6 +1736,112 @@ async function applyImmediateSubscriptionChange(
   };
 }
 
+function isScheduledSubscriptionRestore(
+  stored: StoredSubscriptionChange,
+): boolean {
+  return (
+    stored.root.sourceTier === stored.root.targetTier &&
+    stored.allocationChanges.length === 0
+  );
+}
+
+async function restoreScheduledSubscriptionChange(
+  db: Db,
+  stored: StoredSubscriptionChange,
+  subscription: Stripe.Subscription,
+  signal: AbortSignal,
+): Promise<UsagePackSubscriptionChangeConfirmResult> {
+  const scheduledChanges = await db
+    .select()
+    .from(usagePackAllocationChanges)
+    .where(
+      and(
+        eq(
+          usagePackAllocationChanges.usagePackSubscriptionId,
+          stored.subscription.id,
+        ),
+        eq(usagePackAllocationChanges.status, "scheduled"),
+      ),
+    );
+  signal.throwIfAborted();
+  const scheduleId = restorableScheduleId(scheduledChanges);
+  const stripeScheduleId = stripeObjectId(subscription.schedule);
+  if (
+    !scheduleId ||
+    (stripeScheduleId !== null && stripeScheduleId !== scheduleId)
+  ) {
+    await failApplyingSubscriptionChange(
+      db,
+      stored.root,
+      "scheduled_restore_conflict",
+    );
+    return { status: "conflict" };
+  }
+  if (stripeScheduleId === scheduleId) {
+    await getStripeClient().subscriptionSchedules.release(scheduleId);
+  }
+  const completedAt = nowDate();
+  await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, stored.root.orgId);
+    await tx
+      .update(usagePackAllocationChanges)
+      .set({
+        status: "failed",
+        failureReason: "scheduled_change_restored",
+        completedAt,
+        updatedAt: completedAt,
+      })
+      .where(
+        and(
+          inArray(
+            usagePackAllocationChanges.id,
+            scheduledChanges.map((change) => {
+              return change.id;
+            }),
+          ),
+          eq(usagePackAllocationChanges.status, "scheduled"),
+        ),
+      );
+    await tx
+      .update(usagePackSubscriptionChanges)
+      .set({
+        status: "completed",
+        effectiveAt: completedAt,
+        completedAt,
+        updatedAt: completedAt,
+      })
+      .where(
+        and(
+          eq(usagePackSubscriptionChanges.id, stored.root.id),
+          eq(usagePackSubscriptionChanges.status, "applying"),
+        ),
+      );
+    await tx
+      .update(orgMetadata)
+      .set({
+        cancelAtPeriodEnd: false,
+        pendingSubscriptionScheduleId: null,
+        pendingSubscriptionTargetTier: null,
+        pendingSubscriptionChangeAt: null,
+        updatedAt: completedAt,
+      })
+      .where(
+        and(
+          eq(orgMetadata.orgId, stored.root.orgId),
+          eq(orgMetadata.pendingSubscriptionScheduleId, scheduleId),
+        ),
+      );
+  });
+  return {
+    status: "confirmed",
+    response: {
+      status: "completed",
+      effectiveAt: completedAt.toISOString(),
+      hostedInvoiceUrl: null,
+    },
+  };
+}
+
 async function applyStoredSubscriptionChange(
   db: Db,
   stored: StoredSubscriptionChange,
@@ -1712,6 +1871,14 @@ async function applyStoredSubscriptionChange(
     openSubscriptionChanges: [],
   };
   const planItem = validateStripeSubscription(context, subscription);
+  if (isScheduledSubscriptionRestore(stored)) {
+    return await restoreScheduledSubscriptionChange(
+      db,
+      stored,
+      subscription,
+      signal,
+    );
+  }
   const hasPlanUpgrade = planIsUpgrade(
     stored.root.sourceTier,
     stored.root.targetTier,

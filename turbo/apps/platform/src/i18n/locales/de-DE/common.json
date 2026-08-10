@@ -955,6 +955,8 @@
           "comparison": "Vergleich des aktuellen und neuen Abonnements",
           "current": "Aktuell",
           "downgradeDescription": "Das kleinere Paket beginnt am nächsten Abrechnungstag. Vorhandene Credits bleiben bis zu ihrem Ablauf verfügbar.",
+          "downgradesToDate": "Downgrade auf {{package}} am {{date}}.",
+          "downgradesToPeriod": "Downgrade auf {{package}} zum nächsten Abrechnungsdatum.",
           "immediateAmount": "Jetzt fällig",
           "new": "Neu",
           "nextRecurring": "Nächster wiederkehrender Gesamtbetrag",

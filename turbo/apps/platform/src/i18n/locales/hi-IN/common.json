@@ -955,6 +955,8 @@
           "comparison": "वर्तमान और नई सदस्यता की तुलना",
           "current": "वर्तमान",
           "downgradeDescription": "कम पैकेज अगली बिलिंग तारीख से शुरू होगा। मौजूदा क्रेडिट अपनी समाप्ति तक उपलब्ध रहेंगे।",
+          "downgradesToDate": "{{date}} को {{package}} पर डाउनग्रेड होगा।",
+          "downgradesToPeriod": "अगली बिलिंग तारीख पर {{package}} पर डाउनग्रेड होगा।",
           "immediateAmount": "अभी देय",
           "new": "नया",
           "nextRecurring": "अगला आवर्ती कुल",

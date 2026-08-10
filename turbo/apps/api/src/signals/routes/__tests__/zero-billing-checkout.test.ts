@@ -2396,6 +2396,129 @@ describe("usage pack allocation management", () => {
     expect(state.grants).toHaveLength(4);
   });
 
+  it("restores a scheduled package downgrade", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 50 }]);
+    const currentSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 2000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_50,
+      targetPriceId: TEST_PRICE_USAGE_PACK_20,
+    });
+    const scheduleId = "sub_sched_usage_pack_restore";
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
+      id: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+    const downgradePreview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 20 }],
+        },
+      }),
+      [200],
+    );
+    const downgrade = await accept(
+      client.confirmSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { changeId: downgradePreview.body.changeId },
+      }),
+      [200],
+    );
+    expect(downgrade.body.status).toBe("scheduled");
+
+    const scheduledSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_50, 1]]),
+      fixture.billingPeriod,
+      { scheduleId },
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      scheduledSubscription,
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 5000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_50,
+      targetPriceId: TEST_PRICE_USAGE_PACK_50,
+    });
+    context.mocks.stripe.invoices.createPreview.mockClear();
+    const restorePreview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 50 }],
+        },
+      }),
+      [200],
+    );
+    expect(restorePreview.body).toStrictEqual(
+      expect.objectContaining({
+        sourceTier: "pro",
+        targetTier: "pro",
+        immediateAmountCents: 0,
+        nextRecurringAmountCents: 5000,
+      }),
+    );
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
+      subscription: fixture.subscriptionId,
+      preview_mode: "recurring",
+    });
+
+    context.mocks.stripe.subscriptionSchedules.release.mockResolvedValue({
+      id: scheduleId,
+    });
+    const restored = await accept(
+      client.confirmSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { changeId: restorePreview.body.changeId },
+      }),
+      [200],
+    );
+    expect(restored.body).toStrictEqual({
+      status: "completed",
+      effectiveAt: expect.any(String),
+      hostedInvoiceUrl: null,
+    });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.release,
+    ).toHaveBeenCalledWith(scheduleId);
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(state.allocations).toStrictEqual([
+      expect.objectContaining({ usagePackUsd: 50, status: "active" }),
+    ]);
+    expect(state.changes).toStrictEqual([
+      expect.objectContaining({
+        status: "failed",
+        sourceUsagePackUsd: 50,
+        targetUsagePackUsd: 20,
+      }),
+    ]);
+    const management = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(management.body.allocations[0]?.pendingChange).toBeNull();
+  });
+
   it("expires an unpaid pending subscription update", async () => {
     const initialNow = new Date("2035-02-16T00:00:00.000Z");
     mockNow(initialNow);

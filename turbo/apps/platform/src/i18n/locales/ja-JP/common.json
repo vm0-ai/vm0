@@ -955,6 +955,8 @@
           "comparison": "現在と新しいサブスクリプションの比較",
           "current": "現在",
           "downgradeDescription": "下位パッケージは次回請求日から開始します。既存のクレジットは有効期限まで利用できます。",
+          "downgradesToDate": "{{date}}に{{package}}へダウングレードします。",
+          "downgradesToPeriod": "次回請求日に{{package}}へダウングレードします。",
           "immediateAmount": "今回のお支払い",
           "new": "新規",
           "nextRecurring": "次回以降の合計",
