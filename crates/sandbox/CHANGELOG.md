@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.43](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.42...sandbox-v0.19.43) (2026-08-10)
+
+
+### Refactoring
+
+* **runner:** preserve process-control outcomes ([#26178](https://github.com/vm0-ai/vm0/issues/26178)) ([23ccd10](https://github.com/vm0-ai/vm0/commit/23ccd10daa8552532ebc1a355c89087c2e72656b))
+
 ## [0.19.42](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.41...sandbox-v0.19.42) (2026-08-10)
 
 
