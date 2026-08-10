@@ -1141,6 +1141,7 @@ def _current_firewall_authorization_classification(
         for key in (
             metadata_keys.HTTP_REQUEST_START_MONOTONIC,
             metadata_keys.WEBSOCKET_UPGRADE_REQUEST,
+            metadata_keys.AWS_SIGV4_REQUEST_INSPECTION,
         )
         if key in flow.metadata
     }

@@ -320,14 +320,22 @@ def test_sign_request_reuses_matching_inspection_without_changing_output() -> No
     headers = _header_auth_headers()
     inspection = inspect_request(url=url, headers=headers)
 
-    prepared_result = sign_request(
-        method="POST",
-        url=url,
-        headers=headers,
-        body=b"request-body",
-        credentials=_credentials(),
-        inspection=inspection,
-    )
+    real_urlsplit = runtime_url_parsing._uncached_urlsplit
+    with patch.object(
+        runtime_url_parsing,
+        "_uncached_urlsplit",
+        wraps=real_urlsplit,
+    ) as urlsplit:
+        prepared_result = sign_request(
+            method="POST",
+            url=url,
+            headers=headers,
+            body=b"request-body",
+            credentials=_credentials(),
+            inspection=inspection,
+        )
+
+    urlsplit.assert_not_called()
     ordinary_result = sign_request(
         method="POST",
         url=url,
