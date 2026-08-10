@@ -31,6 +31,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: ["connector:read", "connector:write"],
+  mcp: "connector:read",
   mail: "connector:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],
@@ -73,7 +74,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set(["recognize", "translate"]);
+const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize", "translate"]);
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
@@ -111,6 +112,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Check third-party service connections (GitHub, Slack, etc.)",
     load: async () => {
       return (await import("./commands/zero/connector")).zeroConnectorCommand;
+    },
+  },
+  {
+    name: "mcp",
+    description: "Use MCP Custom Connectors admitted to this Agent Run",
+    load: async () => {
+      return (await import("./commands/zero/mcp")).zeroMcpCommand;
     },
   },
   {
