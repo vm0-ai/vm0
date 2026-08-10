@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -446,10 +447,14 @@ impl GuestProcessCancelHandle {
 
 /// Backend-owned future that resolves when a process-control message is acknowledged.
 pub type GuestProcessControlFuture =
-    Pin<Box<dyn Future<Output = std::io::Result<ProcessControlAck>> + Send + 'static>>;
+    Pin<Box<dyn Future<Output = io::Result<ProcessControlAck>> + Send + 'static>>;
+
+/// Backend-owned future that preserves a process-control delivery outcome.
+pub type GuestProcessControlOutcomeFuture =
+    Pin<Box<dyn Future<Output = ProcessControlOutcome> + Send + 'static>>;
 
 type GuestProcessControlFn =
-    dyn Fn(String, Vec<u8>, Duration) -> GuestProcessControlFuture + Send + Sync + 'static;
+    dyn Fn(String, Vec<u8>, Duration) -> GuestProcessControlOutcomeFuture + Send + Sync + 'static;
 
 /// Acknowledgement returned by an operation-bound process-control sink.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -457,6 +462,116 @@ pub struct ProcessControlAck {
     /// Message id acknowledged by the provider for the submitted control
     /// payload.
     pub message_id: String,
+}
+
+/// Matched non-delivered status returned by a guest process-control sink.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessControlGuestStatus {
+    /// The supervised guest process is no longer active.
+    Inactive,
+    /// The request did not match the operation's control nonce.
+    NonceMismatch,
+    /// The supervised operation does not support process control.
+    Unsupported,
+    /// The guest rejected the control request.
+    Rejected,
+    /// The guest process-control sink is not connected.
+    SinkUnavailable,
+    /// The guest process-control sink timed out.
+    SinkTimeout,
+    /// The guest process-control queue is full.
+    QueueFull,
+    /// The guest process-control sink returned an error.
+    SinkError,
+}
+
+impl ProcessControlGuestStatus {
+    fn error_kind(self) -> io::ErrorKind {
+        match self {
+            Self::Inactive => io::ErrorKind::NotFound,
+            Self::NonceMismatch | Self::Rejected => io::ErrorKind::PermissionDenied,
+            Self::Unsupported => io::ErrorKind::Unsupported,
+            Self::SinkUnavailable => io::ErrorKind::NotConnected,
+            Self::SinkTimeout => io::ErrorKind::TimedOut,
+            Self::QueueFull => io::ErrorKind::WouldBlock,
+            Self::SinkError => io::ErrorKind::BrokenPipe,
+        }
+    }
+
+    fn default_error_message(self) -> &'static str {
+        match self {
+            Self::Inactive => "exec operation is not active",
+            Self::NonceMismatch => "exec operation nonce mismatch",
+            Self::Unsupported => "exec control is not supported by this operation",
+            Self::Rejected => "exec control request rejected",
+            Self::SinkUnavailable => "exec control sink is not connected",
+            Self::SinkTimeout => "exec control sink timed out",
+            Self::QueueFull => "exec control queue is full",
+            Self::SinkError => "exec control sink error",
+        }
+    }
+}
+
+/// Root cause for an unmatched process-control failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessControlFailureKind {
+    /// The provider operation failed without a confirmed backend crash.
+    Operation,
+    /// The provider backend crashed while the operation was in flight.
+    BackendCrashed,
+}
+
+/// Provider evidence about whether a failed request reached its write boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessControlWriteState {
+    /// The provider knows that the request did not reach its write boundary.
+    NotWritten,
+    /// The request reached its write boundary and may have reached the Guest.
+    PossiblyWritten,
+}
+
+/// Provider-neutral terminal outcome for one process-control request.
+#[derive(Debug)]
+pub enum ProcessControlOutcome {
+    /// The Guest delivered the request to the process-control sink.
+    Delivered(ProcessControlAck),
+    /// The Guest returned a matched non-delivered status.
+    GuestStatus {
+        /// Structured Guest status.
+        status: ProcessControlGuestStatus,
+        /// Guest-provided diagnostic text, which may be empty.
+        diagnostic: String,
+    },
+    /// The Guest returned a generic matched error response.
+    GuestError(String),
+    /// The provider failed without receiving a matched Guest response.
+    Failed {
+        /// Root cause for the provider failure.
+        kind: ProcessControlFailureKind,
+        /// Whether the request may have crossed the provider write boundary.
+        write_state: ProcessControlWriteState,
+        /// Original provider error retained for acknowledgement compatibility.
+        error: io::Error,
+    },
+}
+
+impl ProcessControlOutcome {
+    /// Return the delivered acknowledgement or convert other outcomes to legacy errors.
+    pub fn into_ack(self) -> io::Result<ProcessControlAck> {
+        match self {
+            Self::Delivered(ack) => Ok(ack),
+            Self::GuestStatus { status, diagnostic } => {
+                let message = if diagnostic.is_empty() {
+                    status.default_error_message().to_owned()
+                } else {
+                    diagnostic
+                };
+                Err(io::Error::new(status.error_kind(), message))
+            }
+            Self::GuestError(message) => Err(io::Error::other(message)),
+            Self::Failed { error, .. } => Err(error),
+        }
+    }
 }
 
 /// Cloneable handle for sending opaque control payloads to a live guest process.
@@ -471,9 +586,40 @@ impl GuestProcessControlHandle {
     /// The `sandbox` crate treats control payloads as opaque bytes. The
     /// provider and guest process define the payload schema and acknowledgement
     /// semantics for a given started process.
+    ///
+    /// Provider errors are conservatively exposed by the outcome methods as
+    /// [`ProcessControlWriteState::PossiblyWritten`]. Providers with precise
+    /// delivery evidence should use [`Self::new_with_outcome`].
     pub fn new<F>(control: F) -> Self
     where
         F: Fn(String, Vec<u8>, Duration) -> GuestProcessControlFuture + Send + Sync + 'static,
+    {
+        let control = Arc::new(control);
+        Self::new_with_outcome(move |message_id, payload, timeout| {
+            let control = Arc::clone(&control);
+            Box::pin(async move {
+                match control(message_id, payload, timeout).await {
+                    Ok(ack) => ProcessControlOutcome::Delivered(ack),
+                    Err(error) => ProcessControlOutcome::Failed {
+                        kind: ProcessControlFailureKind::Operation,
+                        write_state: ProcessControlWriteState::PossiblyWritten,
+                        error,
+                    },
+                }
+            })
+        })
+    }
+
+    /// Construct a handle from provider logic that preserves delivery outcomes.
+    ///
+    /// The provider must classify unmatched failures relative to its write
+    /// boundary and retain matched guest responses as structured outcomes.
+    pub fn new_with_outcome<F>(control: F) -> Self
+    where
+        F: Fn(String, Vec<u8>, Duration) -> GuestProcessControlOutcomeFuture
+            + Send
+            + Sync
+            + 'static,
     {
         Self {
             control: Arc::new(control),
@@ -490,9 +636,10 @@ impl GuestProcessControlHandle {
         message_id: &str,
         payload: &[u8],
         timeout: Duration,
-    ) -> std::io::Result<ProcessControlAck> {
-        self.control_owned(message_id.to_owned(), payload.to_vec(), timeout)
+    ) -> io::Result<ProcessControlAck> {
+        self.control_outcome(message_id, payload, timeout)
             .await
+            .into_ack()
     }
 
     /// Send an owned opaque control payload to the live guest process.
@@ -505,7 +652,36 @@ impl GuestProcessControlHandle {
         message_id: String,
         payload: Vec<u8>,
         timeout: Duration,
-    ) -> std::io::Result<ProcessControlAck> {
+    ) -> io::Result<ProcessControlAck> {
+        self.control_owned_outcome(message_id, payload, timeout)
+            .await
+            .into_ack()
+    }
+
+    /// Send an opaque control payload and preserve its terminal delivery outcome.
+    ///
+    /// Cancelling this future yields no outcome. A caller that needs to decide
+    /// whether retry is safe must retain ownership until the future resolves.
+    pub async fn control_outcome(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> ProcessControlOutcome {
+        self.control_owned_outcome(message_id.to_owned(), payload.to_vec(), timeout)
+            .await
+    }
+
+    /// Send owned control data and preserve its terminal delivery outcome.
+    ///
+    /// This has the same behavior as [`Self::control_outcome`] but transfers
+    /// ownership of `message_id` and `payload` to the provider callback.
+    pub async fn control_owned_outcome(
+        &self,
+        message_id: String,
+        payload: Vec<u8>,
+        timeout: Duration,
+    ) -> ProcessControlOutcome {
         (self.control)(message_id, payload, timeout).await
     }
 }
