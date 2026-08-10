@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import { testUsageSettlementContract } from "@vm0/api-contracts/contracts/test-usage-settlement";
-import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
 import {
@@ -25,14 +24,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
-  zeroInsightsContract,
-  type InsightsResponse,
-} from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
-import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import {
   zeroUsageRecordContract,
@@ -54,7 +47,6 @@ import { modelStatsContract, modelStatsRoutes } from "../../model-stats";
 import { testUsageSettlementRoutes } from "../../test-usage-settlement";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { usageRoutes } from "../../usage";
 import { zeroAttributionRoutes } from "../../zero-attribution";
 import { zeroBankingRoutes } from "../../zero-banking";
 import { zeroBillingAutoRechargeRoutes } from "../../zero-billing-auto-recharge";
@@ -70,12 +62,9 @@ import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../../zero-built-in-generation";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
 import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
-import { zeroInsightsRoutes } from "../../zero-insights";
 import { zeroMapsRoutes } from "../../zero-maps";
-import { zeroUsageInsightRoutes } from "../../zero-usage-insight";
 import { zeroUsageMembersRoutes } from "../../zero-usage-members";
 import { zeroUsageRecordRoutes } from "../../zero-usage-record";
-import { zeroUsageRunsRoutes } from "../../zero-usage-runs";
 import { zeroVideoIoGenerateRoutes } from "../../zero-video-io-generate";
 import { zeroVoiceIoQuotaRoutes } from "../../zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "../../zero-voice-io-speech";
@@ -499,14 +488,6 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async readUsage(actor: ApiTestUser) {
-      const client = setupApp({ context, routes: usageRoutes })(usageContract);
-      return await accept(
-        client.get({ headers: authenticate(actor), query: {} }),
-        [200],
-      );
-    },
-
     async readUsageMembers(
       actor: ApiTestUser,
       query: {
@@ -540,22 +521,6 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async readUsageRuns(
-      actor: ApiTestUser,
-      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
-    ) {
-      const client = setupApp({ context, routes: zeroUsageRunsRoutes })(
-        zeroUsageRunsContract,
-      );
-      return await accept(
-        client.get({
-          headers: authenticate(actor),
-          query: { page: 1, pageSize: 20 },
-        }),
-        statuses,
-      );
-    },
-
     async readUsageRecord(actor: ApiTestUser) {
       const client = setupApp({ context, routes: zeroUsageRecordRoutes })(
         zeroUsageRecordContract,
@@ -563,40 +528,16 @@ export function createBillingMediaApi(context: TestContext) {
       return await accept(
         client.get({
           headers: authenticate(actor),
-          query: { page: 1, pageSize: 20 },
+          query: {
+            page: 1,
+            pageSize: 20,
+            scope: "mine",
+            range: "24h",
+            tz: "UTC",
+          },
         }),
         [200],
       );
-    },
-
-    async readUsageInsight(
-      actor: ApiTestUser,
-      query: {
-        readonly range: "today" | "yesterday" | "day" | "7d" | "28d" | "30d";
-        readonly date?: string;
-        readonly groupBy: "source" | "agent";
-        readonly tz: string;
-      },
-      statuses: readonly (200 | 400 | 401 | 500)[],
-    ) {
-      const client = setupApp({ context, routes: zeroUsageInsightRoutes })(
-        zeroUsageInsightContract,
-      );
-      return await accept(
-        client.get({ headers: authenticate(actor), query }),
-        statuses,
-      );
-    },
-
-    async readInsights(actor: ApiTestUser): Promise<InsightsResponse> {
-      const client = setupApp({ context, routes: zeroInsightsRoutes })(
-        zeroInsightsContract,
-      );
-      const response = await accept(
-        client.get({ headers: authenticate(actor), query: { days: 7 } }),
-        [200],
-      );
-      return response.body;
     },
 
     async readModelRankings() {

@@ -15,12 +15,12 @@ import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import {
   attachUsageAllowance$,
   deleteUsageData$,
-  deleteUsageInsightFixture$,
+  deleteUsageStateFixture$,
   insertUsageEvent$,
   readUsageEventState$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+  seedUsageStateFixture$,
+  type UsageStateFixture,
+} from "./helpers/usage-state";
 
 const context = testContext();
 const store = createStore();
@@ -33,10 +33,10 @@ function client() {
 
 async function setupSettlementFixture(
   credits: number,
-): Promise<UsageInsightFixture> {
+): Promise<UsageStateFixture> {
   mockEnv("ENV", "development");
   const fixture = await store.set(
-    seedUsageInsightFixture$,
+    seedUsageStateFixture$,
     undefined,
     context.signal,
   );
@@ -53,7 +53,7 @@ async function setupSettlementFixture(
       { scope: "organization", id: fixture.orgId },
       context.signal,
     );
-    await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+    await store.set(deleteUsageStateFixture$, fixture, context.signal);
   });
   return fixture;
 }
@@ -80,7 +80,7 @@ async function seedSettlementPricing(): Promise<string> {
 }
 
 async function createGrant(args: {
-  readonly fixture: UsageInsightFixture;
+  readonly fixture: UsageStateFixture;
   readonly userId?: string;
   readonly grantType: "purchased" | "bonus";
   readonly idempotencyKey: string;
@@ -103,7 +103,7 @@ async function createGrant(args: {
 }
 
 async function insertCharge(args: {
-  readonly fixture: UsageInsightFixture;
+  readonly fixture: UsageStateFixture;
   readonly provider: string;
   readonly amount: number;
   readonly userId?: string;

@@ -10,9 +10,10 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Pre-aggregated daily usage statistics per user per org.
- * Populated by /api/cron/aggregate-usage to avoid real-time aggregation
- * queries on agent_runs for historical data.
+ * Compatibility-only declaration for the physical table retained by #26154.
+ * The outgoing API, cron jobs, and Clerk cleanup can still read or write this
+ * table during the observed ~102-minute DB/API rollout window. Remove with
+ * #26170 once the preceding API release and rollback/drain window have closed.
  */
 export const usageDaily = pgTable(
   "usage_daily",

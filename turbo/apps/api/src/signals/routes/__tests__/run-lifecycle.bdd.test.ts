@@ -13402,18 +13402,19 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     );
     await billing.processOrgUsageEvents(actor);
 
-    const usageRuns = await billing.readUsageRuns(actor, [200]);
-    if (usageRuns.status !== 200) {
-      throw new Error("Expected usage runs read to succeed");
-    }
-    expect(
-      usageRuns.body.runs.find((entry) => {
-        return entry.runId === run.runId;
+    const usageRecord = await billing.readUsageRecord(actor);
+    expect(usageRecord.body.totalCredits).toBe(17);
+    expect(usageRecord.body.rows).toContainEqual(
+      expect.objectContaining({
+        source: "chat",
+        runId: null,
+        title: "Deleted chats",
+        credits: 17,
       }),
-    ).toMatchObject({ creditsCharged: 17 });
+    );
   });
 
-  it("exposes usage runs, members, and processed usage events through public reads", async () => {
+  it("exposes usage records, members, and processed usage events through public reads", async () => {
     const api = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -13448,22 +13449,18 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     );
     await billing.processOrgUsageEvents(actor);
 
-    const usageRuns = await billing.readUsageRuns(actor, [200]);
-    if (usageRuns.status !== 200) {
-      throw new Error("Expected usage runs read to succeed");
-    }
-    const listedRun = usageRuns.body.runs.find((entry) => {
-      return entry.runId === run.runId;
+    const record = await billing.readUsageRecord(actor);
+    const listedUsage = record.body.rows.find((entry) => {
+      return entry.source === "chat";
     });
-    expect(listedRun).toBeDefined();
-    expect(listedRun?.prompt).toBe("generate usage");
-    expect(usageRuns.body.pagination.total).toBeGreaterThanOrEqual(1);
+    expect(listedUsage).toMatchObject({
+      runId: null,
+      title: "Deleted chats",
+    });
+    expect(record.body.pagination.total).toBeGreaterThanOrEqual(1);
 
     const members = await billing.readUsageMembers(actor);
     expect(members.body.period).not.toBeNull();
-
-    const record = await billing.readUsageRecord(actor);
-    expect(record.status).toBe(200);
   });
 
   it("aggregates usage members across organization users", async () => {
