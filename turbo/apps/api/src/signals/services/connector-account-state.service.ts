@@ -5,15 +5,15 @@ import { googleWorkspaceEventSubscriptionStates } from "@vm0/db/schema/google-wo
 import { mailDrafts } from "@vm0/db/schema/mail-draft";
 import { eq } from "drizzle-orm";
 
+import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
-import type { Db } from "../external/db";
 
 /**
  * Reconciles account-bound state while keeping the logical connector row and
  * durable product configuration intact.
  */
 export async function reconcileConnectorAccountState(
-  db: Db,
+  db: Tx,
   args: {
     readonly connectorId: string;
     readonly previousPrincipalId: string | null;

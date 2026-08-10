@@ -34,6 +34,7 @@ import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
 import { pgTextDecoder } from "../../lib/db-structured-result";
+import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import { bestEffort } from "../utils";
@@ -1640,7 +1641,7 @@ async function upsertPreparedConnectorTokenState(
 }
 
 async function loadExistingConnectorIdentity(
-  db: Db,
+  db: Tx,
   args: {
     readonly orgId: string;
     readonly userId: string;
@@ -1677,7 +1678,7 @@ async function loadExistingConnectorIdentity(
 
 async function commitConnectorTokenConnection(
   args: {
-    readonly db: Db;
+    readonly db: Tx;
     readonly orgId: string;
     readonly userId: string;
     readonly runtimeMethod: ConnectorRuntimeMethod;

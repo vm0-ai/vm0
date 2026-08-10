@@ -690,7 +690,7 @@ describe("POST /api/webhooks/gmail", () => {
     });
     const oldAccountEvent = await postGmailWebhook(
       gmailPushBody({
-        emailAddress: gmailEmail,
+        emailAddress: renamedGmailEmail,
         historyId: 102,
         messageId: "pubsub-old-account",
       }),

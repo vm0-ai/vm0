@@ -1,7 +1,7 @@
 import { connectors } from "@vm0/db/schema/connector";
 import { isNotNull, sql } from "drizzle-orm";
 
-import type { Db } from "../external/db";
+import type { Tx } from "../../lib/db-types";
 import { deleteConnectorOwnedCredentialRows } from "./connector-credential-storage-write.service";
 
 export interface StoredConnectorConnectionRow {
@@ -34,7 +34,7 @@ type ConnectorConnectionTarget =
     };
 
 interface ConnectorCredentialWriteContext {
-  readonly db: Db;
+  readonly db: Tx;
   readonly connectorId: string;
 }
 
@@ -69,7 +69,7 @@ function connectorConnectionSelection() {
 }
 
 async function upsertConnectorConnection(
-  db: Db,
+  db: Tx,
   args: Omit<ReplaceConnectorConnectionArgs, "writeCredentials">,
 ): Promise<StoredConnectorConnectionRow> {
   if (args.target.kind === "builtin") {
@@ -156,7 +156,7 @@ async function upsertConnectorConnection(
 }
 
 export async function replaceConnectorConnection(
-  db: Db,
+  db: Tx,
   args: ReplaceConnectorConnectionArgs,
   signal: AbortSignal,
 ): Promise<StoredConnectorConnectionRow> {
