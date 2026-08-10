@@ -4220,7 +4220,6 @@ interface CurrentCustomConnectorAuthRef {
   readonly kind: "secret" | "variable";
   readonly key: string;
   readonly encryptedValue: string | null;
-  readonly required: boolean;
 }
 
 async function loadCurrentCustomConnectorAuthRefs(args: {
@@ -4270,7 +4269,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       kind: value.kind,
       key: value.key,
       encryptedValue: value.encryptedValue,
-      required: field.required,
     });
   }
   for (const [secretName, field] of declaredFields) {
@@ -4283,7 +4281,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       kind: field.kind,
       key: field.key,
       encryptedValue: null,
-      required: field.required,
     });
   }
   if (runtime.connector.authMode === "oauth") {
@@ -4298,7 +4295,6 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       kind: "secret",
       key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
       encryptedValue: null,
-      required: true,
     });
   }
   return [...refs.values()];
@@ -4308,7 +4304,6 @@ type CurrentCustomConnectorSecretsResolution =
   | {
       readonly kind: "available";
       readonly secrets: Record<string, string>;
-      readonly missingOptionalSecrets: readonly string[];
       readonly expiresAt: number | null;
       readonly refreshedConnectors: readonly string[];
       readonly refreshedSecrets: readonly string[];
@@ -4320,23 +4315,17 @@ type CurrentCustomConnectorSecretsResolution =
 async function resolveCurrentCustomConnectorSecrets(args: {
   readonly db: Db;
   readonly auth: SandboxAuth;
-  readonly body: FirewallAuthBody;
   readonly authRefs: readonly CurrentCustomConnectorAuthRef[];
   readonly forceRefresh: boolean;
+  readonly referencedSecretKeys: ReadonlySet<string>;
 }): Promise<CurrentCustomConnectorSecretsResolution> {
-  const referenced = collectReferencedKeys(
-    args.body.authHeaders,
-    args.body.authBase,
-    args.body.authQuery,
-    args.body.authAwsSigv4,
-  );
   const refsByAlias = new Map(
     args.authRefs.map((ref) => {
       return [ref.secretName, ref] as const;
     }),
   );
   if (
-    [...referenced.secrets].some((alias) => {
+    [...args.referencedSecretKeys].some((alias) => {
       return !refsByAlias.has(alias);
     })
   ) {
@@ -4349,11 +4338,10 @@ async function resolveCurrentCustomConnectorSecrets(args: {
     args.auth.userId,
   );
   const currentSecrets: Record<string, string> = {};
-  const missingOptionalSecrets: string[] = [];
   let expiresAt: number | null = null;
   const refreshedConnectors: string[] = [];
   const refreshedSecrets: string[] = [];
-  for (const alias of referenced.secrets) {
+  for (const alias of args.referencedSecretKeys) {
     const ref = refsByAlias.get(alias);
     if (!ref) {
       return { kind: "unavailable" };
@@ -4400,11 +4388,7 @@ async function resolveCurrentCustomConnectorSecrets(args: {
       }
     }
     if (!encryptedValue) {
-      if (!ref.required) {
-        missingOptionalSecrets.push(alias);
-        continue;
-      }
-      return { kind: "unavailable" };
+      continue;
     }
     currentSecrets[alias] = await decryptStoredSecretValue(
       encryptedValue,
@@ -4414,62 +4398,9 @@ async function resolveCurrentCustomConnectorSecrets(args: {
   return {
     kind: "available",
     secrets: currentSecrets,
-    missingOptionalSecrets,
     expiresAt,
     refreshedConnectors,
     refreshedSecrets,
-  };
-}
-
-function templateReferencesMissingOptionalSecret(args: {
-  readonly template: string;
-  readonly missingOptionalSecrets: ReadonlySet<string>;
-  readonly kind: "header" | "simple";
-}): boolean {
-  let referencesMissingSecret = false;
-  const collect = (namespace: string, key: string): void => {
-    if (namespace === "secrets" && args.missingOptionalSecrets.has(key)) {
-      referencesMissingSecret = true;
-    }
-  };
-  if (args.kind === "header") {
-    collectHeaderReferencedKeys(args.template, collect);
-  } else {
-    collectSimpleReferencedKeys(args.template, collect);
-  }
-  return referencesMissingSecret;
-}
-
-function omitMissingOptionalCustomAuthEntries(args: {
-  readonly authHeaders: Record<string, string>;
-  readonly authQuery: Record<string, string> | undefined;
-  readonly missingOptionalSecrets: readonly string[];
-}): {
-  readonly authHeaders: Record<string, string>;
-  readonly authQuery: Record<string, string> | undefined;
-} {
-  const missingOptionalSecrets = new Set(args.missingOptionalSecrets);
-  return {
-    authHeaders: Object.fromEntries(
-      Object.entries(args.authHeaders).filter(([, template]) => {
-        return !templateReferencesMissingOptionalSecret({
-          template,
-          missingOptionalSecrets,
-          kind: "header",
-        });
-      }),
-    ),
-    authQuery: args.authQuery
-      ? Object.fromEntries(
-          Object.entries(args.authQuery).filter(([, template]) => {
-            return !templateReferencesMissingOptionalSecret({
-              template,
-              missingOptionalSecrets,
-              kind: "simple",
-            });
-          }),
-        )
-      : undefined,
   };
 }
 
@@ -4506,7 +4437,8 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
   }
   // The trusted host already matched this request against its effective
   // firewall. Runtime sync owns firewall changes; auth resolves only the
-  // referenced values from the connector's current credential storage.
+  // referenced values from the connector's current credential storage. Every
+  // referenced value must resolve even when its connector field is optional.
   const authRefs = await loadCurrentCustomConnectorAuthRefs({
     db: args.db,
     orgId,
@@ -4516,12 +4448,18 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
   if (!authRefs) {
     return connectorNotConfigured();
   }
+  const referenced = collectReferencedKeys(
+    args.body.authHeaders,
+    args.body.authBase,
+    args.body.authQuery,
+    args.body.authAwsSigv4,
+  );
   const currentSecrets = await resolveCurrentCustomConnectorSecrets({
     db: args.db,
     auth: args.auth,
-    body: args.body,
     authRefs,
     forceRefresh: args.body.forceRefresh === true,
+    referencedSecretKeys: referenced.secrets,
   });
   if (currentSecrets.kind === "unavailable") {
     return connectorNotConfigured();
@@ -4533,6 +4471,15 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
     return connectorReconnectRequired([args.customConnectorId]);
   }
 
+  const effectiveSecrets = applyCustomConnectorRoutingVariables({
+    currentSecrets: currentSecrets.secrets,
+    authRefs,
+    routingVariables: args.routingVariables,
+  });
+  if (hasMissingResolvedSecrets(effectiveSecrets, referenced.secrets)) {
+    return connectorNotConfigured();
+  }
+
   const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
     db: args.db,
     auth: args.auth,
@@ -4541,24 +4488,12 @@ async function resolveCurrentCustomConnectorFirewallAuth(args: {
   if ("status" in billableCacheExpiry) {
     return billableCacheExpiry;
   }
-  // Runtime sync keeps firewall shape definition-driven. Optional credential
-  // availability affects only the auth entries returned for this request.
-  const availableAuth = omitMissingOptionalCustomAuthEntries({
-    authHeaders: args.body.authHeaders,
-    authQuery: args.body.authQuery,
-    missingOptionalSecrets: currentSecrets.missingOptionalSecrets,
-  });
-  const effectiveSecrets = applyCustomConnectorRoutingVariables({
-    currentSecrets: currentSecrets.secrets,
-    authRefs,
-    routingVariables: args.routingVariables,
-  });
   const resolved = resolveTemplates({
-    authHeaders: availableAuth.authHeaders,
+    authHeaders: args.body.authHeaders,
     secrets: effectiveSecrets,
     vars: args.body.vars ?? {},
     authBase: args.body.authBase,
-    authQuery: availableAuth.authQuery,
+    authQuery: args.body.authQuery,
     authAwsSigv4: args.body.authAwsSigv4,
   });
   if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
