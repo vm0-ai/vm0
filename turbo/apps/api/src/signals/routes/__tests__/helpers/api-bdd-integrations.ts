@@ -757,7 +757,7 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async requestSendSlackMessageAsRun(
-      sandboxToken: string,
+      zeroToken: string,
       body: SendSlackMessageBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
@@ -767,7 +767,7 @@ export function createBddIntegrationApi(context: TestContext) {
       })(integrationsSlackMessageContract);
       return await accept(
         client.sendMessage({
-          headers: { authorization: `Bearer ${sandboxToken}` },
+          headers: { authorization: `Bearer ${zeroToken}` },
           body,
         }),
         statuses,
@@ -1656,7 +1656,7 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     async requestSendTelegramMessageAsRun(
-      sandboxToken: string,
+      zeroToken: string,
       body: SendTelegramMessageBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 502)[],
     ) {
@@ -1666,7 +1666,7 @@ export function createBddIntegrationApi(context: TestContext) {
       })(integrationsTelegramMessageContract);
       return await accept(
         client.sendMessage({
-          headers: { authorization: `Bearer ${sandboxToken}` },
+          headers: { authorization: `Bearer ${zeroToken}` },
           body,
         }),
         statuses,

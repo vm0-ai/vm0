@@ -7,11 +7,12 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-// Migration 0878 may lag a newly deployed API on the DB/API surface for the
-// observed maximum version-skew window of approximately 102 minutes. Drizzle
-// inserts every declared column, so standard runs temporarily use this
-// pre-expansion column set. Remove it after 0878 is deployed everywhere and
-// the API rollback window has closed. Follow-up: #26120.
+// Migration 0879_third_marvel_zombies may lag a newly deployed API on the
+// DB/API surface for the observed maximum version-skew window of approximately
+// 102 minutes. Drizzle inserts every declared column, so standard runs
+// temporarily use this pre-expansion column set. Remove it after
+// 0879_third_marvel_zombies is deployed everywhere and the API rollback window
+// has closed. Follow-up: #26120.
 export const zeroRunsBeforeCodexServiceTier = pgTable("zero_runs", {
   id: uuid("id").primaryKey(),
   triggerSource: varchar("trigger_source", { length: 20 }).notNull(),

@@ -5222,8 +5222,8 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log();
 }
 
-const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0877_add_zero_seo_pricing";
-const ZERO_RUN_CODEX_TIER_MIGRATION = "0878_married_leper_queen";
+const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0878_graceful_zzzax";
+const ZERO_RUN_CODEX_TIER_MIGRATION = "0879_third_marvel_zombies";
 
 async function validateZeroRunCodexTierExpansion(): Promise<void> {
   console.log("=== Validate zero-run Codex tier expansion ===\n");
@@ -5235,6 +5235,8 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
     atomicSessionId: "00000000-0000-4000-8000-000000087703",
     regularRunId: "00000000-0000-4000-8000-000000087704",
     atomicRunId: "00000000-0000-4000-8000-000000087705",
+    postExpansionLegacySessionId: "00000000-0000-4000-8000-000000087706",
+    postExpansionLegacyRunId: "00000000-0000-4000-8000-000000087707",
   } as const;
 
   await createDatabase(testDb);
@@ -5259,10 +5261,16 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
           INSERT INTO "agent_sessions" (
             "id", "user_id", "org_id", "agent_compose_id"
           ) VALUES
-            ($1, 'codex-tier-user', 'codex-tier-org', $3),
-            ($2, 'codex-tier-user', 'codex-tier-org', $3)
+            ($1, 'codex-tier-user', 'codex-tier-org', $4),
+            ($2, 'codex-tier-user', 'codex-tier-org', $4),
+            ($3, 'codex-tier-user', 'codex-tier-org', $4)
         `,
-        [fixture.regularSessionId, fixture.atomicSessionId, fixture.composeId],
+        [
+          fixture.regularSessionId,
+          fixture.atomicSessionId,
+          fixture.postExpansionLegacySessionId,
+          fixture.composeId,
+        ],
       );
 
       // Match insertLaunchRunRows: the production agent_runs insert followed
@@ -5350,6 +5358,20 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
       ]);
 
       await applyMigrationsUpToTag(client, ZERO_RUN_CODEX_TIER_MIGRATION);
+      // Match the outgoing API's old statement shape against the expanded DB.
+      await database.insert(agentRuns).values({
+        id: fixture.postExpansionLegacyRunId,
+        userId: "codex-tier-user",
+        orgId: "codex-tier-org",
+        sessionId: fixture.postExpansionLegacySessionId,
+        status: "pending",
+        prompt: "post-expansion legacy migration compatibility",
+      });
+      await database.insert(zeroRunsBeforeCodexServiceTier).values({
+        id: fixture.postExpansionLegacyRunId,
+        triggerSource: "web",
+        selectedModel: "gpt-5.6-sol",
+      });
       await database
         .update(zeroRuns)
         .set({ codexServiceTier: "fast" })
@@ -5361,7 +5383,9 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
           codexServiceTier: rolloutSafeTier,
         })
         .from(zeroRuns)
-        .where(inArray(zeroRuns.id, runIds))
+        .where(
+          inArray(zeroRuns.id, [...runIds, fixture.postExpansionLegacyRunId]),
+        )
         .orderBy(zeroRuns.id);
       assert.deepEqual(afterExpansion, [
         {
@@ -5374,6 +5398,11 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
           selectedModel: "gpt-5.6-sol",
           codexServiceTier: null,
         },
+        {
+          id: fixture.postExpansionLegacyRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
       ]);
     } finally {
       await client.end();
@@ -5383,7 +5412,7 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
   }
 
   console.log(
-    "   ✅ regular and atomic old-schema writes plus rollout-safe reads remain legal\n",
+    "   ✅ old-schema writes before and after expansion plus rollout-safe reads remain legal\n",
   );
 }
 

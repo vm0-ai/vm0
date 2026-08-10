@@ -11,11 +11,12 @@ interface ZeroRunModelSelection {
   readonly codexServiceTier: CodexServiceTier | null;
 }
 
-// Migration 0878 may lag a newly deployed API on the DB/API surface for the
-// observed maximum version-skew window of approximately 102 minutes. Projecting
-// the row to JSON keeps footer reads legal on the old schema because a missing
-// key yields null instead of PostgreSQL 42703. Remove this after 0878 is
-// deployed everywhere and the API rollback window has closed. Follow-up: #26120.
+// Migration 0879_third_marvel_zombies may lag a newly deployed API on the
+// DB/API surface for the observed maximum version-skew window of approximately
+// 102 minutes. Projecting the row to JSON keeps footer reads legal on the old
+// schema because a missing key yields null instead of PostgreSQL 42703. Remove
+// this after 0879_third_marvel_zombies is deployed everywhere and the API
+// rollback window has closed. Follow-up: #26120.
 const rolloutSafeCodexServiceTierDecoder = zodDriverValueDecoder(
   z.enum(["fast"]).nullable(),
 );

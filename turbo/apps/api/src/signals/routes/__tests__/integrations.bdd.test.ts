@@ -4125,9 +4125,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const fastClaim = await runs.claimRunnerJob(fastRunId);
     expect(fastClaim.cliAgentType).toBe("codex");
     expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    const fastZeroToken = fastClaim.environment?.ZERO_TOKEN;
+    if (!fastZeroToken) {
+      throw new Error("Expected the Slack Fast run to expose ZERO_TOKEN");
+    }
 
     const agentSend = await integrations.requestSendSlackMessageAsRun(
-      fastClaim.sandboxToken,
+      fastZeroToken,
       {
         channel: channelId,
         text: "agent-initiated fast message",
@@ -5134,9 +5138,13 @@ describe("INT-02: Telegram integration", () => {
     const claim = await runs.claimRunnerJob(runId);
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBe("fast");
+    const zeroToken = claim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the Telegram Fast run to expose ZERO_TOKEN");
+    }
 
     const agentSend = await integrations.requestSendTelegramMessageAsRun(
-      claim.sandboxToken,
+      zeroToken,
       {
         botId,
         chatId: String(dmChatId),
