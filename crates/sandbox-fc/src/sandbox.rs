@@ -8,13 +8,14 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessCancelHandle,
-    GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
-    ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
-    SandboxError, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
-    SandboxFinalExecParkStage, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver,
-    SandboxStartStage, StartProcessRequest, WriteFileEntry,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestMemorySnapshot,
+    GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
+    ProcessControlAck, ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
+    Sandbox, SandboxConfig, SandboxError, SandboxFinalExecParkObserver,
+    SandboxFinalExecParkOutcome, SandboxFinalExecParkStage, SandboxIdleTransition,
+    SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
+    SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
+    SevereMemoryRetentionDiagnostics, StartProcessRequest, WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -84,6 +85,8 @@ const PROCESS_LOG_READER_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Timeout for guest lifecycle acknowledgements during same-session park/unpark.
 const GUEST_PARK_LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Independent deadline for terminal diagnostics on an already-severe park.
+const GUEST_MEMORY_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct SandboxStartTiming<'a> {
     observer: Option<&'a mut dyn SandboxStartObserver>,
@@ -1786,6 +1789,7 @@ impl FirecrackerSandbox {
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
         let final_exec_guest = Arc::clone(&guest);
+        let physical_park_guest = Arc::clone(&guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
         let final_exec_request = exec_capture_request(request, timeout_ms, diagnostic_label);
@@ -1832,18 +1836,19 @@ impl FirecrackerSandbox {
                     guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
                 },
                 || {
-                    park_inner(
+                    park_inner_with_guest(
                         &mut self.is_parked,
                         self.config.resources.memory_mb,
                         self.runtime.balloon_mut(),
                         &api_sock,
                         &id,
+                        physical_park_guest,
                     )
                 },
             )
             .await?;
         self.park_fence = Some(normal_operations_fence);
-        self.park_outcome = Some(park_outcome);
+        self.park_outcome = Some(park_outcome.clone());
         Ok(SandboxFinalExecParkOutcome {
             exec_result,
             park_outcome,
@@ -2043,7 +2048,7 @@ impl Sandbox for FirecrackerSandbox {
                 self.park_coordinator.mark_dirty(DirtyReason::new(message));
                 return Err(idle_transition_error(SandboxIdleTransition::Park, message));
             }
-            let Some(outcome) = self.park_outcome else {
+            let Some(outcome) = self.park_outcome.clone() else {
                 let message = "sandbox is parked without a recorded park outcome";
                 self.park_coordinator.mark_dirty(DirtyReason::new(message));
                 return Err(idle_transition_error(SandboxIdleTransition::Park, message));
@@ -2055,6 +2060,7 @@ impl Sandbox for FirecrackerSandbox {
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
         let fence_guest = Arc::clone(&guest);
+        let physical_park_guest = Arc::clone(&guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
         let (normal_operations_fence, outcome) = park_with_ready_for_park(
@@ -2081,18 +2087,19 @@ impl Sandbox for FirecrackerSandbox {
                 guest.quiesce_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
             },
             || {
-                park_inner(
+                park_inner_with_guest(
                     &mut self.is_parked,
                     self.config.resources.memory_mb,
                     self.runtime.balloon_mut(),
                     &api_sock,
                     &id,
+                    physical_park_guest,
                 )
             },
         )
         .await?;
         self.park_fence = Some(normal_operations_fence);
-        self.park_outcome = Some(outcome);
+        self.park_outcome = Some(outcome.clone());
         Ok(outcome)
     }
 
@@ -3195,6 +3202,11 @@ struct BalloonSettleSummary {
     last_free_memory_bytes: Option<i64>,
     last_available_memory_bytes: Option<i64>,
     last_total_memory_bytes: Option<i64>,
+    last_swap_in_bytes: Option<i64>,
+    last_swap_out_bytes: Option<i64>,
+    last_major_faults: Option<i64>,
+    last_minor_faults: Option<i64>,
+    last_disk_caches_bytes: Option<i64>,
 }
 
 impl BalloonSettleSummary {
@@ -3214,6 +3226,11 @@ impl BalloonSettleSummary {
             last_free_memory_bytes: None,
             last_available_memory_bytes: None,
             last_total_memory_bytes: None,
+            last_swap_in_bytes: None,
+            last_swap_out_bytes: None,
+            last_major_faults: None,
+            last_minor_faults: None,
+            last_disk_caches_bytes: None,
         }
     }
 
@@ -3235,6 +3252,11 @@ impl BalloonSettleSummary {
         self.last_free_memory_bytes = stats.free_memory;
         self.last_available_memory_bytes = stats.available_memory;
         self.last_total_memory_bytes = stats.total_memory;
+        self.last_swap_in_bytes = stats.swap_in;
+        self.last_swap_out_bytes = stats.swap_out;
+        self.last_major_faults = stats.major_faults;
+        self.last_minor_faults = stats.minor_faults;
+        self.last_disk_caches_bytes = stats.disk_caches;
         deficit_mib
     }
 
@@ -3321,7 +3343,30 @@ impl BalloonSettleSummary {
 
     fn park_outcome(&self) -> SandboxParkOutcome {
         if self.is_severe_deficit() {
-            SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+            SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention(
+                Box::new(SevereMemoryRetentionDiagnostics {
+                    requested_target_mib: self.requested_target_mib,
+                    first_observed_target_mib: self.first_observed_target_mib,
+                    observed_target_mib: self.last_observed_target_mib,
+                    target_observed: self.target_observed,
+                    first_actual_mib: self.first_actual_mib,
+                    actual_mib: self.last_actual_mib,
+                    max_actual_mib: self.max_actual_mib,
+                    deficit_mib: self.last_deficit_mib,
+                    actual_delta_mib: self.actual_delta_mib(),
+                    elapsed_ms: self.elapsed_ms(),
+                    sample_count: self.sample_count,
+                    reported_free_memory_bytes: self.last_free_memory_bytes,
+                    reported_available_memory_bytes: self.last_available_memory_bytes,
+                    reported_total_memory_bytes: self.last_total_memory_bytes,
+                    reported_swap_in_bytes: self.last_swap_in_bytes,
+                    reported_swap_out_bytes: self.last_swap_out_bytes,
+                    reported_major_faults: self.last_major_faults,
+                    reported_minor_faults: self.last_minor_faults,
+                    reported_disk_caches_bytes: self.last_disk_caches_bytes,
+                    guest_memory_snapshot: None,
+                }),
+            ))
         } else {
             SandboxParkOutcome::Reusable
         }
@@ -3350,7 +3395,7 @@ fn log_balloon_settle_timeout(
     tolerance_mib: u32,
     settle_timeout: Duration,
     summary: &BalloonSettleSummary,
-    outcome: SandboxParkOutcome,
+    outcome: &SandboxParkOutcome,
 ) {
     warn!(
         id = %log_id,
@@ -3397,7 +3442,7 @@ fn log_balloon_settle_progress_grace(
     );
 }
 
-fn park_admission_action(outcome: SandboxParkOutcome) -> &'static str {
+fn park_admission_action(outcome: &SandboxParkOutcome) -> &'static str {
     match outcome {
         SandboxParkOutcome::Reusable => "reuse",
         SandboxParkOutcome::NonReusable(_) => "reject_and_destroy",
@@ -3437,7 +3482,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     tolerance_mib,
                     settle_timeout,
                     &summary,
-                    outcome,
+                    &outcome,
                 );
                 return outcome;
             }
@@ -3551,7 +3596,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     reported_available_mib = ?summary.reported_available_mib(),
                     reported_total_mib = ?summary.reported_total_mib(),
                     reason = summary.reason(),
-                    admission_action = park_admission_action(outcome),
+                    admission_action = park_admission_action(&outcome),
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
@@ -3565,7 +3610,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     tolerance_mib,
                     settle_timeout,
                     &summary,
-                    outcome,
+                    &outcome,
                 );
                 return outcome;
             }
@@ -3584,12 +3629,62 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
     }
 }
 
-async fn park_inner(
+fn guest_memory_snapshot(snapshot: vsock_proto::MemorySnapshot) -> GuestMemorySnapshot {
+    GuestMemorySnapshot {
+        mem_total_bytes: snapshot.mem_total_bytes,
+        mem_free_bytes: snapshot.mem_free_bytes,
+        mem_available_bytes: snapshot.mem_available_bytes,
+        buffers_bytes: snapshot.buffers_bytes,
+        cached_bytes: snapshot.cached_bytes,
+        anon_pages_bytes: snapshot.anon_pages_bytes,
+        mapped_bytes: snapshot.mapped_bytes,
+        dirty_bytes: snapshot.dirty_bytes,
+        writeback_bytes: snapshot.writeback_bytes,
+        shmem_bytes: snapshot.shmem_bytes,
+        slab_bytes: snapshot.slab_bytes,
+        slab_reclaimable_bytes: snapshot.slab_reclaimable_bytes,
+        slab_unreclaimable_bytes: snapshot.slab_unreclaimable_bytes,
+        unevictable_bytes: snapshot.unevictable_bytes,
+        kernel_stack_bytes: snapshot.kernel_stack_bytes,
+        page_tables_bytes: snapshot.page_tables_bytes,
+        swap_total_bytes: snapshot.swap_total_bytes,
+        swap_free_bytes: snapshot.swap_free_bytes,
+    }
+}
+
+async fn terminal_guest_memory_snapshot(
+    guest: &Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    log_id: &str,
+) -> Option<GuestMemorySnapshot> {
+    let Some(guest) = guest.lock().await.as_ref().cloned() else {
+        warn!(
+            id = %log_id,
+            reason = "guest_unavailable",
+            "guest memory snapshot unavailable after severe balloon retention"
+        );
+        return None;
+    };
+    match guest.memory_snapshot(GUEST_MEMORY_SNAPSHOT_TIMEOUT).await {
+        Ok(snapshot) => Some(guest_memory_snapshot(snapshot)),
+        Err(error) => {
+            warn!(
+                id = %log_id,
+                reason = "snapshot_request_failed",
+                %error,
+                "guest memory snapshot unavailable after severe balloon retention"
+            );
+            None
+        }
+    }
+}
+
+async fn park_inner_with_guest(
     is_parked: &mut bool,
     memory_mb: u32,
     balloon_controller: &mut Option<balloon::ControllerHandle>,
     api_sock: &std::path::Path,
     log_id: &str,
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
 ) -> sandbox::Result<SandboxParkOutcome> {
     if *is_parked {
         return Ok(SandboxParkOutcome::Reusable);
@@ -3633,7 +3728,18 @@ async fn park_inner(
         // pausing vCPUs. The guest balloon driver needs running vCPUs to
         // process the inflate — pausing immediately would negate the memory
         // savings.
-        wait_for_balloon(&client, target, log_id).await
+        match wait_for_balloon(&client, target, log_id).await {
+            SandboxParkOutcome::NonReusable(
+                SandboxParkNonReusableReason::SevereMemoryRetention(mut diagnostics),
+            ) => {
+                diagnostics.guest_memory_snapshot =
+                    terminal_guest_memory_snapshot(&guest, log_id).await;
+                SandboxParkOutcome::NonReusable(
+                    SandboxParkNonReusableReason::SevereMemoryRetention(diagnostics),
+                )
+            }
+            outcome => outcome,
+        }
     } else {
         SandboxParkOutcome::Reusable
     };
@@ -3654,17 +3760,36 @@ async fn park_inner(
         info!(
             id = %log_id,
             target_mib = target,
-            admission_action = park_admission_action(outcome),
+            admission_action = park_admission_action(&outcome),
             "sandbox parked (balloon settled, vCPUs paused)"
         );
     } else {
         info!(
             id = %log_id,
-            admission_action = park_admission_action(outcome),
+            admission_action = park_admission_action(&outcome),
             "sandbox parked (vCPUs paused, balloon skipped)"
         );
     }
     Ok(outcome)
+}
+
+#[cfg(test)]
+async fn park_inner(
+    is_parked: &mut bool,
+    memory_mb: u32,
+    balloon_controller: &mut Option<balloon::ControllerHandle>,
+    api_sock: &std::path::Path,
+    log_id: &str,
+) -> sandbox::Result<SandboxParkOutcome> {
+    park_inner_with_guest(
+        is_parked,
+        memory_mb,
+        balloon_controller,
+        api_sock,
+        log_id,
+        Arc::new(tokio::sync::Mutex::new(None)),
+    )
+    .await
 }
 
 async fn unpark_inner(

@@ -77,6 +77,12 @@ pub const MSG_WRITE_FILES: u8 = 0x12;
 /// Guest-to-host multi-file write completion response.
 pub const MSG_WRITE_FILES_RESULT: u8 = 0x13;
 
+/// Host-to-guest request for aggregate memory counters while fully quiesced.
+pub const MSG_MEMORY_SNAPSHOT: u8 = 0x14;
+
+/// Guest-to-host fixed-width aggregate memory snapshot response.
+pub const MSG_MEMORY_SNAPSHOT_RESULT: u8 = 0x15;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -130,6 +136,12 @@ mod tests {
             ("MSG_EXEC_CONTROL_RESULT", MSG_EXEC_CONTROL_RESULT, 0x11),
             ("MSG_WRITE_FILES", MSG_WRITE_FILES, 0x12),
             ("MSG_WRITE_FILES_RESULT", MSG_WRITE_FILES_RESULT, 0x13),
+            ("MSG_MEMORY_SNAPSHOT", MSG_MEMORY_SNAPSHOT, 0x14),
+            (
+                "MSG_MEMORY_SNAPSHOT_RESULT",
+                MSG_MEMORY_SNAPSHOT_RESULT,
+                0x15,
+            ),
             ("MSG_ERROR", MSG_ERROR, 0xFF),
         ];
 

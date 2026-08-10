@@ -20,7 +20,7 @@
 //!
 //! ## Message Types
 //!
-//! Non-error message types currently occupy the contiguous range `0x00..=0x13`
+//! Non-error message types currently occupy the contiguous range `0x00..=0x15`
 //! in allocation order. Existing values are stable wire assignments: do not
 //! renumber or reuse them. Allocate new non-error messages at the next unused
 //! value below `0xFF`, even when related operations are not adjacent. `0xFF` is
@@ -49,6 +49,8 @@
 //! | 0x11 | G→H       | exec_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
 //! | 0x12 | H→G       | write_files       | `[2B file_count][file_entry]...`, where each file entry is `[2B path_len][path][4B content_len][content]` |
 //! | 0x13 | G→H       | write_files_result | `[1B success][2B error_len][error]` |
+//! | 0x14 | H→G       | memory_snapshot | (empty) |
+//! | 0x15 | G→H       | memory_snapshot_result | eighteen big-endian `[8B counter_bytes]` fields; see [`MemorySnapshot`] |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
 //! Request-scoped operation messages must use non-zero sequence numbers. This
@@ -175,6 +177,9 @@ pub use payloads::exec_operation::{
     encode_exec_start, encode_exec_start_with_expected_exit_codes, encode_exec_started,
     validate_exec_control,
 };
+pub use payloads::memory_snapshot::{
+    MEMORY_SNAPSHOT_PAYLOAD_SIZE, MemorySnapshot, decode_memory_snapshot,
+};
 pub use payloads::write_file::{
     WriteFileBatchEntry, decode_write_file, decode_write_file_result, decode_write_files,
     decode_write_files_result, encode_private_write_file, encode_private_write_file_frame_into,
@@ -186,8 +191,9 @@ pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
     MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
-    MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT,
-    WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
+    MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    MSG_WRITE_FILES, MSG_WRITE_FILES_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
+    WRITE_FILE_FLAG_PRIVATE, WRITE_FILE_FLAG_SUDO,
 };

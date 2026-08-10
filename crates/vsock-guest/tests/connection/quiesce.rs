@@ -1,9 +1,10 @@
 use std::io::Write;
 
 use vsock_proto::{
-    self, ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_WRITE_FILE,
-    MSG_WRITE_FILES, WriteFileBatchEntry,
+    self, ExecOutputPolicy, ExecTermination, MSG_EXEC_START, MSG_MEMORY_SNAPSHOT,
+    MSG_MEMORY_SNAPSHOT_RESULT, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
+    MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
+    WriteFileBatchEntry,
 };
 
 use super::support::*;
@@ -69,6 +70,79 @@ fn quiesce_busy_fences_new_exec_operations_until_pending_exec_finishes() {
     let (_chunks, result) = read_exec_result(&mut host_stream, 206);
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert_eq!(result.stdout, Some(b"ok".to_vec()));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn memory_snapshot_requires_fully_quiesced_connection() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 207, &[]);
+    assert_error_contains(
+        &mut host_stream,
+        207,
+        "guest operations are not fully quiesced",
+    );
+
+    send_exec_start(
+        &mut host_stream,
+        208,
+        "sleep 60",
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
+        ExecOutputPolicy::Capture { limit_bytes: 64 },
+        ExecOutputPolicy::Discard,
+    );
+    send_quiesce_operations(&mut host_stream, 209);
+    assert_error_contains(&mut host_stream, 209, "guest operations still pending: 1");
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 210, &[]);
+    assert_error_contains(
+        &mut host_stream,
+        210,
+        "guest operations are not fully quiesced",
+    );
+
+    send_exec_cancel(&mut host_stream, 208);
+    let (_chunks, cancelled) = read_exec_result(&mut host_stream, 208);
+    assert_eq!(cancelled.termination, ExecTermination::Cancelled);
+
+    send_quiesce_operations(&mut host_stream, 211);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 212, &[]);
+    let response = read_message(&mut host_stream);
+    assert_eq!(response.msg_type, MSG_MEMORY_SNAPSHOT_RESULT);
+    assert_eq!(response.seq, 212);
+    let snapshot = vsock_proto::decode_memory_snapshot(&response.payload).unwrap();
+    assert!(snapshot.mem_total_bytes > 0);
+    assert!(snapshot.mem_available_bytes <= snapshot.mem_total_bytes);
+    assert!(snapshot.swap_free_bytes <= snapshot.swap_total_bytes);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn malformed_memory_snapshot_request_preserves_quiesced_state() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_quiesce_operations(&mut host_stream, 213);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 214, b"unexpected");
+    assert_error_contains(
+        &mut host_stream,
+        214,
+        "memory_snapshot payload must be empty",
+    );
+
+    send_control_payload(&mut host_stream, MSG_MEMORY_SNAPSHOT, 215, &[]);
+    let response = read_message(&mut host_stream);
+    assert_eq!(response.msg_type, MSG_MEMORY_SNAPSHOT_RESULT);
+    assert_eq!(response.seq, 215);
+    vsock_proto::decode_memory_snapshot(&response.payload).unwrap();
 
     finish_guest_connection(handle, host_stream);
 }

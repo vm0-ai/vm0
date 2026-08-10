@@ -11,11 +11,51 @@ use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 use vsock_proto::{
     Decoder, ExecControlStatus, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    RawMessage,
+    MSG_EXEC_CONTROL_RESULT, MSG_MEMORY_SNAPSHOT, MSG_MEMORY_SNAPSHOT_RESULT, MSG_PING, MSG_PONG,
+    MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MemorySnapshot, RawMessage,
 };
 
 struct TestNormalOperationFence;
+
+fn test_severe_memory_retention_diagnostics() -> SevereMemoryRetentionDiagnostics {
+    SevereMemoryRetentionDiagnostics {
+        requested_target_mib: 0,
+        first_observed_target_mib: None,
+        observed_target_mib: None,
+        target_observed: false,
+        first_actual_mib: None,
+        actual_mib: None,
+        max_actual_mib: None,
+        deficit_mib: None,
+        actual_delta_mib: None,
+        elapsed_ms: 0,
+        sample_count: 0,
+        reported_free_memory_bytes: None,
+        reported_available_memory_bytes: None,
+        reported_total_memory_bytes: None,
+        reported_swap_in_bytes: None,
+        reported_swap_out_bytes: None,
+        reported_major_faults: None,
+        reported_minor_faults: None,
+        reported_disk_caches_bytes: None,
+        guest_memory_snapshot: None,
+    }
+}
+
+fn test_severe_memory_retention_outcome() -> SandboxParkOutcome {
+    SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention(
+        Box::new(test_severe_memory_retention_diagnostics()),
+    ))
+}
+
+fn expect_severe_memory_retention(outcome: SandboxParkOutcome) -> SevereMemoryRetentionDiagnostics {
+    match outcome {
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention(
+            diagnostics,
+        )) => *diagnostics,
+        other => panic!("expected severe memory retention, got {other:?}"),
+    }
+}
 
 #[derive(Default)]
 struct RecordingFinalExecParkObserver {
@@ -197,6 +237,50 @@ async fn attach_mock_shutdown_guest(sandbox: &FirecrackerSandbox) -> UnixStream 
     mock_vsock_handshake(&mut guest, &mut decoder).await;
     *sandbox.guest.lock().await = Some(Arc::new(host_task.await.unwrap()));
     guest
+}
+
+async fn connected_mock_guest() -> (Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>, UnixStream) {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let vsock_path = temp_dir
+        .path()
+        .join("memory-snapshot")
+        .to_string_lossy()
+        .into_owned();
+    let wait_vsock_path = vsock_path.clone();
+    let host_task = tokio::spawn(async move {
+        VsockHost::wait_for_connection(&wait_vsock_path, Duration::from_secs(5))
+            .await
+            .unwrap()
+    });
+    let mut guest = connect_mock_guest(&vsock_path).await;
+    let mut decoder = Decoder::new();
+    mock_vsock_handshake(&mut guest, &mut decoder).await;
+    let host = Arc::new(host_task.await.unwrap());
+
+    (Arc::new(tokio::sync::Mutex::new(Some(host))), guest)
+}
+
+fn test_guest_memory_snapshot() -> MemorySnapshot {
+    MemorySnapshot {
+        mem_total_bytes: 1,
+        mem_free_bytes: 2,
+        mem_available_bytes: 3,
+        buffers_bytes: 4,
+        cached_bytes: 5,
+        anon_pages_bytes: 6,
+        mapped_bytes: 7,
+        dirty_bytes: 8,
+        writeback_bytes: 9,
+        shmem_bytes: 10,
+        slab_bytes: 11,
+        slab_reclaimable_bytes: 12,
+        slab_unreclaimable_bytes: 13,
+        unevictable_bytes: 14,
+        kernel_stack_bytes: 15,
+        page_tables_bytes: 16,
+        swap_total_bytes: 17,
+        swap_free_bytes: 18,
+    }
 }
 
 async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
@@ -890,19 +974,12 @@ async fn ready_for_park_boundary_preserves_non_reusable_outcome() {
         &coordinator,
         || async { Ok(TestNormalOperationFence) },
         || async { Ok(()) },
-        || async {
-            Ok(SandboxParkOutcome::NonReusable(
-                SandboxParkNonReusableReason::SevereMemoryRetention,
-            ))
-        },
+        || async { Ok(test_severe_memory_retention_outcome()) },
     )
     .await
     .unwrap();
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    assert_eq!(outcome, test_severe_memory_retention_outcome());
     assert!(matches!(coordinator.state(), CoordinatorState::Parked));
 }
 
@@ -3570,6 +3647,11 @@ struct MockBalloonStats {
     free_memory: Option<i64>,
     available_memory: Option<i64>,
     total_memory: Option<i64>,
+    swap_in: Option<i64>,
+    swap_out: Option<i64>,
+    major_faults: Option<i64>,
+    minor_faults: Option<i64>,
+    disk_caches: Option<i64>,
 }
 
 impl MockBalloonStats {
@@ -3580,6 +3662,11 @@ impl MockBalloonStats {
             free_memory: None,
             available_memory: None,
             total_memory: None,
+            swap_in: None,
+            swap_out: None,
+            major_faults: None,
+            minor_faults: None,
+            disk_caches: None,
         }
     }
 
@@ -3587,6 +3674,22 @@ impl MockBalloonStats {
         self.free_memory = Some(free_memory);
         self.available_memory = Some(available_memory);
         self.total_memory = Some(total_memory);
+        self
+    }
+
+    fn with_extended_counters(
+        mut self,
+        swap_in: i64,
+        swap_out: i64,
+        major_faults: i64,
+        minor_faults: i64,
+        disk_caches: i64,
+    ) -> Self {
+        self.swap_in = Some(swap_in);
+        self.swap_out = Some(swap_out);
+        self.major_faults = Some(major_faults);
+        self.minor_faults = Some(minor_faults);
+        self.disk_caches = Some(disk_caches);
         self
     }
 
@@ -3599,6 +3702,11 @@ impl MockBalloonStats {
             "free_memory": self.free_memory,
             "available_memory": self.available_memory,
             "total_memory": self.total_memory,
+            "swap_in": self.swap_in,
+            "swap_out": self.swap_out,
+            "major_faults": self.major_faults,
+            "minor_faults": self.minor_faults,
+            "disk_caches": self.disk_caches,
         })
         .to_string()
     }
@@ -4221,10 +4329,7 @@ async fn wait_for_balloon_follows_exact_bounded_poll_schedule() {
     let outcome = wait.await;
     drop(guard);
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    expect_severe_memory_retention(outcome);
     let requests = api.drain_requests();
     assert_eq!(
         requests
@@ -4327,10 +4432,7 @@ async fn wait_for_balloon_progress_grace_remains_bounded() {
     drop(guard);
     let events = captured.entries();
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    expect_severe_memory_retention(outcome);
     assert_eq!(
         captured_message_count(
             &events,
@@ -4590,7 +4692,9 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
 #[tokio::test]
 async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
-    let stats = MockBalloonStats::new(target_mib, 900).with_memory(mib(32), mib(0), mib(2048));
+    let stats = MockBalloonStats::new(target_mib, 900)
+        .with_memory(mib(32), mib(0), mib(2048))
+        .with_extended_counters(11, 12, 13, 14, 15);
     let api = MockLifecycleApi::with_stats(
         std::collections::VecDeque::new(),
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
@@ -4600,10 +4704,26 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     let (outcome, events) =
         capture_balloon_timeout_after_sample(wait_for_balloon(&client, target_mib, "severe")).await;
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    let diagnostics = expect_severe_memory_retention(outcome);
+    assert_eq!(diagnostics.requested_target_mib, target_mib);
+    assert_eq!(diagnostics.first_observed_target_mib, Some(target_mib));
+    assert_eq!(diagnostics.observed_target_mib, Some(target_mib));
+    assert!(diagnostics.target_observed);
+    assert_eq!(diagnostics.first_actual_mib, Some(900));
+    assert_eq!(diagnostics.actual_mib, Some(900));
+    assert_eq!(diagnostics.max_actual_mib, Some(900));
+    assert_eq!(diagnostics.deficit_mib, Some(636));
+    assert_eq!(diagnostics.actual_delta_mib, Some(0));
+    assert_eq!(diagnostics.sample_count, 1);
+    assert_eq!(diagnostics.reported_free_memory_bytes, Some(mib(32)));
+    assert_eq!(diagnostics.reported_available_memory_bytes, Some(0));
+    assert_eq!(diagnostics.reported_total_memory_bytes, Some(mib(2048)));
+    assert_eq!(diagnostics.reported_swap_in_bytes, Some(11));
+    assert_eq!(diagnostics.reported_swap_out_bytes, Some(12));
+    assert_eq!(diagnostics.reported_major_faults, Some(13));
+    assert_eq!(diagnostics.reported_minor_faults, Some(14));
+    assert_eq!(diagnostics.reported_disk_caches_bytes, Some(15));
+    assert_eq!(diagnostics.guest_memory_snapshot, None);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -5715,10 +5835,8 @@ async fn park_rejects_severe_balloon_retention_after_pausing() {
     .await;
     let outcome = result.unwrap();
 
-    assert_eq!(
-        outcome,
-        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
-    );
+    let diagnostics = expect_severe_memory_retention(outcome);
+    assert_eq!(diagnostics.guest_memory_snapshot, None);
     assert!(is_parked);
 
     let reqs = api.drain_requests();
@@ -5739,6 +5857,115 @@ async fn park_rejects_severe_balloon_retention_after_pausing() {
     assert_eq!(ps[0].path, "/balloon");
     assert_eq!(ps[1].path, "/vm");
     assert!(ps[1].body.contains("Paused"));
+}
+
+#[tokio::test]
+async fn severe_park_collects_terminal_guest_memory_before_pause() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::Status(500),
+        ]),
+    );
+    let socket_path = api.socket_path().to_path_buf();
+    let (guest, mut guest_stream) = connected_mock_guest().await;
+    let retained_guest = Arc::clone(&guest);
+
+    let park_task = tokio::spawn(async move {
+        let mut controller = Some(test_balloon_controller());
+        let mut is_parked = false;
+        let outcome = park_inner_with_guest(
+            &mut is_parked,
+            2048,
+            &mut controller,
+            &socket_path,
+            "terminal-memory-snapshot",
+            guest,
+        )
+        .await;
+        (outcome, is_parked)
+    });
+
+    let request = read_vsock_message(&mut guest_stream).await;
+    assert_eq!(request.msg_type, MSG_MEMORY_SNAPSHOT);
+    assert!(request.payload.is_empty());
+    let requests_before_snapshot = api.drain_requests();
+    assert!(
+        patches(&requests_before_snapshot)
+            .iter()
+            .all(|request| request.path != "/vm"),
+        "Firecracker must not pause before the terminal guest snapshot"
+    );
+
+    let snapshot = test_guest_memory_snapshot();
+    let response = vsock_proto::encode(
+        MSG_MEMORY_SNAPSHOT_RESULT,
+        request.seq,
+        &snapshot.encode_payload(),
+    )
+    .unwrap();
+    guest_stream.write_all(&response).await.unwrap();
+
+    let (result, is_parked) = park_task.await.unwrap();
+    let diagnostics = expect_severe_memory_retention(result.unwrap());
+    assert_eq!(
+        diagnostics.guest_memory_snapshot,
+        Some(guest_memory_snapshot(snapshot))
+    );
+    assert!(is_parked);
+    assert!(retained_guest.lock().await.is_some());
+
+    let mut requests = requests_before_snapshot;
+    requests.extend(api.drain_requests());
+    let pause = patches(&requests)
+        .into_iter()
+        .find(|request| request.path == "/vm")
+        .expect("severe park should pause Firecracker after the guest snapshot");
+    assert!(pause.body.contains("Paused"));
+}
+
+#[tokio::test]
+async fn reusable_park_does_not_request_terminal_guest_memory() {
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let mut api = MockLifecycleApi::with_stats(
+        std::collections::VecDeque::new(),
+        std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+            target_mib, target_mib,
+        ))]),
+    );
+    let (guest, guest_stream) = connected_mock_guest().await;
+    let retained_guest = Arc::clone(&guest);
+    let mut controller = Some(test_balloon_controller());
+    let mut is_parked = false;
+
+    let outcome = park_inner_with_guest(
+        &mut is_parked,
+        2048,
+        &mut controller,
+        api.socket_path(),
+        "reusable-no-memory-snapshot",
+        guest,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
+    assert!(is_parked);
+    assert!(retained_guest.lock().await.is_some());
+    let mut buffer = [0; HEADER_SIZE];
+    assert_eq!(
+        guest_stream.try_read(&mut buffer).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock,
+        "reusable park must not send a terminal memory snapshot request"
+    );
+    let requests = api.drain_requests();
+    let pause = patches(&requests)
+        .into_iter()
+        .find(|request| request.path == "/vm")
+        .expect("reusable park should pause Firecracker");
+    assert!(pause.body.contains("Paused"));
 }
 
 #[tokio::test]

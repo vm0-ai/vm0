@@ -45,8 +45,9 @@ pub use factory::{
 };
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::{
-    Sandbox, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome, SandboxFinalExecParkStage,
-    SandboxParkNonReusableReason, SandboxParkOutcome, SandboxStartObserver, SandboxStartStage,
+    GuestMemorySnapshot, Sandbox, SandboxFinalExecParkObserver, SandboxFinalExecParkOutcome,
+    SandboxFinalExecParkStage, SandboxParkNonReusableReason, SandboxParkOutcome,
+    SandboxStartObserver, SandboxStartStage, SevereMemoryRetentionDiagnostics,
 };
 pub use snapshot::{
     PendingSnapshotPublish, SnapshotCreateConfig, SnapshotError, SnapshotOutput, SnapshotProvider,

@@ -134,7 +134,7 @@ impl IdleReusePreparation {
     pub(crate) fn validate_result(
         &self,
         result: &ExecResult,
-    ) -> Result<(), IdleReusePreparationFailure> {
+    ) -> Result<ReusePreparationReport, IdleReusePreparationFailure> {
         if !helper_exec_succeeded(result) {
             let reason = helper_failure_reason(result);
             return Err(reject_with_result(
@@ -190,7 +190,7 @@ impl IdleReusePreparation {
             report,
             true,
         );
-        Ok(())
+        Ok(report)
     }
 }
 
@@ -410,7 +410,7 @@ mod tests {
                     format!("reuse-preparation exec failed: {error}"),
                 )
             })?;
-        preparation.validate_result(&result)
+        preparation.validate_result(&result).map(drop)
     }
 
     fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {

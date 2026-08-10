@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
+use guest_contracts::reuse_preparation::ReusePreparationReport;
 use sandbox::{
     DeviceRateLimits, Sandbox, SandboxFactory, SandboxFinalExecParkObserver, SandboxId,
     SandboxParkNonReusableReason, SandboxParkOutcome,
@@ -58,7 +59,13 @@ pub(crate) enum IdleParkOutcome {
     NonReusable {
         candidate: ParkedIdleCandidate,
         reason: SandboxParkNonReusableReason,
+        preparation_report: ReusePreparationReport,
     },
+}
+
+pub(crate) struct IdleParkNonReusable {
+    pub(crate) reason: SandboxParkNonReusableReason,
+    pub(crate) preparation_report: ReusePreparationReport,
 }
 
 #[must_use = "idle park failures must be explicitly destroyed or otherwise handled"]
@@ -293,20 +300,25 @@ async fn park_idle_transition(
                 metadata,
                 budget_lease,
             };
-            if let Err(error) = preparation.validate_result(&outcome.exec_result) {
-                return Err(IdleParkFailure {
-                    ownership: IdleParkFailureOwnership::Parked {
-                        rejected: candidate.into_rejected(),
-                    },
-                    reason: "reuse_preparation_failed",
-                    error: error.to_string(),
-                });
-            }
+            let preparation_report = match preparation.validate_result(&outcome.exec_result) {
+                Ok(report) => report,
+                Err(error) => {
+                    return Err(IdleParkFailure {
+                        ownership: IdleParkFailureOwnership::Parked {
+                            rejected: candidate.into_rejected(),
+                        },
+                        reason: "reuse_preparation_failed",
+                        error: error.to_string(),
+                    });
+                }
+            };
             Ok(match outcome.park_outcome {
                 SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
-                SandboxParkOutcome::NonReusable(reason) => {
-                    IdleParkOutcome::NonReusable { candidate, reason }
-                }
+                SandboxParkOutcome::NonReusable(reason) => IdleParkOutcome::NonReusable {
+                    candidate,
+                    reason,
+                    preparation_report,
+                },
             })
         }
         Ok(Err(error)) => Err(IdleParkFailure {
@@ -383,7 +395,9 @@ impl SpeculativeIdleSandbox {
                     entry: candidate.into_idle_entry(parked_at, idle_timeout),
                 }))
             }
-            Ok(IdleParkOutcome::NonReusable { candidate, reason }) => {
+            Ok(IdleParkOutcome::NonReusable {
+                candidate, reason, ..
+            }) => {
                 let (payload, budget_lease) = candidate.into_active_destroy_parts();
                 SpeculativeReparkResult::Destroy {
                     destroy_job: Box::new(IdleDestroyJob {
@@ -410,10 +424,20 @@ impl SpeculativeIdleSandbox {
 }
 
 impl IdleParkOutcome {
-    pub(crate) fn into_parts(self) -> (ParkedIdleCandidate, Option<SandboxParkNonReusableReason>) {
+    pub(crate) fn into_parts(self) -> (ParkedIdleCandidate, Option<IdleParkNonReusable>) {
         match self {
             Self::Reusable(candidate) => (candidate, None),
-            Self::NonReusable { candidate, reason } => (candidate, Some(reason)),
+            Self::NonReusable {
+                candidate,
+                reason,
+                preparation_report,
+            } => (
+                candidate,
+                Some(IdleParkNonReusable {
+                    reason,
+                    preparation_report,
+                }),
+            ),
         }
     }
 

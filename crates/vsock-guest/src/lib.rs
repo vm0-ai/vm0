@@ -14,6 +14,7 @@ mod exec_operation;
 mod file_write_worker;
 mod handlers;
 mod log;
+mod memory_snapshot;
 mod process;
 mod process_containment;
 mod quiesce;

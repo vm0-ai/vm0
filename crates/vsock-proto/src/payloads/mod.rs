@@ -1,6 +1,7 @@
 pub(crate) mod empty;
 pub(crate) mod error;
 pub(crate) mod exec_operation;
+pub(crate) mod memory_snapshot;
 pub(crate) mod write_file;
 
 fn truncate_utf8_to_u16_bytes(value: &str) -> (&[u8], u16) {
