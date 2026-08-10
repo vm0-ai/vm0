@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorAuthMode,
@@ -233,7 +233,7 @@ export async function loadCurrentCustomConnectorValueMarkers(
   return markers;
 }
 
-export async function loadCurrentCustomConnectorOAuthConnectionIds(
+export async function loadUsableCustomConnectorConnectionIds(
   db: Pick<ReadonlyDb, "select">,
   args: {
     readonly orgId: string;
@@ -252,12 +252,11 @@ export async function loadCurrentCustomConnectorOAuthConnectionIds(
       and(
         eq(orgCustomConnectors.id, connectors.customConnectorId),
         eq(orgCustomConnectors.orgId, connectors.orgId),
-        eq(orgCustomConnectors.authMode, "oauth"),
         eq(connectors.authMethod, orgCustomConnectors.authMode),
         eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
       ),
     )
-    .innerJoin(
+    .leftJoin(
       secrets,
       and(
         eq(secrets.connectorId, connectors.id),
@@ -269,6 +268,10 @@ export async function loadCurrentCustomConnectorOAuthConnectionIds(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
         eq(connectors.needsReconnect, false),
+        or(
+          eq(orgCustomConnectors.authMode, "manual"),
+          and(eq(orgCustomConnectors.authMode, "oauth"), isNotNull(secrets.id)),
+        ),
         args.connectorIds
           ? inArray(connectors.customConnectorId, [...args.connectorIds])
           : undefined,

@@ -1567,6 +1567,157 @@ describe("CONN-02: external-code authorization", () => {
 });
 
 describe("CONN-03: custom connectors and connector-owned secrets", () => {
+  it("rejects credentialless manual auth across definition write boundaries", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const fields = [
+      {
+        key: "api_key",
+        label: "API key",
+        kind: "secret" as const,
+        required: true,
+      },
+    ];
+    const literalOnlyInjections = [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer definition-literal",
+      },
+    ];
+    const expectedMessage =
+      "Manual custom connector injections must reference a declared secret or variable field";
+
+    const rejectedCreate = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: "BDD Credentialless Create",
+        prefixTemplates: [`https://${rand}.credentialless-create.test/v1/`],
+        fields,
+        headerInjections: literalOnlyInjections,
+        queryInjections: [],
+        authMode: "manual",
+      },
+      [400],
+    );
+    expectApiError(rejectedCreate.body);
+    expect(rejectedCreate.body.error.message).toBe(expectedMessage);
+
+    const valid = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Field-backed Manual",
+      prefixTemplates: [`https://${rand}.field-backed.test/v1/`],
+      fields,
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer public-prefix {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    expect(valid).toMatchObject({ connected: false });
+
+    const rejectedUpdate = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      valid.id,
+      {
+        displayName: "BDD Credentialless Update",
+        prefixTemplates: valid.prefixTemplates,
+        fields,
+        headerInjections: literalOnlyInjections,
+        queryInjections: [],
+        authMode: "manual",
+      },
+      [400],
+    );
+    expectApiError(rejectedUpdate.body);
+    expect(rejectedUpdate.body.error.message).toBe(expectedMessage);
+    await expect(
+      connectorsApi.readCustomConnector(admin, valid.id),
+    ).resolves.toMatchObject({
+      displayName: valid.displayName,
+      headerInjections: valid.headerInjections,
+    });
+
+    const rejectedProposal =
+      await connectorsApi.requestSaveCustomConnectorProposal(
+        admin,
+        {
+          proposal: {
+            operation: "create",
+            displayName: "BDD Credentialless Proposal",
+            prefixTemplates: [
+              `https://${rand}.credentialless-proposal.test/v1/`,
+            ],
+            fields,
+            headerInjections: literalOnlyInjections,
+            queryInjections: [],
+          },
+          values: [],
+        },
+        [400],
+      );
+    expectApiError(rejectedProposal.body);
+    expect(rejectedProposal.body.error.message).toBe(expectedMessage);
+
+    await connectorsApi.deleteCustomConnector(admin, valid.id);
+  });
+
+  it("requires an explicit member connection for optional manual fields", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Optional Manual Connection",
+      prefixTemplates: [`https://${rand}.optional-manual.test/v1/`],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: false,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    expect(created).toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: [],
+      hasSecret: false,
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({ connected: false });
+
+    const connected = await connectorsApi.setCustomConnectorValues(
+      admin,
+      created.id,
+      [],
+    );
+    expect(connected).toMatchObject({
+      connected: true,
+      configuredFieldKeys: [],
+      missingRequiredFields: [],
+      hasSecret: true,
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({ connected: true });
+
+    await connectorsApi.disconnectCustomConnector(admin, created.id);
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({ connected: false });
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
   it("stores an OAuth app config and lets members authorize", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     const provider = mockCustomConnectorOAuth2Provider(context);

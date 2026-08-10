@@ -1221,6 +1221,83 @@ type CompatibilityFixtureAction =
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
 
+type CustomConnectorDefinitionFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "seed-mcp-custom-connector"
+      | "delete-custom-connector-fixture"
+      | "set-custom-connector-auth-template-fixture";
+  }
+>;
+
+function isCustomConnectorDefinitionFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is CustomConnectorDefinitionFixtureAction {
+  return (
+    body.action === "seed-mcp-custom-connector" ||
+    body.action === "delete-custom-connector-fixture" ||
+    body.action === "set-custom-connector-auth-template-fixture"
+  );
+}
+
+async function customConnectorDefinitionFixtureActionResponse(
+  db: Db,
+  body: CustomConnectorDefinitionFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-mcp-custom-connector": {
+      await db.insert(orgCustomConnectors).values({
+        id: body.connector_id,
+        orgId: body.org_id,
+        slug: body.slug,
+        displayName: body.display_name,
+        prefixes: [],
+        headerName: null,
+        headerTemplate: null,
+        prefixTemplates: [],
+        fields: [],
+        headerInjections: [],
+        queryInjections: [],
+        authMode: "manual",
+        permissionBundleRef: null,
+        mcpEndpoint: body.endpoint,
+        mcpTransport: "streamable-http",
+        createdBy: body.user_id,
+      });
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "delete-custom-connector-fixture": {
+      await db
+        .delete(orgCustomConnectors)
+        .where(eq(orgCustomConnectors.id, body.connector_id));
+      signal.throwIfAborted();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "set-custom-connector-auth-template-fixture": {
+      const [updated] = await db
+        .update(orgCustomConnectors)
+        .set({
+          headerInjections: [
+            {
+              name: "Authorization",
+              valueTemplate: body.value_template,
+            },
+          ],
+        })
+        .where(eq(orgCustomConnectors.id, body.connector_id))
+        .returning({ id: orgCustomConnectors.id });
+      signal.throwIfAborted();
+      if (!updated) {
+        throw new Error("Expected a Custom Connector definition fixture");
+      }
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+  }
+}
+
 type ChatEventSnapshotFixtureAction = Extract<
   TestRuntimeStateActionBody,
   {

@@ -63,8 +63,8 @@ import {
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
   loadCustomConnectorCredentialAccesses,
-  loadCurrentCustomConnectorOAuthConnectionIds,
   loadCurrentCustomConnectorValueMarkers,
+  loadUsableCustomConnectorConnectionIds,
   type CustomConnectorCredentialAccess,
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
@@ -758,7 +758,7 @@ function effectivePermissionBundleRef(
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
   readonly valueMarkers: readonly ValueMarker[];
-  readonly oauthConnected?: boolean;
+  readonly usableConnection: boolean;
 }): CustomConnectorResponse {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
     return marker.connectorId === args.row.id;
@@ -771,13 +771,20 @@ export function serialiseCustomConnector(args: {
     fields: args.row.fields,
     markers: connectorMarkers,
   });
-  const oauthConnected = args.oauthConnected ?? false;
+  const validManualAuth =
+    args.row.authMode !== "manual" ||
+    (args.row.kind === "http" &&
+      customConnectorManualAuthReferencesMemberField(args.row));
   const connected =
-    missingRequiredFields.length === 0 &&
-    (args.row.authMode === "manual" || oauthConnected);
+    args.row.kind === "mcp" ||
+    (args.usableConnection &&
+      validManualAuth &&
+      missingRequiredFields.length === 0);
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
-    ...(args.row.authMode === "oauth" && !oauthConnected ? ["oauth"] : []),
+    ...(args.row.authMode === "oauth" && !args.usableConnection
+      ? ["oauth"]
+      : []),
   ];
   const common = {
     id: args.row.id,
@@ -893,6 +900,35 @@ function extractTemplateReferences(template: string): readonly {
       key: match[2]!,
     };
   });
+}
+
+export function customConnectorManualAuthReferencesMemberField(args: {
+  readonly fields: readonly CustomConnectorField[];
+  readonly headerInjections: readonly CustomConnectorHeaderInjection[];
+  readonly queryInjections: readonly CustomConnectorQueryInjection[];
+}): boolean {
+  const declared = declaredFieldsByNamespace(args.fields);
+  return [...args.headerInjections, ...args.queryInjections].some(
+    (injection) => {
+      if (
+        injection.valueTemplate.includes(LEGACY_SECRET_PLACEHOLDER) &&
+        declared.secrets.has(LEGACY_SECRET_KEY)
+      ) {
+        return true;
+      }
+      return extractTemplateReferences(injection.valueTemplate).some(
+        (reference) => {
+          const fields =
+            reference.namespace === "secrets"
+              ? declared.secrets
+              : reference.namespace === "variables"
+                ? declared.variables
+                : undefined;
+          return fields?.has(reference.key) ?? false;
+        },
+      );
+    },
+  );
 }
 
 export function customConnectorPrefixTemplateVariableKeys(
@@ -1393,6 +1429,18 @@ function validateDefinition(
   if (headerInjections.length === 0 && queryInjections.length === 0) {
     return badRequestMessage(
       "At least one header or query injection is required",
+    );
+  }
+  if (
+    authMode === "manual" &&
+    !customConnectorManualAuthReferencesMemberField({
+      fields,
+      headerInjections,
+      queryInjections,
+    })
+  ) {
+    return badRequestMessage(
+      "Manual custom connector injections must reference a declared secret or variable field",
     );
   }
   if (
@@ -2482,12 +2530,12 @@ export function getCustomConnectorResponse(args: {
     if (!connector) {
       return null;
     }
-    const [markers, oauthConnections] = await Promise.all([
+    const [markers, usableConnections] = await Promise.all([
       loadCurrentCustomConnectorValueMarkers(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
-      loadCurrentCustomConnectorOAuthConnectionIds(db, {
+      loadUsableCustomConnectorConnectionIds(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
@@ -2495,7 +2543,7 @@ export function getCustomConnectorResponse(args: {
     return serialiseCustomConnector({
       row: connector,
       valueMarkers: markers,
-      oauthConnected: oauthConnections.has(connector.id),
+      usableConnection: usableConnections.has(connector.id),
     });
   });
 }
@@ -3019,6 +3067,7 @@ export const setCustomConnectorValues$ = command(
     return serialiseCustomConnector({
       row: writeResult.connector,
       valueMarkers: markers,
+      usableConnection: true,
     });
   },
 );

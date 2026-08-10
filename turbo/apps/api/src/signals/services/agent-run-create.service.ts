@@ -196,6 +196,7 @@ import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
+  customConnectorManualAuthReferencesMemberField,
   customConnectorPrefixTemplateVariableKeys,
   customConnectorValueMarkerKey,
   decryptCustomConnectorValues,
@@ -4424,6 +4425,8 @@ async function buildNewRunCustomConnectorRuntimeContext(
     rows: args.rows.filter((row) => {
       return (
         row.credentialAccess.kind === "current" &&
+        (row.connector.authMode !== "manual" ||
+          customConnectorManualAuthReferencesMemberField(row.connector)) &&
         customConnectorRuntimeCredentialsAreComplete(row)
       );
     }),

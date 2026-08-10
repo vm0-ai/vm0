@@ -114,6 +114,7 @@ import {
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  setCustomConnectorAuthTemplateFixture,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
 import {
@@ -9995,6 +9996,80 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("fails closed for persisted credentialless custom auth in new runs", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Persisted Credentialless Runtime",
+        prefixTemplates: [`https://${rand}.credentialless.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "api_key",
+          kind: "secret",
+          value: "persisted-credentialless-secret",
+        },
+      ],
+      agentId,
+    });
+    expect(saved.connector).toMatchObject({ connected: true });
+    expect(saved.authorizedAgentId).toBe(agentId);
+
+    await setCustomConnectorAuthTemplateFixture(context, {
+      connectorId: saved.connector.id,
+      valueTemplate: "Bearer persisted-definition-literal",
+    });
+    const listed = await connectors.listCustomConnectors(actor);
+    expect(
+      listed.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["api_key"],
+      hasSecret: false,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use credentialless custom auth",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+    expect(claim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: saved.connector.id,
+      }),
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, saved.connector.id);
+  });
+
   it("omits storage-incompatible custom connectors from new runs", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
@@ -10017,7 +10092,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         headerInjections: [
           {
             name: "X-Connector",
-            valueTemplate: "incompatible-runtime",
+            valueTemplate: "Bearer {{secrets.secret}}",
           },
         ],
         queryInjections: [],
