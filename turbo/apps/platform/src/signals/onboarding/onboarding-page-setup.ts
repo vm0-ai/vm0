@@ -41,6 +41,10 @@ import {
   type OnboardingDraft,
   type OnboardingRouteStep,
 } from "./onboarding-state.ts";
+import {
+  capturePaidOnboardingAppHandoff,
+  capturePaidOnboardingStepViewed,
+} from "../bootstrap/paid-funnel-telemetry.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 
 interface OnboardingPageConfig {
@@ -121,6 +125,7 @@ function createOnboardingPageSetup(
         );
         const handoffParams = promptHandoffParams(searchParams);
         handoffParams.set("prompt", checkoutPrompt);
+        capturePaidOnboardingAppHandoff(checkoutPrompt);
         set(detachedNavigateTo$, ROUTES.prompt, {
           searchParams: handoffParams,
           replace: true,
@@ -155,6 +160,7 @@ function createOnboardingPageSetup(
     const title = config.title(get(brandName$));
     set(updatePage$, createElement(config.Page), "none");
     set(updateDocumentTitle$, title);
+    capturePaidOnboardingStepViewed(config.step);
     await set(hideAppSkeleton$, signal);
   });
 }

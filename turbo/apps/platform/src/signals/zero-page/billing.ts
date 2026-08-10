@@ -28,6 +28,10 @@ import {
   applyStoredAdAttribution,
   getStoredAdAttributionMetadata,
 } from "../bootstrap/ad-attribution.ts";
+import {
+  capturePaidOnboardingCheckoutCreated,
+  capturePaidOnboardingRedirectToStripe,
+} from "../bootstrap/paid-funnel-telemetry.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
 import {
   setUsagePackSubscriptionChangePreview$,
@@ -505,6 +509,8 @@ export const startCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
+    capturePaidOnboardingCheckoutCreated("paywall");
+    capturePaidOnboardingRedirectToStripe("paywall");
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {

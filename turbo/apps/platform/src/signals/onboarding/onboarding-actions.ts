@@ -17,6 +17,10 @@ import {
   resetOnboardingDraft$,
   storeOnboardingCheckoutDraft,
 } from "./onboarding-state.ts";
+import {
+  capturePaidOnboardingCheckoutCreated,
+  capturePaidOnboardingRedirectToStripe,
+} from "../bootstrap/paid-funnel-telemetry.ts";
 
 export const completeOnboarding$ = command(
   async (
@@ -117,6 +121,8 @@ export const prepareOnboardingVideoRun$ = command(
       [200],
     );
     signal.throwIfAborted();
+    capturePaidOnboardingCheckoutCreated("onboarding_video");
+    capturePaidOnboardingRedirectToStripe("onboarding_video");
     window.location.href = result.body.url;
     return "checkout";
   },

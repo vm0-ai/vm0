@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -65,6 +65,51 @@ function firstItem<Item>(items: readonly Item[]): Item {
     throw new Error("Expected onboarding template data");
   }
   return item;
+}
+
+const ONBOARDING_START_SEND_TO = "AW-18144854014/GVKdCLbQ9LscEP7_kcxD";
+const CHECKOUT_START_SEND_TO = "AW-18144854014/EEovCKmuvbscEP7_kcxD";
+
+type GtagFn = (...args: unknown[]) => void;
+
+type WindowWithGtag = Window & {
+  gtag?: GtagFn;
+};
+
+function installGtagMock(): ReturnType<typeof vi.fn<GtagFn>> {
+  const windowWithGtag = window as WindowWithGtag;
+  const originalGtag = windowWithGtag.gtag;
+  const gtag = vi.fn<GtagFn>();
+
+  Object.defineProperty(windowWithGtag, "gtag", {
+    configurable: true,
+    value: gtag,
+    writable: true,
+  });
+  context.signal.addEventListener("abort", () => {
+    if (originalGtag !== undefined) {
+      Object.defineProperty(windowWithGtag, "gtag", {
+        configurable: true,
+        value: originalGtag,
+        writable: true,
+      });
+      return;
+    }
+    Reflect.deleteProperty(windowWithGtag, "gtag");
+  });
+
+  return gtag;
+}
+
+function sentConversions(gtag: ReturnType<typeof vi.fn<GtagFn>>): string[] {
+  return gtag.mock.calls.flatMap((call) => {
+    const [command, eventName, params] = call;
+    if (command !== "event" || eventName !== "conversion") {
+      return [];
+    }
+    const sendTo = (params as { readonly send_to?: unknown }).send_to;
+    return typeof sendTo === "string" ? [sendTo] : [];
+  });
 }
 
 function mockOnboardingNeeded(): void {
@@ -1008,5 +1053,56 @@ describe("onboarding flow", () => {
       screen.findByRole("heading", { name: "Customize your video" }),
     ).resolves.toBeInTheDocument();
     expect(screen.getByLabelText("Custom video prompt")).toHaveValue(note);
+  });
+
+  it("reports Onboarding Start and Checkout Start to Google Ads", async () => {
+    // Both conversions dedupe through sessionStorage, which outlives a single
+    // test in this file.
+    window.sessionStorage.removeItem(
+      "vm0.googleAdsOnboardingStartConversionRecorded",
+    );
+    window.sessionStorage.removeItem(
+      "vm0.googleAdsCheckoutStartConversionRecorded",
+    );
+    const gtag = installGtagMock();
+    const template = firstItem(VIDEO_TEMPLATE_ITEMS);
+    mockChatLifecycle(context);
+    context.mocks.api(zeroBillingCheckoutContract.create, ({ respond }) => {
+      return respond(200, {
+        url: "https://checkout.stripe.com/test/onboarding-video",
+      });
+    });
+
+    await openMakePage();
+
+    expect(sentConversions(gtag)).toStrictEqual([ONBOARDING_START_SEND_TO]);
+
+    chooseMakeOption("Video production");
+    await expect(
+      screen.findByRole("heading", {
+        name: "Pick a video template to start from",
+      }),
+    ).resolves.toBeInTheDocument();
+    chooseTemplate(template.title, "video");
+
+    await expect(
+      screen.findByRole("heading", { name: "Customize your video" }),
+    ).resolves.toBeInTheDocument();
+    await fill(
+      screen.getByLabelText("Custom video prompt"),
+      "A 20-second launch teaser for a habit-tracking app.",
+    );
+    click(
+      await waitFor(() => {
+        return buttonByText("Upgrade Pro to run");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(sentConversions(gtag)).toStrictEqual([
+        ONBOARDING_START_SEND_TO,
+        CHECKOUT_START_SEND_TO,
+      ]);
+    });
   });
 });

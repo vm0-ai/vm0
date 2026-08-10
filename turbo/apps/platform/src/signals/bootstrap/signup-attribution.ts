@@ -5,30 +5,20 @@ import {
 } from "@vm0/api-contracts/contracts/zero-attribution";
 
 import { accept } from "../../lib/accept.ts";
+import { capturePaidOnboardingEvent } from "../../lib/posthog.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { user$ } from "../auth.ts";
 import { getStoredAdAttributionMetadata } from "./ad-attribution.ts";
+import {
+  fireGoogleAdsConversion,
+  GOOGLE_ADS_SIGNUP_SEND_TO,
+} from "./google-ads-conversion.ts";
 
 const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
 const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
-const GOOGLE_ADS_SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
 const SIGNUP_CONVERSION_VALUE_USD = 1;
 const SIGNUP_CONVERSION_MAX_USER_AGE_MS = 30 * 60 * 1000;
-
-type GoogleTag = (
-  command: "event",
-  eventName: "conversion",
-  params: {
-    readonly send_to: string;
-    readonly value: number;
-    readonly currency: "USD";
-  },
-) => void;
-
-type WindowWithGoogleTag = Window & {
-  readonly gtag?: GoogleTag;
-};
 
 function getSessionStorage(): Storage | null {
   if (typeof window === "undefined") {
@@ -36,30 +26,6 @@ function getSessionStorage(): Storage | null {
   }
 
   return window.sessionStorage;
-}
-
-function trackGoogleAdsSignupConversion(
-  storage: Storage | null,
-  fingerprint: string,
-): void {
-  if (storage?.getItem(SIGNUP_CONVERSION_RECORDED_KEY) === fingerprint) {
-    return;
-  }
-
-  const gtag =
-    typeof window === "undefined"
-      ? undefined
-      : (window as WindowWithGoogleTag).gtag;
-  if (typeof gtag !== "function") {
-    return;
-  }
-
-  gtag("event", "conversion", {
-    send_to: GOOGLE_ADS_SIGNUP_SEND_TO,
-    value: SIGNUP_CONVERSION_VALUE_USD,
-    currency: "USD",
-  });
-  storage?.setItem(SIGNUP_CONVERSION_RECORDED_KEY, fingerprint);
 }
 
 function timestampMs(value: unknown): number | null {
@@ -128,11 +94,22 @@ export const recordSignupAttribution$ = command(
           SIGNUP_ATTRIBUTION_RECORDED_KEY,
           attributionFingerprint,
         );
+        capturePaidOnboardingEvent("SignupAttributionRecorded", {
+          landing_host: window.location.host,
+          landing_path: window.location.pathname,
+          source_type: attribution.source_type ?? "unknown",
+        });
       }
     }
 
     if (recorded && recentlyCreatedUser) {
-      trackGoogleAdsSignupConversion(storage, user.id);
+      fireGoogleAdsConversion({
+        sendTo: GOOGLE_ADS_SIGNUP_SEND_TO,
+        dedupeKey: SIGNUP_CONVERSION_RECORDED_KEY,
+        dedupeValue: user.id,
+        value: SIGNUP_CONVERSION_VALUE_USD,
+        storage,
+      });
     }
   },
 );

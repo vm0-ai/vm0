@@ -64,6 +64,19 @@ export function captureTaskCompletedSuccessfully(): void {
   });
 }
 
+/**
+ * Paid-onboarding funnel events. The `PaidOnboarding: ` prefix is load-bearing:
+ * the acquisition dashboards and Google Ads reconciliation both key off it.
+ */
+export function capturePaidOnboardingEvent(
+  name: string,
+  properties: Record<string, string | number | boolean>,
+): void {
+  runPostHog(() => {
+    posthog.capture(`PaidOnboarding: ${name}`, properties);
+  });
+}
+
 // ── Navigation timing (ccstate-based) ──────────────────────────────
 //
 // Timing marks are ccstate signals so they compose naturally with the
