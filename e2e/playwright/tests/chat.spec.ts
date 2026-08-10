@@ -954,6 +954,13 @@ test("send a message through the deployed runner", async ({ page }) => {
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
   const composer = page.locator(".zero-composer");
+  const modelPicker = composer.getByRole("combobox");
+  await modelPicker.click();
+  await page.getByRole("option", { name: /Claude Sonnet 4\.6/ }).click();
+  await expect(
+    composer.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+  ).toBeVisible();
+
   const editor = composer.getByRole("textbox", { name: "Message" });
   await expect(editor).toBeVisible();
   await editor.fill(`printf ${marker}`);

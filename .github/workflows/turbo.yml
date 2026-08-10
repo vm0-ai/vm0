@@ -2162,6 +2162,43 @@ jobs:
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Setup SSH for preview diagnostics
+        if: always() && github.event_name != 'push'
+        continue-on-error: true
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          require-all-hosts: "false"
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      - name: Print preview Stripe webhook forwarding log
+        if: always() && github.event_name != 'push'
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+        run: |
+          set -euo pipefail
+
+          stripe_listener_host="$(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | head -n 1)"
+          if [[ -z "$stripe_listener_host" ]]; then
+            echo "::warning::AWS_METAL_RUNNER_HOSTS is empty; Stripe listener diagnostics unavailable"
+            exit 0
+          fi
+
+          remote="${METAL_USER}@${stripe_listener_host}"
+          stripe_log="/var/lib/vm0-runner/stripe/${JOB_REF}/stripe-listen.log"
+          if ! ssh "$remote" "sudo test -f '$stripe_log'"; then
+            echo "::warning::Stripe listener log is unavailable for ${JOB_REF}"
+            exit 0
+          fi
+
+          ssh "$remote" "sudo tail -200 '$stripe_log'" |
+            sed -E \
+              -e 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' \
+              -e 's/sk_(test|live)_[[:alnum:]_]+/[masked-stripe-api-key]/g'
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
