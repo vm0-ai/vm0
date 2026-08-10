@@ -6,9 +6,9 @@ import {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import type { Db } from "../external/db";
-import { reconcileGmailWatchesForUser } from "./gmail-workflow-event.service";
-import { reconcileGoogleCalendarWatchesForUser } from "./google-calendar-workflow-event.service";
-import { reconcileGoogleFormsWatchesForUser } from "./google-forms-workflow-event.service";
+import { reconcileGmailWatchesForUser } from "./gmail-automation-event.service";
+import { reconcileGoogleCalendarWatchesForUser } from "./google-calendar-automation-event.service";
+import { reconcileGoogleFormsWatchesForUser } from "./google-forms-automation-event.service";
 
 interface AutomationEventWatchAutomation {
   readonly orgId: string;

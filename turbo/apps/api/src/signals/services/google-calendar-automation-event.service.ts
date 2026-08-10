@@ -42,7 +42,7 @@ import type { WorkflowAutomationContext } from "./workflow-automation-context.se
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
-const log = logger("api:google-calendar-workflow-event");
+const log = logger("api:google-calendar-automation-event");
 
 const GOOGLE_CALENDAR_ACCESS_TOKEN_ENVIRONMENT_NAME = "GOOGLE_CALENDAR_TOKEN";
 const GOOGLE_CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";

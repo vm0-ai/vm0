@@ -147,7 +147,7 @@ function chatRunFinishedTriggerContext(args: {
  * reached a terminal state. Called from the terminal chat callback after the
  * run lifecycle marker is durable, so the matched output is final.
  */
-export const dispatchChatRunFinishedWorkflowEvents$ = command(
+export const dispatchChatRunFinishedAutomationEvents$ = command(
   async ({ set }, event: ChatRunFinishedEvent, signal: AbortSignal) => {
     const db = set(writeDb$);
     const sourceAutonomyBudget = await loadRunAutonomyBudget(db, event.runId);

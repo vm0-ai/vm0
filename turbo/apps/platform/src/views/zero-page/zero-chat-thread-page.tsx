@@ -12,6 +12,7 @@ import {
   useLastResolved,
   useLoadable,
 } from "ccstate-react";
+import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
 import { now } from "../../lib/time.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -255,6 +256,7 @@ import type {
   ChatInputEvent,
   ChatEvent,
 } from "../../signals/chat-page/chat-event-types.ts";
+import type { ChatRunModelSelection } from "../../signals/chat-page/chat-event-state.ts";
 import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
 import { userMessageFileAttachments } from "../../signals/chat-page/user-message-files.ts";
@@ -365,18 +367,25 @@ function asInputChatEvent(event: ChatEvent): ChatInputEvent | undefined {
   return isInputChatEvent(event) ? event : undefined;
 }
 
-function selectedModelFromUserMessage(
+function modelSelectionFromUserMessage(
   document: UserMessageDocument | undefined,
-): string | undefined {
+): ChatRunModelSelection | undefined {
   const modelPart = document?.parts.find((part) => {
     return part.type === "model";
   });
-  return modelPart?.type === "model" ? modelPart.selectedModel : undefined;
+  return modelPart?.type === "model"
+    ? {
+        selectedModel: modelPart.selectedModel,
+        ...(modelPart.serviceTier === undefined
+          ? {}
+          : { serviceTier: modelPart.serviceTier }),
+      }
+    : undefined;
 }
 
 function modelChangeRunKey(
   inputEvent: ChatInputEvent,
-  selectedModel: string | undefined,
+  modelSelection: ChatRunModelSelection | undefined,
 ): string | undefined {
   if (inputEvent.runId !== undefined) {
     return `run:${inputEvent.runId}`;
@@ -385,18 +394,47 @@ function modelChangeRunKey(
   // to about two days. Keep persisted events from looking like run starts
   // until their stored rows and snapshots are migrated; remove the seqId
   // check after #25879 confirms no runless model annotations remain.
-  if (inputEvent.seqId === undefined && selectedModel !== undefined) {
+  if (inputEvent.seqId === undefined && modelSelection !== undefined) {
     return `event:${inputEvent.id}`;
   }
   return undefined;
 }
 
+type RunModelChange =
+  | {
+      readonly kind: "model";
+      readonly selection: ChatRunModelSelection;
+    }
+  | {
+      readonly kind: "fast-mode";
+      readonly enabled: boolean;
+    };
+
+function fastModeEnabled(selection: ChatRunModelSelection): boolean {
+  return selection.serviceTier === "priority";
+}
+
+function runModelDisplayName(
+  t: TFunction<"common">,
+  selection: ChatRunModelSelection,
+): string {
+  const model = getModelDisplayName(selection.selectedModel);
+  return fastModeEnabled(selection)
+    ? t(
+        ($) => {
+          return $.chat.run.fastModelName;
+        },
+        { model },
+      )
+    : model;
+}
+
 function modelChangesByEventId(
   groups: readonly ChatEventGroup[],
-): ReadonlyMap<string, string> {
-  const changes = new Map<string, string>();
+): ReadonlyMap<string, RunModelChange> {
+  const changes = new Map<string, RunModelChange>();
   let previousRunKey: string | undefined;
-  let previousModel: string | undefined;
+  let previousSelection: ChatRunModelSelection | undefined;
   let hasPreviousRun = false;
 
   for (const group of groups) {
@@ -405,23 +443,29 @@ function modelChangesByEventId(
       if (inputEvent === undefined) {
         continue;
       }
-      const selectedModel = selectedModelFromUserMessage(
-        inputEvent.userMessage,
-      );
-      const runKey = modelChangeRunKey(inputEvent, selectedModel);
+      const selection = modelSelectionFromUserMessage(inputEvent.userMessage);
+      const runKey = modelChangeRunKey(inputEvent, selection);
       if (runKey === undefined || runKey === previousRunKey) {
         continue;
       }
       if (
         hasPreviousRun &&
-        previousModel !== undefined &&
-        selectedModel !== undefined &&
-        selectedModel !== previousModel
+        previousSelection !== undefined &&
+        selection !== undefined
       ) {
-        changes.set(event.id, selectedModel);
+        if (selection.selectedModel !== previousSelection.selectedModel) {
+          changes.set(event.id, { kind: "model", selection });
+        } else if (
+          fastModeEnabled(selection) !== fastModeEnabled(previousSelection)
+        ) {
+          changes.set(event.id, {
+            kind: "fast-mode",
+            enabled: fastModeEnabled(selection),
+          });
+        }
       }
       previousRunKey = runKey;
-      previousModel = selectedModel;
+      previousSelection = selection;
       hasPreviousRun = true;
     }
   }
@@ -2881,25 +2925,48 @@ function ChatThreadNextRunModelNotice({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
-  const selectedModel = useLastResolved(
+  const selectedSelection = useLastResolved(
     thread.composer.model.modelSelection$,
-  )?.selectedModel;
-  const runningModel = useLastResolved(thread.composer.model.runningModel$);
+  );
+  const runningSelection = useLastResolved(
+    thread.composer.model.runningModelSelection$,
+  );
   if (
-    selectedModel === undefined ||
-    runningModel === undefined ||
-    runningModel === null ||
-    selectedModel === runningModel
+    selectedSelection === undefined ||
+    selectedSelection === null ||
+    runningSelection === undefined ||
+    runningSelection === null
   ) {
     return null;
   }
 
-  const label = t(
-    ($) => {
-      return $.chat.run.selectedModelAppliesAfterCurrentRun;
-    },
-    { model: getModelDisplayName(selectedModel) },
-  );
+  const selectedRunSelection: ChatRunModelSelection = {
+    selectedModel: selectedSelection.selectedModel,
+    ...(selectedSelection.codexServiceTier === "fast"
+      ? { serviceTier: "priority" as const }
+      : {}),
+  };
+  let label: string;
+  if (selectedRunSelection.selectedModel !== runningSelection.selectedModel) {
+    label = t(
+      ($) => {
+        return $.chat.run.selectedModelAppliesAfterCurrentRun;
+      },
+      { model: runModelDisplayName(t, selectedRunSelection) },
+    );
+  } else if (
+    fastModeEnabled(selectedRunSelection) !== fastModeEnabled(runningSelection)
+  ) {
+    label = fastModeEnabled(selectedRunSelection)
+      ? t(($) => {
+          return $.chat.run.fastModeWillBeOn;
+        })
+      : t(($) => {
+          return $.chat.run.fastModeWillBeOff;
+        });
+  } else {
+    return null;
+  }
   return <RunSectionDividerRow label={label} announce />;
 }
 
@@ -2915,7 +2982,7 @@ function ChatThreadEventGroups({
 }: {
   thread: ChatPanelSignals;
   groups: readonly ChatEventGroup[];
-  modelChanges: ReadonlyMap<string, string>;
+  modelChanges: ReadonlyMap<string, RunModelChange>;
   runGroupFolding: RunGroupFolding | null;
   onToggleRunGroup: (key: string, expanded: boolean) => void;
   completedWorkFolding: CompletedWorkFolding | null;
@@ -3565,14 +3632,23 @@ function RunSectionDividerRow({
   );
 }
 
-function ModelChangeDividerRow({ selectedModel }: { selectedModel: string }) {
+function ModelChangeDividerRow({ change }: { change: RunModelChange }) {
   const { t } = useTranslation();
-  const label = t(
-    ($) => {
-      return $.chat.run.modelChangedTo;
-    },
-    { model: getModelDisplayName(selectedModel) },
-  );
+  const label =
+    change.kind === "model"
+      ? t(
+          ($) => {
+            return $.chat.run.modelChangedTo;
+          },
+          { model: runModelDisplayName(t, change.selection) },
+        )
+      : change.enabled
+        ? t(($) => {
+            return $.chat.run.fastModeOn;
+          })
+        : t(($) => {
+            return $.chat.run.fastModeOff;
+          });
   return <RunSectionDividerRow label={label} />;
 }
 
@@ -6628,7 +6704,7 @@ function PagedGroupRow({
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
-  modelChanges: ReadonlyMap<string, string>;
+  modelChanges: ReadonlyMap<string, RunModelChange>;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6791,17 +6867,17 @@ function PagedUserGroup({
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
-  modelChanges: ReadonlyMap<string, string>;
+  modelChanges: ReadonlyMap<string, RunModelChange>;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
     <>
       {group.events.map((event) => {
-        const changedModel = modelChanges.get(event.id);
+        const modelChange = modelChanges.get(event.id);
         return (
           <div key={event.id} className="contents">
-            {changedModel === undefined ? null : (
-              <ModelChangeDividerRow selectedModel={changedModel} />
+            {modelChange === undefined ? null : (
+              <ModelChangeDividerRow change={modelChange} />
             )}
             <PagedUserMessage event={event} thread={thread} />
           </div>
