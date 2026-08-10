@@ -526,6 +526,13 @@
       "when": 1786365253783,
       "tag": "0882_nasty_hobgoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 883,
+      "version": "7",
+      "when": 1786369242073,
+      "tag": "0883_backfill_canonical_chat_event_storage",
+      "breakpoints": true
     }
   ]
 }

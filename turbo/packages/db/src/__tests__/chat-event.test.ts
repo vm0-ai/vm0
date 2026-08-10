@@ -66,6 +66,7 @@ describe("chatEvents schema", () => {
         })
         .sort(),
     ).toStrictEqual([
+      "chat_events_control_interrupt_run_id_unique",
       "chat_events_input_automation_context_idx",
       "chat_events_interrupts_run_id_not_null_unique",
       "chat_events_pending_queue_idx",

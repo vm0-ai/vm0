@@ -1,5 +1,9 @@
 import { waitFor } from "@testing-library/react";
-import type { ChatEventRow } from "@vm0/api-contracts/contracts/chat-event-rows";
+import {
+  canonicalChatEventRow,
+  type ChatEventRow,
+  type ChatEventRowV4,
+} from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -217,10 +221,117 @@ describe("chat event snapshot read", () => {
 
       await expect(
         appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
-      ).resolves.toStrictEqual(tailEventRow);
+      ).resolves.toStrictEqual(canonicalChatEventRow(tailEventRow));
       await expect(
         appDb.get(CHAT_MESSAGES_STORE, tailEventRow.id),
       ).resolves.toBeUndefined();
+    } finally {
+      appDb.close();
+    }
+  });
+
+  it("normalizes v3 and v4 rows into one canonical cache with v3 projections", async () => {
+    mockSignedInUser();
+    enableSnapshotRead();
+    rejectLegacyEventsEndpoint();
+    const threadId = crypto.randomUUID();
+    const interruptTargetRunId = crypto.randomUUID();
+    const goalId = crypto.randomUUID();
+    const failedRunId = crypto.randomUUID();
+    // The v3 wire masks the canonical interrupt run and goal context; the
+    // reader must rebuild them the way the server-side backfill does.
+    const interruptEventRow: ChatEventRow = {
+      ...baseRow(threadId, 1),
+      eventType: "control.interrupt",
+      content: null,
+      interruptsRunId: interruptTargetRunId,
+    };
+    const goalEventRow: ChatEventRow = {
+      ...baseRow(threadId, 2),
+      content: "goal result",
+      runGroupId: goalId,
+    };
+    // A canonical row exactly as the post-cutover tail endpoint serves it.
+    const canonicalTailRow: ChatEventRowV4 = {
+      id: crypto.randomUUID(),
+      chatThreadId: threadId,
+      runId: failedRunId,
+      revokesEventId: null,
+      eventType: "run.failed",
+      payload: { content: "run failed", error: "runner error" },
+      contextType: null,
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId: null,
+      seqId: 3,
+      createdAt: CREATED_AT,
+    };
+    const appDb = await context.store.get(chatIdb$);
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        url: SNAPSHOT_URL,
+        expiresInSeconds: 900,
+        lastSeqId: 2,
+      });
+    });
+    context.mocks.http.get(SNAPSHOT_URL, () => {
+      return new Response(snapshotNdjson([interruptEventRow, goalEventRow]));
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      if (query.sinceSeqId === 2) {
+        return respond(200, { rows: [canonicalTailRow] });
+      }
+      return respond(200, { rows: [] });
+    });
+
+    const signals = createSignals(threadId);
+    try {
+      await context.store.set(
+        signals.initializeIndexedDbEvents$,
+        context.signal,
+      );
+      await context.store.set(signals.syncRemoteEvents$, context.signal);
+
+      const events = context.store.get(signals.chatEvents$);
+      expect(events).toHaveLength(3);
+      expect(events[0]).toMatchObject({
+        eventType: "control.interrupt",
+        interruptsRunId: interruptTargetRunId,
+      });
+      expect(events[0]?.runId).toBeUndefined();
+      expect(events[1]).toMatchObject({
+        eventType: "output.message",
+        content: "goal result",
+        runGroupId: goalId,
+      });
+      expect(events[2]).toMatchObject({
+        eventType: "run.failed",
+        runId: failedRunId,
+        content: "run failed",
+        error: "runner error",
+      });
+
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, interruptEventRow.id),
+      ).resolves.toMatchObject({
+        eventType: "control.interrupt",
+        runId: interruptTargetRunId,
+        payload: null,
+      });
+      const storedGoalRow: unknown = await appDb.get(
+        CHAT_EVENT_ROWS_STORE,
+        goalEventRow.id,
+      );
+      expect(storedGoalRow).toMatchObject({
+        contextType: "goal",
+        contextId: goalId,
+        payload: { content: "goal result" },
+      });
+      expect(storedGoalRow).not.toHaveProperty("runGroupId");
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, canonicalTailRow.id),
+      ).resolves.toStrictEqual(canonicalTailRow);
     } finally {
       appDb.close();
     }
@@ -272,7 +383,7 @@ describe("chat event snapshot read", () => {
       ).toBeTruthy();
       await expect(
         appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
-      ).resolves.toStrictEqual(assistantEventRow);
+      ).resolves.toStrictEqual(canonicalChatEventRow(assistantEventRow));
     } finally {
       appDb.close();
     }
@@ -333,7 +444,7 @@ describe("chat event snapshot read", () => {
     const appDb = await context.store.get(chatIdb$);
     await context.store.set(
       writeIndexedDbChatEventRows$,
-      [promptEventRow, assistantEventRow],
+      [promptEventRow, assistantEventRow].map(canonicalChatEventRow),
       context.signal,
     );
 
@@ -363,7 +474,7 @@ describe("chat event snapshot read", () => {
     const staleRow = baseRow(threadId, 5);
     await context.store.set(
       writeIndexedDbChatEventRows$,
-      [staleRow],
+      [canonicalChatEventRow(staleRow)],
       context.signal,
     );
 
@@ -408,7 +519,7 @@ describe("chat event snapshot read", () => {
       ).resolves.toBeUndefined();
       await expect(
         appDb.get(CHAT_EVENT_ROWS_STORE, promptEventRow.id),
-      ).resolves.toStrictEqual(promptEventRow);
+      ).resolves.toStrictEqual(canonicalChatEventRow(promptEventRow));
     } finally {
       appDb.close();
     }
@@ -423,7 +534,7 @@ describe("chat event snapshot read", () => {
     const appDb = await context.store.get(chatIdb$);
     await context.store.set(
       writeIndexedDbChatEventRows$,
-      [promptEventRow, assistantEventRow],
+      [promptEventRow, assistantEventRow].map(canonicalChatEventRow),
       context.signal,
     );
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
@@ -453,7 +564,7 @@ describe("chat event snapshot read", () => {
       await waitFor(async () => {
         await expect(
           appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
-        ).resolves.toStrictEqual(tailEventRow);
+        ).resolves.toStrictEqual(canonicalChatEventRow(tailEventRow));
       });
     } finally {
       context.store.set(resetSubscriberSignal$, context.signal);

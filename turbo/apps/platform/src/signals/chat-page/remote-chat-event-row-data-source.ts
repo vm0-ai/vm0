@@ -1,7 +1,8 @@
 import { command } from "ccstate";
 import {
-  chatEventRowSchema,
-  type ChatEventRow,
+  canonicalChatEventRow,
+  chatEventRowReadSchema,
+  type ChatEventRowV4,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -12,7 +13,7 @@ const L = logger("ChatEventRowRemote");
 export const CHAT_EVENT_ROWS_PAGE_LIMIT = 50;
 
 type ChatEventRowsPage =
-  | { readonly kind: "rows"; readonly rows: readonly ChatEventRow[] }
+  | { readonly kind: "rows"; readonly rows: readonly ChatEventRowV4[] }
   | { readonly kind: "expired" };
 
 export const listRowsAfter$ = command(
@@ -45,7 +46,10 @@ export const listRowsAfter$ = command(
       sinceSeqId,
       count: result.body.rows.length,
     });
-    return { kind: "rows", rows: result.body.rows };
+    // Normalize at the ingestion boundary: the tail serves v3 rows today and
+    // v4 rows after the canonical cutover; everything downstream, including
+    // the IndexedDB cache, holds only the canonical shape.
+    return { kind: "rows", rows: result.body.rows.map(canonicalChatEventRow) };
   },
 );
 
@@ -62,7 +66,7 @@ export const fetchChatEventSnapshotRows$ = command(
     threadId: string,
     signal: AbortSignal,
   ): Promise<{
-    readonly rows: readonly ChatEventRow[];
+    readonly rows: readonly ChatEventRowV4[];
     readonly lastSeqId: number;
   } | null> => {
     const client = get(zeroClient$)(chatThreadEventsContract);
@@ -95,7 +99,9 @@ export const fetchChatEventSnapshotRows$ = command(
       .slice(0, -1)
       .split("\n")
       .map((line) => {
-        return chatEventRowSchema.parse(JSON.parse(line));
+        return canonicalChatEventRow(
+          chatEventRowReadSchema.parse(JSON.parse(line)),
+        );
       });
     L.debug("fetchChatEventSnapshotRows$", {
       threadId,

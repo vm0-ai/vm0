@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import type { ChatEventRow } from "@vm0/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import {
   chatIdbReadOr,
   chatIdbWriteBestEffort,
@@ -28,7 +28,7 @@ export const loadIndexedDbChatEventRowsAfter$ = command(
   ) => {
     const stores = await get(chatEventRowStores$);
     signal.throwIfAborted();
-    const rows = await chatIdbReadOr<ChatEventRow[]>(
+    const rows = await chatIdbReadOr<ChatEventRowV4[]>(
       "indexedDbEventRows:readRowsAfter",
       () => {
         return stores.readStore.readRowsAfter(threadId, afterSeqId, signal);
@@ -66,7 +66,7 @@ export const loadIndexedDbChatEventRowLastSeqId$ = command(
 export const writeIndexedDbChatEventRows$ = command(
   async (
     { get },
-    rows: readonly ChatEventRow[],
+    rows: readonly ChatEventRowV4[],
     signal: AbortSignal,
   ): Promise<void> => {
     if (rows.length === 0) {

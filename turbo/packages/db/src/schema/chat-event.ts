@@ -172,6 +172,14 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),
+      // Canonical twin of chat_events_interrupts_run_id_not_null_unique: after
+      // the canonical backfill, control.interrupt rows carry their target run
+      // in run_id, so the one-interrupt-per-run guarantee must hold there too.
+      uniqueIndex("chat_events_control_interrupt_run_id_unique")
+        .on(table.runId)
+        .where(
+          sql`${table.eventType} = 'control.interrupt' AND ${table.runId} IS NOT NULL`,
+        ),
       check(
         "chat_events_event_type_check",
         sql`${table.eventType} IN (
