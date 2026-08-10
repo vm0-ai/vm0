@@ -51,7 +51,7 @@ import {
 import { commitCustomConnectorRuntimeMutation } from "../services/custom-connector-runtime-wakeup.service";
 import {
   getCustomConnectorById,
-  type CustomConnectorRow,
+  type CustomConnectorHttpRow,
 } from "../services/zero-custom-connector.service";
 import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
 import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
@@ -187,7 +187,7 @@ function validCustomFeishuState(
 
 async function exchangeOAuthTokenAndUserInfo(
   args: {
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly clientSecret: string;
     readonly code: string;
     readonly codeVerifier: string | null;
@@ -357,7 +357,7 @@ async function persistFeishuOAuthConnection(
     readonly db: Db;
     readonly state: FeishuConnectionState;
     readonly installation: FeishuInstallationOAuthRow;
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly token: OAuthTokenResult;
     readonly userInfo: FeishuUserInfo;
     readonly featureContext: FeatureSwitchContext;
@@ -445,7 +445,7 @@ async function finishFeishuOAuthConnection(
     readonly db: Db;
     readonly state: FeishuConnectionState;
     readonly installation: FeishuInstallationOAuthRow;
-    readonly connector: CustomConnectorRow;
+    readonly connector: CustomConnectorHttpRow;
     readonly token: OAuthTokenResult;
     readonly userInfo: FeishuUserInfo;
     readonly expectedOpenId?: string;
