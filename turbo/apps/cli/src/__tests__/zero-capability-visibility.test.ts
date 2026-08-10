@@ -43,6 +43,7 @@ function buildCommands(): Command[] {
     new Command("recognize"),
     new Command("translate"),
     new Command("finance"),
+    new Command("seo"),
     new Command("banking"),
     new Command("goal"),
   ];
@@ -192,6 +193,7 @@ describe("registerZeroCommands", () => {
       "recognize",
       "translate",
       "finance",
+      "seo",
       "banking",
       "goal",
     ]);
@@ -275,6 +277,18 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("finance");
+  });
+
+  it("should show seo when seo:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["seo:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("seo");
   });
 
   it("should show people-search only with people-search:read capability", () => {
@@ -892,6 +906,24 @@ describe("registerZeroCommands", () => {
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Get a market quote?",
     );
+  });
+
+  it("should gate the SEO help example on seo:read", () => {
+    const visibleToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["seo:read"],
+    });
+    const hiddenToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(visibleToken))).toContain(
+      "Research SEO data?",
+    );
+    expect(
+      buildZeroHelpText(decodeZeroTokenPayload(hiddenToken)),
+    ).not.toContain("Research SEO data?");
   });
 
   it("should show the people-search help example when people-search:read capability is present", () => {
